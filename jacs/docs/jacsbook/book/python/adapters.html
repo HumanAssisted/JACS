@@ -183,7 +183,7 @@ pip install jacs[crewai]      # CrewAI
 pip install jacs[anthropic]   # Anthropic / Claude SDK
 pip install jacs[all]         # Everything
 </code></pre>
-<p>Every adapter wraps a <code>JacsClient</code> instance and provides <code>strict</code> mode (raise on failures) and <code>permissive</code> mode (log and passthrough). All adapters accept <code>client=</code>, <code>config_path=</code>, or auto-create via <code>quickstart()</code>.</p>
+<p>Every adapter wraps a <code>JacsClient</code> instance and provides <code>strict</code> mode (raise on failures) and <code>permissive</code> mode (log and passthrough). All adapters accept <code>client=</code>, <code>config_path=</code>, or auto-create via <code>quickstart(name, domain, ...)</code>.</p>
 <hr />
 <h2 id="5-minute-quickstarts"><a class="header" href="#5-minute-quickstarts">5-Minute Quickstarts</a></h2>
 <h3 id="jacs--langchain-in-5-minutes"><a class="header" href="#jacs--langchain-in-5-minutes">JACS + LangChain in 5 Minutes</a></h3>
@@ -195,7 +195,7 @@ pip install jacs[all]         # Everything
 from jacs.client import JacsClient
 from jacs.adapters.langchain import jacs_signing_middleware
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 middleware = jacs_signing_middleware(client=client)
 
 # 3. Sign every tool call in your agent
@@ -222,7 +222,7 @@ tool_node = with_jacs_signing([search_tool, calc_tool], client=client)
 from jacs.client import JacsClient
 from jacs.adapters.crewai import jacs_guardrail
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # 3. Attach to any CrewAI task
 from crewai import Task

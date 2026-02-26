@@ -35,7 +35,7 @@ async def main():
         model = ChatOpenAI(model="gpt-4")
 
     # Create JACS client
-    client = JacsClient.quickstart()
+    client = JacsClient.quickstart(name="langgraph-agent", domain="langgraph.local")
     print(f"JACS agent: {client.agent_id}")
 
     # Define tools

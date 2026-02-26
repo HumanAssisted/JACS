@@ -502,7 +502,7 @@ impl SimpleAgent {
     /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
     ///
     /// Args:
-    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "ed25519"
+    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "pq2025"
     ///
     /// Returns:
     ///     Tuple of (SimpleAgent instance, dict with agent_id, name, algorithm, version)
@@ -882,6 +882,19 @@ fn handle_config_create_py() -> PyResult<()> {
 #[pyfunction]
 fn trust_agent(agent_json: &str) -> PyResult<String> {
     jacs_binding_core::trust_agent(agent_json).to_py()
+}
+
+/// Add an agent to the local trust store using an explicit public key PEM.
+///
+/// Args:
+///     agent_json: The full agent JSON string
+///     public_key_pem: PEM-encoded public key used to verify self-signature
+///
+/// Returns:
+///     The agent ID if successfully trusted
+#[pyfunction]
+fn trust_agent_with_key(agent_json: &str, public_key_pem: &str) -> PyResult<String> {
+    jacs_binding_core::trust_agent_with_key(agent_json, public_key_pem).to_py()
 }
 
 /// List all trusted agent IDs.
@@ -1337,6 +1350,7 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Trust Store Functions
     // =============================================================================
     m.add_function(wrap_pyfunction!(trust_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(trust_agent_with_key, m)?)?;
     m.add_function(wrap_pyfunction!(list_trusted_agents, m)?)?;
     m.add_function(wrap_pyfunction!(untrust_agent, m)?)?;
     m.add_function(wrap_pyfunction!(is_trusted, m)?)?;

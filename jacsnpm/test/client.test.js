@@ -96,6 +96,28 @@ describe('JacsClient', function () {
   });
 
   describe('quickstart factory', () => {
+    (available ? it : it.skip)('should reject missing quickstart identity fields', async () => {
+      let missingOptionsErr = null;
+      try {
+        await clientModule.JacsClient.quickstart();
+      } catch (e) {
+        missingOptionsErr = e;
+      }
+      expect(String(missingOptionsErr)).to.match(/requires options\.name and options\.domain/);
+
+      let missingNameErr = null;
+      try {
+        await clientModule.JacsClient.quickstart({ domain: 'client-test.example.com' });
+      } catch (e) {
+        missingNameErr = e;
+      }
+      expect(String(missingNameErr)).to.match(/requires options\.name/);
+
+      expect(() =>
+        clientModule.JacsClient.quickstartSync({ name: 'client-test-agent' })
+      ).to.throw(/requires options\.domain/);
+    });
+
     (available ? it : it.skip)('should honor custom configPath when creating a persistent agent', async function () {
       this.timeout(30000);
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-quickstart-'));
@@ -106,6 +128,8 @@ describe('JacsClient', function () {
       try {
         process.chdir(tmpDir);
         const client = await clientModule.JacsClient.quickstart({
+          name: 'client-test-agent',
+          domain: 'client-test.example.com',
           algorithm: 'ring-Ed25519',
           configPath: 'custom/jacs.config.json',
         });

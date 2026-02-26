@@ -10,20 +10,25 @@ When verifying signed documents, JACS resolves the signer’s public key using a
 
 ## Zero-Config Path
 
-If you just want to sign and verify without manual config setup, use `quickstart()`:
+If you just want to sign and verify without manual config setup, use `quickstart(name, domain, ...)`:
 
 ```python
 import jacs.simple as jacs
-jacs.quickstart()  # Creates or loads ./jacs.config.json automatically
+info = jacs.quickstart(name="config-agent", domain="config.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 ```
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
-jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
+const info = await jacs.quickstart({
+  name: 'config-agent',
+  domain: 'config.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 ```
 
 ```bash
-jacs quickstart  # CLI -- creates or loads ./jacs.config.json
+jacs quickstart --name config-agent --domain config.example.com
 ```
 
 {{#include ../_snippets/quickstart-persistent-agent.md}}
@@ -36,7 +41,7 @@ For persistent agents, a config file needs only two fields (plus `$schema`):
 {
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 ```
 
@@ -52,7 +57,7 @@ All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` sto
   "jacs_key_directory": "./jacs_keys",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
   "jacs_agent_public_key_filename": "jacs.public.pem",
-  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_default_storage": "fs",
   "observability": {
     "logs": {
@@ -365,7 +370,7 @@ All other JACS settings are **configuration file fields** that have sensible def
 
 - `jacs_data_directory` - Where agent/document data is stored (default: `./jacs_data`)
 - `jacs_key_directory` - Where cryptographic keys are stored (default: `./jacs_keys`)
-- `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `RSA-PSS`)
+- `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `pq2025`)
 - `jacs_default_storage` - Storage backend (default: `fs`)
 - `jacs_use_security` / `JACS_ENABLE_FILESYSTEM_QUARANTINE` - Enable filesystem quarantine of executable files (default: `false`). The env var `JACS_USE_SECURITY` is deprecated; use `JACS_ENABLE_FILESYSTEM_QUARANTINE` instead.
 

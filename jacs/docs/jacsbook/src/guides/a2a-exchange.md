@@ -13,7 +13,7 @@ Sign artifacts with cryptographic provenance and verify artifacts from other age
 ```python
 from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Sign an artifact
 signed = client.sign_artifact({"action": "classify", "input": "data"}, "task")
@@ -65,7 +65,10 @@ chain = a2a.create_chain_of_custody([step1, step2])
 ```javascript
 const { JacsClient } = require('@hai.ai/jacs/client');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 
 // Sign an artifact
 const signed = await client.signArtifact({ action: 'classify', input: 'data' }, 'task');

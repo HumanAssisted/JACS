@@ -198,6 +198,7 @@
 <li><strong>Auditability and versioning</strong> through immutable signatures and document history</li>
 <li><strong>Storage flexibility</strong> across local storage and database-backed deployments</li>
 <li><strong>MCP and A2A integration</strong> for both intra-app and cross-boundary agent workflows</li>
+<li><strong>Trust bootstrap primitives</strong> (<code>share_public_key</code>, <code>share_agent</code>, <code>trust_agent_with_key</code>) for explicit key exchange handshakes</li>
 <li><strong>Observability hooks</strong> for production operations</li>
 <li><strong>Cross-language implementations</strong> in Rust, Node.js, Python, and Go</li>
 </ul>
@@ -238,7 +239,7 @@
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <h3 id="rust-cli"><a class="header" href="#rust-cli">Rust CLI</a></h3>
 <pre><code class="language-bash">cargo install jacs --features cli
-jacs init
+jacs quickstart --name my-agent --domain my-agent.example.com
 </code></pre>
 <h3 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h3>
 <pre><code class="language-bash">npm install @hai.ai/jacs
@@ -249,6 +250,7 @@ jacs init
 <h3 id="go"><a class="header" href="#go">Go</a></h3>
 <pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
 </code></pre>
+<p>Quickstart in Rust/Node/Python requires an agent name and domain. Returned <code>AgentInfo</code> includes config/key file paths for operational visibility.</p>
 <h2 id="identity-model-including-did"><a class="header" href="#identity-model-including-did">Identity Model (Including DID)</a></h2>
 <p>JACS identity is based on cryptographic keys and stable agent IDs. You can operate entirely without a registry, blockchain, or token authority:</p>
 <ul>

@@ -251,6 +251,29 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       expect(documents['/.well-known/jacs-agent.json'].publicKeyHash).to.equal(expectedHash);
       expect(documents['/.well-known/jacs-pubkey.json'].publicKeyHash).to.equal(expectedHash);
     });
+
+    it('should default missing keyAlgorithm to pq2025 in well-known docs', () => {
+      const mockClient = createMockClient();
+      const integration = new JACSA2AIntegration(mockClient);
+
+      const agentCard = new A2AAgentCard({
+        name: 'Test', description: 'Test', version: '1.0.0',
+        protocolVersions: ['0.4.0'],
+        supportedInterfaces: [new A2AAgentInterface('https://example.com', 'jsonrpc')],
+        defaultInputModes: ['text/plain'], defaultOutputModes: ['text/plain'],
+        capabilities: new A2AAgentCapabilities(), skills: []
+      });
+
+      const docs = integration.generateWellKnownDocuments(
+        agentCard,
+        'mock-jws',
+        'dGVzdC1wdWJsaWMta2V5',
+        { jacsId: 'agent-1', jacsVersion: 'v1', jacsAgentType: 'ai' }
+      );
+
+      expect(docs['/.well-known/jacs-agent.json'].keyAlgorithm).to.equal('pq2025');
+      expect(docs['/.well-known/jacs-pubkey.json'].algorithm).to.equal('pq2025');
+    });
   });
 
   // -------------------------------------------------------------------------

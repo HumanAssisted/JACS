@@ -183,7 +183,10 @@
 <h3 id="2-create-a-jacs-client"><a class="header" href="#2-create-a-jacs-client">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-wrap-your-mcp-transport"><a class="header" href="#3-wrap-your-mcp-transport">3. Wrap your MCP transport</a></h3>
 <pre><code class="language-typescript">import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -213,7 +216,10 @@ import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(baseTransport, client, "server");
 
@@ -234,7 +240,10 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const baseTransport = new StdioClientTransport({
   command: 'node', args: ['my-server.js']
 });
@@ -293,7 +302,10 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 registerJacsTools(server, client);
 
 const transport = new StdioServerTransport();

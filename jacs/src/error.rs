@@ -430,7 +430,7 @@ impl fmt::Display for JacsError {
             JacsError::AgentNotLoaded => {
                 write!(
                     f,
-                    "No agent loaded. Call jacs.quickstart() to create or load an agent automatically, or jacs.create() / jacs.load() for explicit control."
+                    "No agent loaded. Call jacs.quickstart(name, domain, ...) to create or load an agent automatically, or jacs.create() / jacs.load() for explicit control."
                 )
             }
 

@@ -180,12 +180,13 @@
 <p>Zero-config -- one call to start signing:</p>
 <pre><code class="language-python">import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.
+<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.
 Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
 <p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-python">agent = jacs.load("./jacs.config.json")
@@ -201,22 +202,33 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 </div>
 <hr />
 <h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
-<h3 id="quickstartalgorithmnone"><a class="header" href="#quickstartalgorithmnone">quickstart(algorithm=None)</a></h3>
-<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. <code>JACS_PRIVATE_KEY_PASSWORD</code> must be set before calling this. Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
+<h3 id="quickstartname-domain-descriptionnone-algorithmnone-config_pathnone"><a class="header" href="#quickstartname-domain-descriptionnone-algorithmnone-config_pathnone">quickstart(name, domain, description=None, algorithm=None, config_path=None)</a></h3>
+<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset, Python quickstart auto-generates a secure password in-process (<code>JACS_SAVE_PASSWORD_FILE=true</code> persists it to <code>./jacs_keys/.jacs_password</code>). Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
+<li><code>name</code> (str, required): Agent name used for first-time creation.</li>
+<li><code>domain</code> (str, required): Agent domain used for DNS/public-key verification workflows.</li>
+<li><code>description</code> (str, optional): Human-readable description.</li>
 <li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+<li><code>config_path</code> (str, optional): Config path (default: <code>"./jacs.config.json"</code>).</li>
 </ul>
 <p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
-<pre><code class="language-python">info = jacs.quickstart()
+<pre><code class="language-python">info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
 print(f"Agent ID: {info.agent_id}")
+print(f"Config path: {info.config_path}")
+print(f"Public key: {info.public_key_path}")
+print(f"Private key: {info.private_key_path}")
 
 # Or with a specific algorithm
-info = jacs.quickstart(algorithm="ring-Ed25519")
+info = jacs.quickstart(
+    name="my-agent",
+    domain="my-agent.example.com",
+    algorithm="ring-Ed25519",
+)
 </code></pre>
 <hr />
 <h3 id="loadconfig_pathnone"><a class="header" href="#loadconfig_pathnone">load(config_path=None)</a></h3>
-<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you want to load a specific config file explicitly.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart(name=..., domain=..., ...)</code> when you want to load a specific config file explicitly.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>config_path</code> (str, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>

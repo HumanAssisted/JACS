@@ -24,7 +24,7 @@ For `strict` policy, agents must be in your local trust store:
 from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = JACSA2AIntegration(client, trust_policy="strict")
 
 # Assess a remote agent's trustworthiness
@@ -68,7 +68,10 @@ if (result.allowed) {
 const { JacsClient } = require('@hai.ai/jacs/client');
 const { JACSA2AIntegration } = require('@hai.ai/jacs/a2a');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const a2a = new JACSA2AIntegration(client, 'strict');
 
 // Assess a remote agent

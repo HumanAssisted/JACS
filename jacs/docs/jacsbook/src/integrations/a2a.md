@@ -33,7 +33,7 @@ For A2A security, JACS is an OAuth alternative for service-to-service agent trus
 ```python
 from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 card = client.export_agent_card(url="agents.example.com")
 signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 ```
@@ -43,7 +43,10 @@ signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 ```typescript
 import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const card = client.exportAgentCard();
 const signed = await client.signArtifact({ action: 'classify', input: 'hello' }, 'task');
 ```
@@ -56,7 +59,7 @@ const signed = await client.signArtifact({ action: 'classify', input: 'hello' },
 from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = client.get_a2a(url="http://localhost:8080")
 a2a.serve(port=8080)  # Publishes all 5 /.well-known/ endpoints
 ```
@@ -94,7 +97,7 @@ Trust is the key differentiator between JACS A2A and vanilla A2A -- every artifa
 from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = JACSA2AIntegration(client, trust_policy="strict")
 
 # Assess a remote agent's trustworthiness
@@ -200,7 +203,7 @@ The `jacs.a2a` module provides the `JACSA2AIntegration` class which handles the 
 from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = client.get_a2a(url="http://localhost:8080")
 ```
 
@@ -317,7 +320,10 @@ assert!(result.valid);
 ```typescript
 import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const a2a = client.getA2A();
 
 // Sign an artifact

@@ -853,10 +853,10 @@ impl AgentWrapper {
     ///
     /// Replaces the inner agent with a freshly created ephemeral agent that
     /// lives entirely in memory. Returns a JSON string with agent info
-    /// (agent_id, name, version, algorithm).
+    /// (agent_id, name, version, algorithm). Default algorithm is `pq2025`.
     pub fn ephemeral(&self, algorithm: Option<&str>) -> BindingResult<String> {
         // Map user-friendly names to internal algorithm strings
-        let algo = match algorithm.unwrap_or("ed25519") {
+        let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
             "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
@@ -1721,6 +1721,20 @@ pub fn create_config(
 pub fn trust_agent(agent_json: &str) -> BindingResult<String> {
     jacs::trust::trust_agent(agent_json)
         .map_err(|e| BindingCoreError::trust_failed(format!("Failed to trust agent: {}", e)))
+}
+
+/// Add an agent to the local trust store using an explicitly provided public key.
+///
+/// This is the recommended first-contact bootstrap for secure trust establishment.
+pub fn trust_agent_with_key(agent_json: &str, public_key_pem: &str) -> BindingResult<String> {
+    if public_key_pem.trim().is_empty() {
+        return Err(BindingCoreError::invalid_argument(
+            "public_key_pem cannot be empty",
+        ));
+    }
+    jacs::trust::trust_agent_with_key(agent_json, Some(public_key_pem)).map_err(|e| {
+        BindingCoreError::trust_failed(format!("Failed to trust agent with explicit key: {}", e))
+    })
 }
 
 /// List all trusted agent IDs.

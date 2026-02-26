@@ -8,7 +8,11 @@
  * ```typescript
  * import { JacsClient } from '@hai.ai/jacs/client';
  *
- * const client = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+ * const client = await JacsClient.quickstart({
+ *   name: 'my-agent',
+ *   domain: 'agent.example.com',
+ *   algorithm: 'pq2025',
+ * });
  * const signed = await client.signMessage({ action: 'approve' });
  * const result = await client.verify(signed.raw);
  * console.log(`Valid: ${result.valid}`);
@@ -55,13 +59,13 @@ export declare class JacsClient {
     private _strict;
     constructor(options?: JacsClientOptions);
     /**
-     * Zero-config factory: loads or creates a persistent agent.
+     * Factory: loads or creates a persistent agent.
      */
-    static quickstart(options?: QuickstartOptions): Promise<JacsClient>;
+    static quickstart(options: QuickstartOptions): Promise<JacsClient>;
     /**
-     * Zero-config factory (sync variant).
+     * Factory (sync variant).
      */
-    static quickstartSync(options?: QuickstartOptions): JacsClient;
+    static quickstartSync(options: QuickstartOptions): JacsClient;
     /**
      * Create an ephemeral in-memory client for testing.
      */
@@ -108,10 +112,15 @@ export declare class JacsClient {
     updateDocument(documentId: string, newDocumentData: any, attachments?: string[], embed?: boolean): Promise<SignedDocument>;
     updateDocumentSync(documentId: string, newDocumentData: any, attachments?: string[], embed?: boolean): SignedDocument;
     trustAgent(agentJson: string): string;
+    trustAgentWithKey(agentJson: string, publicKeyPem: string): string;
     listTrustedAgents(): string[];
     untrustAgent(agentId: string): void;
     isTrusted(agentId: string): boolean;
     getTrustedAgent(agentId: string): string;
+    getPublicKey(): string;
+    exportAgent(): string;
+    sharePublicKey(): string;
+    shareAgent(): string;
     audit(options?: AuditOptions): Promise<Record<string, unknown>>;
     auditSync(options?: AuditOptions): Record<string, unknown>;
     /**

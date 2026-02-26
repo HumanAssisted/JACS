@@ -15,7 +15,7 @@ from jacs.client import JacsClient
 BASE_URL = "http://localhost:8000"
 
 # Create a client to verify responses
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="http-client", domain="client.local")
 
 
 def test_post():

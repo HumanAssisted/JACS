@@ -18,7 +18,10 @@ const PORT = 3002;
 
 async function main() {
   // Initialize JACS client once
-  const client = await JacsClient.quickstart();
+  const client = await JacsClient.quickstart({
+    name: 'express-demo-agent',
+    domain: 'express.local',
+  });
 
   // Parse bodies as text so JACS can verify the raw signed document
   app.use('/api', express.text({ type: '*/*' }));

@@ -55,7 +55,7 @@ If you already serve an Agent Card, adding JACS provenance takes two steps:
 ```python
 from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 # Wrap your existing artifact payload
 signed = client.sign_artifact(your_existing_artifact, "task")
 # Send `signed` instead of the raw artifact
@@ -86,7 +86,7 @@ A: The remote agent's Agent Card does not include the `urn:jacs:provenance-v1` e
 A: The signature is cryptographically correct, but the trust policy rejected the signer. With `strict` policy, the signer must be in your local trust store. Add them with `a2a.trust_a2a_agent(card_json)`.
 
 **Q: `sign_artifact` raises "no agent loaded".**
-A: Call `JacsClient.quickstart()` or `JacsClient(config_path=...)` before signing. The client must have a loaded agent with keys.
+A: Call `JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")` or `JacsClient(config_path=...)` before signing. The client must have a loaded agent with keys.
 
 **Q: Agent Card export returns empty skills.**
 A: Skills are derived from `jacsServices` in the agent definition. Pass `skills=[...]` to `export_agent_card()` to override, or define services when creating the agent.

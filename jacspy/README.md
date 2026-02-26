@@ -26,19 +26,20 @@ Zero-config -- one call to start signing:
 ```python
 import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
+`quickstart(name, domain, ...)` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated in-process (set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`). Returned `AgentInfo` includes config and key file paths. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
 
 **Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#agreements-with-timeout-and-quorum) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
 ### Advanced: Loading an existing agent
 
-If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:
+If you already have an agent (e.g., created by a previous `quickstart(name=..., domain=...)` call), load it explicitly:
 
 ```python
 import jacs.simple as jacs
@@ -73,7 +74,7 @@ The simplified API provides these core operations:
 
 | Operation | Description |
 |-----------|-------------|
-| `quickstart()` | Create a persistent agent with keys on disk -- zero config, no manual setup |
+| `quickstart(name, domain, ...)` | Create a persistent agent with keys on disk -- zero config, no manual setup |
 | `create()` | Create a new agent programmatically (non-interactive) |
 | `load()` | Load an existing agent from config |
 | `verify_self()` | Verify the loaded agent's integrity |
@@ -175,10 +176,10 @@ result = client.verify(signed.raw_json)
 print(f"Valid: {result.valid}, Agent: {client.agent_id}")
 
 # Or zero-config quickstart (creates keys on disk)
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Context manager for automatic cleanup
-with JacsClient.quickstart() as client:
+with JacsClient.quickstart(name="my-agent", domain="my-agent.example.com") as client:
     signed = client.sign_message("hello")
 ```
 
@@ -225,7 +226,7 @@ See [`examples/multi_agent_agreement.py`](../examples/multi_agent_agreement.py) 
 | Method | Description |
 |--------|-------------|
 | `JacsClient(config_path)` | Load from config |
-| `JacsClient.quickstart()` | Zero-config persistent agent |
+| `JacsClient.quickstart(name, domain, ...)` | Zero-config persistent agent |
 | `JacsClient.ephemeral()` | In-memory agent (no disk, for tests) |
 | `sign_message(data)` | Sign JSON-serializable data |
 | `verify(document)` | Verify a signed document |
@@ -362,7 +363,7 @@ For A2A security, JACS is an OAuth alternative for service-to-service agent trus
 ```python
 from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 card = client.export_agent_card("http://localhost:8080")
 signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 ```
@@ -375,7 +376,7 @@ For full A2A lifecycle control (well-known documents, chain of custody, extensio
 from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = client.get_a2a(url="http://localhost:8080")
 
 # Export an A2A Agent Card

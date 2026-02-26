@@ -356,8 +356,10 @@ impl Agent {
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
+        let default_config_path = crate::paths::default_config_path();
+        let default_config_path = default_config_path.to_string_lossy().to_string();
 
-        self.config = Some(load_config_12factor_optional(None).map_err(|e| {
+        self.config = Some(load_config_12factor_optional(Some(&default_config_path)).map_err(|e| {
             format!(
                 "load_by_id failed for agent '{}': Could not find or load configuration: {}",
                 lookup_id, e

@@ -7,7 +7,7 @@ clients to coexist in a single process without shared global state.
 Example:
     from jacs.client import JacsClient
 
-    client = JacsClient.quickstart()
+    client = JacsClient.quickstart(name="my-agent", domain="agent.example.com")
     signed = client.sign_message({"hello": "world"})
     result = client.verify(signed.raw_json)
     assert result.valid
@@ -41,6 +41,7 @@ try:
     from . import JacsAgent as _JacsAgent
     from . import SimpleAgent as _SimpleAgent
     from .jacs import trust_agent as _trust_agent
+    from .jacs import trust_agent_with_key as _trust_agent_with_key
     from .jacs import list_trusted_agents as _list_trusted_agents
     from .jacs import untrust_agent as _untrust_agent
     from .jacs import is_trusted as _is_trusted
@@ -52,6 +53,7 @@ except ImportError:
     _JacsAgent = _jacs_module.JacsAgent  # type: ignore[misc]
     _SimpleAgent = _jacs_module.SimpleAgent  # type: ignore[misc]
     _trust_agent = _jacs_module.trust_agent
+    _trust_agent_with_key = _jacs_module.trust_agent_with_key
     _list_trusted_agents = _jacs_module.list_trusted_agents
     _untrust_agent = _jacs_module.untrust_agent
     _is_trusted = _jacs_module.is_trusted
@@ -149,7 +151,7 @@ class JacsClient:
         result = client.verify(signed.raw_json)
 
     Context manager:
-        with JacsClient.quickstart() as client:
+        with JacsClient.quickstart(name="my-agent", domain="agent.example.com") as client:
             signed = client.sign_message("hi")
     """
 
@@ -173,6 +175,9 @@ class JacsClient:
     @classmethod
     def quickstart(
         cls,
+        name: str,
+        domain: str,
+        description: Optional[str] = None,
         algorithm: Optional[str] = None,
         config_path: Optional[str] = None,
         strict: Optional[bool] = None,
@@ -182,6 +187,11 @@ class JacsClient:
         If a config file exists, it is loaded; otherwise a new persistent
         agent is created on disk (keys + config).
         """
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError("JacsClient.quickstart() requires a non-empty 'name'.")
+        if not isinstance(domain, str) or not domain.strip():
+            raise ConfigError("JacsClient.quickstart() requires a non-empty 'domain'.")
+
         cfg_path = config_path or "./jacs.config.json"
         instance = cls.__new__(cls)
         instance._strict = _resolve_strict(strict)
@@ -218,12 +228,14 @@ class JacsClient:
 
         algo = algorithm or "pq2025"
         _SimpleAgent.create_agent(
-            name="jacs-agent",
+            name=name,
             password=password,
             algorithm=algo,
             data_directory="./jacs_data",
             key_directory="./jacs_keys",
             config_path=cfg_path,
+            description=description or "",
+            domain=domain,
             default_storage="fs",
         )
 
@@ -262,7 +274,14 @@ class JacsClient:
             agent_id=info_dict.get("agent_id", ""),
             version=info_dict.get("version", ""),
             name=info_dict.get("name", "ephemeral"),
-            algorithm=info_dict.get("algorithm", "ed25519"),
+            algorithm=info_dict.get("algorithm", "pq2025"),
+            config_path="",
+            public_key_path="",
+            private_key_path="",
+            data_directory="",
+            key_directory="",
+            domain="",
+            dns_record="",
         )
         return instance
 
@@ -286,15 +305,32 @@ class JacsClient:
         parts = id_ver.split(":") if id_ver else ["", ""]
         agent_id = parts[0] if parts else ""
         version = parts[1] if len(parts) > 1 else ""
-        key_dir = config.get("jacs_key_directory", "./jacs_keys")
+        resolved_config_path = os.path.abspath(config_path)
+        key_dir = _resolve_config_relative_path(
+            resolved_config_path,
+            config.get("jacs_key_directory", "./jacs_keys"),
+        )
+        data_dir = _resolve_config_relative_path(
+            resolved_config_path,
+            config.get("jacs_data_directory", "./jacs_data"),
+        )
+        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
+        private_key_file = config.get(
+            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
+        )
 
         self._agent_info = AgentInfo(
             agent_id=agent_id,
             version=version,
             name=config.get("name"),
-            algorithm=config.get("jacs_agent_key_algorithm", "RSA"),
-            config_path=config_path,
-            public_key_path=os.path.join(key_dir, "jacs.public.pem"),
+            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
+            config_path=resolved_config_path,
+            public_key_path=os.path.join(key_dir, public_key_file),
+            private_key_path=os.path.join(key_dir, private_key_file),
+            data_directory=data_dir,
+            key_directory=key_dir,
+            domain=config.get("domain", ""),
+            dns_record=config.get("dns_record", ""),
         )
 
     def _require_agent(self):
@@ -582,6 +618,11 @@ class JacsClient:
     def trust_agent(self, agent_json: str) -> str:
         return _trust_agent(agent_json)
 
+    def trust_agent_with_key(self, agent_json: str, public_key_pem: str) -> str:
+        if not public_key_pem or not public_key_pem.strip():
+            raise JacsError("public_key_pem cannot be empty")
+        return _trust_agent_with_key(agent_json, public_key_pem)
+
     def list_trusted_agents(self) -> List[str]:
         return _list_trusted_agents()
 
@@ -630,6 +671,26 @@ class JacsClient:
             return agent.get_agent_json()
         except Exception as e:
             raise JacsError(f"Failed to export agent: {e}")
+
+    def get_public_key(self) -> str:
+        """Return this agent's PEM public key."""
+        if self._agent_info is None or not self._agent_info.public_key_path:
+            raise AgentNotLoadedError("No loaded agent with public key metadata.")
+
+        key_path = self._agent_info.public_key_path
+        if not os.path.exists(key_path):
+            raise JacsError(f"Public key not found: {key_path}")
+
+        with open(key_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def share_public_key(self) -> str:
+        """Alias for get_public_key() for framework/tool integrations."""
+        return self.get_public_key()
+
+    def share_agent(self) -> str:
+        """Alias for export_agent() for framework/tool integrations."""
+        return self.export_agent()
 
     def audit(
         self,

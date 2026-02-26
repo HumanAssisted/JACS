@@ -112,7 +112,10 @@ export declare function handleJacsMcpToolCall(client: JacsClient, toolName: stri
  *   { name: 'my-server', version: '1.0.0' },
  *   { capabilities: { tools: {} } },
  * );
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'mcp-agent',
+ *   domain: 'mcp.local',
+ * });
  * registerJacsTools(server, client);
  * ```
  */

@@ -184,7 +184,10 @@
 <h3 id="2-create-a-jacs-client"><a class="header" href="#2-create-a-jacs-client">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-sign-every-model-output"><a class="header" href="#3-sign-every-model-output">3. Sign every model output</a></h3>
 <pre><code class="language-typescript">import { withProvenance } from '@hai.ai/jacs/vercel-ai';
@@ -203,7 +206,10 @@ import { withProvenance } from '@hai.ai/jacs/vercel-ai';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const model = withProvenance(openai('gpt-4'), { client });
 
 const { text, providerMetadata } = await generateText({

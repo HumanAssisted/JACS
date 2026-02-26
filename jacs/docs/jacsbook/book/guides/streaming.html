@@ -216,7 +216,7 @@ app.add_middleware(JacsMiddleware)
 <p>If you're calling an LLM API directly without a framework adapter, accumulate the response yourself and sign it when complete:</p>
 <pre><code class="language-python">import jacs.simple as jacs
 
-jacs.quickstart()
+jacs.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Accumulate streamed response
 chunks = []
@@ -229,7 +229,7 @@ complete_text = "".join(chunks)
 signed = jacs.sign_message({"response": complete_text, "model": "gpt-4o"})
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'my-agent.example.com' });
 
 const chunks = [];
 for await (const chunk of llmStream('What is trust?')) {

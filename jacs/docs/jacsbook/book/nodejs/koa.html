@@ -183,7 +183,10 @@ import bodyParser from 'koa-bodyparser';
 import { JacsClient } from '@hai.ai/jacs/client';
 import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = new Koa();
 
 app.use(bodyParser({ enableTypes: ['text'] }));

@@ -85,6 +85,7 @@ from .types import (
 try:
     from . import JacsAgent
     from .jacs import trust_agent as _trust_agent
+    from .jacs import trust_agent_with_key as _trust_agent_with_key
     from .jacs import list_trusted_agents as _list_trusted_agents
     from .jacs import untrust_agent as _untrust_agent
     from .jacs import is_trusted as _is_trusted
@@ -99,6 +100,7 @@ except ImportError:
     _verify_document_standalone = _jacs_module.verify_document_standalone
     _verify_agent_dns = _jacs_module.verify_agent_dns
     _trust_agent = _jacs_module.trust_agent
+    _trust_agent_with_key = _jacs_module.trust_agent_with_key
     _list_trusted_agents = _jacs_module.list_trusted_agents
     _untrust_agent = _jacs_module.untrust_agent
     _is_trusted = _jacs_module.is_trusted
@@ -141,7 +143,7 @@ def _get_agent() -> JacsAgent:
     """Get the global agent, raising an error if not loaded."""
     if _global_agent is None:
         raise AgentNotLoadedError(
-            "No agent loaded. Call jacs.quickstart() for zero-config setup, or jacs.load('path/to/config.json') for a persistent agent."
+            "No agent loaded. Call jacs.quickstart(name='my-agent', domain='agent.example.com') for zero-config setup, or jacs.load('path/to/config.json') for a persistent agent."
         )
     return _global_agent
 
@@ -329,8 +331,13 @@ def create(
             public_key_hash="",
             created_at="",
             algorithm=info_dict.get("algorithm", algorithm),
-            config_path=config_path,
+            config_path=info_dict.get("config_path", config_path),
             public_key_path=info_dict.get("public_key_path", ""),
+            private_key_path=info_dict.get("private_key_path"),
+            data_directory=info_dict.get("data_directory", data_directory),
+            key_directory=info_dict.get("key_directory", key_directory),
+            domain=info_dict.get("domain", domain or ""),
+            dns_record=info_dict.get("dns_record", ""),
         )
 
         logger.info("Agent created: id=%s, name=%s", _agent_info.agent_id, name)
@@ -400,16 +407,31 @@ def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> Ag
         agent_id = parts[0] if parts else ""
         version = parts[1] if len(parts) > 1 else ""
 
-        key_dir = config.get("jacs_key_directory", "./jacs_keys")
+        config_abs = os.path.abspath(config_path)
+        key_dir = _resolve_config_relative_path(
+            config_abs, config.get("jacs_key_directory", "./jacs_keys")
+        )
+        data_dir = _resolve_config_relative_path(
+            config_abs, config.get("jacs_data_directory", "./jacs_data")
+        )
+        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
+        private_key_file = config.get(
+            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
+        )
         _agent_info = AgentInfo(
             agent_id=agent_id,
             version=version,
             name=config.get("name"),
             public_key_hash="",  # Will be populated after verification
             created_at="",
-            algorithm=config.get("jacs_agent_key_algorithm", "RSA"),
-            config_path=config_path,
-            public_key_path=os.path.join(key_dir, "jacs.public.pem"),
+            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
+            config_path=config_abs,
+            public_key_path=os.path.join(key_dir, public_key_file),
+            private_key_path=os.path.join(key_dir, private_key_file),
+            data_directory=data_dir,
+            key_directory=key_dir,
+            domain=config.get("domain", ""),
+            dns_record=config.get("dns_record", ""),
         )
 
         logger.info("Agent loaded: id=%s, name=%s", agent_id, config.get("name"))
@@ -567,7 +589,14 @@ class _EphemeralAgentAdapter:
 
 
 
-def quickstart(algorithm=None, strict=None, config_path=None):
+def quickstart(
+    name: str,
+    domain: str,
+    description: Optional[str] = None,
+    algorithm: Optional[str] = None,
+    strict: Optional[bool] = None,
+    config_path: Optional[str] = None,
+):
     """One-line agent creation with persistent keys on disk.
 
     If a config file already exists, loads the existing agent. Otherwise,
@@ -578,11 +607,14 @@ def quickstart(algorithm=None, strict=None, config_path=None):
 
     Example:
         import jacs.simple as jacs
-        jacs.quickstart()
+        jacs.quickstart(name="my-agent", domain="agent.example.com")
         signed = jacs.sign_message({"hello": "world"})
 
     Args:
-        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        name: Agent name for first-time quickstart creation.
+        domain: Agent domain for DNS/public-key verification workflows.
+        description: Optional human-readable agent description.
+        algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
         strict: Enable strict verification mode
         config_path: Path to config file (default: "./jacs.config.json")
 
@@ -590,6 +622,11 @@ def quickstart(algorithm=None, strict=None, config_path=None):
         AgentInfo with agent_id, name, algorithm, version
     """
     global _global_agent, _agent_info, _strict
+
+    if not isinstance(name, str) or not name.strip():
+        raise ConfigError("quickstart() requires a non-empty 'name'.")
+    if not isinstance(domain, str) or not domain.strip():
+        raise ConfigError("quickstart() requires a non-empty 'domain'.")
 
     _strict = _resolve_strict(strict)
     cfg_path = config_path or "./jacs.config.json"
@@ -630,9 +667,11 @@ def quickstart(algorithm=None, strict=None, config_path=None):
 
         algo = algorithm or "pq2025"
         return create(
-            name="jacs-agent",
+            name=name,
             password=password,
             algorithm=algo,
+            description=description or "",
+            domain=domain,
             config_path=cfg_path,
             strict=strict,
         )
@@ -1444,6 +1483,24 @@ def trust_agent(agent_json: str) -> str:
         raise TrustError(f"Failed to trust agent: {e}")
 
 
+def trust_agent_with_key(agent_json: str, public_key_pem: str) -> str:
+    """Trust an agent using an explicit PEM public key for first-contact verification.
+
+    Args:
+        agent_json: The full agent JSON document string.
+        public_key_pem: PEM public key used to verify the self-signature.
+
+    Returns:
+        The trusted agent ID.
+    """
+    if not public_key_pem or not public_key_pem.strip():
+        raise TrustError("public_key_pem cannot be empty")
+    try:
+        return _trust_agent_with_key(agent_json, public_key_pem)
+    except Exception as e:
+        raise TrustError(f"Failed to trust agent with explicit key: {e}")
+
+
 def list_trusted_agents() -> List[str]:
     """List all trusted agent IDs in the local trust store.
 
@@ -1630,6 +1687,7 @@ __all__ = [
     "is_loaded",
     # Trust store
     "trust_agent",
+    "trust_agent_with_key",
     "list_trusted_agents",
     "untrust_agent",
     "is_trusted",

@@ -81,8 +81,14 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
 
     std::env::set_current_dir(&tmp).expect("cd to temp");
 
-    let (agent, _info) =
-        SimpleAgent::quickstart(Some(algorithm), None).expect("quickstart should succeed");
+    let (agent, _info) = SimpleAgent::quickstart(
+        "cross-language-agent",
+        "cross-language.example.com",
+        Some("Cross-language test agent"),
+        Some(algorithm),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     // Sign a canonical test payload
     let payload = json!({

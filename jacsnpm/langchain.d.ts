@@ -26,7 +26,10 @@
  * import { JacsClient } from '@hai.ai/jacs/client';
  * import { createJacsTools, signedTool } from '@hai.ai/jacs/langchain';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'langchain-agent',
+ *   domain: 'langchain.local',
+ * });
  *
  * // Full toolkit — agent can sign, verify, create agreements, etc.
  * const jacsTools = createJacsTools({ client });

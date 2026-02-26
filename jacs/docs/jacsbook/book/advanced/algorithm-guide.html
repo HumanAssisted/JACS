@@ -215,19 +215,27 @@
 <p>Or via environment variable:</p>
 <pre><code class="language-bash">export JACS_AGENT_KEY_ALGORITHM=pq2025
 </code></pre>
-<p>Valid values: <code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code>, <code>pq-dilithium</code></p>
-<p>In Python and Node.js, pass the algorithm to <code>quickstart()</code>:</p>
+<p>Valid values: <code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code></p>
+<p>In Python and Node.js, pass the algorithm to <code>quickstart(...)</code>:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
-client = JacsClient.quickstart(algorithm="pq2025")
+client = JacsClient.quickstart(
+    name="algo-agent",
+    domain="algo.example.com",
+    algorithm="pq2025",
+)
 </code></pre>
 <pre><code class="language-typescript">import { JacsClient } from "@hai.ai/jacs";
-const client = await JacsClient.quickstart({ algorithm: "pq2025" });
+const client = await JacsClient.quickstart({
+  name: "algo-agent",
+  domain: "algo.example.com",
+  algorithm: "pq2025",
+});
 </code></pre>
 <h2 id="current-limitations"><a class="header" href="#current-limitations">Current Limitations</a></h2>
 <ul>
 <li>Each agent uses one algorithm, chosen at creation time. You cannot change an agent's algorithm after creation.</li>
 <li>Algorithm negotiation between agents is planned but not yet implemented.</li>
-<li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). It remains available for backward compatibility but should not be used for new agents.</li>
+<li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). Use <code>pq2025</code> for new agents and verification hints.</li>
 </ul>
 
                     </main>

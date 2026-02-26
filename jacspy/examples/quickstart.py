@@ -27,9 +27,12 @@ def main():
 
     # Step 1: One call creates a persistent agent with keys on disk
     print("\n1. Creating persistent agent...")
-    info = jacs.quickstart()
+    info = jacs.quickstart(name="quickstart-agent", domain="quickstart.local")
     print(f"   Agent ID: {info.agent_id}")
     print(f"   Algorithm: {info.algorithm}")
+    print(f"   Config: {info.config_path}")
+    print(f"   Public key: {info.public_key_path}")
+    print(f"   Private key: {info.private_key_path}")
 
     # Step 2: Sign a message
     print("\n2. Signing a message...")

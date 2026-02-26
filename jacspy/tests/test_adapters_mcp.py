@@ -63,6 +63,8 @@ class TestRegisterJacsTools:
             "jacs_check_agreement",
             "jacs_audit",
             "jacs_agent_info",
+            "jacs_share_public_key",
+            "jacs_share_agent",
         }
         assert set(mcp.tools.keys()) == expected
 
@@ -176,6 +178,8 @@ class TestAgentInfoTool:
         result = json.loads(fn())
         assert result["success"] is True
         assert result["agent_id"] == client.agent_id
+        assert "config_path" not in result
+        assert "public_key_path" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +192,11 @@ class TestAgreementTools:
     def persistent_client(self, tmp_path, monkeypatch):
         """Agreements require a persistent (non-ephemeral) client."""
         monkeypatch.chdir(tmp_path)
-        return JacsClient.quickstart(config_path=str(tmp_path / "jacs.config.json"))
+        return JacsClient.quickstart(
+            name="mcp-agreement-agent",
+            domain="mcp-agreement.example",
+            config_path=str(tmp_path / "jacs.config.json"),
+        )
 
     def test_create_agreement(self, persistent_client):
         mcp = FakeMCP()
@@ -234,7 +242,11 @@ class TestAgreementTools:
 class TestAuditTool:
     def test_audit_returns_json(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        cl = JacsClient.quickstart(config_path=str(tmp_path / "jacs.config.json"))
+        cl = JacsClient.quickstart(
+            name="mcp-audit-agent",
+            domain="mcp-audit.example",
+            config_path=str(tmp_path / "jacs.config.json"),
+        )
         mcp = FakeMCP()
         register_jacs_tools(mcp, client=cl)
         fn = mcp.tools["jacs_audit"]["fn"]
@@ -324,7 +336,11 @@ class TestRegisterA2ATools:
 
     def test_sign_artifact_returns_signed(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        cl = JacsClient.quickstart(config_path=str(tmp_path / "jacs.config.json"))
+        cl = JacsClient.quickstart(
+            name="mcp-a2a-agent",
+            domain="mcp-a2a.example",
+            config_path=str(tmp_path / "jacs.config.json"),
+        )
         mcp = FakeMCP()
         register_a2a_tools(mcp, client=cl)
         fn = mcp.tools["jacs_sign_artifact"]["fn"]
@@ -368,6 +384,7 @@ class TestRegisterTrustTools:
         register_trust_tools(mcp, client=client)
         expected = {
             "jacs_trust_agent",
+            "jacs_trust_agent_with_key",
             "jacs_untrust_agent",
             "jacs_list_trusted",
             "jacs_is_trusted",

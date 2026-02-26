@@ -261,7 +261,7 @@ macro_rules! env_default {
 }
 
 env_default!(default_storage, "JACS_DEFAULT_STORAGE", "fs");
-env_default!(default_algorithm, "JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+env_default!(default_algorithm, "JACS_AGENT_KEY_ALGORITHM", "pq2025");
 /// Check `JACS_ENABLE_FILESYSTEM_QUARANTINE` (preferred) first,
 /// fall back to legacy `JACS_USE_SECURITY` with a deprecation warning.
 fn default_security() -> Option<String> {
@@ -455,7 +455,7 @@ impl ConfigBuilder {
     /// Build the Config instance.
     ///
     /// Fields not explicitly set will use sensible defaults:
-    /// - `key_algorithm`: "RSA-PSS"
+    /// - `key_algorithm`: "pq2025"
     /// - `key_directory`: "./jacs_keys"
     /// - `data_directory`: "./jacs_data"
     /// - `default_storage`: "fs"
@@ -479,7 +479,7 @@ impl ConfigBuilder {
             jacs_agent_private_key_filename: self.private_key_filename,
             jacs_agent_public_key_filename: self.public_key_filename,
             jacs_agent_key_algorithm: Some(
-                self.key_algorithm.unwrap_or_else(|| "RSA-PSS".to_string()),
+                self.key_algorithm.unwrap_or_else(|| "pq2025".to_string()),
             ),
             jacs_private_key_password: None, // Never store password in config
             jacs_agent_id_and_version: self.agent_id_and_version,
@@ -748,7 +748,7 @@ impl Config {
             jacs_key_directory: Some("./jacs_keys".to_string()),
             jacs_agent_private_key_filename: None,
             jacs_agent_public_key_filename: None,
-            jacs_agent_key_algorithm: Some("RSA-PSS".to_string()),
+            jacs_agent_key_algorithm: Some("pq2025".to_string()),
             jacs_private_key_password: None,
             jacs_agent_id_and_version: None,
             jacs_default_storage: Some("fs".to_string()),
@@ -1194,7 +1194,7 @@ pub fn set_env_vars(
     let jacs_agent_private_key_filename = config
         .jacs_agent_private_key_filename
         .as_ref()
-        .unwrap_or(&"rsa_pss_private.pem".to_string())
+        .unwrap_or(&"jacs.private.pem.enc".to_string())
         .clone();
     set_env_var_override(
         "JACS_AGENT_PRIVATE_KEY_FILENAME",
@@ -1205,7 +1205,7 @@ pub fn set_env_vars(
     let jacs_agent_public_key_filename = config
         .jacs_agent_public_key_filename
         .as_ref()
-        .unwrap_or(&"rsa_pss_public.pem".to_string())
+        .unwrap_or(&"jacs.public.pem".to_string())
         .clone();
     set_env_var_override(
         "JACS_AGENT_PUBLIC_KEY_FILENAME",
@@ -1216,7 +1216,7 @@ pub fn set_env_vars(
     let jacs_agent_key_algorithm = config
         .jacs_agent_key_algorithm
         .as_ref()
-        .unwrap_or(&"RSA-PSS".to_string())
+        .unwrap_or(&"pq2025".to_string())
         .clone();
     set_env_var_override(
         "JACS_AGENT_KEY_ALGORITHM",
@@ -1529,7 +1529,7 @@ mod tests {
         assert_eq!(config.jacs_use_security, Some("false".to_string()));
         assert_eq!(config.jacs_data_directory, Some("./jacs_data".to_string()));
         assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
-        assert_eq!(config.jacs_agent_key_algorithm, Some("RSA-PSS".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("pq2025".to_string()));
         assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
         // Password should never be in config
         assert!(config.jacs_private_key_password.is_none());
@@ -1787,7 +1787,7 @@ mod tests {
         assert_eq!(config.jacs_use_security, Some("false".to_string()));
         assert_eq!(config.jacs_data_directory, Some("./jacs_data".to_string()));
         assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
-        assert_eq!(config.jacs_agent_key_algorithm, Some("RSA-PSS".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("pq2025".to_string()));
         assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
         // Password should never be in config
         assert!(config.jacs_private_key_password.is_none());

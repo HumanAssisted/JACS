@@ -705,6 +705,8 @@ fn test_quickstart_uses_password_file_bootstrap() -> Result<(), Box<dyn Error>> 
         .env_remove(PASSWORD_ENV_VAR)
         .env(PASSWORD_FILE_ENV_VAR, &password_file_value)
         .arg("quickstart")
+        .arg("--name=test-quickstart")
+        .arg("--domain=test.example.com")
         .arg("--algorithm=ed25519");
 
     cmd.assert()
@@ -730,6 +732,8 @@ fn test_quickstart_fails_with_ambiguous_password_sources() -> Result<(), Box<dyn
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .env(PASSWORD_FILE_ENV_VAR, &password_file_value)
         .arg("quickstart")
+        .arg("--name=test-quickstart")
+        .arg("--domain=test.example.com")
         .arg("--algorithm=ed25519");
 
     cmd.assert()
@@ -759,6 +763,8 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
         .current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
+        .arg("--name=verify-roundtrip")
+        .arg("--domain=verify.example.com")
         .arg("--algorithm=ed25519")
         .arg("--sign")
         .arg("-f")
@@ -805,6 +811,8 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
         .current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
+        .arg("--name=verify-json")
+        .arg("--domain=verify-json.example.com")
         .arg("--algorithm=ed25519")
         .arg("--sign")
         .arg("-f")
@@ -847,6 +855,8 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
         .current_dir(&tmp_dir)
         .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
+        .arg("--name=verify-tamper")
+        .arg("--domain=verify-tamper.example.com")
         .arg("--algorithm=ed25519")
         .arg("--sign")
         .arg("-f")
@@ -1076,6 +1086,8 @@ fn test_a2a_quickstart_help() -> Result<(), Box<dyn Error>> {
         .stdout(predicate::str::contains("--port"))
         .stdout(predicate::str::contains("--host"))
         .stdout(predicate::str::contains("--algorithm"))
+        .stdout(predicate::str::contains("--name"))
+        .stdout(predicate::str::contains("--domain"))
         .stdout(predicate::str::contains("Create/load an agent"));
     Ok(())
 }
@@ -1085,6 +1097,10 @@ fn test_a2a_quickstart_invalid_algorithm() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.arg("a2a")
         .arg("quickstart")
+        .arg("--name")
+        .arg("a2a-quickstart")
+        .arg("--domain")
+        .arg("a2a.example.com")
         .arg("--algorithm")
         .arg("invalid-algo");
     // Should fail because "invalid-algo" is not a valid algorithm choice

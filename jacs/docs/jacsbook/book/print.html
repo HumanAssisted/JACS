@@ -199,6 +199,7 @@
 <li><strong>Auditability and versioning</strong> through immutable signatures and document history</li>
 <li><strong>Storage flexibility</strong> across local storage and database-backed deployments</li>
 <li><strong>MCP and A2A integration</strong> for both intra-app and cross-boundary agent workflows</li>
+<li><strong>Trust bootstrap primitives</strong> (<code>share_public_key</code>, <code>share_agent</code>, <code>trust_agent_with_key</code>) for explicit key exchange handshakes</li>
 <li><strong>Observability hooks</strong> for production operations</li>
 <li><strong>Cross-language implementations</strong> in Rust, Node.js, Python, and Go</li>
 </ul>
@@ -239,7 +240,7 @@
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <h3 id="rust-cli"><a class="header" href="#rust-cli">Rust CLI</a></h3>
 <pre><code class="language-bash">cargo install jacs --features cli
-jacs init
+jacs quickstart --name my-agent --domain my-agent.example.com
 </code></pre>
 <h3 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h3>
 <pre><code class="language-bash">npm install @hai.ai/jacs
@@ -250,6 +251,7 @@ jacs init
 <h3 id="go"><a class="header" href="#go">Go</a></h3>
 <pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
 </code></pre>
+<p>Quickstart in Rust/Node/Python requires an agent name and domain. Returned <code>AgentInfo</code> includes config/key file paths for operational visibility.</p>
 <h2 id="identity-model-including-did"><a class="header" href="#identity-model-including-did">Identity Model (Including DID)</a></h2>
 <p>JACS identity is based on cryptographic keys and stable agent IDs. You can operate entirely without a registry, blockchain, or token authority:</p>
 <ul>
@@ -703,9 +705,9 @@ jacs init
 <div style="break-before: page; page-break-before: always;"></div><h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
 <p>Get signing and verifying in under a minute. No manual setup needed.</p>
 <h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.</p>
-<h3 id="password-bootstrap-required"><a class="header" href="#password-bootstrap-required">Password bootstrap (required)</a></h3>
-<p>Before running quickstart, configure exactly one explicit password source:</p>
+<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.</p>
+<h3 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h3>
+<p>Rust CLI quickstart requires exactly one explicit password source:</p>
 <pre><code class="language-bash"># Recommended
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 
@@ -713,6 +715,7 @@ export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
 </code></pre>
 <p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity.
+Python/Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. Set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want the generated password persisted to <code>./jacs_keys/.jacs_password</code>. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.
 One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">
@@ -723,7 +726,8 @@ One call and you're signing.</p>
 </code></pre>
 <pre><code class="language-python">import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
@@ -738,7 +742,11 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
-await jacs.quickstart();
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
@@ -752,13 +760,13 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 <pre><code class="language-bash">cargo install jacs --features cli
 </code></pre>
 <pre><code class="language-bash"># Info mode -- prints agent ID and algorithm
-jacs quickstart
+jacs quickstart --name my-agent --domain my-agent.example.com
 
 # Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --sign
+echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
 
 # Sign a file
-jacs quickstart --sign --file mydata.json
+jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
 </code></pre>
 </div>
 </div>
@@ -782,7 +790,7 @@ jacs mcp run
 jacs mcp install --from-cargo
 </code></pre>
 <h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
-<p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart()</code> already creates a persistent agent.</p>
+<p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart(...)</code> already creates a persistent agent.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="adv-rust" name="adv-group" checked>
@@ -848,7 +856,7 @@ print(f"Valid: {result.valid}")
 </div>
 </div>
 <h2 id="programmatic-agent-creation-v060"><a class="header" href="#programmatic-agent-creation-v060">Programmatic Agent Creation (v0.6.0+)</a></h2>
-<p>For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use <code>create()</code>. For most cases, <code>quickstart()</code> above is simpler and also creates a persistent agent.</p>
+<p>For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use <code>create()</code>. For most cases, <code>quickstart(...)</code> above is simpler and also creates a persistent agent.</p>
 <div class="tabs">
 <div class="tab">
 <input type="radio" id="prog-python" name="prog-group" checked>
@@ -1159,7 +1167,7 @@ print(f'Agreement complete: {agreement_valid}')
 </tbody></table>
 </div>
 <h2 id="step-3-your-adoption-path"><a class="header" href="#step-3-your-adoption-path">Step 3: Your Adoption Path</a></h2>
-<p><strong>Stage 1 -- Prototyping</strong>: <code>jacs.quickstart()</code>. No config. Explore the API. Keys on disk, auto-managed.</p>
+<p><strong>Stage 1 -- Prototyping</strong>: <code>jacs.quickstart(name="my-agent", domain="my-agent.example.com")</code>. No config. Explore the API. Keys on disk, auto-managed.</p>
 <p><strong>Stage 2 -- Single-org production</strong>: <code>jacs.load()</code> with persistent agent, strict mode, file-based keys. Add provenance to internal systems.</p>
 <p><strong>Stage 3 -- Cross-org production</strong>: DNS trust anchoring, A2A agent cards, agreements with external agents. Operate across trust boundaries.</p>
 <p><strong>Stage 4 -- Regulated/enterprise</strong>: Post-quantum algorithms (pq2025/ML-DSA-87), OpenTelemetry observability, audit trails for compliance.</p>
@@ -1175,9 +1183,24 @@ print(f'Agreement complete: {agreement_valid}')
 <pre><code class="language-python">from jacs.client import JacsClient
 
 # Step 1: Create three agents (one per organization)
-finance    = JacsClient.quickstart("ring-Ed25519", "./finance.config.json")
-compliance = JacsClient.quickstart("ring-Ed25519", "./compliance.config.json")
-legal      = JacsClient.quickstart("ring-Ed25519", "./legal.config.json")
+finance = JacsClient.quickstart(
+    name="finance",
+    domain="finance.example.com",
+    algorithm="ring-Ed25519",
+    config_path="./finance.config.json",
+)
+compliance = JacsClient.quickstart(
+    name="compliance",
+    domain="compliance.example.com",
+    algorithm="ring-Ed25519",
+    config_path="./compliance.config.json",
+)
+legal = JacsClient.quickstart(
+    name="legal",
+    domain="legal.example.com",
+    algorithm="ring-Ed25519",
+    config_path="./legal.config.json",
+)
 
 # Step 2: Finance proposes an agreement with quorum
 from datetime import datetime, timedelta, timezone
@@ -1525,7 +1548,7 @@ jacs agent verify --require-strict-dns
 RUN pip install jacs
 COPY . /app
 WORKDIR /app
-RUN python -c "import jacs.simple as j; j.quickstart()"
+RUN python -c "import jacs.simple as j; j.quickstart(name='docker-agent', domain='docker.local')"
 CMD ["python", "main.py"]
 </code></pre>
 <h2 id="lambda-deployment"><a class="header" href="#lambda-deployment">Lambda Deployment</a></h2>
@@ -1554,13 +1577,13 @@ cd jacspy &amp;&amp; maturin develop --release
 <p>The default wheels and binaries target glibc. On Alpine or other musl-based systems, build from source with the Rust toolchain, or use a Debian-based container image instead.</p>
 <h2 id="configuration-issues"><a class="header" href="#configuration-issues">Configuration Issues</a></h2>
 <h3 id="config-not-found"><a class="header" href="#config-not-found">Config not found</a></h3>
-<p>Run <code>jacs quickstart</code> to auto-create a config, or copy the example:</p>
+<p>Run <code>jacs quickstart --name my-agent --domain my-agent.example.com</code> to auto-create a config, or copy the example:</p>
 <pre><code class="language-bash">cp jacs.config.example.json jacs.config.json
 </code></pre>
 <h3 id="private-key-decryption-failed"><a class="header" href="#private-key-decryption-failed">Private key decryption failed</a></h3>
 <p>Wrong or missing password. Check <code>JACS_PRIVATE_KEY_PASSWORD</code>. For CLI, you may also set <code>JACS_PASSWORD_FILE</code> to a file that contains only the password. Set exactly one explicit source; if both are set, CLI fails by design.</p>
 <h3 id="algorithm-detection-failed"><a class="header" href="#algorithm-detection-failed">Algorithm detection failed</a></h3>
-<p>Set the <code>signingAlgorithm</code> field in your config, or pass it explicitly to <code>quickstart()</code> / <code>create()</code>. Valid values: <code>pq2025</code>, <code>ring-Ed25519</code>, <code>ring-RSA</code>.</p>
+<p>Set the <code>signingAlgorithm</code> field in your config, or pass it explicitly to <code>quickstart(...)</code> / <code>create(...)</code>. Valid values: <code>pq2025</code>, <code>ring-Ed25519</code>, <code>RSA-PSS</code>.</p>
 <h2 id="runtime-issues"><a class="header" href="#runtime-issues">Runtime Issues</a></h2>
 <h3 id="agent-creation-fails"><a class="header" href="#agent-creation-fails">Agent creation fails</a></h3>
 <p>Ensure the data and key directories exist and are writable. By default these are <code>./jacs_data</code> and <code>./jacs_keys</code>.</p>
@@ -4230,15 +4253,19 @@ const signed = await jacs.signMessage({ action: 'approve' });
 const signed = jacs.signMessageSync({ action: 'approve' });
 </code></pre>
 <h2 id="quick-start-3"><a class="header" href="#quick-start-3">Quick Start</a></h2>
-<p>Zero-config -- one call to start signing:</p>
+<p>Quickstart -- one call (with required <code>name</code>/<code>domain</code>) to start signing:</p>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
-await jacs.quickstart();
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 </code></pre>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.
+<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.
 Pass <code>{ algorithm: 'ring-Ed25519' }</code> to override the default (<code>pq2025</code>).</p>
 <p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-javascript">const agent = await jacs.load('./jacs.config.json');
@@ -4256,7 +4283,7 @@ const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 <h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
 <p>Every function that calls into NAPI has both async (default) and sync variants:</p>
 <div class="table-wrapper"><table><thead><tr><th>Function</th><th>Sync Variant</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>quickstart(options?)</code></td><td><code>quickstartSync(options?)</code></td><td>Create a persistent agent with keys on disk</td></tr>
+<tr><td><code>quickstart(options)</code></td><td><code>quickstartSync(options)</code></td><td>Create a persistent agent with keys on disk</td></tr>
 <tr><td><code>create(options)</code></td><td><code>createSync(options)</code></td><td>Create a new agent programmatically</td></tr>
 <tr><td><code>load(configPath)</code></td><td><code>loadSync(configPath)</code></td><td>Load agent from config file</td></tr>
 <tr><td><code>verifySelf()</code></td><td><code>verifySelfSync()</code></td><td>Verify agent's own integrity</td></tr>
@@ -4289,25 +4316,39 @@ const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 </tbody></table>
 </div>
 <hr />
-<h3 id="quickstartoptions"><a class="header" href="#quickstartoptions">quickstart(options?)</a></h3>
-<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. <code>JACS_PRIVATE_KEY_PASSWORD</code> must be set before calling this. Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
+<h3 id="quickstartoptions"><a class="header" href="#quickstartoptions">quickstart(options)</a></h3>
+<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset, Node quickstart auto-generates a secure password in-process (<code>JACS_SAVE_PASSWORD_FILE=true</code> persists it to <code>./jacs_keys/.jacs_password</code>). Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
-<li><code>options</code> (object, optional): <code>{ algorithm?: string }</code>. Default algorithm: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+<li><code>options</code> (object, required fields): <code>{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }</code>. Default algorithm: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
 </ul>
 <p><strong>Returns:</strong> <code>Promise&lt;AgentInfo&gt;</code> (async) or <code>AgentInfo</code> (sync)</p>
-<pre><code class="language-javascript">const info = await jacs.quickstart();
+<pre><code class="language-javascript">const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 console.log(`Agent ID: ${info.agentId}`);
+console.log(`Config path: ${info.configPath}`);
+console.log(`Public key: ${info.publicKeyPath}`);
+console.log(`Private key: ${info.privateKeyPath}`);
 
 // Or with a specific algorithm
-const info = await jacs.quickstart({ algorithm: 'ring-Ed25519' });
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+  algorithm: 'ring-Ed25519',
+});
 
 // Sync variant (blocks event loop)
-const info = jacs.quickstartSync({ algorithm: 'ring-Ed25519' });
+const info = jacs.quickstartSync({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+  algorithm: 'ring-Ed25519',
+});
 </code></pre>
 <hr />
 <h3 id="loadconfigpath"><a class="header" href="#loadconfigpath">load(configPath?)</a></h3>
-<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you want to load a specific config file explicitly.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart(options)</code> when you want to load a specific config file explicitly.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>configPath</code> (string, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
@@ -4959,7 +5000,10 @@ main().catch(console.error);
 <h3 id="2-create-a-jacs-client"><a class="header" href="#2-create-a-jacs-client">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-sign-tool-outputs"><a class="header" href="#3-sign-tool-outputs">3. Sign tool outputs</a></h3>
 <pre><code class="language-typescript">import { signedTool } from '@hai.ai/jacs/langchain';
@@ -4980,7 +5024,10 @@ const llmWithTools = model.bindTools(allTools);
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 import { createJacsTools } from '@hai.ai/jacs/langchain';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const jacsTools = createJacsTools({ client });
 
 // Combine with your own tools and bind to an LLM
@@ -5050,7 +5097,10 @@ npm install @langchain/langgraph
 <h3 id="2-create-a-jacs-client-1"><a class="header" href="#2-create-a-jacs-client-1">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-sign-every-model-output"><a class="header" href="#3-sign-every-model-output">3. Sign every model output</a></h3>
 <pre><code class="language-typescript">import { withProvenance } from '@hai.ai/jacs/vercel-ai';
@@ -5069,7 +5119,10 @@ import { withProvenance } from '@hai.ai/jacs/vercel-ai';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const model = withProvenance(openai('gpt-4'), { client });
 
 const { text, providerMetadata } = await generateText({
@@ -5191,7 +5244,10 @@ const toolProvenance = providerMetadata?.jacs?.toolResults;
 <h3 id="2-create-a-jacs-client-2"><a class="header" href="#2-create-a-jacs-client-2">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-add-signing-middleware"><a class="header" href="#3-add-signing-middleware">3. Add signing middleware</a></h3>
 <pre><code class="language-typescript">import express from 'express';
@@ -5214,7 +5270,10 @@ app.listen(3000);
 import { JacsClient } from '@hai.ai/jacs/client';
 import { jacsMiddleware } from '@hai.ai/jacs/express';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = express();
 
 app.use(express.text({ type: 'application/json' }));
@@ -5242,7 +5301,7 @@ app.listen(3000);
   };
 })
 </code></pre>
-<p>If neither <code>client</code> nor <code>configPath</code> is provided, the middleware calls <code>JacsClient.quickstart()</code> on first request.</p>
+<p>If neither <code>client</code> nor <code>configPath</code> is provided, the middleware initializes a client with <code>JacsClient.quickstart({ name: 'jacs-express', domain: 'localhost' })</code> on first request.</p>
 <h2 id="what-the-middleware-does"><a class="header" href="#what-the-middleware-does">What the Middleware Does</a></h2>
 <p><strong>Every request</strong> gets <code>req.jacsClient</code> -- a <code>JacsClient</code> instance you can use for manual signing/verification in route handlers.</p>
 <p><strong>POST/PUT/PATCH with <code>verify: true</code></strong> (default): The string body is verified as a JACS document. On success, <code>req.jacsPayload</code> contains the extracted payload. On failure, a 401 is returned (unless <code>optional: true</code>).</p>
@@ -5331,8 +5390,16 @@ app.post('/api/secure', (req, res) =&gt; {
 </code></pre>
 <h2 id="multiple-agents"><a class="header" href="#multiple-agents">Multiple Agents</a></h2>
 <p>Use different <code>JacsClient</code> instances per route group:</p>
-<pre><code class="language-typescript">const adminClient = await JacsClient.quickstart({ algorithm: 'pq2025' });
-const userClient = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+<pre><code class="language-typescript">const adminClient = await JacsClient.quickstart({
+  name: 'admin-agent',
+  domain: 'admin.example.com',
+  algorithm: 'pq2025',
+});
+const userClient = await JacsClient.quickstart({
+  name: 'user-agent',
+  domain: 'user.example.com',
+  algorithm: 'ring-Ed25519',
+});
 
 app.use('/admin', express.text({ type: 'application/json' }));
 app.use('/admin', jacsMiddleware({ client: adminClient }));
@@ -5366,7 +5433,10 @@ import bodyParser from 'koa-bodyparser';
 import { JacsClient } from '@hai.ai/jacs/client';
 import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = new Koa();
 
 app.use(bodyParser({ enableTypes: ['text'] }));
@@ -5459,7 +5529,10 @@ app.use(async (ctx) =&gt; {
 <h3 id="2-create-a-jacs-client-3"><a class="header" href="#2-create-a-jacs-client-3">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-wrap-your-mcp-transport"><a class="header" href="#3-wrap-your-mcp-transport">3. Wrap your MCP transport</a></h3>
 <pre><code class="language-typescript">import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -5489,7 +5562,10 @@ import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(baseTransport, client, "server");
 
@@ -5510,7 +5586,10 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const baseTransport = new StdioClientTransport({
   command: 'node', args: ['my-server.js']
 });
@@ -5569,7 +5648,10 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 registerJacsTools(server, client);
 
 const transport = new StdioServerTransport();
@@ -6807,12 +6889,13 @@ if __name__ == "__main__":
 <p>Zero-config -- one call to start signing:</p>
 <pre><code class="language-python">import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.
+<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.
 Pass <code>algorithm="ring-Ed25519"</code> to override the default (<code>pq2025</code>).</p>
 <p>To load an existing agent explicitly, use <code>load()</code> instead:</p>
 <pre><code class="language-python">agent = jacs.load("./jacs.config.json")
@@ -6828,22 +6911,33 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 </div>
 <hr />
 <h2 id="api-reference-4"><a class="header" href="#api-reference-4">API Reference</a></h2>
-<h3 id="quickstartalgorithmnone"><a class="header" href="#quickstartalgorithmnone">quickstart(algorithm=None)</a></h3>
-<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. <code>JACS_PRIVATE_KEY_PASSWORD</code> must be set before calling this. Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
+<h3 id="quickstartname-domain-descriptionnone-algorithmnone-config_pathnone"><a class="header" href="#quickstartname-domain-descriptionnone-algorithmnone-config_pathnone">quickstart(name, domain, description=None, algorithm=None, config_path=None)</a></h3>
+<p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset, Python quickstart auto-generates a secure password in-process (<code>JACS_SAVE_PASSWORD_FILE=true</code> persists it to <code>./jacs_keys/.jacs_password</code>). Call this once before <code>sign_message()</code> or <code>verify()</code>.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
+<li><code>name</code> (str, required): Agent name used for first-time creation.</li>
+<li><code>domain</code> (str, required): Agent domain used for DNS/public-key verification workflows.</li>
+<li><code>description</code> (str, optional): Human-readable description.</li>
 <li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+<li><code>config_path</code> (str, optional): Config path (default: <code>"./jacs.config.json"</code>).</li>
 </ul>
 <p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
-<pre><code class="language-python">info = jacs.quickstart()
+<pre><code class="language-python">info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
 print(f"Agent ID: {info.agent_id}")
+print(f"Config path: {info.config_path}")
+print(f"Public key: {info.public_key_path}")
+print(f"Private key: {info.private_key_path}")
 
 # Or with a specific algorithm
-info = jacs.quickstart(algorithm="ring-Ed25519")
+info = jacs.quickstart(
+    name="my-agent",
+    domain="my-agent.example.com",
+    algorithm="ring-Ed25519",
+)
 </code></pre>
 <hr />
 <h3 id="loadconfig_pathnone"><a class="header" href="#loadconfig_pathnone">load(config_path=None)</a></h3>
-<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart()</code> when you want to load a specific config file explicitly.</p>
+<p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart(name=..., domain=..., ...)</code> when you want to load a specific config file explicitly.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>config_path</code> (str, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
@@ -7562,7 +7656,7 @@ pip install jacs[crewai]      # CrewAI
 pip install jacs[anthropic]   # Anthropic / Claude SDK
 pip install jacs[all]         # Everything
 </code></pre>
-<p>Every adapter wraps a <code>JacsClient</code> instance and provides <code>strict</code> mode (raise on failures) and <code>permissive</code> mode (log and passthrough). All adapters accept <code>client=</code>, <code>config_path=</code>, or auto-create via <code>quickstart()</code>.</p>
+<p>Every adapter wraps a <code>JacsClient</code> instance and provides <code>strict</code> mode (raise on failures) and <code>permissive</code> mode (log and passthrough). All adapters accept <code>client=</code>, <code>config_path=</code>, or auto-create via <code>quickstart(name, domain, ...)</code>.</p>
 <hr />
 <h2 id="5-minute-quickstarts"><a class="header" href="#5-minute-quickstarts">5-Minute Quickstarts</a></h2>
 <h3 id="jacs--langchain-in-5-minutes"><a class="header" href="#jacs--langchain-in-5-minutes">JACS + LangChain in 5 Minutes</a></h3>
@@ -7574,7 +7668,7 @@ pip install jacs[all]         # Everything
 from jacs.client import JacsClient
 from jacs.adapters.langchain import jacs_signing_middleware
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 middleware = jacs_signing_middleware(client=client)
 
 # 3. Sign every tool call in your agent
@@ -7601,7 +7695,7 @@ tool_node = with_jacs_signing([search_tool, calc_tool], client=client)
 from jacs.client import JacsClient
 from jacs.adapters.crewai import jacs_guardrail
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # 3. Attach to any CrewAI task
 from crewai import Task
@@ -11742,19 +11836,27 @@ new_agent = agent.update_agent(json.dumps({
 <p>Or via environment variable:</p>
 <pre><code class="language-bash">export JACS_AGENT_KEY_ALGORITHM=pq2025
 </code></pre>
-<p>Valid values: <code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code>, <code>pq-dilithium</code></p>
-<p>In Python and Node.js, pass the algorithm to <code>quickstart()</code>:</p>
+<p>Valid values: <code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq2025</code></p>
+<p>In Python and Node.js, pass the algorithm to <code>quickstart(...)</code>:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
-client = JacsClient.quickstart(algorithm="pq2025")
+client = JacsClient.quickstart(
+    name="algo-agent",
+    domain="algo.example.com",
+    algorithm="pq2025",
+)
 </code></pre>
 <pre><code class="language-typescript">import { JacsClient } from "@hai.ai/jacs";
-const client = await JacsClient.quickstart({ algorithm: "pq2025" });
+const client = await JacsClient.quickstart({
+  name: "algo-agent",
+  domain: "algo.example.com",
+  algorithm: "pq2025",
+});
 </code></pre>
 <h2 id="current-limitations"><a class="header" href="#current-limitations">Current Limitations</a></h2>
 <ul>
 <li>Each agent uses one algorithm, chosen at creation time. You cannot change an agent's algorithm after creation.</li>
 <li>Algorithm negotiation between agents is planned but not yet implemented.</li>
-<li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). It remains available for backward compatibility but should not be used for new agents.</li>
+<li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). Use <code>pq2025</code> for new agents and verification hints.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="storage-backends-3"><a class="header" href="#storage-backends-3">Storage Backends</a></h1>
 <p>JACS supports multiple storage backends for persisting documents and agents. This flexibility allows deployment in various environments from local development to cloud infrastructure.</p>
@@ -14123,14 +14225,17 @@ For A2A security, JACS is an OAuth alternative for service-to-service agent trus
 <h3 id="python-6"><a class="header" href="#python-6">Python</a></h3>
 <pre><code class="language-python">from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 card = client.export_agent_card(url="agents.example.com")
 signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 </code></pre>
 <h3 id="nodejs-5"><a class="header" href="#nodejs-5">Node.js</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const card = client.exportAgentCard();
 const signed = await client.signArtifact({ action: 'classify', input: 'hello' }, 'task');
 </code></pre>
@@ -14141,7 +14246,7 @@ const signed = await client.signArtifact({ action: 'classify', input: 'hello' },
 <pre><code class="language-python">from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = client.get_a2a(url="http://localhost:8080")
 a2a.serve(port=8080)  # Publishes all 5 /.well-known/ endpoints
 </code></pre>
@@ -14171,7 +14276,7 @@ app = create_a2a_app(client, title="My A2A Agent")
 <pre><code class="language-python">from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = JACSA2AIntegration(client, trust_policy="strict")
 
 # Assess a remote agent's trustworthiness
@@ -14251,7 +14356,7 @@ export JACS_KEYS_BASE_URL="https://hai.ai"
 <pre><code class="language-python">from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = client.get_a2a(url="http://localhost:8080")
 </code></pre>
 <p>Or use the backward-compatible factory:</p>
@@ -14346,7 +14451,10 @@ assert!(result.valid);
 <h2 id="nodejs-jacsa2aintegration-class"><a class="header" href="#nodejs-jacsa2aintegration-class">Node.js: <code>JACSA2AIntegration</code> Class</a></h2>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const a2a = client.getA2A();
 
 // Sign an artifact
@@ -16038,7 +16146,7 @@ await pool.query(
 <p><strong>Step 2:</strong> Sign artifacts before sending them:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 # Wrap your existing artifact payload
 signed = client.sign_artifact(your_existing_artifact, "task")
 # Send `signed` instead of the raw artifact
@@ -16060,7 +16168,7 @@ A: The remote agent's Agent Card does not include the <code>urn:jacs:provenance-
 <p><strong>Q: Verification returns <code>valid: true</code> but <code>trust.allowed: false</code>.</strong>
 A: The signature is cryptographically correct, but the trust policy rejected the signer. With <code>strict</code> policy, the signer must be in your local trust store. Add them with <code>a2a.trust_a2a_agent(card_json)</code>.</p>
 <p><strong>Q: <code>sign_artifact</code> raises "no agent loaded".</strong>
-A: Call <code>JacsClient.quickstart()</code> or <code>JacsClient(config_path=...)</code> before signing. The client must have a loaded agent with keys.</p>
+A: Call <code>JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")</code> or <code>JacsClient(config_path=...)</code> before signing. The client must have a loaded agent with keys.</p>
 <p><strong>Q: Agent Card export returns empty skills.</strong>
 A: Skills are derived from <code>jacsServices</code> in the agent definition. Pass <code>skills=[...]</code> to <code>export_agent_card()</code> to override, or define services when creating the agent.</p>
 <p><strong>Q: My existing A2A client doesn't understand the JACS fields.</strong>
@@ -16099,7 +16207,7 @@ from jacs.client import JacsClient
 from jacs.a2a_server import jacs_a2a_routes
 
 app = FastAPI()
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 router = jacs_a2a_routes(client)
 app.include_router(router)
 </code></pre>
@@ -16113,7 +16221,10 @@ app.include_router(router)
 const { JacsClient } = require('@hai.ai/jacs/client');
 const { jacsA2AMiddleware } = require('@hai.ai/jacs/a2a-server');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = express();
 app.use(jacsA2AMiddleware(client));
 app.listen(8080);
@@ -16157,7 +16268,7 @@ if result["allowed"]:
 <pre><code class="language-python">from jacs.client import JacsClient
 from jacs.a2a import JACSA2AIntegration
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 a2a = JACSA2AIntegration(client, trust_policy="strict")
 
 # Assess a remote agent's trustworthiness
@@ -16191,7 +16302,10 @@ if (result.allowed) {
 <pre><code class="language-javascript">const { JacsClient } = require('@hai.ai/jacs/client');
 const { JACSA2AIntegration } = require('@hai.ai/jacs/a2a');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const a2a = new JACSA2AIntegration(client, 'strict');
 
 // Assess a remote agent
@@ -16235,7 +16349,7 @@ a2a.trustA2AAgent(remoteAgentId);
 <h3 id="sign-and-verify"><a class="header" href="#sign-and-verify">Sign and Verify</a></h3>
 <pre><code class="language-python">from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Sign an artifact
 signed = client.sign_artifact({"action": "classify", "input": "data"}, "task")
@@ -16275,7 +16389,10 @@ assert result["parent_signatures_valid"]
 <h3 id="sign-and-verify-1"><a class="header" href="#sign-and-verify-1">Sign and Verify</a></h3>
 <pre><code class="language-javascript">const { JacsClient } = require('@hai.ai/jacs/client');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 
 // Sign an artifact
 const signed = await client.signArtifact({ action: 'classify', input: 'data' }, 'task');
@@ -16561,7 +16678,7 @@ app.add_middleware(JacsMiddleware)
 <p>If you're calling an LLM API directly without a framework adapter, accumulate the response yourself and sign it when complete:</p>
 <pre><code class="language-python">import jacs.simple as jacs
 
-jacs.quickstart()
+jacs.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Accumulate streamed response
 chunks = []
@@ -16574,7 +16691,7 @@ complete_text = "".join(chunks)
 signed = jacs.sign_message({"response": complete_text, "model": "gpt-4o"})
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'my-agent.example.com' });
 
 const chunks = [];
 for await (const chunk of llmStream('What is trust?')) {
@@ -19499,19 +19616,21 @@ app.listen(PORT, () =&gt; {
 <h3 id="jacs-quickstart"><a class="header" href="#jacs-quickstart"><code>jacs quickstart</code></a></h3>
 <p>Create a persistent agent with keys on disk and optionally sign data -- no manual setup needed. If <code>./jacs.config.json</code> already exists, loads it; otherwise creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Password is required: set <code>JACS_PRIVATE_KEY_PASSWORD</code> (recommended) or <code>JACS_PASSWORD_FILE</code> (CLI file bootstrap). Set exactly one explicit source; if both are set, CLI exits with an error. This is the fastest way to start using JACS.</p>
 <pre><code class="language-bash"># Print agent info (ID, algorithm)
-jacs quickstart
+jacs quickstart --name my-agent --domain my-agent.example.com
 
 # Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --sign
+echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
 
 # Sign a file
-jacs quickstart --sign --file mydata.json
+jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
 
 # Use a specific algorithm
-jacs quickstart --algorithm ring-Ed25519
+jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
 </code></pre>
 <p><strong>Options:</strong></p>
 <ul>
+<li><code>--name &lt;name&gt;</code> - Agent name used for first-time quickstart creation (required)</li>
+<li><code>--domain &lt;domain&gt;</code> - Agent domain used for DNS/public-key verification workflows (required)</li>
 <li><code>--algorithm &lt;algo&gt;</code> - Signing algorithm (default: <code>pq2025</code>). Also: <code>ring-Ed25519</code>, <code>RSA-PSS</code></li>
 <li><code>--sign</code> - Sign input (from stdin or <code>--file</code>) instead of printing info</li>
 <li><code>--file &lt;path&gt;</code> - Read JSON input from file instead of stdin (requires <code>--sign</code>)</li>
@@ -19790,22 +19909,27 @@ jacs document verify -f document.json -s schema.json
 <h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
 <p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (local key cache by <code>publicKeyHash</code>), <code>dns</code> (DNS TXT fingerprint validation), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that yields verifiable key material is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
 <h2 id="zero-config-path"><a class="header" href="#zero-config-path">Zero-Config Path</a></h2>
-<p>If you just want to sign and verify without manual config setup, use <code>quickstart()</code>:</p>
+<p>If you just want to sign and verify without manual config setup, use <code>quickstart(name, domain, ...)</code>:</p>
 <pre><code class="language-python">import jacs.simple as jacs
-jacs.quickstart()  # Creates or loads ./jacs.config.json automatically
+info = jacs.quickstart(name="config-agent", domain="config.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
+const info = await jacs.quickstart({
+  name: 'config-agent',
+  domain: 'config.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 </code></pre>
-<pre><code class="language-bash">jacs quickstart  # CLI -- creates or loads ./jacs.config.json
+<pre><code class="language-bash">jacs quickstart --name config-agent --domain config.example.com
 </code></pre>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.</p>
+<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.</p>
 <h2 id="minimal-configuration-1"><a class="header" href="#minimal-configuration-1">Minimal Configuration</a></h2>
 <p>For persistent agents, a config file needs only two fields (plus <code>$schema</code>):</p>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
 <p>All other settings use sensible defaults (<code>./jacs_data</code>, <code>./jacs_keys</code>, <code>fs</code> storage). Override only what you need.</p>
@@ -19817,7 +19941,7 @@ jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
   "jacs_key_directory": "./jacs_keys",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
   "jacs_agent_public_key_filename": "jacs.public.pem",
-  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_default_storage": "fs",
   "observability": {
     "logs": {
@@ -20081,7 +20205,7 @@ jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
 <ul>
 <li><code>jacs_data_directory</code> - Where agent/document data is stored (default: <code>./jacs_data</code>)</li>
 <li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
-<li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>RSA-PSS</code>)</li>
+<li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>pq2025</code>)</li>
 <li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
 <li><code>jacs_use_security</code> / <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> - Enable filesystem quarantine of executable files (default: <code>false</code>). The env var <code>JACS_USE_SECURITY</code> is deprecated; use <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> instead.</li>
 </ul>
@@ -20534,15 +20658,15 @@ const isValid = agent.verifyDocumentSync(doc);
 <h3 id="simplified-api-module-level"><a class="header" href="#simplified-api-module-level">Simplified API (Module-Level)</a></h3>
 <p>The <code>@hai.ai/jacs/simple</code> module follows the same pattern:</p>
 <pre><code class="language-javascript">// v0.6.x
-jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 async (recommended)
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 sync
-jacs.quickstartSync();
+jacs.quickstartSync({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessageSync({ action: 'approve' });
 </code></pre>
 <h3 id="pure-sync-functions-no-change"><a class="header" href="#pure-sync-functions-no-change">Pure Sync Functions (No Change)</a></h3>

@@ -141,7 +141,14 @@ async def create(
     )
 
 
-async def quickstart(algorithm=None, strict=None, config_path=None) -> AgentInfo:
+async def quickstart(
+    name: str,
+    domain: str,
+    description: Optional[str] = None,
+    algorithm: Optional[str] = None,
+    strict: Optional[bool] = None,
+    config_path: Optional[str] = None,
+) -> AgentInfo:
     """One-line agent creation with persistent keys on disk.
 
     If a config file already exists, loads the existing agent. Otherwise,
@@ -151,18 +158,29 @@ async def quickstart(algorithm=None, strict=None, config_path=None) -> AgentInfo
         import jacs.async_simple as jacs
 
         async def main():
-            await jacs.quickstart()
+            await jacs.quickstart(name="my-agent", domain="agent.example.com")
             signed = await jacs.sign_message({"hello": "world"})
 
     Args:
-        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        name: Agent name for first-time quickstart creation.
+        domain: Agent domain for DNS/public-key verification workflows.
+        description: Optional human-readable agent description.
+        algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
         strict: Enable strict verification mode
         config_path: Path to config file (default: "./jacs.config.json")
 
     Returns:
         AgentInfo with agent_id, name, algorithm, version
     """
-    return await asyncio.to_thread(simple.quickstart, algorithm, strict, config_path)
+    return await asyncio.to_thread(
+        simple.quickstart,
+        name,
+        domain,
+        description,
+        algorithm,
+        strict,
+        config_path,
+    )
 
 
 async def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> AgentInfo:
@@ -545,6 +563,11 @@ async def trust_agent(agent_json: str) -> str:
     return await asyncio.to_thread(simple.trust_agent, agent_json)
 
 
+async def trust_agent_with_key(agent_json: str, public_key_pem: str) -> str:
+    """Trust an agent using an explicit PEM public key for first-contact verification."""
+    return await asyncio.to_thread(simple.trust_agent_with_key, agent_json, public_key_pem)
+
+
 async def list_trusted_agents() -> List[str]:
     """List all trusted agent IDs in the local trust store.
 
@@ -702,6 +725,7 @@ __all__ = [
     "is_loaded",
     # Trust store
     "trust_agent",
+    "trust_agent_with_key",
     "list_trusted_agents",
     "untrust_agent",
     "is_trusted",

@@ -6,9 +6,9 @@ Get signing and verifying in under a minute. No manual setup needed.
 
 {{#include ../_snippets/quickstart-persistent-agent.md}}
 
-### Password bootstrap (required)
+### Password bootstrap
 
-Before running quickstart, configure exactly one explicit password source:
+Rust CLI quickstart requires exactly one explicit password source:
 
 ```bash
 # Recommended
@@ -19,6 +19,7 @@ export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
 ```
 
 If both `JACS_PRIVATE_KEY_PASSWORD` and `JACS_PASSWORD_FILE` are set, CLI fails fast to avoid ambiguity.
+Python/Node quickstart can auto-generate a secure password if `JACS_PRIVATE_KEY_PASSWORD` is unset. Set `JACS_SAVE_PASSWORD_FILE=true` if you want the generated password persisted to `./jacs_keys/.jacs_password`. In production, set `JACS_PRIVATE_KEY_PASSWORD` explicitly.
 One call and you're signing.
 
 <div class="tabs">
@@ -34,7 +35,8 @@ pip install jacs
 ```python
 import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
@@ -55,7 +57,11 @@ npm install @hai.ai/jacs
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-await jacs.quickstart();
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
@@ -75,13 +81,13 @@ cargo install jacs --features cli
 
 ```bash
 # Info mode -- prints agent ID and algorithm
-jacs quickstart
+jacs quickstart --name my-agent --domain my-agent.example.com
 
 # Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --sign
+echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
 
 # Sign a file
-jacs quickstart --sign --file mydata.json
+jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
 ```
 
 </div>
@@ -114,7 +120,7 @@ jacs mcp install --from-cargo
 
 ## Advanced: Explicit Agent Setup
 
-For full control over agent creation, you can set up an agent manually with a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable. This is optional since `quickstart()` already creates a persistent agent.
+For full control over agent creation, you can set up an agent manually with a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable. This is optional since `quickstart(...)` already creates a persistent agent.
 
 <div class="tabs">
 <div class="tab">
@@ -202,7 +208,7 @@ print(f"Valid: {result.valid}")
 
 ## Programmatic Agent Creation (v0.6.0+)
 
-For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use `create()`. For most cases, `quickstart()` above is simpler and also creates a persistent agent.
+For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use `create()`. For most cases, `quickstart(...)` above is simpler and also creates a persistent agent.
 
 <div class="tabs">
 <div class="tab">

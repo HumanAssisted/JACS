@@ -106,6 +106,7 @@ __all__ = [
     "verify_string",
     # Trust store
     "trust_agent",
+    "trust_agent_with_key",
     "list_trusted_agents",
     "untrust_agent",
     "is_trusted",

@@ -16,19 +16,21 @@ Create a persistent agent with keys on disk and optionally sign data -- no manua
 
 ```bash
 # Print agent info (ID, algorithm)
-jacs quickstart
+jacs quickstart --name my-agent --domain my-agent.example.com
 
 # Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --sign
+echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
 
 # Sign a file
-jacs quickstart --sign --file mydata.json
+jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
 
 # Use a specific algorithm
-jacs quickstart --algorithm ring-Ed25519
+jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
 ```
 
 **Options:**
+- `--name <name>` - Agent name used for first-time quickstart creation (required)
+- `--domain <domain>` - Agent domain used for DNS/public-key verification workflows (required)
 - `--algorithm <algo>` - Signing algorithm (default: `pq2025`). Also: `ring-Ed25519`, `RSA-PSS`
 - `--sign` - Sign input (from stdin or `--file`) instead of printing info
 - `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)

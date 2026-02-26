@@ -11,7 +11,10 @@
  * import { JacsClient } from './client';
  * import { jacsMiddleware } from './express';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'express-agent',
+ *   domain: 'express.local',
+ * });
  * const app = express();
  * app.use(express.text({ type: 'application/json' }));
  * app.use(jacsMiddleware({ client, verify: true }));
@@ -41,7 +44,11 @@ async function resolveClient(options) {
         await client.load(options.configPath);
         return client;
     }
-    return ClientCtor.quickstart();
+    return ClientCtor.quickstart({
+        name: 'jacs-express',
+        domain: 'localhost',
+        description: 'JACS Express middleware agent',
+    });
 }
 // =============================================================================
 // Middleware factory

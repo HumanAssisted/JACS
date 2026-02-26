@@ -12,7 +12,10 @@
  * import { openai } from '@ai-sdk/openai';
  * import { generateText } from 'ai';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'vercel-agent',
+ *   domain: 'vercel.local',
+ * });
  * const model = withProvenance(openai('gpt-4'), { client });
  *
  * const { text, providerMetadata } = await generateText({

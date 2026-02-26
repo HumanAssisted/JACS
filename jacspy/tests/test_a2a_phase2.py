@@ -211,6 +211,31 @@ class TestSha256Replacement:
         assert docs["/.well-known/jacs-agent.json"]["publicKeyHash"] == expected_hash
         assert docs["/.well-known/jacs-pubkey.json"]["publicKeyHash"] == expected_hash
 
+    def test_well_known_defaults_missing_key_algorithm_to_pq2025(self):
+        client = _make_mock_client()
+        a2a = JACSA2AIntegration(client)
+
+        card = A2AAgentCard(
+            name="T",
+            description="T",
+            version="1",
+            protocol_versions=["0.4.0"],
+            supported_interfaces=[
+                A2AAgentInterface(url="https://x.com", protocol_binding="jsonrpc")
+            ],
+            default_input_modes=["text/plain"],
+            default_output_modes=["text/plain"],
+            capabilities=A2AAgentCapabilities(),
+            skills=[],
+        )
+
+        docs = a2a.generate_well_known_documents(
+            card, "jws-sig", "cHVia2V5", {"jacsId": "a1"}
+        )
+
+        assert docs["/.well-known/jacs-agent.json"]["keyAlgorithm"] == "pq2025"
+        assert docs["/.well-known/jacs-pubkey.json"]["algorithm"] == "pq2025"
+
 
 # ---------------------------------------------------------------------------
 # Test: B-6 — correct algorithm lists

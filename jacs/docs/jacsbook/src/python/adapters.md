@@ -12,7 +12,7 @@ pip install jacs[anthropic]   # Anthropic / Claude SDK
 pip install jacs[all]         # Everything
 ```
 
-Every adapter wraps a `JacsClient` instance and provides `strict` mode (raise on failures) and `permissive` mode (log and passthrough). All adapters accept `client=`, `config_path=`, or auto-create via `quickstart()`.
+Every adapter wraps a `JacsClient` instance and provides `strict` mode (raise on failures) and `permissive` mode (log and passthrough). All adapters accept `client=`, `config_path=`, or auto-create via `quickstart(name, domain, ...)`.
 
 ---
 
@@ -30,7 +30,7 @@ Sign it. Prove it. -- every tool call, automatically.
 from jacs.client import JacsClient
 from jacs.adapters.langchain import jacs_signing_middleware
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 middleware = jacs_signing_middleware(client=client)
 
 # 3. Sign every tool call in your agent
@@ -64,7 +64,7 @@ Sign it. Prove it. -- every task output, with a guardrail.
 from jacs.client import JacsClient
 from jacs.adapters.crewai import jacs_guardrail
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # 3. Attach to any CrewAI task
 from crewai import Task

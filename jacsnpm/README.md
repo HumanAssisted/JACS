@@ -34,24 +34,24 @@ const signed = jacs.signMessageSync({ action: 'approve' });
 
 ## Quick Start
 
-Zero-config -- one call to start signing:
+Quickstart -- one call to start signing:
 
 ```javascript
 const jacs = require('jacs/simple');
 
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+`quickstart(options)` creates a persistent agent with keys on disk and requires `options.name` and `options.domain` (with optional `description`). If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated in-process; set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
 
 **Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#multi-party-agreements) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
 ### Advanced: Loading an existing agent
 
-If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:
+If you already have an agent (e.g., created by a previous `quickstart({ name, domain })` call), load it explicitly:
 
 ```javascript
 const jacs = require('jacs/simple');
@@ -69,7 +69,7 @@ Every function that calls into NAPI has both async (default) and sync variants:
 
 | Function | Sync Variant | Description |
 |----------|-------------|-------------|
-| `quickstart(options?)` | `quickstartSync(options?)` | Create a persistent agent with keys on disk |
+| `quickstart(options)` | `quickstartSync(options)` | Create a persistent agent with keys on disk |
 | `create(options)` | `createSync(options)` | Create a new agent programmatically |
 | `load(configPath)` | `loadSync(configPath)` | Load agent from config file |
 | `verifySelf()` | `verifySelfSync()` | Verify agent's own integrity |
@@ -244,7 +244,7 @@ import { withProvenance } from 'jacs/vercel-ai';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const model = withProvenance(openai('gpt-4o'), { client });
 
 const { text, providerMetadata } = await generateText({ model, prompt: 'Hello!' });
@@ -264,7 +264,7 @@ import express from 'express';
 import { JacsClient } from 'jacs/client';
 import { jacsMiddleware } from 'jacs/express';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const app = express();
 app.use(express.text({ type: 'application/json' }));
 app.use(jacsMiddleware({ client, verify: true }));
@@ -332,7 +332,7 @@ Two integration patterns — full toolkit or auto-signing wrappers:
 import { JacsClient } from 'jacs/client';
 import { createJacsTools } from 'jacs/langchain';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const jacsTools = createJacsTools({ client });
 
 // Bind to your LLM — agent can now sign, verify, create agreements, etc.
@@ -366,7 +366,7 @@ import { JacsClient } from 'jacs/client';
 import { createJACSTransportProxy } from 'jacs/mcp';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(baseTransport, client, 'server');
 ```
@@ -379,7 +379,7 @@ import { JacsClient } from 'jacs/client';
 import { registerJacsTools } from 'jacs/mcp';
 
 const server = new Server({ name: 'my-server', version: '1.0.0' }, { capabilities: { tools: {} } });
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 registerJacsTools(server, client);
 ```
 
@@ -399,7 +399,11 @@ The old `JACSExpressMiddleware` and `JACSKoaMiddleware` are still available from
 import { JacsClient } from 'jacs/client';
 
 // Zero-config: loads or creates a persistent agent
-const client = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'agent.example.com',
+  algorithm: 'ring-Ed25519'
+});
 
 const signed = await client.signMessage({ action: 'approve', amount: 100 });
 const result = await client.verify(signed.raw);
@@ -455,7 +459,7 @@ All instance methods have async (default) and sync variants:
 
 | Method | Sync Variant | Description |
 |--------|-------------|-------------|
-| `JacsClient.quickstart(options?)` | `JacsClient.quickstartSync(options?)` | Load or create a persistent agent |
+| `JacsClient.quickstart(options)` | `JacsClient.quickstartSync(options)` | Load or create a persistent agent |
 | `JacsClient.ephemeral(algorithm?)` | `JacsClient.ephemeralSync(algorithm?)` | Create an in-memory agent |
 | `client.load(configPath?)` | `client.loadSync(configPath?)` | Load agent from config file |
 | `client.create(options)` | `client.createSync(options)` | Create a new agent |
@@ -482,7 +486,7 @@ For A2A security, JACS is an OAuth alternative for service-to-service agent trus
 ```typescript
 import { JacsClient } from 'jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const card = client.exportAgentCard();
 const signed = await client.signArtifact({ action: 'classify', input: 'hello' }, 'task');
 ```
@@ -494,7 +498,7 @@ For full A2A lifecycle control (well-known documents, chain of custody, extensio
 ```typescript
 import { JacsClient } from 'jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const a2a = client.getA2A();
 
 // Export an A2A Agent Card

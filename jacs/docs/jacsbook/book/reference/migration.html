@@ -227,15 +227,15 @@ const isValid = agent.verifyDocumentSync(doc);
 <h3 id="simplified-api-module-level"><a class="header" href="#simplified-api-module-level">Simplified API (Module-Level)</a></h3>
 <p>The <code>@hai.ai/jacs/simple</code> module follows the same pattern:</p>
 <pre><code class="language-javascript">// v0.6.x
-jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 async (recommended)
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 sync
-jacs.quickstartSync();
+jacs.quickstartSync({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessageSync({ action: 'approve' });
 </code></pre>
 <h3 id="pure-sync-functions-no-change"><a class="header" href="#pure-sync-functions-no-change">Pure Sync Functions (No Change)</a></h3>

@@ -36,7 +36,7 @@ This page helps you find the right integration path in under 2 minutes.
 
 ## Step 3: Your Adoption Path
 
-**Stage 1 -- Prototyping**: `jacs.quickstart()`. No config. Explore the API. Keys on disk, auto-managed.
+**Stage 1 -- Prototyping**: `jacs.quickstart(name="my-agent", domain="my-agent.example.com")`. No config. Explore the API. Keys on disk, auto-managed.
 
 **Stage 2 -- Single-org production**: `jacs.load()` with persistent agent, strict mode, file-based keys. Add provenance to internal systems.
 

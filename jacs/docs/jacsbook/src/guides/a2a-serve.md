@@ -26,7 +26,7 @@ from jacs.client import JacsClient
 from jacs.a2a_server import jacs_a2a_routes
 
 app = FastAPI()
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 router = jacs_a2a_routes(client)
 app.include_router(router)
 ```
@@ -44,7 +44,10 @@ const express = require('express');
 const { JacsClient } = require('@hai.ai/jacs/client');
 const { jacsA2AMiddleware } = require('@hai.ai/jacs/a2a-server');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = express();
 app.use(jacsA2AMiddleware(client));
 app.listen(8080);

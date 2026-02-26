@@ -154,6 +154,30 @@ describe('JACS Simple API', function() {
   });
 
   describe('quickstart', () => {
+    (simpleExists ? it : it.skip)('should reject missing quickstart identity fields', async () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+
+      let missingOptionsErr = null;
+      try {
+        await freshSimple.quickstart();
+      } catch (e) {
+        missingOptionsErr = e;
+      }
+      expect(String(missingOptionsErr)).to.match(/requires options\.name and options\.domain/);
+
+      let missingNameErr = null;
+      try {
+        await freshSimple.quickstart({ domain: 'simple-test.example.com' });
+      } catch (e) {
+        missingNameErr = e;
+      }
+      expect(String(missingNameErr)).to.match(/requires options\.name/);
+
+      expect(() => freshSimple.quickstartSync({ name: 'simple-test-agent' }))
+        .to.throw(/requires options\.domain/);
+    });
+
     (simpleExists ? it : it.skip)('should create and load an agent at a custom configPath', async function () {
       this.timeout(30000);
       delete require.cache[require.resolve('../simple.js')];
@@ -166,6 +190,8 @@ describe('JACS Simple API', function() {
       try {
         process.chdir(tmpDir);
         const info = await freshSimple.quickstart({
+          name: 'simple-test-agent',
+          domain: 'simple-test.example.com',
           algorithm: 'ring-Ed25519',
           configPath: 'custom/jacs.config.json',
         });

@@ -10,9 +10,9 @@ Cryptographic signatures for AI agent outputs so anyone can verify who said what
 
 Zero-config -- one call creates a persistent agent with keys on disk.
 
-### Password Setup (Required)
+### Password Setup
 
-Persistent agents require a private-key password before `quickstart()`.
+Persistent agents use encrypted private keys. Rust/CLI flows require an explicit password source before `quickstart(...)`. Python/Node quickstart can auto-generate one, but production deployments should still set it explicitly.
 
 ```bash
 # Option A (recommended): direct env var
@@ -22,15 +22,16 @@ export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
 ```
 
-Set exactly one explicit source. If both are set, CLI fails fast to avoid ambiguity.
-For Python/Node library usage, set `JACS_PRIVATE_KEY_PASSWORD` in your process environment.
+Set exactly one explicit source for CLI. If both are set, CLI fails fast to avoid ambiguity.
+For Python/Node library usage, set `JACS_PRIVATE_KEY_PASSWORD` in your process environment (recommended).
 
 ### Python
 
 ```python
 import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="payments-agent", domain="payments.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
@@ -42,7 +43,11 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 const jacs = require('@hai.ai/jacs/simple');
 
 async function main() {
-  await jacs.quickstart();
+  const info = await jacs.quickstart({
+    name: 'payments-agent',
+    domain: 'payments.example.com',
+  });
+  console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
   const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
   const result = await jacs.verify(signed.raw);
   console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
@@ -60,7 +65,7 @@ cargo install jacs --features cli
 # Or download a prebuilt binary from GitHub Releases
 # https://github.com/HumanAssisted/JACS/releases
 
-jacs quickstart
+jacs quickstart --name payments-agent --domain payments.example.com
 jacs document create -f mydata.json
 
 # Install and run the Rust MCP server from the CLI
@@ -154,7 +159,7 @@ JACS provides the missing trust layer: identity (who produced this?), integrity 
 
 ## Post-Quantum Ready
 
-JACS supports ML-DSA-87 (FIPS-204) post-quantum signatures alongside classical algorithms (Ed25519, ECDSA P-256/P-384, RSA-PSS). The `pq2025` algorithm preset gives you quantum-resistant signing today, with zero code changes from the standard API.
+JACS supports ML-DSA-87 (FIPS-204) post-quantum signatures alongside classical algorithms (Ed25519 and RSA-PSS). The `pq2025` algorithm preset is the default across quickstart/create paths.
 
 [Algorithm Selection Guide](https://humanassisted.github.io/JACS/advanced/algorithm-guide.html)
 
@@ -169,7 +174,7 @@ Built-in trust policies control how your agent handles foreign signatures: `open
 ```python
 from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="a2a-agent", domain="a2a.example.com")
 card = client.export_agent_card("http://localhost:8080")
 signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 ```
@@ -177,9 +182,20 @@ signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
 ```javascript
 const { JacsClient } = require('@hai.ai/jacs/client');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'a2a-agent',
+  domain: 'a2a.example.com',
+});
 const card = client.exportAgentCard();
 const signed = await client.signArtifact({ action: 'classify', input: 'hello' }, 'task');
+```
+
+For trust bootstrap flows, use a signed agent document plus an explicit public key exchange:
+
+```python
+agent_json = client.share_agent()
+public_key_pem = client.share_public_key()
+client.trust_agent_with_key(agent_json, public_key_pem)
 ```
 
 [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) | [Python A2A](https://humanassisted.github.io/JACS/python/a2a.html) | [Node.js A2A](https://humanassisted.github.io/JACS/nodejs/a2a.html)

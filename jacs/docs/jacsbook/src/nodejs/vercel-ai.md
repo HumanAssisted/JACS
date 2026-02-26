@@ -17,7 +17,10 @@ npm install @hai.ai/jacs ai @ai-sdk/openai
 ```typescript
 import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 ```
 
 ### 3. Sign every model output
@@ -43,7 +46,10 @@ import { withProvenance } from '@hai.ai/jacs/vercel-ai';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const model = withProvenance(openai('gpt-4'), { client });
 
 const { text, providerMetadata } = await generateText({

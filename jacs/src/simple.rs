@@ -568,7 +568,7 @@ impl SimpleAgent {
     ///
     /// * `name` - Human-readable name for the agent
     /// * `purpose` - Optional description of the agent's purpose
-    /// * `key_algorithm` - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+    /// * `key_algorithm` - Signing algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
     ///
     /// # Returns
     ///
@@ -595,7 +595,7 @@ impl SimpleAgent {
         purpose: Option<&str>,
         key_algorithm: Option<&str>,
     ) -> Result<(Self, AgentInfo), JacsError> {
-        let algorithm = key_algorithm.unwrap_or("ed25519");
+        let algorithm = key_algorithm.unwrap_or("pq2025");
 
         info!(
             "Creating new agent '{}' with algorithm '{}'",
@@ -1087,7 +1087,7 @@ impl SimpleAgent {
     ///
     /// # Arguments
     ///
-    /// * `algorithm` - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+    /// * `algorithm` - Signing algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
     ///
     /// # Returns
     ///
@@ -1105,7 +1105,7 @@ impl SimpleAgent {
     #[must_use = "ephemeral agent result must be checked for errors"]
     pub fn ephemeral(algorithm: Option<&str>) -> Result<(Self, AgentInfo), JacsError> {
         // Map user-friendly names to internal algorithm strings
-        let algo = match algorithm.unwrap_or("ed25519") {
+        let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
             "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
@@ -1160,7 +1160,10 @@ impl SimpleAgent {
     ///
     /// # Arguments
     ///
-    /// * `algorithm` - Signing algorithm (default: "ed25519"). Also: "rsa-pss", "pq2025"
+    /// * `name` - Agent name to use when creating a new config/identity
+    /// * `domain` - Agent domain to use for DNS/public-key verification workflows
+    /// * `description` - Optional human-readable description for a newly created agent
+    /// * `algorithm` - Signing algorithm (default: "pq2025"). Also: "ed25519", "rsa-pss"
     /// * `config_path` - Config file path (default: "./jacs.config.json")
     ///
     /// # Returns
@@ -1172,12 +1175,21 @@ impl SimpleAgent {
     /// ```rust,ignore
     /// use jacs::simple::SimpleAgent;
     ///
-    /// let (agent, info) = SimpleAgent::quickstart(None, None)?;
+    /// let (agent, info) = SimpleAgent::quickstart(
+    ///     "my-agent",
+    ///     "agent.example.com",
+    ///     Some("My JACS agent"),
+    ///     None,
+    ///     None,
+    /// )?;
     /// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
     /// // Keys and config are saved to disk -- the same agent is loaded next time.
     /// ```
     #[must_use = "quickstart result must be checked for errors"]
     pub fn quickstart(
+        name: &str,
+        domain: &str,
+        description: Option<&str>,
         algorithm: Option<&str>,
         config_path: Option<&str>,
     ) -> Result<(Self, AgentInfo), JacsError> {
@@ -1204,7 +1216,19 @@ impl SimpleAgent {
                 .as_str()
                 .unwrap_or("")
                 .to_string();
-            let (algo, key_dir, data_dir) = if let Some(ref cfg) = inner.config {
+            let loaded_name = agent_value
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(name)
+                .to_string();
+            let loaded_domain = agent_value
+                .get("jacsAgentDomain")
+                .and_then(|v| v.as_str())
+                .or_else(|| agent_value.get("domain").and_then(|v| v.as_str()))
+                .unwrap_or(domain)
+                .to_string();
+            let (algo, key_dir, data_dir, private_key_filename, public_key_filename) =
+                if let Some(ref cfg) = inner.config {
                 let a = cfg
                     .jacs_agent_key_algorithm()
                     .as_deref()
@@ -1220,27 +1244,39 @@ impl SimpleAgent {
                     .as_deref()
                     .unwrap_or("./jacs_data")
                     .to_string();
-                (a, k, d)
+                let priv_name = cfg
+                    .jacs_agent_private_key_filename()
+                    .as_deref()
+                    .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME)
+                    .to_string();
+                let pub_name = cfg
+                    .jacs_agent_public_key_filename()
+                    .as_deref()
+                    .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME)
+                    .to_string();
+                (a, k, d, priv_name, pub_name)
             } else {
                 (
                     String::new(),
                     "./jacs_keys".to_string(),
                     "./jacs_data".to_string(),
+                    DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
+                    DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
                 )
             };
             drop(inner);
 
             let info = AgentInfo {
                 agent_id,
-                name: "jacs-agent".to_string(),
-                public_key_path: format!("{}/{}", key_dir, DEFAULT_PUBLIC_KEY_FILENAME),
+                name: loaded_name,
+                public_key_path: format!("{}/{}", key_dir, public_key_filename),
                 config_path: config.to_string(),
                 version,
                 algorithm: algo,
-                private_key_path: format!("{}/{}", key_dir, DEFAULT_PRIVATE_KEY_FILENAME),
+                private_key_path: format!("{}/{}", key_dir, private_key_filename),
                 data_directory: data_dir,
                 key_directory: key_dir,
-                domain: String::new(),
+                domain: loaded_domain,
                 dns_record: String::new(),
             };
 
@@ -1252,6 +1288,17 @@ impl SimpleAgent {
             "quickstart: no config at {}, creating new persistent agent",
             config
         );
+
+        if name.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "Quickstart requires a non-empty agent name.".to_string(),
+            ));
+        }
+        if domain.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "Quickstart requires a non-empty domain.".to_string(),
+            ));
+        }
 
         // Fail hard if no password is available.
         let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD")
@@ -1266,7 +1313,7 @@ impl SimpleAgent {
             })?;
 
         // Use create_with_params for full control
-        let algo = match algorithm.unwrap_or("ed25519") {
+        let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
             "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
@@ -1274,10 +1321,12 @@ impl SimpleAgent {
         };
 
         let params = CreateAgentParams {
-            name: "jacs-agent".to_string(),
+            name: name.to_string(),
             password,
             algorithm: algo.to_string(),
             config_path: config.to_string(),
+            description: description.unwrap_or("").to_string(),
+            domain: domain.to_string(),
             ..Default::default()
         };
 
@@ -3431,10 +3480,10 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_ephemeral_default_ed25519() {
+    fn test_simple_ephemeral_default_pq2025() {
         let (agent, info) = SimpleAgent::ephemeral(None).unwrap();
         assert!(!info.agent_id.is_empty());
-        assert_eq!(info.algorithm, "ring-Ed25519");
+        assert_eq!(info.algorithm, "pq2025");
         assert_eq!(info.name, "ephemeral");
         assert!(info.config_path.is_empty());
         assert!(info.public_key_path.is_empty());

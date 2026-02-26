@@ -1140,6 +1140,26 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .about("Create/load an agent and start serving A2A endpoints (password required)")
                         .after_help(quickstart_password_bootstrap_help())
                         .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("Agent name used for first-time quickstart creation"),
+                        )
+                        .arg(
+                            Arg::new("domain")
+                                .long("domain")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("Agent domain used for DNS/public-key verification workflows"),
+                        )
+                        .arg(
+                            Arg::new("description")
+                                .long("description")
+                                .value_parser(value_parser!(String))
+                                .help("Optional human-readable agent description"),
+                        )
+                        .arg(
                             Arg::new("port")
                                 .long("port")
                                 .value_parser(value_parser!(u16))
@@ -1165,6 +1185,26 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             Command::new("quickstart")
                 .about("Create or load a persistent agent for instant sign/verify (password required)")
                 .after_help(quickstart_password_bootstrap_help())
+                .arg(
+                    Arg::new("name")
+                        .long("name")
+                        .value_parser(value_parser!(String))
+                        .required(true)
+                        .help("Agent name used for first-time quickstart creation"),
+                )
+                .arg(
+                    Arg::new("domain")
+                        .long("domain")
+                        .value_parser(value_parser!(String))
+                        .required(true)
+                        .help("Agent domain used for DNS/public-key verification workflows"),
+                )
+                .arg(
+                    Arg::new("description")
+                        .long("description")
+                        .value_parser(value_parser!(String))
+                        .help("Optional human-readable agent description"),
+                )
                 .arg(
                     Arg::new("algorithm")
                         .long("algorithm")
@@ -1967,7 +2007,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         quickstart_password_bootstrap_help()
                     )))
                 })?;
-                let (agent, info) = SimpleAgent::quickstart(None, None).map_err(|e| {
+                let (agent, info) = SimpleAgent::quickstart(
+                    "jacs-agent",
+                    "localhost",
+                    Some("JACS A2A agent"),
+                    None,
+                    None,
+                )
+                .map_err(|e| {
                     wrap_quickstart_error_with_password_help("Failed to load agent", e)
                 })?;
 
@@ -2049,6 +2096,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let algorithm = qs_matches
                     .get_one::<String>("algorithm")
                     .map(|s| s.as_str());
+                let name = qs_matches
+                    .get_one::<String>("name")
+                    .map(|s| s.as_str())
+                    .unwrap_or("jacs-agent");
+                let domain = qs_matches
+                    .get_one::<String>("domain")
+                    .map(|s| s.as_str())
+                    .unwrap_or("localhost");
+                let description = qs_matches
+                    .get_one::<String>("description")
+                    .map(|s| s.as_str());
 
                 // Create or load the agent via quickstart
                 ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
@@ -2058,7 +2116,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         quickstart_password_bootstrap_help()
                     )))
                 })?;
-                let (agent, info) = SimpleAgent::quickstart(algorithm, None).map_err(|e| {
+                let (agent, info) = SimpleAgent::quickstart(
+                    name,
+                    domain,
+                    description,
+                    algorithm,
+                    None,
+                )
+                .map_err(|e| {
                     wrap_quickstart_error_with_password_help("Failed to quickstart agent", e)
                 })?;
 
@@ -2143,6 +2208,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             let algorithm = qs_matches
                 .get_one::<String>("algorithm")
                 .map(|s| s.as_str());
+            let name = qs_matches
+                .get_one::<String>("name")
+                .map(|s| s.as_str())
+                .unwrap_or("jacs-agent");
+            let domain = qs_matches
+                .get_one::<String>("domain")
+                .map(|s| s.as_str())
+                .unwrap_or("localhost");
+            let description = qs_matches
+                .get_one::<String>("description")
+                .map(|s| s.as_str());
             let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
             let sign_file = qs_matches.get_one::<String>("file");
 
@@ -2153,7 +2229,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     quickstart_password_bootstrap_help()
                 )))
             })?;
-            let (agent, info) = SimpleAgent::quickstart(algorithm, None)
+            let (agent, info) =
+                SimpleAgent::quickstart(name, domain, description, algorithm, None)
                 .map_err(|e| wrap_quickstart_error_with_password_help("Quickstart failed", e))?;
 
             if do_sign {

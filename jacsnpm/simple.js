@@ -85,6 +85,8 @@ exports.reencryptKey = reencryptKey;
 exports.reencryptKeySync = reencryptKeySync;
 exports.getPublicKey = getPublicKey;
 exports.exportAgent = exportAgent;
+exports.sharePublicKey = sharePublicKey;
+exports.shareAgent = shareAgent;
 exports.getAgentInfo = getAgentInfo;
 exports.isLoaded = isLoaded;
 exports.debugInfo = debugInfo;
@@ -100,6 +102,7 @@ exports.signAgreementSync = signAgreementSync;
 exports.checkAgreement = checkAgreement;
 exports.checkAgreementSync = checkAgreementSync;
 exports.trustAgent = trustAgent;
+exports.trustAgentWithKey = trustAgentWithKey;
 exports.listTrustedAgents = listTrustedAgents;
 exports.untrustAgent = untrustAgent;
 exports.isTrusted = isTrusted;
@@ -163,6 +166,38 @@ function resolveLoadPath(configPath, options) {
 function setLoadedAgentInfo(resolvedConfigPath) {
     agentInfo = extractAgentInfo(resolvedConfigPath);
     return agentInfo;
+}
+function requireQuickstartIdentity(options) {
+    if (!options || typeof options !== 'object') {
+        throw new Error('quickstart() requires options.name and options.domain.');
+    }
+    const name = typeof options.name === 'string' ? options.name.trim() : '';
+    const domain = typeof options.domain === 'string' ? options.domain.trim() : '';
+    if (!name) {
+        throw new Error('quickstart() requires options.name.');
+    }
+    if (!domain) {
+        throw new Error('quickstart() requires options.domain.');
+    }
+    return {
+        name,
+        domain,
+        description: options.description?.trim() || '',
+    };
+}
+function toQuickstartInfo(info) {
+    return {
+        agentId: info.agentId,
+        name: info.name || '',
+        version: info.version || '',
+        algorithm: info.algorithm || '',
+        configPath: info.configPath || '',
+        keyDirectory: info.keyDirectory || '',
+        dataDirectory: info.dataDirectory || '',
+        publicKeyPath: info.publicKeyPath || '',
+        privateKeyPath: info.privateKeyPath || '',
+        domain: info.domain || '',
+    };
 }
 function createRawDocumentPayload(jacsType, extra) {
     return JSON.stringify({
@@ -244,22 +279,44 @@ function readStoredDocumentById(documentId) {
 function extractAgentInfo(resolvedConfigPath) {
     const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
     const agentIdVersion = config.jacs_agent_id_and_version || '';
-    const [agentId] = agentIdVersion.split(':');
+    const [agentId, version] = agentIdVersion.split(':');
+    const dataDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_data_directory || './jacs_data');
     const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
+    const publicKeyFilename = config.jacs_agent_public_key_filename || 'jacs.public.pem';
+    const privateKeyFilename = config.jacs_agent_private_key_filename || 'jacs.private.pem.enc';
     return {
         agentId: agentId || '',
         name: config.name || '',
-        publicKeyPath: path.join(keyDir, 'jacs.public.pem'),
+        publicKeyPath: path.join(keyDir, publicKeyFilename),
         configPath: resolvedConfigPath,
+        version: version || '',
+        algorithm: config.jacs_agent_key_algorithm || 'pq2025',
+        privateKeyPath: path.join(keyDir, privateKeyFilename),
+        dataDirectory: dataDir,
+        keyDirectory: keyDir,
+        domain: config.domain || '',
+        dnsRecord: config.dns_record || '',
     };
 }
 function parseCreateResult(resultJson, options) {
     const info = JSON.parse(resultJson);
+    const configPath = info.config_path || options.configPath || './jacs.config.json';
+    const dataDirectory = info.data_directory || options.dataDirectory || './jacs_data';
+    const keyDirectory = info.key_directory || options.keyDirectory || './jacs_keys';
+    const publicKeyPath = info.public_key_path || `${keyDirectory}/jacs.public.pem`;
+    const privateKeyPath = info.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     return {
         agentId: info.agent_id || '',
         name: info.name || options.name,
-        publicKeyPath: info.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
-        configPath: info.config_path || options.configPath || './jacs.config.json',
+        publicKeyPath,
+        configPath,
+        version: info.version || '',
+        algorithm: info.algorithm || options.algorithm || 'pq2025',
+        privateKeyPath,
+        dataDirectory,
+        keyDirectory,
+        domain: info.domain || options.domain || '',
+        dnsRecord: info.dns_record || '',
     };
 }
 function parseSignedResult(result) {
@@ -273,7 +330,7 @@ function parseSignedResult(result) {
 }
 function requireAgent() {
     if (!globalAgent) {
-        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
+        throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
     }
     return globalAgent;
 }
@@ -371,67 +428,53 @@ function ensurePassword() {
     return password;
 }
 /**
- * Zero-config quickstart: loads or creates a persistent agent.
+ * Quickstart: loads or creates a persistent agent.
  * @returns Promise<QuickstartInfo>
  */
 async function quickstart(options) {
+    const { name, domain, description } = requireQuickstartIdentity(options);
     strictMode = resolveStrict(options?.strict);
     const configPath = options?.configPath || './jacs.config.json';
     if (fs.existsSync(configPath)) {
         const info = await load(configPath);
-        return {
-            agentId: info.agentId,
-            name: info.name || 'jacs-agent',
-            version: '',
-            algorithm: '',
-        };
+        return toQuickstartInfo(info);
     }
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    const result = await create({
-        name: 'jacs-agent',
+    await create({
+        name,
         password,
         algorithm: algo,
+        description,
+        domain,
         configPath,
     });
-    await load(result.configPath || configPath, { strict: strictMode });
-    return {
-        agentId: result.agentId,
-        name: 'jacs-agent',
-        version: '',
-        algorithm: algo,
-    };
+    const loaded = await load(configPath, { strict: strictMode });
+    return toQuickstartInfo(loaded);
 }
 /**
- * Zero-config quickstart (sync variant, blocks event loop).
+ * Quickstart (sync variant, blocks event loop).
  */
 function quickstartSync(options) {
+    const { name, domain, description } = requireQuickstartIdentity(options);
     strictMode = resolveStrict(options?.strict);
     const configPath = options?.configPath || './jacs.config.json';
     if (fs.existsSync(configPath)) {
         const info = loadSync(configPath);
-        return {
-            agentId: info.agentId,
-            name: info.name || 'jacs-agent',
-            version: '',
-            algorithm: '',
-        };
+        return toQuickstartInfo(info);
     }
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    const result = createSync({
-        name: 'jacs-agent',
+    createSync({
+        name,
         password,
         algorithm: algo,
+        description,
+        domain,
         configPath,
     });
-    loadSync(result.configPath || configPath, { strict: strictMode });
-    return {
-        agentId: result.agentId,
-        name: 'jacs-agent',
-        version: '',
-        algorithm: algo,
-    };
+    const loaded = loadSync(configPath, { strict: strictMode });
+    return toQuickstartInfo(loaded);
 }
 function resolveCreatePassword(options) {
     const p = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
@@ -677,7 +720,7 @@ function reencryptKeySync(oldPassword, newPassword) {
 // =============================================================================
 function getPublicKey() {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
+        throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
     }
     if (!fs.existsSync(agentInfo.publicKeyPath)) {
         throw new Error(`Public key not found: ${agentInfo.publicKeyPath}`);
@@ -686,7 +729,7 @@ function getPublicKey() {
 }
 function exportAgent() {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
+        throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
     }
     const configPath = path.resolve(agentInfo.configPath);
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -697,6 +740,12 @@ function exportAgent() {
         throw new Error(`Agent file not found: ${agentPath}`);
     }
     return fs.readFileSync(agentPath, 'utf8');
+}
+function sharePublicKey() {
+    return getPublicKey();
+}
+function shareAgent() {
+    return exportAgent();
 }
 function getAgentInfo() {
     return agentInfo;
@@ -722,7 +771,7 @@ function reset() {
 }
 function getDnsRecord(domain, ttl = 3600) {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
+        throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
     }
     const agentDoc = JSON.parse(exportAgent());
     const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
@@ -736,7 +785,7 @@ function getDnsRecord(domain, ttl = 3600) {
 }
 function getWellKnownJson() {
     if (!agentInfo) {
-        throw new Error('No agent loaded. Call quickstart() for zero-config setup, or load() for a persistent agent.');
+        throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
     }
     const agentDoc = JSON.parse(exportAgent());
     const jacsId = agentDoc.jacsId || agentDoc.agentId || '';
@@ -811,6 +860,12 @@ function checkAgreementSync(document, fieldName) {
 // =============================================================================
 function trustAgent(agentJson) {
     return (0, index_1.trustAgent)(agentJson);
+}
+function trustAgentWithKey(agentJson, publicKeyPem) {
+    if (!publicKeyPem || !publicKeyPem.trim()) {
+        throw new Error('publicKeyPem cannot be empty');
+    }
+    return (0, index_1.trustAgentWithKey)(agentJson, publicKeyPem);
 }
 function listTrustedAgents() {
     return (0, index_1.listTrustedAgents)();

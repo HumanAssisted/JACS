@@ -132,7 +132,7 @@ class JACSA2AIntegration {
         this.trustPolicy = trustPolicy || exports.DEFAULT_TRUST_POLICY;
     }
     static async quickstart(options = {}) {
-        const { url, name, skills, trustPolicy, algorithm, configPath } = options;
+        const { url, name, domain, description, skills, trustPolicy, algorithm, configPath } = options;
         let JacsClientCtor;
         try {
             JacsClientCtor = require('./client').JacsClient;
@@ -140,10 +140,20 @@ class JACSA2AIntegration {
         catch {
             JacsClientCtor = require('./client.js').JacsClient;
         }
+        const derivedDomain = domain || (url ? (() => {
+            try {
+                return new URL(url).hostname;
+            }
+            catch {
+                return 'localhost';
+            }
+        })() : 'localhost');
         const client = await JacsClientCtor.quickstart({
             algorithm: algorithm || undefined,
             configPath: configPath || undefined,
-            name: name || undefined,
+            name: name || 'jacs-agent',
+            domain: derivedDomain,
+            description: description || 'JACS A2A agent',
         });
         const integration = new JACSA2AIntegration(client, trustPolicy || exports.DEFAULT_TRUST_POLICY);
         integration.defaultUrl = url || null;
@@ -396,7 +406,7 @@ class JACSA2AIntegration {
     }
     generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData) {
         const documents = {};
-        const keyAlgorithm = agentData.keyAlgorithm || 'RSA-PSS';
+        const keyAlgorithm = agentData.keyAlgorithm || 'pq2025';
         const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);
         const cardObj = JSON.parse(JSON.stringify(agentCard));
         cardObj.signatures = [{ jws: jwsSignature }];

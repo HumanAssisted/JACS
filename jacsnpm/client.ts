@@ -8,7 +8,11 @@
  * ```typescript
  * import { JacsClient } from '@hai.ai/jacs/client';
  *
- * const client = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+ * const client = await JacsClient.quickstart({
+ *   name: 'my-agent',
+ *   domain: 'agent.example.com',
+ *   algorithm: 'pq2025',
+ * });
  * const signed = await client.signMessage({ action: 'approve' });
  * const result = await client.verify(signed.raw);
  * console.log(`Valid: ${result.valid}`);
@@ -22,6 +26,7 @@ import {
   createAgentSync as nativeCreateAgentSync,
   createAgent as nativeCreateAgent,
   trustAgent as nativeTrustAgent,
+  trustAgentWithKey as nativeTrustAgentWithKey,
   listTrustedAgents as nativeListTrustedAgents,
   untrustAgent as nativeUntrustAgent,
   isTrusted as nativeIsTrusted,
@@ -171,16 +176,53 @@ function normalizeA2AVerificationResult(
 function extractAgentInfo(resolvedConfigPath: string): AgentInfo {
   const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
   const agentIdVersion = config.jacs_agent_id_and_version || '';
-  const [agentId] = agentIdVersion.split(':');
+  const [agentId, version] = agentIdVersion.split(':');
+  const dataDir = resolveConfigRelativePath(
+    resolvedConfigPath,
+    config.jacs_data_directory || './jacs_data',
+  );
   const keyDir = resolveConfigRelativePath(
     resolvedConfigPath,
     config.jacs_key_directory || './jacs_keys',
   );
+  const publicKeyFilename = config.jacs_agent_public_key_filename || 'jacs.public.pem';
+  const privateKeyFilename = config.jacs_agent_private_key_filename || 'jacs.private.pem.enc';
   return {
     agentId: agentId || '',
     name: config.name || '',
-    publicKeyPath: path.join(keyDir, 'jacs.public.pem'),
+    publicKeyPath: path.join(keyDir, publicKeyFilename),
     configPath: resolvedConfigPath,
+    version: version || '',
+    algorithm: config.jacs_agent_key_algorithm || 'pq2025',
+    privateKeyPath: path.join(keyDir, privateKeyFilename),
+    dataDirectory: dataDir,
+    keyDirectory: keyDir,
+    domain: config.domain || '',
+    dnsRecord: config.dns_record || '',
+  };
+}
+
+function requireQuickstartIdentity(options: QuickstartOptions | undefined): {
+  name: string;
+  domain: string;
+  description: string;
+} {
+  if (!options || typeof options !== 'object') {
+    throw new Error('JacsClient.quickstart() requires options.name and options.domain.');
+  }
+
+  const name = typeof options.name === 'string' ? options.name.trim() : '';
+  const domain = typeof options.domain === 'string' ? options.domain.trim() : '';
+  if (!name) {
+    throw new Error('JacsClient.quickstart() requires options.name.');
+  }
+  if (!domain) {
+    throw new Error('JacsClient.quickstart() requires options.domain.');
+  }
+  return {
+    name,
+    domain,
+    description: options.description?.trim() || '',
   };
 }
 
@@ -253,11 +295,12 @@ export class JacsClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Zero-config factory: loads or creates a persistent agent.
+   * Factory: loads or creates a persistent agent.
    */
-  static async quickstart(options?: QuickstartOptions): Promise<JacsClient> {
+  static async quickstart(options: QuickstartOptions): Promise<JacsClient> {
+    const { name, domain, description } = requireQuickstartIdentity(options);
     const client = new JacsClient({ strict: options?.strict });
-    const configPath = (options as any)?.configPath || './jacs.config.json';
+    const configPath = options?.configPath || './jacs.config.json';
 
     if (fs.existsSync(configPath)) {
       await client.load(configPath);
@@ -266,16 +309,17 @@ export class JacsClient {
 
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    await client.create({ name: 'jacs-agent', password, algorithm: algo, configPath });
+    await client.create({ name, password, algorithm: algo, configPath, domain, description });
     return client;
   }
 
   /**
-   * Zero-config factory (sync variant).
+   * Factory (sync variant).
    */
-  static quickstartSync(options?: QuickstartOptions): JacsClient {
+  static quickstartSync(options: QuickstartOptions): JacsClient {
+    const { name, domain, description } = requireQuickstartIdentity(options);
     const client = new JacsClient({ strict: options?.strict });
-    const configPath = (options as any)?.configPath || './jacs.config.json';
+    const configPath = options?.configPath || './jacs.config.json';
 
     if (fs.existsSync(configPath)) {
       client.loadSync(configPath);
@@ -284,7 +328,7 @@ export class JacsClient {
 
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    client.createSync({ name: 'jacs-agent', password, algorithm: algo, configPath });
+    client.createSync({ name, password, algorithm: algo, configPath, domain, description });
     return client;
   }
 
@@ -302,6 +346,13 @@ export class JacsClient {
       name: result.name || 'ephemeral',
       publicKeyPath: '',
       configPath: '',
+      version: result.version || '',
+      algorithm: result.algorithm || 'pq2025',
+      privateKeyPath: '',
+      dataDirectory: '',
+      keyDirectory: '',
+      domain: '',
+      dnsRecord: '',
     };
     return client;
   }
@@ -320,6 +371,13 @@ export class JacsClient {
       name: result.name || 'ephemeral',
       publicKeyPath: '',
       configPath: '',
+      version: result.version || '',
+      algorithm: result.algorithm || 'pq2025',
+      privateKeyPath: '',
+      dataDirectory: '',
+      keyDirectory: '',
+      domain: '',
+      dnsRecord: '',
     };
     return client;
   }
@@ -370,11 +428,22 @@ export class JacsClient {
     );
     const result = JSON.parse(resultJson);
     const cfgPath = result.config_path || options.configPath || './jacs.config.json';
+    const dataDirectory = result.data_directory || options.dataDirectory || './jacs_data';
+    const keyDirectory = result.key_directory || options.keyDirectory || './jacs_keys';
+    const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
+    const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     this.info = {
       agentId: result.agent_id || '',
       name: result.name || options.name,
-      publicKeyPath: result.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+      publicKeyPath,
       configPath: cfgPath,
+      version: result.version || '',
+      algorithm: result.algorithm || options.algorithm || 'pq2025',
+      privateKeyPath,
+      dataDirectory,
+      keyDirectory,
+      domain: result.domain || options.domain || '',
+      dnsRecord: result.dns_record || '',
     };
     this.agent = new JacsAgent();
     await this.agent.load(path.resolve(cfgPath));
@@ -393,11 +462,22 @@ export class JacsClient {
     );
     const result = JSON.parse(resultJson);
     const cfgPath = result.config_path || options.configPath || './jacs.config.json';
+    const dataDirectory = result.data_directory || options.dataDirectory || './jacs_data';
+    const keyDirectory = result.key_directory || options.keyDirectory || './jacs_keys';
+    const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
+    const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     this.info = {
       agentId: result.agent_id || '',
       name: result.name || options.name,
-      publicKeyPath: result.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+      publicKeyPath,
       configPath: cfgPath,
+      version: result.version || '',
+      algorithm: result.algorithm || options.algorithm || 'pq2025',
+      privateKeyPath,
+      dataDirectory,
+      keyDirectory,
+      domain: result.domain || options.domain || '',
+      dnsRecord: result.dns_record || '',
     };
     this.agent = new JacsAgent();
     this.agent.loadSync(path.resolve(cfgPath));
@@ -469,7 +549,7 @@ export class JacsClient {
 
   private requireAgent(): JacsAgent {
     if (!this.agent) {
-      throw new Error('No agent loaded. Call quickstart(), ephemeral(), load(), or create() first.');
+      throw new Error('No agent loaded. Call quickstart({ name, domain }), ephemeral(), load(), or create() first.');
     }
     return this.agent;
   }
@@ -717,10 +797,53 @@ export class JacsClient {
   // ---------------------------------------------------------------------------
 
   trustAgent(agentJson: string): string { return nativeTrustAgent(agentJson); }
+  trustAgentWithKey(agentJson: string, publicKeyPem: string): string {
+    if (!publicKeyPem || !publicKeyPem.trim()) {
+      throw new Error('publicKeyPem cannot be empty');
+    }
+    return nativeTrustAgentWithKey(agentJson, publicKeyPem);
+  }
   listTrustedAgents(): string[] { return nativeListTrustedAgents(); }
   untrustAgent(agentId: string): void { nativeUntrustAgent(agentId); }
   isTrusted(agentId: string): boolean { return nativeIsTrusted(agentId); }
   getTrustedAgent(agentId: string): string { return nativeGetTrustedAgent(agentId); }
+
+  getPublicKey(): string {
+    if (!this.info) {
+      throw new Error('No agent loaded. Call quickstart({ name, domain }), ephemeral(), load(), or create() first.');
+    }
+    const keyPath = this.info.publicKeyPath;
+    if (!keyPath || !fs.existsSync(keyPath)) {
+      throw new Error(`Public key not found: ${keyPath}`);
+    }
+    return fs.readFileSync(keyPath, 'utf8');
+  }
+
+  exportAgent(): string {
+    if (!this.info) {
+      throw new Error('No agent loaded. Call quickstart({ name, domain }), ephemeral(), load(), or create() first.');
+    }
+    const configPath = path.resolve(this.info.configPath);
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const dataDir = resolveConfigRelativePath(
+      configPath,
+      config.jacs_data_directory || './jacs_data',
+    );
+    const agentIdVersion = config.jacs_agent_id_and_version || '';
+    const agentPath = path.join(dataDir, 'agent', `${agentIdVersion}.json`);
+    if (!fs.existsSync(agentPath)) {
+      throw new Error(`Agent file not found: ${agentPath}`);
+    }
+    return fs.readFileSync(agentPath, 'utf8');
+  }
+
+  sharePublicKey(): string {
+    return this.getPublicKey();
+  }
+
+  shareAgent(): string {
+    return this.exportAgent();
+  }
 
   // ---------------------------------------------------------------------------
   // Audit

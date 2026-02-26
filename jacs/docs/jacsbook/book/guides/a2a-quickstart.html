@@ -219,7 +219,7 @@
 <p><strong>Step 2:</strong> Sign artifacts before sending them:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 # Wrap your existing artifact payload
 signed = client.sign_artifact(your_existing_artifact, "task")
 # Send `signed` instead of the raw artifact
@@ -241,7 +241,7 @@ A: The remote agent's Agent Card does not include the <code>urn:jacs:provenance-
 <p><strong>Q: Verification returns <code>valid: true</code> but <code>trust.allowed: false</code>.</strong>
 A: The signature is cryptographically correct, but the trust policy rejected the signer. With <code>strict</code> policy, the signer must be in your local trust store. Add them with <code>a2a.trust_a2a_agent(card_json)</code>.</p>
 <p><strong>Q: <code>sign_artifact</code> raises "no agent loaded".</strong>
-A: Call <code>JacsClient.quickstart()</code> or <code>JacsClient(config_path=...)</code> before signing. The client must have a loaded agent with keys.</p>
+A: Call <code>JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")</code> or <code>JacsClient(config_path=...)</code> before signing. The client must have a loaded agent with keys.</p>
 <p><strong>Q: Agent Card export returns empty skills.</strong>
 A: Skills are derived from <code>jacsServices</code> in the agent definition. Pass <code>skills=[...]</code> to <code>export_agent_card()</code> to override, or define services when creating the agent.</p>
 <p><strong>Q: My existing A2A client doesn't understand the JACS fields.</strong>

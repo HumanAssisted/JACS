@@ -114,7 +114,8 @@ def register_jacs_tools(
             tools are registered. Valid names: ``sign_document``,
             ``verify_document``, ``sign_file``, ``verify_self``,
             ``create_agreement``, ``sign_agreement``,
-            ``check_agreement``, ``audit``, ``agent_info``.
+            ``check_agreement``, ``audit``, ``agent_info``,
+            ``share_public_key``, ``share_agent``.
 
     Returns:
         The mcp_server instance (for chaining).
@@ -141,6 +142,8 @@ def register_jacs_tools(
         "check_agreement": _make_check_agreement,
         "audit": _make_audit,
         "agent_info": _make_agent_info,
+        "share_public_key": _make_share_public_key,
+        "share_agent": _make_share_agent,
     }
 
     names_to_register = list(factories.keys()) if tools is None else tools
@@ -349,17 +352,60 @@ def _make_agent_info(mcp, cl):
         try:
             agent_json = cl.export_agent()
             parsed = json.loads(agent_json)
+            public_key_pem = ""
+            try:
+                public_key_pem = (
+                    cl.share_public_key()
+                    if hasattr(cl, "share_public_key")
+                    else cl.get_public_key()
+                )
+            except Exception:
+                public_key_pem = ""
             return json.dumps({
                 "success": True,
                 "agent_id": cl.agent_id,
                 "name": cl.name,
                 "agent_document": parsed,
+                "public_key_pem": public_key_pem,
             })
         except Exception as e:
             logger.warning("jacs_agent_info failed: %s", e)
             return _err(str(e))
 
     return jacs_agent_info
+
+
+def _make_share_public_key(mcp, cl):
+    @mcp.tool(
+        name="jacs_share_public_key",
+        description="Share this agent public key PEM for trust bootstrap and signature verification.",
+    )
+    def jacs_share_public_key() -> str:
+        try:
+            public_key_pem = cl.share_public_key() if hasattr(cl, "share_public_key") else cl.get_public_key()
+            return json.dumps({"success": True, "public_key_pem": public_key_pem})
+        except Exception as e:
+            logger.warning("jacs_share_public_key failed: %s", e)
+            return _err(str(e))
+
+    return jacs_share_public_key
+
+
+def _make_share_agent(mcp, cl):
+    @mcp.tool(
+        name="jacs_share_agent",
+        description="Share this agent self-signed JACS document for trust establishment.",
+    )
+    def jacs_share_agent() -> str:
+        try:
+            agent_json = cl.share_agent() if hasattr(cl, "share_agent") else cl.export_agent()
+            parsed = json.loads(agent_json)
+            return json.dumps({"success": True, "agent_json": parsed})
+        except Exception as e:
+            logger.warning("jacs_share_agent failed: %s", e)
+            return _err(str(e))
+
+    return jacs_share_agent
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +527,7 @@ def register_trust_tools(
 
     Tools registered:
         - ``jacs_trust_agent`` — Add an agent to the trust store.
+        - ``jacs_trust_agent_with_key`` — Add an agent with explicit public key verification.
         - ``jacs_untrust_agent`` — Remove an agent from the trust store.
         - ``jacs_list_trusted`` — List all trusted agent IDs.
         - ``jacs_is_trusted`` — Check if a specific agent is trusted.
@@ -508,6 +555,23 @@ def register_trust_tools(
             return json.dumps({"success": True, "result": result})
         except Exception as e:
             logger.warning("jacs_trust_agent failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_trust_agent_with_key",
+        description=(
+            "Add an agent to the trust store by verifying its document with an explicit public key PEM."
+        ),
+    )
+    def jacs_trust_agent_with_key(agent_json: str, public_key_pem: str) -> str:
+        try:
+            if hasattr(cl, "trust_agent_with_key"):
+                result = cl.trust_agent_with_key(agent_json, public_key_pem)
+            else:
+                raise RuntimeError("trust_agent_with_key is unavailable on this client")
+            return json.dumps({"success": True, "result": result})
+        except Exception as e:
+            logger.warning("jacs_trust_agent_with_key failed: %s", e)
             return _err(str(e))
 
     @mcp_server.tool(

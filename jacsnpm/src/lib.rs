@@ -951,6 +951,12 @@ pub fn trust_agent(agent_json: String) -> Result<String> {
     jacs_binding_core::trust_agent(&agent_json).to_napi()
 }
 
+/// Add an agent to the local trust store with an explicit public key.
+#[napi]
+pub fn trust_agent_with_key(agent_json: String, public_key_pem: String) -> Result<String> {
+    jacs_binding_core::trust_agent_with_key(&agent_json, &public_key_pem).to_napi()
+}
+
 /// List all trusted agent IDs.
 #[napi]
 pub fn list_trusted_agents() -> Result<Vec<String>> {

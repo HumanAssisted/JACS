@@ -180,22 +180,27 @@
 <h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
 <p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (local key cache by <code>publicKeyHash</code>), <code>dns</code> (DNS TXT fingerprint validation), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that yields verifiable key material is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
 <h2 id="zero-config-path"><a class="header" href="#zero-config-path">Zero-Config Path</a></h2>
-<p>If you just want to sign and verify without manual config setup, use <code>quickstart()</code>:</p>
+<p>If you just want to sign and verify without manual config setup, use <code>quickstart(name, domain, ...)</code>:</p>
 <pre><code class="language-python">import jacs.simple as jacs
-jacs.quickstart()  # Creates or loads ./jacs.config.json automatically
+info = jacs.quickstart(name="config-agent", domain="config.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
+const info = await jacs.quickstart({
+  name: 'config-agent',
+  domain: 'config.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 </code></pre>
-<pre><code class="language-bash">jacs quickstart  # CLI -- creates or loads ./jacs.config.json
+<pre><code class="language-bash">jacs quickstart --name config-agent --domain config.example.com
 </code></pre>
-<p>quickstart() creates a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to <code>./jacs_data</code>, <code>./jacs_keys</code>, and <code>./jacs.config.json</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> before calling quickstart (required). CLI users can also set <code>JACS_PASSWORD_FILE</code> to a password file path; set exactly one explicit source.</p>
+<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.</p>
 <h2 id="minimal-configuration"><a class="header" href="#minimal-configuration">Minimal Configuration</a></h2>
 <p>For persistent agents, a config file needs only two fields (plus <code>$schema</code>):</p>
 <pre><code class="language-json">{
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
 <p>All other settings use sensible defaults (<code>./jacs_data</code>, <code>./jacs_keys</code>, <code>fs</code> storage). Override only what you need.</p>
@@ -207,7 +212,7 @@ jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
   "jacs_key_directory": "./jacs_keys",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
   "jacs_agent_public_key_filename": "jacs.public.pem",
-  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_default_storage": "fs",
   "observability": {
     "logs": {
@@ -471,7 +476,7 @@ jacs.quickstart();  // Creates or loads ./jacs.config.json automatically
 <ul>
 <li><code>jacs_data_directory</code> - Where agent/document data is stored (default: <code>./jacs_data</code>)</li>
 <li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
-<li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>RSA-PSS</code>)</li>
+<li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>pq2025</code>)</li>
 <li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
 <li><code>jacs_use_security</code> / <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> - Enable filesystem quarantine of executable files (default: <code>false</code>). The env var <code>JACS_USE_SECURITY</code> is deprecated; use <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> instead.</li>
 </ul>

@@ -151,8 +151,13 @@ function createMockClient(overrides) {
       totalRequired: 2,
     }),
     trustAgent: sinon.stub().returns('trusted'),
+    trustAgentWithKey: sinon.stub().returns('trusted-with-key'),
     listTrustedAgents: sinon.stub().returns(['agent-b', 'agent-c']),
     isTrusted: sinon.stub().returns(true),
+    sharePublicKey: sinon.stub().returns('-----BEGIN PUBLIC KEY-----\nMOCK\n-----END PUBLIC KEY-----'),
+    getPublicKey: sinon.stub().returns('-----BEGIN PUBLIC KEY-----\nMOCK\n-----END PUBLIC KEY-----'),
+    shareAgent: sinon.stub().returns('{"jacsId":"agent-a:1"}'),
+    exportAgent: sinon.stub().returns('{"jacsId":"agent-a:1"}'),
     audit: sinon.stub().resolves({ status: 'ok', documents: 5 }),
     agentId: 'agent-a',
     name: 'test-agent',
@@ -473,12 +478,12 @@ describe('LangChain.js Adapter', function () {
   // =========================================================================
 
   describe('createJacsTools()', () => {
-    (available ? it : it.skip)('should return an array of 11 tools', () => {
+    (available ? it : it.skip)('should return an array of 14 tools', () => {
       const client = createMockClient();
       const tools = adapterModule.createJacsTools({ client });
 
       expect(tools).to.be.an('array');
-      expect(tools).to.have.length(11);
+      expect(tools).to.have.length(14);
     });
 
     (available ? it : it.skip)('should include all expected tool names', () => {
@@ -493,8 +498,11 @@ describe('LangChain.js Adapter', function () {
       expect(names).to.include('jacs_check_agreement');
       expect(names).to.include('jacs_verify_self');
       expect(names).to.include('jacs_trust_agent');
+      expect(names).to.include('jacs_trust_agent_with_key');
       expect(names).to.include('jacs_list_trusted');
       expect(names).to.include('jacs_is_trusted');
+      expect(names).to.include('jacs_share_public_key');
+      expect(names).to.include('jacs_share_agent');
       expect(names).to.include('jacs_audit');
       expect(names).to.include('jacs_agent_info');
     });
@@ -610,6 +618,23 @@ describe('LangChain.js Adapter', function () {
       expect(parsed.trustedAgents).to.deep.equal(['agent-b', 'agent-c']);
     });
 
+    (available ? it : it.skip)('jacs_trust_agent_with_key tool should call client.trustAgentWithKey', async () => {
+      const client = createMockClient();
+      const tools = adapterModule.createJacsTools({ client });
+      const trustTool = tools.find(t => t.name === 'jacs_trust_agent_with_key');
+
+      const result = await trustTool.invoke({
+        agentJson: '{"id":"agent-b"}',
+        publicKeyPem: '-----BEGIN PUBLIC KEY-----\\nMOCK\\n-----END PUBLIC KEY-----',
+      });
+      const parsed = JSON.parse(result);
+
+      expect(client.trustAgentWithKey.calledOnce).to.be.true;
+      expect(client.trustAgentWithKey.firstCall.args[0]).to.equal('{"id":"agent-b"}');
+      expect(client.trustAgentWithKey.firstCall.args[1]).to.contain('BEGIN PUBLIC KEY');
+      expect(parsed).to.have.property('success', true);
+    });
+
     (available ? it : it.skip)('jacs_is_trusted tool should call client.isTrusted', async () => {
       const client = createMockClient();
       const tools = adapterModule.createJacsTools({ client });
@@ -621,6 +646,32 @@ describe('LangChain.js Adapter', function () {
       expect(client.isTrusted.calledOnce).to.be.true;
       expect(parsed).to.have.property('agentId', 'agent-b');
       expect(parsed).to.have.property('trusted', true);
+    });
+
+    (available ? it : it.skip)('jacs_share_public_key tool should call client.sharePublicKey', async () => {
+      const client = createMockClient();
+      const tools = adapterModule.createJacsTools({ client });
+      const shareTool = tools.find(t => t.name === 'jacs_share_public_key');
+
+      const result = await shareTool.invoke({});
+      const parsed = JSON.parse(result);
+
+      expect(client.sharePublicKey.calledOnce).to.be.true;
+      expect(parsed).to.have.property('success', true);
+      expect(parsed.publicKeyPem).to.contain('BEGIN PUBLIC KEY');
+    });
+
+    (available ? it : it.skip)('jacs_share_agent tool should call client.shareAgent', async () => {
+      const client = createMockClient();
+      const tools = adapterModule.createJacsTools({ client });
+      const shareTool = tools.find(t => t.name === 'jacs_share_agent');
+
+      const result = await shareTool.invoke({});
+      const parsed = JSON.parse(result);
+
+      expect(client.shareAgent.calledOnce).to.be.true;
+      expect(parsed).to.have.property('success', true);
+      expect(parsed).to.have.property('agentJson', '{"jacsId":"agent-a:1"}');
     });
 
     (available ? it : it.skip)('jacs_audit tool should call client.audit', async () => {

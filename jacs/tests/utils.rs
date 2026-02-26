@@ -1,7 +1,7 @@
-use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
+use jacs::agent::Agent;
 use jacs::config::Config;
 use log::debug;
 use serde_json::json;
@@ -259,10 +259,12 @@ pub fn set_min_test_env_vars() {
     let fixtures_dir = fixtures_dir_string();
     let keys_dir = fixtures_keys_dir_string();
     unsafe {
+        env::set_var("JACS_USE_SECURITY", "false");
         env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_LEGACY);
         env::set_var("JACS_KEY_DIRECTORY", &keys_dir);
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
         env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
         // Fixture signatures are historical; disable iat skew enforcement in fixture-based tests.
         env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");

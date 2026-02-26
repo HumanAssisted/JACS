@@ -12,7 +12,7 @@ from jacs.adapters.fastapi import JacsMiddleware, jacs_route
 from jacs.client import JacsClient
 
 # Create a JACS client (auto-creates keys if none exist)
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="http-server", domain="server.local")
 
 app = FastAPI(title="JACS Signed API")
 

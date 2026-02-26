@@ -165,8 +165,14 @@ impl Drop for ScopedTempCwd {
 fn create_test_agent(algorithm: &str) -> SimpleAgent {
     let _scope = ScopedTempCwd::enter(&format!("jacs_structlog_test_{}", algorithm));
 
-    let (agent, _info) =
-        SimpleAgent::quickstart(Some(algorithm), None).expect("quickstart should succeed");
+    let (agent, _info) = SimpleAgent::quickstart(
+        "structured-log-agent",
+        "structured-log.example.com",
+        Some("Structured logging test agent"),
+        Some(algorithm),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     agent
 }
@@ -325,8 +331,14 @@ fn test_agreement_created_event() {
     let _password = PasswordEnvGuard::set();
     let _scope = ScopedTempCwd::enter("jacs_structlog_agreement");
 
-    let (agent, info) =
-        SimpleAgent::quickstart(Some("ed25519"), None).expect("quickstart should succeed");
+    let (agent, info) = SimpleAgent::quickstart(
+        "structured-log-agreement-agent",
+        "agreement.example.com",
+        Some("Agreement structured logging test agent"),
+        Some("ed25519"),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     // Use agent_id from the quickstart info
     let agent_id = info.agent_id.clone();
@@ -368,8 +380,14 @@ fn test_signature_added_and_quorum_events() {
     let _password = PasswordEnvGuard::set();
     let _scope = ScopedTempCwd::enter("jacs_structlog_sig_added");
 
-    let (agent, info) =
-        SimpleAgent::quickstart(Some("ed25519"), None).expect("quickstart should succeed");
+    let (agent, info) = SimpleAgent::quickstart(
+        "structured-log-signature-agent",
+        "signature.example.com",
+        Some("Signature structured logging test agent"),
+        Some("ed25519"),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     let agent_id = info.agent_id.clone();
 

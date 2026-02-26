@@ -257,7 +257,7 @@ impl KeyManager for Agent {
             let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
                 let raw = binding.expose_secret().clone();
                 let ks: Box<dyn KeyStore> = if has_key_store {
-                    let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                    let algo = stored_algo.as_deref().unwrap_or("pq2025");
                     Box::new(crate::keystore::InMemoryKeyStore::new(algo))
                 } else {
                     Box::new(FsEncryptedStore)
@@ -352,7 +352,7 @@ impl KeyManager for Agent {
         let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
             let raw = binding.expose_secret().clone();
             let ks: Box<dyn KeyStore> = if has_key_store {
-                let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                let algo = stored_algo.as_deref().unwrap_or("pq2025");
                 Box::new(crate::keystore::InMemoryKeyStore::new(algo))
             } else {
                 Box::new(FsEncryptedStore)

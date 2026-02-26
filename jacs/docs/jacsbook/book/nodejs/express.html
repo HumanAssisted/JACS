@@ -184,7 +184,10 @@
 <h3 id="2-create-a-jacs-client"><a class="header" href="#2-create-a-jacs-client">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-add-signing-middleware"><a class="header" href="#3-add-signing-middleware">3. Add signing middleware</a></h3>
 <pre><code class="language-typescript">import express from 'express';
@@ -207,7 +210,10 @@ app.listen(3000);
 import { JacsClient } from '@hai.ai/jacs/client';
 import { jacsMiddleware } from '@hai.ai/jacs/express';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = express();
 
 app.use(express.text({ type: 'application/json' }));
@@ -235,7 +241,7 @@ app.listen(3000);
   };
 })
 </code></pre>
-<p>If neither <code>client</code> nor <code>configPath</code> is provided, the middleware calls <code>JacsClient.quickstart()</code> on first request.</p>
+<p>If neither <code>client</code> nor <code>configPath</code> is provided, the middleware initializes a client with <code>JacsClient.quickstart({ name: 'jacs-express', domain: 'localhost' })</code> on first request.</p>
 <h2 id="what-the-middleware-does"><a class="header" href="#what-the-middleware-does">What the Middleware Does</a></h2>
 <p><strong>Every request</strong> gets <code>req.jacsClient</code> -- a <code>JacsClient</code> instance you can use for manual signing/verification in route handlers.</p>
 <p><strong>POST/PUT/PATCH with <code>verify: true</code></strong> (default): The string body is verified as a JACS document. On success, <code>req.jacsPayload</code> contains the extracted payload. On failure, a 401 is returned (unless <code>optional: true</code>).</p>
@@ -324,8 +330,16 @@ app.post('/api/secure', (req, res) =&gt; {
 </code></pre>
 <h2 id="multiple-agents"><a class="header" href="#multiple-agents">Multiple Agents</a></h2>
 <p>Use different <code>JacsClient</code> instances per route group:</p>
-<pre><code class="language-typescript">const adminClient = await JacsClient.quickstart({ algorithm: 'pq2025' });
-const userClient = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+<pre><code class="language-typescript">const adminClient = await JacsClient.quickstart({
+  name: 'admin-agent',
+  domain: 'admin.example.com',
+  algorithm: 'pq2025',
+});
+const userClient = await JacsClient.quickstart({
+  name: 'user-agent',
+  domain: 'user.example.com',
+  algorithm: 'ring-Ed25519',
+});
 
 app.use('/admin', express.text({ type: 'application/json' }));
 app.use('/admin', jacsMiddleware({ client: adminClient }));

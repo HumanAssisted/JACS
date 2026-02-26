@@ -11,7 +11,10 @@
  * import { JacsClient } from './client';
  * import { jacsKoaMiddleware } from './koa';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'koa-agent',
+ *   domain: 'koa.local',
+ * });
  * const app = new Koa();
  * app.use(bodyParser({ enableTypes: ['text'] }));
  * app.use(jacsKoaMiddleware({ client, verify: true }));
@@ -91,7 +94,11 @@ async function resolveClient(options: JacsKoaMiddlewareOptions): Promise<JacsCli
     return client;
   }
 
-  return ClientCtor.quickstart();
+  return ClientCtor.quickstart({
+    name: 'jacs-koa',
+    domain: 'localhost',
+    description: 'JACS Koa middleware agent',
+  });
 }
 
 // =============================================================================

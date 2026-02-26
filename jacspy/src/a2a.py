@@ -400,7 +400,7 @@ class JACSA2AIntegration:
             Dictionary mapping paths to document contents
         """
         documents = {}
-        key_algorithm = agent_data.get("keyAlgorithm", "RSA-PSS")
+        key_algorithm = agent_data.get("keyAlgorithm", "pq2025")
         post_quantum = any(
             marker in str(key_algorithm).lower()
             for marker in ["pq2025", "ml-dsa"]

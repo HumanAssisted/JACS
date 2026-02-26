@@ -11,7 +11,10 @@
  * const { JacsClient } = require('jacs/client');
  * const { jacsA2AMiddleware } = require('jacs/a2a-server');
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'a2a-agent',
+ *   domain: 'a2a.local',
+ * });
  * const app = express();
  * app.use(jacsA2AMiddleware(client, {
  *   skills: [{ id: 'search', name: 'Search', description: 'Search the web', tags: ['search'] }],

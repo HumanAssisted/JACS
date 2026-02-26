@@ -16,12 +16,16 @@ const signed = jacs.signMessageSync({ action: 'approve' });
 
 ## Quick Start
 
-Zero-config -- one call to start signing:
+Quickstart -- one call (with required `name`/`domain`) to start signing:
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-await jacs.quickstart();
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
@@ -54,7 +58,7 @@ Every function that calls into NAPI has both async (default) and sync variants:
 
 | Function | Sync Variant | Description |
 |----------|-------------|-------------|
-| `quickstart(options?)` | `quickstartSync(options?)` | Create a persistent agent with keys on disk |
+| `quickstart(options)` | `quickstartSync(options)` | Create a persistent agent with keys on disk |
 | `create(options)` | `createSync(options)` | Create a new agent programmatically |
 | `load(configPath)` | `loadSync(configPath)` | Load agent from config file |
 | `verifySelf()` | `verifySelfSync()` | Verify agent's own integrity |
@@ -88,31 +92,45 @@ Pure sync functions (no NAPI call, no suffix needed):
 
 ---
 
-### quickstart(options?)
+### quickstart(options)
 
-Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. `JACS_PRIVATE_KEY_PASSWORD` must be set before calling this. Call this once before `signMessage()` or `verify()`.
+Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is unset, Node quickstart auto-generates a secure password in-process (`JACS_SAVE_PASSWORD_FILE=true` persists it to `./jacs_keys/.jacs_password`). Call this once before `signMessage()` or `verify()`.
 
 **Parameters:**
-- `options` (object, optional): `{ algorithm?: string }`. Default algorithm: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.
+- `options` (object, required fields): `{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }`. Default algorithm: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.
 
 **Returns:** `Promise<AgentInfo>` (async) or `AgentInfo` (sync)
 
 ```javascript
-const info = await jacs.quickstart();
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 console.log(`Agent ID: ${info.agentId}`);
+console.log(`Config path: ${info.configPath}`);
+console.log(`Public key: ${info.publicKeyPath}`);
+console.log(`Private key: ${info.privateKeyPath}`);
 
 // Or with a specific algorithm
-const info = await jacs.quickstart({ algorithm: 'ring-Ed25519' });
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+  algorithm: 'ring-Ed25519',
+});
 
 // Sync variant (blocks event loop)
-const info = jacs.quickstartSync({ algorithm: 'ring-Ed25519' });
+const info = jacs.quickstartSync({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+  algorithm: 'ring-Ed25519',
+});
 ```
 
 ---
 
 ### load(configPath?)
 
-Load a persistent agent from a configuration file. Use this instead of `quickstart()` when you want to load a specific config file explicitly.
+Load a persistent agent from a configuration file. Use this instead of `quickstart(options)` when you want to load a specific config file explicitly.
 
 **Parameters:**
 - `configPath` (string, optional): Path to jacs.config.json (default: "./jacs.config.json")

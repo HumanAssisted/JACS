@@ -41,11 +41,18 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
     fs::create_dir_all(&tmp).expect("create temp dir");
 
     let original_cwd = std::env::current_dir().expect("get cwd");
-    unsafe { std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD") };
+    let previous_password = std::env::var_os("JACS_PRIVATE_KEY_PASSWORD");
+    unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "CrossLangA2AP@ssw0rd!2026") };
     std::env::set_current_dir(&tmp).expect("cd to temp");
 
-    let (agent, info) =
-        SimpleAgent::quickstart(Some(algorithm), None).expect("quickstart should succeed");
+    let (agent, info) = SimpleAgent::quickstart(
+        "a2a-cross-language-agent",
+        "a2a-cross-language.example.com",
+        Some("A2A cross-language fixture agent"),
+        Some(algorithm),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     // 1. Export Agent Card
     let agent_card = agent.export_agent_card().expect("export agent card");
@@ -117,6 +124,11 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
 
     // Restore cwd before writing fixtures
     std::env::set_current_dir(&original_cwd).expect("restore cwd");
+    if let Some(value) = previous_password {
+        unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", value) };
+    } else {
+        unsafe { std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD") };
+    }
 
     // Write all fixtures
     let out = fixtures_dir();

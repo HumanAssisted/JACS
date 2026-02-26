@@ -169,6 +169,9 @@ class JACSA2AIntegration:
     @classmethod
     def quickstart(
         cls,
+        name: str = "jacs-agent",
+        domain: str = "localhost",
+        description: Optional[str] = None,
         algorithm: Optional[str] = None,
         config_path: Optional[str] = None,
         url: Optional[str] = None,
@@ -176,15 +179,18 @@ class JACSA2AIntegration:
         """One-liner to create a ready-to-use A2A integration.
 
         Creates (or loads) a persistent JACS agent via
-        ``JacsClient.quickstart()`` and wires it into a new
+        ``JacsClient.quickstart(name=..., domain=...)`` and wires it into a new
         ``JACSA2AIntegration``.
 
         Example::
 
-            a2a = JACSA2AIntegration.quickstart()
+            a2a = JACSA2AIntegration.quickstart(name="a2a-agent", domain="a2a.local")
             card = a2a.export_agent_card(agent_data)
 
         Args:
+            name: Agent name for first-time quickstart creation.
+            domain: Agent domain for DNS/public-key verification workflows.
+            description: Optional human-readable agent description.
             algorithm: Signing algorithm (default ``"pq2025"``).
             config_path: Path to the JACS config file.
                 Defaults to ``"./jacs.config.json"``.
@@ -193,6 +199,9 @@ class JACSA2AIntegration:
         from .client import JacsClient
 
         client = JacsClient.quickstart(
+            name=name,
+            domain=domain,
+            description=description,
             algorithm=algorithm,
             config_path=config_path,
         )
@@ -658,7 +667,7 @@ class JACSA2AIntegration:
             Dictionary mapping paths to document contents
         """
         documents = {}
-        key_algorithm = agent_data.get("keyAlgorithm", "RSA-PSS")
+        key_algorithm = agent_data.get("keyAlgorithm", "pq2025")
         post_quantum = any(
             marker in str(key_algorithm).lower()
             for marker in ["pq2025", "ml-dsa"]

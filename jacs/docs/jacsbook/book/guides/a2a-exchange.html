@@ -184,7 +184,7 @@
 <h3 id="sign-and-verify"><a class="header" href="#sign-and-verify">Sign and Verify</a></h3>
 <pre><code class="language-python">from jacs.client import JacsClient
 
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Sign an artifact
 signed = client.sign_artifact({"action": "classify", "input": "data"}, "task")
@@ -224,7 +224,10 @@ assert result["parent_signatures_valid"]
 <h3 id="sign-and-verify-1"><a class="header" href="#sign-and-verify-1">Sign and Verify</a></h3>
 <pre><code class="language-javascript">const { JacsClient } = require('@hai.ai/jacs/client');
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 
 // Sign an artifact
 const signed = await client.signArtifact({ action: 'classify', input: 'data' }, 'task');

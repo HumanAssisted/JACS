@@ -30,6 +30,13 @@ export interface AgentInfo {
     name: string;
     publicKeyPath: string;
     configPath: string;
+    version?: string;
+    algorithm?: string;
+    privateKeyPath?: string;
+    dataDirectory?: string;
+    keyDirectory?: string;
+    domain?: string;
+    dnsRecord?: string;
 }
 export interface SignedDocument {
     raw: string;
@@ -58,6 +65,9 @@ export interface LoadOptions {
 }
 export declare function isStrict(): boolean;
 export interface QuickstartOptions {
+    name: string;
+    domain: string;
+    description?: string;
     algorithm?: string;
     strict?: boolean;
     configPath?: string;
@@ -67,16 +77,22 @@ export interface QuickstartInfo {
     name: string;
     version: string;
     algorithm: string;
+    configPath: string;
+    keyDirectory: string;
+    dataDirectory: string;
+    publicKeyPath: string;
+    privateKeyPath: string;
+    domain: string;
 }
 /**
- * Zero-config quickstart: loads or creates a persistent agent.
+ * Quickstart: loads or creates a persistent agent.
  * @returns Promise<QuickstartInfo>
  */
-export declare function quickstart(options?: QuickstartOptions): Promise<QuickstartInfo>;
+export declare function quickstart(options: QuickstartOptions): Promise<QuickstartInfo>;
 /**
- * Zero-config quickstart (sync variant, blocks event loop).
+ * Quickstart (sync variant, blocks event loop).
  */
-export declare function quickstartSync(options?: QuickstartOptions): QuickstartInfo;
+export declare function quickstartSync(options: QuickstartOptions): QuickstartInfo;
 export interface CreateAgentOptions {
     name: string;
     password?: string;
@@ -179,6 +195,8 @@ export declare function reencryptKey(oldPassword: string, newPassword: string): 
 export declare function reencryptKeySync(oldPassword: string, newPassword: string): void;
 export declare function getPublicKey(): string;
 export declare function exportAgent(): string;
+export declare function sharePublicKey(): string;
+export declare function shareAgent(): string;
 export declare function getAgentInfo(): AgentInfo | null;
 export declare function isLoaded(): boolean;
 export declare function debugInfo(): Record<string, unknown>;
@@ -208,6 +226,7 @@ export declare function signAgreementSync(document: any, fieldName?: string): Si
 export declare function checkAgreement(document: any, fieldName?: string): Promise<AgreementStatus>;
 export declare function checkAgreementSync(document: any, fieldName?: string): AgreementStatus;
 export declare function trustAgent(agentJson: string): string;
+export declare function trustAgentWithKey(agentJson: string, publicKeyPem: string): string;
 export declare function listTrustedAgents(): string[];
 export declare function untrustAgent(agentId: string): void;
 export declare function isTrusted(agentId: string): boolean;

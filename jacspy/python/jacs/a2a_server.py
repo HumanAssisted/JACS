@@ -12,7 +12,7 @@ Usage — mount into an existing app::
     from jacs.a2a_server import jacs_a2a_routes
 
     app = FastAPI()
-    client = JacsClient.quickstart()
+    client = JacsClient.quickstart(name="a2a-agent", domain="a2a.local")
     app.include_router(jacs_a2a_routes(client))
 
 Usage — standalone server::
@@ -20,7 +20,7 @@ Usage — standalone server::
     from jacs.client import JacsClient
     from jacs.a2a_server import serve_a2a
 
-    client = JacsClient.quickstart()
+    client = JacsClient.quickstart(name="a2a-agent", domain="a2a.local")
     serve_a2a(client, port=8080)
 
 Requires ``fastapi`` and ``uvicorn``. Install with ``pip install jacs[a2a-server]``.

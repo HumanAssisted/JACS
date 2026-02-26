@@ -10,7 +10,7 @@ Example:
     from jacs.adapters.crewai import jacs_guardrail, JacsSignedTool
     from jacs.client import JacsClient
 
-    client = JacsClient.quickstart()
+    client = JacsClient.quickstart(name="crewai-agent", domain="crewai.local")
 
     # Task guardrail that signs every output
     task = Task(

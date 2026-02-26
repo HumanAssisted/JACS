@@ -54,7 +54,12 @@ class BaseJacsAdapter:
             if config_path is not None:
                 self._client = JacsClient(config_path=config_path, strict=strict)
             else:
-                self._client = JacsClient.quickstart(strict=strict)
+                self._client = JacsClient.quickstart(
+                    name="jacs-adapter",
+                    domain="localhost",
+                    description="JACS framework adapter agent",
+                    strict=strict,
+                )
 
     @property
     def client(self) -> Any:

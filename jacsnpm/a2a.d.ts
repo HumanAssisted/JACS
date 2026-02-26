@@ -143,6 +143,8 @@ export interface TrustAssessment {
 export interface A2AQuickstartOptions {
     url?: string;
     name?: string;
+    domain?: string;
+    description?: string;
     skills?: Array<{
         id: string;
         name: string;

@@ -26,6 +26,7 @@ See [Use cases](usecases.md) for deployment-oriented narratives.
 - **Auditability and versioning** through immutable signatures and document history
 - **Storage flexibility** across local storage and database-backed deployments
 - **MCP and A2A integration** for both intra-app and cross-boundary agent workflows
+- **Trust bootstrap primitives** (`share_public_key`, `share_agent`, `trust_agent_with_key`) for explicit key exchange handshakes
 - **Observability hooks** for production operations
 - **Cross-language implementations** in Rust, Node.js, Python, and Go
 
@@ -66,7 +67,7 @@ JACS is designed to work with existing standards instead of replacing them:
 ### Rust CLI
 ```bash
 cargo install jacs --features cli
-jacs init
+jacs quickstart --name my-agent --domain my-agent.example.com
 ```
 
 ### Node.js
@@ -83,6 +84,8 @@ pip install jacs
 ```bash
 go get github.com/HumanAssisted/JACS/jacsgo
 ```
+
+Quickstart in Rust/Node/Python requires an agent name and domain. Returned `AgentInfo` includes config/key file paths for operational visibility.
 
 ## Identity Model (Including DID)
 

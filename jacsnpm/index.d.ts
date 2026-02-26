@@ -13,6 +13,8 @@ export declare function createAgentSync(name: string, password: string, algorith
 export declare function createAgent(name: string, password: string, algorithm?: string | undefined | null, dataDirectory?: string | undefined | null, keyDirectory?: string | undefined | null, configPath?: string | undefined | null, agentType?: string | undefined | null, description?: string | undefined | null, domain?: string | undefined | null, defaultStorage?: string | undefined | null): Promise<string>
 /** Add an agent to the local trust store. */
 export declare function trustAgent(agentJson: string): string
+/** Add an agent to the local trust store with an explicit public key PEM. */
+export declare function trustAgentWithKey(agentJson: string, publicKeyPem: string): string
 /** List all trusted agent IDs. */
 export declare function listTrustedAgents(): Array<string>
 /** Remove an agent from the trust store. */

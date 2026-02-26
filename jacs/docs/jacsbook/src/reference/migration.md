@@ -67,15 +67,15 @@ The `@hai.ai/jacs/simple` module follows the same pattern:
 
 ```javascript
 // v0.6.x
-jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 async (recommended)
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 sync
-jacs.quickstartSync();
+jacs.quickstartSync({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessageSync({ action: 'approve' });
 ```
 

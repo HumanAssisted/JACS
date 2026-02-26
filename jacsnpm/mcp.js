@@ -128,7 +128,7 @@ function extractNativeAgent(clientOrAgent) {
     // JacsClient - access the private native agent at runtime
     const native = clientOrAgent.agent;
     if (!native) {
-        throw new Error('JacsClient has no loaded agent. Call quickstart(), ephemeral(), load(), or create() before wrapping with JACSTransportProxy.');
+        throw new Error('JacsClient has no loaded agent. Call quickstart({ name, domain }), ephemeral(), load(), or create() before wrapping with JACSTransportProxy.');
     }
     return native;
 }
@@ -414,6 +414,16 @@ function getJacsMcpToolDefinitions() {
             inputSchema: { type: 'object', properties: {} },
         },
         {
+            name: 'jacs_share_public_key',
+            description: 'Share this agent public key PEM for trust bootstrap and signature verification.',
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'jacs_share_agent',
+            description: 'Share this agent self-signed JACS document for trust establishment.',
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
             name: 'fetch_agent_key',
             description: 'Fetch an agent public key from the registry when it is not available locally.',
             inputSchema: {
@@ -458,6 +468,18 @@ function getJacsMcpToolDefinitions() {
                     agent_json: { type: 'string', description: 'Agent JSON document to trust' },
                 },
                 required: ['agent_json'],
+            },
+        },
+        {
+            name: 'jacs_trust_agent_with_key',
+            description: 'Add an agent to the trust store by verifying the agent document with an explicit public key PEM.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agent_json: { type: 'string', description: 'Agent JSON document to trust' },
+                    public_key_pem: { type: 'string', description: 'PEM-encoded public key for self-signature verification' },
+                },
+                required: ['agent_json', 'public_key_pem'],
             },
         },
         {
@@ -576,8 +598,21 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 catch { /* ok */ }
                 return text(JSON.stringify({
                     agentId: client.agentId, name: client.name,
-                    strict: client.strict, diagnostics,
+                    strict: client.strict,
+                    diagnostics,
                 }));
+            }
+            case 'jacs_share_public_key': {
+                const publicKey = client.sharePublicKey
+                    ? client.sharePublicKey()
+                    : client.getPublicKey();
+                return text(JSON.stringify({ success: true, publicKeyPem: publicKey }));
+            }
+            case 'jacs_share_agent': {
+                const agentJson = client.shareAgent
+                    ? client.shareAgent()
+                    : client.exportAgent();
+                return text(JSON.stringify({ success: true, agentJson }));
             }
             case 'fetch_agent_key': {
                 const baseUrl = resolveKeysBaseUrl(args.base_url);
@@ -623,6 +658,10 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 const result = client.trustAgent(args.agent_json);
                 return text(JSON.stringify({ success: true, result }));
             }
+            case 'jacs_trust_agent_with_key': {
+                const result = client.trustAgentWithKey(args.agent_json, args.public_key_pem);
+                return text(JSON.stringify({ success: true, result }));
+            }
             case 'jacs_list_trusted': {
                 const agents = client.listTrustedAgents();
                 return text(JSON.stringify({ success: true, trustedAgents: agents }));
@@ -660,7 +699,10 @@ async function handleJacsMcpToolCall(client, toolName, args) {
  *   { name: 'my-server', version: '1.0.0' },
  *   { capabilities: { tools: {} } },
  * );
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'mcp-agent',
+ *   domain: 'mcp.local',
+ * });
  * registerJacsTools(server, client);
  * ```
  */

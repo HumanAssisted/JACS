@@ -60,22 +60,30 @@ Or via environment variable:
 export JACS_AGENT_KEY_ALGORITHM=pq2025
 ```
 
-Valid values: `ring-Ed25519`, `RSA-PSS`, `pq2025`, `pq-dilithium`
+Valid values: `ring-Ed25519`, `RSA-PSS`, `pq2025`
 
-In Python and Node.js, pass the algorithm to `quickstart()`:
+In Python and Node.js, pass the algorithm to `quickstart(...)`:
 
 ```python
 from jacs.client import JacsClient
-client = JacsClient.quickstart(algorithm="pq2025")
+client = JacsClient.quickstart(
+    name="algo-agent",
+    domain="algo.example.com",
+    algorithm="pq2025",
+)
 ```
 
 ```typescript
 import { JacsClient } from "@hai.ai/jacs";
-const client = await JacsClient.quickstart({ algorithm: "pq2025" });
+const client = await JacsClient.quickstart({
+  name: "algo-agent",
+  domain: "algo.example.com",
+  algorithm: "pq2025",
+});
 ```
 
 ## Current Limitations
 
 - Each agent uses one algorithm, chosen at creation time. You cannot change an agent's algorithm after creation.
 - Algorithm negotiation between agents is planned but not yet implemented.
-- `pq-dilithium` is deprecated in favor of `pq2025` (ML-DSA-87). It remains available for backward compatibility but should not be used for new agents.
+- `pq-dilithium` is deprecated in favor of `pq2025` (ML-DSA-87). Use `pq2025` for new agents and verification hints.

@@ -35,7 +35,13 @@ class TestQuickstart:
 
         a2a = JACSA2AIntegration.quickstart()
 
-        mock_qs.assert_called_once_with(algorithm=None, config_path=None)
+        mock_qs.assert_called_once_with(
+            name="jacs-agent",
+            domain="localhost",
+            description=None,
+            algorithm=None,
+            config_path=None,
+        )
         assert isinstance(a2a, JACSA2AIntegration)
         assert a2a.client is mock_client
 
@@ -45,7 +51,13 @@ class TestQuickstart:
 
         JACSA2AIntegration.quickstart(algorithm="ed25519", config_path="/tmp/c.json")
 
-        mock_qs.assert_called_once_with(algorithm="ed25519", config_path="/tmp/c.json")
+        mock_qs.assert_called_once_with(
+            name="jacs-agent",
+            domain="localhost",
+            description=None,
+            algorithm="ed25519",
+            config_path="/tmp/c.json",
+        )
 
     @patch("jacs.client.JacsClient.quickstart")
     def test_quickstart_stores_url(self, mock_qs):

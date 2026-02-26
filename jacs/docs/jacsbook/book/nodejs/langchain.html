@@ -187,7 +187,10 @@
 <h3 id="2-create-a-jacs-client"><a class="header" href="#2-create-a-jacs-client">2. Create a JACS client</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 </code></pre>
 <h3 id="3-sign-tool-outputs"><a class="header" href="#3-sign-tool-outputs">3. Sign tool outputs</a></h3>
 <pre><code class="language-typescript">import { signedTool } from '@hai.ai/jacs/langchain';
@@ -208,7 +211,10 @@ const llmWithTools = model.bindTools(allTools);
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 import { createJacsTools } from '@hai.ai/jacs/langchain';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const jacsTools = createJacsTools({ client });
 
 // Combine with your own tools and bind to an LLM

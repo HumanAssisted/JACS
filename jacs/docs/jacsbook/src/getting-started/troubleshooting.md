@@ -25,7 +25,7 @@ The default wheels and binaries target glibc. On Alpine or other musl-based syst
 
 ### Config not found
 
-Run `jacs quickstart` to auto-create a config, or copy the example:
+Run `jacs quickstart --name my-agent --domain my-agent.example.com` to auto-create a config, or copy the example:
 
 ```bash
 cp jacs.config.example.json jacs.config.json
@@ -37,7 +37,7 @@ Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For CLI, you may a
 
 ### Algorithm detection failed
 
-Set the `signingAlgorithm` field in your config, or pass it explicitly to `quickstart()` / `create()`. Valid values: `pq2025`, `ring-Ed25519`, `ring-RSA`.
+Set the `signingAlgorithm` field in your config, or pass it explicitly to `quickstart(...)` / `create(...)`. Valid values: `pq2025`, `ring-Ed25519`, `RSA-PSS`.
 
 ## Runtime Issues
 

@@ -276,6 +276,8 @@ export interface TrustAssessment {
 export interface A2AQuickstartOptions {
   url?: string;
   name?: string;
+  domain?: string;
+  description?: string;
   skills?: Array<{ id: string; name: string; description: string; tags: string[] }>;
   trustPolicy?: TrustPolicy;
   algorithm?: string;
@@ -322,7 +324,7 @@ export class JACSA2AIntegration {
   }
 
   static async quickstart(options: A2AQuickstartOptions = {}): Promise<JACSA2AIntegration> {
-    const { url, name, skills, trustPolicy, algorithm, configPath } = options;
+    const { url, name, domain, description, skills, trustPolicy, algorithm, configPath } = options;
     let JacsClientCtor: typeof JacsClient;
     try {
       JacsClientCtor = require('./client').JacsClient;
@@ -330,10 +332,20 @@ export class JACSA2AIntegration {
       JacsClientCtor = require('./client.js').JacsClient;
     }
 
+    const derivedDomain = domain || (url ? (() => {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return 'localhost';
+      }
+    })() : 'localhost');
+
     const client = await JacsClientCtor.quickstart({
       algorithm: algorithm || undefined,
       configPath: configPath || undefined,
-      name: name || undefined,
+      name: name || 'jacs-agent',
+      domain: derivedDomain,
+      description: description || 'JACS A2A agent',
     } as any);
 
     const integration = new JACSA2AIntegration(client, trustPolicy || DEFAULT_TRUST_POLICY);
@@ -647,7 +659,7 @@ export class JACSA2AIntegration {
     agentData: AgentData,
   ): Record<string, Record<string, unknown>> {
     const documents: Record<string, Record<string, unknown>> = {};
-    const keyAlgorithm = agentData.keyAlgorithm || 'RSA-PSS';
+    const keyAlgorithm = agentData.keyAlgorithm || 'pq2025';
     const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);
 
     const cardObj = JSON.parse(JSON.stringify(agentCard));

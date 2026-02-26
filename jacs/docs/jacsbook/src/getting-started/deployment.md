@@ -37,7 +37,7 @@ FROM python:3.12-slim
 RUN pip install jacs
 COPY . /app
 WORKDIR /app
-RUN python -c "import jacs.simple as j; j.quickstart()"
+RUN python -c "import jacs.simple as j; j.quickstart(name='docker-agent', domain='docker.local')"
 CMD ["python", "main.py"]
 ```
 

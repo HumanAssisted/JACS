@@ -18,7 +18,10 @@ npm install @hai.ai/jacs @langchain/core
 ```typescript
 import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 ```
 
 ### 3. Sign tool outputs
@@ -50,7 +53,10 @@ const llmWithTools = model.bindTools(allTools);
 import { JacsClient } from '@hai.ai/jacs/client';
 import { createJacsTools } from '@hai.ai/jacs/langchain';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const jacsTools = createJacsTools({ client });
 
 // Combine with your own tools and bind to an LLM

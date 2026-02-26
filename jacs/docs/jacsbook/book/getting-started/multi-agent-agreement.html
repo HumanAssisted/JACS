@@ -185,9 +185,24 @@
 <pre><code class="language-python">from jacs.client import JacsClient
 
 # Step 1: Create three agents (one per organization)
-finance    = JacsClient.quickstart("ring-Ed25519", "./finance.config.json")
-compliance = JacsClient.quickstart("ring-Ed25519", "./compliance.config.json")
-legal      = JacsClient.quickstart("ring-Ed25519", "./legal.config.json")
+finance = JacsClient.quickstart(
+    name="finance",
+    domain="finance.example.com",
+    algorithm="ring-Ed25519",
+    config_path="./finance.config.json",
+)
+compliance = JacsClient.quickstart(
+    name="compliance",
+    domain="compliance.example.com",
+    algorithm="ring-Ed25519",
+    config_path="./compliance.config.json",
+)
+legal = JacsClient.quickstart(
+    name="legal",
+    domain="legal.example.com",
+    algorithm="ring-Ed25519",
+    config_path="./legal.config.json",
+)
 
 # Step 2: Finance proposes an agreement with quorum
 from datetime import datetime, timedelta, timezone
