@@ -1,0 +1,24 @@
+From: attacker@example.com
+To: recipient@example.com
+Subject: Fixture 20 From Registry Email Mismatch
+Date: Fri, 27 Feb 2026 12:19:00 +0000
+Message-ID: <fixture-20@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F20
+X-Expected-Result: fail
+X-Expected-Reason: from_header_must_match_registry_email_for_issuer
+X-Mock-Registry-Jacs-Id: 11111111-1111-1111-1111-111111111111
+X-Mock-Registry-Email: agent@example.com
+Content-Type: multipart/mixed; boundary="f20"
+
+--f20
+Content-Type: text/plain; charset=utf-8
+
+From/registry mismatch fixture.
+
+--f20
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-20","created_at":"2026-02-27T12:19:00Z","hash":"sha256:meta20"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:19:00Z"}}
+--f20--

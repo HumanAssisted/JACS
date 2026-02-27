@@ -1,0 +1,22 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: =?UTF-8?B?Rml4dHVyZSAxNCBDYWbDqQ==?=
+Date: Fri, 27 Feb 2026 12:13:00 +0000
+Message-ID: <fixture-14@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F14
+X-Expected-Result: pass
+X-Expected-Reason: unicode_nfc_subject
+Content-Type: multipart/mixed; boundary="f14"
+
+--f14
+Content-Type: text/plain; charset=utf-8
+
+NFC subject form fixture.
+
+--f14
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-14","created_at":"2026-02-27T12:13:00Z","hash":"sha256:meta14"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:13:00Z"}}
+--f14--

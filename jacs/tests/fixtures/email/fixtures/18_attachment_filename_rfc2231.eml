@@ -1,0 +1,29 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Fixture 18 RFC2231 Filename
+Date: Fri, 27 Feb 2026 12:17:00 +0000
+Message-ID: <fixture-18@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F18
+X-Expected-Result: pass
+X-Expected-Reason: rfc2231_filename_decode_nfc
+Content-Type: multipart/mixed; boundary="f18"
+
+--f18
+Content-Type: text/plain; charset=utf-8
+
+RFC2231 filename fixture.
+
+--f18
+Content-Type: text/plain; name*="UTF-8''caf%C3%A9.txt"
+Content-Disposition: attachment; filename*="UTF-8''caf%C3%A9.txt"
+Content-Transfer-Encoding: base64
+
+Q2FmZSBmaWxlIGNvbnRlbnQuCg==
+
+--f18
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-18","created_at":"2026-02-27T12:17:00Z","hash":"sha256:meta18"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:17:00Z"}}
+--f18--

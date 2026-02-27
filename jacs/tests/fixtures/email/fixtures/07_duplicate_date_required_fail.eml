@@ -1,0 +1,23 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Fixture 07 Duplicate Date
+Date: Fri, 27 Feb 2026 12:06:00 +0000
+Date: Fri, 27 Feb 2026 12:06:01 +0000
+Message-ID: <fixture-07@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F07
+X-Expected-Result: fail
+X-Expected-Reason: duplicate_required_date_header
+Content-Type: multipart/mixed; boundary="f07"
+
+--f07
+Content-Type: text/plain; charset=utf-8
+
+Duplicate Date should fail strict canonicalization.
+
+--f07
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-07","created_at":"2026-02-27T12:06:00Z","hash":"sha256:meta07"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:06:00Z"}}
+--f07--

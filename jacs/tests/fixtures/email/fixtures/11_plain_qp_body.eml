@@ -1,0 +1,25 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Fixture 11 Plain QP
+Date: Fri, 27 Feb 2026 12:10:00 +0000
+Message-ID: <fixture-11@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F11
+X-Expected-Result: pass
+X-Expected-Reason: qp_body_decode_then_hash
+Content-Type: multipart/mixed; boundary="f11"
+
+--f11
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Canonical body line one.
+Canonical body line two with soft wrap and space=20=
+continued.
+
+--f11
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-11","created_at":"2026-02-27T12:10:00Z","hash":"sha256:meta11"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:10:00Z"}}
+--f11--
