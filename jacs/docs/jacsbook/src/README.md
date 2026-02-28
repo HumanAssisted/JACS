@@ -1,4 +1,4 @@
-# JACS: JSON Agent Communication Specification
+# JACS: JSON Agent Communication Standard
 
 JACS is a cryptographic provenance layer for agent systems. It helps you prove who produced a payload, whether it changed, and whether you trust the signer.
 

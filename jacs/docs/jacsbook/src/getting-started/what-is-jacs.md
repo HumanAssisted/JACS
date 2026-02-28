@@ -1,6 +1,6 @@
 # What is JACS?
 
-**JACS (JSON Agent Communication Specification)** is a comprehensive framework designed to solve a critical problem in AI systems: **How do agents communicate and collaborate securely with verifiable trust?**
+**JACS (JSON Agent Communication Standard)** is a comprehensive framework designed to solve a critical problem in AI systems: **How do agents communicate and collaborate securely with verifiable trust?**
 
 ## The Problem JACS Solves
 

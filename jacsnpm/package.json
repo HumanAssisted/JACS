@@ -1,7 +1,7 @@
 {
   "name": "@hai.ai/jacs",
   "version": "0.8.0",
-  "description": "JACS (JSON Agent Communication Specification) - Data provenance and cryptographic signing for AI agents",
+  "description": "JACS (JSON Agent Communication Standard) - Data provenance and cryptographic signing for AI agents",
   "main": "index.js",
   "types": "index.d.ts",
   "overrides": {
