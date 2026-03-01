@@ -1623,12 +1623,12 @@ pub fn verify_document_standalone(
                     None,
                     None,
                     Some(public_key),
-                    Some(enc_type),
+                    Some(enc_type.clone()),
                 )
                 .map_err(|e| {
                     BindingCoreError::verification_failed(format!(
-                        "Failed to verify document signature: {}",
-                        e
+                        "Failed to verify document signature (enc_type={}): {}",
+                        enc_type, e
                     ))
                 })?;
 

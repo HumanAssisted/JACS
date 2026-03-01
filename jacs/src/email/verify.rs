@@ -75,6 +75,7 @@ impl EmailVerifier for DefaultEmailVerifier {
         let normalized = normalize_algorithm(algorithm);
         match normalized.as_str() {
             "ed25519" => {
+                // Ed25519: expects raw 32-byte public key — pass through
                 crate::crypt::ringwrapper::verify_string(
                     public_key.to_vec(),
                     data_str,
@@ -82,15 +83,28 @@ impl EmailVerifier for DefaultEmailVerifier {
                 )
             }
             "rsa-pss" => {
+                // RSA-PSS: expects PEM text bytes. If we received raw DER
+                // (from haisdk extract_public_key_bytes), re-wrap as PEM.
+                let pem_bytes = if public_key.starts_with(b"-----") {
+                    public_key.to_vec()
+                } else {
+                    pem_encode_spki(public_key)
+                };
                 crate::crypt::rsawrapper::verify_string(
-                    public_key.to_vec(),
+                    pem_bytes,
                     data_str,
                     &sig_b64,
                 )
             }
             "pq2025" | "ml-dsa-87" => {
+                // PQ2025: expects raw key bytes of ML_DSA_87_PUBLIC_KEY_SIZE.
+                // If we received SPKI-wrapped DER, strip the wrapper.
+                let raw_key = strip_spki_wrapper_if_needed(
+                    public_key,
+                    crate::crypt::constants::ML_DSA_87_PUBLIC_KEY_SIZE,
+                );
                 crate::crypt::pq2025::verify_string(
-                    public_key.to_vec(),
+                    raw_key,
                     data_str,
                     &sig_b64,
                 )
@@ -98,6 +112,35 @@ impl EmailVerifier for DefaultEmailVerifier {
             other => Err(format!("unsupported algorithm: {other}").into()),
         }
     }
+}
+
+/// PEM-encode a DER-encoded SubjectPublicKeyInfo block.
+fn pem_encode_spki(der: &[u8]) -> Vec<u8> {
+    let b64 = base64::engine::general_purpose::STANDARD.encode(der);
+    let mut pem = String::from("-----BEGIN PUBLIC KEY-----\n");
+    for chunk in b64.as_bytes().chunks(64) {
+        pem.push_str(std::str::from_utf8(chunk).unwrap_or(""));
+        pem.push('\n');
+    }
+    pem.push_str("-----END PUBLIC KEY-----\n");
+    pem.into_bytes()
+}
+
+/// Strip SPKI wrapper from DER-encoded public key if the key is larger than
+/// the expected raw size. SPKI adds an AlgorithmIdentifier prefix; the raw
+/// key bytes are in the trailing BIT STRING.
+fn strip_spki_wrapper_if_needed(key: &[u8], expected_raw_size: usize) -> Vec<u8> {
+    if key.len() == expected_raw_size {
+        return key.to_vec();
+    }
+    // SPKI-wrapped key: the raw key is the last `expected_raw_size` bytes
+    // after the AlgorithmIdentifier + BIT STRING overhead.
+    if key.len() > expected_raw_size {
+        return key[key.len() - expected_raw_size..].to_vec();
+    }
+    // Key is smaller than expected — pass through and let the crypto
+    // wrapper produce a descriptive error.
+    key.to_vec()
 }
 
 /// Extract and validate the JACS email signature document from a raw email.

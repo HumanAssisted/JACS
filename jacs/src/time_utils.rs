@@ -11,8 +11,10 @@ use chrono::{DateTime, Utc};
 pub const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
 
 /// Maximum skew tolerance for `iat` (issued-at) signature claims in seconds.
-/// Signatures older than this window or too far in the future are rejected.
-pub const MAX_IAT_SKEW_SECONDS: i64 = 300;
+/// Default: 0 (disabled). JACS documents are designed to be idempotent and
+/// eternal — the `iat` skew check is only useful for transient API payloads.
+/// Set `JACS_MAX_IAT_SKEW_SECONDS` to a positive value (e.g., 300) to enforce.
+pub const MAX_IAT_SKEW_SECONDS: i64 = 0;
 
 /// Returns the effective `iat` skew window in seconds.
 ///
@@ -329,10 +331,12 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_signature_iat_too_old() {
+    fn test_validate_signature_iat_disabled_by_default() {
+        // With MAX_IAT_SKEW_SECONDS=0, iat skew checks are disabled.
+        // Documents are eternal — only API callers enforce freshness.
         let now = now_timestamp();
-        let result = validate_signature_iat(now - (MAX_IAT_SKEW_SECONDS + 1));
-        assert!(result.is_err());
+        let result = validate_signature_iat(now - 86400); // 1 day old
+        assert!(result.is_ok(), "iat skew check should be disabled by default");
     }
 
     #[test]
