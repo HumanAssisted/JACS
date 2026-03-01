@@ -231,9 +231,8 @@ pub fn verify_email_document(
 
 /// Verify a JACS-signed .eml (RFC 5322) email in a single call.
 ///
-/// This is the primary simple API for email verification. It combines
-/// `verify_email_document` (cryptographic signature validation) and
-/// `verify_email_content` (hash comparison) into one step:
+/// This is the primary API for email verification. It combines
+/// cryptographic signature validation and hash comparison into one step:
 ///
 /// 1. Extracts the `jacs-signature.json` attachment from the email
 /// 2. Removes the attachment (the signature covers the email without itself)
@@ -244,23 +243,33 @@ pub fn verify_email_document(
 /// 6. Returns field-level results showing which fields pass, fail, or were
 ///    modified
 ///
-/// The JACS document stores header values alongside their hashes, so if
-/// tampering is detected, the original values are available in the
-/// `FieldResult.original_value` field.
-///
 /// # Arguments
 /// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
 /// * `public_key` - The signer's public key bytes (extracted from PEM)
+/// * `verifier` - Crypto verifier implementation
 ///
 /// # Returns
 /// `ContentVerificationResult` with field-level results. Check `.valid` for
 /// overall pass/fail.
-///
+pub fn verify_email(
+    raw_eml: &[u8],
+    public_key: &[u8],
+    verifier: &dyn EmailVerifier,
+) -> Result<ContentVerificationResult, EmailError> {
+    let (doc, parts) = verify_email_document(raw_eml, public_key, verifier)?;
+    Ok(verify_email_content(&doc, &parts))
+}
+
 /// Compare trusted JACS document hashes against actual email content.
+///
+/// This is the second step of two-step verification. Use `verify_email()`
+/// for the simple one-call API. Use this when you need access to the
+/// intermediate `JacsEmailSignatureDocument` (e.g., to inspect metadata
+/// or issuer before content comparison).
 ///
 /// For each field in the JACS document:
 /// - Headers: recompute hash of canonicalized value, compare to stored hash
-/// - Body parts: recompute content_hash and mime_headers_hash
+/// - Body parts: recompute content_hash
 /// - Attachments: recompute hashes and compare sorted lists
 ///
 /// Special cases:
@@ -625,10 +634,6 @@ fn verify_body_part(
             let content_match = current_content_hash == stored_entry.content_hash;
             let mime_match = current_mime_hash == stored_entry.mime_headers_hash;
 
-            // Both content and MIME header hashes must match for Pass.
-            // MIME header tampering (e.g., changing Content-Type or CTE) is a
-            // security-relevant modification that must fail verification, even
-            // if the decoded body content happens to match.
             let status = if content_match && mime_match {
                 FieldStatus::Pass
             } else {
@@ -1315,6 +1320,38 @@ mod tests {
     // -- Security regression tests --
 
     #[test]
+    fn mime_header_tamper_on_body_causes_fail() {
+        let email = simple_text_email();
+        let signer = TestSigner::new("test-agent:v1");
+        let signed = sign_email(&email, &signer).unwrap();
+        let verifier = TestVerifier;
+        let (doc, mut parts) =
+            verify_email_document(&signed, b"test-key", &verifier).unwrap();
+
+        // Tamper: change Content-Type MIME header on body part
+        if let Some(bp) = parts.body_plain.as_mut() {
+            bp.content_type = Some("text/plain; charset=us-ascii".to_string());
+        }
+
+        let result = verify_email_content(&doc, &parts);
+        let body_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "body_plain")
+            .unwrap();
+        assert_eq!(
+            body_result.status,
+            FieldStatus::Fail,
+            "MIME header tamper should be Fail, not {:?}",
+            body_result.status
+        );
+        assert!(
+            !result.valid,
+            "MIME header tamper should invalidate result"
+        );
+    }
+
+    #[test]
     fn attachment_trailing_byte_tamper_detected() {
         // Regression test for P0: trailing bytes appended to an attachment
         // must cause verification to fail (not be silently stripped).
@@ -1333,34 +1370,6 @@ mod tests {
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid, "Trailing byte tamper should be detected");
-    }
-
-    #[test]
-    fn mime_header_tamper_on_body_causes_fail() {
-        // Regression test for P0: MIME header tampering on body parts
-        // must cause Fail (not Modified).
-        let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
-
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Tamper: change body MIME header
-        if let Some(bp) = parts.body_plain.as_mut() {
-            bp.content_type = Some("text/plain; charset=us-ascii".to_string());
-        }
-
-        let result = verify_email_content(&doc, &parts);
-        let body_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "body_plain")
-            .unwrap();
-        assert_eq!(body_result.status, FieldStatus::Fail,
-            "MIME header tamper should be Fail, not {:?}", body_result.status);
-        assert!(!result.valid, "MIME header tamper should invalidate result");
     }
 
     #[test]

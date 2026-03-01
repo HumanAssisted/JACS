@@ -28,18 +28,6 @@ pub enum EmailError {
     #[error("Signature verification failed: {0}")]
     SignatureVerificationFailed(String),
 
-    /// The public key for the signer could not be found.
-    #[error("Signer key not found: {0}")]
-    SignerKeyNotFound(String),
-
-    /// Identity fields in the JACS document do not match the registry.
-    #[error("Identity mismatch: {0}")]
-    IdentityMismatch(String),
-
-    /// DNS TXT record verification failed.
-    #[error("DNS verification failed: {0}")]
-    DNSVerificationFailed(String),
-
     /// Email content hashes do not match the signed payload.
     #[error("Content tampered: {0}")]
     ContentTampered(String),
@@ -51,12 +39,6 @@ pub enum EmailError {
     /// The algorithm in the signature does not match the public key's algorithm.
     #[error("Algorithm mismatch: {0}")]
     AlgorithmMismatch(String),
-
-    /// A replay of a previously verified email was detected.
-    /// Runtime detection (24h TTL, cache key = issuer + metadata.hash) is
-    /// implemented at the HAI API layer, not in JACS.
-    #[error("Replay detected: {0}")]
-    ReplayDetected(String),
 
     /// The email exceeds the maximum allowed size (25 MB).
     #[error("Email too large: {size} bytes (max {max} bytes)")]
@@ -105,14 +87,6 @@ impl From<EmailError> for crate::error::JacsError {
 
             // Document / structural errors
             EmailError::ChainVerificationFailed(_) => JacsError::DocumentError(e.to_string()),
-
-            // Network / registry errors
-            EmailError::SignerKeyNotFound(_)
-            | EmailError::DNSVerificationFailed(_) => JacsError::NetworkError(e.to_string()),
-
-            // Identity / trust errors
-            EmailError::IdentityMismatch(_)
-            | EmailError::ReplayDetected(_) => JacsError::TrustError(e.to_string()),
         }
     }
 }
@@ -201,21 +175,16 @@ mod tests {
             Box::new(EmailError::MissingJacsSignature),
             Box::new(EmailError::InvalidJacsDocument("test".to_string())),
             Box::new(EmailError::SignatureVerificationFailed("test".to_string())),
-            Box::new(EmailError::SignerKeyNotFound("test".to_string())),
-            Box::new(EmailError::IdentityMismatch("test".to_string())),
-            Box::new(EmailError::DNSVerificationFailed("test".to_string())),
             Box::new(EmailError::ContentTampered("test".to_string())),
             Box::new(EmailError::ChainVerificationFailed("test".to_string())),
             Box::new(EmailError::AlgorithmMismatch("test".to_string())),
-            Box::new(EmailError::ReplayDetected("test".to_string())),
             Box::new(EmailError::EmailTooLarge {
                 size: 100,
                 max: 50,
             }),
             Box::new(EmailError::UnsupportedFeature("test".to_string())),
         ];
-        // All 14 error types are represented.
-        assert_eq!(errors.len(), 14);
+        assert_eq!(errors.len(), 10);
         for err in &errors {
             // Verify Display is implemented (non-empty string).
             assert!(!err.to_string().is_empty());
@@ -257,16 +226,6 @@ mod tests {
         let jacs_err: crate::error::JacsError =
             EmailError::SignatureVerificationFailed("bad sig".into()).into();
         assert!(matches!(jacs_err, crate::error::JacsError::CryptoError(_)));
-
-        // Network errors
-        let jacs_err: crate::error::JacsError =
-            EmailError::DNSVerificationFailed("timeout".into()).into();
-        assert!(matches!(jacs_err, crate::error::JacsError::NetworkError(_)));
-
-        // Trust errors
-        let jacs_err: crate::error::JacsError =
-            EmailError::IdentityMismatch("wrong issuer".into()).into();
-        assert!(matches!(jacs_err, crate::error::JacsError::TrustError(_)));
 
         // Document errors
         let jacs_err: crate::error::JacsError =

@@ -1,0 +1,431 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Email Signing &amp; Verification - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/tabs.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">2.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">3.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../getting-started/decision-tree.html"><strong aria-hidden="true">4.</strong> Which Integration?</a></li><li class="chapter-item expanded "><a href="../getting-started/multi-agent-agreement.html"><strong aria-hidden="true">5.</strong> Multi-Agent Agreements</a></li><li class="chapter-item expanded "><a href="../getting-started/verification.html"><strong aria-hidden="true">6.</strong> Verifying Signed Documents</a></li><li class="chapter-item expanded "><a href="../usecases.html"><strong aria-hidden="true">7.</strong> Use cases</a></li><li class="chapter-item expanded "><a href="../getting-started/deployment.html"><strong aria-hidden="true">8.</strong> Deployment Compatibility</a></li><li class="chapter-item expanded "><a href="../getting-started/troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">10.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">11.</strong> CLI Tutorial</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">12.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">13.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">14.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">15.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">16.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">17.</strong> Observability (Rust API)</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">18.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/simple-api.html"><strong aria-hidden="true">19.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">20.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/langchain.html"><strong aria-hidden="true">21.</strong> LangChain.js</a></li><li class="chapter-item expanded "><a href="../nodejs/vercel-ai.html"><strong aria-hidden="true">22.</strong> Vercel AI SDK</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">23.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/koa.html"><strong aria-hidden="true">24.</strong> Koa Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">25.</strong> MCP Integration (Node.js)</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">26.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">27.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">28.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/simple-api.html"><strong aria-hidden="true">29.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">30.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/adapters.html"><strong aria-hidden="true">31.</strong> Framework Adapters</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">32.</strong> MCP Integration (Python)</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">33.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../go/installation.html"><strong aria-hidden="true">34.</strong> Installation & Quick Start</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">35.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">36.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">37.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">38.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/agentstate.html"><strong aria-hidden="true">39.</strong> Agent State Schema</a></li><li class="chapter-item expanded "><a href="../schemas/commitment.html"><strong aria-hidden="true">40.</strong> Commitment Schema</a></li><li class="chapter-item expanded "><a href="../schemas/todo.html"><strong aria-hidden="true">41.</strong> Todo List Schema</a></li><li class="chapter-item expanded "><a href="../schemas/conversation.html"><strong aria-hidden="true">42.</strong> Conversation Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">43.</strong> Config File Schema</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">44.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/key-rotation.html"><strong aria-hidden="true">45.</strong> Key Rotation</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">46.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/algorithm-guide.html"><strong aria-hidden="true">47.</strong> Algorithm Selection Guide</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">48.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">49.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/trust-store.html"><strong aria-hidden="true">50.</strong> Trust Store</a></li><li class="chapter-item expanded "><a href="../advanced/infrastructure.html"><strong aria-hidden="true">51.</strong> Infrastructure vs Tools</a></li><li class="chapter-item expanded "><a href="../advanced/dns-trust.html"><strong aria-hidden="true">52.</strong> DNS Trust Anchoring</a></li><li class="chapter-item expanded "><a href="../advanced/failure-modes.html"><strong aria-hidden="true">53.</strong> Failure Modes</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">54.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">55.</strong> MCP Overview</a></li><li class="chapter-item expanded "><a href="../integrations/a2a.html"><strong aria-hidden="true">56.</strong> A2A Interoperability</a></li><li class="chapter-item expanded "><a href="../integrations/did.html"><strong aria-hidden="true">57.</strong> DID Integration (No Blockchain Required)</a></li><li class="chapter-item expanded "><a href="../integrations/hai.html"><strong aria-hidden="true">58.</strong> HAI.ai Platform</a></li><li class="chapter-item expanded "><a href="../integrations/openclaw.html"><strong aria-hidden="true">59.</strong> OpenClaw</a></li><li class="chapter-item expanded "><a href="../integrations/web-servers.html"><strong aria-hidden="true">60.</strong> Web Servers</a></li><li class="chapter-item expanded "><a href="../integrations/databases.html"><strong aria-hidden="true">61.</strong> Databases</a></li><li class="chapter-item expanded "><a href="../guides/a2a-quickstart.html"><strong aria-hidden="true">62.</strong> A2A Quickstart</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../guides/a2a-serve.html"><strong aria-hidden="true">62.1.</strong> Serve Your Agent Card</a></li><li class="chapter-item expanded "><a href="../guides/a2a-discover.html"><strong aria-hidden="true">62.2.</strong> Discover & Trust Remote Agents</a></li><li class="chapter-item expanded "><a href="../guides/a2a-exchange.html"><strong aria-hidden="true">62.3.</strong> Exchange Signed Artifacts</a></li></ol></li><li class="chapter-item expanded "><a href="../guides/observability.html"><strong aria-hidden="true">63.</strong> Observability & Monitoring Guide</a></li><li class="chapter-item expanded "><a href="../guides/email-signing.html" class="active"><strong aria-hidden="true">64.</strong> Email Signing & Verification</a></li><li class="chapter-item expanded "><a href="../guides/streaming.html"><strong aria-hidden="true">65.</strong> Streaming Signing</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">66.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">67.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">68.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">69.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">70.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">71.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">72.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">73.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="email-signing-and-verification"><a class="header" href="#email-signing-and-verification">Email Signing and Verification</a></h1>
+<p>JACS provides a detached-signature model for email. Your agent signs a raw
+RFC 5322 <code>.eml</code> file and the result is the same email with a
+<code>jacs-signature.json</code> MIME attachment. The recipient extracts that attachment,
+verifies the cryptographic signature, and compares content hashes to detect
+tampering.</p>
+<p>There are only two functions you need:</p>
+<div class="table-wrapper"><table><thead><tr><th>Action</th><th>Function</th><th>What you supply</th><th>What you get back</th></tr></thead><tbody>
+<tr><td><strong>Sign</strong></td><td><code>jacs::email::sign_email()</code></td><td>raw <code>.eml</code> bytes + your <code>EmailSigner</code></td><td><code>.eml</code> bytes with <code>jacs-signature.json</code></td></tr>
+<tr><td><strong>Verify</strong></td><td><code>jacs::email::verify_email()</code></td><td>signed <code>.eml</code> bytes + sender's public key + verifier</td><td><code>ContentVerificationResult</code> (pass/fail per field)</td></tr>
+</tbody></table>
+</div>
+<h2 id="signing-an-email"><a class="header" href="#signing-an-email">Signing an email</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::email::{sign_email, EmailSigner};
+
+// 1. Load raw email bytes (RFC 5322 format)
+let raw_eml = std::fs::read("outgoing.eml")?;
+
+// 2. Sign — your agent implements EmailSigner (see below)
+let signed_eml = sign_email(&amp;raw_eml, &amp;my_agent)?;
+
+// 3. Send signed_eml — it is a valid .eml with the JACS attachment
+std::fs::write("outgoing_signed.eml", &amp;signed_eml)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="the-emailsigner-trait"><a class="header" href="#the-emailsigner-trait">The <code>EmailSigner</code> trait</a></h3>
+<p>Your agent must implement four methods:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait EmailSigner {
+    /// Sign raw bytes. Return the signature bytes.
+    fn sign_bytes(&amp;self, data: &amp;[u8]) -&gt; Result&lt;Vec&lt;u8&gt;, Box&lt;dyn std::error::Error&gt;&gt;;
+
+    /// Your agent's JACS ID (e.g. "abc123:v1").
+    fn jacs_id(&amp;self) -&gt; &amp;str;
+
+    /// The key identifier used for signing.
+    fn key_id(&amp;self) -&gt; &amp;str;
+
+    /// The signing algorithm name. This comes from your JACS agent's
+    /// key configuration — never hardcode it.
+    fn algorithm(&amp;self) -&gt; &amp;str;
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The algorithm value (e.g. <code>"ed25519"</code>, <code>"rsa-pss"</code>, <code>"pq2025"</code>) is read from
+your JACS agent's key metadata at runtime. <code>sign_email</code> records it in the
+<code>jacs-signature.json</code> document so the verifier knows which algorithm to use.</p>
+<h3 id="what-sign_email-does-internally"><a class="header" href="#what-sign_email-does-internally">What <code>sign_email</code> does internally</a></h3>
+<ol>
+<li>Parses and canonicalizes the email headers and body</li>
+<li>Computes SHA-256 hashes for each header, body part, and attachment</li>
+<li>Builds the JACS email signature payload</li>
+<li>Canonicalizes the payload via RFC 8785 (JCS)</li>
+<li>Calls your <code>sign_bytes()</code> to produce the cryptographic signature</li>
+<li>Attaches the result as <code>jacs-signature.json</code></li>
+</ol>
+<p>You do not need to know any of this to use it — it is a single function call.</p>
+<h3 id="forwarding-re-signing"><a class="header" href="#forwarding-re-signing">Forwarding (re-signing)</a></h3>
+<p>If the email already has a <code>jacs-signature.json</code> (it was previously signed by
+another agent), <code>sign_email</code> automatically:</p>
+<ol>
+<li>Renames the existing signature to <code>jacs-signature-0.json</code> (or <code>-1</code>, <code>-2</code>, ...)</li>
+<li>Computes a <code>parent_signature_hash</code> linking to the previous signature</li>
+<li>Signs the email with a new <code>jacs-signature.json</code></li>
+</ol>
+<p>This builds a verifiable forwarding chain. No extra code needed.</p>
+<h2 id="verifying-an-email"><a class="header" href="#verifying-an-email">Verifying an email</a></h2>
+<h3 id="one-call-api-recommended"><a class="header" href="#one-call-api-recommended">One-call API (recommended)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::email::{verify_email, DefaultEmailVerifier};
+
+let signed_eml = std::fs::read("incoming_signed.eml")?;
+let sender_public_key: Vec&lt;u8&gt; = /* fetch from HAI registry or local store */;
+
+let result = verify_email(&amp;signed_eml, &amp;sender_public_key, &amp;DefaultEmailVerifier)?;
+
+if result.valid {
+    println!("Email is authentic and unmodified");
+} else {
+    // Inspect which fields failed
+    for field in &amp;result.field_results {
+        println!("{}: {:?}", field.field, field.status);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<p><code>verify_email</code> does everything in one call:</p>
+<ol>
+<li>Extracts <code>jacs-signature.json</code> from the email</li>
+<li>Removes it (the signature covers the email <em>without</em> itself)</li>
+<li>Validates the payload hash (SHA-256 of RFC 8785 canonical JSON)</li>
+<li>Verifies the cryptographic signature against the public key</li>
+<li>Compares every hash in the JACS document against the actual email content</li>
+<li>Returns per-field results</li>
+</ol>
+<h3 id="two-step-api-when-you-need-the-jacs-document"><a class="header" href="#two-step-api-when-you-need-the-jacs-document">Two-step API (when you need the JACS document)</a></h3>
+<p>If you need to inspect the JACS document metadata (issuer, algorithm, timestamps)
+before doing the content comparison:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use jacs::email::{verify_email_document, verify_email_content, DefaultEmailVerifier};
+
+// Step 1: Verify the cryptographic signature — returns the trusted JACS document
+let (doc, parts) = verify_email_document(&amp;signed_eml, &amp;sender_public_key, &amp;DefaultEmailVerifier)?;
+
+// Inspect the document
+println!("Signed by: {}", doc.metadata.issuer);
+println!("Algorithm: {}", doc.signature.algorithm);
+println!("Signed at: {}", doc.signature.signed_at);
+
+// Step 2: Compare content hashes
+let result = verify_email_content(&amp;doc, &amp;parts);
+assert!(result.valid);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="defaultemailverifier"><a class="header" href="#defaultemailverifier"><code>DefaultEmailVerifier</code></a></h3>
+<p>JACS provides <code>DefaultEmailVerifier</code> which handles all supported algorithms
+automatically. You do not need to know the algorithm in advance — it reads
+the algorithm from the JACS document and dispatches to the correct verifier:</p>
+<ul>
+<li><strong>Ed25519</strong> — raw 32-byte public key</li>
+<li><strong>RSA-PSS</strong> — PEM or DER public key (auto-converted internally)</li>
+<li><strong>PQ2025 / ML-DSA-87</strong> — raw or SPKI-wrapped public key (auto-unwrapped internally)</li>
+</ul>
+<p>You can also implement the <code>EmailVerifier</code> trait yourself if you need custom
+verification logic.</p>
+<h3 id="field-level-results"><a class="header" href="#field-level-results">Field-level results</a></h3>
+<p>The <code>ContentVerificationResult</code> contains a <code>field_results</code> vector with one
+entry per field:</p>
+<div class="table-wrapper"><table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>Pass</code></td><td>Hash matches — field is authentic</td></tr>
+<tr><td><code>Modified</code></td><td>Hash mismatch but case-insensitive email address match (address headers only)</td></tr>
+<tr><td><code>Fail</code></td><td>Content does not match the signed hash</td></tr>
+<tr><td><code>Unverifiable</code></td><td>Field absent or not verifiable (e.g. Message-ID may change in transit)</td></tr>
+</tbody></table>
+</div>
+<p>Fields checked: <code>from</code>, <code>to</code>, <code>cc</code>, <code>subject</code>, <code>date</code>, <code>message_id</code>,
+<code>in_reply_to</code>, <code>references</code>, <code>body_plain</code>, <code>body_html</code>, and all attachments.</p>
+<h2 id="the-jacs-signature-document"><a class="header" href="#the-jacs-signature-document">The JACS signature document</a></h2>
+<p>The <code>jacs-signature.json</code> attachment has this structure:</p>
+<pre><code class="language-json">{
+  "version": "1.0",
+  "document_type": "email_signature",
+  "payload": {
+    "headers": {
+      "from":       { "value": "agent@example.com", "hash": "sha256:..." },
+      "to":         { "value": "recipient@example.com", "hash": "sha256:..." },
+      "subject":    { "value": "Hello", "hash": "sha256:..." },
+      "date":       { "value": "Fri, 28 Feb 2026 12:00:00 +0000", "hash": "sha256:..." },
+      "message_id": { "value": "&lt;msg@example.com&gt;", "hash": "sha256:..." }
+    },
+    "body_plain": { "content_hash": "sha256:..." },
+    "body_html":  null,
+    "attachments": [
+      { "filename": "report.pdf", "content_hash": "sha256:..." }
+    ],
+    "parent_signature_hash": null
+  },
+  "metadata": {
+    "issuer": "agent-jacs-id:v1",
+    "document_id": "uuid",
+    "created_at": "2026-02-28T12:00:00Z",
+    "hash": "sha256:..."
+  },
+  "signature": {
+    "key_id": "agent-key-id",
+    "algorithm": "ed25519",
+    "signature": "base64...",
+    "signed_at": "2026-02-28T12:00:00Z"
+  }
+}
+</code></pre>
+<p><code>metadata.hash</code> is the SHA-256 of the RFC 8785 canonical JSON of <code>payload</code>.
+<code>signature.signature</code> is the cryptographic signature over that same canonical
+JSON. The algorithm is always read from the agent — never hardcoded.</p>
+<h2 id="public-api-summary"><a class="header" href="#public-api-summary">Public API summary</a></h2>
+<p>All items are re-exported from <code>jacs::email</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Signing
+jacs::email::sign_email(raw_email: &amp;[u8], signer: &amp;dyn EmailSigner) -&gt; Result&lt;Vec&lt;u8&gt;, EmailError&gt;
+jacs::email::EmailSigner                  // trait your agent implements
+
+// Verification
+jacs::email::verify_email(...)            // one-call: crypto + content check
+jacs::email::verify_email_document(...)   // step 1: crypto only
+jacs::email::verify_email_content(...)    // step 2: content hash comparison
+jacs::email::DefaultEmailVerifier         // handles Ed25519, RSA-PSS, PQ2025
+jacs::email::EmailVerifier                // trait for custom verifiers
+jacs::email::normalize_algorithm(...)     // algorithm name normalization
+
+// Types
+jacs::email::ContentVerificationResult    // overall result with field_results
+jacs::email::FieldResult                  // per-field status
+jacs::email::FieldStatus                  // Pass | Modified | Fail | Unverifiable
+jacs::email::JacsEmailSignatureDocument   // the full signature document
+jacs::email::EmailError                   // error type
+
+// Attachment helpers (for advanced use)
+jacs::email::get_jacs_attachment(...)     // extract jacs-signature.json bytes
+jacs::email::remove_jacs_attachment(...)  // strip jacs-signature.json from email
+jacs::email::add_jacs_attachment(...)     // inject jacs-signature.json into email
+<span class="boring">}</span></code></pre></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../guides/observability.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../guides/streaming.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../guides/observability.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../guides/streaming.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

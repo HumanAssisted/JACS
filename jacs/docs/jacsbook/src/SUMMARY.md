@@ -86,6 +86,7 @@
   - [Discover & Trust Remote Agents](guides/a2a-discover.md)
   - [Exchange Signed Artifacts](guides/a2a-exchange.md)
 - [Observability & Monitoring Guide](guides/observability.md)
+- [Email Signing & Verification](guides/email-signing.md)
 - [Streaming Signing](guides/streaming.md)
 
 ## Examples

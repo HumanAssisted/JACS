@@ -15,18 +15,22 @@ pub struct SignedHeaderEntry {
     pub hash: String,
 }
 
-/// A body part entry with its content hash.
+/// A body part entry with content and MIME header hashes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BodyPartEntry {
     /// SHA-256 hash of the canonicalized body content.
     pub content_hash: String,
+    /// SHA-256 hash of the canonical MIME structural headers.
+    pub mime_headers_hash: String,
 }
 
-/// An attachment entry with content hash and filename.
+/// An attachment entry with content hash, MIME header hash, and filename.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttachmentEntry {
     /// SHA-256 hash computed as `sha256(filename_nfc:content_type_lower:raw_bytes)`.
     pub content_hash: String,
+    /// SHA-256 hash of the canonical MIME structural headers.
+    pub mime_headers_hash: String,
     /// UTF-8 NFC normalized filename.
     pub filename: String,
 }
@@ -252,6 +256,7 @@ mod tests {
             },
             body_plain: Some(BodyPartEntry {
                 content_hash: "sha256:body_hash".to_string(),
+                mime_headers_hash: "sha256:mime_hash".to_string(),
             }),
             body_html: None,
             attachments: vec![],

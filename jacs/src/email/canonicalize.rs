@@ -13,7 +13,7 @@ use super::error::EmailError;
 use super::types::{ParsedAttachment, ParsedBodyPart, ParsedEmailParts};
 
 /// Parse raw RFC 5322 email bytes into structured parts.
-pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailError> {
+pub(crate) fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailError> {
     let message = MessageParser::default()
         .parse(raw_email)
         .ok_or_else(|| EmailError::InvalidEmailFormat("Failed to parse RFC 5322 email".into()))?;
@@ -228,7 +228,7 @@ fn extract_body_part(
 /// 4. For address headers: lowercase domain part only
 /// 5. Decode RFC 2047 encoded words
 /// 6. UTF-8 NFC normalize
-pub fn canonicalize_header(name: &str, value: &str) -> Result<String, EmailError> {
+pub(crate) fn canonicalize_header(name: &str, value: &str) -> Result<String, EmailError> {
     // Unfold continuations (already unfolded by parse_raw_headers, but be safe)
     let unfolded = value.replace("\r\n", "").replace('\n', "");
 
@@ -406,7 +406,7 @@ fn lowercase_email_domain(value: &str) -> String {
 /// 2. Normalize line endings to CRLF
 /// 3. Strip trailing WSP per line
 /// 4. Strip trailing blank lines
-pub fn canonicalize_body(content: &[u8]) -> Vec<u8> {
+pub(crate) fn canonicalize_body(content: &[u8]) -> Vec<u8> {
     // Convert to string (content is already decoded by mail-parser)
     let text = String::from_utf8_lossy(content);
 
@@ -433,7 +433,7 @@ pub fn canonicalize_body(content: &[u8]) -> Vec<u8> {
 
 /// Compute the SHA-256 hash of a canonicalized header value.
 /// Returns `"sha256:<hex>"`.
-pub fn compute_header_entry(canonicalized_value: &str) -> String {
+pub(crate) fn compute_header_entry(canonicalized_value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(canonicalized_value.as_bytes());
     let hash = hasher.finalize();
@@ -442,7 +442,7 @@ pub fn compute_header_entry(canonicalized_value: &str) -> String {
 
 /// Compute the SHA-256 hash of canonicalized body content.
 /// Returns `"sha256:<hex>"`.
-pub fn compute_body_hash(canonicalized_body: &[u8]) -> String {
+pub(crate) fn compute_body_hash(canonicalized_body: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(canonicalized_body);
     let hash = hasher.finalize();
@@ -451,7 +451,7 @@ pub fn compute_body_hash(canonicalized_body: &[u8]) -> String {
 
 /// Compute the MIME headers hash for a body part or attachment.
 ///
-/// Format (PRD lines 363-372):
+/// Format:
 /// ```text
 /// sha256(
 ///   "content-disposition:" + canonical_disposition + "\n" +
@@ -460,7 +460,7 @@ pub fn compute_body_hash(canonicalized_body: &[u8]) -> String {
 /// )
 /// ```
 /// Omit lines for headers not present. Sort remaining lexicographically.
-pub fn compute_mime_headers_hash(
+pub(crate) fn compute_mime_headers_hash(
     content_type: Option<&str>,
     content_transfer_encoding: Option<&str>,
     content_disposition: Option<&str>,
@@ -482,8 +482,6 @@ pub fn compute_mime_headers_hash(
         lines.push(format!("content-type:{}", canonical));
     }
 
-    // Sort lexicographically (already in sorted order for these three names,
-    // but sort explicitly for correctness)
     lines.sort();
 
     let input = lines
@@ -499,7 +497,6 @@ pub fn compute_mime_headers_hash(
 
 /// Canonicalize a MIME header value (same rules as top-level headers).
 fn canonicalize_mime_header_value(value: &str) -> String {
-    // Unfold, compress WSP, trim, lowercase
     let unfolded = value.replace("\r\n", "").replace('\n', "");
     let mut compressed = String::with_capacity(unfolded.len());
     let mut in_wsp = false;
@@ -525,7 +522,7 @@ fn canonicalize_mime_header_value(value: &str) -> String {
 /// Any trailing-byte mutations will be detected as a hash mismatch.
 /// MIME boundary artifacts are handled at the extraction layer (mail-parser),
 /// not at the hashing layer.
-pub fn compute_attachment_hash(filename: &str, content_type: &str, raw_bytes: &[u8]) -> String {
+pub(crate) fn compute_attachment_hash(filename: &str, content_type: &str, raw_bytes: &[u8]) -> String {
     let filename_nfc: String = filename.nfc().collect();
     let content_type_lower = content_type.to_lowercase();
 
@@ -643,7 +640,6 @@ mod tests {
 
     #[test]
     fn compute_mime_headers_hash_sorted_lexicographically() {
-        // content-disposition < content-transfer-encoding < content-type
         let hash = compute_mime_headers_hash(
             Some("text/plain"),
             Some("base64"),

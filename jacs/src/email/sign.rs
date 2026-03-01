@@ -12,7 +12,7 @@ use uuid::Uuid;
 use super::attachment::{add_jacs_attachment, ensure_multipart_mixed, get_jacs_attachment, remove_jacs_attachment, rfind_bytes};
 use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
-    compute_header_entry, extract_email_parts,
+    compute_header_entry, compute_mime_headers_hash, extract_email_parts,
 };
 use super::error::{check_email_size, EmailError};
 use super::types::{
@@ -383,7 +383,7 @@ fn build_header_entry(
 /// - SHA-256 hash computation for metadata
 /// - Cryptographic signing via the signer
 /// - Document assembly with metadata and signature sections
-pub fn build_jacs_email_document(
+pub(crate) fn build_jacs_email_document(
     payload: &EmailSignaturePayload,
     signer: &dyn EmailSigner,
 ) -> Result<JacsEmailSignatureDocument, EmailError> {
@@ -439,7 +439,7 @@ pub fn build_jacs_email_document(
 /// - IEEE 754 number serialization
 /// - Minimal Unicode escape handling
 /// - No unnecessary whitespace
-pub fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
+pub(crate) fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
     serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
