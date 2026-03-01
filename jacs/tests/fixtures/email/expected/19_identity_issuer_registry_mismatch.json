@@ -1,0 +1,7 @@
+{
+  "fixture_id": "F19",
+  "expected_result": "fail",
+  "expected_reason": "metadata_issuer_must_equal_registry_jacs_id",
+  "expected_error": "IssuerRegistryMismatch",
+  "notes": "metadata.issuer=11111111... but mock registry jacs_id=99999999...; verifier must reject"
+}

@@ -183,6 +183,55 @@ pub trait KeyManager {
 }
 
 impl Agent {
+    /// Sign raw bytes and return the base64-encoded signature.
+    ///
+    /// This is the byte-level equivalent of `sign_string`. Used by
+    /// the email signing module where the payload is binary.
+    pub fn sign_bytes(&mut self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let config = self.config.as_ref().ok_or(
+            "Byte signing failed: agent configuration not initialized.",
+        )?;
+        let key_algorithm = config.get_key_algorithm().map_err(|e| {
+            format!("Byte signing failed: could not determine signing algorithm: {}", e)
+        })?;
+
+        let binding = self.get_private_key().map_err(|e| {
+            format!("Byte signing failed: private key not loaded: {}", e)
+        })?;
+
+        let is_ephemeral = self.is_ephemeral();
+        let has_key_store = self.get_key_store().is_some();
+        let stored_algo = self.get_key_algorithm().cloned();
+        let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+            let raw = binding.expose_secret().clone();
+            let ks: Box<dyn KeyStore> = if has_key_store {
+                let algo = stored_algo.as_deref().unwrap_or("pq2025");
+                Box::new(crate::keystore::InMemoryKeyStore::new(algo))
+            } else {
+                Box::new(FsEncryptedStore)
+            };
+            (raw, ks)
+        } else {
+            let decrypted =
+                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                    .map_err(|e| {
+                        format!("Byte signing failed: could not decrypt private key: {}", e)
+                    })?;
+            (
+                decrypted.as_slice().to_vec(),
+                Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+            )
+        };
+
+        let sig_bytes = ks_box
+            .sign_detached(&key_bytes, data, &key_algorithm)
+            .map_err(|e| {
+                format!("Byte signing failed: cryptographic signing operation failed: {}", e)
+            })?;
+
+        Ok(sig_bytes)
+    }
+
     /// Generate keys using a specific KeyStore implementation.
     /// For ephemeral agents, uses set_keys_raw (no AES encryption).
     /// For persistent agents, uses set_keys (AES-encrypts private key).

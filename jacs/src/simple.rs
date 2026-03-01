@@ -559,6 +559,13 @@ impl SimpleAgent {
         self.strict
     }
 
+    /// Returns the JACS agent ID, used as the signing key identifier.
+    /// Derived from the underlying Agent — no cached copy needed.
+    pub fn key_id(&self) -> String {
+        let agent = self.agent.lock().unwrap();
+        agent.get_id().unwrap_or_default()
+    }
+
     /// Creates a new JACS agent with persistent identity.
     ///
     /// This generates cryptographic keys, creates configuration files, and saves
@@ -680,6 +687,7 @@ impl SimpleAgent {
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(config_path.to_string()),
+
                 strict: resolve_strict(None),
             },
             info,
@@ -1032,6 +1040,7 @@ impl SimpleAgent {
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(params.config_path),
+
                 strict: resolve_strict(None),
             },
             info,
@@ -1143,6 +1152,7 @@ impl SimpleAgent {
             Self {
                 agent: Mutex::new(agent),
                 config_path: None,
+
                 strict: resolve_strict(None),
             },
             info,
@@ -1570,6 +1580,63 @@ impl SimpleAgent {
         info!("Message signed: document_id={}", jacs_doc.id);
 
         SignedDocument::from_jacs_document(jacs_doc, "document")
+    }
+
+    /// Sign raw bytes and return the raw signature bytes.
+    ///
+    /// This is a low-level signing method used by JACS email signing and other
+    /// protocols that need to sign arbitrary data (not JSON documents).
+    /// The data must be valid UTF-8 (JACS canonical payloads always are).
+    ///
+    /// Returns the raw signature bytes (decoded from the base64 output of the
+    /// underlying crypto module).
+    pub fn sign_raw_bytes(&self, data: &[u8]) -> Result<Vec<u8>, JacsError> {
+        use base64::Engine;
+        use crate::crypt::KeyManager;
+
+        let data_str = std::str::from_utf8(data).map_err(|e| JacsError::Internal {
+            message: format!("Data is not valid UTF-8: {}", e),
+        })?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let sig_b64 = agent.sign_string(data_str).map_err(|e| JacsError::SigningFailed {
+            reason: format!("Raw byte signing failed: {}", e),
+        })?;
+
+        let sig_bytes = base64::engine::general_purpose::STANDARD
+            .decode(&sig_b64)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to decode signature base64: {}", e),
+            })?;
+
+        Ok(sig_bytes)
+    }
+
+    /// Get the JACS agent ID.
+    ///
+    /// Returns the agent's unique identifier from the exported agent JSON.
+    pub fn get_agent_id(&self) -> Result<String, JacsError> {
+        // Use export_agent which returns the agent document JSON
+        let agent_json = self.export_agent()?;
+        let doc: serde_json::Value = serde_json::from_str(&agent_json).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to parse agent JSON: {}", e),
+            }
+        })?;
+
+        // Try to extract the agent ID from the document
+        let agent_id = doc
+            .pointer("/jacsAgentID")
+            .or_else(|| doc.pointer("/id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| JacsError::Internal {
+                message: "Agent ID not found in agent document".to_string(),
+            })?;
+
+        Ok(agent_id.to_string())
     }
 
     /// Signs a file with optional content embedding.
@@ -3325,6 +3392,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
@@ -3345,6 +3413,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
@@ -3365,6 +3434,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
@@ -3396,6 +3466,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
@@ -3449,6 +3520,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: true,
         };
         assert!(agent.is_strict());
@@ -3456,6 +3528,7 @@ mod tests {
         let agent2 = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
         assert!(!agent2.is_strict());
@@ -3468,6 +3541,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: true,
         };
 

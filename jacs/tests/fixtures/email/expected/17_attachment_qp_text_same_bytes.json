@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F17",
+  "expected_result": "pass",
+  "expected_reason": "attachment_qp_decode_then_hash",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 17 Attachment QP" },
+      "date": { "value": "Fri, 27 Feb 2026 12:16:00 +0000" },
+      "message_id": { "value": "<fixture-17@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 1,
+    "parent_signature_hash": null,
+    "notes": "Attachment is QP encoded with same decoded bytes as F16; must produce identical attachment hash"
+  }
+}

@@ -1,0 +1,21 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Multipart Alternative
+Date: Fri, 27 Feb 2026 12:22:00 +0000
+Message-ID: <fixture-23@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F23
+X-Expected-Result: pass
+X-Expected-Reason: multipart_alternative_plain_and_html
+Content-Type: multipart/alternative; boundary="f23"
+
+--f23
+Content-Type: text/plain; charset=utf-8
+
+Plain text version of the email.
+
+--f23
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>HTML version of the email.</p></body></html>
+--f23--

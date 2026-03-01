@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F11",
+  "expected_result": "pass",
+  "expected_reason": "qp_body_decode_then_hash",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 11 Plain QP" },
+      "date": { "value": "Fri, 27 Feb 2026 12:10:00 +0000" },
+      "message_id": { "value": "<fixture-11@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "Body is quoted-printable encoded; verifier must decode before hashing"
+  }
+}

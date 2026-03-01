@@ -19,6 +19,7 @@ pub mod audit;
 pub mod config;
 pub mod crypt;
 pub mod dns;
+pub mod email;
 pub mod error;
 pub mod health;
 pub mod keystore;

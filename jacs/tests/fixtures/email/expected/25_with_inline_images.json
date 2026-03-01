@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F25",
+  "expected_result": "pass",
+  "expected_reason": "inline_image_attachment",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Inline Images" },
+      "date": { "value": "Fri, 27 Feb 2026 12:24:00 +0000" },
+      "message_id": { "value": "<fixture-25@example.com>" }
+    },
+    "body_plain": false,
+    "body_html": true,
+    "attachment_count": 1,
+    "parent_signature_hash": null,
+    "notes": "multipart/related with inline image (Content-Disposition: inline); image is an attachment for hashing purposes"
+  }
+}

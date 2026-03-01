@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F13",
+  "expected_result": "pass",
+  "expected_reason": "charset_transcode_then_hash",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 13 HTML ISO-8859-1" },
+      "date": { "value": "Fri, 27 Feb 2026 12:12:00 +0000" },
+      "message_id": { "value": "<fixture-13@example.com>" }
+    },
+    "body_plain": false,
+    "body_html": true,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "HTML body in ISO-8859-1 charset with QP encoding; verifier must transcode to UTF-8 before hashing"
+  }
+}

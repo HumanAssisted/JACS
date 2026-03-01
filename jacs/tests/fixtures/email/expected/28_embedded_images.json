@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F28",
+  "expected_result": "pass",
+  "expected_reason": "embedded_inline_images",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Embedded Images" },
+      "date": { "value": "Fri, 27 Feb 2026 12:27:00 +0000" },
+      "message_id": { "value": "<fixture-28@example.com>" }
+    },
+    "body_plain": false,
+    "body_html": true,
+    "attachment_count": 1,
+    "parent_signature_hash": null,
+    "notes": "multipart/related with embedded inline JPEG via Content-ID; similar to F25 but with JPEG"
+  }
+}

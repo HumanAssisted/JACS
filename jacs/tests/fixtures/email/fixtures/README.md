@@ -1,9 +1,10 @@
-# Email Fixture Set (P0 + P1)
+# Email Fixture Set (P0 + P1 + P2)
 
 These fixtures target the top two review priorities from `email_signing_process.md`:
 
 - P0: canonicalization ambiguity (headers/body/attachments)
 - P1: identity binding and policy enforcement
+- P2: structure coverage (body types, attachments, threading, forwarding)
 
 Each fixture is an RFC 5322 `.eml` example with `X-Fixture-*` metadata headers.
 `X-Expected-Result` indicates expected behavior under strict verification policy.
@@ -37,6 +38,26 @@ Each fixture is an RFC 5322 `.eml` example with `X-Fixture-*` metadata headers.
 |---|---|---|
 | `19_identity_issuer_registry_mismatch.eml` | `metadata.issuer` vs registry `jacs_id` mismatch | fail |
 | `20_identity_from_registry_email_mismatch.eml` | `From` header vs registry email mismatch | fail |
+
+## Structure Coverage Fixtures (P2)
+
+| File | Case | Expected |
+|---|---|---|
+| `21_simple_text.eml` | Minimal plain text, no MIME parts, no signature | pass |
+| `22_html_only.eml` | HTML-only body, no text/plain part | pass |
+| `23_multipart_alternative.eml` | multipart/alternative with text/plain + text/html | pass |
+| `24_with_attachments.eml` | Body + 2 file attachments (notes.txt, report.pdf) | pass |
+| `25_with_inline_images.eml` | multipart/related with inline PNG via Content-ID | pass |
+| `26_threaded_reply.eml` | Reply with `In-Reply-To` and `References` headers | pass |
+| `27_forwarded_chain.eml` | Two signers: `jacs-signature-0.json` (original) + `jacs-signature.json` (forwarder) | pass |
+| `28_embedded_images.eml` | multipart/related with inline JPEG via Content-ID | pass |
+
+## Expected Results
+
+Each fixture has a corresponding JSON in `../expected/` with the same base name. Expected
+result files contain `fixture_id`, `expected_result` (pass/fail), `expected_reason`, and
+for pass cases an `expected_payload` describing the parsed headers, body presence, attachment
+count, and parent signature hash.
 
 ## Suggested Test-Harness Use
 

@@ -1,0 +1,12 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Simple Text Email
+Date: Fri, 27 Feb 2026 12:20:00 +0000
+Message-ID: <fixture-21@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F21
+X-Expected-Result: pass
+X-Expected-Reason: simple_text_no_attachments
+Content-Type: text/plain; charset=utf-8
+
+This is a simple plain text email with no attachments.

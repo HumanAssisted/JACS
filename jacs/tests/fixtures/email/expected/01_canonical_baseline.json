@@ -1,0 +1,18 @@
+{
+  "fixture_id": "F01",
+  "expected_result": "pass",
+  "expected_reason": "canonical_baseline",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "Agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 01 Baseline" },
+      "date": { "value": "Fri, 27 Feb 2026 12:00:00 +0000" },
+      "message_id": { "value": "<fixture-01@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null
+  }
+}

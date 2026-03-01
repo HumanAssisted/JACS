@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F15",
+  "expected_result": "pass",
+  "expected_reason": "unicode_nfd_subject_normalize_nfc",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value_note": "RFC2047 base64 decoded to NFD form; verifier must normalize to NFC before hashing. F14 and F15 must produce identical subject hash." },
+      "date": { "value": "Fri, 27 Feb 2026 12:14:00 +0000" },
+      "message_id": { "value": "<fixture-15@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "Subject contains NFD e+combining-acute; must normalize to NFC to match F14 subject hash"
+  }
+}

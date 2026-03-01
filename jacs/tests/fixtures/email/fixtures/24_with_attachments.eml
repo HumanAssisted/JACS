@@ -1,0 +1,31 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Email With Attachments
+Date: Fri, 27 Feb 2026 12:23:00 +0000
+Message-ID: <fixture-24@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F24
+X-Expected-Result: pass
+X-Expected-Reason: two_file_attachments
+Content-Type: multipart/mixed; boundary="f24"
+
+--f24
+Content-Type: text/plain; charset=utf-8
+
+Email body with two attachments.
+
+--f24
+Content-Type: text/plain; name="notes.txt"
+Content-Disposition: attachment; filename="notes.txt"
+Content-Transfer-Encoding: base64
+
+Tm90ZXMgZmlsZSBjb250ZW50Lg==
+
+--f24
+Content-Type: application/pdf; name="report.pdf"
+Content-Disposition: attachment; filename="report.pdf"
+Content-Transfer-Encoding: base64
+
+UERGIGNvbnRlbnQgaGVyZS4=
+
+--f24--

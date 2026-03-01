@@ -1,0 +1,18 @@
+{
+  "fixture_id": "F09",
+  "expected_result": "pass",
+  "expected_reason": "optional_header_absent_ok",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "date": { "value": "Fri, 27 Feb 2026 12:08:00 +0000" },
+      "message_id": { "value": "<fixture-09@example.com>" },
+      "in_reply_to": null
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F14",
+  "expected_result": "pass",
+  "expected_reason": "unicode_nfc_subject",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value_note": "RFC2047 base64 decoded to NFC form: Fixture 14 Caf\u00e9" },
+      "date": { "value": "Fri, 27 Feb 2026 12:13:00 +0000" },
+      "message_id": { "value": "<fixture-14@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "Subject is already NFC; no normalization needed"
+  }
+}

@@ -1,0 +1,31 @@
+From: forwarder@example.com
+To: final-recipient@example.com
+Subject: Fwd: Original Message
+Date: Fri, 27 Feb 2026 12:26:00 +0000
+Message-ID: <fixture-27@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F27
+X-Expected-Result: pass
+X-Expected-Reason: forwarded_chain_two_signers
+Content-Type: multipart/mixed; boundary="f27"
+
+--f27
+Content-Type: text/plain; charset=utf-8
+
+Forwarded message body.
+
+--f27
+Content-Type: application/json; name="jacs-signature-0.json"
+Content-Disposition: attachment; filename="jacs-signature-0.json"
+Content-Transfer-Encoding: 7bit
+
+{"version":"1.0","document_type":"email_signature","payload":{"headers":{"from":{"value":"original-sender@example.com","hash":"sha256:origfrom"},"to":{"value":"forwarder@example.com","hash":"sha256:origto"},"subject":{"value":"Original Message","hash":"sha256:origsub"},"date":{"value":"Fri, 27 Feb 2026 12:00:00 +0000","hash":"sha256:origdate"},"message_id":{"value":"<original@example.com>","hash":"sha256:origmid"}},"body_plain":{"content_hash":"sha256:origbody","mime_headers_hash":"sha256:origmime"},"attachments":[],"parent_signature_hash":null},"metadata":{"issuer":"22222222-2222-2222-2222-222222222222","document_id":"orig-sig","created_at":"2026-02-27T12:00:00Z","hash":"sha256:origmeta"},"signature":{"key_id":"original-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:00:00Z"}}
+
+--f27
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+Content-Transfer-Encoding: 7bit
+
+{"version":"1.0","document_type":"email_signature","payload":{"headers":{"from":{"value":"forwarder@example.com","hash":"sha256:fwdfrom"},"to":{"value":"final-recipient@example.com","hash":"sha256:fwdto"},"subject":{"value":"Fwd: Original Message","hash":"sha256:fwdsub"},"date":{"value":"Fri, 27 Feb 2026 12:26:00 +0000","hash":"sha256:fwddate"},"message_id":{"value":"<fixture-27@example.com>","hash":"sha256:fwdmid"}},"body_plain":{"content_hash":"sha256:fwdbody","mime_headers_hash":"sha256:fwdmime"},"attachments":[],"parent_signature_hash":"sha256:origmeta"},"metadata":{"issuer":"33333333-3333-3333-3333-333333333333","document_id":"fwd-sig","created_at":"2026-02-27T12:26:00Z","hash":"sha256:fwdmeta"},"signature":{"key_id":"forwarder-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:26:00Z"}}
+
+--f27--

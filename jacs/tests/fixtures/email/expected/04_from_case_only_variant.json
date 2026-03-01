@@ -1,0 +1,18 @@
+{
+  "fixture_id": "F04",
+  "expected_result": "pass",
+  "expected_reason": "from_case_variant_canonical",
+  "expected_payload": {
+    "headers": {
+      "from": { "value_note": "Case variant should canonicalize to lowercase" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 04 From Case" },
+      "date": { "value": "Fri, 27 Feb 2026 12:03:00 +0000" },
+      "message_id": { "value": "<fixture-04@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null
+  }
+}
