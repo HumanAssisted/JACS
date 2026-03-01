@@ -71,7 +71,13 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
             continue;
         }
 
-        let content = part.contents().to_vec();
+        let raw_content = part.contents();
+        // Trim trailing CRLF that MIME boundary processing may append.
+        // This is a MIME extraction normalization — the trailing \r\n is a
+        // boundary separator, not attachment content. Without this, the
+        // attachment hash would depend on whether the content was parsed
+        // from a MIME part (with trailing CRLF) or supplied directly.
+        let content = strip_trailing_crlf(raw_content).to_vec();
         let content_type = ct.clone();
         let cte = part.content_transfer_encoding().map(|s| s.to_string());
         let cd = part
@@ -504,24 +510,22 @@ fn canonicalize_mime_header_value(value: &str) -> String {
 
 /// Compute the attachment content hash.
 ///
-/// `sha256(filename_utf8_nfc + ":" + content_type_lower + ":" + normalized_bytes)`
+/// `sha256(filename_utf8_nfc + ":" + content_type_lower + ":" + decoded_bytes)`
 ///
-/// The raw bytes are normalized by stripping trailing whitespace (CR, LF,
-/// SP, TAB) before hashing. This ensures consistent hashes even when MIME
-/// boundary processing adds or removes trailing line endings.
+/// Hashes the exact decoded bytes from mail-parser without any normalization.
+/// Any trailing-byte mutations will be detected as a hash mismatch.
+/// MIME boundary artifacts are handled at the extraction layer (mail-parser),
+/// not at the hashing layer.
 pub fn compute_attachment_hash(filename: &str, content_type: &str, raw_bytes: &[u8]) -> String {
     let filename_nfc: String = filename.nfc().collect();
     let content_type_lower = content_type.to_lowercase();
-
-    // Strip trailing whitespace (CRLF artifacts from MIME processing)
-    let trimmed = strip_trailing_whitespace(raw_bytes);
 
     let mut hasher = Sha256::new();
     hasher.update(filename_nfc.as_bytes());
     hasher.update(b":");
     hasher.update(content_type_lower.as_bytes());
     hasher.update(b":");
-    hasher.update(trimmed);
+    hasher.update(raw_bytes);
     let hash = hasher.finalize();
     format!("sha256:{}", hex::encode(hash))
 }
@@ -530,6 +534,19 @@ pub fn compute_attachment_hash(filename: &str, content_type: &str, raw_bytes: &[
 pub(crate) fn strip_trailing_whitespace(bytes: &[u8]) -> &[u8] {
     let mut end = bytes.len();
     while end > 0 && matches!(bytes[end - 1], b'\r' | b'\n' | b' ' | b'\t') {
+        end -= 1;
+    }
+    &bytes[..end]
+}
+
+/// Strip trailing CRLF/LF bytes from MIME-decoded content.
+///
+/// Only strips line terminators (\r, \n), NOT spaces or tabs.
+/// This normalizes MIME boundary artifacts at the extraction layer
+/// so that content hashing operates on the actual payload bytes.
+fn strip_trailing_crlf(bytes: &[u8]) -> &[u8] {
+    let mut end = bytes.len();
+    while end > 0 && matches!(bytes[end - 1], b'\r' | b'\n') {
         end -= 1;
     }
     &bytes[..end]

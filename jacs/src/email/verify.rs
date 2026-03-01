@@ -12,8 +12,8 @@ use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
     compute_header_entry, compute_mime_headers_hash, extract_email_parts,
 };
-use super::error::EmailError;
-use super::sign::canonical_json_sorted;
+use super::error::{check_email_size, EmailError};
+use super::sign::canonicalize_json_rfc8785;
 use super::types::{
     ChainEntry, ContentVerificationResult, FieldResult, FieldStatus, JacsEmailSignatureDocument,
     ParsedEmailParts, SignedHeaderEntry,
@@ -90,6 +90,9 @@ pub fn verify_email_document(
     public_key: &[u8],
     verifier: &dyn EmailVerifier,
 ) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
+    // Step 0: Size guard -- reject oversized emails before parsing
+    check_email_size(raw_email)?;
+
     // Step 1: Extract the JACS signature attachment
     let jacs_bytes = get_jacs_attachment(raw_email)?;
 
@@ -107,7 +110,7 @@ pub fn verify_email_document(
     let payload_json = serde_json::to_value(&doc.payload).map_err(|e| {
         EmailError::InvalidJacsDocument(format!("failed to serialize payload: {e}"))
     })?;
-    let canonical_payload = canonical_json_sorted(&payload_json);
+    let canonical_payload = canonicalize_json_rfc8785(&payload_json);
 
     let computed_hash = {
         let mut hasher = Sha256::new();
@@ -273,22 +276,31 @@ pub fn verify_email_content(
     );
 
     // valid = true only if no Fail results
-    let valid = !field_results
+    let fields_valid = !field_results
         .iter()
         .any(|r| r.status == FieldStatus::Fail);
 
     // Build chain from the current signer
+    let is_forwarded = doc.payload.parent_signature_hash.is_some();
     let mut chain = vec![ChainEntry {
         signer: doc.payload.headers.from.value.clone(),
         jacs_id: doc.metadata.issuer.clone(),
-        valid,
-        forwarded: doc.payload.parent_signature_hash.is_some(),
+        valid: fields_valid,
+        forwarded: is_forwarded,
     }];
 
     // If parent_signature_hash exists, build the parent chain entries
     if let Some(ref parent_hash) = doc.payload.parent_signature_hash {
         build_parent_chain(parent_hash, parts, &mut chain);
     }
+
+    // Overall validity: fields must pass AND all chain entries must be valid.
+    // Parent chain entries are initially valid=false at the JACS level because
+    // we lack the parent signers' public keys. The haisdk/HAI API layer must
+    // verify parent signatures and upgrade chain entries before trusting the
+    // chain. Until then, a forwarded email with unverified parents is invalid.
+    let chain_valid = chain.iter().all(|entry| entry.valid);
+    let valid = fields_valid && chain_valid;
 
     ContentVerificationResult {
         valid,
@@ -329,12 +341,16 @@ fn build_parent_chain(
             if let Ok(parent_doc) =
                 serde_json::from_slice::<JacsEmailSignatureDocument>(&jacs_att.content)
             {
-                // Add this signer to the chain
+                // Add this signer to the chain.
+                // valid is false because JACS does not have the parent signer's
+                // public key and cannot perform cryptographic verification.
+                // The haisdk / HAI API layer MUST verify the parent signature
+                // and upgrade this to true before reporting the chain as trusted.
                 let is_forwarded = parent_doc.payload.parent_signature_hash.is_some();
                 chain.push(ChainEntry {
                     signer: parent_doc.payload.headers.from.value.clone(),
                     jacs_id: parent_doc.metadata.issuer.clone(),
-                    valid: true, // Document structure valid; crypto verification is at haisdk layer
+                    valid: false,
                     forwarded: is_forwarded,
                 });
 
@@ -437,18 +453,49 @@ fn verify_header_field(
 }
 
 /// Check if two address-header values match case-insensitively.
+///
+/// Uses RFC 5322 mailbox parsing: extracts the addr-spec from angle brackets
+/// (e.g., `"Display Name" <user@example.com>` → `user@example.com`) and
+/// compares the addr-spec portions case-insensitively.
 fn addresses_match_case_insensitive(a: &str, b: &str) -> bool {
-    let normalize = |s: &str| -> Vec<String> {
-        s.split(',')
-            .map(|addr| addr.trim().to_lowercase())
-            .filter(|a| !a.is_empty())
-            .collect()
-    };
-    let mut a_addrs = normalize(a);
-    let mut b_addrs = normalize(b);
+    let mut a_addrs = extract_addr_specs(a);
+    let mut b_addrs = extract_addr_specs(b);
     a_addrs.sort();
     b_addrs.sort();
     a_addrs == b_addrs
+}
+
+/// Extract addr-spec values from an RFC 5322 address-list header value.
+///
+/// Handles:
+/// - `user@example.com` (bare addr-spec)
+/// - `<user@example.com>` (angle-addr without display name)
+/// - `"Display Name" <user@example.com>` (name-addr with display name)
+/// - `User <user@example.com>, Other <other@example.com>` (comma-separated list)
+///
+/// Returns lowercased addr-specs.
+fn extract_addr_specs(header_value: &str) -> Vec<String> {
+    header_value
+        .split(',')
+        .filter_map(|addr| {
+            let trimmed = addr.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            // Try to extract addr-spec from angle brackets
+            if let Some(start) = trimmed.rfind('<') {
+                if let Some(end) = trimmed[start..].find('>') {
+                    let spec = &trimmed[start + 1..start + end];
+                    let spec = spec.trim();
+                    if !spec.is_empty() {
+                        return Some(spec.to_lowercase());
+                    }
+                }
+            }
+            // No angle brackets — treat entire token as bare addr-spec
+            Some(trimmed.to_lowercase())
+        })
+        .collect()
 }
 
 /// Verify a body part (text/plain or text/html).
@@ -471,15 +518,12 @@ fn verify_body_part(
             let content_match = current_content_hash == stored_entry.content_hash;
             let mime_match = current_mime_hash == stored_entry.mime_headers_hash;
 
-            // Content hash is the primary integrity check.
-            // MIME headers hash may differ if the email was wrapped during signing
-            // (e.g., single-part wrapped in multipart/mixed adds CTE: 7bit).
-            // If content matches but MIME headers differ, report Modified (not Fail)
-            // since the body content itself is verified.
+            // Both content and MIME header hashes must match for Pass.
+            // MIME header tampering (e.g., changing Content-Type or CTE) is a
+            // security-relevant modification that must fail verification, even
+            // if the decoded body content happens to match.
             let status = if content_match && mime_match {
                 FieldStatus::Pass
-            } else if content_match {
-                FieldStatus::Modified
             } else {
                 FieldStatus::Fail
             };
@@ -946,15 +990,14 @@ mod tests {
         let result = verify_email_content(&doc, &parts);
 
         assert!(result.valid);
-        // All fields should be Pass, Unverifiable, or Modified
-        // (Modified is expected for body parts where MIME wrapping changes headers)
+        // All fields should be Pass or Unverifiable (Message-ID is Unverifiable).
+        // Modified is only used for address-header case-insensitive fallback.
         assert!(
             result
                 .field_results
                 .iter()
                 .all(|r| r.status == FieldStatus::Pass
-                    || r.status == FieldStatus::Unverifiable
-                    || r.status == FieldStatus::Modified),
+                    || r.status == FieldStatus::Unverifiable),
             "unexpected field status: {:?}",
             result.field_results
         );
@@ -1046,13 +1089,23 @@ mod tests {
             verify_email_document(&signed_by_b, b"test-key", &verifier).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        assert!(result.valid, "valid is false, failing fields: {:?}",
-            result.field_results.iter().filter(|r| r.status == FieldStatus::Fail).collect::<Vec<_>>());
+        // Overall valid is false because JACS cannot verify parent chain entries
+        // (no public key available for parent signers). The haisdk/HAI API layer
+        // must verify parent signatures and then trust the chain.
+        assert!(!result.valid, "expected valid=false for forwarded email at JACS level");
+        // But no individual fields should fail
+        assert!(
+            !result.field_results.iter().any(|r| r.status == FieldStatus::Fail),
+            "field-level failures unexpected: {:?}",
+            result.field_results.iter().filter(|r| r.status == FieldStatus::Fail).collect::<Vec<_>>()
+        );
         assert_eq!(result.chain.len(), 2, "Expected 2 chain entries, got {}: {:?}", result.chain.len(), result.chain);
         assert_eq!(result.chain[0].jacs_id, "agent-b:v1");
         assert!(result.chain[0].forwarded);
         assert_eq!(result.chain[1].jacs_id, "agent-a:v1");
         assert!(!result.chain[1].forwarded);
+        // Parent chain entry is unverified at JACS level
+        assert!(!result.chain[1].valid);
     }
 
     #[test]
@@ -1133,8 +1186,12 @@ mod tests {
             verify_email_document(&signed_by_c, b"test-key", &verifier).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        assert!(result.valid, "valid is false, failing fields: {:?}",
-            result.field_results.iter().filter(|r| r.status == FieldStatus::Fail).collect::<Vec<_>>());
+        // Overall valid is false because parent chain entries are unverified
+        assert!(!result.valid, "expected valid=false for deep forwarded email at JACS level");
+        assert!(
+            !result.field_results.iter().any(|r| r.status == FieldStatus::Fail),
+            "field-level failures unexpected"
+        );
         assert_eq!(result.chain.len(), 3,
             "Expected 3 chain entries, got {}: {:?}", result.chain.len(), result.chain);
         assert_eq!(result.chain[0].jacs_id, "agent-c:v1");
@@ -1143,6 +1200,143 @@ mod tests {
         assert!(result.chain[1].forwarded);
         assert_eq!(result.chain[2].jacs_id, "agent-a:v1");
         assert!(!result.chain[2].forwarded);
+        // All parent entries are unverified at JACS level
+        assert!(!result.chain[1].valid);
+        assert!(!result.chain[2].valid);
+    }
+
+    // -- Security regression tests --
+
+    #[test]
+    fn attachment_trailing_byte_tamper_detected() {
+        // Regression test for P0: trailing bytes appended to an attachment
+        // must cause verification to fail (not be silently stripped).
+        let email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody\r\n--mixbound\r\nContent-Type: application/pdf; name=\"report.pdf\"\r\nContent-Disposition: attachment; filename=\"report.pdf\"\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--mixbound--\r\n";
+        let signer = TestSigner::new("test-agent:v1");
+        let signed = sign_email(email, &signer).unwrap();
+
+        let verifier = TestVerifier;
+        let (doc, mut parts) =
+            verify_email_document(&signed, b"test-key", &verifier).unwrap();
+
+        // Tamper: append trailing bytes to attachment content
+        if let Some(att) = parts.attachments.first_mut() {
+            att.content.extend_from_slice(b"\r\n\t ");
+        }
+
+        let result = verify_email_content(&doc, &parts);
+        assert!(!result.valid, "Trailing byte tamper should be detected");
+    }
+
+    #[test]
+    fn mime_header_tamper_on_body_causes_fail() {
+        // Regression test for P0: MIME header tampering on body parts
+        // must cause Fail (not Modified).
+        let email = simple_text_email();
+        let signer = TestSigner::new("test-agent:v1");
+        let signed = sign_email(&email, &signer).unwrap();
+
+        let verifier = TestVerifier;
+        let (doc, mut parts) =
+            verify_email_document(&signed, b"test-key", &verifier).unwrap();
+
+        // Tamper: change body MIME header
+        if let Some(bp) = parts.body_plain.as_mut() {
+            bp.content_type = Some("text/plain; charset=us-ascii".to_string());
+        }
+
+        let result = verify_email_content(&doc, &parts);
+        let body_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "body_plain")
+            .unwrap();
+        assert_eq!(body_result.status, FieldStatus::Fail,
+            "MIME header tamper should be Fail, not {:?}", body_result.status);
+        assert!(!result.valid, "MIME header tamper should invalidate result");
+    }
+
+    #[test]
+    fn oversized_email_rejected_on_verify() {
+        // Regression test for P1: verify must enforce size limit.
+        let mut big_email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain\r\n\r\n".to_vec();
+        big_email.resize(26 * 1024 * 1024, b'A'); // > 25 MB
+        let verifier = TestVerifier;
+        let result = verify_email_document(&big_email, b"key", &verifier);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            EmailError::EmailTooLarge { .. } => {}
+            other => panic!("Expected EmailTooLarge, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parent_chain_entry_valid_is_false() {
+        // Regression test for P0: parent chain entries should have valid=false
+        // because JACS cannot verify their cryptographic signatures.
+        let (signed_by_b, _, _) = forwarded_email_from_b();
+        let verifier = TestVerifier;
+        let (doc, parts) =
+            verify_email_document(&signed_by_b, b"test-key", &verifier).unwrap();
+        let result = verify_email_content(&doc, &parts);
+
+        // chain[0] is the current signer (B) - valid is based on field results
+        // chain[1] is the parent (A) - valid must be false (no crypto check)
+        assert!(result.chain.len() >= 2);
+        assert!(!result.chain[1].valid,
+            "Parent chain entry should have valid=false without crypto verification");
+    }
+
+    #[test]
+    fn address_match_extracts_mailbox_addr_spec() {
+        // RFC 5322 mailbox format: "Display Name" <addr-spec>
+        assert!(addresses_match_case_insensitive(
+            "\"Alice Agent\" <alice@example.com>",
+            "alice@example.com"
+        ));
+        // Angle-addr without display name
+        assert!(addresses_match_case_insensitive(
+            "<bob@example.com>",
+            "bob@example.com"
+        ));
+        // Multiple addresses with display names
+        assert!(addresses_match_case_insensitive(
+            "Alice <alice@example.com>, Bob <bob@example.com>",
+            "bob@example.com, alice@example.com"
+        ));
+        // Case-insensitive comparison
+        assert!(addresses_match_case_insensitive(
+            "\"ALICE\" <ALICE@EXAMPLE.COM>",
+            "alice@example.com"
+        ));
+        // Different addr-specs should NOT match
+        assert!(!addresses_match_case_insensitive(
+            "\"Alice\" <alice@example.com>",
+            "bob@example.com"
+        ));
+    }
+
+    #[test]
+    fn chain_validity_gates_overall_valid() {
+        // Non-forwarded email: chain has one entry, overall valid = true
+        let email = simple_text_email();
+        let signer = TestSigner::new("test-agent:v1");
+        let signed = sign_email(&email, &signer).unwrap();
+        let verifier = TestVerifier;
+        let (doc, parts) = verify_email_document(&signed, b"test-key", &verifier).unwrap();
+        let result = verify_email_content(&doc, &parts);
+        assert!(result.valid, "non-forwarded email should be valid");
+
+        // Forwarded email: parent chain entry has valid=false → overall valid=false
+        let (signed_by_b, _, _) = forwarded_email_from_b();
+        let (doc, parts) = verify_email_document(&signed_by_b, b"test-key", &verifier).unwrap();
+        let result = verify_email_content(&doc, &parts);
+        assert!(!result.valid, "forwarded email should be invalid at JACS level due to unverified chain");
+        // But field results should all pass (no content tampering)
+        let failing_fields: Vec<_> = result.field_results.iter()
+            .filter(|r| r.status == FieldStatus::Fail)
+            .collect();
+        assert!(failing_fields.is_empty(), "no field-level failures expected: {:?}", failing_fields);
     }
 
     /// Helper: rewrite the headers of a signed email to simulate forwarding.

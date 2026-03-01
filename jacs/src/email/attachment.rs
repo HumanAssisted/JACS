@@ -11,6 +11,17 @@ use super::error::EmailError;
 /// Name of the active JACS signature attachment.
 const JACS_SIGNATURE_FILENAME: &str = "jacs-signature.json";
 
+/// Find the last occurrence of `needle` in `haystack` (byte-level rfind).
+/// Returns the byte offset of the start of the match, or None.
+pub(crate) fn rfind_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
+    }
+    (0..=haystack.len() - needle.len())
+        .rev()
+        .find(|&i| &haystack[i..i + needle.len()] == needle)
+}
+
 /// Add a `jacs-signature.json` attachment to a raw RFC 5322 email.
 ///
 /// - If the email is already `multipart/mixed`: insert a new MIME part before the closing boundary.
@@ -109,13 +120,13 @@ pub fn remove_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
         .map(|b| b.to_string());
 
     if let Some(boundary) = boundary {
-        // Remove the MIME part including its boundary prefix
+        // Remove the MIME part including its boundary prefix.
+        // Use raw byte search to avoid lossy UTF-8 conversion that can
+        // shift byte positions with non-ASCII email content.
         let boundary_marker = format!("--{}", boundary);
         let before_part = &raw_email[..header_offset];
 
-        // Find the boundary line before this part
-        let before_str = String::from_utf8_lossy(before_part);
-        if let Some(boundary_start) = before_str.rfind(&boundary_marker) {
+        if let Some(boundary_start) = rfind_bytes(before_part, boundary_marker.as_bytes()) {
             let mut result = Vec::new();
             result.extend_from_slice(&raw_email[..boundary_start]);
             result.extend_from_slice(&raw_email[end_offset..]);
@@ -137,9 +148,9 @@ fn insert_part_before_closing_boundary(
     doc: &[u8],
 ) -> Result<Vec<u8>, EmailError> {
     let closing = format!("--{}--", boundary);
-    let email_str = String::from_utf8_lossy(raw_email);
 
-    let closing_pos = email_str.rfind(&closing).ok_or_else(|| {
+    // Use raw byte search to avoid lossy UTF-8 conversion.
+    let closing_pos = rfind_bytes(raw_email, closing.as_bytes()).ok_or_else(|| {
         EmailError::InvalidEmailFormat("Cannot find closing boundary in multipart/mixed".into())
     })?;
 
@@ -196,94 +207,212 @@ fn wrap_in_multipart_mixed(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
         .unwrap_or("7bit");
 
     // Rebuild headers, replacing Content-Type with multipart/mixed.
-    // Track whether the *current* header is one being removed so that only
-    // its continuation lines are skipped (not continuations of other headers).
-    let headers_str = String::from_utf8_lossy(headers);
-    let mut new_headers = String::new();
-    let mut replaced_ct = false;
-    let mut skip_current = false;
+    // RFC 5322 headers are 7-bit ASCII; use byte-level line scanning to
+    // avoid lossy UTF-8 conversion that could corrupt binary preamble data.
+    let new_headers = rebuild_headers_for_multipart(headers, &boundary)?;
 
-    for line in headers_str.split('\n') {
-        let line = line.trim_end_matches('\r');
-        if line.is_empty() {
-            break;
-        }
-        // Continuation line: starts with SP or TAB (RFC 5322 folding)
-        if line.starts_with(' ') || line.starts_with('\t') {
-            if skip_current {
-                continue; // continuation of a removed header
-            }
-            new_headers.push_str(line);
-            new_headers.push_str("\r\n");
-            continue;
-        }
-        // New header line -- reset skip flag
-        skip_current = false;
-        let lower = line.to_lowercase();
-        if lower.starts_with("content-type:") {
-            skip_current = true;
-            if !replaced_ct {
-                new_headers.push_str(&format!(
-                    "Content-Type: multipart/mixed; boundary=\"{}\"\r\n",
-                    boundary
-                ));
-                replaced_ct = true;
-            }
-            continue;
-        }
-        if lower.starts_with("content-transfer-encoding:") {
-            skip_current = true;
-            continue;
-        }
-        new_headers.push_str(line);
-        new_headers.push_str("\r\n");
-    }
-
-    if !replaced_ct {
-        new_headers.push_str(&format!(
-            "Content-Type: multipart/mixed; boundary=\"{}\"\r\n",
-            boundary
-        ));
-    }
-
-    // Build the wrapped email
-    let mut result = String::new();
-    result.push_str(&new_headers);
-    result.push_str("\r\n");
+    // Build the wrapped email as raw bytes to preserve binary body content.
+    let mut result: Vec<u8> = Vec::new();
+    result.extend_from_slice(&new_headers);
+    result.extend_from_slice(b"\r\n");
 
     // Original body as first part
-    result.push_str(&format!("--{}\r\n", boundary));
-    result.push_str(&format!("Content-Type: {}\r\n", original_ct));
-    result.push_str(&format!("Content-Transfer-Encoding: {}\r\n", original_cte));
-    result.push_str("\r\n");
-    result.push_str(&String::from_utf8_lossy(body));
+    result.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    result.extend_from_slice(format!("Content-Type: {}\r\n", original_ct).as_bytes());
+    result.extend_from_slice(format!("Content-Transfer-Encoding: {}\r\n", original_cte).as_bytes());
+    result.extend_from_slice(b"\r\n");
+    result.extend_from_slice(body);
     if !body.ends_with(b"\r\n") && !body.ends_with(b"\n") {
-        result.push_str("\r\n");
+        result.extend_from_slice(b"\r\n");
     }
 
     // JACS signature as second part
-    let jacs_part = build_jacs_mime_part(&boundary, doc);
-    result.push_str(&jacs_part);
+    let jacs_part = build_jacs_mime_part_bytes(&boundary, doc);
+    result.extend_from_slice(&jacs_part);
 
     // Closing boundary
-    result.push_str(&format!("--{}--\r\n", boundary));
+    result.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
 
-    Ok(result.into_bytes())
+    Ok(result)
+}
+
+/// Ensure a raw email is `multipart/mixed` (without adding a JACS attachment).
+///
+/// If the email is already `multipart/mixed`, returns it unchanged.
+/// Otherwise wraps it in a new `multipart/mixed` envelope with the original
+/// content as the sole part. The closing boundary is left in place so that
+/// `add_jacs_attachment` can insert before it.
+///
+/// This is used by `sign_email` to compute MIME header hashes AFTER wrapping,
+/// ensuring they match what verification sees.
+pub(crate) fn ensure_multipart_mixed(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
+    let message = MessageParser::default()
+        .parse(raw_email)
+        .ok_or_else(|| EmailError::InvalidEmailFormat("Cannot parse email for wrapping".into()))?;
+
+    let content_type = message
+        .content_type()
+        .map(|ct| format!("{}/{}", ct.ctype(), ct.subtype().unwrap_or("")));
+
+    if content_type.as_deref() == Some("multipart/mixed") {
+        return Ok(raw_email.to_vec());
+    }
+
+    // Wrap in multipart/mixed (same logic as wrap_in_multipart_mixed but
+    // without the JACS part).
+    let boundary = generate_boundary();
+
+    let header_end = find_header_body_boundary(raw_email);
+    let headers = &raw_email[..header_end];
+    let body_start = skip_blank_line(raw_email, header_end);
+    let body = &raw_email[body_start..];
+
+    let original_ct = message
+        .content_type()
+        .map(|ct| {
+            let mut s = format!("{}/{}", ct.ctype(), ct.subtype().unwrap_or("plain"));
+            if let Some(attrs) = ct.attributes() {
+                for attr in attrs {
+                    s.push_str(&format!("; {}={}", attr.name, attr.value));
+                }
+            }
+            s
+        })
+        .unwrap_or_else(|| "text/plain; charset=utf-8".to_string());
+
+    let original_cte = message
+        .parts
+        .first()
+        .and_then(|p| p.content_transfer_encoding())
+        .unwrap_or("7bit");
+
+    // Use byte-level header rebuilding (no lossy UTF-8 conversion).
+    let new_headers = rebuild_headers_for_multipart(headers, &boundary)?;
+
+    // Build result as raw bytes to preserve binary body content.
+    let mut result: Vec<u8> = Vec::new();
+    result.extend_from_slice(&new_headers);
+    result.extend_from_slice(b"\r\n");
+
+    // Original body as first (and only) part
+    result.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    result.extend_from_slice(format!("Content-Type: {}\r\n", original_ct).as_bytes());
+    result.extend_from_slice(format!("Content-Transfer-Encoding: {}\r\n", original_cte).as_bytes());
+    result.extend_from_slice(b"\r\n");
+    result.extend_from_slice(body);
+    if !body.ends_with(b"\r\n") && !body.ends_with(b"\n") {
+        result.extend_from_slice(b"\r\n");
+    }
+
+    // Closing boundary
+    result.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+    Ok(result)
+}
+
+/// Rebuild email headers at the byte level, replacing Content-Type with
+/// multipart/mixed and removing Content-Transfer-Encoding.
+///
+/// RFC 5322 headers are 7-bit ASCII, so byte-level scanning is safe and
+/// avoids lossy UTF-8 conversion that could corrupt adjacent binary data.
+fn rebuild_headers_for_multipart(headers: &[u8], boundary: &str) -> Result<Vec<u8>, EmailError> {
+    let mut result = Vec::new();
+    let mut replaced_ct = false;
+    let mut skip_current = false;
+    let mut pos = 0;
+
+    while pos < headers.len() {
+        // Find end of this line (LF)
+        let line_end = headers[pos..]
+            .iter()
+            .position(|&b| b == b'\n')
+            .map(|i| pos + i + 1)
+            .unwrap_or(headers.len());
+        let line = &headers[pos..line_end];
+
+        // Strip trailing CRLF for inspection
+        let trimmed = strip_line_ending(line);
+
+        if trimmed.is_empty() {
+            break;
+        }
+
+        // Continuation line: starts with SP or TAB (RFC 5322 folding)
+        if trimmed[0] == b' ' || trimmed[0] == b'\t' {
+            if !skip_current {
+                result.extend_from_slice(trimmed);
+                result.extend_from_slice(b"\r\n");
+            }
+            pos = line_end;
+            continue;
+        }
+
+        // New header line -- reset skip flag
+        skip_current = false;
+        let lower: Vec<u8> = trimmed.iter().map(|b| b.to_ascii_lowercase()).collect();
+
+        if lower.starts_with(b"content-type:") {
+            skip_current = true;
+            if !replaced_ct {
+                result.extend_from_slice(
+                    format!("Content-Type: multipart/mixed; boundary=\"{}\"\r\n", boundary)
+                        .as_bytes(),
+                );
+                replaced_ct = true;
+            }
+            pos = line_end;
+            continue;
+        }
+        if lower.starts_with(b"content-transfer-encoding:") {
+            skip_current = true;
+            pos = line_end;
+            continue;
+        }
+
+        result.extend_from_slice(trimmed);
+        result.extend_from_slice(b"\r\n");
+        pos = line_end;
+    }
+
+    if !replaced_ct {
+        result.extend_from_slice(
+            format!("Content-Type: multipart/mixed; boundary=\"{}\"\r\n", boundary).as_bytes(),
+        );
+    }
+
+    Ok(result)
+}
+
+/// Strip trailing CR/LF from a line.
+fn strip_line_ending(line: &[u8]) -> &[u8] {
+    let mut end = line.len();
+    if end > 0 && line[end - 1] == b'\n' {
+        end -= 1;
+    }
+    if end > 0 && line[end - 1] == b'\r' {
+        end -= 1;
+    }
+    &line[..end]
+}
+
+/// Build the MIME part for the JACS signature attachment as raw bytes.
+fn build_jacs_mime_part_bytes(boundary: &str, doc: &[u8]) -> Vec<u8> {
+    let mut part = Vec::new();
+    part.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    part.extend_from_slice(b"Content-Type: application/json; name=\"jacs-signature.json\"\r\n");
+    part.extend_from_slice(b"Content-Disposition: attachment; filename=\"jacs-signature.json\"\r\n");
+    part.extend_from_slice(b"Content-Transfer-Encoding: 7bit\r\n");
+    part.extend_from_slice(b"\r\n");
+    part.extend_from_slice(doc);
+    part.extend_from_slice(b"\r\n");
+    part
 }
 
 /// Build the MIME part for the JACS signature attachment.
 fn build_jacs_mime_part(boundary: &str, doc: &[u8]) -> String {
-    let mut part = String::new();
-    part.push_str(&format!("--{}\r\n", boundary));
-    part.push_str("Content-Type: application/json; name=\"jacs-signature.json\"\r\n");
-    part.push_str(
-        "Content-Disposition: attachment; filename=\"jacs-signature.json\"\r\n",
-    );
-    part.push_str("Content-Transfer-Encoding: 7bit\r\n");
-    part.push_str("\r\n");
-    part.push_str(&String::from_utf8_lossy(doc));
-    part.push_str("\r\n");
-    part
+    let bytes = build_jacs_mime_part_bytes(boundary, doc);
+    // JACS documents are JSON (valid UTF-8), so this conversion is safe.
+    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
 /// Generate a unique MIME boundary string.

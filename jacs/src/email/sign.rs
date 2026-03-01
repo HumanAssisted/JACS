@@ -9,7 +9,7 @@ use chrono::Utc;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::attachment::{add_jacs_attachment, get_jacs_attachment, remove_jacs_attachment};
+use super::attachment::{add_jacs_attachment, ensure_multipart_mixed, get_jacs_attachment, remove_jacs_attachment, rfind_bytes};
 use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
     compute_header_entry, compute_mime_headers_hash, extract_email_parts,
@@ -59,8 +59,13 @@ pub fn sign_email(
     let (email_for_signing, parent_signature_hash) =
         prepare_for_forwarding(raw_email)?;
 
-    // Step 1: Parse and canonicalize (from the prepared email)
-    let parts = extract_email_parts(&email_for_signing)?;
+    // Step 0c: Ensure the email is multipart/mixed BEFORE parsing.
+    // This guarantees that the MIME headers hashed during signing match what
+    // verification will see (verification parses the wrapped email sans JACS).
+    let wrapped_email = ensure_multipart_mixed(&email_for_signing)?;
+
+    // Step 1: Parse and canonicalize (from the wrapped email)
+    let parts = extract_email_parts(&wrapped_email)?;
 
     // Step 2: Build signed headers
     let headers = build_signed_headers(&parts)?;
@@ -138,8 +143,8 @@ pub fn sign_email(
     let doc_json = serde_json::to_string(&doc)
         .map_err(|e| EmailError::InvalidJacsDocument(format!("failed to serialize: {e}")))?;
 
-    // Step 8: Attach via add_jacs_attachment (to the prepared email, not the original)
-    add_jacs_attachment(&email_for_signing, doc_json.as_bytes())
+    // Step 8: Attach via add_jacs_attachment (to the wrapped email)
+    add_jacs_attachment(&wrapped_email, doc_json.as_bytes())
 }
 
 /// Prepare an email for signing, handling the forwarding case.
@@ -221,21 +226,23 @@ fn add_named_jacs_attachment(
         .content_type()
         .map(|ct| format!("{}/{}", ct.ctype(), ct.subtype().unwrap_or("")));
 
-    let build_mime_part = |boundary: &str| -> String {
-        let mut part = String::new();
-        part.push_str(&format!("--{}\r\n", boundary));
-        part.push_str(&format!(
-            "Content-Type: application/json; name=\"{}\"\r\n",
-            filename
-        ));
-        part.push_str(&format!(
-            "Content-Disposition: attachment; filename=\"{}\"\r\n",
-            filename
-        ));
-        part.push_str("Content-Transfer-Encoding: 7bit\r\n");
-        part.push_str("\r\n");
-        part.push_str(&String::from_utf8_lossy(doc));
-        part.push_str("\r\n");
+    let build_mime_part_bytes = |boundary: &str| -> Vec<u8> {
+        let mut part = Vec::new();
+        part.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        part.extend_from_slice(
+            format!("Content-Type: application/json; name=\"{}\"\r\n", filename).as_bytes(),
+        );
+        part.extend_from_slice(
+            format!(
+                "Content-Disposition: attachment; filename=\"{}\"\r\n",
+                filename
+            )
+            .as_bytes(),
+        );
+        part.extend_from_slice(b"Content-Transfer-Encoding: 7bit\r\n");
+        part.extend_from_slice(b"\r\n");
+        part.extend_from_slice(doc);
+        part.extend_from_slice(b"\r\n");
         part
     };
 
@@ -252,17 +259,17 @@ fn add_named_jacs_attachment(
                 .to_string();
 
             let closing = format!("--{}--", boundary);
-            let email_str = String::from_utf8_lossy(raw_email);
-            let closing_pos = email_str.rfind(&closing).ok_or_else(|| {
+            // Use raw byte search to avoid lossy UTF-8 conversion.
+            let closing_pos = rfind_bytes(raw_email, closing.as_bytes()).ok_or_else(|| {
                 EmailError::InvalidEmailFormat(
                     "Cannot find closing boundary in multipart/mixed".into(),
                 )
             })?;
 
-            let part = build_mime_part(&boundary);
+            let part = build_mime_part_bytes(&boundary);
             let mut result = Vec::new();
             result.extend_from_slice(&raw_email[..closing_pos]);
-            result.extend_from_slice(part.as_bytes());
+            result.extend_from_slice(&part);
             result.extend_from_slice(closing.as_bytes());
             let after_closing = closing_pos + closing.len();
             if after_closing < raw_email.len() {
@@ -385,7 +392,7 @@ pub fn build_jacs_email_document(
     // Canonicalize payload via RFC 8785 (JCS) - sorted keys, compact JSON
     let payload_json = serde_json::to_value(payload)
         .map_err(|e| EmailError::InvalidJacsDocument(format!("payload serialization: {e}")))?;
-    let canonical_payload = canonical_json_sorted(&payload_json);
+    let canonical_payload = canonicalize_json_rfc8785(&payload_json);
 
     // Compute metadata.hash = sha256(canonical_payload)
     let hash = {
@@ -437,7 +444,7 @@ use super::canonicalize::strip_trailing_whitespace as strip_trailing_ws;
 /// - IEEE 754 number serialization
 /// - Minimal Unicode escape handling
 /// - No unnecessary whitespace
-pub(crate) fn canonical_json_sorted(value: &serde_json::Value) -> String {
+pub(crate) fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
     serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
