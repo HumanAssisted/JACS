@@ -186,6 +186,33 @@ pub fn verify_email_document(
     Ok((doc, parts))
 }
 
+/// Verify a JACS-signed .eml (RFC 5322) email in a single call.
+///
+/// This is the primary simple API for email verification. It combines
+/// `verify_email_document` (cryptographic signature validation) and
+/// `verify_email_content` (hash comparison) into one step:
+///
+/// 1. Extracts the `jacs-signature.json` attachment from the email
+/// 2. Removes the attachment (the signature covers the email without itself)
+/// 3. Validates the JACS document's payload hash (SHA-256 of canonical JSON)
+/// 4. Verifies the cryptographic signature using the provided public key
+/// 5. Compares every hash in the trusted JACS document against the actual
+///    email content (headers, body parts, attachments)
+/// 6. Returns field-level results showing which fields pass, fail, or were
+///    modified
+///
+/// The JACS document stores header values alongside their hashes, so if
+/// tampering is detected, the original values are available in the
+/// `FieldResult.original_value` field.
+///
+/// # Arguments
+/// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
+/// * `public_key` - The signer's public key bytes (extracted from PEM)
+///
+/// # Returns
+/// `ContentVerificationResult` with field-level results. Check `.valid` for
+/// overall pass/fail.
+///
 /// Compare trusted JACS document hashes against actual email content.
 ///
 /// For each field in the JACS document:
@@ -1443,4 +1470,5 @@ mod tests {
         forwarded.extend_from_slice(body);
         forwarded
     }
+
 }
