@@ -105,7 +105,7 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
 }
 
 /// Find the boundary between headers and body in raw email bytes.
-fn find_header_body_boundary(raw: &[u8]) -> usize {
+pub(crate) fn find_header_body_boundary(raw: &[u8]) -> usize {
     // Look for \r\n\r\n or \n\n
     for i in 0..raw.len().saturating_sub(1) {
         if raw[i] == b'\r' && i + 3 < raw.len() && raw[i + 1] == b'\n' && raw[i + 2] == b'\r' && raw[i + 3] == b'\n' {
@@ -527,7 +527,7 @@ pub fn compute_attachment_hash(filename: &str, content_type: &str, raw_bytes: &[
 }
 
 /// Strip trailing whitespace bytes (CR, LF, SP, TAB) from a byte slice.
-fn strip_trailing_whitespace(bytes: &[u8]) -> &[u8] {
+pub(crate) fn strip_trailing_whitespace(bytes: &[u8]) -> &[u8] {
     let mut end = bytes.len();
     while end > 0 && matches!(bytes[end - 1], b'\r' | b'\n' | b' ' | b'\t') {
         end -= 1;

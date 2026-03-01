@@ -195,18 +195,33 @@ fn wrap_in_multipart_mixed(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
         .and_then(|p| p.content_transfer_encoding())
         .unwrap_or("7bit");
 
-    // Rebuild headers, replacing Content-Type with multipart/mixed
+    // Rebuild headers, replacing Content-Type with multipart/mixed.
+    // Track whether the *current* header is one being removed so that only
+    // its continuation lines are skipped (not continuations of other headers).
     let headers_str = String::from_utf8_lossy(headers);
     let mut new_headers = String::new();
     let mut replaced_ct = false;
+    let mut skip_current = false;
 
     for line in headers_str.split('\n') {
         let line = line.trim_end_matches('\r');
         if line.is_empty() {
             break;
         }
+        // Continuation line: starts with SP or TAB (RFC 5322 folding)
+        if line.starts_with(' ') || line.starts_with('\t') {
+            if skip_current {
+                continue; // continuation of a removed header
+            }
+            new_headers.push_str(line);
+            new_headers.push_str("\r\n");
+            continue;
+        }
+        // New header line -- reset skip flag
+        skip_current = false;
         let lower = line.to_lowercase();
         if lower.starts_with("content-type:") {
+            skip_current = true;
             if !replaced_ct {
                 new_headers.push_str(&format!(
                     "Content-Type: multipart/mixed; boundary=\"{}\"\r\n",
@@ -214,16 +229,10 @@ fn wrap_in_multipart_mixed(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
                 ));
                 replaced_ct = true;
             }
-            // Skip original content-type (and any continuation lines handled below)
             continue;
         }
         if lower.starts_with("content-transfer-encoding:") {
-            // Remove from outer headers (it goes into the inner part)
-            continue;
-        }
-        // Skip continuation lines for removed headers
-        if (line.starts_with(' ') || line.starts_with('\t')) && replaced_ct {
-            // Could be a continuation of content-type; skip
+            skip_current = true;
             continue;
         }
         new_headers.push_str(line);
@@ -285,23 +294,8 @@ fn generate_boundary() -> String {
     format!("jacs_{:016x}", random)
 }
 
-/// Find the header/body boundary in raw email bytes.
-fn find_header_body_boundary(raw: &[u8]) -> usize {
-    for i in 0..raw.len().saturating_sub(1) {
-        if raw[i] == b'\r'
-            && i + 3 < raw.len()
-            && raw[i + 1] == b'\n'
-            && raw[i + 2] == b'\r'
-            && raw[i + 3] == b'\n'
-        {
-            return i;
-        }
-        if raw[i] == b'\n' && raw[i + 1] == b'\n' {
-            return i;
-        }
-    }
-    raw.len()
-}
+// Use shared implementation from canonicalize module (DRY).
+use super::canonicalize::find_header_body_boundary;
 
 /// Skip the blank line separator after headers.
 fn skip_blank_line(raw: &[u8], header_end: usize) -> usize {
@@ -417,6 +411,32 @@ mod tests {
         let signed = add_jacs_attachment(&email, doc).unwrap();
         let extracted = get_jacs_attachment(&signed).unwrap();
         assert_eq!(extracted, doc);
+    }
+
+    #[test]
+    fn wrap_preserves_folded_subject_header() {
+        // Regression test for Issue 024: continuation lines after Content-Type
+        // replacement were incorrectly skipped, truncating folded headers.
+        let email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nContent-Type: text/plain;\r\n charset=utf-8\r\nSubject: This is a very long subject line that\r\n wraps to the next line\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\n\r\nBody text\r\n";
+        let doc = br#"{"test":"doc"}"#;
+        let result = add_jacs_attachment(email, doc).unwrap();
+        let result_str = String::from_utf8_lossy(&result);
+
+        // The Subject continuation line must be preserved
+        assert!(
+            result_str.contains("wraps to the next line"),
+            "Subject continuation line was truncated: {}",
+            result_str
+        );
+        // Content-Type should be replaced with multipart/mixed
+        assert!(result_str.contains("multipart/mixed"));
+        // Content-Type continuation (charset=utf-8) should NOT be in outer headers
+        // (it moves to the inner part)
+        let outer_headers = result_str.split("\r\n\r\n").next().unwrap();
+        assert!(
+            !outer_headers.contains(" charset=utf-8"),
+            "Content-Type continuation should not be in outer headers"
+        );
     }
 
     #[test]

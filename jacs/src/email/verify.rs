@@ -299,15 +299,8 @@ pub fn verify_email_content(
 
 /// Strip trailing whitespace bytes (CR, LF, SP, TAB) from a byte slice.
 ///
-/// MIME boundary processing can add trailing whitespace to attachment content.
-/// This normalization ensures consistent hashing regardless of MIME wrapping.
-fn strip_trailing_ws_bytes(bytes: &[u8]) -> &[u8] {
-    let mut end = bytes.len();
-    while end > 0 && matches!(bytes[end - 1], b'\r' | b'\n' | b' ' | b'\t') {
-        end -= 1;
-    }
-    &bytes[..end]
-}
+// Use shared strip_trailing_whitespace from canonicalize module (DRY).
+use super::canonicalize::strip_trailing_whitespace as strip_trailing_ws_bytes;
 
 /// Build the parent chain by walking parent_signature_hash links.
 ///

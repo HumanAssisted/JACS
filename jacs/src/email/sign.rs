@@ -427,43 +427,18 @@ pub fn build_jacs_email_document(
     })
 }
 
-/// Strip trailing whitespace bytes (CR, LF, SP, TAB) from a byte slice.
+// Use shared strip_trailing_whitespace from canonicalize module (DRY).
+use super::canonicalize::strip_trailing_whitespace as strip_trailing_ws;
+
+/// Canonical JSON per RFC 8785 (JSON Canonicalization Scheme / JCS).
 ///
-/// MIME boundary processing can add trailing whitespace to attachment content.
-/// This normalization ensures consistent hashing regardless of MIME wrapping.
-fn strip_trailing_ws(bytes: &[u8]) -> &[u8] {
-    let mut end = bytes.len();
-    while end > 0 && matches!(bytes[end - 1], b'\r' | b'\n' | b' ' | b'\t') {
-        end -= 1;
-    }
-    &bytes[..end]
-}
-
-/// Canonical JSON with sorted keys (RFC 8785 / JCS approximation).
+/// Uses the `serde_json_canonicalizer` crate for full compliance including:
+/// - Sorted keys
+/// - IEEE 754 number serialization
+/// - Minimal Unicode escape handling
+/// - No unnecessary whitespace
 pub(crate) fn canonical_json_sorted(value: &serde_json::Value) -> String {
-    let canonical = canonicalize_value(value);
-    serde_json::to_string(&canonical).unwrap_or_else(|_| "null".to_string())
-}
-
-pub(crate) fn canonicalize_value(value: &serde_json::Value) -> serde_json::Value {
-    use std::collections::BTreeMap;
-    match value {
-        serde_json::Value::Object(map) => {
-            let mut sorted: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-            for (key, val) in map {
-                sorted.insert(key.clone(), canonicalize_value(val));
-            }
-            let mut out = serde_json::Map::new();
-            for (key, val) in sorted {
-                out.insert(key, val);
-            }
-            serde_json::Value::Object(out)
-        }
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(canonicalize_value).collect())
-        }
-        _ => value.clone(),
-    }
+    serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
 #[cfg(test)]
