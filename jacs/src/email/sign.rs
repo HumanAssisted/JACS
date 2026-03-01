@@ -9,7 +9,7 @@ use chrono::Utc;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::attachment::{add_jacs_attachment, ensure_multipart_mixed};
+use super::attachment::{add_jacs_attachment, ensure_multipart_mixed, get_jacs_attachment, remove_jacs_attachment, rfind_bytes};
 use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
     compute_header_entry, extract_email_parts,

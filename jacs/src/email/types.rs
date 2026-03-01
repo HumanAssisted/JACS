@@ -362,6 +362,7 @@ mod tests {
                     current_value: Some("user@example.com".to_string()),
                 },
             ],
+            chain: vec![],
         };
 
         let json_str = serde_json::to_string(&result).unwrap();
