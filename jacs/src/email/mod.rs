@@ -50,11 +50,11 @@ pub use types::{
     AttachmentEntry, BodyPartEntry, ChainEntry, ContentVerificationResult,
     EmailSignatureHeaders, EmailSignaturePayload, FieldResult, FieldStatus,
     JacsEmailMetadata, JacsEmailSignature, JacsEmailSignatureDocument,
-    SignedHeaderEntry,
+    ParsedAttachment, ParsedBodyPart, ParsedEmailParts, SignedHeaderEntry,
 };
 
 // Signing: the primary sender-side function + trait.
-pub use sign::{sign_email, EmailSigner};
+pub use sign::{canonicalize_json_rfc8785, sign_email, EmailSigner};
 
 // Verification: simple one-call API + two-step API + trait + default impl.
 pub use verify::{

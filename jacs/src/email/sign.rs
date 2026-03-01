@@ -439,7 +439,7 @@ pub(crate) fn build_jacs_email_document(
 /// - IEEE 754 number serialization
 /// - Minimal Unicode escape handling
 /// - No unnecessary whitespace
-pub(crate) fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
+pub fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
     serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
