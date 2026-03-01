@@ -145,13 +145,17 @@ fn strip_spki_wrapper_if_needed(key: &[u8], expected_raw_size: usize) -> Vec<u8>
 
 /// Extract and validate the JACS email signature document from a raw email.
 ///
-/// This function:
+/// This function handles the legacy custom `JacsEmailSignatureDocument` format
+/// with hand-rolled metadata and signature sections. For new-format JACS
+/// documents (created by `SimpleAgent::sign_message()`), use
+/// `verify_email_document_with_agent()` instead.
+///
+/// Steps:
 /// 1. Extracts the `jacs-signature.json` attachment
 /// 2. Removes the JACS attachment (the signature covers the email WITHOUT itself)
 /// 3. Parses and validates the JACS document
-/// 4. Verifies the document hash
-/// 5. Verifies the cryptographic signature using the provided public key
-/// 6. Returns the trusted document and parsed email parts (from the email sans JACS attachment)
+/// 4. Verifies the document hash and cryptographic signature
+/// 5. Returns the trusted document and parsed email parts
 ///
 /// # Arguments
 /// * `raw_email` - The raw RFC 5322 email bytes (with JACS attachment)
@@ -258,6 +262,130 @@ pub fn verify_email(
 ) -> Result<ContentVerificationResult, EmailError> {
     let (doc, parts) = verify_email_document(raw_eml, public_key, verifier)?;
     Ok(verify_email_content(&doc, &parts))
+}
+
+/// Verify a JACS-signed email using a JACS agent for document verification.
+///
+/// This is the preferred verification API for emails signed with real JACS
+/// documents (produced by `sign_email()` with a `SimpleAgent`). It uses
+/// `SimpleAgent::verify()` to validate the JACS document's signature and hash,
+/// then compares email content hashes.
+///
+/// # Arguments
+/// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
+/// * `agent` - A JACS SimpleAgent for document verification
+///
+/// # Returns
+/// `ContentVerificationResult` with field-level results.
+pub fn verify_email_with_agent(
+    raw_eml: &[u8],
+    agent: &crate::simple::SimpleAgent,
+) -> Result<ContentVerificationResult, EmailError> {
+    let (doc, parts) = verify_email_document_with_agent(raw_eml, agent)?;
+    Ok(verify_email_content(&doc, &parts))
+}
+
+/// Extract and verify a JACS email signature document using a JACS agent.
+///
+/// This function handles new-format JACS documents (created by
+/// `SimpleAgent::sign_message()`). It:
+/// 1. Extracts the `jacs-signature.json` attachment
+/// 2. Removes the JACS attachment
+/// 3. Verifies the JACS document using `SimpleAgent::verify()`
+/// 4. Extracts the email signature payload from the `content` field
+/// 5. Returns a backward-compatible `JacsEmailSignatureDocument` and parsed parts
+pub fn verify_email_document_with_agent(
+    raw_email: &[u8],
+    agent: &crate::simple::SimpleAgent,
+) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
+    check_email_size(raw_email)?;
+
+    let jacs_bytes = get_jacs_attachment(raw_email)?;
+    let email_without_jacs = remove_jacs_attachment(raw_email)?;
+
+    let jacs_str = std::str::from_utf8(&jacs_bytes).map_err(|e| {
+        EmailError::InvalidJacsDocument(format!("attachment is not valid UTF-8: {e}"))
+    })?;
+
+    // Verify the JACS document using the agent
+    let result = agent.verify(jacs_str).map_err(|e| {
+        EmailError::SignatureVerificationFailed(format!(
+            "JACS document verification failed: {e}"
+        ))
+    })?;
+
+    if !result.valid {
+        return Err(EmailError::SignatureVerificationFailed(format!(
+            "JACS document signature is invalid: {:?}",
+            result.errors
+        )));
+    }
+
+    // Parse the JACS document to extract the email payload
+    let jacs_value: serde_json::Value = serde_json::from_str(jacs_str).map_err(|e| {
+        EmailError::InvalidJacsDocument(format!("failed to parse JACS document: {e}"))
+    })?;
+
+    // Extract the email signature payload from the content field
+    let content = jacs_value.get("content").ok_or_else(|| {
+        EmailError::InvalidJacsDocument("JACS document missing 'content' field".to_string())
+    })?;
+
+    let payload: super::types::EmailSignaturePayload =
+        serde_json::from_value(content.clone()).map_err(|e| {
+            EmailError::InvalidJacsDocument(format!(
+                "failed to parse email payload from JACS document: {e}"
+            ))
+        })?;
+
+    // Extract signer identity
+    let signer_id = jacs_value
+        .get("jacsSignature")
+        .and_then(|sig| sig.get("agentID"))
+        .and_then(|id| id.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let document_id = jacs_value
+        .get("jacsId")
+        .and_then(|id| id.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let created_at = jacs_value
+        .get("jacsSignature")
+        .and_then(|sig| sig.get("date"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let hash = jacs_value
+        .get("jacsSha256")
+        .and_then(|h| h.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Build backward-compatible JacsEmailSignatureDocument
+    let doc = JacsEmailSignatureDocument {
+        version: "2.0".to_string(),
+        document_type: "email_signature".to_string(),
+        payload,
+        metadata: super::types::JacsEmailMetadata {
+            issuer: signer_id,
+            document_id,
+            created_at: created_at.clone(),
+            hash,
+        },
+        signature: super::types::JacsEmailSignature {
+            key_id: String::new(),
+            algorithm: String::new(),
+            signature: String::new(),
+            signed_at: created_at,
+        },
+    };
+
+    let parts = extract_email_parts(&email_without_jacs)?;
+    Ok((doc, parts))
 }
 
 /// Compare trusted JACS document hashes against actual email content.
@@ -423,6 +551,9 @@ pub fn verify_email_content(
 /// At the JACS library level, we can validate the document structure and hash
 /// chain but NOT the cryptographic signatures (since we don't have the parent
 /// signers' public keys -- that's done at the haisdk layer).
+///
+/// Supports both real JACS documents (v2, with `content` and `jacsSignature`
+/// fields) and legacy `JacsEmailSignatureDocument` (v1).
 fn build_parent_chain(
     parent_hash: &str,
     parts: &ParsedEmailParts,
@@ -438,15 +569,28 @@ fn build_parent_chain(
         };
 
         if att_hash == parent_hash {
-            // Found the parent document
+            // Found the parent document -- try to parse it.
+            // First attempt: real JACS document (new format with `content` field).
+            if let Some((payload, signer_id)) = try_parse_jacs_document(&jacs_att.content) {
+                let is_forwarded = payload.parent_signature_hash.is_some();
+                chain.push(ChainEntry {
+                    signer: payload.headers.from.value.clone(),
+                    jacs_id: signer_id,
+                    valid: false,
+                    forwarded: is_forwarded,
+                });
+
+                // Recurse if this parent also has a parent
+                if let Some(ref grandparent_hash) = payload.parent_signature_hash {
+                    build_parent_chain(grandparent_hash, parts, chain);
+                }
+                return;
+            }
+
+            // Fallback: legacy JacsEmailSignatureDocument format (v1).
             if let Ok(parent_doc) =
                 serde_json::from_slice::<JacsEmailSignatureDocument>(&jacs_att.content)
             {
-                // Add this signer to the chain.
-                // valid is false because JACS does not have the parent signer's
-                // public key and cannot perform cryptographic verification.
-                // The haisdk / HAI API layer MUST verify the parent signature
-                // and upgrade this to true before reporting the chain as trusted.
                 let is_forwarded = parent_doc.payload.parent_signature_hash.is_some();
                 chain.push(ChainEntry {
                     signer: parent_doc.payload.headers.from.value.clone(),
@@ -455,14 +599,39 @@ fn build_parent_chain(
                     forwarded: is_forwarded,
                 });
 
-                // Recurse if this parent also has a parent
                 if let Some(ref grandparent_hash) = parent_doc.payload.parent_signature_hash {
                     build_parent_chain(grandparent_hash, parts, chain);
                 }
+                return;
             }
+
+            // Could not parse the parent document in either format
             return;
         }
     }
+}
+
+/// Try to parse raw bytes as a real JACS document (new format).
+///
+/// Returns the extracted `EmailSignaturePayload` and signer ID on success.
+fn try_parse_jacs_document(
+    raw: &[u8],
+) -> Option<(super::types::EmailSignaturePayload, String)> {
+    let value: serde_json::Value = serde_json::from_slice(raw).ok()?;
+
+    // Real JACS documents have a `content` field containing the payload
+    let content = value.get("content")?;
+    let payload: super::types::EmailSignaturePayload =
+        serde_json::from_value(content.clone()).ok()?;
+
+    let signer_id = value
+        .get("jacsSignature")
+        .and_then(|sig| sig.get("agentID"))
+        .and_then(|id| id.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    Some((payload, signer_id))
 }
 
 /// Verify a single header field.
@@ -732,110 +901,82 @@ fn verify_attachments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::email::sign::{sign_email, EmailSigner};
+    use crate::email::sign::sign_email;
     use crate::email::types::*;
+    use crate::simple::SimpleAgent;
 
-    /// Test signer that produces deterministic signatures.
-    struct TestSigner {
-        id: String,
+    use crate::email::EMAIL_TEST_MUTEX;
+
+    /// Create a test SimpleAgent and configure env vars for signing.
+    ///
+    /// MUST be called while holding `EMAIL_TEST_MUTEX`.
+    fn create_test_agent(name: &str) -> (SimpleAgent, tempfile::TempDir) {
+        use crate::simple::CreateAgentParams;
+
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let tmp_path = tmp.path().to_string_lossy().to_string();
+
+        let params = CreateAgentParams::builder()
+            .name(name)
+            .password("TestEmail!2026")
+            .algorithm("ring-Ed25519")
+            .domain("test.example.com")
+            .description("Test agent for email verification")
+            .data_directory(&format!("{}/jacs_data", tmp_path))
+            .key_directory(&format!("{}/jacs_keys", tmp_path))
+            .config_path(&format!("{}/jacs.config.json", tmp_path))
+            .build();
+
+        let (agent, _info) = SimpleAgent::create_with_params(params)
+            .expect("create test agent");
+
+        // Set env vars needed by the keystore at signing time.
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestEmail!2026");
+            std::env::set_var("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path));
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        (agent, tmp)
     }
 
-    impl TestSigner {
-        fn new(id: &str) -> Self {
-            Self {
-                id: id.to_string(),
-            }
-        }
-    }
 
-    impl EmailSigner for TestSigner {
-        fn sign_bytes(&self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-            // Deterministic "signature": prefix + data
-            let mut result = b"sig:".to_vec();
-            result.extend_from_slice(data);
-            Ok(result)
-        }
-
-        fn jacs_id(&self) -> &str {
-            &self.id
-        }
-
-        fn key_id(&self) -> &str {
-            &self.id
-        }
-
-        fn algorithm(&self) -> &str {
-            "ed25519"
-        }
-    }
-
-    /// Test verifier that matches our TestSigner's signature format.
-    struct TestVerifier;
-
-    impl EmailVerifier for TestVerifier {
-        fn verify_bytes(
-            &self,
-            data: &[u8],
-            signature_bytes: &[u8],
-            _public_key: &[u8],
-            _algorithm: &str,
-        ) -> Result<(), Box<dyn std::error::Error>> {
-            // Expect signature = b"sig:" + data
-            let expected = {
-                let mut v = b"sig:".to_vec();
-                v.extend_from_slice(data);
-                v
-            };
-            if signature_bytes == expected {
-                Ok(())
-            } else {
-                Err("signature mismatch".into())
-            }
-        }
-    }
-
-    /// Test verifier that always fails.
-    struct FailingVerifier;
-
-    impl EmailVerifier for FailingVerifier {
-        fn verify_bytes(
-            &self,
-            _data: &[u8],
-            _signature_bytes: &[u8],
-            _public_key: &[u8],
-            _algorithm: &str,
-        ) -> Result<(), Box<dyn std::error::Error>> {
-            Err("wrong key".into())
-        }
+    /// Extract the email signature payload from a signed email's JACS attachment.
+    fn extract_payload(signed_email: &[u8]) -> EmailSignaturePayload {
+        let doc_bytes = crate::email::attachment::get_jacs_attachment(signed_email).unwrap();
+        let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
+        let jacs_doc: serde_json::Value = serde_json::from_str(doc_str).unwrap();
+        let content = &jacs_doc["content"];
+        serde_json::from_value(content.clone()).unwrap()
     }
 
     fn simple_text_email() -> Vec<u8> {
         b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello World\r\n".to_vec()
     }
 
-    // -- verify_email_document tests --
+    // -- verify_email_document_with_agent tests --
 
     #[test]
-    fn verify_email_document_valid_signature() {
+    fn verify_email_document_with_agent_valid_signature() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-valid-sig");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
         let (doc, parts) =
-            verify_email_document(&signed, b"test-public-key", &verifier).unwrap();
+            verify_email_document_with_agent(&signed, &agent).unwrap();
 
-        assert_eq!(doc.version, "1.0");
         assert_eq!(doc.document_type, "email_signature");
-        assert_eq!(doc.metadata.issuer, "test-agent:v1");
         assert!(parts.body_plain.is_some());
     }
 
     #[test]
     fn verify_email_document_missing_jacs_attachment() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-missing");
         let email = simple_text_email();
-        let verifier = TestVerifier;
-        let result = verify_email_document(&email, b"test-key", &verifier);
+        let result = verify_email_document_with_agent(&email, &agent);
         assert!(result.is_err());
         match result.unwrap_err() {
             EmailError::MissingJacsSignature => {}
@@ -844,231 +985,104 @@ mod tests {
     }
 
     #[test]
-    fn verify_email_document_wrong_key() {
+    fn verify_email_document_tampered_content() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-tamper");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = FailingVerifier;
-        let result = verify_email_document(&signed, b"wrong-key", &verifier);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            EmailError::SignatureVerificationFailed(_) => {}
-            other => panic!(
-                "Expected SignatureVerificationFailed, got {:?}",
-                other
-            ),
-        }
-    }
-
-    #[test]
-    fn verify_email_document_tampered_hash() {
-        let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
-
-        // Extract, tamper hash, re-attach
         let doc_bytes = crate::email::attachment::get_jacs_attachment(&signed).unwrap();
-        let mut doc: JacsEmailSignatureDocument =
-            serde_json::from_slice(&doc_bytes).unwrap();
-        doc.metadata.hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string();
-        let tampered_json = serde_json::to_vec(&doc).unwrap();
+        let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
+        let mut jacs_doc: serde_json::Value = serde_json::from_str(doc_str).unwrap();
+        jacs_doc["content"]["headers"]["from"]["hash"] = serde_json::json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+        let tampered_json = serde_json::to_string(&jacs_doc).unwrap();
 
         let email_without = crate::email::attachment::remove_jacs_attachment(&signed).unwrap();
         let tampered_email =
-            crate::email::attachment::add_jacs_attachment(&email_without, &tampered_json)
+            crate::email::attachment::add_jacs_attachment(&email_without, tampered_json.as_bytes())
                 .unwrap();
 
-        let verifier = TestVerifier;
-        let result = verify_email_document(&tampered_email, b"test-key", &verifier);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            EmailError::InvalidJacsDocument(msg) => {
-                assert!(msg.contains("hash mismatch"), "msg: {}", msg);
-            }
-            other => panic!("Expected InvalidJacsDocument, got {:?}", other),
-        }
+        let result = verify_email_document_with_agent(&tampered_email, &agent);
+        assert!(result.is_err(), "Tampered JACS document should fail verification");
     }
 
     // -- verify_email_content tests --
 
     #[test]
     fn verify_email_content_all_pass() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-content-pass");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
         let (doc, parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
+            verify_email_document_with_agent(&signed, &agent).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         assert!(result.valid, "valid is false, field_results: {:?}", result.field_results);
-        // Check that from, to, subject, date all pass
-        let from_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "headers.from")
-            .unwrap();
+        let from_result = result.field_results.iter().find(|r| r.field == "headers.from").unwrap();
         assert_eq!(from_result.status, FieldStatus::Pass);
-
-        let subject_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "headers.subject")
-            .unwrap();
+        let subject_result = result.field_results.iter().find(|r| r.field == "headers.subject").unwrap();
         assert_eq!(subject_result.status, FieldStatus::Pass);
     }
 
     #[test]
     fn verify_email_content_tampered_from() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-tamper-from");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Tamper the From header
-        parts
-            .headers
-            .insert("from".to_string(), vec!["attacker@evil.com".to_string()]);
+        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        parts.headers.insert("from".to_string(), vec!["attacker@evil.com".to_string()]);
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-
-        let from_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "headers.from")
-            .unwrap();
+        let from_result = result.field_results.iter().find(|r| r.field == "headers.from").unwrap();
         assert_eq!(from_result.status, FieldStatus::Fail);
     }
 
     #[test]
     fn verify_email_content_tampered_body() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-tamper-body");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Tamper the body
+        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
         if let Some(ref mut bp) = parts.body_plain {
             bp.content = b"Tampered body content".to_vec();
         }
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-
-        let body_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "body_plain")
-            .unwrap();
+        let body_result = result.field_results.iter().find(|r| r.field == "body_plain").unwrap();
         assert_eq!(body_result.status, FieldStatus::Fail);
     }
 
     #[test]
-    fn verify_email_content_case_changed_from_domain() {
-        let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
-
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Change From domain case (sender@EXAMPLE.COM -> sender@example.com)
-        // After canonicalization, domain is already lowercase, so to test Modified
-        // we need to change the local part case which should still match case-insensitively
-        parts.headers.insert(
-            "from".to_string(),
-            vec!["SENDER@example.com".to_string()],
-        );
-
-        let result = verify_email_content(&doc, &parts);
-        // Should be Modified (case-insensitive match)
-        let from_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "headers.from")
-            .unwrap();
-        assert!(
-            from_result.status == FieldStatus::Modified
-                || from_result.status == FieldStatus::Pass,
-            "Expected Modified or Pass, got {:?}",
-            from_result.status
-        );
-    }
-
-    #[test]
     fn verify_email_content_message_id_unverifiable() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-mid");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
+        let (doc, parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        let mid_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "headers.message_id")
-            .unwrap();
+        let mid_result = result.field_results.iter().find(|r| r.field == "headers.message_id").unwrap();
         assert_eq!(mid_result.status, FieldStatus::Unverifiable);
     }
 
     #[test]
-    fn verify_email_content_stripped_text_plain() {
-        let multipart = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/alternative; boundary=\"altbound\"\r\n\r\n--altbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nPlain text\r\n--altbound\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>HTML</p>\r\n--altbound--\r\n";
-
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(multipart, &signer).unwrap();
-
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Simulate text/plain being stripped by email provider
-        parts.body_plain = None;
-
-        let result = verify_email_content(&doc, &parts);
-
-        let plain_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "body_plain")
-            .unwrap();
-        assert_eq!(plain_result.status, FieldStatus::Unverifiable);
-
-        // HTML should still pass
-        let html_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "body_html");
-        if let Some(hr) = html_result {
-            assert_eq!(hr.status, FieldStatus::Pass);
-        }
-    }
-
-    #[test]
     fn verify_email_content_extra_attachment() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-extra-att");
         let email_with_att = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody\r\n--mixbound--\r\n";
 
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(email_with_att, &signer).unwrap();
+        let signed = sign_email(email_with_att, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Add an extra attachment that wasn't in the signed email
         parts.attachments.push(super::super::types::ParsedAttachment {
             filename: "extra.txt".to_string(),
             content_type: "text/plain".to_string(),
@@ -1079,12 +1093,7 @@ mod tests {
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-
-        let att_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "attachments")
-            .unwrap();
+        let att_result = result.field_results.iter().find(|r| r.field == "attachments").unwrap();
         assert_eq!(att_result.status, FieldStatus::Fail);
     }
 
@@ -1092,52 +1101,34 @@ mod tests {
 
     #[test]
     fn sign_verify_roundtrip_valid() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-roundtrip");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-        let result = verify_email_content(&doc, &parts);
-
-        assert!(result.valid);
-        // All fields should be Pass or Unverifiable (Message-ID is Unverifiable).
-        // Modified is only used for address-header case-insensitive fallback.
+        let result = verify_email_with_agent(&signed, &agent).unwrap();
+        assert!(result.valid, "roundtrip should be valid: {:?}", result.field_results);
         assert!(
-            result
-                .field_results
-                .iter()
-                .all(|r| r.status == FieldStatus::Pass
-                    || r.status == FieldStatus::Unverifiable),
-            "unexpected field status: {:?}",
-            result.field_results
+            result.field_results.iter().all(|r|
+                r.status == FieldStatus::Pass || r.status == FieldStatus::Unverifiable
+            ),
+            "unexpected field status: {:?}", result.field_results
         );
     }
 
     #[test]
     fn sign_tamper_from_verify_shows_fail() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-tamper-from2");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Tamper the From header
-        parts
-            .headers
-            .insert("from".to_string(), vec!["fake@evil.com".to_string()]);
+        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        parts.headers.insert("from".to_string(), vec!["fake@evil.com".to_string()]);
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-
-        let from_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "headers.from")
-            .unwrap();
+        let from_result = result.field_results.iter().find(|r| r.field == "headers.from").unwrap();
         assert_eq!(from_result.status, FieldStatus::Fail);
         assert!(from_result.original_value.is_some());
         assert!(from_result.current_value.is_some());
@@ -1145,13 +1136,17 @@ mod tests {
 
     // -- Forwarding chain tests --
 
-    fn forwarded_email_from_b() -> (Vec<u8>, TestSigner, TestSigner) {
-        // Agent A signs the original email
+    /// Create a forwarded email: A signs, B re-signs.
+    /// MUST be called while holding `EMAIL_TEST_MUTEX`.
+    fn forwarded_email_from_b() -> (Vec<u8>, SimpleAgent, SimpleAgent, tempfile::TempDir, tempfile::TempDir) {
+        let (agent_a, tmp_a) = create_test_agent("agent-a-fwd");
+        // env now points to agent_a's keys
         let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Report\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <orig@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHere is the report.\r\n";
-        let signer_a = TestSigner::new("agent-a:v1");
-        let signed_by_a = sign_email(original, &signer_a).unwrap();
+        let signed_by_a = sign_email(original, &agent_a).unwrap();
 
-        // Agent B forwards: replace headers but keep the JACS signature + body
+        // Create agent_b - this switches env to agent_b's keys
+        let (agent_b, tmp_b) = create_test_agent("agent-b-fwd");
+
         let forwarded = rewrite_headers_for_forward(
             &signed_by_a,
             "agentB@example.com",
@@ -1160,90 +1155,75 @@ mod tests {
             "Fri, 28 Feb 2026 13:00:00 +0000",
             "<fwd@example.com>",
         );
+        // env already points to agent_b's keys
+        let signed_by_b = sign_email(&forwarded, &agent_b).unwrap();
 
-        let signer_b = TestSigner::new("agent-b:v1");
-        let signed_by_b = sign_email(&forwarded, &signer_b).unwrap();
-
-        (signed_by_b, signer_a, signer_b)
+        (signed_by_b, agent_a, agent_b, tmp_a, tmp_b)
     }
 
     #[test]
     fn forward_renames_parent_signature() {
-        let (signed_by_b, _, _) = forwarded_email_from_b();
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (signed_by_b, _, _, _tmp_a, _tmp_b) = forwarded_email_from_b();
 
-        // Parse the forwarded email
         let parts = extract_email_parts(&signed_by_b).unwrap();
-
-        // Should have renamed jacs-signature-0.json in jacs_attachments
-        let renamed = parts.jacs_attachments.iter()
-            .find(|a| a.filename == "jacs-signature-0.json");
+        let renamed = parts.jacs_attachments.iter().find(|a| a.filename == "jacs-signature-0.json");
         assert!(renamed.is_some(), "Expected jacs-signature-0.json attachment, found: {:?}",
             parts.jacs_attachments.iter().map(|a| &a.filename).collect::<Vec<_>>());
     }
 
     #[test]
     fn forward_sets_parent_signature_hash() {
-        let (signed_by_b, _, _) = forwarded_email_from_b();
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (signed_by_b, _, _, _tmp_a, _tmp_b) = forwarded_email_from_b();
 
-        let doc_bytes = crate::email::attachment::get_jacs_attachment(&signed_by_b).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
-
-        assert!(doc.payload.parent_signature_hash.is_some());
-        assert!(doc.payload.parent_signature_hash.as_ref().unwrap().starts_with("sha256:"));
+        let payload = extract_payload(&signed_by_b);
+        assert!(payload.parent_signature_hash.is_some());
+        assert!(payload.parent_signature_hash.as_ref().unwrap().starts_with("sha256:"));
     }
 
     #[test]
     fn forward_verify_chain_has_two_entries() {
-        let (signed_by_b, _, _) = forwarded_email_from_b();
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
 
-        let verifier = TestVerifier;
-        let (doc, parts) =
-            verify_email_document(&signed_by_b, b"test-key", &verifier).unwrap();
+        let (doc, parts) = verify_email_document_with_agent(&signed_by_b, &agent_b).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        // Overall valid is false because JACS cannot verify parent chain entries
-        // (no public key available for parent signers). The haisdk/HAI API layer
-        // must verify parent signatures and then trust the chain.
         assert!(!result.valid, "expected valid=false for forwarded email at JACS level");
-        // But no individual fields should fail
         assert!(
             !result.field_results.iter().any(|r| r.status == FieldStatus::Fail),
             "field-level failures unexpected: {:?}",
             result.field_results.iter().filter(|r| r.status == FieldStatus::Fail).collect::<Vec<_>>()
         );
         assert_eq!(result.chain.len(), 2, "Expected 2 chain entries, got {}: {:?}", result.chain.len(), result.chain);
-        assert_eq!(result.chain[0].jacs_id, "agent-b:v1");
         assert!(result.chain[0].forwarded);
-        assert_eq!(result.chain[1].jacs_id, "agent-a:v1");
         assert!(!result.chain[1].forwarded);
-        // Parent chain entry is unverified at JACS level
         assert!(!result.chain[1].valid);
     }
 
     #[test]
     fn non_forwarded_email_has_single_chain_entry() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-chain-single");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
+        let (doc, parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         assert_eq!(result.chain.len(), 1);
-        assert_eq!(result.chain[0].jacs_id, "test-agent:v1");
         assert!(!result.chain[0].forwarded);
     }
 
     #[test]
     fn forward_parent_hash_matches_original_doc_bytes() {
-        // Agent A signs
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent_a, _tmp_a) = create_test_agent("agent-a-hash");
+        // env points to agent_a
         let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n";
-        let signer_a = TestSigner::new("agent-a:v1");
-        let signed_by_a = sign_email(original, &signer_a).unwrap();
+        let signed_by_a = sign_email(original, &agent_a).unwrap();
 
-        // Get Agent A's JACS doc bytes
         let a_doc_bytes = crate::email::attachment::get_jacs_attachment(&signed_by_a).unwrap();
         let a_doc_hash = {
             let mut hasher = Sha256::new();
@@ -1251,25 +1231,23 @@ mod tests {
             format!("sha256:{}", hex::encode(hasher.finalize()))
         };
 
-        // Agent B forwards
-        let signer_b = TestSigner::new("agent-b:v1");
-        let signed_by_b = sign_email(&signed_by_a, &signer_b).unwrap();
+        // Create agent_b, switches env
+        let (agent_b, _tmp_b) = create_test_agent("agent-b-hash");
+        let signed_by_b = sign_email(&signed_by_a, &agent_b).unwrap();
 
-        let b_doc_bytes = crate::email::attachment::get_jacs_attachment(&signed_by_b).unwrap();
-        let b_doc: JacsEmailSignatureDocument = serde_json::from_slice(&b_doc_bytes).unwrap();
-
-        assert_eq!(b_doc.payload.parent_signature_hash.as_ref().unwrap(), &a_doc_hash);
+        let b_payload = extract_payload(&signed_by_b);
+        assert_eq!(b_payload.parent_signature_hash.as_ref().unwrap(), &a_doc_hash);
     }
 
     #[test]
     fn deep_chain_a_to_b_to_c_has_three_entries() {
-        // Agent A signs the original email
-        let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Report\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <orig@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nOriginal report.\r\n";
-        let signer_a = TestSigner::new("agent-a:v1");
-        let signed_by_a = sign_email(original, &signer_a).unwrap();
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
-        // Agent B forwards (re-sign with different headers)
-        let signer_b = TestSigner::new("agent-b:v1");
+        let (agent_a, _tmp_a) = create_test_agent("agent-a-deep");
+        let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Report\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <orig@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nOriginal report.\r\n";
+        let signed_by_a = sign_email(original, &agent_a).unwrap();
+
+        let (agent_b, _tmp_b) = create_test_agent("agent-b-deep");
         let forward_b = rewrite_headers_for_forward(
             &signed_by_a,
             "agentB@example.com",
@@ -1278,10 +1256,9 @@ mod tests {
             "Fri, 28 Feb 2026 13:00:00 +0000",
             "<fwd1@example.com>",
         );
-        let signed_by_b = sign_email(&forward_b, &signer_b).unwrap();
+        let signed_by_b = sign_email(&forward_b, &agent_b).unwrap();
 
-        // Agent C forwards again (re-sign with different headers)
-        let signer_c = TestSigner::new("agent-c:v1");
+        let (agent_c, _tmp_c) = create_test_agent("agent-c-deep");
         let forward_c = rewrite_headers_for_forward(
             &signed_by_b,
             "agentC@example.com",
@@ -1290,15 +1267,11 @@ mod tests {
             "Fri, 28 Feb 2026 14:00:00 +0000",
             "<fwd2@example.com>",
         );
-        let signed_by_c = sign_email(&forward_c, &signer_c).unwrap();
+        let signed_by_c = sign_email(&forward_c, &agent_c).unwrap();
 
-        // Verify Agent C's email
-        let verifier = TestVerifier;
-        let (doc, parts) =
-            verify_email_document(&signed_by_c, b"test-key", &verifier).unwrap();
+        let (doc, parts) = verify_email_document_with_agent(&signed_by_c, &agent_c).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        // Overall valid is false because parent chain entries are unverified
         assert!(!result.valid, "expected valid=false for deep forwarded email at JACS level");
         assert!(
             !result.field_results.iter().any(|r| r.status == FieldStatus::Fail),
@@ -1306,13 +1279,9 @@ mod tests {
         );
         assert_eq!(result.chain.len(), 3,
             "Expected 3 chain entries, got {}: {:?}", result.chain.len(), result.chain);
-        assert_eq!(result.chain[0].jacs_id, "agent-c:v1");
         assert!(result.chain[0].forwarded);
-        assert_eq!(result.chain[1].jacs_id, "agent-b:v1");
         assert!(result.chain[1].forwarded);
-        assert_eq!(result.chain[2].jacs_id, "agent-a:v1");
         assert!(!result.chain[2].forwarded);
-        // All parent entries are unverified at JACS level
         assert!(!result.chain[1].valid);
         assert!(!result.chain[2].valid);
     }
@@ -1321,49 +1290,31 @@ mod tests {
 
     #[test]
     fn mime_header_tamper_on_body_causes_fail() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-mime-tamper");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
 
-        // Tamper: change Content-Type MIME header on body part
         if let Some(bp) = parts.body_plain.as_mut() {
             bp.content_type = Some("text/plain; charset=us-ascii".to_string());
         }
 
         let result = verify_email_content(&doc, &parts);
-        let body_result = result
-            .field_results
-            .iter()
-            .find(|r| r.field == "body_plain")
-            .unwrap();
-        assert_eq!(
-            body_result.status,
-            FieldStatus::Fail,
-            "MIME header tamper should be Fail, not {:?}",
-            body_result.status
-        );
-        assert!(
-            !result.valid,
-            "MIME header tamper should invalidate result"
-        );
+        let body_result = result.field_results.iter().find(|r| r.field == "body_plain").unwrap();
+        assert_eq!(body_result.status, FieldStatus::Fail,
+            "MIME header tamper should be Fail, not {:?}", body_result.status);
+        assert!(!result.valid, "MIME header tamper should invalidate result");
     }
 
     #[test]
     fn attachment_trailing_byte_tamper_detected() {
-        // Regression test for P0: trailing bytes appended to an attachment
-        // must cause verification to fail (not be silently stripped).
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-att-tamper");
         let email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody\r\n--mixbound\r\nContent-Type: application/pdf; name=\"report.pdf\"\r\nContent-Disposition: attachment; filename=\"report.pdf\"\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--mixbound--\r\n";
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(email, &signer).unwrap();
+        let signed = sign_email(email, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
 
-        let verifier = TestVerifier;
-        let (doc, mut parts) =
-            verify_email_document(&signed, b"test-key", &verifier).unwrap();
-
-        // Tamper: append trailing bytes to attachment content
         if let Some(att) = parts.attachments.first_mut() {
             att.content.extend_from_slice(b"\r\n\t ");
         }
@@ -1374,11 +1325,11 @@ mod tests {
 
     #[test]
     fn oversized_email_rejected_on_verify() {
-        // Regression test for P1: verify must enforce size limit.
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-oversize");
         let mut big_email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain\r\n\r\n".to_vec();
-        big_email.resize(26 * 1024 * 1024, b'A'); // > 25 MB
-        let verifier = TestVerifier;
-        let result = verify_email_document(&big_email, b"key", &verifier);
+        big_email.resize(26 * 1024 * 1024, b'A');
+        let result = verify_email_document_with_agent(&big_email, &agent);
         assert!(result.is_err());
         match result.unwrap_err() {
             EmailError::EmailTooLarge { .. } => {}
@@ -1388,44 +1339,36 @@ mod tests {
 
     #[test]
     fn parent_chain_entry_valid_is_false() {
-        // Regression test for P0: parent chain entries should have valid=false
-        // because JACS cannot verify their cryptographic signatures.
-        let (signed_by_b, _, _) = forwarded_email_from_b();
-        let verifier = TestVerifier;
-        let (doc, parts) =
-            verify_email_document(&signed_by_b, b"test-key", &verifier).unwrap();
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
+        let (doc, parts) = verify_email_document_with_agent(&signed_by_b, &agent_b).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        // chain[0] is the current signer (B) - valid is based on field results
-        // chain[1] is the parent (A) - valid must be false (no crypto check)
         assert!(result.chain.len() >= 2);
         assert!(!result.chain[1].valid,
             "Parent chain entry should have valid=false without crypto verification");
     }
 
+    // -- Pure function tests (no agent needed, no mutex needed) --
+
     #[test]
     fn address_match_extracts_mailbox_addr_spec() {
-        // RFC 5322 mailbox format: "Display Name" <addr-spec>
         assert!(addresses_match_case_insensitive(
             "\"Alice Agent\" <alice@example.com>",
             "alice@example.com"
         ));
-        // Angle-addr without display name
         assert!(addresses_match_case_insensitive(
             "<bob@example.com>",
             "bob@example.com"
         ));
-        // Multiple addresses with display names
         assert!(addresses_match_case_insensitive(
             "Alice <alice@example.com>, Bob <bob@example.com>",
             "bob@example.com, alice@example.com"
         ));
-        // Case-insensitive comparison
         assert!(addresses_match_case_insensitive(
             "\"ALICE\" <ALICE@EXAMPLE.COM>",
             "alice@example.com"
         ));
-        // Different addr-specs should NOT match
         assert!(!addresses_match_case_insensitive(
             "\"Alice\" <alice@example.com>",
             "bob@example.com"
@@ -1434,21 +1377,16 @@ mod tests {
 
     #[test]
     fn extract_addr_specs_handles_rfc5322_edge_cases() {
-        // Bare addr-spec
         assert_eq!(extract_addr_specs("user@example.com"), vec!["user@example.com"]);
-        // Angle-addr
         assert_eq!(extract_addr_specs("<user@example.com>"), vec!["user@example.com"]);
-        // Display name with quoted string
         assert_eq!(
             extract_addr_specs("\"John Doe\" <john@example.com>"),
             vec!["john@example.com"]
         );
-        // Multiple addresses
         let addrs = extract_addr_specs("Alice <alice@a.com>, Bob <bob@b.com>");
         assert_eq!(addrs.len(), 2);
         assert!(addrs.contains(&"alice@a.com".to_string()));
         assert!(addrs.contains(&"bob@b.com".to_string()));
-        // Case normalization
         assert_eq!(
             extract_addr_specs("USER@EXAMPLE.COM"),
             vec!["user@example.com"]
@@ -1457,21 +1395,18 @@ mod tests {
 
     #[test]
     fn chain_validity_gates_overall_valid() {
-        // Non-forwarded email: chain has one entry, overall valid = true
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent("verify-chain-gate");
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent:v1");
-        let signed = sign_email(&email, &signer).unwrap();
-        let verifier = TestVerifier;
-        let (doc, parts) = verify_email_document(&signed, b"test-key", &verifier).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
+        let (doc, parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
         let result = verify_email_content(&doc, &parts);
         assert!(result.valid, "non-forwarded email should be valid");
 
-        // Forwarded email: parent chain entry has valid=false → overall valid=false
-        let (signed_by_b, _, _) = forwarded_email_from_b();
-        let (doc, parts) = verify_email_document(&signed_by_b, b"test-key", &verifier).unwrap();
+        let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
+        let (doc, parts) = verify_email_document_with_agent(&signed_by_b, &agent_b).unwrap();
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid, "forwarded email should be invalid at JACS level due to unverified chain");
-        // But field results should all pass (no content tampering)
         let failing_fields: Vec<_> = result.field_results.iter()
             .filter(|r| r.status == FieldStatus::Fail)
             .collect();

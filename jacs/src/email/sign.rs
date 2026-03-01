@@ -1,13 +1,14 @@
 //! Email signing implementation for the JACS email system.
 //!
-//! Provides `sign_email()` which takes raw RFC 5322 email bytes and an
-//! `EmailSigner`, and returns the email with a `jacs-signature.json`
-//! MIME attachment containing the JACS email signature document.
+//! Provides `sign_email()` which takes raw RFC 5322 email bytes and a
+//! JACS `SimpleAgent`, and returns the email with a `jacs-signature.json`
+//! MIME attachment containing a real JACS document.
+//!
+//! All cryptographic operations are delegated to the JACS agent via
+//! `SimpleAgent::sign_message()`. The email module only handles hash
+//! computation and MIME operations.
 
-use base64::Engine;
-use chrono::Utc;
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 use super::attachment::{add_jacs_attachment, ensure_multipart_mixed, get_jacs_attachment, remove_jacs_attachment, rfind_bytes};
 use super::canonicalize::{
@@ -17,40 +18,26 @@ use super::canonicalize::{
 use super::error::{check_email_size, EmailError};
 use super::types::{
     AttachmentEntry, BodyPartEntry, EmailSignatureHeaders, EmailSignaturePayload,
-    JacsEmailMetadata, JacsEmailSignature, JacsEmailSignatureDocument, SignedHeaderEntry,
+    SignedHeaderEntry,
 };
 
-/// Trait for signing email payloads.
-///
-/// This is the minimal interface required by `sign_email()`. Implementations
-/// typically delegate to a JACS `Agent` or an `haisdk::JacsProvider`.
-pub trait EmailSigner {
-    /// Sign raw bytes and return the signature bytes.
-    fn sign_bytes(&self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
-
-    /// Return the signer's JACS agent ID.
-    fn jacs_id(&self) -> &str;
-
-    /// Return the key identifier used for signing.
-    fn key_id(&self) -> &str;
-
-    /// Return the signing algorithm name (e.g., "ed25519").
-    fn algorithm(&self) -> &str;
-}
+use crate::simple::SimpleAgent;
 
 /// Sign a raw RFC 5322 email and attach a `jacs-signature.json` document.
 ///
 /// This is the primary sender-side function. It:
 /// 1. Parses and canonicalizes the email
 /// 2. Computes hashes for headers, body parts, and attachments
-/// 3. Builds the JACS email signature document
-/// 4. Signs the canonical payload
-/// 5. Attaches the signature as a MIME part
+/// 3. Creates a real JACS document containing the hash payload via the agent
+/// 4. Attaches the signed JACS document as a MIME part
+///
+/// All cryptographic operations are handled by the JACS agent — no manual
+/// signing, hashing, or key management in this module.
 ///
 /// Returns the modified email bytes with the JACS attachment.
 pub fn sign_email(
     raw_email: &[u8],
-    signer: &dyn EmailSigner,
+    agent: &SimpleAgent,
 ) -> Result<Vec<u8>, EmailError> {
     // Step 0: Size check
     check_email_size(raw_email)?;
@@ -136,15 +123,11 @@ pub fn sign_email(
         parent_signature_hash,
     };
 
-    // Step 6: Build the complete JACS email signature document
-    let doc = build_jacs_email_document(&payload, signer)?;
+    // Step 6: Create a real JACS document containing the email hash payload
+    let jacs_doc_json = build_jacs_email_document(&payload, agent)?;
 
-    // Step 7: Serialize to JSON
-    let doc_json = serde_json::to_string(&doc)
-        .map_err(|e| EmailError::InvalidJacsDocument(format!("failed to serialize: {e}")))?;
-
-    // Step 8: Attach via add_jacs_attachment (to the wrapped email)
-    add_jacs_attachment(&wrapped_email, doc_json.as_bytes())
+    // Step 7: Attach via add_jacs_attachment (to the wrapped email)
+    add_jacs_attachment(&wrapped_email, jacs_doc_json.as_bytes())
 }
 
 /// Prepare an email for signing, handling the forwarding case.
@@ -376,60 +359,33 @@ fn build_header_entry(
     })
 }
 
-/// Build the complete JACS email signature document from a payload and signer.
+/// Build a real JACS document containing the email signature payload.
 ///
-/// This handles:
-/// - RFC 8785 (JCS) canonicalization of the payload
-/// - SHA-256 hash computation for metadata
-/// - Cryptographic signing via the signer
-/// - Document assembly with metadata and signature sections
+/// Uses `SimpleAgent::sign_message()` to create a proper JACS document
+/// with standard JACS signing, hashing, and identity binding. The email
+/// hash payload becomes the `content` field of the JACS document.
+///
+/// Returns the raw JSON string of the signed JACS document.
 pub(crate) fn build_jacs_email_document(
     payload: &EmailSignaturePayload,
-    signer: &dyn EmailSigner,
-) -> Result<JacsEmailSignatureDocument, EmailError> {
-    // Canonicalize payload via RFC 8785 (JCS) - sorted keys, compact JSON
-    let payload_json = serde_json::to_value(payload)
+    agent: &SimpleAgent,
+) -> Result<String, EmailError> {
+    // Convert the payload to a serde_json::Value for sign_message
+    let payload_value = serde_json::to_value(payload)
         .map_err(|e| EmailError::InvalidJacsDocument(format!("payload serialization: {e}")))?;
-    let canonical_payload = canonicalize_json_rfc8785(&payload_json);
 
-    // Compute metadata.hash = sha256(canonical_payload)
-    let hash = {
-        let mut hasher = Sha256::new();
-        hasher.update(canonical_payload.as_bytes());
-        format!("sha256:{}", hex::encode(hasher.finalize()))
-    };
+    // Use the JACS agent to create and sign a real JACS document.
+    // sign_message() wraps the data as:
+    //   { "jacsType": "message", "jacsLevel": "raw", "content": <payload> }
+    // then calls create_document_and_load() which handles schema validation,
+    // canonical hashing, and cryptographic signing through the agent's identity.
+    let signed_doc = agent.sign_message(&payload_value).map_err(|e| {
+        EmailError::SignatureVerificationFailed(format!(
+            "JACS document signing failed: {e}"
+        ))
+    })?;
 
-    let now = Utc::now().to_rfc3339();
-
-    // Sign the canonical payload bytes
-    let sig_bytes = signer
-        .sign_bytes(canonical_payload.as_bytes())
-        .map_err(|e| {
-            EmailError::SignatureVerificationFailed(format!("signing failed: {e}"))
-        })?;
-    let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&sig_bytes);
-
-    let metadata = JacsEmailMetadata {
-        issuer: signer.jacs_id().to_string(),
-        document_id: Uuid::new_v4().to_string(),
-        created_at: now.clone(),
-        hash,
-    };
-
-    let signature = JacsEmailSignature {
-        key_id: signer.key_id().to_string(),
-        algorithm: signer.algorithm().to_string(),
-        signature: sig_b64,
-        signed_at: now,
-    };
-
-    Ok(JacsEmailSignatureDocument {
-        version: "1.0".to_string(),
-        document_type: "email_signature".to_string(),
-        payload: payload.clone(),
-        metadata,
-        signature,
-    })
+    Ok(signed_doc.raw)
 }
 
 /// Canonical JSON per RFC 8785 (JSON Canonicalization Scheme / JCS).
@@ -446,38 +402,52 @@ pub fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::simple::SimpleAgent;
 
-    /// Test signer that produces deterministic signatures.
-    struct TestSigner {
-        id: String,
+    use crate::email::EMAIL_TEST_MUTEX;
+
+    /// Create a test SimpleAgent and set the env vars needed for signing.
+    ///
+    /// MUST be called while holding `EMAIL_TEST_MUTEX`.
+    fn create_test_agent() -> (SimpleAgent, tempfile::TempDir) {
+        use crate::simple::CreateAgentParams;
+
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let tmp_path = tmp.path().to_string_lossy().to_string();
+
+        let params = CreateAgentParams::builder()
+            .name("email-sign-test-agent")
+            .password("TestEmail!2026")
+            .algorithm("ring-Ed25519")
+            .domain("test.example.com")
+            .description("Test agent for email signing")
+            .data_directory(&format!("{}/jacs_data", tmp_path))
+            .key_directory(&format!("{}/jacs_keys", tmp_path))
+            .config_path(&format!("{}/jacs.config.json", tmp_path))
+            .build();
+
+        let (agent, _info) = SimpleAgent::create_with_params(params)
+            .expect("create test agent");
+
+        // Set env vars needed by the keystore at signing time.
+        // Safe because we hold EMAIL_TEST_MUTEX.
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestEmail!2026");
+            std::env::set_var("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path));
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        (agent, tmp)
     }
 
-    impl TestSigner {
-        fn new(id: &str) -> Self {
-            Self {
-                id: id.to_string(),
-            }
-        }
-    }
-
-    impl EmailSigner for TestSigner {
-        fn sign_bytes(&self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-            let mut result = b"sig:".to_vec();
-            result.extend_from_slice(data);
-            Ok(result)
-        }
-
-        fn jacs_id(&self) -> &str {
-            &self.id
-        }
-
-        fn key_id(&self) -> &str {
-            &self.id
-        }
-
-        fn algorithm(&self) -> &str {
-            "ed25519"
-        }
+    /// Extract the email signature payload from a signed email's JACS document.
+    fn extract_payload(signed_email: &[u8]) -> EmailSignaturePayload {
+        let doc_bytes = super::super::attachment::get_jacs_attachment(signed_email).unwrap();
+        let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
+        let jacs_doc: serde_json::Value = serde_json::from_str(doc_str).unwrap();
+        let content = &jacs_doc["content"];
+        serde_json::from_value(content.clone()).unwrap()
     }
 
     fn simple_text_email() -> Vec<u8> {
@@ -498,95 +468,105 @@ mod tests {
 
     #[test]
     fn sign_email_simple_text_attaches_jacs_signature() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
         let signed_str = String::from_utf8_lossy(&signed);
         assert!(signed_str.contains("jacs-signature.json"));
-        // Should be parseable
         assert!(mail_parser::MessageParser::default().parse(&signed).is_some());
     }
 
     #[test]
-    fn sign_email_multipart_alternative_includes_both_body_parts() {
-        let email = multipart_alternative_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+    fn sign_email_produces_valid_jacs_document() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
+        let email = simple_text_email();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        // Extract the JACS doc
         let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
+        let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
 
-        assert!(doc.payload.body_plain.is_some());
-        assert!(doc.payload.body_html.is_some());
+        let result = agent.verify(doc_str).unwrap();
+        assert!(result.valid, "JACS document should be valid: {:?}", result.errors);
+    }
+
+    #[test]
+    fn sign_email_multipart_alternative_includes_both_body_parts() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
+        let email = multipart_alternative_email();
+        let signed = sign_email(&email, &agent).unwrap();
+
+        let payload = extract_payload(&signed);
+        assert!(payload.body_plain.is_some());
+        assert!(payload.body_html.is_some());
     }
 
     #[test]
     fn sign_email_with_attachments_includes_sorted_attachment_hashes() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
         let email = multipart_with_attachment_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
-
-        assert!(!doc.payload.attachments.is_empty());
-        assert_eq!(doc.payload.attachments[0].filename, "report.pdf");
-        assert!(doc.payload.attachments[0].content_hash.starts_with("sha256:"));
+        let payload = extract_payload(&signed);
+        assert!(!payload.attachments.is_empty());
+        assert_eq!(payload.attachments[0].filename, "report.pdf");
+        assert!(payload.attachments[0].content_hash.starts_with("sha256:"));
     }
 
     #[test]
     fn sign_email_threaded_reply_includes_in_reply_to_and_references() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
         let email = threaded_reply_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
-
-        assert!(doc.payload.headers.in_reply_to.is_some());
-        assert!(doc.payload.headers.references.is_some());
+        let payload = extract_payload(&signed);
+        assert!(payload.headers.in_reply_to.is_some());
+        assert!(payload.headers.references.is_some());
     }
 
     #[test]
     fn sign_email_sets_parent_signature_hash_null() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
-
-        assert!(doc.payload.parent_signature_hash.is_none());
+        let payload = extract_payload(&signed);
+        assert!(payload.parent_signature_hash.is_none());
     }
 
     #[test]
-    fn sign_email_document_has_valid_structure() {
+    fn sign_email_document_has_jacs_fields() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
         let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
+        let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
+        let jacs_doc: serde_json::Value = serde_json::from_str(doc_str).unwrap();
 
-        assert_eq!(doc.version, "1.0");
-        assert_eq!(doc.document_type, "email_signature");
-        assert_eq!(doc.metadata.issuer, "test-agent-id:v1");
-        assert!(doc.metadata.hash.starts_with("sha256:"));
-        assert_eq!(doc.signature.algorithm, "ed25519");
-        assert!(!doc.signature.signature.is_empty());
+        assert!(jacs_doc.get("jacsId").is_some(), "should have jacsId");
+        assert!(jacs_doc.get("jacsVersion").is_some(), "should have jacsVersion");
+        assert!(jacs_doc.get("jacsSignature").is_some(), "should have jacsSignature");
+        assert!(jacs_doc.get("jacsSha256").is_some(), "should have jacsSha256");
+        assert!(jacs_doc.get("content").is_some(), "should have content field");
+        assert_eq!(jacs_doc["jacsType"].as_str(), Some("message"));
     }
 
     #[test]
     fn sign_roundtrip_hashes_are_valid_sha256() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
         let email = simple_text_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
+        let payload = extract_payload(&signed);
 
-        // All hashes should be "sha256:<64 hex chars>"
         let check_hash = |h: &str, label: &str| {
             assert!(
                 h.starts_with("sha256:"),
@@ -600,14 +580,13 @@ mod tests {
             );
         };
 
-        check_hash(&doc.payload.headers.from.hash, "from");
-        check_hash(&doc.payload.headers.to.hash, "to");
-        check_hash(&doc.payload.headers.subject.hash, "subject");
-        check_hash(&doc.payload.headers.date.hash, "date");
-        check_hash(&doc.payload.headers.message_id.hash, "message_id");
-        check_hash(&doc.metadata.hash, "metadata");
+        check_hash(&payload.headers.from.hash, "from");
+        check_hash(&payload.headers.to.hash, "to");
+        check_hash(&payload.headers.subject.hash, "subject");
+        check_hash(&payload.headers.date.hash, "date");
+        check_hash(&payload.headers.message_id.hash, "message_id");
 
-        if let Some(bp) = &doc.payload.body_plain {
+        if let Some(bp) = &payload.body_plain {
             check_hash(&bp.content_hash, "body_plain.content");
             check_hash(&bp.mime_headers_hash, "body_plain.mime");
         }
@@ -615,15 +594,15 @@ mod tests {
 
     #[test]
     fn sign_multipart_has_both_body_hashes() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp) = create_test_agent();
         let email = multipart_alternative_email();
-        let signer = TestSigner::new("test-agent-id:v1");
-        let signed = sign_email(&email, &signer).unwrap();
+        let signed = sign_email(&email, &agent).unwrap();
 
-        let doc_bytes = super::super::attachment::get_jacs_attachment(&signed).unwrap();
-        let doc: JacsEmailSignatureDocument = serde_json::from_slice(&doc_bytes).unwrap();
+        let payload = extract_payload(&signed);
 
-        let plain = doc.payload.body_plain.as_ref().unwrap();
-        let html = doc.payload.body_html.as_ref().unwrap();
+        let plain = payload.body_plain.as_ref().unwrap();
+        let html = payload.body_html.as_ref().unwrap();
 
         assert!(plain.content_hash.starts_with("sha256:"));
         assert!(plain.mime_headers_hash.starts_with("sha256:"));

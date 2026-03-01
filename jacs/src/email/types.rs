@@ -198,6 +198,21 @@ pub struct ChainEntry {
     pub forwarded: bool,
 }
 
+/// A verified email document extracted from a JACS-signed attachment.
+///
+/// This is the output of `verify_email_document()` after the JACS document
+/// has been cryptographically verified. It contains the trusted email hash
+/// payload and signer identity, ready for content comparison.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifiedEmailDocument {
+    /// The email signature payload containing headers, body, and attachment hashes.
+    pub payload: EmailSignaturePayload,
+    /// JACS agent ID of the signer (from the JACS document's jacsSignature.agentID).
+    pub signer_id: String,
+    /// The raw JACS document JSON string (for inspection or re-verification).
+    pub raw_jacs_document: String,
+}
+
 /// Result of content verification comparing trusted JACS hashes against email.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentVerificationResult {

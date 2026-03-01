@@ -13,7 +13,7 @@ use super::error::EmailError;
 use super::types::{ParsedAttachment, ParsedBodyPart, ParsedEmailParts};
 
 /// Parse raw RFC 5322 email bytes into structured parts.
-pub(crate) fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailError> {
+pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailError> {
     let message = MessageParser::default()
         .parse(raw_email)
         .ok_or_else(|| EmailError::InvalidEmailFormat("Failed to parse RFC 5322 email".into()))?;
@@ -228,7 +228,7 @@ fn extract_body_part(
 /// 4. For address headers: lowercase domain part only
 /// 5. Decode RFC 2047 encoded words
 /// 6. UTF-8 NFC normalize
-pub(crate) fn canonicalize_header(name: &str, value: &str) -> Result<String, EmailError> {
+pub fn canonicalize_header(name: &str, value: &str) -> Result<String, EmailError> {
     // Unfold continuations (already unfolded by parse_raw_headers, but be safe)
     let unfolded = value.replace("\r\n", "").replace('\n', "");
 
