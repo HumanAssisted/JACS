@@ -11,9 +11,10 @@ use chrono::{DateTime, Utc};
 pub const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
 
 /// Maximum skew tolerance for `iat` (issued-at) signature claims in seconds.
-/// Default: 0 (disabled). JACS documents are designed to be idempotent and
-/// eternal — the `iat` skew check is only useful for transient API payloads.
-/// Set `JACS_MAX_IAT_SKEW_SECONDS` to a positive value (e.g., 300) to enforce.
+/// Default: 0 (disabled) so that long-lived JACS documents remain verifiable.
+/// Set `JACS_MAX_IAT_SKEW_SECONDS` to a positive value (e.g., 300) when JACS
+/// is used for auth in HTTP servers, MCP transports, or any context where
+/// replay-attack prevention requires temporal freshness guarantees.
 pub const MAX_IAT_SKEW_SECONDS: i64 = 0;
 
 /// Returns the effective `iat` skew window in seconds.
