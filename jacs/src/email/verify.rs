@@ -39,6 +39,27 @@ pub trait EmailVerifier {
 /// Default verifier that uses the JACS low-level crypto wrappers.
 pub struct DefaultEmailVerifier;
 
+/// Normalize an algorithm name to its canonical form.
+///
+/// Lowercases, strips "ring-" prefix and "-sha256"/"-sha384"/"-sha512" suffixes.
+/// Examples:
+/// - `"Ring-Ed25519"` → `"ed25519"`
+/// - `"rsa-pss-sha256"` → `"rsa-pss"`
+/// - `"PQ2025"` → `"pq2025"`
+pub fn normalize_algorithm(algorithm: &str) -> String {
+    let mut s = algorithm.to_lowercase();
+    if let Some(rest) = s.strip_prefix("ring-") {
+        s = rest.to_string();
+    }
+    for suffix in &["-sha256", "-sha384", "-sha512"] {
+        if let Some(rest) = s.strip_suffix(suffix) {
+            s = rest.to_string();
+            break;
+        }
+    }
+    s
+}
+
 impl EmailVerifier for DefaultEmailVerifier {
     fn verify_bytes(
         &self,
@@ -51,8 +72,9 @@ impl EmailVerifier for DefaultEmailVerifier {
         let data_str =
             std::str::from_utf8(data).map_err(|e| format!("data is not valid UTF-8: {e}"))?;
 
-        match algorithm.to_lowercase().as_str() {
-            "ed25519" | "ring-ed25519" => {
+        let normalized = normalize_algorithm(algorithm);
+        match normalized.as_str() {
+            "ed25519" => {
                 crate::crypt::ringwrapper::verify_string(
                     public_key.to_vec(),
                     data_str,
@@ -61,6 +83,13 @@ impl EmailVerifier for DefaultEmailVerifier {
             }
             "rsa-pss" => {
                 crate::crypt::rsawrapper::verify_string(
+                    public_key.to_vec(),
+                    data_str,
+                    &sig_b64,
+                )
+            }
+            "pq2025" | "ml-dsa-87" => {
+                crate::crypt::pq2025::verify_string(
                     public_key.to_vec(),
                     data_str,
                     &sig_b64,
@@ -309,11 +338,6 @@ pub fn verify_email_content(
     }
 }
 
-/// Strip trailing whitespace bytes (CR, LF, SP, TAB) from a byte slice.
-///
-// Use shared strip_trailing_whitespace from canonicalize module (DRY).
-use super::canonicalize::strip_trailing_whitespace as strip_trailing_ws_bytes;
-
 /// Build the parent chain by walking parent_signature_hash links.
 ///
 /// This resolves parent signatures from the JACS attachments in the email.
@@ -327,12 +351,10 @@ fn build_parent_chain(
 ) {
     // Search for the parent document among JACS attachments
     for jacs_att in &parts.jacs_attachments {
-        // Compute sha256 of the normalized attachment bytes
-        // Strip trailing whitespace for consistency with signing-side hash computation
-        let trimmed_content = strip_trailing_ws_bytes(&jacs_att.content);
+        // Compute sha256 of the exact attachment bytes (no trimming)
         let att_hash = {
             let mut hasher = Sha256::new();
-            hasher.update(trimmed_content);
+            hasher.update(&jacs_att.content);
             format!("sha256:{}", hex::encode(hasher.finalize()))
         };
 
@@ -467,14 +489,31 @@ fn addresses_match_case_insensitive(a: &str, b: &str) -> bool {
 
 /// Extract addr-spec values from an RFC 5322 address-list header value.
 ///
-/// Handles:
+/// Uses `mail_parser` to parse a synthetic `From:` header, which handles
+/// RFC 5322 mailbox formats including:
 /// - `user@example.com` (bare addr-spec)
 /// - `<user@example.com>` (angle-addr without display name)
 /// - `"Display Name" <user@example.com>` (name-addr with display name)
 /// - `User <user@example.com>, Other <other@example.com>` (comma-separated list)
+/// - `(comment) user@example.com` (comments in addresses)
+/// - `"quoted.local"@example.com` (quoted local parts)
 ///
 /// Returns lowercased addr-specs.
 fn extract_addr_specs(header_value: &str) -> Vec<String> {
+    // Build a minimal RFC 5322 message so mail_parser can parse the address.
+    let synthetic = format!("From: {}\r\n\r\n", header_value);
+    let message = mail_parser::MessageParser::default().parse(synthetic.as_bytes());
+
+    if let Some(msg) = message {
+        if let Some(from) = msg.from() {
+            return from
+                .iter()
+                .filter_map(|addr| addr.address().map(|a| a.to_lowercase()))
+                .collect();
+        }
+    }
+
+    // Fallback: if mail_parser couldn't extract addresses, try manual extraction
     header_value
         .split(',')
         .filter_map(|addr| {
@@ -482,7 +521,6 @@ fn extract_addr_specs(header_value: &str) -> Vec<String> {
             if trimmed.is_empty() {
                 return None;
             }
-            // Try to extract addr-spec from angle brackets
             if let Some(start) = trimmed.rfind('<') {
                 if let Some(end) = trimmed[start..].find('>') {
                     let spec = &trimmed[start + 1..start + end];
@@ -492,7 +530,6 @@ fn extract_addr_specs(header_value: &str) -> Vec<String> {
                     }
                 }
             }
-            // No angle brackets — treat entire token as bare addr-spec
             Some(trimmed.to_lowercase())
         })
         .collect()
@@ -1317,6 +1354,29 @@ mod tests {
     }
 
     #[test]
+    fn extract_addr_specs_handles_rfc5322_edge_cases() {
+        // Bare addr-spec
+        assert_eq!(extract_addr_specs("user@example.com"), vec!["user@example.com"]);
+        // Angle-addr
+        assert_eq!(extract_addr_specs("<user@example.com>"), vec!["user@example.com"]);
+        // Display name with quoted string
+        assert_eq!(
+            extract_addr_specs("\"John Doe\" <john@example.com>"),
+            vec!["john@example.com"]
+        );
+        // Multiple addresses
+        let addrs = extract_addr_specs("Alice <alice@a.com>, Bob <bob@b.com>");
+        assert_eq!(addrs.len(), 2);
+        assert!(addrs.contains(&"alice@a.com".to_string()));
+        assert!(addrs.contains(&"bob@b.com".to_string()));
+        // Case normalization
+        assert_eq!(
+            extract_addr_specs("USER@EXAMPLE.COM"),
+            vec!["user@example.com"]
+        );
+    }
+
+    #[test]
     fn chain_validity_gates_overall_valid() {
         // Non-forwarded email: chain has one entry, overall valid = true
         let email = simple_text_email();
@@ -1337,6 +1397,21 @@ mod tests {
             .filter(|r| r.status == FieldStatus::Fail)
             .collect();
         assert!(failing_fields.is_empty(), "no field-level failures expected: {:?}", failing_fields);
+    }
+
+    #[test]
+    fn normalize_algorithm_handles_variants() {
+        assert_eq!(normalize_algorithm("ed25519"), "ed25519");
+        assert_eq!(normalize_algorithm("ring-ed25519"), "ed25519");
+        assert_eq!(normalize_algorithm("Ring-Ed25519"), "ed25519");
+        assert_eq!(normalize_algorithm("rsa-pss"), "rsa-pss");
+        assert_eq!(normalize_algorithm("rsa-pss-sha256"), "rsa-pss");
+        assert_eq!(normalize_algorithm("RSA-PSS-SHA256"), "rsa-pss");
+        assert_eq!(normalize_algorithm("rsa-pss-sha384"), "rsa-pss");
+        assert_eq!(normalize_algorithm("pq2025"), "pq2025");
+        assert_eq!(normalize_algorithm("PQ2025"), "pq2025");
+        assert_eq!(normalize_algorithm("ml-dsa-87"), "ml-dsa-87");
+        assert_eq!(normalize_algorithm("ML-DSA-87"), "ml-dsa-87");
     }
 
     /// Helper: rewrite the headers of a signed email to simulate forwarding.

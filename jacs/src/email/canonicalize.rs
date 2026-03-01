@@ -34,6 +34,15 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
             .push(value);
     }
 
+    // Validate that the parsed message has a From header (RFC 5322 required).
+    // mail_parser accepts garbage input and returns a Message with empty headers;
+    // this gate ensures we fail early on non-email input.
+    if !headers.contains_key("from") {
+        return Err(EmailError::InvalidEmailFormat(
+            "missing required From header".into(),
+        ));
+    }
+
     // Extract body parts
     let body_plain = extract_body_part(&message, "text/plain");
     let body_html = extract_body_part(&message, "text/html");
@@ -530,15 +539,6 @@ pub fn compute_attachment_hash(filename: &str, content_type: &str, raw_bytes: &[
     format!("sha256:{}", hex::encode(hash))
 }
 
-/// Strip trailing whitespace bytes (CR, LF, SP, TAB) from a byte slice.
-pub(crate) fn strip_trailing_whitespace(bytes: &[u8]) -> &[u8] {
-    let mut end = bytes.len();
-    while end > 0 && matches!(bytes[end - 1], b'\r' | b'\n' | b' ' | b'\t') {
-        end -= 1;
-    }
-    &bytes[..end]
-}
-
 /// Strip trailing CRLF/LF bytes from MIME-decoded content.
 ///
 /// Only strips line terminators (\r, \n), NOT spaces or tabs.
@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn extract_email_parts_returns_error_on_garbage() {
         let result = extract_email_parts(b"not an email at all");
-        assert!(result.is_err() || result.unwrap().headers.is_empty());
+        assert!(result.is_err(), "garbage input must return Err");
     }
 
     #[test]

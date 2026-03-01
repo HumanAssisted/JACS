@@ -168,12 +168,10 @@ fn prepare_for_forwarding(
         Err(e) => return Err(e),
     };
 
-    // Compute parent_signature_hash = sha256(normalized bytes of existing jacs-signature.json)
-    // Strip trailing whitespace for consistency with verification-side hash computation
-    let trimmed_jacs_bytes = strip_trailing_ws(&jacs_bytes);
+    // Compute parent_signature_hash = sha256(exact bytes of existing jacs-signature.json)
     let parent_hash = {
         let mut hasher = Sha256::new();
-        hasher.update(trimmed_jacs_bytes);
+        hasher.update(&jacs_bytes);
         format!("sha256:{}", hex::encode(hasher.finalize()))
     };
 
@@ -434,9 +432,6 @@ pub fn build_jacs_email_document(
     })
 }
 
-// Use shared strip_trailing_whitespace from canonicalize module (DRY).
-use super::canonicalize::strip_trailing_whitespace as strip_trailing_ws;
-
 /// Canonical JSON per RFC 8785 (JSON Canonicalization Scheme / JCS).
 ///
 /// Uses the `serde_json_canonicalizer` crate for full compliance including:
@@ -444,7 +439,7 @@ use super::canonicalize::strip_trailing_whitespace as strip_trailing_ws;
 /// - IEEE 754 number serialization
 /// - Minimal Unicode escape handling
 /// - No unnecessary whitespace
-pub(crate) fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
+pub fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
     serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 

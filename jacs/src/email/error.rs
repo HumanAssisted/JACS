@@ -88,7 +88,32 @@ pub fn check_email_size(raw_email: &[u8]) -> Result<(), EmailError> {
 
 impl From<EmailError> for crate::error::JacsError {
     fn from(e: EmailError) -> Self {
-        crate::error::JacsError::CryptoError(e.to_string())
+        use crate::error::JacsError;
+        match &e {
+            // Crypto-related errors
+            EmailError::SignatureVerificationFailed(_)
+            | EmailError::AlgorithmMismatch(_) => JacsError::CryptoError(e.to_string()),
+
+            // Validation / malformed-input errors
+            EmailError::InvalidEmailFormat(_)
+            | EmailError::CanonicalizationFailed(_)
+            | EmailError::MissingJacsSignature
+            | EmailError::InvalidJacsDocument(_)
+            | EmailError::ContentTampered(_)
+            | EmailError::EmailTooLarge { .. }
+            | EmailError::UnsupportedFeature(_) => JacsError::ValidationError(e.to_string()),
+
+            // Document / structural errors
+            EmailError::ChainVerificationFailed(_) => JacsError::DocumentError(e.to_string()),
+
+            // Network / registry errors
+            EmailError::SignerKeyNotFound(_)
+            | EmailError::DNSVerificationFailed(_) => JacsError::NetworkError(e.to_string()),
+
+            // Identity / trust errors
+            EmailError::IdentityMismatch(_)
+            | EmailError::ReplayDetected(_) => JacsError::TrustError(e.to_string()),
+        }
     }
 }
 
@@ -219,9 +244,33 @@ mod tests {
 
     #[test]
     fn email_error_converts_to_jacs_error() {
-        let email_err = EmailError::MissingJacsSignature;
-        let jacs_err: crate::error::JacsError = email_err.into();
-        let msg = format!("{}", jacs_err);
-        assert!(msg.contains("Missing jacs-signature.json"));
+        // Validation errors
+        let jacs_err: crate::error::JacsError = EmailError::MissingJacsSignature.into();
+        assert!(
+            matches!(jacs_err, crate::error::JacsError::ValidationError(_)),
+            "MissingJacsSignature should map to ValidationError, got: {:?}",
+            jacs_err
+        );
+        assert!(format!("{}", jacs_err).contains("Missing jacs-signature.json"));
+
+        // Crypto errors
+        let jacs_err: crate::error::JacsError =
+            EmailError::SignatureVerificationFailed("bad sig".into()).into();
+        assert!(matches!(jacs_err, crate::error::JacsError::CryptoError(_)));
+
+        // Network errors
+        let jacs_err: crate::error::JacsError =
+            EmailError::DNSVerificationFailed("timeout".into()).into();
+        assert!(matches!(jacs_err, crate::error::JacsError::NetworkError(_)));
+
+        // Trust errors
+        let jacs_err: crate::error::JacsError =
+            EmailError::IdentityMismatch("wrong issuer".into()).into();
+        assert!(matches!(jacs_err, crate::error::JacsError::TrustError(_)));
+
+        // Document errors
+        let jacs_err: crate::error::JacsError =
+            EmailError::ChainVerificationFailed("broken link".into()).into();
+        assert!(matches!(jacs_err, crate::error::JacsError::DocumentError(_)));
     }
 }

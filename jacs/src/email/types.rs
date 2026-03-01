@@ -210,6 +210,53 @@ pub struct ContentVerificationResult {
     pub chain: Vec<ChainEntry>,
 }
 
+/// HAI-specific email verification result that wraps JACS content verification
+/// and adds registry + DNS fields.
+///
+/// This is the canonical definition used by both haisdk and the HAI API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailVerificationResultV2 {
+    /// Overall validity: false if any verification step fails.
+    pub valid: bool,
+    /// JACS agent ID of the signer (from registry).
+    #[serde(default)]
+    pub jacs_id: String,
+    /// Signing algorithm.
+    #[serde(default)]
+    pub algorithm: String,
+    /// HAI reputation tier (e.g., "free_chaotic", "dns_certified", "fully_certified").
+    #[serde(default)]
+    pub reputation_tier: String,
+    /// DNS verification result. None if DNS check was skipped (free tier).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dns_verified: Option<bool>,
+    /// Per-field verification results (from JACS content verification).
+    #[serde(default)]
+    pub field_results: Vec<FieldResult>,
+    /// Forwarding chain entries.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chain: Vec<ChainEntry>,
+    /// Error message if verification failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl EmailVerificationResultV2 {
+    /// Create an error result with the given fields.
+    pub fn err(jacs_id: &str, reputation_tier: &str, error: &str) -> Self {
+        Self {
+            valid: false,
+            jacs_id: jacs_id.to_string(),
+            algorithm: String::new(),
+            reputation_tier: reputation_tier.to_string(),
+            dns_verified: None,
+            field_results: Vec::new(),
+            chain: Vec::new(),
+            error: Some(error.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
