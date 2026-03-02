@@ -3226,6 +3226,7 @@ fn extract_attachments(doc: &Value) -> Vec<Attachment> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_diagnostics_returns_version() {
@@ -3900,6 +3901,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn verify_with_key_cross_agent_succeeds() {
         let _lock = VERIFY_WITH_KEY_MUTEX
             .lock()
@@ -3930,6 +3932,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn verify_with_key_wrong_key_fails() {
         let _lock = VERIFY_WITH_KEY_MUTEX
             .lock()

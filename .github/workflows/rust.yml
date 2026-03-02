@@ -25,6 +25,8 @@ on:
         required: false
         default: false
         type: boolean
+  schedule:
+    - cron: "0 9 * * *"
 
 env:
   CARGO_TERM_COLOR: always
@@ -58,6 +60,7 @@ jobs:
           cargo test -p jacs --verbose --test pq2025_tests
           cargo test -p jacs --verbose --test cross_language_tests
           cargo test -p jacs --verbose --test structured_logging_tests
+          cargo test -p jacs-binding-core --verbose
 
   full-jacs-release:
     name: Full jacs suite (${{ matrix.os }})
@@ -86,4 +89,30 @@ jobs:
           cargo audit --ignore RUSTSEC-2023-0071
 
       - name: Run full jacs tests
-        run: cargo test -p jacs --verbose --features cli
+        run: |
+          cargo test -p jacs --verbose --features cli
+          cargo test -p jacs-binding-core --verbose
+
+  full-jacs-nightly:
+    name: Full jacs suite (nightly ubuntu)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Install cargo-audit and run audit
+        run: |
+          cargo install cargo-audit --locked --version 0.22.1
+          cargo audit --ignore RUSTSEC-2023-0071
+
+      - name: Run nightly full Rust tests
+        run: |
+          cargo test -p jacs --verbose --features cli
+          cargo test -p jacs-binding-core --verbose

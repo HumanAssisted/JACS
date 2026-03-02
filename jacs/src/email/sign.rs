@@ -405,6 +405,7 @@ mod tests {
     use crate::simple::SimpleAgent;
 
     use crate::email::EMAIL_TEST_MUTEX;
+    use serial_test::serial;
 
     /// Create a test SimpleAgent and set the env vars needed for signing.
     ///
@@ -470,8 +471,8 @@ mod tests {
     fn threaded_reply_email() -> Vec<u8> {
         b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Re: Test\r\nDate: Fri, 28 Feb 2026 13:00:00 +0000\r\nMessage-ID: <reply@example.com>\r\nIn-Reply-To: <original@example.com>\r\nReferences: <original@example.com> <thread@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nReply body\r\n".to_vec()
     }
-
     #[test]
+    #[serial]
     fn sign_email_simple_text_attaches_jacs_signature() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -481,8 +482,8 @@ mod tests {
         assert!(signed_str.contains("jacs-signature.json"));
         assert!(mail_parser::MessageParser::default().parse(&signed).is_some());
     }
-
     #[test]
+    #[serial]
     fn sign_email_produces_valid_jacs_document() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -495,8 +496,8 @@ mod tests {
         let result = agent.verify(doc_str).unwrap();
         assert!(result.valid, "JACS document should be valid: {:?}", result.errors);
     }
-
     #[test]
+    #[serial]
     fn sign_email_multipart_alternative_includes_both_body_parts() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -507,8 +508,8 @@ mod tests {
         assert!(payload.body_plain.is_some());
         assert!(payload.body_html.is_some());
     }
-
     #[test]
+    #[serial]
     fn sign_email_with_attachments_includes_sorted_attachment_hashes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -520,8 +521,8 @@ mod tests {
         assert_eq!(payload.attachments[0].filename, "report.pdf");
         assert!(payload.attachments[0].content_hash.starts_with("sha256:"));
     }
-
     #[test]
+    #[serial]
     fn sign_email_threaded_reply_includes_in_reply_to_and_references() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -532,8 +533,8 @@ mod tests {
         assert!(payload.headers.in_reply_to.is_some());
         assert!(payload.headers.references.is_some());
     }
-
     #[test]
+    #[serial]
     fn sign_email_sets_parent_signature_hash_null() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -543,8 +544,8 @@ mod tests {
         let payload = extract_payload(&signed);
         assert!(payload.parent_signature_hash.is_none());
     }
-
     #[test]
+    #[serial]
     fn sign_email_document_has_jacs_fields() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -562,8 +563,8 @@ mod tests {
         assert!(jacs_doc.get("content").is_some(), "should have content field");
         assert_eq!(jacs_doc["jacsType"].as_str(), Some("message"));
     }
-
     #[test]
+    #[serial]
     fn sign_roundtrip_hashes_are_valid_sha256() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -596,8 +597,8 @@ mod tests {
             check_hash(&bp.mime_headers_hash, "body_plain.mime");
         }
     }
-
     #[test]
+    #[serial]
     fn sign_multipart_has_both_body_hashes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();

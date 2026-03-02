@@ -67,6 +67,16 @@ jobs:
         working-directory: jacsnpm
         run: npm run test:ci
 
+      - name: Smoke test quickstart example
+        working-directory: jacsnpm
+        env:
+          JACS_PRIVATE_KEY_PASSWORD: TestP@ss123!#
+        run: |
+          set -euo pipefail
+          TMP_EXAMPLE_DIR=$(mktemp -d)
+          cd "${TMP_EXAMPLE_DIR}"
+          node "${GITHUB_WORKSPACE}/jacsnpm/examples/quickstart.js"
+
       - name: Smoke test packed npm install
         working-directory: jacsnpm
         run: |
