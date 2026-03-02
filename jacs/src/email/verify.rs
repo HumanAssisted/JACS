@@ -4,7 +4,6 @@
 //! `verify_email_content()` for comparing trusted hashes against actual
 //! email content.
 
-use base64::Engine;
 use sha2::{Digest, Sha256};
 
 use super::attachment::{get_jacs_attachment, remove_jacs_attachment};
@@ -13,31 +12,11 @@ use super::canonicalize::{
     compute_header_entry, compute_mime_headers_hash, extract_email_parts,
 };
 use super::error::{check_email_size, EmailError};
-use super::sign::canonicalize_json_rfc8785;
 use super::types::{
     ChainEntry, ContentVerificationResult, FieldResult, FieldStatus, JacsEmailSignatureDocument,
     ParsedEmailParts, SignedHeaderEntry,
 };
 
-/// Trait for verifying email signatures.
-///
-/// Implementations verify a cryptographic signature given a public key.
-/// The JACS library provides low-level verification via `ringwrapper::verify_string`
-/// and similar functions, but callers must supply the public key from the
-/// HAI registry or another source.
-pub trait EmailVerifier {
-    /// Verify that `signature_bytes` is a valid signature over `data` using `public_key`.
-    fn verify_bytes(
-        &self,
-        data: &[u8],
-        signature_bytes: &[u8],
-        public_key: &[u8],
-        algorithm: &str,
-    ) -> Result<(), Box<dyn std::error::Error>>;
-}
-
-/// Default verifier that uses the JACS low-level crypto wrappers.
-pub struct DefaultEmailVerifier;
 
 /// Normalize an algorithm name to its canonical form.
 ///
@@ -60,243 +39,28 @@ pub fn normalize_algorithm(algorithm: &str) -> String {
     s
 }
 
-impl EmailVerifier for DefaultEmailVerifier {
-    fn verify_bytes(
-        &self,
-        data: &[u8],
-        signature_bytes: &[u8],
-        public_key: &[u8],
-        algorithm: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature_bytes);
-        let data_str =
-            std::str::from_utf8(data).map_err(|e| format!("data is not valid UTF-8: {e}"))?;
 
-        let normalized = normalize_algorithm(algorithm);
-        match normalized.as_str() {
-            "ed25519" => {
-                // Ed25519: expects raw 32-byte public key — pass through
-                crate::crypt::ringwrapper::verify_string(
-                    public_key.to_vec(),
-                    data_str,
-                    &sig_b64,
-                )
-            }
-            "rsa-pss" => {
-                // RSA-PSS: expects PEM text bytes. If we received raw DER
-                // (from haisdk extract_public_key_bytes), re-wrap as PEM.
-                let pem_bytes = if public_key.starts_with(b"-----") {
-                    public_key.to_vec()
-                } else {
-                    pem_encode_spki(public_key)
-                };
-                crate::crypt::rsawrapper::verify_string(
-                    pem_bytes,
-                    data_str,
-                    &sig_b64,
-                )
-            }
-            "pq2025" | "ml-dsa-87" => {
-                // PQ2025: expects raw key bytes of ML_DSA_87_PUBLIC_KEY_SIZE.
-                // If we received SPKI-wrapped DER, strip the wrapper.
-                let raw_key = strip_spki_wrapper_if_needed(
-                    public_key,
-                    crate::crypt::constants::ML_DSA_87_PUBLIC_KEY_SIZE,
-                );
-                crate::crypt::pq2025::verify_string(
-                    raw_key,
-                    data_str,
-                    &sig_b64,
-                )
-            }
-            other => Err(format!("unsupported algorithm: {other}").into()),
-        }
-    }
-}
-
-/// PEM-encode a DER-encoded SubjectPublicKeyInfo block.
-fn pem_encode_spki(der: &[u8]) -> Vec<u8> {
-    let b64 = base64::engine::general_purpose::STANDARD.encode(der);
-    let mut pem = String::from("-----BEGIN PUBLIC KEY-----\n");
-    for chunk in b64.as_bytes().chunks(64) {
-        pem.push_str(std::str::from_utf8(chunk).unwrap_or(""));
-        pem.push('\n');
-    }
-    pem.push_str("-----END PUBLIC KEY-----\n");
-    pem.into_bytes()
-}
-
-/// Strip SPKI wrapper from DER-encoded public key if the key is larger than
-/// the expected raw size. SPKI adds an AlgorithmIdentifier prefix; the raw
-/// key bytes are in the trailing BIT STRING.
-fn strip_spki_wrapper_if_needed(key: &[u8], expected_raw_size: usize) -> Vec<u8> {
-    if key.len() == expected_raw_size {
-        return key.to_vec();
-    }
-    // SPKI-wrapped key: the raw key is the last `expected_raw_size` bytes
-    // after the AlgorithmIdentifier + BIT STRING overhead.
-    if key.len() > expected_raw_size {
-        return key[key.len() - expected_raw_size..].to_vec();
-    }
-    // Key is smaller than expected — pass through and let the crypto
-    // wrapper produce a descriptive error.
-    key.to_vec()
-}
-
-/// Extract and validate the JACS email signature document from a raw email.
+/// Extract and verify the JACS email signature document from a raw email.
 ///
-/// This function handles the legacy custom `JacsEmailSignatureDocument` format
-/// with hand-rolled metadata and signature sections. For new-format JACS
-/// documents (created by `SimpleAgent::sign_message()`), use
-/// `verify_email_document_with_agent()` instead.
+/// Uses `SimpleAgent::verify_with_key()` to validate the JACS document
+/// signature against the supplied `public_key`, then extracts the email
+/// payload and parsed email parts.
 ///
 /// Steps:
 /// 1. Extracts the `jacs-signature.json` attachment
 /// 2. Removes the JACS attachment (the signature covers the email WITHOUT itself)
-/// 3. Parses and validates the JACS document
-/// 4. Verifies the document hash and cryptographic signature
-/// 5. Returns the trusted document and parsed email parts
+/// 3. Verifies the JACS document signature using the provided public key
+/// 4. Extracts the email signature payload from the `content` field
+/// 5. Returns a `JacsEmailSignatureDocument` and parsed email parts
 ///
 /// # Arguments
 /// * `raw_email` - The raw RFC 5322 email bytes (with JACS attachment)
-/// * `public_key` - The signer's public key bytes
-/// * `verifier` - Crypto verifier implementation
+/// * `agent` - A JACS SimpleAgent (provides verification infrastructure)
+/// * `public_key` - The signer's public key bytes (from registry, trust store, etc.)
 pub fn verify_email_document(
     raw_email: &[u8],
-    public_key: &[u8],
-    verifier: &dyn EmailVerifier,
-) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
-    // Step 0: Size guard -- reject oversized emails before parsing
-    check_email_size(raw_email)?;
-
-    // Step 1: Extract the JACS signature attachment
-    let jacs_bytes = get_jacs_attachment(raw_email)?;
-
-    // Step 2: Remove the JACS attachment -- PRD line 473:
-    // "the signature covers the email WITHOUT itself"
-    let email_without_jacs = remove_jacs_attachment(raw_email)?;
-
-    // Step 3: Parse the JACS document
-    let doc: JacsEmailSignatureDocument = serde_json::from_slice(&jacs_bytes).map_err(|e| {
-        EmailError::InvalidJacsDocument(format!("failed to parse jacs-signature.json: {e}"))
-    })?;
-
-    // Step 4: Verify document hash
-    // Canonicalize payload via RFC 8785, SHA-256, compare to metadata.hash
-    let payload_json = serde_json::to_value(&doc.payload).map_err(|e| {
-        EmailError::InvalidJacsDocument(format!("failed to serialize payload: {e}"))
-    })?;
-    let canonical_payload = canonicalize_json_rfc8785(&payload_json);
-
-    let computed_hash = {
-        let mut hasher = Sha256::new();
-        hasher.update(canonical_payload.as_bytes());
-        format!("sha256:{}", hex::encode(hasher.finalize()))
-    };
-
-    if computed_hash != doc.metadata.hash {
-        return Err(EmailError::InvalidJacsDocument(format!(
-            "payload hash mismatch: computed {} != stored {}",
-            computed_hash, doc.metadata.hash
-        )));
-    }
-
-    // Step 5: Check algorithm match
-    // The signature.algorithm must match what we expect
-    let sig_algorithm = doc.signature.algorithm.to_lowercase();
-
-    // Step 6: Verify the cryptographic signature
-    let sig_bytes = base64::engine::general_purpose::STANDARD
-        .decode(&doc.signature.signature)
-        .map_err(|e| {
-            EmailError::SignatureVerificationFailed(format!(
-                "invalid base64 signature: {e}"
-            ))
-        })?;
-
-    verifier
-        .verify_bytes(
-            canonical_payload.as_bytes(),
-            &sig_bytes,
-            public_key,
-            &sig_algorithm,
-        )
-        .map_err(|e| {
-            EmailError::SignatureVerificationFailed(format!(
-                "cryptographic verification failed: {e}"
-            ))
-        })?;
-
-    // Step 7: Parse the email without the JACS attachment
-    let parts = extract_email_parts(&email_without_jacs)?;
-
-    Ok((doc, parts))
-}
-
-/// Verify a JACS-signed .eml (RFC 5322) email in a single call.
-///
-/// This is the primary API for email verification. It combines
-/// cryptographic signature validation and hash comparison into one step:
-///
-/// 1. Extracts the `jacs-signature.json` attachment from the email
-/// 2. Removes the attachment (the signature covers the email without itself)
-/// 3. Validates the JACS document's payload hash (SHA-256 of canonical JSON)
-/// 4. Verifies the cryptographic signature using the provided public key
-/// 5. Compares every hash in the trusted JACS document against the actual
-///    email content (headers, body parts, attachments)
-/// 6. Returns field-level results showing which fields pass, fail, or were
-///    modified
-///
-/// # Arguments
-/// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
-/// * `public_key` - The signer's public key bytes (extracted from PEM)
-/// * `verifier` - Crypto verifier implementation
-///
-/// # Returns
-/// `ContentVerificationResult` with field-level results. Check `.valid` for
-/// overall pass/fail.
-pub fn verify_email(
-    raw_eml: &[u8],
-    public_key: &[u8],
-    verifier: &dyn EmailVerifier,
-) -> Result<ContentVerificationResult, EmailError> {
-    let (doc, parts) = verify_email_document(raw_eml, public_key, verifier)?;
-    Ok(verify_email_content(&doc, &parts))
-}
-
-/// Verify a JACS-signed email using a JACS agent for document verification.
-///
-/// This is the preferred verification API for emails signed with real JACS
-/// documents (produced by `sign_email()` with a `SimpleAgent`). It uses
-/// `SimpleAgent::verify()` to validate the JACS document's signature and hash,
-/// then compares email content hashes.
-///
-/// # Arguments
-/// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
-/// * `agent` - A JACS SimpleAgent for document verification
-///
-/// # Returns
-/// `ContentVerificationResult` with field-level results.
-pub fn verify_email_with_agent(
-    raw_eml: &[u8],
     agent: &crate::simple::SimpleAgent,
-) -> Result<ContentVerificationResult, EmailError> {
-    let (doc, parts) = verify_email_document_with_agent(raw_eml, agent)?;
-    Ok(verify_email_content(&doc, &parts))
-}
-
-/// Extract and verify a JACS email signature document using a JACS agent.
-///
-/// This function handles new-format JACS documents (created by
-/// `SimpleAgent::sign_message()`). It:
-/// 1. Extracts the `jacs-signature.json` attachment
-/// 2. Removes the JACS attachment
-/// 3. Verifies the JACS document using `SimpleAgent::verify()`
-/// 4. Extracts the email signature payload from the `content` field
-/// 5. Returns a backward-compatible `JacsEmailSignatureDocument` and parsed parts
-pub fn verify_email_document_with_agent(
-    raw_email: &[u8],
-    agent: &crate::simple::SimpleAgent,
+    public_key: &[u8],
 ) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
     check_email_size(raw_email)?;
 
@@ -307,12 +71,14 @@ pub fn verify_email_document_with_agent(
         EmailError::InvalidJacsDocument(format!("attachment is not valid UTF-8: {e}"))
     })?;
 
-    // Verify the JACS document using the agent
-    let result = agent.verify(jacs_str).map_err(|e| {
-        EmailError::SignatureVerificationFailed(format!(
-            "JACS document verification failed: {e}"
-        ))
-    })?;
+    // Verify the JACS document using the provided public key
+    let result = agent
+        .verify_with_key(jacs_str, public_key.to_vec())
+        .map_err(|e| {
+            EmailError::SignatureVerificationFailed(format!(
+                "JACS document verification failed: {e}"
+            ))
+        })?;
 
     if !result.valid {
         return Err(EmailError::SignatureVerificationFailed(format!(
@@ -365,7 +131,7 @@ pub fn verify_email_document_with_agent(
         .unwrap_or("")
         .to_string();
 
-    // Build backward-compatible JacsEmailSignatureDocument
+    // Build JacsEmailSignatureDocument from the JACS document fields
     let doc = JacsEmailSignatureDocument {
         version: "2.0".to_string(),
         document_type: "email_signature".to_string(),
@@ -386,6 +152,34 @@ pub fn verify_email_document_with_agent(
 
     let parts = extract_email_parts(&email_without_jacs)?;
     Ok((doc, parts))
+}
+
+/// Verify a JACS-signed .eml (RFC 5322) email in a single call.
+///
+/// This is the primary API for email verification. It combines
+/// cryptographic signature validation and content hash comparison:
+///
+/// 1. Extracts and verifies the `jacs-signature.json` JACS document
+/// 2. Compares every hash in the trusted JACS document against the actual
+///    email content (headers, body parts, attachments)
+/// 3. Returns field-level results showing which fields pass, fail, or were
+///    modified
+///
+/// # Arguments
+/// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
+/// * `agent` - A JACS SimpleAgent (provides verification infrastructure)
+/// * `public_key` - The signer's public key bytes (from registry, trust store, etc.)
+///
+/// # Returns
+/// `ContentVerificationResult` with field-level results. Check `.valid` for
+/// overall pass/fail.
+pub fn verify_email(
+    raw_eml: &[u8],
+    agent: &crate::simple::SimpleAgent,
+    public_key: &[u8],
+) -> Result<ContentVerificationResult, EmailError> {
+    let (doc, parts) = verify_email_document(raw_eml, agent, public_key)?;
+    Ok(verify_email_content(&doc, &parts))
 }
 
 /// Compare trusted JACS document hashes against actual email content.
@@ -955,17 +749,23 @@ mod tests {
         b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello World\r\n".to_vec()
     }
 
-    // -- verify_email_document_with_agent tests --
+    /// Helper: get the public key bytes for a test agent.
+    fn get_pubkey(agent: &SimpleAgent) -> Vec<u8> {
+        agent.get_public_key().expect("get_public_key should succeed")
+    }
+
+    // -- verify_email_document tests --
 
     #[test]
-    fn verify_email_document_with_agent_valid_signature() {
+    fn verify_email_document_valid_signature() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-valid-sig");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
         let (doc, parts) =
-            verify_email_document_with_agent(&signed, &agent).unwrap();
+            verify_email_document(&signed, &agent, &pubkey).unwrap();
 
         assert_eq!(doc.document_type, "email_signature");
         assert!(parts.body_plain.is_some());
@@ -975,8 +775,9 @@ mod tests {
     fn verify_email_document_missing_jacs_attachment() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-missing");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
-        let result = verify_email_document_with_agent(&email, &agent);
+        let result = verify_email_document(&email, &agent, &pubkey);
         assert!(result.is_err());
         match result.unwrap_err() {
             EmailError::MissingJacsSignature => {}
@@ -988,6 +789,7 @@ mod tests {
     fn verify_email_document_tampered_content() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-tamper");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -1002,7 +804,7 @@ mod tests {
             crate::email::attachment::add_jacs_attachment(&email_without, tampered_json.as_bytes())
                 .unwrap();
 
-        let result = verify_email_document_with_agent(&tampered_email, &agent);
+        let result = verify_email_document(&tampered_email, &agent, &pubkey);
         assert!(result.is_err(), "Tampered JACS document should fail verification");
     }
 
@@ -1012,11 +814,12 @@ mod tests {
     fn verify_email_content_all_pass() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-content-pass");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
         let (doc, parts) =
-            verify_email_document_with_agent(&signed, &agent).unwrap();
+            verify_email_document(&signed, &agent, &pubkey).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         assert!(result.valid, "valid is false, field_results: {:?}", result.field_results);
@@ -1030,10 +833,11 @@ mod tests {
     fn verify_email_content_tampered_from() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-tamper-from");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         parts.headers.insert("from".to_string(), vec!["attacker@evil.com".to_string()]);
 
         let result = verify_email_content(&doc, &parts);
@@ -1046,10 +850,11 @@ mod tests {
     fn verify_email_content_tampered_body() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-tamper-body");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         if let Some(ref mut bp) = parts.body_plain {
             bp.content = b"Tampered body content".to_vec();
         }
@@ -1064,10 +869,11 @@ mod tests {
     fn verify_email_content_message_id_unverifiable() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-mid");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let (doc, parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         let mid_result = result.field_results.iter().find(|r| r.field == "headers.message_id").unwrap();
@@ -1078,10 +884,11 @@ mod tests {
     fn verify_email_content_extra_attachment() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-extra-att");
+        let pubkey = get_pubkey(&agent);
         let email_with_att = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody\r\n--mixbound--\r\n";
 
         let signed = sign_email(email_with_att, &agent).unwrap();
-        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
 
         parts.attachments.push(super::super::types::ParsedAttachment {
             filename: "extra.txt".to_string(),
@@ -1103,10 +910,11 @@ mod tests {
     fn sign_verify_roundtrip_valid() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-roundtrip");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let result = verify_email_with_agent(&signed, &agent).unwrap();
+        let result = verify_email(&signed, &agent, &pubkey).unwrap();
         assert!(result.valid, "roundtrip should be valid: {:?}", result.field_results);
         assert!(
             result.field_results.iter().all(|r|
@@ -1120,10 +928,11 @@ mod tests {
     fn sign_tamper_from_verify_shows_fail() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-tamper-from2");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         parts.headers.insert("from".to_string(), vec!["fake@evil.com".to_string()]);
 
         let result = verify_email_content(&doc, &parts);
@@ -1186,8 +995,9 @@ mod tests {
     fn forward_verify_chain_has_two_entries() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
+        let pubkey_b = get_pubkey(&agent_b);
 
-        let (doc, parts) = verify_email_document_with_agent(&signed_by_b, &agent_b).unwrap();
+        let (doc, parts) = verify_email_document(&signed_by_b, &agent_b, &pubkey_b).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         assert!(!result.valid, "expected valid=false for forwarded email at JACS level");
@@ -1206,10 +1016,11 @@ mod tests {
     fn non_forwarded_email_has_single_chain_entry() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-chain-single");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let (doc, parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         assert_eq!(result.chain.len(), 1);
@@ -1268,8 +1079,9 @@ mod tests {
             "<fwd2@example.com>",
         );
         let signed_by_c = sign_email(&forward_c, &agent_c).unwrap();
+        let pubkey_c = get_pubkey(&agent_c);
 
-        let (doc, parts) = verify_email_document_with_agent(&signed_by_c, &agent_c).unwrap();
+        let (doc, parts) = verify_email_document(&signed_by_c, &agent_c, &pubkey_c).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         assert!(!result.valid, "expected valid=false for deep forwarded email at JACS level");
@@ -1292,9 +1104,10 @@ mod tests {
     fn mime_header_tamper_on_body_causes_fail() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-mime-tamper");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
-        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
 
         if let Some(bp) = parts.body_plain.as_mut() {
             bp.content_type = Some("text/plain; charset=us-ascii".to_string());
@@ -1311,9 +1124,10 @@ mod tests {
     fn attachment_trailing_byte_tamper_detected() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-att-tamper");
+        let pubkey = get_pubkey(&agent);
         let email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody\r\n--mixbound\r\nContent-Type: application/pdf; name=\"report.pdf\"\r\nContent-Disposition: attachment; filename=\"report.pdf\"\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--mixbound--\r\n";
         let signed = sign_email(email, &agent).unwrap();
-        let (doc, mut parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
 
         if let Some(att) = parts.attachments.first_mut() {
             att.content.extend_from_slice(b"\r\n\t ");
@@ -1327,9 +1141,10 @@ mod tests {
     fn oversized_email_rejected_on_verify() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-oversize");
+        let pubkey = get_pubkey(&agent);
         let mut big_email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain\r\n\r\n".to_vec();
         big_email.resize(26 * 1024 * 1024, b'A');
-        let result = verify_email_document_with_agent(&big_email, &agent);
+        let result = verify_email_document(&big_email, &agent, &pubkey);
         assert!(result.is_err());
         match result.unwrap_err() {
             EmailError::EmailTooLarge { .. } => {}
@@ -1341,7 +1156,8 @@ mod tests {
     fn parent_chain_entry_valid_is_false() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
-        let (doc, parts) = verify_email_document_with_agent(&signed_by_b, &agent_b).unwrap();
+        let pubkey_b = get_pubkey(&agent_b);
+        let (doc, parts) = verify_email_document(&signed_by_b, &agent_b, &pubkey_b).unwrap();
         let result = verify_email_content(&doc, &parts);
 
         assert!(result.chain.len() >= 2);
@@ -1397,14 +1213,16 @@ mod tests {
     fn chain_validity_gates_overall_valid() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp) = create_test_agent("verify-chain-gate");
+        let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
-        let (doc, parts) = verify_email_document_with_agent(&signed, &agent).unwrap();
+        let (doc, parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         let result = verify_email_content(&doc, &parts);
         assert!(result.valid, "non-forwarded email should be valid");
 
         let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
-        let (doc, parts) = verify_email_document_with_agent(&signed_by_b, &agent_b).unwrap();
+        let pubkey_b = get_pubkey(&agent_b);
+        let (doc, parts) = verify_email_document(&signed_by_b, &agent_b, &pubkey_b).unwrap();
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid, "forwarded email should be invalid at JACS level due to unverified chain");
         let failing_fields: Vec<_> = result.field_results.iter()

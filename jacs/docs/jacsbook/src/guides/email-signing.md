@@ -80,12 +80,15 @@ This builds a verifiable forwarding chain. No extra code needed.
 ### One-call API (recommended)
 
 ```rust
-use jacs::email::{verify_email, DefaultEmailVerifier};
+use jacs::email::verify_email;
+use jacs::simple::SimpleAgent;
 
 let signed_eml = std::fs::read("incoming_signed.eml")?;
 let sender_public_key: Vec<u8> = /* fetch from HAI registry or local store */;
 
-let result = verify_email(&signed_eml, &sender_public_key, &DefaultEmailVerifier)?;
+// Any agent can verify — the sender's public key is passed explicitly
+let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
+let result = verify_email(&signed_eml, &agent, &sender_public_key)?;
 
 if result.valid {
     println!("Email is authentic and unmodified");
@@ -101,44 +104,36 @@ if result.valid {
 
 1. Extracts `jacs-signature.json` from the email
 2. Removes it (the signature covers the email *without* itself)
-3. Validates the payload hash (SHA-256 of RFC 8785 canonical JSON)
-4. Verifies the cryptographic signature against the public key
-5. Compares every hash in the JACS document against the actual email content
-6. Returns per-field results
+3. Verifies the JACS document signature against the sender's public key
+4. Compares every hash in the JACS document against the actual email content
+5. Returns per-field results
 
 ### Two-step API (when you need the JACS document)
 
-If you need to inspect the JACS document metadata (issuer, algorithm, timestamps)
+If you need to inspect the JACS document metadata (issuer, timestamps)
 before doing the content comparison:
 
 ```rust
-use jacs::email::{verify_email_document, verify_email_content, DefaultEmailVerifier};
+use jacs::email::{verify_email_document, verify_email_content};
+use jacs::simple::SimpleAgent;
+
+let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
 
 // Step 1: Verify the cryptographic signature — returns the trusted JACS document
-let (doc, parts) = verify_email_document(&signed_eml, &sender_public_key, &DefaultEmailVerifier)?;
+let (doc, parts) = verify_email_document(&signed_eml, &agent, &sender_public_key)?;
 
 // Inspect the document
 println!("Signed by: {}", doc.metadata.issuer);
-println!("Algorithm: {}", doc.signature.algorithm);
-println!("Signed at: {}", doc.signature.signed_at);
+println!("Created at: {}", doc.metadata.created_at);
 
 // Step 2: Compare content hashes
 let result = verify_email_content(&doc, &parts);
 assert!(result.valid);
 ```
 
-### `DefaultEmailVerifier`
-
-JACS provides `DefaultEmailVerifier` which handles all supported algorithms
-automatically. You do not need to know the algorithm in advance — it reads
-the algorithm from the JACS document and dispatches to the correct verifier:
-
-- **Ed25519** — raw 32-byte public key
-- **RSA-PSS** — PEM or DER public key (auto-converted internally)
-- **PQ2025 / ML-DSA-87** — raw or SPKI-wrapped public key (auto-unwrapped internally)
-
-You can also implement the `EmailVerifier` trait yourself if you need custom
-verification logic.
+All cryptographic operations are handled by the JACS agent via
+`SimpleAgent::verify_with_key()`. The agent's own key is not used --
+the sender's public key is passed explicitly.
 
 ### Field-level results
 
@@ -207,12 +202,10 @@ jacs::email::sign_email(raw_email: &[u8], signer: &dyn EmailSigner) -> Result<Ve
 jacs::email::EmailSigner                  // trait your agent implements
 
 // Verification
-jacs::email::verify_email(...)            // one-call: crypto + content check
-jacs::email::verify_email_document(...)   // step 1: crypto only
-jacs::email::verify_email_content(...)    // step 2: content hash comparison
-jacs::email::DefaultEmailVerifier         // handles Ed25519, RSA-PSS, PQ2025
-jacs::email::EmailVerifier                // trait for custom verifiers
-jacs::email::normalize_algorithm(...)     // algorithm name normalization
+jacs::email::verify_email(raw, &agent, pubkey)       // one-call: crypto + content check
+jacs::email::verify_email_document(raw, &agent, pk)  // step 1: crypto only
+jacs::email::verify_email_content(&doc, &parts)      // step 2: content hash comparison
+jacs::email::normalize_algorithm(...)                 // algorithm name normalization
 
 // Types
 jacs::email::ContentVerificationResult    // overall result with field_results

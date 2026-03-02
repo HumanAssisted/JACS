@@ -1964,6 +1964,135 @@ impl SimpleAgent {
         })
     }
 
+    /// Verifies a signed JACS document using a provided public key.
+    ///
+    /// This is identical to [`verify()`](Self::verify) but uses the supplied
+    /// `public_key` bytes instead of the agent's own key. This allows any
+    /// agent to verify documents signed by a different agent, given the
+    /// signer's public key (e.g., from a registry or trust store).
+    ///
+    /// # Arguments
+    ///
+    /// * `signed_document` - The JSON string of the signed JACS document
+    /// * `public_key` - The signer's public key bytes (PEM file content)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // agent_b verifies a document that agent_a signed
+    /// let result = agent_b.verify_with_key(&signed_doc, agent_a_pubkey)?;
+    /// if result.valid {
+    ///     println!("Verified: signed by {}", result.signer_id);
+    /// }
+    /// ```
+    #[must_use = "verification result must be checked"]
+    pub fn verify_with_key(
+        &self,
+        signed_document: &str,
+        public_key: Vec<u8>,
+    ) -> Result<VerificationResult, JacsError> {
+        debug!("verify_with_key() called");
+
+        // Pre-check: if input doesn't look like JSON, give a helpful error
+        let trimmed = signed_document.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+            return Err(JacsError::DocumentMalformed {
+                field: "json".to_string(),
+                reason: format!(
+                    "Input does not appear to be a JSON document. \
+                    If you have a document ID (e.g., 'uuid:version'), use verify_by_id() instead. \
+                    Received: '{}'",
+                    if trimmed.len() > 60 {
+                        &trimmed[..60]
+                    } else {
+                        trimmed
+                    }
+                ),
+            });
+        }
+
+        // Check document size before processing
+        check_document_size(signed_document)?;
+
+        // Parse the document to validate JSON
+        let _: Value =
+            serde_json::from_str(signed_document).map_err(|e| JacsError::DocumentMalformed {
+                field: "json".to_string(),
+                reason: e.to_string(),
+            })?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        // Load the document
+        let jacs_doc =
+            agent
+                .load_document(signed_document)
+                .map_err(|e| JacsError::DocumentMalformed {
+                    field: "document".to_string(),
+                    reason: e.to_string(),
+                })?;
+
+        let document_key = jacs_doc.getkey();
+
+        // Verify the signature using the provided public key
+        let verification_result =
+            agent.verify_document_signature(&document_key, None, None, Some(public_key), None);
+
+        let mut errors = Vec::new();
+        if let Err(e) = verification_result {
+            errors.push(e.to_string());
+        }
+
+        // Verify hash
+        if let Err(e) = agent.verify_hash(&jacs_doc.value) {
+            errors.push(format!("Hash verification failed: {}", e));
+        }
+
+        let valid = errors.is_empty();
+
+        // In strict mode, verification failure is a hard error
+        if self.strict && !valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: errors.join("; "),
+            });
+        }
+
+        // Extract signer info
+        let signer_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+
+        info!(
+            "Document verified with key: valid={}, signer={}",
+            valid, signer_id
+        );
+
+        // Extract original content
+        let data = if let Some(content) = jacs_doc.value.get("content") {
+            content.clone()
+        } else {
+            jacs_doc.value.clone()
+        };
+
+        // Extract attachments
+        let attachments = extract_attachments(&jacs_doc.value);
+
+        Ok(VerificationResult {
+            valid,
+            data,
+            signer_id,
+            signer_name: None,
+            timestamp,
+            attachments,
+            errors,
+        })
+    }
+
     /// Re-encrypts the agent's private key from one password to another.
     ///
     /// This reads the encrypted private key file, decrypts with the old password,
@@ -2104,6 +2233,24 @@ impl SimpleAgent {
             .ok_or(JacsError::AgentNotLoaded)?;
         serde_json::to_string_pretty(&value).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize agent: {}", e),
+        })
+    }
+
+    /// Returns the agent's public key bytes from memory.
+    ///
+    /// This returns the raw public key bytes as stored in the agent's internal
+    /// state. The format depends on the algorithm (e.g., raw 32 bytes for
+    /// Ed25519, PEM for RSA-PSS). These bytes are the same format expected by
+    /// [`verify_with_key()`](Self::verify_with_key) and
+    /// [`verify_document_signature()`](crate::agent::document::DocumentTraits::verify_document_signature).
+    #[must_use = "public key data must be used"]
+    pub fn get_public_key(&self) -> Result<Vec<u8>, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        use crate::agent::boilerplate::BoilerPlate;
+        agent.get_public_key().map_err(|e| JacsError::Internal {
+            message: format!("Failed to get public key: {}", e),
         })
     }
 
@@ -3717,5 +3864,100 @@ mod tests {
         let extensions = card.capabilities.extensions.unwrap();
         assert!(!extensions.is_empty());
         assert_eq!(extensions[0].uri, crate::a2a::JACS_EXTENSION_URI);
+    }
+
+    /// Shared mutex for verify_with_key tests that set global env vars.
+    static VERIFY_WITH_KEY_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Create a test SimpleAgent with its own temp directory.
+    /// MUST be called while holding `VERIFY_WITH_KEY_MUTEX`.
+    fn create_test_agent_for_verify(name: &str) -> (SimpleAgent, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let tmp_path = tmp.path().to_string_lossy().to_string();
+
+        let params = CreateAgentParams::builder()
+            .name(name)
+            .password("TestVerify!2026")
+            .algorithm("ring-Ed25519")
+            .domain("test.example.com")
+            .description("Test agent for verify_with_key")
+            .data_directory(&format!("{}/jacs_data", tmp_path))
+            .key_directory(&format!("{}/jacs_keys", tmp_path))
+            .config_path(&format!("{}/jacs.config.json", tmp_path))
+            .build();
+
+        let (agent, _info) =
+            SimpleAgent::create_with_params(params).expect("create test agent");
+
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestVerify!2026");
+            std::env::set_var("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path));
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        (agent, tmp)
+    }
+
+    #[test]
+    fn verify_with_key_cross_agent_succeeds() {
+        let _lock = VERIFY_WITH_KEY_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // agent_a signs a message
+        let (agent_a, _tmp_a) = create_test_agent_for_verify("agent-a-vwk");
+        let signed = agent_a
+            .sign_message(&json!({"msg": "hello from A"}))
+            .expect("sign_message should succeed");
+
+        let agent_a_pubkey = agent_a
+            .get_public_key()
+            .expect("get_public_key should succeed");
+
+        // agent_b verifies using agent_a's public key
+        let (agent_b, _tmp_b) = create_test_agent_for_verify("agent-b-vwk");
+        let result = agent_b
+            .verify_with_key(&signed.raw, agent_a_pubkey)
+            .expect("verify_with_key should succeed");
+
+        assert!(
+            result.valid,
+            "cross-agent verification should pass: {:?}",
+            result.errors
+        );
+        assert!(!result.signer_id.is_empty());
+    }
+
+    #[test]
+    fn verify_with_key_wrong_key_fails() {
+        let _lock = VERIFY_WITH_KEY_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // agent_a signs a message
+        let (agent_a, _tmp_a) = create_test_agent_for_verify("agent-a-wrong");
+        let signed = agent_a
+            .sign_message(&json!({"msg": "hello from A"}))
+            .expect("sign_message should succeed");
+
+        // agent_b tries to verify with its OWN key (wrong key)
+        let (agent_b, _tmp_b) = create_test_agent_for_verify("agent-b-wrong");
+        let agent_b_pubkey = agent_b
+            .get_public_key()
+            .expect("get_public_key should succeed");
+
+        let result = agent_b
+            .verify_with_key(&signed.raw, agent_b_pubkey)
+            .expect("verify_with_key should return Ok with errors, not Err");
+
+        assert!(
+            !result.valid,
+            "verification with wrong key should fail"
+        );
+        assert!(
+            !result.errors.is_empty(),
+            "should have verification errors"
+        );
     }
 }

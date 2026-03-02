@@ -1,21 +1,21 @@
 //! JACS email signing and verification module.
 //!
-//! Provides two primary functions for signing emails with JACS detached
-//! signatures and verifying those signatures. The email-specific code
-//! computes hashes and compares them — all cryptographic operations are
-//! handled by the JACS agent via `SimpleAgent`.
+//! Provides functions for signing emails with JACS detached signatures and
+//! verifying those signatures. All cryptographic operations are handled by
+//! the JACS agent via `SimpleAgent`.
 //!
 //! ## Quick start
 //!
 //! ```ignore
-//! use jacs::email::{sign_email, verify_email_with_agent, verify_email_content};
+//! use jacs::email::{sign_email, verify_email, verify_email_content};
 //! use jacs::simple::SimpleAgent;
 //!
 //! // Sign: pass a SimpleAgent — all crypto is handled by JACS
 //! let signed_eml = sign_email(&raw_eml, &my_agent)?;
 //!
-//! // Verify: one call — crypto + content hash comparison
-//! let result = verify_email_with_agent(&signed_eml, &my_agent)?;
+//! // Verify: crypto + content hash comparison
+//! let pubkey = sender_agent.get_public_key()?;
+//! let result = verify_email(&signed_eml, &my_agent, &pubkey)?;
 //! assert!(result.valid);
 //! ```
 //!
@@ -23,8 +23,8 @@
 //!
 //! - Signing uses `SimpleAgent::sign_message()` to create a real JACS document.
 //!   No manual crypto in the email module.
-//! - Verification uses `SimpleAgent::verify()` for cryptographic verification.
-//!   Legacy `DefaultEmailVerifier` is still available for backward compatibility.
+//! - Verification uses `SimpleAgent::verify_with_key()` for cryptographic
+//!   verification against an arbitrary sender's public key.
 //! - Forwarding is built-in: if the email already has a `jacs-signature.json`,
 //!   [`sign_email`] renames it and links via `parent_signature_hash`.
 //!
@@ -52,12 +52,8 @@ pub use types::{
 // Signing: the primary sender-side function.
 pub use sign::{canonicalize_json_rfc8785, sign_email};
 
-// Verification: simple one-call API + two-step API + trait + default impl.
-pub use verify::{
-    verify_email, verify_email_content, verify_email_document,
-    verify_email_document_with_agent, verify_email_with_agent,
-    DefaultEmailVerifier, EmailVerifier, normalize_algorithm,
-};
+// Verification: one-call API + two-step API + content-only API.
+pub use verify::{normalize_algorithm, verify_email, verify_email_content, verify_email_document};
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).
 pub use attachment::{add_jacs_attachment, get_jacs_attachment, remove_jacs_attachment};
