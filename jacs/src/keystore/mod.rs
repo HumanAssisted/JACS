@@ -122,6 +122,21 @@ use tracing::debug;
 #[derive(Debug)]
 pub struct FsEncryptedStore;
 impl FsEncryptedStore {
+    fn storage_for_key_dir(key_dir: &str) -> Result<MultiStorage, Box<dyn Error>> {
+        let root = if std::path::Path::new(key_dir).is_absolute() {
+            std::path::PathBuf::from("/")
+        } else {
+            std::env::current_dir()?
+        };
+        MultiStorage::_new("fs".to_string(), root).map_err(|e| {
+            format!(
+                "Failed to initialize storage for key operations: {}. Check that the storage root is accessible.",
+                e
+            )
+            .into()
+        })
+    }
+
     /// Compute the current on-disk paths for the private and public key files.
     fn key_paths() -> Result<(String, String, String), Box<dyn Error>> {
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
@@ -207,14 +222,8 @@ impl KeyStore for FsEncryptedStore {
             pub_len = pub_key.len(),
             "FsEncryptedStore::generate keys created"
         );
-        // Persist using MultiStorage
-        let storage = MultiStorage::default_new().map_err(|e| {
-            format!(
-                "Failed to initialize storage for key generation: {}. Check that the current directory is accessible.",
-                e
-            )
-        })?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let storage = Self::storage_for_key_dir(&key_dir)?;
         let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
         let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
 
@@ -256,13 +265,8 @@ impl KeyStore for FsEncryptedStore {
     }
 
     fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let storage = MultiStorage::default_new().map_err(|e| {
-            format!(
-                "Failed to initialize storage for key loading: {}. Check that the current directory is accessible.",
-                e
-            )
-        })?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let storage = Self::storage_for_key_dir(&key_dir)?;
         let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let enc_path = format!("{}.enc", priv_path);
@@ -296,13 +300,8 @@ impl KeyStore for FsEncryptedStore {
     }
 
     fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let storage = MultiStorage::default_new().map_err(|e| {
-            format!(
-                "Failed to initialize storage for key loading: {}. Check that the current directory is accessible.",
-                e
-            )
-        })?;
         let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let storage = Self::storage_for_key_dir(&key_dir)?;
         let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
         let bytes = storage.get_file(&pub_path, None).map_err(|e| {
@@ -560,6 +559,7 @@ impl KeyStore for InMemoryKeyStore {
 mod tests {
     use super::*;
     use std::path::Path;
+    use serial_test::serial;
 
     #[test]
     fn test_in_memory_generate_returns_keys() {
@@ -811,19 +811,22 @@ mod tests {
         assert_eq!(ks.load_public().unwrap(), new_pub);
     }
 
-    /// Helper: set up a test directory with the required subdirs and env vars for
-    /// `FsEncryptedStore`. Uses a relative path from CWD so `MultiStorage` saves
-    /// files in the right place. Returns the key dir name for assertions.
+    /// Helper: set up an isolated temp directory and env overrides for
+    /// `FsEncryptedStore`. Uses absolute paths to avoid CWD-related test races.
     ///
     /// Caller MUST hold `FS_TEST_MUTEX` before calling.
     fn setup_fs_test_dir(label: &str) -> String {
+        use crate::storage::jenv::set_env_var;
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir_name = format!(".jacs_test_{}_{}", label, suffix);
+        let dir_name = std::env::temp_dir()
+            .join(format!("jacs_test_{}_{}", label, suffix))
+            .to_string_lossy()
+            .to_string();
 
         let key_dir = format!("{}/keys", dir_name);
         let data_dir = format!("{}/data", dir_name);
@@ -832,19 +835,32 @@ mod tests {
         std::fs::create_dir_all(format!("{}/agent", data_dir)).unwrap();
         std::fs::create_dir_all(format!("{}/public_keys", data_dir)).unwrap();
 
-        unsafe {
-            std::env::set_var("JACS_KEY_DIRECTORY", &key_dir);
-            std::env::set_var("JACS_DATA_DIRECTORY", &data_dir);
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem");
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123");
-            std::env::set_var("JACS_DEFAULT_STORAGE", "fs");
-        }
+        set_env_var("JACS_KEY_DIRECTORY", &key_dir).unwrap();
+        set_env_var("JACS_DATA_DIRECTORY", &data_dir).unwrap();
+        set_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem").unwrap();
+        set_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem").unwrap();
+        set_env_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123").unwrap();
+        set_env_var("JACS_DEFAULT_STORAGE", "fs").unwrap();
 
         dir_name
     }
 
+    fn clear_fs_test_env() {
+        let keys = [
+            "JACS_KEY_DIRECTORY",
+            "JACS_DATA_DIRECTORY",
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+            "JACS_PRIVATE_KEY_PASSWORD",
+            "JACS_DEFAULT_STORAGE",
+        ];
+        for key in keys {
+            let _ = crate::storage::jenv::clear_env_var(key);
+        }
+    }
+
     #[test]
+    #[serial]
     fn test_fs_encrypted_rotate_archives_old_keys() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let dir_name = setup_fs_test_dir("archive");
@@ -899,9 +915,11 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
     }
 
     #[test]
+    #[serial]
     fn test_fs_encrypted_rotate_generates_new_keys() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let dir_name = setup_fs_test_dir("newkeys");
@@ -933,9 +951,11 @@ mod tests {
         assert_eq!(loaded_pub, new_pub);
 
         let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
     }
 
     #[test]
+    #[serial]
     fn test_fs_encrypted_rotate_rollback_on_failure() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let dir_name = setup_fs_test_dir("rollback");
@@ -998,6 +1018,7 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
     }
 
     #[test]
