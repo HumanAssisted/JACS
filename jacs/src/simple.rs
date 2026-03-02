@@ -2208,8 +2208,6 @@ impl SimpleAgent {
     /// ```
     #[must_use = "verification result must be checked"]
     pub fn verify_by_id(&self, document_id: &str) -> Result<VerificationResult, JacsError> {
-        use crate::storage::StorageDocumentTraits;
-
         debug!("verify_by_id() called with id: {}", document_id);
 
         // Validate document_id format
@@ -2225,25 +2223,22 @@ impl SimpleAgent {
             });
         }
 
-        // Load the document from storage
-        let storage =
-            crate::storage::MultiStorage::default_new().map_err(|e| JacsError::Internal {
-                message: format!("Failed to initialize storage: {}", e),
+        // Load from the already-configured agent storage backend (fs, memory, s3, etc.).
+        let doc_str = {
+            let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+                message: format!("Failed to acquire agent lock: {}", e),
             })?;
-
-        let jacs_doc = storage
-            .get_document(document_id)
-            .map_err(|e| JacsError::Internal {
+            let jacs_doc = agent.get_document(document_id).map_err(|e| JacsError::Internal {
                 message: format!(
-                    "Failed to load document '{}' from storage: {}",
+                    "Failed to load document '{}' from agent storage: {}",
                     document_id, e
                 ),
             })?;
 
-        // Serialize the document value back to a JSON string for verify()
-        let doc_str = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document '{}': {}", document_id, e),
-        })?;
+            serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize document '{}': {}", document_id, e),
+            })?
+        };
 
         self.verify(&doc_str)
     }
@@ -3908,6 +3903,29 @@ mod tests {
     }
 
     #[test]
+    fn test_verify_by_id_uses_loaded_agent_storage_backend() {
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).expect("create ephemeral agent");
+        let signed = agent
+            .sign_message(&json!({"hello": "verify-by-id"}))
+            .expect("sign message");
+        let signed_value: Value = serde_json::from_str(&signed.raw).expect("parse signed document");
+        let document_key = format!(
+            "{}:{}",
+            signed_value["jacsId"].as_str().expect("jacsId"),
+            signed_value["jacsVersion"].as_str().expect("jacsVersion")
+        );
+
+        let result = agent
+            .verify_by_id(&document_key)
+            .expect("verify_by_id should read from the agent's configured storage");
+        assert!(
+            result.valid,
+            "verify_by_id should succeed for a document stored in memory: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
     fn test_simple_ephemeral_no_files() {
         let temp = std::env::temp_dir().join("jacs_simple_ephemeral_no_files");
         let _ = std::fs::remove_dir_all(&temp);
@@ -4190,6 +4208,77 @@ mod tests {
         }
 
         (agent, info, tmp, guard)
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_roots_relative_paths_to_config_directory() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, tmp, guard) = create_persistent_test_agent("load-relative-root-test");
+        let config_path = tmp.path().join("jacs.config.json");
+        drop(guard);
+
+        let signed = agent
+            .sign_message(&json!({"load": "relative"}))
+            .expect("signing should succeed");
+        drop(agent);
+
+        let loaded = SimpleAgent::load(Some(config_path.to_string_lossy().as_ref()), Some(true))
+            .expect("loading should succeed from any CWD when config uses relative paths");
+        let result = loaded.verify(&signed.raw).expect("verify should succeed");
+        assert!(
+            result.valid,
+            "loaded agent should verify documents after CWD change: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_embedded_export_writes_to_data_directory_only() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, tmp, guard) = create_persistent_test_agent("embedded-export-root-test");
+        let source_name = "source-embed.bin";
+        let source_path = tmp.path().join(source_name);
+        std::fs::write(&source_path, b"embedded payload").expect("write source file");
+        drop(guard);
+
+        {
+            let mut inner = agent.agent.lock().expect("lock agent");
+            let content = json!({
+                "jacsType": "file",
+                "jacsLevel": "raw",
+                "filename": source_name,
+                "mimetype": "application/octet-stream"
+            });
+            let doc = inner
+                .create_document_and_load(
+                    &content.to_string(),
+                    Some(vec![source_name.to_string()]),
+                    Some(true),
+                )
+                .expect("create embedded document");
+            std::fs::remove_file(&source_path).expect("remove original source file");
+            inner
+                .save_document(&doc.getkey(), None, Some(true), Some(true))
+                .expect("save_document export should succeed");
+        }
+
+        let extracted_in_data_dir = tmp.path().join("jacs_data").join(source_name);
+        assert!(
+            extracted_in_data_dir.exists(),
+            "embedded export should be written under jacs_data"
+        );
+        assert!(
+            !tmp.path().join(source_name).exists(),
+            "embedded export must not be written to repository root paths"
+        );
     }
 
     #[test]

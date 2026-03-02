@@ -374,18 +374,32 @@ impl DocumentTraits for Agent {
         if let Some(files_array) = document.get("jacsFiles").and_then(|files| files.as_array()) {
             // Iterate over each file object
             for file_obj in files_array {
-                // Get the file path and sha256 hash from the file object
-                let file_path = file_obj
-                    .get("path")
-                    .and_then(|path| path.as_str())
-                    .ok_or("Missing file path")?;
                 let expected_hash = file_obj
                     .get("sha256")
                     .and_then(|hash| hash.as_str())
                     .ok_or("Missing SHA256 hash")?;
 
-                // Load the file contents and encode as base64
-                let base64_contents = self.fs_get_document_content(file_path.to_string())?;
+                let base64_contents = if file_obj
+                    .get("embed")
+                    .and_then(|embed| embed.as_bool())
+                    .unwrap_or(false)
+                {
+                    file_obj
+                        .get("contents")
+                        .and_then(|contents| contents.as_str())
+                        .ok_or("Embedded file is missing contents")?
+                        .to_string()
+                } else {
+                    // Treat document-provided paths as data-directory-relative keys only.
+                    let file_path = file_obj
+                        .get("path")
+                        .and_then(|path| path.as_str())
+                        .ok_or("Missing file path")?;
+                    let resolved_path = self.make_data_directory_path(file_path).map_err(|e| {
+                        format!("Invalid jacsFiles path '{}': {}", file_path, e)
+                    })?;
+                    self.fs_get_document_content(resolved_path)?
+                };
 
                 // Calculate the SHA256 hash of the loaded contents
                 let actual_hash = hash_bytes(base64_contents.as_bytes());
@@ -782,6 +796,9 @@ impl DocumentTraits for Agent {
                 if item["embed"].as_bool().unwrap_or(false) {
                     let contents = item["contents"].as_str().ok_or("Contents not found")?;
                     let path = item["path"].as_str().ok_or("Path not found")?;
+                    let export_path = self
+                        .make_data_directory_path(path)
+                        .map_err(|e| format!("Invalid embedded export path '{}': {}", path, e))?;
 
                     let decoded_contents = STANDARD.decode(contents)?;
 
@@ -793,19 +810,22 @@ impl DocumentTraits for Agent {
                     let storage = self.storage.clone();
 
                     // Backup the existing file if it exists
-                    if storage.file_exists(path, None)? {
-                        let backup_path =
-                            format!("{}.{}.bkp", path, Local::now().format("%Y%m%d_%H%M%S"));
-                        storage.rename_file(path, &backup_path)?;
+                    if storage.file_exists(&export_path, None)? {
+                        let backup_path = format!(
+                            "{}.{}.bkp",
+                            export_path,
+                            Local::now().format("%Y%m%d_%H%M%S")
+                        );
+                        storage.rename_file(&export_path, &backup_path)?;
                     }
 
                     // Save the inflated contents to the file
-                    storage.save_file(path, &inflated_contents)?;
+                    storage.save_file(&export_path, &inflated_contents)?;
 
                     // Mark the file as not executable
                     #[cfg(not(target_arch = "wasm32"))]
                     if !self.use_filesystem() {
-                        self.mark_file_not_executable(Path::new(path))?;
+                        self.mark_file_not_executable(Path::new(&export_path))?;
                     }
                 }
             }

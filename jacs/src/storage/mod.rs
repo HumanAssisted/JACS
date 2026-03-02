@@ -624,14 +624,8 @@ impl StorageDocumentTraits for MultiStorage {
         let old_path = format!("documents/{}.json", key);
         let archive_path = format!("documents/archive/{}.json", key);
 
-        // Read the content
-        let contents = self.get_file(&old_path, None)?;
-
-        // Save to archive
-        self.save_file(&archive_path, &contents)?;
-
-        // Note: We don't have a delete method in object_store, so we'll just move to archive
-        // In a real implementation, we might want to add a delete method to MultiStorage
+        // Move the object so the primary key no longer resolves after removal.
+        self.rename_file(&old_path, &archive_path)?;
 
         Ok(doc)
     }
@@ -896,6 +890,9 @@ impl StorageDocumentTraits for CachedMultiStorage {
 #[cfg(test)]
 mod tests {
     use super::MultiStorage;
+    use super::StorageDocumentTraits;
+    use crate::agent::document::JACSDocument;
+    use serde_json::json;
 
     #[test]
     fn rename_file_moves_content_and_removes_source() {
@@ -941,5 +938,41 @@ mod tests {
         let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
         let result = storage.rename_file("missing/source.txt", "dest/path.txt");
         assert!(result.is_err(), "renaming a missing source should fail");
+    }
+
+    #[test]
+    fn remove_document_removes_primary_copy() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let doc = JACSDocument {
+            id: "rm-doc".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "message".to_string(),
+            value: json!({
+                "jacsId": "rm-doc",
+                "jacsVersion": "v1",
+                "jacsType": "message",
+                "jacsLevel": "raw",
+                "content": {"ok": true}
+            }),
+        };
+
+        storage.store_document(&doc).expect("store document");
+        assert!(
+            storage
+                .document_exists("rm-doc:v1")
+                .expect("exists before remove"),
+            "document should exist before remove_document"
+        );
+
+        storage
+            .remove_document("rm-doc:v1")
+            .expect("remove_document should succeed");
+
+        assert!(
+            !storage
+                .document_exists("rm-doc:v1")
+                .expect("exists after remove"),
+            "document should not remain at primary location after remove_document"
+        );
     }
 }

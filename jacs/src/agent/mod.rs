@@ -425,7 +425,38 @@ impl Agent {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        self.storage = MultiStorage::new(storage_type.clone()).map_err(|e| {
+        let storage_root = if storage_type == "fs" {
+            let config_dir = std::path::Path::new(&path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let config_dir_absolute = if config_dir.is_absolute() {
+                config_dir.to_path_buf()
+            } else {
+                std::env::current_dir()?.join(config_dir)
+            };
+
+            let uses_absolute_dirs = config
+                .jacs_data_directory()
+                .as_deref()
+                .map(|d| std::path::Path::new(d).is_absolute())
+                .unwrap_or(false)
+                || config
+                    .jacs_key_directory()
+                    .as_deref()
+                    .map(|d| std::path::Path::new(d).is_absolute())
+                    .unwrap_or(false);
+
+            if uses_absolute_dirs {
+                std::path::PathBuf::from("/")
+            } else {
+                config_dir_absolute
+            }
+        } else {
+            std::env::current_dir()?
+        };
+
+        self.storage = MultiStorage::_new(storage_type.clone(), storage_root).map_err(|e| {
             format!(
                 "load_by_config failed: Could not initialize storage type '{}' (from config '{}'): {}",
                 storage_type, path, e
