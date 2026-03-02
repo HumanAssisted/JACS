@@ -68,3 +68,40 @@ pub use canonicalize::{canonicalize_header, extract_email_parts};
 /// sign/verify emails to prevent env var stomping between modules.
 #[cfg(test)]
 pub(crate) static EMAIL_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Restores process env vars on drop for email tests that temporarily override them.
+#[cfg(test)]
+pub(crate) struct EmailTestEnvGuard {
+    previous: Vec<(&'static str, Option<String>)>,
+}
+
+#[cfg(test)]
+impl EmailTestEnvGuard {
+    pub(crate) fn set(vars: &[(&'static str, String)]) -> Self {
+        let mut previous = Vec::with_capacity(vars.len());
+        for (key, value) in vars {
+            let prior = std::env::var(key).ok();
+            previous.push((*key, prior));
+            // SAFETY: Email tests hold EMAIL_TEST_MUTEX while mutating env vars.
+            unsafe {
+                std::env::set_var(key, value);
+            }
+        }
+        Self { previous }
+    }
+}
+
+#[cfg(test)]
+impl Drop for EmailTestEnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in &self.previous {
+            // SAFETY: Email tests hold EMAIL_TEST_MUTEX while mutating env vars.
+            unsafe {
+                match value {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+}

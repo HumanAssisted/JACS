@@ -409,7 +409,7 @@ mod tests {
     /// Create a test SimpleAgent and set the env vars needed for signing.
     ///
     /// MUST be called while holding `EMAIL_TEST_MUTEX`.
-    fn create_test_agent() -> (SimpleAgent, tempfile::TempDir) {
+    fn create_test_agent() -> (SimpleAgent, tempfile::TempDir, crate::email::EmailTestEnvGuard) {
         use crate::simple::CreateAgentParams;
 
         let tmp = tempfile::tempdir().expect("create temp dir");
@@ -429,16 +429,21 @@ mod tests {
         let (agent, _info) = SimpleAgent::create_with_params(params)
             .expect("create test agent");
 
-        // Set env vars needed by the keystore at signing time.
-        // Safe because we hold EMAIL_TEST_MUTEX.
-        unsafe {
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestEmail!2026");
-            std::env::set_var("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path));
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
-        }
+        // Set env vars needed by the keystore at signing time and restore on drop.
+        let env_guard = crate::email::EmailTestEnvGuard::set(&[
+            ("JACS_PRIVATE_KEY_PASSWORD", "TestEmail!2026".to_string()),
+            ("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path)),
+            (
+                "JACS_AGENT_PRIVATE_KEY_FILENAME",
+                "jacs.private.pem.enc".to_string(),
+            ),
+            (
+                "JACS_AGENT_PUBLIC_KEY_FILENAME",
+                "jacs.public.pem".to_string(),
+            ),
+        ]);
 
-        (agent, tmp)
+        (agent, tmp, env_guard)
     }
 
     /// Extract the email signature payload from a signed email's JACS document.
@@ -469,7 +474,7 @@ mod tests {
     #[test]
     fn sign_email_simple_text_attaches_jacs_signature() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
         let signed_str = String::from_utf8_lossy(&signed);
@@ -480,7 +485,7 @@ mod tests {
     #[test]
     fn sign_email_produces_valid_jacs_document() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -494,7 +499,7 @@ mod tests {
     #[test]
     fn sign_email_multipart_alternative_includes_both_body_parts() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = multipart_alternative_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -506,7 +511,7 @@ mod tests {
     #[test]
     fn sign_email_with_attachments_includes_sorted_attachment_hashes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = multipart_with_attachment_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -519,7 +524,7 @@ mod tests {
     #[test]
     fn sign_email_threaded_reply_includes_in_reply_to_and_references() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = threaded_reply_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -531,7 +536,7 @@ mod tests {
     #[test]
     fn sign_email_sets_parent_signature_hash_null() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -542,7 +547,7 @@ mod tests {
     #[test]
     fn sign_email_document_has_jacs_fields() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -561,7 +566,7 @@ mod tests {
     #[test]
     fn sign_roundtrip_hashes_are_valid_sha256() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
@@ -595,7 +600,7 @@ mod tests {
     #[test]
     fn sign_multipart_has_both_body_hashes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent();
+        let (agent, _tmp, _env_guard) = create_test_agent();
         let email = multipart_alternative_email();
         let signed = sign_email(&email, &agent).unwrap();
 

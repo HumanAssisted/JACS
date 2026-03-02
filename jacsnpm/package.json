@@ -84,6 +84,8 @@
     "build:debug": "napi build --platform && npm run build:ts",
     "build:ts": "tsc",
     "test": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 15000 'test/**/*.test.js'",
+    "test:parallel": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --parallel --jobs 4 --timeout 15000 'test/**/*.test.js' --ignore 'test/cross-language.test.js' && JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 30000 'test/cross-language.test.js'",
+    "test:ci": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --parallel --jobs 4 --timeout 15000 'test/**/*.test.js' --ignore 'test/cross-language.test.js'",
     "test:utils": "mocha --timeout 15000 'test/utils.test.js'",
     "test:agent": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 15000 'test/agent.test.js'",
     "test:simple": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 15000 'test/simple.test.js'",

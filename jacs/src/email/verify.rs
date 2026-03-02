@@ -704,7 +704,9 @@ mod tests {
     /// Create a test SimpleAgent and configure env vars for signing.
     ///
     /// MUST be called while holding `EMAIL_TEST_MUTEX`.
-    fn create_test_agent(name: &str) -> (SimpleAgent, tempfile::TempDir) {
+    fn create_test_agent(
+        name: &str,
+    ) -> (SimpleAgent, tempfile::TempDir, crate::email::EmailTestEnvGuard) {
         use crate::simple::CreateAgentParams;
 
         let tmp = tempfile::tempdir().expect("create temp dir");
@@ -724,15 +726,21 @@ mod tests {
         let (agent, _info) = SimpleAgent::create_with_params(params)
             .expect("create test agent");
 
-        // Set env vars needed by the keystore at signing time.
-        unsafe {
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestEmail!2026");
-            std::env::set_var("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path));
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
-        }
+        // Set env vars needed by the keystore at signing time and restore on drop.
+        let env_guard = crate::email::EmailTestEnvGuard::set(&[
+            ("JACS_PRIVATE_KEY_PASSWORD", "TestEmail!2026".to_string()),
+            ("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path)),
+            (
+                "JACS_AGENT_PRIVATE_KEY_FILENAME",
+                "jacs.private.pem.enc".to_string(),
+            ),
+            (
+                "JACS_AGENT_PUBLIC_KEY_FILENAME",
+                "jacs.public.pem".to_string(),
+            ),
+        ]);
 
-        (agent, tmp)
+        (agent, tmp, env_guard)
     }
 
 
@@ -759,7 +767,7 @@ mod tests {
     #[test]
     fn verify_email_document_valid_signature() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-valid-sig");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-valid-sig");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -774,7 +782,7 @@ mod tests {
     #[test]
     fn verify_email_document_missing_jacs_attachment() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-missing");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-missing");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let result = verify_email_document(&email, &agent, &pubkey);
@@ -788,7 +796,7 @@ mod tests {
     #[test]
     fn verify_email_document_tampered_content() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-tamper");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -813,7 +821,7 @@ mod tests {
     #[test]
     fn verify_email_content_all_pass() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-content-pass");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-content-pass");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -832,7 +840,7 @@ mod tests {
     #[test]
     fn verify_email_content_tampered_from() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-tamper-from");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper-from");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -849,7 +857,7 @@ mod tests {
     #[test]
     fn verify_email_content_tampered_body() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-tamper-body");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper-body");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -868,7 +876,7 @@ mod tests {
     #[test]
     fn verify_email_content_message_id_unverifiable() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-mid");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-mid");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -883,7 +891,7 @@ mod tests {
     #[test]
     fn verify_email_content_extra_attachment() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-extra-att");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-extra-att");
         let pubkey = get_pubkey(&agent);
         let email_with_att = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody\r\n--mixbound--\r\n";
 
@@ -909,7 +917,7 @@ mod tests {
     #[test]
     fn sign_verify_roundtrip_valid() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-roundtrip");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-roundtrip");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -927,7 +935,7 @@ mod tests {
     #[test]
     fn sign_tamper_from_verify_shows_fail() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-tamper-from2");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper-from2");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -948,13 +956,13 @@ mod tests {
     /// Create a forwarded email: A signs, B re-signs.
     /// MUST be called while holding `EMAIL_TEST_MUTEX`.
     fn forwarded_email_from_b() -> (Vec<u8>, SimpleAgent, SimpleAgent, tempfile::TempDir, tempfile::TempDir) {
-        let (agent_a, tmp_a) = create_test_agent("agent-a-fwd");
+        let (agent_a, tmp_a, _env_guard_a) = create_test_agent("agent-a-fwd");
         // env now points to agent_a's keys
         let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Report\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <orig@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHere is the report.\r\n";
         let signed_by_a = sign_email(original, &agent_a).unwrap();
 
         // Create agent_b - this switches env to agent_b's keys
-        let (agent_b, tmp_b) = create_test_agent("agent-b-fwd");
+        let (agent_b, tmp_b, _env_guard_b) = create_test_agent("agent-b-fwd");
 
         let forwarded = rewrite_headers_for_forward(
             &signed_by_a,
@@ -1015,7 +1023,7 @@ mod tests {
     #[test]
     fn non_forwarded_email_has_single_chain_entry() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-chain-single");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-chain-single");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -1030,7 +1038,7 @@ mod tests {
     #[test]
     fn forward_parent_hash_matches_original_doc_bytes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent_a, _tmp_a) = create_test_agent("agent-a-hash");
+        let (agent_a, _tmp_a, _env_guard_a) = create_test_agent("agent-a-hash");
         // env points to agent_a
         let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n";
         let signed_by_a = sign_email(original, &agent_a).unwrap();
@@ -1043,7 +1051,7 @@ mod tests {
         };
 
         // Create agent_b, switches env
-        let (agent_b, _tmp_b) = create_test_agent("agent-b-hash");
+        let (agent_b, _tmp_b, _env_guard_b) = create_test_agent("agent-b-hash");
         let signed_by_b = sign_email(&signed_by_a, &agent_b).unwrap();
 
         let b_payload = extract_payload(&signed_by_b);
@@ -1054,11 +1062,11 @@ mod tests {
     fn deep_chain_a_to_b_to_c_has_three_entries() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
-        let (agent_a, _tmp_a) = create_test_agent("agent-a-deep");
+        let (agent_a, _tmp_a, _env_guard_a) = create_test_agent("agent-a-deep");
         let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Report\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <orig@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nOriginal report.\r\n";
         let signed_by_a = sign_email(original, &agent_a).unwrap();
 
-        let (agent_b, _tmp_b) = create_test_agent("agent-b-deep");
+        let (agent_b, _tmp_b, _env_guard_b) = create_test_agent("agent-b-deep");
         let forward_b = rewrite_headers_for_forward(
             &signed_by_a,
             "agentB@example.com",
@@ -1069,7 +1077,7 @@ mod tests {
         );
         let signed_by_b = sign_email(&forward_b, &agent_b).unwrap();
 
-        let (agent_c, _tmp_c) = create_test_agent("agent-c-deep");
+        let (agent_c, _tmp_c, _env_guard_c) = create_test_agent("agent-c-deep");
         let forward_c = rewrite_headers_for_forward(
             &signed_by_b,
             "agentC@example.com",
@@ -1103,7 +1111,7 @@ mod tests {
     #[test]
     fn mime_header_tamper_on_body_causes_fail() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-mime-tamper");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-mime-tamper");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
@@ -1123,7 +1131,7 @@ mod tests {
     #[test]
     fn attachment_trailing_byte_tamper_detected() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-att-tamper");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-att-tamper");
         let pubkey = get_pubkey(&agent);
         let email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody\r\n--mixbound\r\nContent-Type: application/pdf; name=\"report.pdf\"\r\nContent-Disposition: attachment; filename=\"report.pdf\"\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--mixbound--\r\n";
         let signed = sign_email(email, &agent).unwrap();
@@ -1140,7 +1148,7 @@ mod tests {
     #[test]
     fn oversized_email_rejected_on_verify() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-oversize");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-oversize");
         let pubkey = get_pubkey(&agent);
         let mut big_email = b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: text/plain\r\n\r\n".to_vec();
         big_email.resize(26 * 1024 * 1024, b'A');
@@ -1212,7 +1220,7 @@ mod tests {
     #[test]
     fn chain_validity_gates_overall_valid() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let (agent, _tmp) = create_test_agent("verify-chain-gate");
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-chain-gate");
         let pubkey = get_pubkey(&agent);
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();

@@ -1,4 +1,4 @@
-.PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy \
+.PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         publish-jacs publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-all \
         retry-jacspy retry-jacsnpm \
@@ -61,8 +61,14 @@ test-jacs-observability:
 test-jacspy:
 	cd jacspy && maturin develop && python -m pytest tests/ -v
 
+test-jacspy-parallel:
+	cd jacspy && PYTEST_XDIST_WORKERS=$${PYTEST_XDIST_WORKERS:-auto} make test-python-parallel
+
 test-jacsnpm:
 	cd jacsnpm && npm test
+
+test-jacsnpm-parallel:
+	cd jacsnpm && npm run test:parallel
 
 test: test-jacs
 
