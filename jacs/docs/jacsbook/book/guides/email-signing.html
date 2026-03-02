@@ -245,12 +245,15 @@ another agent), <code>sign_email</code> automatically:</p>
 <h3 id="one-call-api-recommended"><a class="header" href="#one-call-api-recommended">One-call API (recommended)</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use jacs::email::{verify_email, DefaultEmailVerifier};
+</span>use jacs::email::verify_email;
+use jacs::simple::SimpleAgent;
 
 let signed_eml = std::fs::read("incoming_signed.eml")?;
 let sender_public_key: Vec&lt;u8&gt; = /* fetch from HAI registry or local store */;
 
-let result = verify_email(&amp;signed_eml, &amp;sender_public_key, &amp;DefaultEmailVerifier)?;
+// Any agent can verify — the sender's public key is passed explicitly
+let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
+let result = verify_email(&amp;signed_eml, &amp;agent, &amp;sender_public_key)?;
 
 if result.valid {
     println!("Email is authentic and unmodified");
@@ -265,41 +268,34 @@ if result.valid {
 <ol>
 <li>Extracts <code>jacs-signature.json</code> from the email</li>
 <li>Removes it (the signature covers the email <em>without</em> itself)</li>
-<li>Validates the payload hash (SHA-256 of RFC 8785 canonical JSON)</li>
-<li>Verifies the cryptographic signature against the public key</li>
+<li>Verifies the JACS document signature against the sender's public key</li>
 <li>Compares every hash in the JACS document against the actual email content</li>
 <li>Returns per-field results</li>
 </ol>
 <h3 id="two-step-api-when-you-need-the-jacs-document"><a class="header" href="#two-step-api-when-you-need-the-jacs-document">Two-step API (when you need the JACS document)</a></h3>
-<p>If you need to inspect the JACS document metadata (issuer, algorithm, timestamps)
+<p>If you need to inspect the JACS document metadata (issuer, timestamps)
 before doing the content comparison:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use jacs::email::{verify_email_document, verify_email_content, DefaultEmailVerifier};
+</span>use jacs::email::{verify_email_document, verify_email_content};
+use jacs::simple::SimpleAgent;
+
+let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
 
 // Step 1: Verify the cryptographic signature — returns the trusted JACS document
-let (doc, parts) = verify_email_document(&amp;signed_eml, &amp;sender_public_key, &amp;DefaultEmailVerifier)?;
+let (doc, parts) = verify_email_document(&amp;signed_eml, &amp;agent, &amp;sender_public_key)?;
 
 // Inspect the document
 println!("Signed by: {}", doc.metadata.issuer);
-println!("Algorithm: {}", doc.signature.algorithm);
-println!("Signed at: {}", doc.signature.signed_at);
+println!("Created at: {}", doc.metadata.created_at);
 
 // Step 2: Compare content hashes
 let result = verify_email_content(&amp;doc, &amp;parts);
 assert!(result.valid);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="defaultemailverifier"><a class="header" href="#defaultemailverifier"><code>DefaultEmailVerifier</code></a></h3>
-<p>JACS provides <code>DefaultEmailVerifier</code> which handles all supported algorithms
-automatically. You do not need to know the algorithm in advance — it reads
-the algorithm from the JACS document and dispatches to the correct verifier:</p>
-<ul>
-<li><strong>Ed25519</strong> — raw 32-byte public key</li>
-<li><strong>RSA-PSS</strong> — PEM or DER public key (auto-converted internally)</li>
-<li><strong>PQ2025 / ML-DSA-87</strong> — raw or SPKI-wrapped public key (auto-unwrapped internally)</li>
-</ul>
-<p>You can also implement the <code>EmailVerifier</code> trait yourself if you need custom
-verification logic.</p>
+<p>All cryptographic operations are handled by the JACS agent via
+<code>SimpleAgent::verify_with_key()</code>. The agent's own key is not used --
+the sender's public key is passed explicitly.</p>
 <h3 id="field-level-results"><a class="header" href="#field-level-results">Field-level results</a></h3>
 <p>The <code>ContentVerificationResult</code> contains a <code>field_results</code> vector with one
 entry per field:</p>
@@ -358,12 +354,10 @@ jacs::email::sign_email(raw_email: &amp;[u8], signer: &amp;dyn EmailSigner) -&gt
 jacs::email::EmailSigner                  // trait your agent implements
 
 // Verification
-jacs::email::verify_email(...)            // one-call: crypto + content check
-jacs::email::verify_email_document(...)   // step 1: crypto only
-jacs::email::verify_email_content(...)    // step 2: content hash comparison
-jacs::email::DefaultEmailVerifier         // handles Ed25519, RSA-PSS, PQ2025
-jacs::email::EmailVerifier                // trait for custom verifiers
-jacs::email::normalize_algorithm(...)     // algorithm name normalization
+jacs::email::verify_email(raw, &amp;agent, pubkey)       // one-call: crypto + content check
+jacs::email::verify_email_document(raw, &amp;agent, pk)  // step 1: crypto only
+jacs::email::verify_email_content(&amp;doc, &amp;parts)      // step 2: content hash comparison
+jacs::email::normalize_algorithm(...)                 // algorithm name normalization
 
 // Types
 jacs::email::ContentVerificationResult    // overall result with field_results
