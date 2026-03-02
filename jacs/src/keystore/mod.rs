@@ -89,6 +89,24 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
         _message: &[u8],
         algorithm: &str,
     ) -> Result<Vec<u8>, Box<dyn Error>>;
+
+    /// Rotate keys: archive the current keypair with a version suffix and generate
+    /// a new keypair at the standard paths. Returns `(new_private_key, new_public_key)`.
+    ///
+    /// For filesystem-backed stores this renames old key files to
+    /// `{name}.{old_version}.{ext}` before generating fresh keys. If generation
+    /// fails after archival the old files are restored (rollback).
+    ///
+    /// In-memory stores simply regenerate keys (no archival step).
+    ///
+    /// Backends that do not support rotation return an error via this default impl.
+    fn rotate(
+        &self,
+        _old_version: &str,
+        _spec: &KeySpec,
+    ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+        Err("rotate() not implemented for this key backend".into())
+    }
 }
 
 // Default filesystem-encrypted backend placeholder.
@@ -103,6 +121,66 @@ use tracing::debug;
 
 #[derive(Debug)]
 pub struct FsEncryptedStore;
+impl FsEncryptedStore {
+    /// Compute the current on-disk paths for the private and public key files.
+    fn key_paths() -> Result<(String, String, String), Box<dyn Error>> {
+        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
+        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
+        let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
+        let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
+        let final_priv_path = if !priv_path.ends_with(".enc") {
+            format!("{}.enc", priv_path)
+        } else {
+            priv_path
+        };
+        Ok((final_priv_path, pub_path, key_dir))
+    }
+
+    /// Build versioned archive paths from the standard paths.
+    fn archive_paths(
+        priv_path: &str,
+        pub_path: &str,
+        old_version: &str,
+    ) -> (String, String) {
+        // For private key: insert version before the extension cluster
+        // e.g. "keys/jacs.private.pem.enc" -> "keys/jacs.private.{ver}.pem.enc"
+        let archive_priv = Self::insert_version_in_path(priv_path, old_version);
+        let archive_pub = Self::insert_version_in_path(pub_path, old_version);
+        (archive_priv, archive_pub)
+    }
+
+    /// Insert a version string before the PEM/key file extensions.
+    ///
+    /// `"keys/jacs.private.pem.enc"` -> `"keys/jacs.private.{ver}.pem.enc"`
+    /// `"keys/jacs.public.pem"`      -> `"keys/jacs.public.{ver}.pem"`
+    ///
+    /// Strategy: find the first occurrence of `.pem` (case-insensitive) and
+    /// insert `.{version}` just before it.  If `.pem` is not found, fall back
+    /// to inserting before the last `.`-delimited extension.
+    fn insert_version_in_path(path: &str, version: &str) -> String {
+        // Try to find `.pem` which is the canonical key-file extension boundary
+        if let Some(pem_pos) = path.to_ascii_lowercase().find(".pem") {
+            let (before, after) = path.split_at(pem_pos);
+            return format!("{}.{}{}", before, version, after);
+        }
+        // Fallback: insert before the last dot-extension in the filename
+        if let Some(slash_pos) = path.rfind('/') {
+            let (dir, filename) = path.split_at(slash_pos + 1);
+            if let Some(dot_pos) = filename.rfind('.') {
+                let (stem, ext) = filename.split_at(dot_pos);
+                return format!("{}{}.{}{}", dir, stem, version, ext);
+            }
+            return format!("{}{}.{}", dir, filename, version);
+        }
+        if let Some(dot_pos) = path.rfind('.') {
+            let (stem, ext) = path.split_at(dot_pos);
+            return format!("{}.{}{}", stem, version, ext);
+        }
+        format!("{}.{}", path, version)
+    }
+}
+
 impl KeyStore for FsEncryptedStore {
     fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
         debug!(
@@ -267,6 +345,58 @@ impl KeyStore for FsEncryptedStore {
         };
         Ok(STANDARD.decode(sig_b64)?)
     }
+
+    fn rotate(
+        &self,
+        old_version: &str,
+        spec: &KeySpec,
+    ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+        debug!(
+            old_version = %old_version,
+            algorithm = %spec.algorithm,
+            "FsEncryptedStore::rotate called"
+        );
+
+        let (priv_path, pub_path, _) = Self::key_paths()?;
+        let (archive_priv, archive_pub) = Self::archive_paths(&priv_path, &pub_path, old_version);
+
+        // Step 1: Archive (rename) old key files
+        std::fs::rename(&priv_path, &archive_priv).map_err(|e| {
+            format!(
+                "Failed to archive private key '{}' -> '{}': {}",
+                priv_path, archive_priv, e
+            )
+        })?;
+
+        if let Err(e) = std::fs::rename(&pub_path, &archive_pub) {
+            // Rollback private key archive
+            let _ = std::fs::rename(&archive_priv, &priv_path);
+            return Err(format!(
+                "Failed to archive public key '{}' -> '{}': {}. Private key archive rolled back.",
+                pub_path, archive_pub, e
+            )
+            .into());
+        }
+
+        // Step 2: Generate new keys at the standard paths
+        match self.generate(spec) {
+            Ok(keys) => {
+                debug!("FsEncryptedStore::rotate new keys generated successfully");
+                Ok(keys)
+            }
+            Err(e) => {
+                // Rollback: restore archived keys to standard paths
+                debug!("FsEncryptedStore::rotate generation failed, rolling back");
+                let _ = std::fs::rename(&archive_priv, &priv_path);
+                let _ = std::fs::rename(&archive_pub, &pub_path);
+                Err(format!(
+                    "Key generation failed after archival, rolled back: {}",
+                    e
+                )
+                .into())
+            }
+        }
+    }
 }
 
 macro_rules! unimplemented_store {
@@ -415,11 +545,21 @@ impl KeyStore for InMemoryKeyStore {
         };
         Ok(STANDARD.decode(sig_b64)?)
     }
+
+    fn rotate(
+        &self,
+        _old_version: &str,
+        spec: &KeySpec,
+    ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+        // In-memory stores have no files to archive — just regenerate.
+        self.generate(spec)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_in_memory_generate_returns_keys() {
@@ -624,5 +764,255 @@ mod tests {
         assert_eq!(mode, 0o700);
 
         let _ = std::fs::remove_dir_all(path);
+    }
+
+    // =========================================================================
+    // rotate() tests
+    // =========================================================================
+
+    /// Mutex to prevent concurrent env-var stomping across FS-backed rotation tests.
+    static FS_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn test_rotate_trait_has_default_error() {
+        // Unimplemented backends should return an error from the default impl
+        let store = VaultTransitStore;
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let result = store.rotate("old-ver", &spec);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("not implemented"),
+            "Expected 'not implemented' error, got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_in_memory_rotate_replaces_keys() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (old_priv, old_pub) = ks.generate(&spec).unwrap();
+
+        let (new_priv, new_pub) = ks.rotate("v1", &spec).unwrap();
+
+        // New keys should differ from old keys
+        assert_ne!(old_priv, new_priv, "private key should change after rotate");
+        assert_ne!(old_pub, new_pub, "public key should change after rotate");
+
+        // load_private/load_public should return the new keys
+        assert_eq!(ks.load_private().unwrap(), new_priv);
+        assert_eq!(ks.load_public().unwrap(), new_pub);
+    }
+
+    /// Helper: set up a test directory with the required subdirs and env vars for
+    /// `FsEncryptedStore`. Uses a relative path from CWD so `MultiStorage` saves
+    /// files in the right place. Returns the key dir name for assertions.
+    ///
+    /// Caller MUST hold `FS_TEST_MUTEX` before calling.
+    fn setup_fs_test_dir(label: &str) -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir_name = format!(".jacs_test_{}_{}", label, suffix);
+
+        let key_dir = format!("{}/keys", dir_name);
+        let data_dir = format!("{}/data", dir_name);
+
+        std::fs::create_dir_all(&key_dir).unwrap();
+        std::fs::create_dir_all(format!("{}/agent", data_dir)).unwrap();
+        std::fs::create_dir_all(format!("{}/public_keys", data_dir)).unwrap();
+
+        unsafe {
+            std::env::set_var("JACS_KEY_DIRECTORY", &key_dir);
+            std::env::set_var("JACS_DATA_DIRECTORY", &data_dir);
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123");
+            std::env::set_var("JACS_DEFAULT_STORAGE", "fs");
+        }
+
+        dir_name
+    }
+
+    #[test]
+    fn test_fs_encrypted_rotate_archives_old_keys() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let dir_name = setup_fs_test_dir("archive");
+        let key_dir = format!("{}/keys", dir_name);
+
+        let store = FsEncryptedStore;
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+
+        // Generate initial keys
+        let _ = store.generate(&spec).unwrap();
+
+        let priv_path = format!("{}/jacs.private.pem.enc", key_dir);
+        let pub_path = format!("{}/jacs.public.pem", key_dir);
+        assert!(
+            Path::new(&priv_path).exists(),
+            "initial private key should exist"
+        );
+        assert!(
+            Path::new(&pub_path).exists(),
+            "initial public key should exist"
+        );
+
+        // Rotate
+        let old_version = "test-v1-uuid";
+        let _ = store.rotate(old_version, &spec).unwrap();
+
+        // Archived files should exist
+        let archive_priv = format!("{}/jacs.private.{}.pem.enc", key_dir, old_version);
+        let archive_pub = format!("{}/jacs.public.{}.pem", key_dir, old_version);
+        assert!(
+            Path::new(&archive_priv).exists(),
+            "archived private key should exist at {}",
+            archive_priv
+        );
+        assert!(
+            Path::new(&archive_pub).exists(),
+            "archived public key should exist at {}",
+            archive_pub
+        );
+
+        // New key files should still be at standard paths
+        assert!(
+            Path::new(&priv_path).exists(),
+            "new private key should exist at standard path"
+        );
+        assert!(
+            Path::new(&pub_path).exists(),
+            "new public key should exist at standard path"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+    }
+
+    #[test]
+    fn test_fs_encrypted_rotate_generates_new_keys() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let dir_name = setup_fs_test_dir("newkeys");
+        let key_dir = format!("{}/keys", dir_name);
+
+        let store = FsEncryptedStore;
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+
+        // Generate initial keys
+        let (old_priv, old_pub) = store.generate(&spec).unwrap();
+
+        // Rotate
+        let (new_priv, new_pub) = store.rotate("test-v2-uuid", &spec).unwrap();
+
+        assert_ne!(
+            old_priv, new_priv,
+            "private key bytes should differ after rotation"
+        );
+        assert_ne!(
+            old_pub, new_pub,
+            "public key bytes should differ after rotation"
+        );
+
+        // load_public should return the new public key
+        let loaded_pub = store.load_public().unwrap();
+        assert_eq!(loaded_pub, new_pub);
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+    }
+
+    #[test]
+    fn test_fs_encrypted_rotate_rollback_on_failure() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let dir_name = setup_fs_test_dir("rollback");
+        let key_dir = format!("{}/keys", dir_name);
+
+        let store = FsEncryptedStore;
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+
+        // Generate initial keys
+        let _ = store.generate(&spec).unwrap();
+
+        let priv_path = format!("{}/jacs.private.pem.enc", key_dir);
+        let pub_path = format!("{}/jacs.public.pem", key_dir);
+
+        let orig_priv_bytes = std::fs::read(&priv_path).unwrap();
+        let orig_pub_bytes = std::fs::read(&pub_path).unwrap();
+
+        // Rotate with an invalid algorithm so generate() fails after archival
+        let bad_spec = KeySpec {
+            algorithm: "not-a-real-algo".to_string(),
+            key_id: None,
+        };
+        let result = store.rotate("rollback-ver", &bad_spec);
+        assert!(result.is_err(), "rotate with bad algo should fail");
+
+        // Original files should be restored (rollback)
+        assert!(
+            Path::new(&priv_path).exists(),
+            "private key should be restored after rollback"
+        );
+        assert!(
+            Path::new(&pub_path).exists(),
+            "public key should be restored after rollback"
+        );
+
+        let restored_priv = std::fs::read(&priv_path).unwrap();
+        let restored_pub = std::fs::read(&pub_path).unwrap();
+        assert_eq!(
+            orig_priv_bytes, restored_priv,
+            "private key content should match original after rollback"
+        );
+        assert_eq!(
+            orig_pub_bytes, restored_pub,
+            "public key content should match original after rollback"
+        );
+
+        // Archived files should NOT remain (they were rolled back)
+        let archive_priv = format!("{}/jacs.private.rollback-ver.pem.enc", key_dir);
+        let archive_pub = format!("{}/jacs.public.rollback-ver.pem", key_dir);
+        assert!(
+            !Path::new(&archive_priv).exists(),
+            "archived private key should be cleaned up after rollback"
+        );
+        assert!(
+            !Path::new(&archive_pub).exists(),
+            "archived public key should be cleaned up after rollback"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+    }
+
+    #[test]
+    fn test_fs_encrypted_insert_version_in_path() {
+        assert_eq!(
+            FsEncryptedStore::insert_version_in_path("keys/jacs.private.pem.enc", "v1-uuid"),
+            "keys/jacs.private.v1-uuid.pem.enc"
+        );
+        assert_eq!(
+            FsEncryptedStore::insert_version_in_path("keys/jacs.public.pem", "v1-uuid"),
+            "keys/jacs.public.v1-uuid.pem"
+        );
+        assert_eq!(
+            FsEncryptedStore::insert_version_in_path("nodir.pem", "v2"),
+            "nodir.v2.pem"
+        );
     }
 }

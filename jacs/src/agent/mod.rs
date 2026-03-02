@@ -20,7 +20,7 @@ use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key}
 use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
-use crate::keystore::{KeySpec, KeyStore};
+use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dns::bootstrap::verify_registry_registration_sync;
@@ -1168,6 +1168,97 @@ impl Agent {
         self.validate_agent(&self.to_string())?;
         self.verify_self_signature()?;
         Ok(new_self.to_string())
+    }
+
+    /// Rotates the agent's keys and creates a new version of the agent document.
+    ///
+    /// Unlike `update_self` which re-signs with the *existing* key, this method:
+    /// 1. Archives old keys (filesystem) or discards them (ephemeral)
+    /// 2. Generates a new keypair
+    /// 3. Creates a new agent version
+    /// 4. Signs the new document with the **new** key
+    ///
+    /// Returns `(new_version, new_public_key_bytes, signed_agent_json)`.
+    pub fn rotate_self(
+        &mut self,
+    ) -> Result<(String, Vec<u8>, Value), Box<dyn Error>> {
+        // Clone the current agent value up front to avoid borrow conflicts
+        let original_value = self.value.as_ref().ok_or_else(|| {
+            let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
+            format!(
+                "rotate_self failed for agent '{}': Agent value is not loaded.",
+                agent_id
+            )
+        })?.clone();
+
+        let old_version = original_value
+            .get_str("jacsVersion")
+            .ok_or("Agent has no jacsVersion")?;
+
+        // Determine key algorithm
+        let key_algorithm = {
+            let config = self.config.as_ref().ok_or("Agent config not initialized")?;
+            config.get_key_algorithm()?
+        };
+
+        let spec = KeySpec {
+            algorithm: key_algorithm.clone(),
+            key_id: None,
+        };
+
+        // Rotate keys: ephemeral uses in-memory key_store, FS uses FsEncryptedStore
+        let (new_private_key, new_public_key) = if let Some(ref ks) = self.key_store {
+            ks.rotate(&old_version, &spec)?
+        } else {
+            FsEncryptedStore.rotate(&old_version, &spec)?
+        };
+
+        // Set new keys on the agent
+        if self.ephemeral {
+            self.set_keys_raw(new_private_key, new_public_key.clone(), &key_algorithm);
+        } else {
+            self.set_keys(new_private_key, new_public_key.clone(), &key_algorithm)?;
+        }
+
+        // Build new version document
+        let new_version = Uuid::new_v4().to_string();
+        let version_date = time_utils::now_rfc3339();
+
+        let mut new_doc = original_value.clone();
+        new_doc["jacsPreviousVersion"] = json!(old_version);
+        new_doc["jacsVersion"] = json!(new_version.clone());
+        new_doc["jacsVersionDate"] = json!(version_date);
+
+        // Remove old signature and hash — they will be regenerated with new key
+        if let Some(obj) = new_doc.as_object_mut() {
+            obj.remove(AGENT_SIGNATURE_FIELDNAME);
+            obj.remove(SHA256_FIELDNAME);
+        }
+
+        // Sign with the new key
+        new_doc[AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&new_doc, None, AGENT_SIGNATURE_FIELDNAME)?;
+        let document_hash = self.hash_doc(&new_doc)?;
+        new_doc[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+
+        // Update in-memory state
+        self.version = Some(new_version.clone());
+        self.value = Some(new_doc.clone());
+
+        // Verify the new self-signature
+        self.verify_self_signature()?;
+
+        // Save public key hash (skip for ephemeral)
+        if !self.ephemeral {
+            let public_key_hash = hash_public_key(&new_public_key);
+            let _ = self.fs_save_remote_public_key(
+                &public_key_hash,
+                &new_public_key,
+                key_algorithm.as_bytes(),
+            );
+        }
+
+        Ok((new_version, new_public_key, new_doc))
     }
 
     pub fn validate_header(

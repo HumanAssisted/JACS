@@ -515,6 +515,34 @@ pub struct AgreementStatus {
 }
 
 // =============================================================================
+// Key Rotation
+// =============================================================================
+
+/// Result of a key rotation operation.
+///
+/// Returned by [`SimpleAgent::rotate()`] after successfully generating new keys,
+/// archiving old keys, and producing a new self-signed agent document.
+///
+/// The `signed_agent_json` field contains the complete, self-signed agent document
+/// with the new version and new public key. This is the document that should be
+/// sent to HAI for re-registration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotationResult {
+    /// The agent's stable identity (unchanged across rotations).
+    pub jacs_id: String,
+    /// The version string of the agent before rotation.
+    pub old_version: String,
+    /// The new version string assigned during rotation.
+    pub new_version: String,
+    /// PEM-encoded public key for the new keypair.
+    pub new_public_key_pem: String,
+    /// SHA-256 hash of the new public key (hex-encoded).
+    pub new_public_key_hash: String,
+    /// The complete, self-signed agent JSON document with the new version.
+    pub signed_agent_json: String,
+}
+
+// =============================================================================
 // SimpleAgent - Instance-based API (Recommended)
 // =============================================================================
 
@@ -2944,6 +2972,148 @@ impl SimpleAgent {
             message: format!("Failed to serialize verification result: {}", e),
         })
     }
+
+    // =========================================================================
+    // Key Rotation
+    // =========================================================================
+
+    /// Rotates the agent's cryptographic keys.
+    ///
+    /// This generates a new keypair, archives the old keys (for filesystem-backed
+    /// agents), creates a new agent version with the new public key, self-signs it,
+    /// and updates the config file.
+    ///
+    /// The old keys remain on disk (archived with a version suffix) so that
+    /// documents signed with the old key can still be verified.
+    ///
+    /// # Returns
+    ///
+    /// A [`RotationResult`] containing the old and new version strings, the new
+    /// public key in PEM format, and the complete self-signed agent JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The agent is not loaded (no `jacsId`)
+    /// - Key generation fails
+    /// - Signing fails
+    /// - Config file cannot be updated
+    ///
+    /// On failure after key archival, the old keys are restored (rollback).
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let (agent, _info) = SimpleAgent::create("my-agent", None, None)?;
+    /// let rotation = agent.rotate()?;
+    /// println!("Rotated from {} to {}", rotation.old_version, rotation.new_version);
+    /// ```
+    pub fn rotate(&self) -> Result<RotationResult, JacsError> {
+        use crate::crypt::hash::hash_public_key;
+
+        info!("Starting key rotation");
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        // 1. Capture pre-rotation state
+        let agent_value = agent.get_value().cloned().ok_or(JacsError::AgentNotLoaded)?;
+        let jacs_id = agent_value["jacsId"]
+            .as_str()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .to_string();
+        let old_version = agent_value["jacsVersion"]
+            .as_str()
+            .ok_or_else(|| JacsError::Internal {
+                message: "Agent has no jacsVersion".to_string(),
+            })?
+            .to_string();
+
+        // 2. Delegate to Agent::rotate_self() (archives keys, generates new, signs, verifies)
+        let (new_version, new_public_key, new_doc) =
+            agent.rotate_self().map_err(|e| JacsError::Internal {
+                message: format!("Key rotation failed: {}", e),
+            })?;
+
+        // 3. Save agent document to disk (non-ephemeral only)
+        if !agent.is_ephemeral() {
+            agent.save().map_err(|e| JacsError::Internal {
+                message: format!("Failed to save rotated agent: {}", e),
+            })?;
+        }
+
+        // 4. Update config file with the new version
+        if let Some(ref config_path) = self.config_path {
+            let config_path_p = Path::new(config_path);
+            if config_path_p.exists() {
+                let config_str =
+                    fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
+                        message: format!("Failed to read config for rotation update: {}", e),
+                    })?;
+                let mut config_value: Value =
+                    serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
+                        message: format!("Failed to parse config: {}", e),
+                    })?;
+
+                let new_lookup = format!("{}:{}", jacs_id, new_version);
+                if let Some(obj) = config_value.as_object_mut() {
+                    obj.insert(
+                        "jacs_agent_id_and_version".to_string(),
+                        json!(new_lookup),
+                    );
+                }
+
+                let updated_str = serde_json::to_string_pretty(&config_value).map_err(|e| {
+                    JacsError::Internal {
+                        message: format!("Failed to serialize updated config: {}", e),
+                    }
+                })?;
+                fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to write updated config: {}", e),
+                })?;
+
+                info!(
+                    "Config updated with new version: {}:{}",
+                    jacs_id, new_version
+                );
+            }
+        }
+
+        // 5. Build the PEM string for the new public key
+        // We always encode from the raw bytes since the on-disk public key may
+        // be raw bytes (ring Ed25519) rather than actual PEM text.
+        let new_public_key_pem = {
+            use base64::{Engine as _, engine::general_purpose::STANDARD};
+            format!(
+                "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----",
+                STANDARD.encode(&new_public_key)
+            )
+        };
+        drop(agent); // Release lock — no longer needed
+
+        let new_public_key_hash = hash_public_key(&new_public_key);
+        let signed_agent_json =
+            serde_json::to_string_pretty(&new_doc).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize rotated agent: {}", e),
+            })?;
+
+        info!(
+            "Key rotation complete: {} -> {} (id={})",
+            old_version, new_version, jacs_id
+        );
+
+        Ok(RotationResult {
+            jacs_id,
+            old_version,
+            new_version,
+            new_public_key_pem,
+            new_public_key_hash,
+            signed_agent_json,
+        })
+    }
 }
 
 // =============================================================================
@@ -3961,6 +4131,274 @@ mod tests {
         assert!(
             !result.errors.is_empty(),
             "should have verification errors"
+        );
+    }
+
+    // =========================================================================
+    // Key Rotation Tests
+    // =========================================================================
+
+    /// Shared mutex for rotation tests that manipulate env vars / filesystem.
+    static ROTATION_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// RAII guard that restores the working directory when dropped (even on panic).
+    struct CwdGuard {
+        saved: std::path::PathBuf,
+    }
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.saved);
+        }
+    }
+
+    /// Helper: create a persistent test agent in a temp directory.
+    /// Returns (SimpleAgent, AgentInfo, TempDir, CwdGuard). Caller MUST hold ROTATION_TEST_MUTEX.
+    ///
+    /// This changes CWD to the temp dir so that the MultiStorage (which saves
+    /// public keys relative to CWD) and the FsEncryptedStore key_paths (which
+    /// computes paths from the env var) agree on file locations.
+    /// The CwdGuard restores CWD automatically when dropped, even on panic.
+    fn create_persistent_test_agent(
+        name: &str,
+    ) -> (SimpleAgent, AgentInfo, tempfile::TempDir, CwdGuard) {
+        let saved_cwd = std::env::current_dir().expect("get cwd");
+        let tmp = tempfile::tempdir().expect("create temp dir");
+
+        // Change CWD to temp dir so relative paths work
+        std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
+        let guard = CwdGuard { saved: saved_cwd };
+
+        let params = CreateAgentParams::builder()
+            .name(name)
+            .password("RotateTest!2026")
+            .algorithm("ring-Ed25519")
+            .description("Test agent for key rotation")
+            .data_directory("./jacs_data")
+            .key_directory("./jacs_keys")
+            .config_path("./jacs.config.json")
+            .build();
+
+        let (agent, info) =
+            SimpleAgent::create_with_params(params).expect("create test agent");
+
+        // Set env vars so key operations work
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "RotateTest!2026");
+            std::env::set_var("JACS_KEY_DIRECTORY", "./jacs_keys");
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        (agent, info, tmp, guard)
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_preserves_jacs_id() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("rotate-id-test");
+        let original_id = info.agent_id.clone();
+        let original_version = info.version.clone();
+
+        let result = agent.rotate().expect("rotation should succeed");
+
+        assert_eq!(result.jacs_id, original_id, "jacsId must not change after rotation");
+        assert_ne!(
+            result.new_version, original_version,
+            "jacsVersion must change after rotation"
+        );
+        assert_eq!(result.old_version, original_version);
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_new_key_signs_correctly() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-sign-test");
+
+        let _result = agent.rotate().expect("rotation should succeed");
+
+        // Sign a message with the rotated agent's new key
+        let signed = agent
+            .sign_message(&json!({"after": "rotation"}))
+            .expect("signing with new key should succeed");
+
+        // Verify the message
+        let verification = agent.verify(&signed.raw).expect("verify should succeed");
+
+        assert!(
+            verification.valid,
+            "Message signed with new key should verify: {:?}",
+            verification.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_returns_rotation_result() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-result-test");
+
+        let result = agent.rotate().expect("rotation should succeed");
+
+        // All fields should be non-empty
+        assert!(!result.jacs_id.is_empty(), "jacs_id should not be empty");
+        assert!(!result.old_version.is_empty(), "old_version should not be empty");
+        assert!(!result.new_version.is_empty(), "new_version should not be empty");
+        assert!(
+            !result.new_public_key_pem.is_empty(),
+            "new_public_key_pem should not be empty"
+        );
+        assert!(
+            !result.new_public_key_hash.is_empty(),
+            "new_public_key_hash should not be empty"
+        );
+        assert!(
+            !result.signed_agent_json.is_empty(),
+            "signed_agent_json should not be empty"
+        );
+
+        // signed_agent_json should be valid JSON containing the new version
+        let doc: Value =
+            serde_json::from_str(&result.signed_agent_json).expect("should be valid JSON");
+        assert_eq!(
+            doc["jacsVersion"].as_str().unwrap(),
+            result.new_version,
+            "signed doc should contain new version"
+        );
+        assert_eq!(
+            doc["jacsId"].as_str().unwrap(),
+            result.jacs_id,
+            "signed doc should contain same jacsId"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_config_updated() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("rotate-config-test");
+
+        let result = agent.rotate().expect("rotation should succeed");
+
+        // Read the config (CWD is still temp dir, so relative path works)
+        let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
+
+        let config: Value = serde_json::from_str(&config_str).expect("parse config");
+        let expected_lookup = format!("{}:{}", info.agent_id, result.new_version);
+        assert_eq!(
+            config["jacs_agent_id_and_version"].as_str().unwrap(),
+            expected_lookup,
+            "Config should be updated with new version"
+        );
+    }
+
+    #[test]
+    fn test_rotate_ephemeral_agent() {
+        // Ephemeral agents should support rotation (no filesystem involved)
+        let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let original_version = info.version.clone();
+
+        let result = agent.rotate().expect("ephemeral rotation should succeed");
+
+        assert_eq!(result.jacs_id, info.agent_id);
+        assert_ne!(result.new_version, original_version);
+        assert!(!result.new_public_key_pem.is_empty());
+        assert!(!result.signed_agent_json.is_empty());
+
+        // Agent should still be functional after rotation
+        let signed = agent
+            .sign_message(&json!({"ephemeral": "after rotate"}))
+            .expect("signing after ephemeral rotation should work");
+        let verification = agent.verify(&signed.raw).expect("verify should work");
+        assert!(verification.valid, "ephemeral post-rotation verify failed: {:?}", verification.errors);
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_old_key_still_verifies_old_doc() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-old-key-test");
+
+        // Sign a document with the original key
+        let signed_before = agent
+            .sign_message(&json!({"pre_rotation": true}))
+            .expect("signing before rotation should succeed");
+
+        // Save the old public key bytes
+        let old_public_key = agent.get_public_key().expect("get old public key");
+
+        // Rotate
+        let _result = agent.rotate().expect("rotation should succeed");
+
+        // Verify the pre-rotation doc using the old public key
+        let verification = agent
+            .verify_with_key(&signed_before.raw, old_public_key)
+            .expect("verify_with_key should return a result");
+
+        assert!(
+            verification.valid,
+            "Old doc should still verify with old key: {:?}",
+            verification.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_full_cycle() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-full-cycle");
+
+        // Phase 1: Sign with original key
+        let old_public_key = agent.get_public_key().expect("get old key");
+        let signed_v1 = agent
+            .sign_message(&json!({"version": 1}))
+            .expect("sign v1");
+
+        // Phase 2: Rotate
+        let result = agent.rotate().expect("rotation should succeed");
+
+        // Phase 3: Sign with new key
+        let signed_v2 = agent
+            .sign_message(&json!({"version": 2}))
+            .expect("sign v2");
+
+        // Phase 4: Verify both documents
+        // v1 doc with old key
+        let v1_check = agent
+            .verify_with_key(&signed_v1.raw, old_public_key)
+            .expect("verify v1 with old key");
+        assert!(v1_check.valid, "v1 should verify with old key: {:?}", v1_check.errors);
+
+        // v2 doc with current agent (new key)
+        let v2_check = agent.verify(&signed_v2.raw).expect("verify v2");
+        assert!(v2_check.valid, "v2 should verify with new key: {:?}", v2_check.errors);
+
+        // Version chain is correct
+        let doc: Value =
+            serde_json::from_str(&result.signed_agent_json).expect("parse signed agent");
+        assert_eq!(
+            doc["jacsPreviousVersion"].as_str().unwrap(),
+            result.old_version,
+            "jacsPreviousVersion should reference old version"
         );
     }
 }
