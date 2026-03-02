@@ -20,7 +20,6 @@ use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::storage::duckdb_storage::DuckDbStorage;
 use serde_json::json;
-use serial_test::serial;
 use tempfile::TempDir;
 
 /// Create a test document with the given fields.
@@ -55,7 +54,6 @@ fn create_file_duckdb(tmpdir: &TempDir) -> DuckDbStorage {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_file_based_storage() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
     let storage = create_file_duckdb(&tmpdir);
@@ -69,7 +67,6 @@ fn test_duckdb_file_based_storage() {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_file_persistence() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
     let db_path = tmpdir.path().join("persist.duckdb");
@@ -93,7 +90,6 @@ fn test_duckdb_file_persistence() {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_raw_contents_preserves_json() {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
     storage.run_migrations().expect("migrations failed");
@@ -111,7 +107,6 @@ fn test_duckdb_raw_contents_preserves_json() {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_large_document() {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
     storage.run_migrations().expect("migrations failed");
@@ -132,7 +127,6 @@ fn test_duckdb_large_document() {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_special_characters_in_data() {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
     storage.run_migrations().expect("migrations failed");
@@ -147,7 +141,6 @@ fn test_duckdb_special_characters_in_data() {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_query_by_field_with_json_extract() {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
     storage.run_migrations().expect("migrations failed");
@@ -168,7 +161,6 @@ fn test_duckdb_query_by_field_with_json_extract() {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_multiple_versions_ordering() {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
     storage.run_migrations().expect("migrations failed");
@@ -192,7 +184,6 @@ fn test_duckdb_multiple_versions_ordering() {
 }
 
 #[test]
-#[serial]
 fn test_duckdb_count_accuracy() {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
     storage.run_migrations().expect("migrations failed");

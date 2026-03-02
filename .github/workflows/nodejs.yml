@@ -63,9 +63,9 @@ jobs:
           JACS_KEY_RESOLUTION: local
         run: npm run test:cross-language
 
-      - name: Run tests
+      - name: Run tests (parallel, excluding cross-language already covered above)
         working-directory: jacsnpm
-        run: npm test
+        run: npm run test:ci
 
       - name: Smoke test packed npm install
         working-directory: jacsnpm

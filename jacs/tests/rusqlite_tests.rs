@@ -19,7 +19,6 @@ use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::storage::rusqlite_storage::RusqliteStorage;
 use serde_json::json;
-use serial_test::serial;
 use tempfile::TempDir;
 
 /// Create a test document with the given fields.
@@ -54,7 +53,6 @@ fn create_file_rusqlite(tmpdir: &TempDir) -> RusqliteStorage {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_file_based_storage() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
     let storage = create_file_rusqlite(&tmpdir);
@@ -68,7 +66,6 @@ async fn test_rusqlite_file_based_storage() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_file_persistence() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
     let db_path = tmpdir.path().join("persist.db");
@@ -92,7 +89,6 @@ async fn test_rusqlite_file_persistence() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_raw_contents_preserves_json() {
     let storage = RusqliteStorage::in_memory().expect("in-memory rusqlite");
     storage.run_migrations().expect("migrations failed");
@@ -110,7 +106,6 @@ async fn test_rusqlite_raw_contents_preserves_json() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_large_document() {
     let storage = RusqliteStorage::in_memory().expect("in-memory rusqlite");
     storage.run_migrations().expect("migrations failed");
@@ -131,7 +126,6 @@ async fn test_rusqlite_large_document() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_special_characters_in_data() {
     let storage = RusqliteStorage::in_memory().expect("in-memory rusqlite");
     storage.run_migrations().expect("migrations failed");
@@ -146,7 +140,6 @@ async fn test_rusqlite_special_characters_in_data() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_query_by_field_with_json_extract() {
     let storage = RusqliteStorage::in_memory().expect("in-memory rusqlite");
     storage.run_migrations().expect("migrations failed");
@@ -167,7 +160,6 @@ async fn test_rusqlite_query_by_field_with_json_extract() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_multiple_versions_ordering() {
     let storage = RusqliteStorage::in_memory().expect("in-memory rusqlite");
     storage.run_migrations().expect("migrations failed");
@@ -191,7 +183,6 @@ async fn test_rusqlite_multiple_versions_ordering() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_rusqlite_count_accuracy() {
     let storage = RusqliteStorage::in_memory().expect("in-memory rusqlite");
     storage.run_migrations().expect("migrations failed");

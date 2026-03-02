@@ -18,7 +18,6 @@ use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::storage::sqlite::SqliteStorage;
 use serde_json::json;
-use serial_test::serial;
 use tempfile::TempDir;
 
 /// Create a test document with the given fields.
@@ -55,7 +54,6 @@ async fn create_file_sqlite(tmpdir: &TempDir) -> SqliteStorage {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_file_based_storage() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
     let storage = create_file_sqlite(&tmpdir).await;
@@ -69,7 +67,6 @@ async fn test_sqlite_file_based_storage() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_file_persistence() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
     let db_path = tmpdir.path().join("persist.db");
@@ -97,7 +94,6 @@ async fn test_sqlite_file_persistence() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_raw_contents_preserves_json() {
     let storage = SqliteStorage::in_memory_async()
         .await
@@ -117,7 +113,6 @@ async fn test_sqlite_raw_contents_preserves_json() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_large_document() {
     let storage = SqliteStorage::in_memory_async()
         .await
@@ -140,7 +135,6 @@ async fn test_sqlite_large_document() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_concurrent_reads() {
     let tmpdir = tempfile::tempdir().expect("tmpdir");
     let db_path = tmpdir.path().join("concurrent.db");
@@ -178,7 +172,6 @@ async fn test_sqlite_concurrent_reads() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_query_by_field_with_json_extract() {
     let storage = SqliteStorage::in_memory_async()
         .await
@@ -201,7 +194,6 @@ async fn test_sqlite_query_by_field_with_json_extract() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_multiple_versions_ordering() {
     let storage = SqliteStorage::in_memory_async()
         .await
@@ -227,7 +219,6 @@ async fn test_sqlite_multiple_versions_ordering() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_count_accuracy() {
     let storage = SqliteStorage::in_memory_async()
         .await
@@ -249,7 +240,6 @@ async fn test_sqlite_count_accuracy() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[serial]
 async fn test_sqlite_special_characters_in_data() {
     let storage = SqliteStorage::in_memory_async()
         .await
