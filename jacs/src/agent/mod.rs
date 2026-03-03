@@ -458,6 +458,16 @@ impl Agent {
             for field in ["jacs_data_directory", "jacs_key_directory"] {
                 if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
                     let dir_path = std::path::Path::new(dir);
+                    if dir_path
+                        .components()
+                        .any(|component| matches!(component, std::path::Component::ParentDir))
+                    {
+                        return Err(format!(
+                            "load_by_config failed: Config field '{}' in '{}' contains unsafe parent-directory segment ('..'): '{}'",
+                            field, path, dir
+                        )
+                        .into());
+                    }
                     if dir_path.is_absolute() {
                         let normalized_abs = normalize_path(dir_path);
                         if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute) {

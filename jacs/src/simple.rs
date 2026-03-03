@@ -4332,6 +4332,52 @@ mod tests {
 
     #[test]
     #[serial]
+    fn test_load_rejects_parent_directory_segments_in_storage_dirs() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (_agent, _info, tmp, guard) = create_persistent_test_agent("reject-parent-dir-test");
+        let config_path = tmp.path().join("jacs.config.json");
+
+        let mut config_value: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&config_path).expect("read config"),
+        )
+        .expect("parse config json");
+        config_value["jacs_data_directory"] =
+            serde_json::Value::String("../outside-data".to_string());
+        std::fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&config_value).expect("serialize config"),
+        )
+        .expect("write updated config");
+        drop(guard);
+
+        unsafe {
+            std::env::remove_var("JACS_DATA_DIRECTORY");
+            std::env::remove_var("JACS_KEY_DIRECTORY");
+            std::env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
+            std::env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
+            std::env::remove_var("JACS_DEFAULT_STORAGE");
+            std::env::remove_var("JACS_AGENT_ID_AND_VERSION");
+        }
+
+        let load_result =
+            SimpleAgent::load(Some(config_path.to_string_lossy().as_ref()), Some(true));
+        assert!(
+            load_result.is_err(),
+            "loading should reject parent-directory segments in configured storage directories"
+        );
+        let err_text = load_result.err().unwrap().to_string();
+        assert!(
+            err_text.contains("parent-directory segment"),
+            "error should mention parent-directory segment rejection, got: {}",
+            err_text
+        );
+    }
+
+    #[test]
+    #[serial]
     fn test_rotate_preserves_jacs_id() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
