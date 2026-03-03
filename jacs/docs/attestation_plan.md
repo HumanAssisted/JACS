@@ -80,7 +80,20 @@ Goal: make JACS a portable attestation fabric while preserving current JACS ergo
 
 ## Competitive Positioning
 
-> **[REVIEW NOTE — Web Research / Product]** This section is missing from the plan and should be added. JACS should be explicitly positioned relative to existing standards:
+> **[REVIEW NOTE — Web Research / Product]** This section is missing from the plan and should be added. JACS should be explicitly positioned relative to existing standards.
+>
+> **As-of caveat (2026-03-03):** standards maturity and release status can change quickly. Revalidate before roadmap commitments.
+>
+> Reference links:
+> - SLSA: https://slsa.dev/spec/
+> - in-toto: https://in-toto.io/
+> - Sigstore/Cosign releases: https://github.com/sigstore/cosign/releases
+> - IETF SCITT docs: https://datatracker.ietf.org/wg/scitt/documents/
+> - IETF RATS/EAT RFC 9711: https://www.rfc-editor.org/rfc/rfc9711
+> - CSA Agentic Trust Framework: https://cloudsecurityalliance.org/
+> - NIST AI Security Institute: https://www.nist.gov/aisi
+>
+> Suggested positioning table:
 >
 > | Standard | Status | Relationship to JACS |
 > |---|---|---|
@@ -134,7 +147,13 @@ These are still standard JACS documents with regular `jacsSignature`, `jacsSha25
   - JWT/OIDC token claims (header + claims + issuer metadata)
   - TLSNotary/PCD-style evidence bundles (as opaque evidence + verifier metadata)
 
-> **[REVIEW NOTE — Security: HIGH]** TLSNotary is still in alpha (v0.1.0-alpha.12, Aug 2025). Bandwidth overhead is ~25MB fixed per session. No formal security proof or audit completed. The MPC test harness blog (Jan 2026) confirms ongoing stabilization.
+> **[REVIEW NOTE — Security: HIGH]** TLSNotary status is time-sensitive.
+>
+> **As-of caveat (2026-03-03):** treat TLSNotary as experimental/pre-stable until independently audited and broadly production-proven.
+>
+> Reference links:
+> - TLSNotary releases: https://github.com/tlsnotary/tlsn/releases
+> - TLSNotary docs: https://tlsnotary.org/
 >
 > **Recommendation:** Move TLSNotary from "initial adapters" to "future/experimental." If included, cap `confidence` at 0.5 for unaudited TLSNotary proofs and require policy-level opt-in. Focus initial adapters on A2A, JWT/OIDC, and email — all with mature verification paths.
 
@@ -304,6 +323,11 @@ Existing features become building blocks, not legacy:
 5. Maintain strict backward compatibility:
 - No changes required for existing `sign_message`, `verify`, `sign_artifact`, agreements.
 
+> **[REVIEW NOTE — API Naming]** Use one primary naming convention across Rust/Python/Node docs:
+> - Primary: `create_attestation`, `verify_attestation`, `evaluate_attestation_policy`
+> - Optional convenience alias: `attest(...)` maps to `create_attestation(...)`
+> - If alias exists, docs must always show primary name first and alias second.
+
 > **[REVIEW NOTE — Product]** N+1 is overloaded. This is five work streams: schemas + three APIs + adapter + CLI + MCP. Based on JACS release history, each version focuses on one major capability.
 >
 > **CUT from N+1:**
@@ -329,13 +353,17 @@ Existing features become building blocks, not legacy:
 > signed = jacs.sign_message({"action": "approve", "amount": 100})
 >
 > # Now attest WHY this is trustworthy
-> attestation = jacs.attest(signed, claims={"reviewed_by": "human", "confidence": 0.95})
+> attestation = jacs.create_attestation(
+>     signed,
+>     claims={"reviewed_by": "human", "confidence": 0.95}
+> )
 >
 > # Verify (still returns a simple boolean for the common case)
 > result = jacs.verify(attestation)
 > print(result.valid)           # True/False
 > print(result.details)         # opt-in rich breakdown
 > ```
+> Alias note: `jacs.attest(...)` may exist as a convenience alias for `jacs.create_attestation(...)`.
 > If the hello-world can't be approximately this simple, adoption will be limited to compliance-driven use cases.
 
 > **[REVIEW NOTE — Rust Arch]** Recommended trait design for N+1:
@@ -455,6 +483,14 @@ Migration strategy:
 
 > **[REVIEW NOTE — Security: LOW]** JSON canonicalization. JSON serialization is not deterministic (key ordering, whitespace). Specify a canonicalization algorithm (JCS / RFC 8785) for all hash computations over JSON content. Document whether evidence hashes are over raw bytes or canonical JSON.
 
+## Digest Compatibility Rule
+
+Adding attestation digest sets does **not** replace existing top-level JACS hashing semantics.
+
+- `jacsSha256` remains required and continues to represent the canonical hash of the full JACS document envelope.
+- New attestation `digests` fields are additive and scoped to attestation internals (`subject`, `evidence`, `derivation`).
+- Verifiers MUST continue validating `jacsSha256` first, then validate attestation-level digest sets.
+
 ## Example End-to-End Flow (Practical)
 
 1. Agent A signs a task artifact (existing JACS behavior).
@@ -535,6 +571,12 @@ Result: recipient gets not only signed data, but machine-checkable reasons for t
 > 3. **EAT / IETF RATS** (MEDIUM priority, N+1): Align claim names with IANA-registered EAT claims where possible (`ueid`, `security-level`). This connects JACS to hardware attestation (TEE/TPM) workflows.
 >
 > 4. **NIST AI Agent Standards** (URGENT): Submit response to CAISI RFI (due March 9, 2026) and NCCoE concept paper (due April 2, 2026). JACS is one of the most complete implementations of what NIST is defining. Not participating risks becoming a niche tool.
+>
+> **As-of caveat (2026-03-03):** deadline dates above are planning inputs and can drift. Verify current calls/deadlines directly from official NIST channels before action.
+>
+> Reference links:
+> - NIST AI Security Institute: https://www.nist.gov/aisi
+> - NCCoE: https://www.nccoe.nist.gov/
 >
 > 5. **C2PA** (LOW priority, N+2+): Content credentials for AI-generated media. Only relevant if JACS agents produce/process media content.
 
