@@ -4283,6 +4283,55 @@ mod tests {
 
     #[test]
     #[serial]
+    fn test_load_handles_mixed_relative_data_and_absolute_key_directories() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, tmp, guard) = create_persistent_test_agent("mixed-dir-root-test");
+        let config_path = tmp.path().join("jacs.config.json");
+
+        // Make key directory absolute while keeping data directory relative.
+        let mut config_value: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&config_path).expect("read config"),
+        )
+        .expect("parse config json");
+        config_value["jacs_key_directory"] =
+            serde_json::Value::String(tmp.path().join("jacs_keys").to_string_lossy().to_string());
+        std::fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&config_value).expect("serialize config"),
+        )
+        .expect("write updated config");
+
+        let signed = agent
+            .sign_message(&json!({"mixed": "dirs"}))
+            .expect("signing should succeed");
+        drop(agent);
+        drop(guard);
+
+        // Ensure file config is honored (do not let helper env vars override it).
+        unsafe {
+            std::env::remove_var("JACS_DATA_DIRECTORY");
+            std::env::remove_var("JACS_KEY_DIRECTORY");
+            std::env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
+            std::env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
+            std::env::remove_var("JACS_DEFAULT_STORAGE");
+            std::env::remove_var("JACS_AGENT_ID_AND_VERSION");
+        }
+
+        let loaded = SimpleAgent::load(Some(config_path.to_string_lossy().as_ref()), Some(true))
+            .expect("loading should succeed with mixed absolute/relative config directories");
+        let result = loaded.verify(&signed.raw).expect("verify should succeed");
+        assert!(
+            result.valid,
+            "loaded agent should verify when key dir is absolute and data dir is relative: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    #[serial]
     fn test_rotate_preserves_jacs_id() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()

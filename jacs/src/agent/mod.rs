@@ -402,16 +402,10 @@ impl Agent {
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
         // load config string
-        self.config = Some(load_config_12factor(Some(&path)).map_err(|e| {
+        let mut config = load_config_12factor(Some(&path)).map_err(|e| {
             format!(
                 "load_by_config failed: Could not load configuration from '{}': {}",
                 path, e
-            )
-        })?);
-        let config = self.config.as_ref().ok_or_else(|| {
-            format!(
-                "load_by_config failed: Configuration object is unexpectedly None after loading from '{}'",
-                path
             )
         })?;
         // Clone values needed for error messages to avoid borrow conflicts
@@ -435,27 +429,89 @@ impl Agent {
             } else {
                 std::env::current_dir()?.join(config_dir)
             };
+            let normalize_path = |p: &std::path::Path| -> std::path::PathBuf {
+                let mut normalized = std::path::PathBuf::new();
+                for component in p.components() {
+                    match component {
+                        std::path::Component::CurDir => {}
+                        std::path::Component::ParentDir => {
+                            normalized.pop();
+                        }
+                        other => normalized.push(other.as_os_str()),
+                    }
+                }
+                normalized
+            };
 
-            let uses_absolute_dirs = config
-                .jacs_data_directory()
-                .as_deref()
-                .map(|d| std::path::Path::new(d).is_absolute())
-                .unwrap_or(false)
-                || config
-                    .jacs_key_directory()
-                    .as_deref()
-                    .map(|d| std::path::Path::new(d).is_absolute())
-                    .unwrap_or(false);
+            // Normalize configured filesystem directories.
+            // - Relative directories are treated as config-dir relative.
+            // - Absolute directories inside the config-dir root are rewritten
+            //   to relative paths so storage can stay rooted at config_dir.
+            // - Absolute directories outside config_dir require root "/".
+            let mut config_value = to_value(&config).map_err(|e| {
+                format!(
+                    "load_by_config failed: Could not serialize configuration from '{}': {}",
+                    path, e
+                )
+            })?;
+            let mut has_external_absolute = false;
+            for field in ["jacs_data_directory", "jacs_key_directory"] {
+                if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                    let dir_path = std::path::Path::new(dir);
+                    if dir_path.is_absolute() {
+                        let normalized_abs = normalize_path(dir_path);
+                        if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute) {
+                            let relative = relative_tail
+                                .to_string_lossy()
+                                .trim_start_matches('/')
+                                .to_string();
+                            if relative.is_empty() {
+                                has_external_absolute = true;
+                                config_value[field] =
+                                    json!(normalized_abs.to_string_lossy().to_string());
+                            } else {
+                                config_value[field] = json!(relative);
+                            }
+                        } else {
+                            has_external_absolute = true;
+                            config_value[field] = json!(normalized_abs.to_string_lossy().to_string());
+                        }
+                    } else {
+                        let normalized_rel = normalize_path(dir_path);
+                        config_value[field] = json!(normalized_rel.to_string_lossy().to_string());
+                    }
+                }
+            }
 
-            if uses_absolute_dirs {
+            let storage_root = if has_external_absolute {
+                // When rooting at "/", convert any remaining relative dirs to
+                // absolute config-dir-based paths so they remain stable.
+                for field in ["jacs_data_directory", "jacs_key_directory"] {
+                    if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                        let dir_path = std::path::Path::new(dir);
+                        if !dir_path.is_absolute() {
+                            let abs = normalize_path(&config_dir_absolute.join(dir_path));
+                            config_value[field] = json!(abs.to_string_lossy().to_string());
+                        }
+                    }
+                }
                 std::path::PathBuf::from("/")
             } else {
                 config_dir_absolute
-            }
+            };
+
+            config = serde_json::from_value(config_value).map_err(|e| {
+                format!(
+                    "load_by_config failed: Could not normalize filesystem directories in config '{}': {}",
+                    path, e
+                )
+            })?;
+            storage_root
         } else {
             std::env::current_dir()?
         };
 
+        self.config = Some(config);
         self.storage = MultiStorage::_new(storage_type.clone(), storage_root).map_err(|e| {
             format!(
                 "load_by_config failed: Could not initialize storage type '{}' (from config '{}'): {}",
