@@ -1,7 +1,5 @@
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
-#[cfg(not(target_arch = "wasm32"))]
-use jacs::agent::loaders::FileLoader;
 use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
@@ -12,7 +10,7 @@ use utils::{create_ring_test_agent, read_new_agent_fixture};
 fn test_ring_Ed25519_create() {
     let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
-    let _result = agent.create_agent_and_load(&json_data, false, None);
+    let _result = agent.create_agent_and_load(&json_data, true, None);
     // does this modify the agent sig?
     agent.generate_keys().expect("Reason");
 }
@@ -21,11 +19,7 @@ fn test_ring_Ed25519_create() {
 fn test_ring_Ed25519_create_and_verify_signature() {
     let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
-    let _result = agent.create_agent_and_load(&json_data, false, None);
-
-    // Explicitly load keys before trying to access them
-    #[cfg(not(target_arch = "wasm32"))]
-    agent.fs_load_keys().expect("Failed to load keys");
+    let _result = agent.create_agent_and_load(&json_data, true, None);
 
     let _private = agent.get_private_key().unwrap();
     let public = agent.get_public_key().unwrap();

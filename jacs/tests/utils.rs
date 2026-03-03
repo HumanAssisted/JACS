@@ -542,8 +542,45 @@ pub fn get_pq_config() -> String {
 /// ```
 #[cfg(test)]
 pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time should be after UNIX_EPOCH")
+        .as_nanos();
+    let base = std::path::PathBuf::from("tests")
+        .join("scratch")
+        .join(format!("jacs-ring-{}-{nonce}", std::process::id()));
+    let data_dir = base.join("data");
+    let key_dir = base.join("keys");
+    std::fs::create_dir_all(&data_dir).expect("failed to create ring data directory");
+    std::fs::create_dir_all(&key_dir).expect("failed to create ring key directory");
+
+    unsafe {
+        env::set_var("JACS_USE_SECURITY", "false");
+        env::set_var(
+            "JACS_DATA_DIRECTORY",
+            data_dir.to_string_lossy().to_string(),
+        );
+        env::set_var("JACS_KEY_DIRECTORY", key_dir.to_string_lossy().to_string());
+        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-ring-Ed25519-private.pem.enc");
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-ring-Ed25519-public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
+        env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_FIXTURES);
+        env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
+    }
+
     let mut agent = create_agent_v1()?;
-    agent.load_by_config(get_ring_config())?;
+    let config = Config::new(
+        Some("false".to_string()),
+        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_default()),
+        Some(std::env::var(PASSWORD_ENV_VAR).unwrap_or_default()),
+        None,
+        Some("fs".to_string()),
+    );
+    agent.config = Some(config);
     Ok(agent)
 }
 
@@ -601,12 +638,30 @@ pub fn create_pq_test_agent() -> Result<Agent, Box<dyn Error>> {
 /// Sets up the environment for pq2025 (ML-DSA-87) tests.
 ///
 /// This configures environment variables for the post-quantum 2025 algorithm.
+/// Paths are made unique per invocation to avoid key-file collisions across
+/// test binaries (for example, `pq2025_tests` then `pq_tests` in one run).
 #[cfg(test)]
 pub fn setup_pq2025_env() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time should be after UNIX_EPOCH")
+        .as_nanos();
+    let base = std::path::PathBuf::from("tests").join("scratch").join(format!(
+        "jacs-pq2025-{}-{nonce}",
+        std::process::id()
+    ));
+    let data_dir = base.join("data");
+    let key_dir = base.join("keys");
+    std::fs::create_dir_all(&data_dir).expect("failed to create pq2025 data directory");
+    std::fs::create_dir_all(&key_dir).expect("failed to create pq2025 key directory");
+
     unsafe {
         env::set_var("JACS_USE_SECURITY", "false");
-        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch/pq2025_data");
-        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/pq2025_keys");
+        env::set_var(
+            "JACS_DATA_DIRECTORY",
+            data_dir.to_string_lossy().to_string(),
+        );
+        env::set_var("JACS_KEY_DIRECTORY", key_dir.to_string_lossy().to_string());
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "pq2025_private.bin.enc");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "pq2025_public.bin");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq2025");
