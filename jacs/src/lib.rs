@@ -37,6 +37,9 @@ pub mod time_utils;
 pub mod trust;
 pub mod validation;
 
+#[cfg(feature = "attestation")]
+pub mod attestation;
+
 // #[cfg(feature = "cli")]
 pub mod cli_utils;
 // Re-export error types for convenience

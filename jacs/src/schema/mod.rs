@@ -235,6 +235,8 @@ pub struct Schema {
     pub agentstateschema: Validator,
     pub commitmentschema: Validator,
     pub todoschema: Validator,
+    #[cfg(feature = "attestation")]
+    pub attestationschema: Validator,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
@@ -556,6 +558,12 @@ impl Schema {
 
         let todo_path = format!("schemas/todo/{}/todo.schema.json", default_version);
 
+        #[cfg(feature = "attestation")]
+        let attestation_path = format!(
+            "schemas/attestation/{}/attestation.schema.json",
+            default_version
+        );
+
         // Helper to get schema with better error messages
         let get_schema = |path: &str| -> Result<&str, Box<dyn std::error::Error>> {
             DEFAULT_SCHEMA_STRINGS
@@ -583,6 +591,9 @@ impl Schema {
         let commitmentdata = get_schema(&commitment_path)?;
         let tododata = get_schema(&todo_path)?;
 
+        #[cfg(feature = "attestation")]
+        let attestationdata = get_schema(&attestation_path)?;
+
         let agentschema_result: Value = serde_json::from_str(agentdata)?;
         let headerchema_result: Value = serde_json::from_str(headerdata)?;
         let agreementschema_result: Value = serde_json::from_str(agreementdata)?;
@@ -603,6 +614,9 @@ impl Schema {
         let commitmentschema_result: Value = serde_json::from_str(commitmentdata)?;
         let todoschema_result: Value = serde_json::from_str(tododata)?;
 
+        #[cfg(feature = "attestation")]
+        let attestationschema_result: Value = serde_json::from_str(attestationdata)?;
+
         let agentschema = build_validator(&agentschema_result, &agentversion_path)?;
         let headerschema = build_validator(&headerchema_result, &header_path)?;
         let signatureschema = build_validator(&signatureschema_result, &signatureversion_path)?;
@@ -622,6 +636,9 @@ impl Schema {
         let agentstateschema = build_validator(&agentstateschema_result, &agentstate_path)?;
         let commitmentschema = build_validator(&commitmentschema_result, &commitment_path)?;
         let todoschema = build_validator(&todoschema_result, &todo_path)?;
+
+        #[cfg(feature = "attestation")]
+        let attestationschema = build_validator(&attestationschema_result, &attestation_path)?;
 
         Ok(Self {
             headerschema,
@@ -644,6 +661,8 @@ impl Schema {
             agentstateschema,
             commitmentschema,
             todoschema,
+            #[cfg(feature = "attestation")]
+            attestationschema,
         })
     }
 
@@ -683,6 +702,20 @@ impl Schema {
     /// Validates a JSON string against the todo schema.
     pub fn validate_todo(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
         self.validate_json_with_schema(json, &self.todoschema, "todo.schema.json", "Invalid JSON")
+    }
+
+    /// Validates a JSON string against the attestation schema.
+    #[cfg(feature = "attestation")]
+    pub fn validate_attestation(
+        &self,
+        json: &str,
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        self.validate_json_with_schema(
+            json,
+            &self.attestationschema,
+            "attestation.schema.json",
+            "Invalid JSON",
+        )
     }
 
     /// Validates a JSON string against the commitment schema.

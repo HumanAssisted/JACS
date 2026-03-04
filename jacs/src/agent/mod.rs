@@ -258,6 +258,9 @@ pub struct Agent {
     dns_validate_enabled: Option<bool>,
     /// whether DNS validation is required (must have domain and successful DNS check)
     dns_required: Option<bool>,
+    /// Evidence adapters for attestation (gated behind `attestation` feature).
+    #[cfg(feature = "attestation")]
+    pub adapters: Vec<Box<dyn crate::attestation::adapters::EvidenceAdapter>>,
 }
 
 impl fmt::Display for Agent {
@@ -297,6 +300,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            #[cfg(feature = "attestation")]
+            adapters: Vec::new(),
         })
     }
 
@@ -326,6 +331,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            #[cfg(feature = "attestation")]
+            adapters: Vec::new(),
         })
     }
 
@@ -1774,6 +1781,8 @@ impl AgentBuilder {
             dns_strict: self.dns_strict.unwrap_or(false),
             dns_validate_enabled: self.dns_validate,
             dns_required: self.dns_required,
+            #[cfg(feature = "attestation")]
+            adapters: Vec::new(),
         };
 
         // Apply DNS settings if specified

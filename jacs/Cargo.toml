@@ -37,6 +37,7 @@ include = [
     "schemas/commitment/v1/commitment.schema.json",
     "schemas/todo/v1/todo.schema.json",
     "schemas/components/todoitem/v1/todoitem.schema.json",
+    "schemas/attestation/v1/attestation.schema.json",
 ]
 description = "JACS JSON AI Communication Standard"
 readme = "README.md"
@@ -201,6 +202,14 @@ duckdb-tests = ["duckdb-storage"]
 # Redb storage backend (pure-Rust KV store)
 redb-storage = ["dep:redb"]
 redb-tests = ["redb-storage"]
+
+# Attestation (zero new deps)
+attestation = []
+attestation-tests = ["attestation"]
+# Future stubs:
+attestation-jwt = ["attestation"]
+attestation-tlsnotary = ["attestation"]
+attestation-policy = ["attestation"]
 
 # Observability backends are gated behind compile-time features.
 # Default is a minimal core: stderr/file logs only, no remote backends.
