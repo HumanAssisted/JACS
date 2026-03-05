@@ -35,6 +35,7 @@ fn should_update_fixtures() -> bool {
 }
 
 /// Generate A2A fixtures for a given algorithm.
+#[allow(deprecated)]
 fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
     let tmp = std::env::temp_dir().join(format!("jacs_a2a_fixtures_{}", prefix));
     let _ = fs::remove_dir_all(&tmp);

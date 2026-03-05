@@ -862,6 +862,7 @@ pub extern "C" fn jacs_agent_sign_a2a_artifact(
     let handle_ref = unsafe { &*handle };
     let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
+    #[allow(deprecated)]
     match wrapper.wrap_a2a_artifact(art_str, type_str, None) {
         Ok(result) => match CString::new(result) {
             Ok(c_string) => c_string.into_raw(),

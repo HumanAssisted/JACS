@@ -374,6 +374,7 @@ impl JacsAgent {
     /// Returns:
     ///     JSON string of the wrapped, signed artifact
     #[pyo3(signature = (artifact_json, artifact_type, parent_signatures_json=None))]
+    #[allow(deprecated)]
     fn wrap_a2a_artifact(
         &self,
         artifact_json: &str,

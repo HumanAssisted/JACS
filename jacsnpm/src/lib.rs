@@ -737,6 +737,7 @@ impl JacsAgent {
 
     /// Wrap an A2A artifact with JACS provenance signature (sync).
     #[napi(js_name = "wrapA2aArtifactSync")]
+    #[allow(deprecated)]
     pub fn wrap_a2a_artifact_sync(
         &self,
         artifact_json: String,
@@ -826,6 +827,7 @@ impl JacsAgent {
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| {
+                #[allow(deprecated)]
                 a.wrap_a2a_artifact(
                     &artifact_json,
                     &artifact_type,

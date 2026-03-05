@@ -2881,12 +2881,17 @@ impl SimpleAgent {
     /// # Returns
     ///
     /// JSON string of the wrapped, signed artifact.
+    #[deprecated(since = "0.9.0", note = "Use sign_artifact() instead")]
     pub fn wrap_a2a_artifact(
         &self,
         artifact_json: &str,
         artifact_type: &str,
         parent_signatures_json: Option<&str>,
     ) -> Result<String, JacsError> {
+        if std::env::var("JACS_SHOW_DEPRECATIONS").is_ok() {
+            tracing::warn!("wrap_a2a_artifact is deprecated, use sign_artifact instead");
+        }
+
         let artifact: Value =
             serde_json::from_str(artifact_json).map_err(|e| JacsError::DocumentMalformed {
                 field: "artifact_json".to_string(),
@@ -2926,14 +2931,15 @@ impl SimpleAgent {
 
     /// Sign an A2A artifact with JACS provenance.
     ///
-    /// This is an alias for [`wrap_a2a_artifact`](Self::wrap_a2a_artifact) and is
-    /// the recommended primary API name.
+    /// This is the recommended primary API, replacing the deprecated
+    /// [`wrap_a2a_artifact`](Self::wrap_a2a_artifact).
     pub fn sign_artifact(
         &self,
         artifact_json: &str,
         artifact_type: &str,
         parent_signatures_json: Option<&str>,
     ) -> Result<String, JacsError> {
+        #[allow(deprecated)]
         self.wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json)
     }
 
@@ -4143,6 +4149,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_wrap_and_verify_a2a_artifact() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
         let artifact = r#"{"text": "hello from A2A"}"#;
@@ -4180,6 +4187,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_wrap_a2a_artifact_with_parent_signatures() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
 
@@ -4201,6 +4209,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
         let result = agent.wrap_a2a_artifact("not json", "artifact", None);
@@ -4227,6 +4236,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_wrap_a2a_artifact_pq2025() {
         let (agent, _info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
         let artifact = r#"{"quantum": "safe"}"#;

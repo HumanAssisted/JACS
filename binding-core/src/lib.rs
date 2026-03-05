@@ -1136,12 +1136,17 @@ impl AgentWrapper {
     /// Wrap an A2A artifact with JACS provenance signature.
     ///
     /// Returns the signed wrapped artifact as a JSON string.
+    #[deprecated(since = "0.9.0", note = "Use sign_artifact() instead")]
     pub fn wrap_a2a_artifact(
         &self,
         artifact_json: &str,
         artifact_type: &str,
         parent_signatures_json: Option<&str>,
     ) -> BindingResult<String> {
+        if std::env::var("JACS_SHOW_DEPRECATIONS").is_ok() {
+            tracing::warn!("wrap_a2a_artifact is deprecated, use sign_artifact instead");
+        }
+
         let artifact: Value = serde_json::from_str(artifact_json).map_err(|e| {
             BindingCoreError::invalid_argument(format!("Invalid artifact JSON: {}", e))
         })?;
@@ -1178,13 +1183,15 @@ impl AgentWrapper {
 
     /// Sign an A2A artifact with JACS provenance.
     ///
-    /// Alias for [`wrap_a2a_artifact`](Self::wrap_a2a_artifact).
+    /// This is the recommended primary API, replacing the deprecated
+    /// [`wrap_a2a_artifact`](Self::wrap_a2a_artifact).
     pub fn sign_artifact(
         &self,
         artifact_json: &str,
         artifact_type: &str,
         parent_signatures_json: Option<&str>,
     ) -> BindingResult<String> {
+        #[allow(deprecated)]
         self.wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json)
     }
 
@@ -2409,6 +2416,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_wrap_and_verify_a2a_artifact() {
         let wrapper = ephemeral_wrapper();
         let artifact = r#"{"content": "hello A2A"}"#;
@@ -2441,6 +2449,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_wrap_a2a_artifact_with_parent_chain() {
         let wrapper = ephemeral_wrapper();
 
@@ -2458,6 +2467,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json_error() {
         let wrapper = ephemeral_wrapper();
         let result = wrapper.wrap_a2a_artifact("not json", "artifact", None);

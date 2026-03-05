@@ -376,6 +376,7 @@ fn load_agent_in_workspace() -> (jacs_binding_core::AgentWrapper, PathBuf, PathB
 
 /// Test wrapping an A2A artifact and getting back valid signed JSON.
 #[test]
+#[allow(deprecated)]
 fn a2a_wrap_artifact_produces_signed_output() {
     let (agent, orig, base) = load_agent_in_workspace();
 
@@ -405,6 +406,7 @@ fn a2a_wrap_artifact_produces_signed_output() {
 
 /// Test full round-trip: wrap an artifact, then verify it.
 #[test]
+#[allow(deprecated)]
 fn a2a_wrap_then_verify_round_trip() {
     let (agent, orig, base) = load_agent_in_workspace();
 

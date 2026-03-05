@@ -3397,6 +3397,7 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
+        #[allow(deprecated)]
         match self.agent.wrap_a2a_artifact(
             &params.artifact_json,
             &params.artifact_type,
