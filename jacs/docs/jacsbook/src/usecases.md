@@ -1,98 +1,111 @@
 # Use Cases
 
-This chapter is organized around deployment outcomes, not APIs.
+This chapter stays close to current product use, not roadmap integrations.
 
-If you want end-to-end fictional scenarios, see [USECASES.md](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md). The sections below are practical playbooks for real systems.
+## 1. Secure A Local MCP Tool Server
 
-## 1. Secure an MCP Server Used by Multiple Agents
+**Use this when:** Claude Desktop, Codex, or another MCP client is calling tools that should not run on blind trust.
 
-**Problem:** your MCP server exposes high-impact tools and you cannot trust unsigned JSON-RPC calls.
+**Recommended JACS path:**
 
-**JACS pattern:**
-- Sign outgoing MCP requests and responses at the transport layer
-- Verify every inbound signed payload before tool execution
-- Run fail-closed transport policy (default) or explicit strict settings so unsigned/failed verification traffic is rejected
+- Use `jacs-mcp` if you want a full server immediately
+- Use [Python MCP Integration](python/mcp.md) or [Node.js MCP Integration](nodejs/mcp.md) if you already have server code
 
-**Where to implement:**
-- [MCP Overview](integrations/mcp.md)
-- [Python MCP Integration](python/mcp.md)
-- [Node.js MCP Integration](nodejs/mcp.md)
+**What JACS adds:**
 
-## 2. Add Provenance to Agent Framework Workflows
+- Signed JSON-RPC messages
+- Fail-closed verification by default
+- Agent identity and auditability for tool calls
 
-**Problem:** orchestration frameworks generate valuable outputs, but downstream systems cannot prove origin.
+## 2. Add Provenance To LangChain Or LangGraph
 
-**JACS pattern:**
-- Sign tool outputs and final answers in adapters/middleware
-- Verify before routing into critical steps (billing, approvals, external calls)
-- Keep framework ergonomics while adding cryptographic provenance
+**Use this when:** your model already runs inside LangChain or LangGraph and you want signed tool outputs without introducing MCP.
 
-**Where to implement:**
-- [Python Framework Adapters](python/adapters.md) (LangChain, LangGraph, CrewAI, FastAPI)
-- [Node.js Integrations](nodejs/langchain.md), [Express](nodejs/express.md), [Vercel AI](nodejs/vercel-ai.md)
+**Recommended JACS path:**
 
-## 3. Exchange Artifacts Across Organizations with A2A
+- [Python Framework Adapters](python/adapters.md)
+- [Node.js LangChain.js](nodejs/langchain.md)
 
-**Problem:** agents in different trust domains need machine-verifiable exchange and discovery.
+**What JACS adds:**
 
-**JACS pattern:**
-- Publish A2A well-known discovery documents
-- Wrap artifacts with signed provenance envelopes
-- Apply trust policies (`open`, `verified`, `strict`) before accepting external artifacts
+- Signed tool results
+- Optional strict mode at the adapter boundary
+- Minimal changes to existing framework code
 
-**Where to implement:**
+## 3. Exchange Signed Artifacts Across Organizations
+
+**Use this when:** one agent produces work that another organization, service, or team must verify before acting on it.
+
+**Recommended JACS path:**
+
 - [A2A Interoperability](integrations/a2a.md)
 - [A2A Quickstart](guides/a2a-quickstart.md)
 
-## 4. Store Signed Files and JSON with Chain-of-Custody
+**What JACS adds:**
 
-**Problem:** you must preserve integrity for files and structured payloads over time.
+- Agent Cards with JACS provenance metadata
+- Signed A2A artifacts
+- Trust policies for admission control
 
-**JACS pattern:**
-- Sign JSON and file artifacts at creation time
-- Store signed envelopes, not detached metadata only
-- Re-verify on read and before downstream processing
+## 4. Sign HTTP Or API Boundaries Without MCP
 
-**Where to implement:**
+**Use this when:** the boundary is an API route, not an MCP transport.
+
+**Recommended JACS path:**
+
+- [Python Framework Adapters](python/adapters.md) for FastAPI
+- [Express Middleware](nodejs/express.md)
+- [Koa Middleware](nodejs/koa.md)
+
+**What JACS adds:**
+
+- Signed JSON responses
+- Verified inbound requests
+- A clean upgrade path to A2A discovery on the same app boundary
+
+## 5. Run Multi-Agent Approval Workflows
+
+**Use this when:** multiple agents must sign off on the same document, deployment, or decision.
+
+**Recommended JACS path:**
+
+- [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
+- [Rust Agreements](rust/agreements.md)
+
+**What JACS adds:**
+
+- M-of-N quorum
+- Timeout and algorithm constraints
+- Verifiable signature chain across signers
+
+## 6. Keep Signed Files Or JSON As Durable Artifacts
+
+**Use this when:** you need an artifact to stay verifiable after it leaves the process that created it.
+
+**Recommended JACS path:**
+
+- [Verifying Signed Documents](getting-started/verification.md)
 - [Working with Documents](rust/documents.md)
-- [Storage Backends](advanced/storage.md)
-- [Go Quick Start](go/installation.md)
+- [Python Basic Usage](python/basic-usage.md)
+- [Node.js Basic Usage](nodejs/basic-usage.md)
 
-## 5. Verify Agent Identity Publicly with DNS
+**What JACS adds:**
 
-**Problem:** external systems need to verify your agent identity without sharing private infrastructure.
+- Self-contained signed envelopes
+- Re-verification at read time
+- Cross-language interoperability
 
-**JACS pattern:**
-- Publish public key fingerprints in DNS TXT
-- Use DNSSEC-aware verification for stronger trust requirements
-- Keep private keys local; publish only public material
+## 7. Publish Public Identity Without A Central Auth Service
 
-**Where to implement:**
+**Use this when:** external systems need to verify your agent identity but you do not want a shared auth server in the middle.
+
+**Recommended JACS path:**
+
 - [DNS-Based Verification](rust/dns.md)
 - [DNS Trust Anchoring](advanced/dns-trust.md)
 
-## 6. Build Database-Native Provenance Queries
+**What JACS adds:**
 
-**Problem:** you need signed data that is both verifiable and queryable at scale.
-
-**JACS pattern:**
-- Persist full signed envelopes
-- Add extracted/indexed columns for high-value query predicates
-- Re-verify signatures periodically and on retrieval paths
-
-**Where to implement:**
-- [Databases](integrations/databases.md)
-- [Configuration Reference](reference/configuration.md)
-
-## 7. Integrate with DID Workflows Without Blockchain Dependency
-
-**Problem:** you need DID interoperability but do not want to operate blockchain infrastructure.
-
-**JACS pattern:**
-- Use JACS as the cryptographic identity/provenance layer
-- Project JACS identity into DID forms (`did:web`, `did:key`, or app-specific DID) at the integration layer
-- Resolve trust through DNS/local/registry without requiring on-chain components
-
-**Where to implement:**
-- [DID Integration (No Blockchain Required)](integrations/did.md)
-- [A2A Interoperability](integrations/a2a.md)
+- Public key fingerprint anchoring
+- DNS-based verification flows
+- Local private-key custody

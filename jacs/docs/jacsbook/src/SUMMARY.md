@@ -4,14 +4,14 @@
 
 ## Getting Started
 - [What is JACS?](getting-started/what-is-jacs.md)
+- [Which Integration?](getting-started/decision-tree.md)
+- [Use cases](usecases.md)
 - [Core Concepts](getting-started/concepts.md)
 - [Quick Start](getting-started/quick-start.md)
-- [Which Integration?](getting-started/decision-tree.md)
 - [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
 - [Verifying Signed Documents](getting-started/verification.md)
 - [What Is an Attestation?](getting-started/attestation.md)
 - [Trust Layers](getting-started/trust-layers.md)
-- [Use cases](usecases.md)
 - [Deployment Compatibility](getting-started/deployment.md)
 - [Troubleshooting](getting-started/troubleshooting.md)
 
@@ -29,11 +29,11 @@
 - [Installation](nodejs/installation.md)
 - [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)
+- [MCP Integration (Node.js)](nodejs/mcp.md)
 - [LangChain.js](nodejs/langchain.md)
 - [Vercel AI SDK](nodejs/vercel-ai.md)
 - [Express Middleware](nodejs/express.md)
 - [Koa Middleware](nodejs/koa.md)
-- [MCP Integration (Node.js)](nodejs/mcp.md)
 - [HTTP Server](nodejs/http.md)
 - [API Reference](nodejs/api.md)
 
@@ -41,8 +41,8 @@
 - [Installation](python/installation.md)
 - [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
-- [Framework Adapters](python/adapters.md)
 - [MCP Integration (Python)](python/mcp.md)
+- [Framework Adapters](python/adapters.md)
 <!-- - [FastMCP Integration](python/fastmcp.md) -->
 - [API Reference](python/api.md)
 
@@ -79,11 +79,6 @@
 ## Integrations
 - [MCP Overview](integrations/mcp.md)
 - [A2A Interoperability](integrations/a2a.md)
-- [DID Integration (No Blockchain Required)](integrations/did.md)
-- [HAI.ai Platform](integrations/hai.md)
-- [OpenClaw](integrations/openclaw.md)
-- [Web Servers](integrations/web-servers.md)
-- [Databases](integrations/databases.md)
 
 ## Guides
 - [A2A Quickstart](guides/a2a-quickstart.md)

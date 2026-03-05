@@ -1,53 +1,12 @@
 # LangChain.js Integration
 
-JACS provides two integration patterns for LangChain.js:
+Use the LangChain.js adapter when the model already runs inside your Node.js app and you want provenance at the tool boundary.
 
-1. **Full toolkit** -- expose all JACS operations as LangChain tools your agent can call
-2. **Auto-signing wrappers** -- transparently sign existing tool outputs
+## Choose The Pattern
 
-## 5-Minute Quickstart
+### Give The Agent JACS Tools
 
-### 1. Install
-
-```bash
-npm install @hai.ai/jacs @langchain/core
-```
-
-### 2. Create a JACS client
-
-```typescript
-import { JacsClient } from '@hai.ai/jacs/client';
-
-const client = await JacsClient.quickstart({
-  name: 'my-agent',
-  domain: 'my-agent.example.com',
-});
-```
-
-### 3. Sign tool outputs
-
-```typescript
-import { signedTool } from '@hai.ai/jacs/langchain';
-
-const signed = signedTool(mySearchTool, { client });
-const result = await signed.invoke({ query: 'hello' }); // result is JACS-signed
-```
-
-Or give your agent the full JACS toolkit:
-
-```typescript
-import { createJacsTools } from '@hai.ai/jacs/langchain';
-
-const jacsTools = createJacsTools({ client });
-const allTools = [...myTools, ...jacsTools];
-const llmWithTools = model.bindTools(allTools);
-```
-
----
-
-## Full Toolkit
-
-`createJacsTools()` returns an array of LangChain `DynamicStructuredTool` instances wrapping the full JacsClient API. Bind these to your LLM so the agent can sign, verify, create agreements, manage trust, and audit -- all as part of its reasoning.
+Use `createJacsTools()` when the model should explicitly ask to sign, verify, inspect trust, or create agreements.
 
 ```typescript
 import { JacsClient } from '@hai.ai/jacs/client';
@@ -57,53 +16,38 @@ const client = await JacsClient.quickstart({
   name: 'my-agent',
   domain: 'my-agent.example.com',
 });
+
 const jacsTools = createJacsTools({ client });
-
-// Combine with your own tools and bind to an LLM
-const allTools = [...myTools, ...jacsTools];
-const llmWithTools = model.bindTools(allTools);
+const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 ```
 
-### Available Tools
+The tool set includes:
 
-| Tool | Description |
-|------|-------------|
-| `jacs_sign` | Sign arbitrary JSON data with cryptographic provenance |
-| `jacs_verify` | Verify a signed document |
-| `jacs_create_agreement` | Create a multi-party agreement |
-| `jacs_sign_agreement` | Sign an existing agreement |
-| `jacs_check_agreement` | Check agreement status (signatures, completeness) |
-| `jacs_verify_self` | Verify this agent's integrity |
-| `jacs_trust_agent` | Add an agent to the local trust store |
-| `jacs_list_trusted` | List all trusted agent IDs |
-| `jacs_is_trusted` | Check if a specific agent is trusted |
-| `jacs_audit` | Run a security audit |
-| `jacs_agent_info` | Get agent ID, name, and status |
+- `jacs_sign`
+- `jacs_verify`
+- `jacs_create_agreement`
+- `jacs_sign_agreement`
+- `jacs_check_agreement`
+- `jacs_verify_self`
+- `jacs_trust_agent`
+- `jacs_list_trusted`
+- `jacs_is_trusted`
+- `jacs_audit`
+- `jacs_agent_info`
 
-### Strict Mode
+### Auto-Sign Existing Tools
 
-Pass `strict: true` to make tools throw on errors instead of returning error JSON:
+Use this when the model should keep using your existing tool set but every result needs a signature.
 
-```typescript
-const tools = createJacsTools({ client, strict: true });
-```
-
-## Auto-Signing Wrappers
-
-### signedTool
-
-Wraps any LangChain `BaseTool` so its output is automatically signed:
+Wrap one tool:
 
 ```typescript
 import { signedTool } from '@hai.ai/jacs/langchain';
 
 const signed = signedTool(mySearchTool, { client });
-const result = await signed.invoke({ query: 'hello' }); // result is JACS-signed
 ```
 
-### jacsToolNode (LangGraph)
-
-Creates a LangGraph `ToolNode` where every tool's output is signed:
+Wrap a LangGraph `ToolNode`:
 
 ```typescript
 import { jacsToolNode } from '@hai.ai/jacs/langchain';
@@ -111,31 +55,40 @@ import { jacsToolNode } from '@hai.ai/jacs/langchain';
 const node = jacsToolNode([tool1, tool2], { client });
 ```
 
-Requires `@langchain/langgraph`.
-
-### jacsWrapToolCall
-
-Returns an async wrapper for manual tool execution in custom LangGraph workflows:
+For custom graph logic:
 
 ```typescript
 import { jacsWrapToolCall } from '@hai.ai/jacs/langchain';
 
-const wrapFn = jacsWrapToolCall({ client });
-// Use in custom graph: const result = await wrapFn(toolCall, runnable);
+const wrapToolCall = jacsWrapToolCall({ client });
 ```
 
-## Installation
+## Install
 
 ```bash
 npm install @hai.ai/jacs @langchain/core
-# Optional for jacsToolNode:
 npm install @langchain/langgraph
 ```
 
-All `@langchain/*` imports are lazy -- the module can be imported without LangChain installed.
+`@langchain/langgraph` is only required for `jacsToolNode()`.
 
-## Next Steps
+## Strict Mode
 
-- [MCP Integration](mcp.md) -- Full JACS tool suite for MCP servers
-- [Vercel AI SDK](vercel-ai.md) -- AI model provenance signing
-- [Express Middleware](express.md) -- HTTP API signing
+Pass `strict: true` when you want wrapper failures to throw instead of returning error-shaped output:
+
+```typescript
+const jacsTools = createJacsTools({ client, strict: true });
+```
+
+## Examples In This Repo
+
+- `jacsnpm/examples/langchain/basic-agent.ts`
+- `jacsnpm/examples/langchain/signing-callback.ts`
+
+## When To Use MCP Instead
+
+Choose [Node.js MCP Integration](mcp.md) instead when:
+
+- the model is outside your process and connects over MCP
+- you want a shared MCP server usable by multiple clients
+- you need transport-level signing in addition to signed tool outputs

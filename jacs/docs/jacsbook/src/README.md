@@ -1,113 +1,96 @@
 # JACS: JSON Agent Communication Standard
 
-JACS is a cryptographic provenance layer for agent systems. It helps you prove who produced a payload, whether it changed, and whether you trust the signer.
+JACS is a cryptographic provenance layer for agent systems. Use it when an output, tool call, or agent handoff crosses a trust boundary and logs alone are not enough.
 
-## Start With Real Use Cases
+## Start With The Deployment
 
-Teams usually adopt JACS for one or more of these:
+Most teams adopt JACS in one of four ways:
 
-- **Secure MCP servers**: sign JSON-RPC requests/responses so tools are not blindly trusted
-- **Agent frameworks**: add signing/verification to LangChain, LangGraph, CrewAI, FastAPI, Express, and Vercel AI flows
-- **A2A interoperability**: exchange signed artifacts across organizations with trust policies
-- **File and artifact custody**: sign JSON, files, and attachments to preserve origin and integrity
-- **Database-backed provenance**: store signed records with queryable metadata and periodic re-verification
-- **Internet-scale identity**: publish public key fingerprints in DNS and verify with DNSSEC
-- **DID compatibility**: map JACS agent identity to DID workflows without requiring any blockchain
+- **LangChain / LangGraph / CrewAI / FastAPI**: add signing at tool or API boundaries without changing the rest of the app
+- **MCP**: secure a local tool server or expose JACS itself as an MCP tool suite
+- **A2A**: publish an Agent Card, exchange signed artifacts, and apply trust policy across organizations
+- **Core signing**: sign JSON, files, or agreements directly from Rust, Python, Node.js, or Go
 
-See [Use cases](usecases.md) for deployment-oriented narratives.
+The book now focuses on those supported workflows first. Older roadmap-style integration chapters have been reduced or removed from navigation.
 
-## Key Features
+## What JACS Gives You
 
-- **Cryptographic signing and verification** for JSON payloads, files, and artifacts
-- **Encrypted private key handling** with password-based key protection
-- **Algorithm support** for `ring-Ed25519`, `RSA-PSS`, and `pq2025` (ML-DSA-87 / FIPS-204)
-- **Multi-agent agreements** including quorum and algorithm constraints
-- **Schema-aware documents** built on JSON Schema
-- **Auditability and versioning** through immutable signatures and document history
-- **Storage flexibility** across local storage and database-backed deployments
-- **MCP and A2A integration** for both intra-app and cross-boundary agent workflows
-- **Trust bootstrap primitives** (`share_public_key`, `share_agent`, `trust_agent_with_key`) for explicit key exchange handshakes
-- **Observability hooks** for production operations
-- **Cross-language implementations** in Rust, Node.js, Python, and Go
+- **Signed JSON and file envelopes** with tamper detection
+- **Persistent agent identity** with encrypted private keys
+- **Trust bootstrap primitives** such as `share_public_key`, `share_agent`, and `trust_agent_with_key`
+- **A2A artifact signing and trust policies** (`open`, `verified`, `strict`)
+- **MCP integration paths** for ready-made servers, transport security, or tool registration
+- **Framework adapters** for Python and Node.js ecosystems
+- **Multi-party agreements** with quorum, timeout, and algorithm constraints
+- **Cross-language compatibility** across Rust, Python, Node.js, and Go
 
-## Standards and Interop
+## Best Entry Points
 
-JACS is designed to work with existing standards instead of replacing them:
+If you are choosing where to start:
 
-- **MCP** for model-to-tool transport inside app boundaries
-- **A2A** for agent discovery and exchange across org boundaries
-- **JSON / JSON Schema** for payload compatibility
-- **DNS / DNSSEC** for public key fingerprint anchoring
-- **DID ecosystems** via application-level identity mapping guidance (no blockchain dependency)
+1. [Which Integration?](getting-started/decision-tree.md)
+2. [Use Cases](usecases.md)
+3. [MCP Overview](integrations/mcp.md)
+4. [A2A Interoperability](integrations/a2a.md)
+5. [Python Framework Adapters](python/adapters.md)
+6. [Node.js LangChain.js](nodejs/langchain.md)
 
 ## Implementations
 
-### Rust (core library + CLI)
-- Deepest feature surface and operational controls
-- CLI for agent/key/document operations
-- Strong production ergonomics (including observability options)
+### Rust
 
-### Node.js (`@hai.ai/jacs`)
-- Strong web and middleware integration
-- Native MCP transport proxy support
-- Good fit for Express/Koa/Vercel AI/LangChain.js
+- Deepest feature surface
+- CLI plus library APIs
+- Best fit when you want a ready-made MCP server via `jacs-mcp`
 
 ### Python (`jacs`)
-- Strong framework adapters and AI workflow ergonomics
-- Native MCP/A2A helpers
-- Good fit for LangChain/LangGraph/CrewAI/FastAPI
+
+- Best fit for LangChain, LangGraph, CrewAI, FastAPI, and local MCP/A2A helpers
+- Strong adapter story for adding provenance inside an existing app
+
+### Node.js (`@hai.ai/jacs`)
+
+- Best fit for Express, Koa, Vercel AI SDK, LangChain.js, and MCP transport/tool integration
+- Also exposes A2A helpers and Express discovery middleware
 
 ### Go (`jacsgo`)
-- Community-maintained bindings for signing and verification
-- Strong fit for Go services needing signed JSON and file provenance
-- See [Go quick start](go/installation.md)
+
+- Good fit for services that need signing and verification without framework adapters
 
 ## Quick Start
 
 ### Rust CLI
+
 ```bash
 cargo install jacs --features cli
 jacs quickstart --name my-agent --domain my-agent.example.com
 ```
 
-### Node.js
-```bash
-npm install @hai.ai/jacs
-```
-
 ### Python
+
 ```bash
 pip install jacs
 ```
 
+### Node.js
+
+```bash
+npm install @hai.ai/jacs
+```
+
 ### Go
+
 ```bash
 go get github.com/HumanAssisted/JACS/jacsgo
 ```
 
-Quickstart in Rust/Node/Python requires an agent name and domain. Returned `AgentInfo` includes config/key file paths for operational visibility.
+Rust, Python, and Node quickstart flows create or load a persistent agent and return agent metadata including config and key paths.
 
-## Identity Model (Including DID)
+## What This Book Does Not Claim
 
-JACS identity is based on cryptographic keys and stable agent IDs. You can operate entirely without a registry, blockchain, or token authority:
-
-- Use local trust stores for private environments
-- Use DNS TXT + DNSSEC for public verification
-- Use registry lookup when desired
-- Add DID representations as an interoperability layer in your app
-
-JACS can participate in DID-centered architectures, but it does not require blockchain infrastructure to function.
-
-> DID note: JACS does not currently ship a first-class DID resolver/method implementation in core bindings. The DID chapter documents integration patterns.
-
-## Where to Go Next
-
-1. [Which Integration?](getting-started/decision-tree.md)
-2. [MCP Overview](integrations/mcp.md)
-3. [A2A Interoperability](integrations/a2a.md)
-4. [Databases](integrations/databases.md)
-5. [DNS-Based Verification](rust/dns.md)
-6. [DID Integration (No Blockchain Required)](integrations/did.md)
+- It does **not** treat MCP and A2A as the same thing. MCP is for model-to-tool calls inside an application boundary; A2A is for agent discovery and exchange across boundaries.
+- It does **not** assume every aspirational integration is first-class. If a chapter describes a feature that is not fully supported today, it has been moved out of the main path and tracked separately.
+- It does **not** require a registry or blockchain to work. JACS identity is key-based and can be used entirely locally.
 
 ## Community
 
