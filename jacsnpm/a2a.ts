@@ -230,14 +230,22 @@ export class A2AAgentCard {
 // Verification Result
 // =============================================================================
 
+export interface TrustBlock {
+  policy: string | null;
+  status: 'allowed' | 'blocked' | 'not_assessed';
+  reason: string;
+}
+
 export interface ArtifactVerificationResult {
   valid: boolean;
+  /** Canonical verification status from binding-core. */
+  status?: 'Verified' | 'SelfSigned' | 'Unverified' | 'Invalid' | string;
   /**
    * Extracted payload returned by native verifyResponse() when available.
    */
   verifiedPayload?: Record<string, unknown>;
   /**
-   * Backward-compatibility field for one release: raw native verifyResponse() output.
+   * Backward-compatibility field: raw verification output.
    */
   verificationResult?: boolean | Record<string, unknown>;
   signerId: string;
@@ -246,14 +254,11 @@ export interface ArtifactVerificationResult {
   timestamp: string;
   originalArtifact: Record<string, unknown>;
   parentSignaturesCount?: number;
-  parentVerificationResults?: Array<{
-    index: number;
-    artifactId: string;
-    valid: boolean;
-    parentSignaturesValid: boolean;
-    error?: string;
-  }>;
+  parentVerificationResults?: Array<Record<string, unknown>>;
   parentSignaturesValid?: boolean;
+  /** Trust assessment block, present when policy-aware verify is used. */
+  trust?: TrustBlock;
+  /** @deprecated Use `trust` instead. */
   trustAssessment?: TrustAssessment;
 }
 
@@ -263,10 +268,20 @@ export interface ArtifactVerificationResult {
 
 export interface TrustAssessment {
   allowed: boolean;
-  trustLevel: 'trusted' | 'jacs_registered' | 'untrusted';
+  trustLevel: 'explicitly_trusted' | 'jacs_verified' | 'untrusted';
   jacsRegistered: boolean;
   inTrustStore: boolean;
   reason: string;
+  policy?: string;
+}
+
+/** Map binding-core's canonical trustAssessment to the wrapper's trust block. */
+function buildTrustBlock(trustAssessment: Record<string, unknown>): TrustBlock {
+  return {
+    policy: (trustAssessment.policy as string) ?? null,
+    status: trustAssessment.allowed ? 'allowed' : 'blocked',
+    reason: (trustAssessment.reason as string) ?? '',
+  };
 }
 
 // =============================================================================
@@ -509,47 +524,25 @@ export class JACSA2AIntegration {
    * - strict: requires the agent to be in the local JACS trust store
    */
   assessRemoteAgent(agentCardJson: string | Record<string, unknown>): TrustAssessment {
-    const card = typeof agentCardJson === 'string'
-      ? JSON.parse(agentCardJson)
-      : agentCardJson;
+    const cardJson = typeof agentCardJson === 'string'
+      ? agentCardJson
+      : JSON.stringify(agentCardJson);
 
-    const jacsRegistered = this._hasJacsExtension(card);
-    const agentId = (card.metadata && (card.metadata as Record<string, unknown>).jacsId) as string | undefined;
+    // Delegate to binding-core for trust assessment
+    const canonicalJson = (this.client as any)._agent.assessA2aAgentSync(
+      cardJson,
+      this.trustPolicy,
+    );
+    const canonical = JSON.parse(canonicalJson);
 
-    let inTrustStore = false;
-    if (agentId) {
-      try {
-        inTrustStore = this.client.isTrusted(agentId);
-      } catch {
-        inTrustStore = false;
-      }
-    }
-
-    const trustLevel: TrustAssessment['trustLevel'] = inTrustStore
-      ? 'trusted'
-      : jacsRegistered
-        ? 'jacs_registered'
-        : 'untrusted';
-
-    switch (this.trustPolicy) {
-      case 'open':
-        return { allowed: true, trustLevel, jacsRegistered, inTrustStore, reason: 'Open policy: all agents accepted' };
-
-      case 'verified':
-        if (jacsRegistered) {
-          return { allowed: true, trustLevel, jacsRegistered, inTrustStore, reason: 'Agent declares JACS extension' };
-        }
-        return { allowed: false, trustLevel, jacsRegistered, inTrustStore, reason: 'Verified policy: agent does not declare JACS extension' };
-
-      case 'strict':
-        if (inTrustStore) {
-          return { allowed: true, trustLevel, jacsRegistered, inTrustStore, reason: 'Agent is in local trust store' };
-        }
-        return { allowed: false, trustLevel, jacsRegistered, inTrustStore, reason: 'Strict policy: agent not in local trust store' };
-
-      default:
-        return { allowed: false, trustLevel, jacsRegistered, inTrustStore, reason: `Unknown trust policy: ${this.trustPolicy}` };
-    }
+    return {
+      allowed: canonical.allowed ?? false,
+      trustLevel: canonical.trustLevel ?? 'untrusted',
+      jacsRegistered: canonical.jacsRegistered ?? false,
+      inTrustStore: canonical.trustLevel === 'explicitly_trusted',
+      reason: canonical.reason ?? '',
+      policy: canonical.policy ?? this.trustPolicy,
+    };
   }
 
   /**
@@ -596,36 +589,13 @@ export class JACSA2AIntegration {
 
   async verifyWrappedArtifact(
     wrappedArtifact: Record<string, unknown>,
+    agentCard?: Record<string, unknown>,
   ): Promise<ArtifactVerificationResult> {
-    const result = this._verifyWrappedArtifactInternal(wrappedArtifact, new Set<string>());
-
-    // Attach trust assessment based on the signer's identity
-    const signerId = result.signerId;
-    if (signerId && signerId !== 'unknown') {
-      let inTrustStore = false;
-      try {
-        inTrustStore = this.client.isTrusted(signerId);
-      } catch {
-        inTrustStore = false;
-      }
-
-      const trustLevel: TrustAssessment['trustLevel'] = inTrustStore ? 'trusted' : 'jacs_registered';
-      const allowed = this.trustPolicy === 'open'
-        || this.trustPolicy === 'verified'
-        || (this.trustPolicy === 'strict' && inTrustStore);
-
-      result.trustAssessment = {
-        allowed,
-        trustLevel,
-        jacsRegistered: true, // has a valid JACS signature
-        inTrustStore,
-        reason: allowed
-          ? (inTrustStore ? 'Signer is in local trust store' : `Signer has valid JACS signature (${this.trustPolicy} policy)`)
-          : `Strict policy: signer ${signerId} not in local trust store`,
-      };
-    }
-
-    return result;
+    // Delegate to binding-core; when agentCard is provided, pass policy for trust assessment
+    const options = agentCard
+      ? { policy: this.trustPolicy, agentCard }
+      : undefined;
+    return this._verifyWrappedArtifactInternal(wrappedArtifact, new Set<string>(), options);
   }
 
   createChainOfCustody(artifacts: Record<string, unknown>[]): Record<string, unknown> {
@@ -744,6 +714,7 @@ export class JACSA2AIntegration {
   private _verifyWrappedArtifactInternal(
     wrappedArtifact: Record<string, unknown>,
     visited: Set<string>,
+    options?: { policy?: string; agentCard?: Record<string, unknown> },
   ): ArtifactVerificationResult {
     const artifactId = wrappedArtifact.jacsId as string | undefined;
     if (artifactId && visited.has(artifactId)) {
@@ -754,58 +725,52 @@ export class JACSA2AIntegration {
     }
 
     try {
-      const rawVerificationResult = (this.client as any)._agent.verifyResponse(
-        JSON.stringify(wrappedArtifact),
-      );
-      const normalized = this._normalizeVerifyResponse(rawVerificationResult);
-      const signatureInfo = (wrappedArtifact.jacsSignature || {}) as Record<string, unknown>;
-      const payload = wrappedArtifact.jacs_payload && typeof wrappedArtifact.jacs_payload === 'object'
-        ? wrappedArtifact.jacs_payload as Record<string, unknown>
-        : null;
+      const wrappedJson = JSON.stringify(wrappedArtifact);
 
-      const result: ArtifactVerificationResult = {
-        valid: normalized.valid,
-        verificationResult: normalized.verificationResult,
-        signerId: (signatureInfo.agentID as string) || 'unknown',
-        signerVersion: (signatureInfo.agentVersion as string) || 'unknown',
-        artifactType: (wrappedArtifact.jacsType as string) || 'unknown',
-        timestamp: (wrappedArtifact.jacsVersionDate as string) || '',
-        originalArtifact: (
-          wrappedArtifact.a2aArtifact
-          || payload?.a2aArtifact
-          || {}
-        ) as Record<string, unknown>,
-      };
-      if (normalized.verifiedPayload) {
-        result.verifiedPayload = normalized.verifiedPayload;
+      // Delegate to binding-core for verification
+      let canonicalJson: string;
+      if (options?.policy && options?.agentCard) {
+        canonicalJson = (this.client as any)._agent.verifyA2aArtifactWithPolicySync(
+          wrappedJson,
+          JSON.stringify(options.agentCard),
+          options.policy,
+        );
+      } else {
+        canonicalJson = (this.client as any)._agent.verifyA2aArtifactSync(wrappedJson);
       }
 
-      const parents = wrappedArtifact.jacsParentSignatures as Record<string, unknown>[] | undefined;
-      if (Array.isArray(parents) && parents.length > 0) {
-        const parentResults = parents.map((parent, index) => {
-          try {
-            const parentResult = this._verifyWrappedArtifactInternal(parent, visited);
-            return {
-              index,
-              artifactId: (parent.jacsId as string) || 'unknown',
-              valid: !!parentResult.valid,
-              parentSignaturesValid: parentResult.parentSignaturesValid !== false,
-            };
-          } catch (error) {
-            return {
-              index,
-              artifactId: parent && parent.jacsId ? (parent.jacsId as string) : 'unknown',
-              valid: false,
-              parentSignaturesValid: false,
-              error: error instanceof Error ? error.message : String(error),
-            };
-          }
-        });
+      const canonical = JSON.parse(canonicalJson);
 
+      const result: ArtifactVerificationResult = {
+        valid: canonical.valid ?? false,
+        status: canonical.status ?? 'Invalid',
+        verificationResult: canonical,
+        signerId: canonical.signerId ?? 'unknown',
+        signerVersion: canonical.signerVersion ?? 'unknown',
+        artifactType: canonical.artifactType ?? 'unknown',
+        timestamp: (wrappedArtifact.jacsVersionDate as string) || '',
+        originalArtifact: (wrappedArtifact.a2aArtifact || {}) as Record<string, unknown>,
+      };
+
+      // Add trust block when policy-aware verification was used
+      const trustAssessment = canonical.trustAssessment;
+      if (trustAssessment) {
+        result.trust = buildTrustBlock(trustAssessment);
+      } else if (options?.policy) {
+        result.trust = {
+          policy: options.policy,
+          status: 'not_assessed',
+          reason: '',
+        };
+      }
+
+      // Map parent verification results from canonical output
+      const parentResults = canonical.parentVerificationResults;
+      if (Array.isArray(parentResults) && parentResults.length > 0) {
         result.parentSignaturesCount = parentResults.length;
         result.parentVerificationResults = parentResults;
         result.parentSignaturesValid = parentResults.every(
-          (entry) => entry.valid && entry.parentSignaturesValid,
+          (pr: Record<string, unknown>) => pr.verified !== false,
         );
       }
 

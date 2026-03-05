@@ -78,6 +78,7 @@ impl A2ATrustPolicy {
 
 /// The assessed trust level of a remote agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TrustLevel {
     /// No JACS provenance, or signature could not be verified.
     Untrusted,
@@ -587,7 +588,7 @@ mod tests {
         let actual: serde_json::Value = serde_json::to_value(&assessment).unwrap();
         let expected = json!({
             "allowed": true,
-            "trustLevel": "JacsVerified",
+            "trustLevel": "jacs_verified",
             "reason": "Verified policy: agent has JACS provenance extension",
             "jacsRegistered": true,
             "agentId": "agent-golden-trust",
@@ -609,7 +610,7 @@ mod tests {
         let actual_none: serde_json::Value = serde_json::to_value(&assessment_none).unwrap();
         let expected_none = json!({
             "allowed": true,
-            "trustLevel": "Untrusted",
+            "trustLevel": "untrusted",
             "reason": "Open policy: agent accepted (trust level: untrusted)",
             "jacsRegistered": false,
             "agentId": null,
@@ -631,7 +632,7 @@ mod tests {
         let actual_strict: serde_json::Value = serde_json::to_value(&assessment_strict).unwrap();
         let expected_strict = json!({
             "allowed": true,
-            "trustLevel": "ExplicitlyTrusted",
+            "trustLevel": "explicitly_trusted",
             "reason": "Strict policy: agent is in local trust store",
             "jacsRegistered": true,
             "agentId": "trusted-agent-xyz",

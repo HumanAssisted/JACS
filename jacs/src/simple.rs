@@ -3215,6 +3215,67 @@ impl SimpleAgent {
         SignedDocument::from_jacs_document(jacs_doc, "attestation")
     }
 
+    /// Create a signed attestation from a JSON params string.
+    ///
+    /// Convenience method that accepts a JSON string with `subject`, `claims`,
+    /// `evidence` (optional), `derivation` (optional), and `policyContext` (optional).
+    #[cfg(feature = "attestation")]
+    pub fn create_attestation_from_json(&self, params_json: &str) -> Result<SignedDocument, JacsError> {
+        use crate::attestation::types::*;
+
+        let params: serde_json::Value = serde_json::from_str(params_json)
+            .map_err(|e| JacsError::Internal { message: format!("Invalid JSON params: {}", e) })?;
+
+        let subject: AttestationSubject = serde_json::from_value(
+            params.get("subject").cloned().ok_or_else(|| JacsError::Internal {
+                message: "Missing required 'subject' field".into(),
+            })?,
+        ).map_err(|e| JacsError::Internal { message: format!("Invalid subject: {}", e) })?;
+
+        let claims: Vec<Claim> = serde_json::from_value(
+            params.get("claims").cloned().ok_or_else(|| JacsError::Internal {
+                message: "Missing required 'claims' field".into(),
+            })?,
+        ).map_err(|e| JacsError::Internal { message: format!("Invalid claims: {}", e) })?;
+
+        let evidence: Vec<EvidenceRef> = match params.get("evidence") {
+            Some(v) if !v.is_null() => serde_json::from_value(v.clone())
+                .map_err(|e| JacsError::Internal { message: format!("Invalid evidence: {}", e) })?,
+            _ => vec![],
+        };
+
+        let derivation: Option<Derivation> = match params.get("derivation") {
+            Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone())
+                .map_err(|e| JacsError::Internal { message: format!("Invalid derivation: {}", e) })?),
+            _ => None,
+        };
+
+        let policy_context: Option<PolicyContext> = match params.get("policyContext") {
+            Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone())
+                .map_err(|e| JacsError::Internal { message: format!("Invalid policyContext: {}", e) })?),
+            _ => None,
+        };
+
+        self.create_attestation(&subject, &claims, &evidence, derivation.as_ref(), policy_context.as_ref())
+    }
+
+    /// Lift a signed document into an attestation from a JSON claims string.
+    ///
+    /// Convenience method that accepts claims as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn lift_to_attestation_from_json(
+        &self,
+        signed_doc_json: &str,
+        claims_json: &str,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::attestation::types::Claim;
+
+        let claims: Vec<Claim> = serde_json::from_str(claims_json)
+            .map_err(|e| JacsError::Internal { message: format!("Invalid claims JSON: {}", e) })?;
+
+        self.lift_to_attestation(signed_doc_json, &claims)
+    }
+
     /// Export a signed attestation as a DSSE (Dead Simple Signing Envelope).
     ///
     /// Produces an in-toto Statement wrapped in a DSSE envelope.

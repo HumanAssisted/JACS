@@ -775,6 +775,31 @@ impl JacsAgent {
         self.inner.verify_a2a_artifact(&wrapped_json).to_napi()
     }
 
+    /// Verify a JACS-wrapped A2A artifact with policy-aware trust assessment (sync).
+    #[napi(js_name = "verifyA2aArtifactWithPolicySync")]
+    pub fn verify_a2a_artifact_with_policy_sync(
+        &self,
+        wrapped_json: String,
+        agent_card_json: String,
+        policy: String,
+    ) -> Result<String> {
+        self.inner
+            .verify_a2a_artifact_with_policy(&wrapped_json, &agent_card_json, &policy)
+            .to_napi()
+    }
+
+    /// Assess a remote agent's trust level based on its Agent Card and a policy (sync).
+    #[napi(js_name = "assessA2aAgentSync")]
+    pub fn assess_a2a_agent_sync(
+        &self,
+        agent_card_json: String,
+        policy: String,
+    ) -> Result<String> {
+        self.inner
+            .assess_a2a_agent(&agent_card_json, &policy)
+            .to_napi()
+    }
+
     // =========================================================================
     // A2A Protocol Methods (async)
     // =========================================================================
@@ -838,6 +863,39 @@ impl JacsAgent {
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| a.verify_a2a_artifact(&wrapped_json))),
+        })
+    }
+
+    /// Verify a JACS-wrapped A2A artifact with policy-aware trust assessment.
+    #[napi(js_name = "verifyA2aArtifactWithPolicy", ts_return_type = "Promise<string>")]
+    pub fn verify_a2a_artifact_with_policy_async(
+        &self,
+        wrapped_json: String,
+        agent_card_json: String,
+        policy: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.verify_a2a_artifact_with_policy(&wrapped_json, &agent_card_json, &policy)
+            })),
+        })
+    }
+
+    /// Assess a remote agent's trust level based on its Agent Card and a policy.
+    #[napi(js_name = "assessA2aAgent", ts_return_type = "Promise<string>")]
+    pub fn assess_a2a_agent_async(
+        &self,
+        agent_card_json: String,
+        policy: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.assess_a2a_agent(&agent_card_json, &policy)
+            })),
         })
     }
 

@@ -65,7 +65,21 @@ pub fn export_dsse(attestation_value: &Value) -> Result<Value, Box<dyn Error>> {
         }
     }
 
-    // 3. Build the in-toto Statement
+    // 3. Redact confidential evidence data before export
+    let mut attestation_redacted = attestation.clone();
+    if let Some(evidence_arr) = attestation_redacted.get_mut("evidence").and_then(|v| v.as_array_mut()) {
+        for ev in evidence_arr.iter_mut() {
+            if ev.get("sensitivity").and_then(|s| s.as_str()) == Some("confidential") {
+                if let Some(obj) = ev.as_object_mut() {
+                    obj.remove("embeddedData");
+                    obj.insert("embeddedData".to_string(), json!("[REDACTED]"));
+                    obj.insert("embedded".to_string(), json!(false));
+                }
+            }
+        }
+    }
+
+    // 4. Build the in-toto Statement
     let statement = json!({
         "_type": INTOTO_STATEMENT_TYPE,
         "subject": [{
@@ -74,7 +88,7 @@ pub fn export_dsse(attestation_value: &Value) -> Result<Value, Box<dyn Error>> {
         }],
         "predicateType": JACS_PREDICATE_TYPE,
         "predicate": {
-            "attestation": attestation,
+            "attestation": attestation_redacted,
         },
     });
 
@@ -326,6 +340,46 @@ mod tests {
             err.contains("attestation"),
             "error should mention missing attestation: {}",
             err
+        );
+    }
+
+    #[test]
+    fn export_dsse_redacts_confidential_evidence() {
+        let mut agent = test_agent();
+        let att_value = create_test_attestation(&mut agent);
+
+        // Inject confidential evidence with embedded data into the attestation
+        let mut modified = att_value.clone();
+        if let Some(attestation) = modified.get_mut("attestation").and_then(|a| a.as_object_mut()) {
+            attestation.insert(
+                "evidence".to_string(),
+                json!([{
+                    "kind": "a2a",
+                    "sensitivity": "confidential",
+                    "embedded": true,
+                    "embeddedData": {"secret": "should_not_appear"},
+                    "digests": {"sha256": "abc"},
+                    "collectedAt": "2025-01-01T00:00:00Z",
+                    "verifier": {"name": "test", "version": "1.0"}
+                }]),
+            );
+        }
+
+        let envelope = export_dsse(&modified).expect("export should succeed");
+        let payload_b64 = envelope["payload"].as_str().unwrap();
+        let payload_bytes = STANDARD.decode(payload_b64).unwrap();
+        let statement: Value = serde_json::from_slice(&payload_bytes).unwrap();
+
+        let evidence = &statement["predicate"]["attestation"]["evidence"][0];
+        assert_eq!(
+            evidence["embeddedData"].as_str().unwrap(),
+            "[REDACTED]",
+            "Confidential evidence embeddedData must be redacted in DSSE export"
+        );
+        assert_eq!(
+            evidence["embedded"].as_bool().unwrap(),
+            false,
+            "Confidential evidence embedded flag must be false after redaction"
         );
     }
 

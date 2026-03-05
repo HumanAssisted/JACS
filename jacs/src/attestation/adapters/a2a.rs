@@ -4,7 +4,7 @@
 //! Zero new dependencies -- reuses existing jacs/src/a2a/ module.
 
 use crate::attestation::adapters::EvidenceAdapter;
-use crate::attestation::digest::{compute_digest_set_bytes, should_embed};
+use crate::attestation::digest::{compute_digest_set_bytes, should_embed_with_sensitivity};
 use crate::attestation::types::*;
 use serde_json::Value;
 use std::error::Error;
@@ -25,7 +25,8 @@ impl EvidenceAdapter for A2aAdapter {
         _metadata: &Value,
     ) -> Result<(Vec<Claim>, EvidenceRef), Box<dyn Error>> {
         let digests = compute_digest_set_bytes(raw);
-        let embedded = should_embed(raw);
+        let sensitivity = EvidenceSensitivity::Public;
+        let embedded = should_embed_with_sensitivity(raw, &sensitivity);
         let embedded_data = if embedded {
             Some(serde_json::from_slice(raw).unwrap_or(Value::String(
                 base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw),
@@ -51,7 +52,7 @@ impl EvidenceAdapter for A2aAdapter {
             embedded_data,
             collected_at: crate::time_utils::now_rfc3339(),
             resolved_at: None,
-            sensitivity: EvidenceSensitivity::Public,
+            sensitivity,
             verifier: VerifierInfo {
                 name: "jacs-a2a-adapter".into(),
                 version: env!("CARGO_PKG_VERSION").into(),

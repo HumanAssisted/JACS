@@ -3,7 +3,7 @@
 //! Provides consistent digest computation using JCS canonicalization (RFC 8785).
 //! All attestation-level digests use DigestSet (sha256 required, others optional).
 
-use crate::attestation::types::DigestSet;
+use crate::attestation::types::{DigestSet, EvidenceSensitivity};
 use crate::crypt::hash::{hash_bytes, hash_string};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -46,6 +46,15 @@ pub fn compute_digest_set_string(s: &str) -> DigestSet {
 /// Whether data should be auto-embedded (< 64KB).
 pub fn should_embed(data: &[u8]) -> bool {
     data.len() < AUTO_EMBED_THRESHOLD
+}
+
+/// Whether data should be auto-embedded, respecting sensitivity.
+/// `Confidential` evidence is never auto-embedded regardless of size.
+pub fn should_embed_with_sensitivity(data: &[u8], sensitivity: &EvidenceSensitivity) -> bool {
+    if *sensitivity == EvidenceSensitivity::Confidential {
+        return false;
+    }
+    should_embed(data)
 }
 
 #[cfg(test)]

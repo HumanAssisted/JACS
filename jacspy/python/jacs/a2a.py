@@ -115,6 +115,15 @@ def _sha256_hex(data: str) -> str:
     return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
+def _build_trust_block(trust_assessment: Dict[str, Any]) -> Dict[str, Any]:
+    """Map binding-core's canonical trustAssessment to the wrapper's trust block."""
+    return {
+        "policy": trust_assessment.get("policy"),
+        "status": "allowed" if trust_assessment.get("allowed") else "blocked",
+        "reason": trust_assessment.get("reason", ""),
+    }
+
+
 class JACSA2AIntegration:
     """JACS integration with A2A protocol (v0.4.0)"""
 
@@ -487,20 +496,22 @@ class JACSA2AIntegration:
         Raises:
             ValueError: If *policy* is not a valid value.
         """
-        from .a2a_discovery import _evaluate_trust_policy, _validate_trust_policy
+        effective_policy = policy or self.trust_policy
 
-        effective_policy = _validate_trust_policy(policy or self.trust_policy)
+        # Delegate to binding-core for trust assessment
+        canonical_json = self.client._agent.assess_a2a_agent(
+            agent_card_json, effective_policy
+        )
+        canonical = json.loads(canonical_json)
 
         card = json.loads(agent_card_json)
-        trust = _evaluate_trust_policy(
-            card,
-            policy=effective_policy,
-            is_trusted=getattr(self.client, "is_trusted", None),
-        )
-
         return {
             "card": card,
-            **trust,
+            "jacs_registered": canonical.get("jacsRegistered", False),
+            "trust_level": canonical.get("trustLevel", "untrusted"),
+            "allowed": canonical.get("allowed", False),
+            "reason": canonical.get("reason", ""),
+            "policy": canonical.get("policy", effective_policy),
         }
 
     def trust_a2a_agent(self, agent_card_json: str) -> str:
@@ -725,6 +736,8 @@ class JACSA2AIntegration:
         self,
         wrapped_artifact: Dict[str, Any],
         visited: Set[str],
+        policy: Optional[str] = None,
+        agent_card: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         artifact_id = wrapped_artifact.get("jacsId")
         if artifact_id and artifact_id in visited:
@@ -733,60 +746,51 @@ class JACSA2AIntegration:
             visited.add(artifact_id)
 
         try:
-            try:
-                self.client._agent.verify_response(json.dumps(wrapped_artifact))
-                is_valid = True
-            except Exception:
-                is_valid = False
+            wrapped_json = json.dumps(wrapped_artifact)
 
-            signature_info = wrapped_artifact.get("jacsSignature", {})
+            # Delegate to binding-core for verification
+            if policy and agent_card:
+                canonical_json = self.client._agent.verify_a2a_artifact_with_policy(
+                    wrapped_json, json.dumps(agent_card), policy
+                )
+            else:
+                canonical_json = self.client._agent.verify_a2a_artifact(wrapped_json)
 
+            canonical = json.loads(canonical_json)
+
+            # Map canonical output to result dict (both camelCase and snake_case)
             result: Dict[str, Any] = {
-                "valid": is_valid,
-                "signer_id": signature_info.get("agentID", "unknown"),
-                "signer_version": signature_info.get("agentVersion", "unknown"),
-                "artifact_type": wrapped_artifact.get("jacsType", "unknown"),
+                "valid": canonical.get("valid", False),
+                "status": canonical.get("status", "Invalid"),
+                "signer_id": canonical.get("signerId", "unknown"),
+                "signerId": canonical.get("signerId", "unknown"),
+                "signer_version": canonical.get("signerVersion", "unknown"),
+                "signerVersion": canonical.get("signerVersion", "unknown"),
+                "artifact_type": canonical.get("artifactType", "unknown"),
+                "artifactType": canonical.get("artifactType", "unknown"),
                 "timestamp": wrapped_artifact.get("jacsVersionDate", ""),
                 "original_artifact": wrapped_artifact.get("a2aArtifact", {}),
             }
 
-            parent_sigs = wrapped_artifact.get("jacsParentSignatures")
-            if isinstance(parent_sigs, list) and parent_sigs:
-                parent_results = []
-                all_valid = True
-                for index, parent in enumerate(parent_sigs):
-                    try:
-                        parent_result = self._verify_wrapped_artifact_internal(parent, visited)
-                        parent_valid = bool(parent_result.get("valid"))
-                        parent_chain_valid = bool(
-                            parent_result.get("parent_signatures_valid", True)
-                        )
-                        parent_results.append(
-                            {
-                                "index": index,
-                                "artifact_id": parent.get("jacsId", "unknown"),
-                                "valid": parent_valid,
-                                "parent_signatures_valid": parent_chain_valid,
-                            }
-                        )
-                        all_valid = all_valid and parent_valid and parent_chain_valid
-                    except Exception as error:
-                        parent_results.append(
-                            {
-                                "index": index,
-                                "artifact_id": parent.get("jacsId", "unknown")
-                                if isinstance(parent, dict)
-                                else "unknown",
-                                "valid": False,
-                                "parent_signatures_valid": False,
-                                "error": str(error),
-                            }
-                        )
-                        all_valid = False
+            # Add trust block when policy-aware verification was used
+            trust_assessment = canonical.get("trustAssessment")
+            if trust_assessment:
+                result["trust"] = _build_trust_block(trust_assessment)
+            elif policy:
+                result["trust"] = {
+                    "policy": policy,
+                    "status": "not_assessed",
+                    "reason": "",
+                }
 
+            # Map parent verification results from canonical output
+            parent_results = canonical.get("parentVerificationResults")
+            if isinstance(parent_results, list) and parent_results:
                 result["parent_signatures_count"] = len(parent_results)
                 result["parent_verification_results"] = parent_results
-                result["parent_signatures_valid"] = all_valid
+                result["parent_signatures_valid"] = all(
+                    pr.get("verified", False) for pr in parent_results
+                )
 
             return result
         finally:

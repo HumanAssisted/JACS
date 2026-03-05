@@ -167,6 +167,25 @@ async def discover_and_assess(
     effective_policy = _validate_trust_policy(policy)
 
     card = await discover_agent(url, timeout=timeout)
+
+    # Prefer binding-core delegation when a JacsClient is available
+    if client is not None and hasattr(client, "_agent"):
+        import json as _json
+        try:
+            canonical_json = client._agent.assess_a2a_agent(
+                _json.dumps(card), effective_policy
+            )
+            trust = _json.loads(canonical_json)
+            return {
+                "card": card,
+                "jacs_registered": trust.get("jacsRegistered", False),
+                "trust_level": trust.get("trustLevel", "untrusted"),
+                "allowed": trust.get("allowed", False),
+            }
+        except Exception:
+            logger.debug("binding-core assess_a2a_agent failed, falling back to local logic")
+
+    # Fallback: deprecated local logic when no client is available
     is_trusted = getattr(client, "is_trusted", None) if client is not None else None
     trust = _evaluate_trust_policy(
         card,
@@ -275,6 +294,12 @@ def _evaluate_trust_policy(
     is_trusted: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Evaluate trust policy for a parsed Agent Card.
+
+    .. deprecated::
+        Use binding-core's ``assess_a2a_agent()`` via
+        ``JACSA2AIntegration.assess_remote_agent()`` instead.
+        This function is kept for backward compatibility with
+        ``discover_and_assess()`` but will be removed in a future version.
 
     Returns:
         {

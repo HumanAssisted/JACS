@@ -360,6 +360,17 @@ impl Agent {
                         ));
                     }
 
+                    // Warn if confidential evidence is embedded
+                    if evidence_ref.sensitivity == EvidenceSensitivity::Confidential
+                        && evidence_ref.embedded
+                    {
+                        errors.push(format!(
+                            "Evidence '{}' is marked confidential but has embedded data — \
+                             confidential evidence should not be embedded",
+                            ev_result.kind
+                        ));
+                    }
+
                     evidence_results.push(ev_result);
                 }
             }
