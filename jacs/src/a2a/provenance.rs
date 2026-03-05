@@ -504,6 +504,7 @@ fn verify_parent_signatures(
 
 /// Result of parent signature verification
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ParentVerificationResult {
     /// Index in the parent signatures array
     pub index: usize,
@@ -519,6 +520,7 @@ pub struct ParentVerificationResult {
 
 /// Result of artifact verification
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VerificationResult {
     /// Detailed verification status
     pub status: VerificationStatus,
@@ -939,8 +941,8 @@ mod tests {
         };
 
         let json_str = serde_json::to_string(&result).expect("should serialize");
-        assert!(json_str.contains("trust_level"));
-        assert!(json_str.contains("trust_assessment"));
+        assert!(json_str.contains("trustLevel"));
+        assert!(json_str.contains("trustAssessment"));
         assert!(json_str.contains("JacsVerified"));
 
         // Deserialize back
@@ -968,7 +970,211 @@ mod tests {
 
         let json_str = serde_json::to_string(&result).expect("should serialize");
         // When None, these fields should be omitted (skip_serializing_if)
-        assert!(!json_str.contains("trust_level"));
-        assert!(!json_str.contains("trust_assessment"));
+        assert!(!json_str.contains("trustLevel"));
+        assert!(!json_str.contains("trustAssessment"));
+    }
+
+    // =========================================================================
+    // A2A contract schema tests (Task 001)
+    // =========================================================================
+
+    /// Validate that VerificationResult serializes to camelCase JSON fields
+    /// matching the cross-language contract (TR-3).
+    #[test]
+    fn test_verification_result_camel_case_contract() {
+        let result = VerificationResult {
+            status: VerificationStatus::Verified,
+            valid: true,
+            signer_id: "agent-contract-test".to_string(),
+            signer_version: "v1-contract".to_string(),
+            artifact_type: "a2a-task".to_string(),
+            timestamp: "2025-06-01T00:00:00Z".to_string(),
+            parent_signatures_valid: true,
+            parent_verification_results: vec![],
+            original_artifact: json!({"content": "test"}),
+            trust_level: Some(TrustLevel::JacsVerified),
+            trust_assessment: Some(crate::a2a::trust::TrustAssessment {
+                allowed: true,
+                trust_level: TrustLevel::JacsVerified,
+                reason: "Contract test".to_string(),
+                jacs_registered: true,
+                agent_id: Some("agent-contract-test".to_string()),
+                policy: A2ATrustPolicy::Verified,
+            }),
+        };
+
+        let json_value: Value =
+            serde_json::to_value(&result).expect("should serialize to Value");
+
+        // All top-level fields must be camelCase
+        assert!(json_value.get("status").is_some(), "missing 'status'");
+        assert!(json_value.get("valid").is_some(), "missing 'valid'");
+        assert!(json_value.get("signerId").is_some(), "missing 'signerId'");
+        assert!(
+            json_value.get("signerVersion").is_some(),
+            "missing 'signerVersion'"
+        );
+        assert!(
+            json_value.get("artifactType").is_some(),
+            "missing 'artifactType'"
+        );
+        assert!(json_value.get("timestamp").is_some(), "missing 'timestamp'");
+        assert!(
+            json_value.get("parentSignaturesValid").is_some(),
+            "missing 'parentSignaturesValid'"
+        );
+        assert!(
+            json_value.get("parentVerificationResults").is_some(),
+            "missing 'parentVerificationResults'"
+        );
+        assert!(
+            json_value.get("originalArtifact").is_some(),
+            "missing 'originalArtifact'"
+        );
+        assert!(
+            json_value.get("trustLevel").is_some(),
+            "missing 'trustLevel'"
+        );
+        assert!(
+            json_value.get("trustAssessment").is_some(),
+            "missing 'trustAssessment'"
+        );
+
+        // Verify no snake_case leakage
+        assert!(
+            json_value.get("signer_id").is_none(),
+            "snake_case 'signer_id' should not appear"
+        );
+        assert!(
+            json_value.get("signer_version").is_none(),
+            "snake_case 'signer_version' should not appear"
+        );
+        assert!(
+            json_value.get("artifact_type").is_none(),
+            "snake_case 'artifact_type' should not appear"
+        );
+        assert!(
+            json_value.get("parent_signatures_valid").is_none(),
+            "snake_case 'parent_signatures_valid' should not appear"
+        );
+        assert!(
+            json_value.get("original_artifact").is_none(),
+            "snake_case 'original_artifact' should not appear"
+        );
+        assert!(
+            json_value.get("trust_level").is_none(),
+            "snake_case 'trust_level' should not appear"
+        );
+        assert!(
+            json_value.get("trust_assessment").is_none(),
+            "snake_case 'trust_assessment' should not appear"
+        );
+
+        // Verify values
+        assert_eq!(json_value["signerId"], "agent-contract-test");
+        assert_eq!(json_value["signerVersion"], "v1-contract");
+        assert_eq!(json_value["artifactType"], "a2a-task");
+        assert_eq!(json_value["valid"], true);
+        assert_eq!(json_value["parentSignaturesValid"], true);
+
+        // Trust assessment fields should also be camelCase
+        let trust = json_value.get("trustAssessment").unwrap();
+        assert!(trust.get("trustLevel").is_some(), "missing trust.trustLevel");
+        assert!(
+            trust.get("jacsRegistered").is_some(),
+            "missing trust.jacsRegistered"
+        );
+        assert!(trust.get("agentId").is_some(), "missing trust.agentId");
+        assert!(trust.get("policy").is_some(), "missing trust.policy");
+        assert!(trust.get("allowed").is_some(), "missing trust.allowed");
+        assert!(trust.get("reason").is_some(), "missing trust.reason");
+    }
+
+    /// Validate that each VerificationStatus variant produces the expected JSON shape.
+    #[test]
+    fn test_verification_status_variant_json_shapes() {
+        // Verified - simple string
+        let verified = serde_json::to_value(&VerificationStatus::Verified).unwrap();
+        assert_eq!(verified, json!("Verified"));
+
+        // SelfSigned - simple string
+        let self_signed = serde_json::to_value(&VerificationStatus::SelfSigned).unwrap();
+        assert_eq!(self_signed, json!("SelfSigned"));
+
+        // Unverified - tagged enum with reason
+        let unverified = serde_json::to_value(&VerificationStatus::Unverified {
+            reason: "No public key available".to_string(),
+        })
+        .unwrap();
+        assert!(unverified.get("Unverified").is_some());
+        assert_eq!(
+            unverified["Unverified"]["reason"],
+            "No public key available"
+        );
+
+        // Invalid - tagged enum with reason
+        let invalid = serde_json::to_value(&VerificationStatus::Invalid {
+            reason: "Signature mismatch".to_string(),
+        })
+        .unwrap();
+        assert!(invalid.get("Invalid").is_some());
+        assert_eq!(invalid["Invalid"]["reason"], "Signature mismatch");
+    }
+
+    /// Validate that VerificationResult round-trips correctly through JSON.
+    #[test]
+    fn test_verification_result_json_round_trip() {
+        let original = VerificationResult {
+            status: VerificationStatus::Unverified {
+                reason: "Foreign key not found".to_string(),
+            },
+            valid: false,
+            signer_id: "foreign-agent-xyz".to_string(),
+            signer_version: "v2".to_string(),
+            artifact_type: "a2a-message".to_string(),
+            timestamp: "2025-06-01T12:00:00Z".to_string(),
+            parent_signatures_valid: false,
+            parent_verification_results: vec![ParentVerificationResult {
+                index: 0,
+                artifact_id: "parent-001".to_string(),
+                signer_id: "parent-signer".to_string(),
+                status: VerificationStatus::Verified,
+                verified: true,
+            }],
+            original_artifact: json!({"message": "hello from foreign agent"}),
+            trust_level: None,
+            trust_assessment: None,
+        };
+
+        let json_str = serde_json::to_string_pretty(&original).unwrap();
+        let deserialized: VerificationResult = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(deserialized.signer_id, original.signer_id);
+        assert_eq!(deserialized.signer_version, original.signer_version);
+        assert_eq!(deserialized.artifact_type, original.artifact_type);
+        assert_eq!(deserialized.valid, original.valid);
+        assert_eq!(
+            deserialized.parent_signatures_valid,
+            original.parent_signatures_valid
+        );
+        assert_eq!(
+            deserialized.parent_verification_results.len(),
+            original.parent_verification_results.len()
+        );
+        assert_eq!(
+            deserialized.parent_verification_results[0].artifact_id,
+            "parent-001"
+        );
+        assert_eq!(
+            deserialized.parent_verification_results[0].signer_id,
+            "parent-signer"
+        );
+        assert!(deserialized.parent_verification_results[0].verified);
+
+        // Verify the parent verification result also uses camelCase
+        let json_value: Value = serde_json::from_str(&json_str).unwrap();
+        let parent = &json_value["parentVerificationResults"][0];
+        assert!(parent.get("artifactId").is_some(), "missing parent.artifactId");
+        assert!(parent.get("signerId").is_some(), "missing parent.signerId");
     }
 }

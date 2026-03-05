@@ -1,0 +1,31 @@
+{
+  "status": "Verified",
+  "valid": true,
+  "signerId": "agent-foreign-002",
+  "signerVersion": "v2-foreign",
+  "artifactType": "a2a-message",
+  "timestamp": "2025-06-01T12:30:00Z",
+  "parentSignaturesValid": true,
+  "parentVerificationResults": [
+    {
+      "index": 0,
+      "artifactId": "parent-artifact-001",
+      "signerId": "agent-self-001",
+      "status": "SelfSigned",
+      "verified": true
+    }
+  ],
+  "originalArtifact": {
+    "content": "Hello from a foreign agent",
+    "messageType": "text"
+  },
+  "trustLevel": "JacsVerified",
+  "trustAssessment": {
+    "allowed": true,
+    "trustLevel": "JacsVerified",
+    "reason": "Verified policy: agent has JACS provenance extension",
+    "jacsRegistered": true,
+    "agentId": "agent-foreign-002",
+    "policy": "Verified"
+  }
+}

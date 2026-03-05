@@ -100,6 +100,7 @@ impl fmt::Display for TrustLevel {
 
 /// Result of assessing a remote agent's trustworthiness.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrustAssessment {
     /// Whether the agent is allowed to interact under the applied policy.
     pub allowed: bool,
