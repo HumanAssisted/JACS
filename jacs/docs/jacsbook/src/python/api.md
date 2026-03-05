@@ -239,6 +239,39 @@ print('Complete:', status['complete'])
 
 ---
 
+### agent.sign_artifact(artifact_json, artifact_type, parent_signatures_json=None)
+
+Sign an A2A artifact with JACS provenance. This is the canonical method name.
+
+**Parameters:**
+- `artifact_json` (str): JSON string of the artifact to sign
+- `artifact_type` (str): Type of artifact (e.g., `"task"`, `"message"`)
+- `parent_signatures_json` (str, optional): JSON string of parent signatures for chain of custody
+
+**Returns:** str - The signed, wrapped artifact as a JSON string
+
+**Example:**
+```python
+signed = agent.sign_artifact(
+    json.dumps({"action": "classify", "input": "hello"}),
+    "task"
+)
+```
+
+---
+
+### agent.wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json=None)
+
+> **Deprecated since 0.9.0.** Use `sign_artifact()` instead. This method will be removed in 1.0.0.
+>
+> Set `JACS_SHOW_DEPRECATIONS=1` to see runtime warnings when deprecated methods are called.
+
+Wraps an A2A artifact with JACS provenance signature. Identical behavior to `sign_artifact()`.
+
+**Parameters:** Same as `sign_artifact()`.
+
+---
+
 ### agent.sign_string(data)
 
 Sign arbitrary string data with the agent's private key.

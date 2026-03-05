@@ -12,6 +12,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import warnings
 from typing import Dict, List, Optional, Any, TYPE_CHECKING, Set
 from dataclasses import dataclass, field
 import base64
@@ -122,6 +124,20 @@ def _build_trust_block(trust_assessment: Dict[str, Any]) -> Dict[str, Any]:
         "status": "allowed" if trust_assessment.get("allowed") else "blocked",
         "reason": trust_assessment.get("reason", ""),
     }
+
+
+def _deprecation_warn(old_name: str, new_name: str) -> None:
+    """Emit a DeprecationWarning for a renamed method, if enabled.
+
+    Warnings are only emitted when the ``JACS_SHOW_DEPRECATIONS``
+    environment variable is set to a truthy value.
+    """
+    if os.environ.get("JACS_SHOW_DEPRECATIONS"):
+        warnings.warn(
+            f"{old_name}() is deprecated, use {new_name}() instead",
+            DeprecationWarning,
+            stacklevel=3,  # caller -> wrapper -> this helper
+        )
 
 
 class JACSA2AIntegration:
@@ -428,21 +444,21 @@ class JACSA2AIntegration:
             }
         }
 
-    def wrap_artifact_with_provenance(
+    def sign_artifact(
         self,
         artifact: Dict[str, Any],
         artifact_type: str,
         parent_signatures: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Wrap an A2A artifact with JACS provenance signature
+        """Sign an A2A artifact with JACS provenance.
 
         Args:
-            artifact: The A2A artifact to wrap
-            artifact_type: Type of artifact (e.g., "task", "message")
-            parent_signatures: Optional parent signatures for chain of custody
+            artifact: The A2A artifact to wrap and sign.
+            artifact_type: Type of artifact (e.g., ``"task"``, ``"message"``).
+            parent_signatures: Optional parent signatures for chain of custody.
 
         Returns:
-            JACS-wrapped artifact with signature
+            JACS-wrapped artifact with cryptographic signature.
         """
         wrapped = {
             "jacsId": str(uuid.uuid4()),
@@ -460,8 +476,27 @@ class JACSA2AIntegration:
         signed_json = self.client._agent.sign_request(wrapped)
         return json.loads(signed_json)
 
-    # Primary alias — preferred in new code.
-    sign_artifact = wrap_artifact_with_provenance
+    def wrap_artifact_with_provenance(
+        self,
+        artifact: Dict[str, Any],
+        artifact_type: str,
+        parent_signatures: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Wrap an A2A artifact with JACS provenance signature.
+
+        .. deprecated:: 0.9.0
+            Use :meth:`sign_artifact` instead.
+
+        Args:
+            artifact: The A2A artifact to wrap.
+            artifact_type: Type of artifact (e.g., ``"task"``, ``"message"``).
+            parent_signatures: Optional parent signatures for chain of custody.
+
+        Returns:
+            JACS-wrapped artifact with signature.
+        """
+        _deprecation_warn("wrap_artifact_with_provenance", "sign_artifact")
+        return self.sign_artifact(artifact, artifact_type, parent_signatures)
 
     # ------------------------------------------------------------------
     # Trust policy API
@@ -917,7 +952,7 @@ def example_basic_usage():
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
-    wrapped_task = a2a.wrap_artifact_with_provenance(task, "task")
+    wrapped_task = a2a.sign_artifact(task, "task")
     print(f"\nWrapped task ID: {wrapped_task['jacsId']}")
 
     verification = a2a.verify_wrapped_artifact(wrapped_task)

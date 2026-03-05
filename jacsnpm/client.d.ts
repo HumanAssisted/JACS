@@ -119,7 +119,9 @@ export declare class JacsClient {
     getTrustedAgent(agentId: string): string;
     getPublicKey(): string;
     exportAgent(): string;
+    /** @deprecated Use getPublicKey() instead. */
     sharePublicKey(): string;
+    /** @deprecated Use exportAgent() instead. */
     shareAgent(): string;
     audit(options?: AuditOptions): Promise<Record<string, unknown>>;
     auditSync(options?: AuditOptions): Record<string, unknown>;

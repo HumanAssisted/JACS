@@ -195,7 +195,9 @@ export declare function reencryptKey(oldPassword: string, newPassword: string): 
 export declare function reencryptKeySync(oldPassword: string, newPassword: string): void;
 export declare function getPublicKey(): string;
 export declare function exportAgent(): string;
+/** @deprecated Use getPublicKey() instead. */
 export declare function sharePublicKey(): string;
+/** @deprecated Use exportAgent() instead. */
 export declare function shareAgent(): string;
 export declare function getAgentInfo(): AgentInfo | null;
 export declare function isLoaded(): boolean;

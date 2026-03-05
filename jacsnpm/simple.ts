@@ -42,6 +42,7 @@ import {
 } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
+import { warnDeprecated } from './deprecation';
 
 // =============================================================================
 // Re-exports for advanced usage
@@ -880,11 +881,15 @@ export function exportAgent(): string {
   return fs.readFileSync(agentPath, 'utf8');
 }
 
+/** @deprecated Use getPublicKey() instead. */
 export function sharePublicKey(): string {
+  warnDeprecated('sharePublicKey', 'getPublicKey');
   return getPublicKey();
 }
 
+/** @deprecated Use exportAgent() instead. */
 export function shareAgent(): string {
+  warnDeprecated('shareAgent', 'exportAgent');
   return exportAgent();
 }
 

@@ -12,6 +12,7 @@ exports.JACSA2AIntegration = exports.A2AAgentCard = exports.A2AAgentCardSignatur
 exports.sha256 = sha256;
 const uuid_1 = require("uuid");
 const crypto_1 = require("crypto");
+const deprecation_1 = require("./deprecation");
 // =============================================================================
 // Constants
 // =============================================================================
@@ -353,6 +354,7 @@ class JACSA2AIntegration {
     }
     /** @deprecated Use signArtifact() instead. */
     async wrapArtifactWithProvenance(artifact, artifactType, parentSignatures = null) {
+        (0, deprecation_1.warnDeprecated)('wrapArtifactWithProvenance', 'signArtifact');
         return this.signArtifact(artifact, artifactType, parentSignatures);
     }
     async verifyWrappedArtifact(wrappedArtifact) {

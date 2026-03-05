@@ -59,6 +59,7 @@ Object.defineProperty(exports, "hashString", { enumerable: true, get: function (
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const deprecation_1 = require("./deprecation");
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -701,10 +702,14 @@ class JacsClient {
         }
         return fs.readFileSync(agentPath, 'utf8');
     }
+    /** @deprecated Use getPublicKey() instead. */
     sharePublicKey() {
+        (0, deprecation_1.warnDeprecated)('sharePublicKey', 'getPublicKey');
         return this.getPublicKey();
     }
+    /** @deprecated Use exportAgent() instead. */
     shareAgent() {
+        (0, deprecation_1.warnDeprecated)('shareAgent', 'exportAgent');
         return this.exportAgent();
     }
     // ---------------------------------------------------------------------------

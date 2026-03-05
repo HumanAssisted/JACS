@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createPublicKey, createHash, type KeyObject } from 'crypto';
 import type { JacsClient } from './client.js';
 import type { Server } from 'http';
+import { warnDeprecated } from './deprecation.js';
 
 // =============================================================================
 // Constants
@@ -584,6 +585,7 @@ export class JACSA2AIntegration {
     artifactType: string,
     parentSignatures: Record<string, unknown>[] | null = null,
   ): Promise<Record<string, unknown>> {
+    warnDeprecated('wrapArtifactWithProvenance', 'signArtifact');
     return this.signArtifact(artifact, artifactType, parentSignatures);
   }
 

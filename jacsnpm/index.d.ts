@@ -181,7 +181,7 @@ export declare class JacsAgent {
   exportAgentCardSync(): string
   /** Wrap an A2A artifact with JACS provenance signature (sync). */
   wrapA2aArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
-  /** Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync. */
+  /** @deprecated Use wrapA2aArtifactSync() instead. Alias for wrapA2aArtifactSync. */
   signArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
   /** Verify a JACS-wrapped A2A artifact (sync). */
   verifyA2aArtifactSync(wrappedJson: string): string
@@ -189,7 +189,7 @@ export declare class JacsAgent {
   exportAgentCard(): Promise<string>
   /** Wrap an A2A artifact with JACS provenance signature. */
   wrapA2aArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
-  /** Sign an A2A artifact. Alias for wrapA2aArtifact. */
+  /** @deprecated Use wrapA2aArtifact() instead. Alias for wrapA2aArtifact. */
   signArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
   /** Verify a JACS-wrapped A2A artifact. */
   verifyA2aArtifact(wrappedJson: string): Promise<string>

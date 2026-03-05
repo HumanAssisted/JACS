@@ -262,12 +262,27 @@ class TestB6Algorithms:
 
 
 # ---------------------------------------------------------------------------
-# Test: sign_artifact alias (design decision #3)
+# Test: sign_artifact is the canonical method, wrap_artifact_with_provenance
+# is a deprecated wrapper (design decision #3, updated for deprecation)
 # ---------------------------------------------------------------------------
 
 class TestSignArtifactAlias:
-    def test_sign_artifact_is_alias(self):
-        assert JACSA2AIntegration.sign_artifact is JACSA2AIntegration.wrap_artifact_with_provenance
+    def test_sign_artifact_is_not_alias(self):
+        """sign_artifact is now the canonical method, not a class-level alias."""
+        assert JACSA2AIntegration.sign_artifact is not JACSA2AIntegration.wrap_artifact_with_provenance
+
+    def test_wrap_delegates_to_sign_artifact(self):
+        """wrap_artifact_with_provenance delegates to sign_artifact."""
+        client = _make_mock_client()
+        client._agent.sign_request.return_value = json.dumps({
+            "jacsId": "delegate-1",
+            "jacsType": "a2a-task",
+            "a2aArtifact": {"op": "test"},
+        })
+        a2a = JACSA2AIntegration(client)
+        result = a2a.wrap_artifact_with_provenance({"op": "test"}, "task")
+        assert result["jacsId"] == "delegate-1"
+        client._agent.sign_request.assert_called_once()
 
     def test_sign_artifact_works(self):
         client = _make_mock_client()

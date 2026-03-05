@@ -123,6 +123,7 @@ Object.defineProperty(exports, "hashString", { enumerable: true, get: function (
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const deprecation_1 = require("./deprecation");
 // =============================================================================
 // Global State
 // =============================================================================
@@ -749,10 +750,14 @@ function exportAgent() {
     }
     return fs.readFileSync(agentPath, 'utf8');
 }
+/** @deprecated Use getPublicKey() instead. */
 function sharePublicKey() {
+    (0, deprecation_1.warnDeprecated)('sharePublicKey', 'getPublicKey');
     return getPublicKey();
 }
+/** @deprecated Use exportAgent() instead. */
 function shareAgent() {
+    (0, deprecation_1.warnDeprecated)('shareAgent', 'exportAgent');
     return exportAgent();
 }
 function getAgentInfo() {

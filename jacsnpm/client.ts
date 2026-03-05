@@ -36,6 +36,7 @@ import {
 } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
+import { warnDeprecated } from './deprecation';
 
 import type {
   AgentInfo,
@@ -837,11 +838,15 @@ export class JacsClient {
     return fs.readFileSync(agentPath, 'utf8');
   }
 
+  /** @deprecated Use getPublicKey() instead. */
   sharePublicKey(): string {
+    warnDeprecated('sharePublicKey', 'getPublicKey');
     return this.getPublicKey();
   }
 
+  /** @deprecated Use exportAgent() instead. */
   shareAgent(): string {
+    warnDeprecated('shareAgent', 'exportAgent');
     return this.exportAgent();
   }
 
