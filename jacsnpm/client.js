@@ -719,6 +719,65 @@ class JacsClient {
         return JSON.parse(json);
     }
     // ---------------------------------------------------------------------------
+    // Attestation
+    // ---------------------------------------------------------------------------
+    /**
+     * Create a signed attestation document.
+     *
+     * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+     * @returns The signed attestation document as a SignedDocument.
+     */
+    async createAttestation(params) {
+        const agent = this.requireAgent();
+        const paramsJson = JSON.stringify(params);
+        const raw = await agent.createAttestation(paramsJson);
+        return parseSignedResult(raw);
+    }
+    /**
+     * Verify an attestation document.
+     *
+     * @param attestationJson - Raw JSON string of the attestation document.
+     * @param opts - Optional. Set full: true for full-tier verification.
+     * @returns Verification result with valid, crypto, evidence, chain, errors.
+     */
+    async verifyAttestation(attestationJson, opts) {
+        const agent = this.requireAgent();
+        const doc = JSON.parse(attestationJson);
+        const docKey = `${doc.jacsId}:${doc.jacsVersion}`;
+        let resultJson;
+        if (opts?.full) {
+            resultJson = await agent.verifyAttestationFull(docKey);
+        }
+        else {
+            resultJson = await agent.verifyAttestation(docKey);
+        }
+        return JSON.parse(resultJson);
+    }
+    /**
+     * Lift a signed document into an attestation.
+     *
+     * @param signedDocJson - Raw JSON string of the signed document.
+     * @param claims - Array of claim objects.
+     * @returns The lifted attestation as a SignedDocument.
+     */
+    async liftToAttestation(signedDocJson, claims) {
+        const agent = this.requireAgent();
+        const claimsJson = JSON.stringify(claims);
+        const raw = await agent.liftToAttestation(signedDocJson, claimsJson);
+        return parseSignedResult(raw);
+    }
+    /**
+     * Export an attestation as a DSSE (Dead Simple Signing Envelope).
+     *
+     * @param attestationJson - Raw JSON string of the attestation document.
+     * @returns The DSSE envelope as a parsed object.
+     */
+    async exportAttestationDsse(attestationJson) {
+        const agent = this.requireAgent();
+        const raw = await agent.exportAttestationDsse(attestationJson);
+        return JSON.parse(raw);
+    }
+    // ---------------------------------------------------------------------------
     // A2A (Agent-to-Agent)
     // ---------------------------------------------------------------------------
     /**

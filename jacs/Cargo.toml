@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -242,6 +242,11 @@ harness = false
 [[bench]]
 name = "agreement_benchmarks"
 harness = false
+
+[[bench]]
+name = "attestation_benchmarks"
+harness = false
+required-features = ["attestation"]
 
 [package.metadata.cargo-install]
 bin = ["jacs"]

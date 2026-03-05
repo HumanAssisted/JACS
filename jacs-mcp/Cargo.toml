@@ -1,6 +1,6 @@
 [package]
 name = "jacs-mcp"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.93"
 description = "MCP server for JACS: data provenance and cryptographic signing of agent state"
@@ -16,6 +16,7 @@ categories = ["cryptography", "development-tools"]
 default = ["mcp"]
 mcp = ["dep:rmcp", "dep:tokio", "jacs/mcp-server"]
 http = []
+attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
 
 [dependencies]
 anyhow = "1"

@@ -410,6 +410,71 @@ impl JacsAgent {
     fn verify_a2a_artifact(&self, wrapped_json: &str) -> PyResult<String> {
         self.inner.verify_a2a_artifact(wrapped_json).to_py()
     }
+
+    // =========================================================================
+    // Attestation methods (feature-gated)
+    // =========================================================================
+
+    /// Create a signed attestation document.
+    ///
+    /// Args:
+    ///     params_json: JSON string containing subject, claims, evidence, derivation, policyContext
+    ///
+    /// Returns:
+    ///     JSON string of the signed attestation document
+    #[cfg(feature = "attestation")]
+    fn create_attestation(&self, params_json: &str) -> PyResult<String> {
+        self.inner.create_attestation(params_json).to_py()
+    }
+
+    /// Verify an attestation (local tier: crypto + hash only).
+    ///
+    /// Args:
+    ///     document_key: The "id:version" key of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string containing the verification result
+    #[cfg(feature = "attestation")]
+    fn verify_attestation(&self, document_key: &str) -> PyResult<String> {
+        self.inner.verify_attestation(document_key).to_py()
+    }
+
+    /// Verify an attestation (full tier: crypto + evidence + chain).
+    ///
+    /// Args:
+    ///     document_key: The "id:version" key of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string containing the full verification result
+    #[cfg(feature = "attestation")]
+    fn verify_attestation_full(&self, document_key: &str) -> PyResult<String> {
+        self.inner.verify_attestation_full(document_key).to_py()
+    }
+
+    /// Lift a signed document into an attestation.
+    ///
+    /// Args:
+    ///     signed_doc_json: JSON string of the signed document
+    ///     claims_json: JSON string of the claims array
+    ///
+    /// Returns:
+    ///     JSON string of the lifted attestation document
+    #[cfg(feature = "attestation")]
+    fn lift_to_attestation(&self, signed_doc_json: &str, claims_json: &str) -> PyResult<String> {
+        self.inner.lift_to_attestation(signed_doc_json, claims_json).to_py()
+    }
+
+    /// Export an attestation as a DSSE envelope.
+    ///
+    /// Args:
+    ///     attestation_json: JSON string of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string of the DSSE envelope
+    #[cfg(feature = "attestation")]
+    fn export_attestation_dsse(&self, attestation_json: &str) -> PyResult<String> {
+        self.inner.export_attestation_dsse(attestation_json).to_py()
+    }
 }
 
 // =============================================================================
@@ -770,6 +835,191 @@ impl SimpleAgent {
                     e
                 ))
             })
+    }
+
+    // =========================================================================
+    // Attestation methods (feature-gated)
+    // =========================================================================
+
+    /// Create a signed attestation document.
+    ///
+    /// Args:
+    ///     params_json: JSON string containing subject, claims, evidence, derivation, policyContext
+    ///
+    /// Returns:
+    ///     JSON string of the signed attestation document
+    #[cfg(feature = "attestation")]
+    fn create_attestation(&self, params_json: &str) -> PyResult<String> {
+        use jacs_core::attestation::types::*;
+
+        let params: serde_json::Value = serde_json::from_str(params_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid JSON params: {}",
+                e
+            ))
+        })?;
+
+        let subject: AttestationSubject =
+            serde_json::from_value(params["subject"].clone()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Invalid subject: {}",
+                    e
+                ))
+            })?;
+
+        let claims: Vec<Claim> =
+            serde_json::from_value(params["claims"].clone()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Invalid claims: {}",
+                    e
+                ))
+            })?;
+
+        let evidence: Vec<EvidenceRef> = if params["evidence"].is_null() {
+            vec![]
+        } else {
+            serde_json::from_value(params["evidence"].clone()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Invalid evidence: {}",
+                    e
+                ))
+            })?
+        };
+
+        let derivation: Option<Derivation> = if params["derivation"].is_null() {
+            None
+        } else {
+            Some(serde_json::from_value(params["derivation"].clone()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Invalid derivation: {}",
+                    e
+                ))
+            })?)
+        };
+
+        let policy_context: Option<PolicyContext> = if params["policyContext"].is_null() {
+            None
+        } else {
+            Some(serde_json::from_value(params["policyContext"].clone()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Invalid policyContext: {}",
+                    e
+                ))
+            })?)
+        };
+
+        let signed = self
+            .inner
+            .create_attestation(
+                &subject,
+                &claims,
+                &evidence,
+                derivation.as_ref(),
+                policy_context.as_ref(),
+            )
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create attestation: {}",
+                    e
+                ))
+            })?;
+
+        Ok(signed.raw)
+    }
+
+    /// Verify an attestation (local tier: crypto + hash only).
+    ///
+    /// Args:
+    ///     document_key: The "id:version" key of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string containing the verification result
+    #[cfg(feature = "attestation")]
+    fn verify_attestation(&self, document_key: &str) -> PyResult<String> {
+        let result = self.inner.verify_attestation(document_key).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify attestation: {}",
+                e
+            ))
+        })?;
+        serde_json::to_string(&result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to serialize result: {}",
+                e
+            ))
+        })
+    }
+
+    /// Verify an attestation (full tier: crypto + evidence + chain).
+    ///
+    /// Args:
+    ///     document_key: The "id:version" key of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string containing the full verification result
+    #[cfg(feature = "attestation")]
+    fn verify_attestation_full(&self, document_key: &str) -> PyResult<String> {
+        let result = self.inner.verify_attestation_full(document_key).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to verify attestation (full): {}",
+                e
+            ))
+        })?;
+        serde_json::to_string(&result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to serialize result: {}",
+                e
+            ))
+        })
+    }
+
+    /// Lift a signed document into an attestation.
+    ///
+    /// Args:
+    ///     signed_doc_json: JSON string of the signed document
+    ///     claims_json: JSON string of the claims array
+    ///
+    /// Returns:
+    ///     JSON string of the lifted attestation document
+    #[cfg(feature = "attestation")]
+    fn lift_to_attestation(&self, signed_doc_json: &str, claims_json: &str) -> PyResult<String> {
+        use jacs_core::attestation::types::Claim;
+
+        let claims: Vec<Claim> = serde_json::from_str(claims_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid claims JSON: {}",
+                e
+            ))
+        })?;
+
+        let signed = self
+            .inner
+            .lift_to_attestation(signed_doc_json, &claims)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to lift to attestation: {}",
+                    e
+                ))
+            })?;
+
+        Ok(signed.raw)
+    }
+
+    /// Export an attestation as a DSSE envelope.
+    ///
+    /// Args:
+    ///     attestation_json: JSON string of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string of the DSSE envelope
+    #[cfg(feature = "attestation")]
+    fn export_dsse(&self, attestation_json: &str) -> PyResult<String> {
+        self.inner.export_dsse(attestation_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to export DSSE: {}",
+                e
+            ))
+        })
     }
 }
 

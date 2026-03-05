@@ -1,6 +1,6 @@
 [package]
 name = "jacsnpm"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -20,6 +20,10 @@ serde = { version = "1.0", features = ["derive"] }
 base64 = "0.22.1"
 napi = { version = "2.16.17", features = ["async"] }
 napi-derive = "2.16.13"
+
+[features]
+default = []
+attestation = ["jacs-binding-core/attestation"]
 
 [build-dependencies]
 napi-build = "2.1.6"

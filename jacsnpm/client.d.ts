@@ -124,6 +124,44 @@ export declare class JacsClient {
     audit(options?: AuditOptions): Promise<Record<string, unknown>>;
     auditSync(options?: AuditOptions): Record<string, unknown>;
     /**
+     * Create a signed attestation document.
+     *
+     * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+     * @returns The signed attestation document as a SignedDocument.
+     */
+    createAttestation(params: {
+        subject: Record<string, unknown>;
+        claims: Record<string, unknown>[];
+        evidence?: Record<string, unknown>[];
+        derivation?: Record<string, unknown>;
+        policyContext?: Record<string, unknown>;
+    }): Promise<SignedDocument>;
+    /**
+     * Verify an attestation document.
+     *
+     * @param attestationJson - Raw JSON string of the attestation document.
+     * @param opts - Optional. Set full: true for full-tier verification.
+     * @returns Verification result with valid, crypto, evidence, chain, errors.
+     */
+    verifyAttestation(attestationJson: string, opts?: {
+        full?: boolean;
+    }): Promise<Record<string, unknown>>;
+    /**
+     * Lift a signed document into an attestation.
+     *
+     * @param signedDocJson - Raw JSON string of the signed document.
+     * @param claims - Array of claim objects.
+     * @returns The lifted attestation as a SignedDocument.
+     */
+    liftToAttestation(signedDocJson: string, claims: Record<string, unknown>[]): Promise<SignedDocument>;
+    /**
+     * Export an attestation as a DSSE (Dead Simple Signing Envelope).
+     *
+     * @param attestationJson - Raw JSON string of the attestation document.
+     * @returns The DSSE envelope as a parsed object.
+     */
+    exportAttestationDsse(attestationJson: string): Promise<Record<string, unknown>>;
+    /**
      * Get a configured JACSA2AIntegration instance bound to this client.
      *
      * @example

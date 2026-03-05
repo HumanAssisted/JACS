@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/attestation/v1/attestation.schema.json",
+  "title": "Attestation",
+  "description": "A JACS attestation document that proves WHO did WHAT and WHY it should be trusted.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" }
+  ],
+  "properties": {
+    "attestation": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["agent", "artifact", "workflow", "identity"]
+            },
+            "id": {
+              "type": "string",
+              "description": "Identifier of the subject (JACS document ID, agent ID, etc.)"
+            },
+            "digests": {
+              "type": "object",
+              "description": "Content-addressable digests of the subject. For agents: hash of public key. For artifacts: hash of content.",
+              "properties": {
+                "sha256": { "type": "string" },
+                "sha512": { "type": "string" }
+              },
+              "required": ["sha256"],
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["type", "id", "digests"],
+          "additionalProperties": false
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "value": {},
+              "confidence": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+                "description": "Adapter-assigned confidence score."
+              },
+              "assuranceLevel": {
+                "type": "string",
+                "enum": ["self-asserted", "verified", "independently-attested"],
+                "description": "Categorical assurance level."
+              },
+              "issuer": {
+                "type": "string",
+                "description": "Agent ID or domain of the claim issuer."
+              },
+              "issuedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": ["name", "value"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["a2a", "email", "jwt", "tlsnotary", "custom"],
+                "description": "Type of evidence source."
+              },
+              "digests": {
+                "type": "object",
+                "description": "Algorithm-agile content digests of the evidence.",
+                "properties": {
+                  "sha256": { "type": "string" },
+                  "sha512": { "type": "string" }
+                },
+                "required": ["sha256"],
+                "additionalProperties": { "type": "string" }
+              },
+              "uri": {
+                "type": "string",
+                "description": "Optional URI for referenced (non-embedded) evidence."
+              },
+              "embedded": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether the evidence is embedded in the attestation document."
+              },
+              "embeddedData": {
+                "description": "The actual evidence data, present only when embedded=true."
+              },
+              "collectedAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the evidence was collected. Mandatory for freshness checks."
+              },
+              "resolvedAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When a referenced URI was last resolved."
+              },
+              "sensitivity": {
+                "type": "string",
+                "enum": ["public", "restricted", "confidential"],
+                "default": "public",
+                "description": "Privacy classification of the evidence."
+              },
+              "verifier": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "version": { "type": "string" }
+                },
+                "required": ["name", "version"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["kind", "digests", "collectedAt", "verifier"],
+            "additionalProperties": false
+          }
+        },
+        "derivation": {
+          "type": "object",
+          "description": "Transform receipt: proves what happened between inputs and output.",
+          "properties": {
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "digests": {
+                    "type": "object",
+                    "properties": {
+                      "sha256": { "type": "string" },
+                      "sha512": { "type": "string" }
+                    },
+                    "required": ["sha256"],
+                    "additionalProperties": { "type": "string" }
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "JACS document ID of the input, if available."
+                  }
+                },
+                "required": ["digests"],
+                "additionalProperties": false
+              }
+            },
+            "transform": {
+              "type": "object",
+              "description": "Content-addressable reference to the transformation.",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable name (e.g., 'summarize-v2', 'classify-sentiment')."
+                },
+                "hash": {
+                  "type": "string",
+                  "description": "Content-addressable hash of the transform code/binary."
+                },
+                "reproducible": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Whether the transform is deterministic."
+                },
+                "environment": {
+                  "type": "object",
+                  "description": "Runtime parameters that affect the output.",
+                  "additionalProperties": { "type": "string" }
+                }
+              },
+              "required": ["name", "hash"],
+              "additionalProperties": false
+            },
+            "outputDigests": {
+              "type": "object",
+              "properties": {
+                "sha256": { "type": "string" },
+                "sha512": { "type": "string" }
+              },
+              "required": ["sha256"],
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["inputs", "transform", "outputDigests"],
+          "additionalProperties": false
+        },
+        "policyContext": {
+          "type": "object",
+          "description": "Optional policy context. Policy evaluation is deferred to N+2.",
+          "properties": {
+            "policyId": {
+              "type": "string",
+              "description": "Content-addressable hash of the policy document."
+            },
+            "requiredTrustLevel": {
+              "type": "string",
+              "enum": ["open", "verified", "strict", "custom"]
+            },
+            "maxEvidenceAge": {
+              "type": "string",
+              "description": "ISO 8601 duration for maximum evidence age (e.g., 'PT5M' for 5 minutes)."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["subject", "claims"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["attestation"]
+}

@@ -25,7 +25,7 @@ def _get_version():
 
         return version("jacs")
     except Exception:
-        return "0.8.0"
+        return "0.9.0"
 
 
 def _platform_key():

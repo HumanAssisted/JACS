@@ -1,3 +1,39 @@
+## 0.9.0
+
+### Attestation
+
+- **Attestation module**: Feature-gated (`--features attestation`) system for creating evidence-based trust proofs on top of cryptographic signing. Attestations bind claims, evidence references, derivation chains, and policy context to signed JACS documents.
+- **Core types**: `AttestationSubject`, `Claim`, `EvidenceRef`, `Derivation`, `PolicyContext`, `DigestSet` in `jacs/src/attestation/types.rs` with full JSON Schema at `schemas/attestation/v1/attestation.schema.json`.
+- **Create attestation**: `create_attestation()` API with subject, claims, optional evidence/derivation/policy. Claims support `confidence` (0.0-1.0) and `assuranceLevel` (self-reported, verified, audited, formal).
+- **Verify attestation**: Two-tier verification -- local (signature + hash, <1ms) and full (evidence digests, freshness, derivation chain, <10ms). Structured `AttestationVerificationResult` output.
+- **Lift to attestation**: `lift_to_attestation()` upgrades existing signed documents to attestations by wrapping them as the attestation subject with additional claims.
+- **DSSE export**: `export_attestation_dsse()` wraps attestations as in-toto Statements in DSSE envelopes for SLSA/Sigstore/in-toto compatibility. Predicate type: `https://jacs.dev/attestation/v1`.
+- **Evidence adapters**: Pluggable `EvidenceAdapter` trait with built-in adapters for A2A artifacts and email evidence. Custom adapter support via `normalize()` / `verify_evidence()` contract.
+- **Derivation chains**: Track multi-step transformations with input/output digests, transform metadata, and configurable depth limits (default 10).
+- **CLI**: `jacs attest create` and `jacs attest verify` subcommands with `--full`, `--json`, `--from-document`, and output file support.
+- **Digest utilities**: Shared `compute_digest_set()` / `compute_digest_set_bytes()` using JCS canonicalization (RFC 8785). 64KB auto-embed threshold for evidence.
+
+### Attestation Bindings
+
+- **Rust SimpleAgent**: `create_attestation()`, `verify_attestation()`, `verify_attestation_full()`, `lift_to_attestation()`, `export_attestation_dsse()`.
+- **binding-core**: JSON-in/JSON-out attestation API for all language bindings.
+- **Python (jacspy)**: `JacsClient.create_attestation()`, `verify_attestation()`, `lift_to_attestation()`, `export_attestation_dsse()` with keyword arguments. Feature-gated behind `--features attestation`.
+- **Node.js (jacsnpm)**: Async attestation methods on `JacsClient` class plus sync convenience functions in `simple.ts`. Feature-gated behind `--features attestation`.
+- **MCP server (jacs-mcp)**: Three new tools -- `jacs_attest_create`, `jacs_attest_verify`, `jacs_attest_lift`. Graceful degradation when attestation feature not compiled.
+
+### Attestation Testing
+
+- **Benchmarks**: Criterion benchmarks for create (~86us), verify-local (~46us), verify-full (~73us), lift (~80us). All well under performance targets.
+- **Cross-language tests**: Rust generates attestation fixtures (Ed25519 + pq2025), Node.js verifies them. 14 cross-language attestation tests.
+- **Hello-world examples**: `examples/attestation_hello_world.{py,js,sh}` for Python, Node.js, and CLI.
+
+### Documentation
+
+- **What Is an Attestation?**: Concept page explaining signing vs attestation (`getting-started/attestation.md`).
+- **Sign vs Attest Decision Guide**: When to use each API (`guides/sign-vs-attest.md`).
+- **Attestation Tutorial**: Step-by-step from agent creation to verified attestation (`guides/attestation-tutorial.md`).
+- **Verification Results Reference**: Full error catalog for `AttestationVerificationResult` (`reference/attestation-errors.md`).
+
 ## 0.6.0
 
 ### Security audit (MVP)

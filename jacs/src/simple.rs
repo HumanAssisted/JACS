@@ -3109,6 +3109,137 @@ impl SimpleAgent {
             signed_agent_json,
         })
     }
+
+    // =========================================================================
+    // Attestation API (gated behind `attestation` feature)
+    // =========================================================================
+
+    /// Create a signed attestation document.
+    ///
+    /// Wraps `Agent::create_attestation()` with SimpleAgent's mutex + error handling.
+    ///
+    /// # Arguments
+    /// * `subject` - The attestation subject (who/what is being attested)
+    /// * `claims` - Claims about the subject (minimum 1 required by schema)
+    /// * `evidence` - Optional evidence references supporting the claims
+    /// * `derivation` - Optional derivation/transform receipt
+    /// * `policy_context` - Optional policy evaluation context
+    #[cfg(feature = "attestation")]
+    pub fn create_attestation(
+        &self,
+        subject: &crate::attestation::types::AttestationSubject,
+        claims: &[crate::attestation::types::Claim],
+        evidence: &[crate::attestation::types::EvidenceRef],
+        derivation: Option<&crate::attestation::types::Derivation>,
+        policy_context: Option<&crate::attestation::types::PolicyContext>,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::attestation::AttestationTraits;
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let jacs_doc = agent
+            .create_attestation(subject, claims, evidence, derivation, policy_context)
+            .map_err(|e| JacsError::AttestationFailed {
+                message: format!("Failed to create attestation: {}", e),
+            })?;
+        SignedDocument::from_jacs_document(jacs_doc, "attestation")
+    }
+
+    /// Verify an attestation using local (crypto-only) verification.
+    ///
+    /// Fast path: checks signature + hash only. No network calls, no evidence checks.
+    ///
+    /// # Arguments
+    /// * `document_key` - The document key in "id:version" format
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation(
+        &self,
+        document_key: &str,
+    ) -> Result<crate::attestation::types::AttestationVerificationResult, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        agent
+            .verify_attestation_local_impl(document_key)
+            .map_err(|e| JacsError::VerificationFailed {
+                message: format!("Attestation local verification failed: {}", e),
+            })
+    }
+
+    /// Verify an attestation using full verification.
+    ///
+    /// Full path: checks signature + hash + evidence digests + freshness + derivation chain.
+    ///
+    /// # Arguments
+    /// * `document_key` - The document key in "id:version" format
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation_full(
+        &self,
+        document_key: &str,
+    ) -> Result<crate::attestation::types::AttestationVerificationResult, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        agent
+            .verify_attestation_full_impl(document_key)
+            .map_err(|e| JacsError::VerificationFailed {
+                message: format!("Attestation full verification failed: {}", e),
+            })
+    }
+
+    /// Lift an existing signed document into an attestation.
+    ///
+    /// Convenience wrapper that takes a signed JACS document JSON string
+    /// and produces a new attestation document referencing the original.
+    ///
+    /// # Arguments
+    /// * `signed_document_json` - JSON string of the existing signed document
+    /// * `claims` - Claims about the document (minimum 1 required)
+    #[cfg(feature = "attestation")]
+    pub fn lift_to_attestation(
+        &self,
+        signed_document_json: &str,
+        claims: &[crate::attestation::types::Claim],
+    ) -> Result<SignedDocument, JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let jacs_doc = crate::attestation::migration::lift_to_attestation(
+            &mut agent,
+            signed_document_json,
+            claims,
+        )
+        .map_err(|e| JacsError::AttestationFailed {
+            message: format!("Failed to lift document to attestation: {}", e),
+        })?;
+        SignedDocument::from_jacs_document(jacs_doc, "attestation")
+    }
+
+    /// Export a signed attestation as a DSSE (Dead Simple Signing Envelope).
+    ///
+    /// Produces an in-toto Statement wrapped in a DSSE envelope.
+    /// Export-only for v0.9.0 (no import).
+    ///
+    /// # Arguments
+    /// * `attestation_json` - JSON string of the signed attestation document
+    ///
+    /// # Returns
+    /// A DSSE envelope JSON string containing the in-toto Statement.
+    #[cfg(feature = "attestation")]
+    pub fn export_dsse(&self, attestation_json: &str) -> Result<String, JacsError> {
+        let att_value: serde_json::Value =
+            serde_json::from_str(attestation_json).map_err(|e| JacsError::AttestationFailed {
+                message: format!("Invalid attestation JSON: {}", e),
+            })?;
+        let envelope = crate::attestation::dsse::export_dsse(&att_value).map_err(|e| {
+            JacsError::AttestationFailed {
+                message: format!("Failed to export DSSE envelope: {}", e),
+            }
+        })?;
+        serde_json::to_string(&envelope).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize DSSE envelope: {}", e),
+        })
+    }
 }
 
 // =============================================================================
@@ -4584,5 +4715,291 @@ mod tests {
             result.old_version,
             "jacsPreviousVersion should reference old version"
         );
+    }
+
+    // =========================================================================
+    // Attestation API Tests (gated behind `attestation` feature)
+    // =========================================================================
+
+    #[cfg(feature = "attestation")]
+    mod attestation_tests {
+        use super::*;
+        use crate::attestation::types::*;
+
+        fn ephemeral_agent() -> SimpleAgent {
+            let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+            agent
+        }
+
+        fn test_subject() -> AttestationSubject {
+            AttestationSubject {
+                subject_type: SubjectType::Artifact,
+                id: "test-artifact-001".into(),
+                digests: DigestSet {
+                    sha256: "abc123".into(),
+                    sha512: None,
+                    additional: std::collections::HashMap::new(),
+                },
+            }
+        }
+
+        fn test_claim() -> Claim {
+            Claim {
+                name: "reviewed".into(),
+                value: json!(true),
+                confidence: Some(0.95),
+                assurance_level: Some(AssuranceLevel::Verified),
+                issuer: None,
+                issued_at: None,
+            }
+        }
+
+        #[test]
+        fn simple_create_attestation_returns_signed_document() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let result = agent.create_attestation(&subject, &[test_claim()], &[], None, None);
+            assert!(result.is_ok(), "create_attestation should succeed: {:?}", result.err());
+
+            let signed = result.unwrap();
+            assert!(!signed.raw.is_empty(), "raw JSON should not be empty");
+            assert!(!signed.document_id.is_empty(), "document_id should be set");
+            assert!(!signed.agent_id.is_empty(), "agent_id should be set");
+            assert!(!signed.timestamp.is_empty(), "timestamp should be set");
+        }
+
+        #[test]
+        fn simple_create_attestation_raw_contains_attestation_fields() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            assert!(doc.get("attestation").is_some(), "should contain attestation field");
+            assert!(doc.get("jacsSignature").is_some(), "should be signed");
+            assert_eq!(
+                doc["attestation"]["subject"]["id"].as_str().unwrap(),
+                "test-artifact-001"
+            );
+        }
+
+        #[test]
+        fn simple_verify_attestation_local_valid() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = agent.verify_attestation(&key);
+            assert!(result.is_ok(), "verify_attestation should succeed: {:?}", result.err());
+
+            let verification = result.unwrap();
+            assert!(
+                verification.valid,
+                "attestation should verify: {:?}",
+                verification.errors
+            );
+        }
+
+        #[test]
+        fn simple_verify_attestation_full_valid() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = agent.verify_attestation_full(&key);
+            assert!(
+                result.is_ok(),
+                "verify_attestation_full should succeed: {:?}",
+                result.err()
+            );
+
+            let verification = result.unwrap();
+            assert!(
+                verification.valid,
+                "full attestation should verify: {:?}",
+                verification.errors
+            );
+        }
+
+        #[test]
+        fn simple_verify_attestation_returns_signer_info() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let verification = agent.verify_attestation(&key).unwrap();
+            assert!(
+                !verification.crypto.signer_id.is_empty(),
+                "should include signer info in crypto result"
+            );
+        }
+
+        #[test]
+        fn simple_lift_to_attestation_from_signed_document() {
+            let agent = ephemeral_agent();
+
+            // First sign a regular message
+            let msg = json!({"title": "Test Document", "content": "Some content"});
+            let signed_msg = agent.sign_message(&msg).unwrap();
+
+            // Lift it to an attestation
+            let claims = vec![test_claim()];
+            let result = agent.lift_to_attestation(&signed_msg.raw, &claims);
+            assert!(
+                result.is_ok(),
+                "lift_to_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let attestation = result.unwrap();
+            assert!(!attestation.raw.is_empty());
+            assert!(!attestation.document_id.is_empty());
+
+            // Verify the lifted attestation
+            let att_doc: Value = serde_json::from_str(&attestation.raw).unwrap();
+            let att_key = format!(
+                "{}:{}",
+                att_doc["jacsId"].as_str().unwrap(),
+                att_doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let verification = agent.verify_attestation(&att_key).unwrap();
+            assert!(
+                verification.valid,
+                "lifted attestation should verify: {:?}",
+                verification.errors
+            );
+        }
+
+        #[test]
+        fn simple_lift_to_attestation_subject_references_original() {
+            let agent = ephemeral_agent();
+
+            let msg = json!({"title": "Original Document"});
+            let signed_msg = agent.sign_message(&msg).unwrap();
+            let original_id = signed_msg.document_id.clone();
+
+            let attestation = agent
+                .lift_to_attestation(&signed_msg.raw, &[test_claim()])
+                .unwrap();
+
+            let att_doc: Value = serde_json::from_str(&attestation.raw).unwrap();
+            assert_eq!(
+                att_doc["attestation"]["subject"]["id"].as_str().unwrap(),
+                original_id,
+                "attestation subject ID should reference the original document ID"
+            );
+        }
+
+        #[test]
+        fn simple_lift_unsigned_document_fails() {
+            let agent = ephemeral_agent();
+            let unsigned = json!({"title": "Not Signed"}).to_string();
+            let result = agent.lift_to_attestation(&unsigned, &[test_claim()]);
+            assert!(result.is_err(), "lifting unsigned document should fail");
+        }
+
+        #[test]
+        fn simple_create_attestation_with_evidence() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+
+            let evidence = vec![EvidenceRef {
+                kind: EvidenceKind::Custom,
+                digests: DigestSet {
+                    sha256: "ev_hash_123".into(),
+                    sha512: None,
+                    additional: std::collections::HashMap::new(),
+                },
+                uri: Some("https://example.com/evidence.pdf".into()),
+                embedded: false,
+                embedded_data: None,
+                collected_at: crate::time_utils::now_rfc3339(),
+                resolved_at: None,
+                sensitivity: EvidenceSensitivity::Public,
+                verifier: VerifierInfo {
+                    name: "test-verifier".into(),
+                    version: "1.0".into(),
+                },
+            }];
+
+            let result = agent.create_attestation(
+                &subject,
+                &[test_claim()],
+                &evidence,
+                None,
+                None,
+            );
+            assert!(result.is_ok(), "attestation with evidence should succeed: {:?}", result.err());
+
+            let signed = result.unwrap();
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let ev_arr = doc["attestation"]["evidence"]
+                .as_array()
+                .expect("evidence should be array");
+            assert_eq!(ev_arr.len(), 1);
+            assert_eq!(ev_arr[0]["kind"], "custom");
+        }
+
+        #[test]
+        fn simple_verify_attestation_nonexistent_key_returns_error() {
+            let agent = ephemeral_agent();
+            let result = agent.verify_attestation("nonexistent-id:v1");
+            assert!(
+                result.is_err(),
+                "verifying nonexistent attestation should fail"
+            );
+        }
+
+        #[test]
+        fn simple_export_dsse_produces_valid_envelope() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let dsse_json = agent.export_dsse(&signed.raw).unwrap();
+            let envelope: Value = serde_json::from_str(&dsse_json).unwrap();
+
+            assert_eq!(
+                envelope["payloadType"].as_str().unwrap(),
+                "application/vnd.in-toto+json"
+            );
+            assert!(envelope.get("payload").is_some());
+            assert!(envelope.get("signatures").is_some());
+
+            let sigs = envelope["signatures"].as_array().unwrap();
+            assert!(!sigs.is_empty(), "should have at least one signature");
+        }
     }
 }

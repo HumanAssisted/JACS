@@ -251,6 +251,14 @@ impl AgentWrapper {
         }
     }
 
+    /// Create an agent wrapper from an existing Arc<Mutex<Agent>>.
+    ///
+    /// This is used by the Go FFI to share the agent handle's inner agent
+    /// with binding-core's attestation methods.
+    pub fn from_inner(inner: Arc<Mutex<Agent>>) -> Self {
+        Self { inner }
+    }
+
     /// Get a locked reference to the inner agent.
     fn lock(&self) -> BindingResult<MutexGuard<'_, Agent>> {
         self.inner.lock().map_err(BindingCoreError::from)
@@ -1229,6 +1237,218 @@ impl AgentWrapper {
             ))
         })
     }
+
+    // =========================================================================
+    // Attestation API (gated behind `attestation` feature)
+    // =========================================================================
+
+    /// Create a signed attestation document from JSON parameters.
+    ///
+    /// The `params_json` string must be a JSON object with:
+    /// - `subject` (required): `{ type, id, digests: { sha256, ... } }`
+    /// - `claims` (required): `[{ name, value, confidence?, assuranceLevel?, ... }]`
+    /// - `evidence` (optional): array of evidence references
+    /// - `derivation` (optional): derivation/transform receipt
+    /// - `policyContext` (optional): policy evaluation context
+    ///
+    /// Returns the signed attestation document as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn create_attestation(&self, params_json: &str) -> BindingResult<String> {
+        use jacs::attestation::types::*;
+        use jacs::attestation::AttestationTraits;
+
+        let params: Value = serde_json::from_str(params_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse attestation params JSON: {}. \
+                 Provide a valid JSON object with 'subject' and 'claims' fields.",
+                e
+            ))
+        })?;
+
+        // Parse subject (required)
+        let subject: AttestationSubject = serde_json::from_value(
+            params
+                .get("subject")
+                .cloned()
+                .ok_or_else(|| {
+                    BindingCoreError::validation("Missing required 'subject' field in attestation params")
+                })?,
+        )
+        .map_err(|e| {
+            BindingCoreError::validation(format!("Invalid 'subject' field: {}", e))
+        })?;
+
+        // Parse claims (required, at least 1)
+        let claims: Vec<Claim> = serde_json::from_value(
+            params
+                .get("claims")
+                .cloned()
+                .ok_or_else(|| {
+                    BindingCoreError::validation("Missing required 'claims' field in attestation params")
+                })?,
+        )
+        .map_err(|e| {
+            BindingCoreError::validation(format!("Invalid 'claims' field: {}", e))
+        })?;
+
+        // Parse optional evidence
+        let evidence: Vec<EvidenceRef> = if let Some(ev) = params.get("evidence") {
+            serde_json::from_value(ev.clone()).map_err(|e| {
+                BindingCoreError::validation(format!("Invalid 'evidence' field: {}", e))
+            })?
+        } else {
+            vec![]
+        };
+
+        // Parse optional derivation
+        let derivation: Option<Derivation> = if let Some(d) = params.get("derivation") {
+            Some(serde_json::from_value(d.clone()).map_err(|e| {
+                BindingCoreError::validation(format!("Invalid 'derivation' field: {}", e))
+            })?)
+        } else {
+            None
+        };
+
+        // Parse optional policyContext
+        let policy_context: Option<PolicyContext> =
+            if let Some(p) = params.get("policyContext") {
+                Some(serde_json::from_value(p.clone()).map_err(|e| {
+                    BindingCoreError::validation(format!("Invalid 'policyContext' field: {}", e))
+                })?)
+            } else {
+                None
+            };
+
+        let mut agent = self.lock()?;
+        let jacs_doc = agent
+            .create_attestation(
+                &subject,
+                &claims,
+                &evidence,
+                derivation.as_ref(),
+                policy_context.as_ref(),
+            )
+            .map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to create attestation: {}", e))
+            })?;
+
+        serde_json::to_string_pretty(&jacs_doc.value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize attestation: {}",
+                e
+            ))
+        })
+    }
+
+    /// Verify an attestation using local (crypto-only) verification.
+    ///
+    /// Takes the attestation document key in "id:version" format.
+    /// Returns the verification result as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation(&self, document_key: &str) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let result = agent
+            .verify_attestation_local_impl(document_key)
+            .map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Attestation local verification failed: {}",
+                    e
+                ))
+            })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize verification result: {}",
+                e
+            ))
+        })
+    }
+
+    /// Verify an attestation using full verification (evidence + chain).
+    ///
+    /// Takes the attestation document key in "id:version" format.
+    /// Returns the verification result as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation_full(&self, document_key: &str) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let result = agent
+            .verify_attestation_full_impl(document_key)
+            .map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Attestation full verification failed: {}",
+                    e
+                ))
+            })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize verification result: {}",
+                e
+            ))
+        })
+    }
+
+    /// Lift an existing signed JACS document into an attestation.
+    ///
+    /// Takes a signed document JSON string and claims JSON string.
+    /// Returns the signed attestation document as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn lift_to_attestation(
+        &self,
+        signed_doc_json: &str,
+        claims_json: &str,
+    ) -> BindingResult<String> {
+        use jacs::attestation::types::Claim;
+
+        let claims: Vec<Claim> = serde_json::from_str(claims_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse claims JSON: {}. \
+                 Provide a valid JSON array of claim objects.",
+                e
+            ))
+        })?;
+
+        let mut agent = self.lock()?;
+        let jacs_doc =
+            jacs::attestation::migration::lift_to_attestation(&mut agent, signed_doc_json, &claims)
+                .map_err(|e| {
+                    BindingCoreError::document_failed(format!(
+                        "Failed to lift document to attestation: {}",
+                        e
+                    ))
+                })?;
+
+        serde_json::to_string_pretty(&jacs_doc.value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize attestation: {}",
+                e
+            ))
+        })
+    }
+
+    /// Export a signed attestation as a DSSE (Dead Simple Signing Envelope).
+    ///
+    /// Takes the attestation JSON string and returns a DSSE envelope JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn export_attestation_dsse(&self, attestation_json: &str) -> BindingResult<String> {
+        let att_value: Value = serde_json::from_str(attestation_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse attestation JSON: {}",
+                e
+            ))
+        })?;
+
+        let envelope = jacs::attestation::dsse::export_dsse(&att_value).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to export DSSE envelope: {}", e))
+        })?;
+
+        serde_json::to_string_pretty(&envelope).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize DSSE envelope: {}",
+                e
+            ))
+        })
+    }
 }
 
 // =============================================================================
@@ -2200,5 +2420,206 @@ mod tests {
         let wrapper = AgentWrapper::new();
         let result = wrapper.export_agent_card();
         assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Attestation API Tests
+    // =========================================================================
+
+    #[cfg(feature = "attestation")]
+    mod attestation_tests {
+        use super::*;
+
+        fn attestation_wrapper() -> AgentWrapper {
+            let wrapper = AgentWrapper::new();
+            wrapper.ephemeral(Some("ed25519")).unwrap();
+            wrapper
+        }
+
+        fn basic_attestation_params() -> String {
+            json!({
+                "subject": {
+                    "type": "artifact",
+                    "id": "test-artifact-001",
+                    "digests": { "sha256": "abc123" }
+                },
+                "claims": [{
+                    "name": "reviewed",
+                    "value": true,
+                    "confidence": 0.95,
+                    "assuranceLevel": "verified"
+                }]
+            })
+            .to_string()
+        }
+
+        #[test]
+        fn binding_create_attestation_json() {
+            let wrapper = attestation_wrapper();
+            let result = wrapper.create_attestation(&basic_attestation_params());
+            assert!(
+                result.is_ok(),
+                "create_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let json_str = result.unwrap();
+            let doc: Value = serde_json::from_str(&json_str).unwrap();
+            assert!(
+                doc.get("attestation").is_some(),
+                "returned JSON should contain 'attestation' key"
+            );
+            assert!(
+                doc.get("jacsSignature").is_some(),
+                "returned JSON should be signed"
+            );
+        }
+
+        #[test]
+        fn binding_verify_attestation_json() {
+            let wrapper = attestation_wrapper();
+            let att_json = wrapper
+                .create_attestation(&basic_attestation_params())
+                .unwrap();
+            let doc: Value = serde_json::from_str(&att_json).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = wrapper.verify_attestation(&key);
+            assert!(
+                result.is_ok(),
+                "verify_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let result_json = result.unwrap();
+            let result_value: Value = serde_json::from_str(&result_json).unwrap();
+            assert_eq!(
+                result_value["valid"], true,
+                "attestation should verify as valid"
+            );
+        }
+
+        #[test]
+        fn binding_verify_attestation_full_json() {
+            let wrapper = attestation_wrapper();
+            let att_json = wrapper
+                .create_attestation(&basic_attestation_params())
+                .unwrap();
+            let doc: Value = serde_json::from_str(&att_json).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = wrapper.verify_attestation_full(&key);
+            assert!(
+                result.is_ok(),
+                "verify_attestation_full should succeed: {:?}",
+                result.err()
+            );
+
+            let result_json = result.unwrap();
+            let result_value: Value = serde_json::from_str(&result_json).unwrap();
+            assert_eq!(
+                result_value["valid"], true,
+                "full attestation should verify as valid"
+            );
+            assert!(
+                result_value.get("evidence").is_some(),
+                "full verification result should contain 'evidence' array"
+            );
+        }
+
+        #[test]
+        fn binding_lift_to_attestation_json() {
+            let wrapper = attestation_wrapper();
+
+            // Create a proper signed JACS document
+            let doc_json = json!({"title": "Test Document", "content": "Some content"}).to_string();
+            let signed = wrapper
+                .create_document(&doc_json, None, None, true, None, None)
+                .unwrap();
+
+            let claims_json = json!([{
+                "name": "reviewed",
+                "value": true
+            }])
+            .to_string();
+
+            let result = wrapper.lift_to_attestation(&signed, &claims_json);
+            assert!(
+                result.is_ok(),
+                "lift_to_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let att_json = result.unwrap();
+            let doc: Value = serde_json::from_str(&att_json).unwrap();
+            assert!(
+                doc.get("attestation").is_some(),
+                "lifted result should contain 'attestation' key"
+            );
+            assert!(
+                doc.get("jacsSignature").is_some(),
+                "lifted result should be signed"
+            );
+        }
+
+        #[test]
+        fn binding_create_attestation_error_on_bad_json() {
+            let wrapper = attestation_wrapper();
+            let result = wrapper.create_attestation("not valid json {{{");
+            assert!(result.is_err(), "bad JSON should error");
+            assert_eq!(
+                result.unwrap_err().kind,
+                ErrorKind::SerializationFailed,
+                "should be SerializationFailed error"
+            );
+        }
+
+        #[test]
+        fn binding_create_attestation_error_on_missing_fields() {
+            let wrapper = attestation_wrapper();
+            // Valid JSON but missing required 'subject' field
+            let params = json!({
+                "claims": [{"name": "test", "value": true}]
+            })
+            .to_string();
+
+            let result = wrapper.create_attestation(&params);
+            assert!(result.is_err(), "missing subject should error");
+            assert_eq!(
+                result.unwrap_err().kind,
+                ErrorKind::Validation,
+                "should be Validation error"
+            );
+        }
+
+        #[test]
+        fn binding_export_attestation_dsse() {
+            let wrapper = attestation_wrapper();
+            let att_json = wrapper
+                .create_attestation(&basic_attestation_params())
+                .unwrap();
+
+            let result = wrapper.export_attestation_dsse(&att_json);
+            assert!(
+                result.is_ok(),
+                "export_attestation_dsse should succeed: {:?}",
+                result.err()
+            );
+
+            let dsse_json = result.unwrap();
+            let envelope: Value = serde_json::from_str(&dsse_json).unwrap();
+            assert_eq!(
+                envelope["payloadType"].as_str().unwrap(),
+                "application/vnd.in-toto+json"
+            );
+        }
     }
 }

@@ -1,5 +1,11 @@
 // Additional observability tests focusing on stronger assertions
 
+use jacs::observability::{
+    LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
+    init_observability,
+};
+use serial_test::serial;
+
 #[cfg(feature = "otlp-metrics")]
 #[test]
 #[serial]

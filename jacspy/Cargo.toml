@@ -1,6 +1,6 @@
 [package]
 name = "jacspy"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 default = []
 extension-module = ["pyo3/extension-module"]
 auto-initialize = ["pyo3/auto-initialize"]
+attestation = ["jacs-binding-core/attestation"]
 
 [dependencies]
 lazy_static = "1.5.0"

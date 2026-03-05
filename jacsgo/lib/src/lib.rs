@@ -634,6 +634,181 @@ pub extern "C" fn jacs_agent_get_json(handle: *mut JacsAgentHandle) -> *mut c_ch
 }
 
 // ============================================================================
+// Attestation API (feature-gated)
+// ============================================================================
+
+/// Create a signed attestation document.
+/// params_json is a JSON string with subject, claims, and optional evidence/derivation/policyContext.
+/// Returns a JSON string of the signed attestation document, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_create_attestation(
+    handle: *mut JacsAgentHandle,
+    params_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || params_json.is_null() {
+            return ptr::null_mut();
+        }
+
+        let params_str = match unsafe { CStr::from_ptr(params_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper =
+            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        match wrapper.create_attestation(params_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, params_json);
+        ptr::null_mut()
+    }
+}
+
+/// Verify an attestation document.
+/// document_key is in "jacsId:jacsVersion" format.
+/// full: 0 for local (signature+hash), non-zero for full (evidence+chain).
+/// Returns a JSON string of the verification result, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_attestation(
+    handle: *mut JacsAgentHandle,
+    document_key: *const c_char,
+    full: c_int,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || document_key.is_null() {
+            return ptr::null_mut();
+        }
+
+        let key_str = match unsafe { CStr::from_ptr(document_key) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper =
+            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        let result = if full != 0 {
+            wrapper.verify_attestation_full(key_str)
+        } else {
+            wrapper.verify_attestation(key_str)
+        };
+
+        match result {
+            Ok(json) => match CString::new(json) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, document_key, full);
+        ptr::null_mut()
+    }
+}
+
+/// Lift an existing signed document into an attestation with additional claims.
+/// signed_doc_json: the signed JACS document JSON string.
+/// claims_json: JSON array of claim objects.
+/// Returns a JSON string of the new attestation document, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_lift_to_attestation(
+    handle: *mut JacsAgentHandle,
+    signed_doc_json: *const c_char,
+    claims_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || signed_doc_json.is_null() || claims_json.is_null() {
+            return ptr::null_mut();
+        }
+
+        let doc_str = match unsafe { CStr::from_ptr(signed_doc_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let claims_str = match unsafe { CStr::from_ptr(claims_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper =
+            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        match wrapper.lift_to_attestation(doc_str, claims_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, signed_doc_json, claims_json);
+        ptr::null_mut()
+    }
+}
+
+/// Export an attestation as a DSSE (Dead Simple Signing Envelope) for in-toto/SLSA compatibility.
+/// attestation_json: the attestation document JSON string.
+/// Returns a JSON string of the DSSE envelope, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_export_attestation_dsse(
+    handle: *mut JacsAgentHandle,
+    attestation_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || attestation_json.is_null() {
+            return ptr::null_mut();
+        }
+
+        let att_str = match unsafe { CStr::from_ptr(attestation_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper =
+            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        match wrapper.export_attestation_dsse(att_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, attestation_json);
+        ptr::null_mut()
+    }
+}
+
+// ============================================================================
 // Legacy Global Singleton API - Deprecated, use JacsAgent handle API instead
 // ============================================================================
 // The following functions use a global singleton for backwards compatibility.

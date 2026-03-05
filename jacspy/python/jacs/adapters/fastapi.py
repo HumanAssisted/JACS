@@ -89,9 +89,10 @@ class JacsMiddleware(BaseHTTPMiddleware):
         auth_clock_skew_seconds: int = 5,
         a2a: bool = False,
         a2a_skills: Optional[List[Dict[str, Any]]] = None,
+        attest: bool = False,
     ) -> None:
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict
+            client=client, config_path=config_path, strict=strict, attest=attest
         )
         self.sign_responses = sign_responses
         self.verify_requests = verify_requests
@@ -297,6 +298,7 @@ def jacs_route(
     client: Any = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ):
     """Decorator that signs a single FastAPI endpoint's response.
 
@@ -307,8 +309,9 @@ def jacs_route(
         client: JacsClient instance (or None to auto-create).
         config_path: Path to jacs.config.json.
         strict: Raise on signing failure if True.
+        attest: If True, produce attestation documents.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     def decorator(func):
         @wraps(func)

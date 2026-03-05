@@ -1232,6 +1232,94 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 .about("Initialize JACS by creating both config and agent (with keys)")
         )
         .subcommand(
+            Command::new("attest")
+                .about("Create and verify attestation documents")
+                .subcommand(
+                    Command::new("create")
+                        .about("Create a signed attestation")
+                        .arg(
+                            Arg::new("subject-type")
+                                .long("subject-type")
+                                .value_parser(["agent", "artifact", "workflow", "identity"])
+                                .help("Type of subject being attested"),
+                        )
+                        .arg(
+                            Arg::new("subject-id")
+                                .long("subject-id")
+                                .value_parser(value_parser!(String))
+                                .help("Identifier of the subject"),
+                        )
+                        .arg(
+                            Arg::new("subject-digest")
+                                .long("subject-digest")
+                                .value_parser(value_parser!(String))
+                                .help("SHA-256 digest of the subject"),
+                        )
+                        .arg(
+                            Arg::new("claims")
+                                .long("claims")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("JSON array of claims, e.g. '[{\"name\":\"reviewed\",\"value\":true}]'"),
+                        )
+                        .arg(
+                            Arg::new("evidence")
+                                .long("evidence")
+                                .value_parser(value_parser!(String))
+                                .help("JSON array of evidence references"),
+                        )
+                        .arg(
+                            Arg::new("from-document")
+                                .long("from-document")
+                                .value_parser(value_parser!(String))
+                                .help("Lift attestation from an existing signed document file"),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .long("output")
+                                .value_parser(value_parser!(String))
+                                .help("Write attestation to file instead of stdout"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("verify")
+                        .about("Verify an attestation document")
+                        .arg(
+                            Arg::new("file")
+                                .help("Path to the attestation JSON file")
+                                .required(true)
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("full")
+                                .long("full")
+                                .action(ArgAction::SetTrue)
+                                .help("Use full verification (evidence + derivation chain)"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .action(ArgAction::SetTrue)
+                                .help("Output result as JSON"),
+                        )
+                        .arg(
+                            Arg::new("key-dir")
+                                .long("key-dir")
+                                .value_parser(value_parser!(String))
+                                .help("Directory containing public keys for verification"),
+                        )
+                        .arg(
+                            Arg::new("max-depth")
+                                .long("max-depth")
+                                .value_parser(value_parser!(u32))
+                                .help("Maximum derivation chain depth"),
+                        ),
+                )
+                .subcommand_required(true)
+                .arg_required_else_help(true),
+        )
+        .subcommand(
             Command::new("verify")
                 .about("Verify a signed JACS document (no agent required)")
                 .arg(
@@ -2265,6 +2353,253 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!();
                 println!("Sign something:");
                 println!("  echo '{{\"hello\":\"world\"}}' | jacs quickstart --sign");
+            }
+        }
+        #[cfg(feature = "attestation")]
+        Some(("attest", attest_matches)) => {
+            use jacs::attestation::types::*;
+            use jacs::simple::SimpleAgent;
+
+            match attest_matches.subcommand() {
+                Some(("create", create_matches)) => {
+                    // Ensure password is available for signing
+                    ensure_cli_private_key_password()?;
+
+                    // Load agent
+                    let agent = match SimpleAgent::load(None, None) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            eprintln!("Failed to load agent: {}", e);
+                            eprintln!("Run `jacs quickstart` first to create an agent.");
+                            process::exit(1);
+                        }
+                    };
+
+                    // Parse claims (required)
+                    let claims_str = create_matches
+                        .get_one::<String>("claims")
+                        .expect("claims is required");
+                    let claims: Vec<Claim> = serde_json::from_str(claims_str).map_err(|e| {
+                        format!(
+                            "Invalid claims JSON: {}. \
+                             Provide a JSON array like '[{{\"name\":\"reviewed\",\"value\":true}}]'",
+                            e
+                        )
+                    })?;
+
+                    // Parse optional evidence
+                    let evidence: Vec<EvidenceRef> =
+                        if let Some(ev_str) = create_matches.get_one::<String>("evidence") {
+                            serde_json::from_str(ev_str)
+                                .map_err(|e| format!("Invalid evidence JSON: {}", e))?
+                        } else {
+                            vec![]
+                        };
+
+                    let att_json = if let Some(doc_path) =
+                        create_matches.get_one::<String>("from-document")
+                    {
+                        // Lift from existing signed document
+                        let doc_content = std::fs::read_to_string(doc_path)
+                            .map_err(|e| format!("Failed to read document '{}': {}", doc_path, e))?;
+                        let result = agent.lift_to_attestation(&doc_content, &claims).map_err(
+                            |e| format!("Failed to lift document to attestation: {}", e),
+                        )?;
+                        result.raw
+                    } else {
+                        // Build from scratch: need subject-type, subject-id, subject-digest
+                        let subject_type_str = create_matches
+                            .get_one::<String>("subject-type")
+                            .ok_or("--subject-type is required when not using --from-document")?;
+                        let subject_id = create_matches
+                            .get_one::<String>("subject-id")
+                            .ok_or("--subject-id is required when not using --from-document")?;
+                        let subject_digest = create_matches
+                            .get_one::<String>("subject-digest")
+                            .ok_or(
+                                "--subject-digest is required when not using --from-document",
+                            )?;
+
+                        let subject_type = match subject_type_str.as_str() {
+                            "agent" => SubjectType::Agent,
+                            "artifact" => SubjectType::Artifact,
+                            "workflow" => SubjectType::Workflow,
+                            "identity" => SubjectType::Identity,
+                            other => {
+                                return Err(format!("Unknown subject type: '{}'", other).into())
+                            }
+                        };
+
+                        let subject = AttestationSubject {
+                            subject_type,
+                            id: subject_id.clone(),
+                            digests: DigestSet {
+                                sha256: subject_digest.clone(),
+                                sha512: None,
+                                additional: std::collections::HashMap::new(),
+                            },
+                        };
+
+                        let result = agent
+                            .create_attestation(&subject, &claims, &evidence, None, None)
+                            .map_err(|e| format!("Failed to create attestation: {}", e))?;
+                        result.raw
+                    };
+
+                    // Output to file or stdout
+                    if let Some(output_path) = create_matches.get_one::<String>("output") {
+                        std::fs::write(output_path, &att_json).map_err(|e| {
+                            format!("Failed to write output file '{}': {}", output_path, e)
+                        })?;
+                        eprintln!("Attestation written to {}", output_path);
+                    } else {
+                        println!("{}", att_json);
+                    }
+                }
+                Some(("verify", verify_matches)) => {
+                    let file_path = verify_matches
+                        .get_one::<String>("file")
+                        .expect("file is required");
+                    let full = *verify_matches.get_one::<bool>("full").unwrap_or(&false);
+                    let json_output = *verify_matches.get_one::<bool>("json").unwrap_or(&false);
+                    let key_dir = verify_matches.get_one::<String>("key-dir");
+                    let max_depth = verify_matches.get_one::<u32>("max-depth");
+
+                    // Set key directory if specified
+                    if let Some(kd) = key_dir {
+                        // SAFETY: CLI is single-threaded at this point
+                        unsafe { std::env::set_var("JACS_KEY_DIRECTORY", kd) };
+                    }
+
+                    // Set max derivation depth if specified
+                    if let Some(depth) = max_depth {
+                        // SAFETY: CLI is single-threaded at this point
+                        unsafe {
+                            std::env::set_var(
+                                "JACS_MAX_DERIVATION_DEPTH",
+                                depth.to_string(),
+                            )
+                        };
+                    }
+
+                    // Read the attestation file
+                    let att_content = std::fs::read_to_string(file_path).map_err(|e| {
+                        format!("Failed to read attestation file '{}': {}", file_path, e)
+                    })?;
+
+                    // Load or create ephemeral agent for verification
+                    ensure_cli_private_key_password().ok();
+                    let agent = match SimpleAgent::load(None, None) {
+                        Ok(a) => a,
+                        Err(_) => {
+                            let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                                .map_err(|e| format!("Failed to create verifier: {}", e))?;
+                            a
+                        }
+                    };
+
+                    // Load the attestation document into agent storage first
+                    let att_value: serde_json::Value =
+                        serde_json::from_str(&att_content).map_err(|e| {
+                            format!("Invalid attestation JSON: {}", e)
+                        })?;
+                    let doc_key = format!(
+                        "{}:{}",
+                        att_value["jacsId"].as_str().unwrap_or("unknown"),
+                        att_value["jacsVersion"].as_str().unwrap_or("unknown")
+                    );
+
+                    // We need to store the document so verify can find it by key.
+                    // Use verify() which parses and stores the doc, then verify attestation.
+                    let verify_result = agent.verify(&att_content);
+                    if let Err(e) = &verify_result {
+                        if json_output {
+                            let out = serde_json::json!({
+                                "valid": false,
+                                "error": e.to_string(),
+                            });
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&out).unwrap()
+                            );
+                        } else {
+                            eprintln!("Verification error: {}", e);
+                        }
+                        process::exit(1);
+                    }
+
+                    // Now do attestation-specific verification
+                    let att_result = if full {
+                        agent.verify_attestation_full(&doc_key)
+                    } else {
+                        agent.verify_attestation(&doc_key)
+                    };
+
+                    match att_result {
+                        Ok(r) => {
+                            if json_output {
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&r).unwrap()
+                                );
+                            } else {
+                                println!(
+                                    "Status:    {}",
+                                    if r.valid { "VALID" } else { "INVALID" }
+                                );
+                                println!(
+                                    "Signature: {}",
+                                    if r.crypto.signature_valid {
+                                        "valid"
+                                    } else {
+                                        "INVALID"
+                                    }
+                                );
+                                println!(
+                                    "Hash:      {}",
+                                    if r.crypto.hash_valid {
+                                        "valid"
+                                    } else {
+                                        "INVALID"
+                                    }
+                                );
+                                if !r.crypto.signer_id.is_empty() {
+                                    println!("Signer:    {}", r.crypto.signer_id);
+                                }
+                                if !r.evidence.is_empty() {
+                                    println!("Evidence:  {} items checked", r.evidence.len());
+                                }
+                                if !r.errors.is_empty() {
+                                    for err in &r.errors {
+                                        eprintln!("  Error: {}", err);
+                                    }
+                                }
+                            }
+                            if !r.valid {
+                                process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            if json_output {
+                                let out = serde_json::json!({
+                                    "valid": false,
+                                    "error": e.to_string(),
+                                });
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&out).unwrap()
+                                );
+                            } else {
+                                eprintln!("Attestation verification error: {}", e);
+                            }
+                            process::exit(1);
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!("Use 'jacs attest create' or 'jacs attest verify'. See --help.");
+                    process::exit(1);
+                }
             }
         }
         Some(("verify", verify_matches)) => {

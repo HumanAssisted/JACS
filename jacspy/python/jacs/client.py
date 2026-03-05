@@ -776,6 +776,122 @@ class JacsClient:
         integration = JACSA2AIntegration(self)
         return integration.export_agent_card(agent_data)
 
+    # ------------------------------------------------------------------
+    # Attestation
+    # ------------------------------------------------------------------
+
+    def create_attestation(
+        self,
+        subject: dict,
+        claims: list,
+        evidence: Optional[list] = None,
+        derivation: Optional[dict] = None,
+        policy_context: Optional[dict] = None,
+    ) -> SignedDocument:
+        """Create a signed attestation document.
+
+        Args:
+            subject: Dict with type, id, and digests fields.
+            claims: List of claim dicts (name, value, confidence, etc.).
+            evidence: Optional list of evidence reference dicts.
+            derivation: Optional derivation (transform receipt) dict.
+            policy_context: Optional policy context dict.
+
+        Returns:
+            SignedDocument containing the signed attestation.
+        """
+        agent = self._require_agent()
+        params: dict = {"subject": subject, "claims": claims}
+        if evidence is not None:
+            params["evidence"] = evidence
+        if derivation is not None:
+            params["derivation"] = derivation
+        if policy_context is not None:
+            params["policyContext"] = policy_context
+
+        try:
+            result = agent.create_attestation(json.dumps(params))
+            return _parse_signed_document(result)
+        except Exception as e:
+            raise JacsError(f"Failed to create attestation: {e}")
+
+    def verify_attestation(
+        self,
+        attestation_json: str,
+        full: bool = False,
+    ) -> dict:
+        """Verify an attestation document.
+
+        The attestation must have been previously created (and stored) by this
+        agent. The ``attestation_json`` is parsed to extract the document key.
+
+        Args:
+            attestation_json: Raw JSON string of the attestation document.
+            full: If True, run full verification (evidence + chain).
+
+        Returns:
+            Dict with valid, crypto, evidence, chain, errors fields.
+        """
+        agent = self._require_agent()
+        data = json.loads(attestation_json)
+        doc_key = f"{data.get('jacsId', '')}:{data.get('jacsVersion', '')}"
+        try:
+            if full:
+                result_json = agent.verify_attestation_full(doc_key)
+            else:
+                result_json = agent.verify_attestation(doc_key)
+            return json.loads(result_json)
+        except Exception as e:
+            if self._strict:
+                raise VerificationError(f"Attestation verification failed: {e}") from e
+            return {"valid": False, "errors": [str(e)]}
+
+    def lift_to_attestation(
+        self,
+        signed_document: Union[str, SignedDocument],
+        claims: list,
+    ) -> SignedDocument:
+        """Lift a signed document into an attestation.
+
+        Args:
+            signed_document: The signed document (raw JSON or SignedDocument).
+            claims: List of claim dicts.
+
+        Returns:
+            SignedDocument containing the lifted attestation.
+        """
+        agent = self._require_agent()
+        if isinstance(signed_document, SignedDocument):
+            doc_str = signed_document.raw_json
+        else:
+            doc_str = signed_document
+        claims_json = json.dumps(claims)
+        try:
+            result = agent.lift_to_attestation(doc_str, claims_json)
+            return _parse_signed_document(result)
+        except Exception as e:
+            raise JacsError(f"Failed to lift to attestation: {e}")
+
+    def export_attestation_dsse(self, attestation_json: str) -> dict:
+        """Export an attestation as a DSSE envelope.
+
+        Args:
+            attestation_json: Raw JSON string of the attestation document.
+
+        Returns:
+            Dict containing the DSSE envelope (payloadType, payload, signatures).
+        """
+        agent = self._require_agent()
+        try:
+            result = agent.export_attestation_dsse(attestation_json)
+            return json.loads(result)
+        except Exception as e:
+            raise JacsError(f"Failed to export DSSE: {e}")
+
+    # ------------------------------------------------------------------
+    # A2A helpers
+    # ------------------------------------------------------------------
+
     def sign_artifact(
         self,
         artifact: dict,

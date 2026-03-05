@@ -77,6 +77,7 @@ def jacs_signing_middleware(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ) -> Any:
     """Create a ``@wrap_tool_call`` middleware for LangChain 1.0 agents.
 
@@ -104,7 +105,7 @@ def jacs_signing_middleware(
             "Install it with: pip install 'langchain>=1.0.0'"
         )
 
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     @wrap_tool_call
     def jacs_signer(request: Any, handler: Callable) -> Any:
@@ -137,6 +138,7 @@ class JacsSigningMiddleware:
         client: A ``JacsClient`` instance.
         config_path: Optional config path.
         strict: If *True*, signing failures raise.
+        attest: If *True*, produce attestation documents.
     """
 
     def __init__(
@@ -144,9 +146,10 @@ class JacsSigningMiddleware:
         client: Optional[Any] = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        attest: bool = False,
     ) -> None:
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict
+            client=client, config_path=config_path, strict=strict, attest=attest
         )
 
     @property
@@ -180,6 +183,7 @@ def jacs_wrap_tool_call(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ) -> Callable:
     """Create a ``wrap_tool_call`` function for LangGraph ToolNode.
 
@@ -196,8 +200,9 @@ def jacs_wrap_tool_call(
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
         strict: If *True*, signing failures raise.  If *False* (default),
             the original result is passed through.
+        attest: If *True*, produce attestation documents.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     def wrapper(request: Any, execute: Callable) -> Any:
         result = execute(request)
@@ -210,13 +215,14 @@ def jacs_awrap_tool_call(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ) -> Callable:
     """Async version of :func:`jacs_wrap_tool_call`.
 
     Returns an async callable with signature
     ``(request, execute) -> ToolMessage``.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     async def wrapper(request: Any, execute: Callable) -> Any:
         result = await execute(request)
@@ -289,6 +295,7 @@ def signed_tool(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ) -> Any:
     """Wrap a LangChain BaseTool to auto-sign its output.
 
@@ -300,6 +307,7 @@ def signed_tool(
         client: A ``JacsClient`` instance.
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
         strict: If *True*, signing failures raise.
+        attest: If *True*, produce attestation documents.
 
     Returns:
         A new ``BaseTool`` (``StructuredTool``) that wraps *tool*.
@@ -311,7 +319,7 @@ def signed_tool(
             "langchain-core is required for signed_tool. "
             "Install it with: pip install langchain-core"
         )
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     original_name = getattr(tool, "name", "jacs_tool")
     original_desc = getattr(tool, "description", "")
@@ -342,6 +350,7 @@ def with_jacs_signing(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ) -> Any:
     """Create a LangGraph ToolNode with JACS signing pre-configured.
 
@@ -353,6 +362,7 @@ def with_jacs_signing(
         client: A ``JacsClient`` instance.
         config_path: Optional config path.
         strict: If *True*, signing failures raise.
+        attest: If *True*, produce attestation documents.
 
     Returns:
         A ``langgraph.prebuilt.ToolNode`` with ``wrap_tool_call`` set.
@@ -368,7 +378,7 @@ def with_jacs_signing(
     return ToolNode(
         tools=tools,
         wrap_tool_call=jacs_wrap_tool_call(
-            client=client, config_path=config_path, strict=strict
+            client=client, config_path=config_path, strict=strict, attest=attest
         ),
     )
 

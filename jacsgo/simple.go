@@ -635,6 +635,97 @@ func Audit(opts *AuditOptions) (map[string]interface{}, error) {
 	return out, nil
 }
 
+// CreateAttestation creates a signed attestation document using the global agent.
+//
+// Parameters:
+//   - paramsJSON: JSON string with subject, claims, and optional evidence/derivation/policyContext
+//
+// Returns the signed attestation document as a JSON string.
+// Requires the library to be built with the attestation feature.
+func CreateAttestation(paramsJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.CreateAttestation(paramsJSON)
+}
+
+// VerifyAttestationJSON verifies an attestation and returns the raw JSON result.
+//
+// Parameters:
+//   - documentKey: Document key in "jacsId:jacsVersion" format
+//   - full: If true, performs full-tier verification (evidence + chain checks)
+//
+// Returns the verification result as a raw JSON string.
+func VerifyAttestationJSON(documentKey string, full bool) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.VerifyAttestation(documentKey, full)
+}
+
+// VerifyAttestationResult verifies an attestation and returns a typed result.
+//
+// Parameters:
+//   - documentKey: Document key in "jacsId:jacsVersion" format
+//   - full: If true, performs full-tier verification (evidence + chain checks)
+func VerifyAttestationResult(documentKey string, full bool) (*AttestationVerificationResult, error) {
+	jsonStr, err := VerifyAttestationJSON(documentKey, full)
+	if err != nil {
+		return nil, err
+	}
+
+	var result AttestationVerificationResult
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return nil, fmt.Errorf("parse attestation verification result: %w", err)
+	}
+
+	return &result, nil
+}
+
+// LiftToAttestation lifts an existing signed document into an attestation
+// with additional claims, using the global agent.
+//
+// Parameters:
+//   - signedDocJSON: The signed JACS document JSON string
+//   - claimsJSON: JSON array of claim objects
+//
+// Returns the new attestation document as a JSON string.
+func LiftToAttestation(signedDocJSON, claimsJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.LiftToAttestation(signedDocJSON, claimsJSON)
+}
+
+// ExportAttestationDSSE exports an attestation as a DSSE envelope using the global agent.
+//
+// Parameters:
+//   - attestationJSON: The attestation document JSON string
+//
+// Returns the DSSE envelope as a JSON string.
+func ExportAttestationDSSE(attestationJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.ExportAttestationDSSE(attestationJSON)
+}
+
 func getNestedStringField(m map[string]interface{}, keys ...string) string {
 	current := m
 	for i, key := range keys {

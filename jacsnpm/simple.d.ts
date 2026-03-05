@@ -237,3 +237,82 @@ export interface AuditOptions {
 }
 export declare function audit(options?: AuditOptions): Promise<Record<string, unknown>>;
 export declare function auditSync(options?: AuditOptions): Record<string, unknown>;
+/**
+ * Create a signed attestation document (async).
+ *
+ * Requires the native module to be built with the `attestation` feature.
+ * Throws if attestation is not available or if the claims are invalid.
+ *
+ * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+ * @returns The signed attestation as a SignedDocument.
+ */
+export declare function createAttestation(params: {
+    subject: Record<string, unknown>;
+    claims: Record<string, unknown>[];
+    evidence?: Record<string, unknown>[];
+    derivation?: Record<string, unknown>;
+    policyContext?: Record<string, unknown>;
+}): Promise<SignedDocument>;
+/**
+ * Create a signed attestation document (sync).
+ *
+ * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+ * @returns The signed attestation as a SignedDocument.
+ */
+export declare function createAttestationSync(params: {
+    subject: Record<string, unknown>;
+    claims: Record<string, unknown>[];
+    evidence?: Record<string, unknown>[];
+    derivation?: Record<string, unknown>;
+    policyContext?: Record<string, unknown>;
+}): SignedDocument;
+/**
+ * Verify an attestation document -- local tier (async).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @param opts - Optional. Set full: true for full-tier verification.
+ * @returns Verification result object.
+ */
+export declare function verifyAttestation(attestationJson: string, opts?: {
+    full?: boolean;
+}): Promise<Record<string, unknown>>;
+/**
+ * Verify an attestation document -- local tier (sync).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @param opts - Optional. Set full: true for full-tier verification.
+ * @returns Verification result object.
+ */
+export declare function verifyAttestationSync(attestationJson: string, opts?: {
+    full?: boolean;
+}): Record<string, unknown>;
+/**
+ * Lift a signed document into an attestation (async).
+ *
+ * @param signedDocJson - Raw JSON string of the signed document.
+ * @param claims - Array of claim objects.
+ * @returns The lifted attestation as a SignedDocument.
+ */
+export declare function liftToAttestation(signedDocJson: string, claims: Record<string, unknown>[]): Promise<SignedDocument>;
+/**
+ * Lift a signed document into an attestation (sync).
+ *
+ * @param signedDocJson - Raw JSON string of the signed document.
+ * @param claims - Array of claim objects.
+ * @returns The lifted attestation as a SignedDocument.
+ */
+export declare function liftToAttestationSync(signedDocJson: string, claims: Record<string, unknown>[]): SignedDocument;
+/**
+ * Export an attestation as a DSSE (Dead Simple Signing Envelope) (async).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @returns The DSSE envelope as a parsed object.
+ */
+export declare function exportAttestationDsse(attestationJson: string): Promise<Record<string, unknown>>;
+/**
+ * Export an attestation as a DSSE (Dead Simple Signing Envelope) (sync).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @returns The DSSE envelope as a parsed object.
+ */
+export declare function exportAttestationDsseSync(attestationJson: string): Record<string, unknown>;

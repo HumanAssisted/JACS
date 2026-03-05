@@ -1283,6 +1283,47 @@ fn is_leap(y: i64) -> bool {
 }
 
 // =============================================================================
+// Attestation Request/Response Types (feature-gated)
+// =============================================================================
+
+/// Parameters for creating an attestation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AttestCreateParams {
+    /// JSON string with subject, claims, and optional evidence/derivation/policyContext.
+    #[schemars(
+        description = "JSON string containing attestation parameters: { subject: { type, id, digests }, claims: [{ name, value, confidence?, assuranceLevel? }], evidence?: [...], derivation?: {...}, policyContext?: {...} }"
+    )]
+    pub params_json: String,
+}
+
+/// Parameters for verifying an attestation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AttestVerifyParams {
+    /// The document key in "jacsId:jacsVersion" format.
+    #[schemars(description = "Document key in 'jacsId:jacsVersion' format")]
+    pub document_key: String,
+
+    /// Whether to perform full verification (including evidence and chain).
+    #[serde(default)]
+    #[schemars(description = "Set to true for full-tier verification (evidence + chain checks)")]
+    pub full: bool,
+}
+
+/// Parameters for lifting a signed document to an attestation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AttestLiftParams {
+    /// The signed document JSON string.
+    #[schemars(description = "JSON string of the existing signed JACS document to lift")]
+    pub signed_doc_json: String,
+
+    /// Claims JSON string (array of claim objects).
+    #[schemars(
+        description = "JSON array of claim objects: [{ name, value, confidence?, assuranceLevel? }]"
+    )]
+    pub claims_json: String,
+}
+
+// =============================================================================
 // MCP Server
 // =============================================================================
 
@@ -1530,6 +1571,29 @@ impl JacsMcpServer {
                  trust store. Fails if the agent is not trusted.",
                 Self::jacs_get_trusted_agent_schema(),
             ),
+            // --- Attestation tools ---
+            Tool::new(
+                "jacs_attest_create",
+                "Create a signed attestation document. Provide a JSON string with: subject \
+                 (type, id, digests), claims (name, value, confidence, assuranceLevel), and \
+                 optional evidence, derivation, and policyContext. Requires the attestation \
+                 feature.",
+                Self::jacs_attest_create_schema(),
+            ),
+            Tool::new(
+                "jacs_attest_verify",
+                "Verify an attestation document. Provide a document_key in 'jacsId:jacsVersion' \
+                 format. Set full=true for full-tier verification including evidence and \
+                 derivation chain checks. Requires the attestation feature.",
+                Self::jacs_attest_verify_schema(),
+            ),
+            Tool::new(
+                "jacs_attest_lift",
+                "Lift an existing signed JACS document into an attestation. Provide the signed \
+                 document JSON and a JSON array of claims to attach. Requires the attestation \
+                 feature.",
+                Self::jacs_attest_lift_schema(),
+            ),
         ]
     }
 
@@ -1759,6 +1823,30 @@ impl JacsMcpServer {
 
     fn jacs_get_trusted_agent_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(GetTrustedAgentParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_attest_create_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(AttestCreateParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_attest_verify_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(AttestVerifyParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_attest_lift_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(AttestLiftParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -3771,6 +3859,128 @@ impl JacsMcpServer {
             }
         }
     }
+
+    // =========================================================================
+    // Attestation Tools (requires `attestation` feature)
+    // =========================================================================
+
+    /// Create a signed attestation document with subject, claims, and optional evidence.
+    ///
+    /// Requires the binary to be built with the `attestation` feature.
+    #[tool(
+        name = "jacs_attest_create",
+        description = "Create a signed attestation document. Provide a JSON string with: subject (type, id, digests), claims (name, value, confidence, assuranceLevel), and optional evidence, derivation, and policyContext."
+    )]
+    pub async fn jacs_attest_create(
+        &self,
+        Parameters(params): Parameters<AttestCreateParams>,
+    ) -> String {
+        #[cfg(feature = "attestation")]
+        {
+            match self.agent.create_attestation(&params.params_json) {
+                Ok(result) => result,
+                Err(e) => {
+                    let error = serde_json::json!({
+                        "error": true,
+                        "message": format!("Failed to create attestation: {}", e),
+                    });
+                    serde_json::to_string_pretty(&error)
+                        .unwrap_or_else(|e| format!("Error: {}", e))
+                }
+            }
+        }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = params;
+            serde_json::json!({
+                "error": true,
+                "message": "Attestation feature not available. Rebuild with --features attestation."
+            }).to_string()
+        }
+    }
+
+    /// Verify an attestation document's cryptographic validity and optionally check evidence.
+    ///
+    /// Local tier: checks signature + hash only (fast).
+    /// Full tier (full=true): also checks evidence digests, freshness, and derivation chain.
+    #[tool(
+        name = "jacs_attest_verify",
+        description = "Verify an attestation document. Provide a document_key in 'jacsId:jacsVersion' format. Set full=true for evidence and chain verification."
+    )]
+    pub async fn jacs_attest_verify(
+        &self,
+        Parameters(params): Parameters<AttestVerifyParams>,
+    ) -> String {
+        #[cfg(feature = "attestation")]
+        {
+            let result = if params.full {
+                self.agent.verify_attestation_full(&params.document_key)
+            } else {
+                self.agent.verify_attestation(&params.document_key)
+            };
+
+            match result {
+                Ok(json) => json,
+                Err(e) => {
+                    let error = serde_json::json!({
+                        "error": true,
+                        "valid": false,
+                        "message": format!("Failed to verify attestation: {}", e),
+                    });
+                    serde_json::to_string_pretty(&error)
+                        .unwrap_or_else(|e| format!("Error: {}", e))
+                }
+            }
+        }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = params;
+            serde_json::json!({
+                "error": true,
+                "valid": false,
+                "message": "Attestation feature not available. Rebuild with --features attestation."
+            }).to_string()
+        }
+    }
+
+    /// Lift an existing signed document into an attestation with additional claims.
+    ///
+    /// Takes a signed JACS document and wraps it in an attestation that references
+    /// the original document as its subject.
+    #[tool(
+        name = "jacs_attest_lift",
+        description = "Lift an existing signed JACS document into an attestation. Provide the signed document JSON and a JSON array of claims."
+    )]
+    pub async fn jacs_attest_lift(
+        &self,
+        Parameters(params): Parameters<AttestLiftParams>,
+    ) -> String {
+        #[cfg(feature = "attestation")]
+        {
+            match self
+                .agent
+                .lift_to_attestation(&params.signed_doc_json, &params.claims_json)
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    let error = serde_json::json!({
+                        "error": true,
+                        "message": format!("Failed to lift to attestation: {}", e),
+                    });
+                    serde_json::to_string_pretty(&error)
+                        .unwrap_or_else(|e| format!("Error: {}", e))
+                }
+            }
+        }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = params;
+            serde_json::json!({
+                "error": true,
+                "message": "Attestation feature not available. Rebuild with --features attestation."
+            }).to_string()
+        }
+    }
 }
 
 // Implement the tool handler for the server
@@ -3823,6 +4033,10 @@ impl ServerHandler for JacsMcpServer {
                  jacs_is_trusted (check if agent is trusted), \
                  jacs_get_trusted_agent (get trusted agent JSON). \
                  \
+                 Attestation: jacs_attest_create (create signed attestation with claims), \
+                 jacs_attest_verify (verify attestation, optionally with evidence checks), \
+                 jacs_attest_lift (lift signed document into attestation). \
+                 \
                  Security: jacs_audit (read-only security audit and health checks)."
                     .to_string(),
             ),
@@ -3837,7 +4051,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = JacsMcpServer::tools();
-        assert_eq!(tools.len(), 29, "JacsMcpServer should expose 29 tools");
+        assert_eq!(tools.len(), 32, "JacsMcpServer should expose 32 tools");
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"jacs_sign_state"));
@@ -3872,6 +4086,10 @@ mod tests {
         assert!(names.contains(&"jacs_list_trusted_agents"));
         assert!(names.contains(&"jacs_is_trusted"));
         assert!(names.contains(&"jacs_get_trusted_agent"));
+        // Attestation tools
+        assert!(names.contains(&"jacs_attest_create"));
+        assert!(names.contains(&"jacs_attest_verify"));
+        assert!(names.contains(&"jacs_attest_lift"));
     }
 
     #[test]

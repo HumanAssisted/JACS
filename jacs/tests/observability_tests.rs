@@ -13,7 +13,7 @@ mod no_convenience_shims {
 use jacs::observability::metrics::{increment_counter, record_histogram, set_gauge};
 use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-    init_observability,
+    ResourceConfig, SamplingConfig, TracingConfig, init_observability,
 };
 #[cfg(not(feature = "observability-convenience"))]
 use no_convenience_shims::{

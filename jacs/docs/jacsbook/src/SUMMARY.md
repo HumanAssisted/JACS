@@ -9,6 +9,7 @@
 - [Which Integration?](getting-started/decision-tree.md)
 - [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
 - [Verifying Signed Documents](getting-started/verification.md)
+- [What Is an Attestation?](getting-started/attestation.md)
 - [Use cases](usecases.md)
 - [Deployment Compatibility](getting-started/deployment.md)
 - [Troubleshooting](getting-started/troubleshooting.md)
@@ -58,6 +59,9 @@
 - [Conversation Schema](schemas/conversation.md)
 - [Config File Schema](schemas/configuration.md)
 
+## Concepts
+- [JACS Attestation vs. Other Standards](concepts/attestation-comparison.md)
+
 ## Advanced Topics
 - [Security Model](advanced/security.md)
 - [Key Rotation](advanced/key-rotation.md)
@@ -85,6 +89,10 @@
   - [Serve Your Agent Card](guides/a2a-serve.md)
   - [Discover & Trust Remote Agents](guides/a2a-discover.md)
   - [Exchange Signed Artifacts](guides/a2a-exchange.md)
+- [Sign vs. Attest Decision Guide](guides/sign-vs-attest.md)
+- [Attestation Tutorial](guides/attestation-tutorial.md)
+- [Writing a Custom Evidence Adapter](guides/custom-adapters.md)
+- [Framework Adapter Attestation Guide](guides/framework-attestation.md)
 - [Observability & Monitoring Guide](guides/observability.md)
 - [Email Signing & Verification](guides/email-signing.md)
 - [Streaming Signing](guides/streaming.md)
@@ -99,6 +107,8 @@
 - [CLI Command Reference](reference/cli-commands.md)
 - [Configuration Reference](reference/configuration.md)
 - [Error Codes](reference/errors.md)
+- [Attestation Verification Results](reference/attestation-errors.md)
+- [Attestation CLI Reference](reference/attest-cli.md)
 - [Migration Guide](reference/migration.md)
 
 -----------

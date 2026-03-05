@@ -16,9 +16,13 @@ npm install jacs
 
 The npm package ships prebuilt native bindings for supported targets and does not compile Rust during `npm install`.
 
-## v0.8.0: Framework Adapters
+## v0.9.0: Attestation Support
 
-New in v0.8.0: first-class adapters for **Vercel AI SDK**, **Express**, **Koa**, **LangChain.js**, and a full **MCP tool suite**. All framework dependencies are optional peer deps — install only what you use.
+New in v0.9.0: **attestation** -- evidence-based trust proofs on top of cryptographic signing. Create attestations with claims, evidence, and derivation chains. Verify locally (signature + hash) or fully (evidence + chain). Export as DSSE for in-toto/SLSA compatibility. All attestation APIs are available as async and sync variants.
+
+### v0.8.0: Framework Adapters
+
+First-class adapters for **Vercel AI SDK**, **Express**, **Koa**, **LangChain.js**, and a full **MCP tool suite**. All framework dependencies are optional peer deps -- install only what you use.
 
 ### Async-First API
 

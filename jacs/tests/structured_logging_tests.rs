@@ -480,3 +480,150 @@ fn test_pq2025_sign_verify_events() {
     );
     assert_eq!(get_field(verify_events[0], "valid"), Some("true"));
 }
+
+// ---------------------------------------------------------------------------
+// Attestation-specific structured logging tests
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "attestation")]
+mod attestation_tracing {
+    use super::*;
+    use jacs::attestation::types::*;
+    use serial_test::serial;
+    use std::collections::HashMap;
+
+    fn ephemeral_agent() -> SimpleAgent {
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        agent
+    }
+
+    fn test_subject() -> AttestationSubject {
+        AttestationSubject {
+            subject_type: SubjectType::Artifact,
+            id: "trace-artifact-001".into(),
+            digests: DigestSet {
+                sha256: "abc123".into(),
+                sha512: None,
+                additional: HashMap::new(),
+            },
+        }
+    }
+
+    fn test_claim() -> Claim {
+        Claim {
+            name: "reviewed".into(),
+            value: serde_json::json!(true),
+            confidence: Some(0.95),
+            assurance_level: Some(AssuranceLevel::Verified),
+            issuer: None,
+            issued_at: None,
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn attestation_create_emits_structured_event() {
+        let agent = ephemeral_agent();
+
+        let events = with_captured_logs(|| {
+            let _doc = agent
+                .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
+                .expect("create attestation");
+        });
+
+        let create_events = events_with_name(&events, "attestation_created");
+        assert!(
+            !create_events.is_empty(),
+            "Should emit 'attestation_created' event. All events: {:?}",
+            events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        );
+
+        let ev = create_events[0];
+        // Verify target includes attestation::create
+        assert!(
+            ev.target.contains("attestation"),
+            "Event target should include 'attestation', got: {}",
+            ev.target
+        );
+        assert_has_field(ev, "subject_type");
+        assert_has_field(ev, "claims_count");
+        assert_has_field(ev, "evidence_count");
+        assert_has_field(ev, "has_derivation");
+    }
+
+    #[test]
+    #[serial]
+    fn attestation_verify_local_emits_event() {
+        let agent = ephemeral_agent();
+        let signed = agent
+            .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
+            .expect("create attestation");
+
+        let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
+        let key = format!(
+            "{}:{}",
+            doc["jacsId"].as_str().unwrap(),
+            doc["jacsVersion"].as_str().unwrap()
+        );
+
+        let events = with_captured_logs(|| {
+            let _result = agent.verify_attestation(&key).expect("local verify");
+        });
+
+        let verify_events = events_with_name(&events, "attestation_verify_local");
+        assert!(
+            !verify_events.is_empty(),
+            "Should emit 'attestation_verify_local' event. All events: {:?}",
+            events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        );
+
+        let ev = verify_events[0];
+        assert!(
+            ev.target.contains("attestation"),
+            "Event target should include 'attestation', got: {}",
+            ev.target
+        );
+        assert_has_field(ev, "tier");
+        assert_eq!(get_field(ev, "tier"), Some("local"));
+        assert_has_field(ev, "valid");
+        assert_has_field(ev, "document_key");
+    }
+
+    #[test]
+    #[serial]
+    fn attestation_verify_full_emits_event() {
+        let agent = ephemeral_agent();
+        let signed = agent
+            .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
+            .expect("create attestation");
+
+        let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
+        let key = format!(
+            "{}:{}",
+            doc["jacsId"].as_str().unwrap(),
+            doc["jacsVersion"].as_str().unwrap()
+        );
+
+        let events = with_captured_logs(|| {
+            let _result = agent.verify_attestation_full(&key).expect("full verify");
+        });
+
+        let verify_events = events_with_name(&events, "attestation_verify_full");
+        assert!(
+            !verify_events.is_empty(),
+            "Should emit 'attestation_verify_full' event. All events: {:?}",
+            events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+        );
+
+        let ev = verify_events[0];
+        assert!(
+            ev.target.contains("attestation"),
+            "Event target should include 'attestation', got: {}",
+            ev.target
+        );
+        assert_has_field(ev, "tier");
+        assert_eq!(get_field(ev, "tier"), Some("full"));
+        assert_has_field(ev, "valid");
+        assert_has_field(ev, "evidence_count");
+    }
+}

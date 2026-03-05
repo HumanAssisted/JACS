@@ -587,6 +587,27 @@ class _EphemeralAgentAdapter:
             "Use jacs.create() or jacs.load() for a persistent agent."
         )
 
+    # ----- Attestation methods (delegate to native SimpleAgent) -----
+
+    def create_attestation(self, params_json):
+        """Delegate to SimpleAgent.create_attestation()."""
+        return self._native.create_attestation(params_json)
+
+    def verify_attestation(self, document_key):
+        """Delegate to SimpleAgent.verify_attestation()."""
+        return self._native.verify_attestation(document_key)
+
+    def verify_attestation_full(self, document_key):
+        """Delegate to SimpleAgent.verify_attestation_full()."""
+        return self._native.verify_attestation_full(document_key)
+
+    def lift_to_attestation(self, signed_doc_json, claims_json):
+        """Delegate to SimpleAgent.lift_to_attestation()."""
+        return self._native.lift_to_attestation(signed_doc_json, claims_json)
+
+    def export_attestation_dsse(self, attestation_json):
+        """Delegate to SimpleAgent.export_dsse()."""
+        return self._native.export_dsse(attestation_json)
 
 
 def quickstart(

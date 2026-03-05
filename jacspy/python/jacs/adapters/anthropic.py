@@ -61,6 +61,7 @@ def signed_tool(
     client: Any = ...,
     config_path: Optional[str] = ...,
     strict: bool = ...,
+    attest: bool = ...,
 ) -> Callable[[F], F]: ...
 
 
@@ -70,6 +71,7 @@ def signed_tool(
     client: Any = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ) -> Union[Callable[..., Any], Callable[[Callable[..., Any]], Callable[..., Any]]]:
     """Wrap a tool function to auto-sign its return value with JACS.
 
@@ -93,8 +95,9 @@ def signed_tool(
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
         strict: If *True*, signing failures raise.  If *False* (default),
             the original return value is passed through.
+        attest: If *True*, produce attestation documents.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         if asyncio.iscoroutinefunction(fn):
@@ -143,6 +146,7 @@ class JacsToolHook:
         client: A ``JacsClient`` instance.
         config_path: Optional config path forwarded to ``BaseJacsAdapter``.
         strict: If *True*, signing failures raise.
+        attest: If *True*, produce attestation documents.
     """
 
     def __init__(
@@ -150,9 +154,10 @@ class JacsToolHook:
         client: Any = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        attest: bool = False,
     ) -> None:
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict
+            client=client, config_path=config_path, strict=strict, attest=attest
         )
 
     @property

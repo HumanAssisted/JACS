@@ -214,6 +214,24 @@ pub enum JacsError {
     /// "verified-registry") but the required security conditions are not met.
     VerificationClaimFailed { claim: String, reason: String },
 
+    // === Attestation Errors ===
+    /// Attestation creation failed.
+    ///
+    /// Use this for errors related to:
+    /// - Attestation document creation
+    /// - Attestation subject or claims validation
+    /// - Migration (lift-to-attestation) failures
+    #[cfg(feature = "attestation")]
+    AttestationFailed { message: String },
+
+    /// Attestation verification failed.
+    ///
+    /// Use this for errors related to:
+    /// - Attestation local (crypto-only) verification
+    /// - Attestation full (evidence + chain) verification
+    #[cfg(feature = "attestation")]
+    VerificationFailed { message: String },
+
     // === Agent State Errors ===
     /// No agent is currently loaded. Call quickstart(), create(), or load() first.
     AgentNotLoaded,
@@ -424,6 +442,16 @@ impl fmt::Display for JacsError {
                     f,
                     "\n\nSee: https://jacs.ai/docs/security#verification-claims"
                 )
+            }
+
+            // Attestation
+            #[cfg(feature = "attestation")]
+            JacsError::AttestationFailed { message } => {
+                write!(f, "Attestation failed: {}", message)
+            }
+            #[cfg(feature = "attestation")]
+            JacsError::VerificationFailed { message } => {
+                write!(f, "Attestation verification failed: {}", message)
             }
 
             // Agent state

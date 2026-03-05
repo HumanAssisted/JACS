@@ -223,4 +223,4 @@ Cross-language interoperability is tested on every commit with both Ed25519 and 
 
 ---
 
-v0.8.0 | [Apache 2.0 with Common Clause](./LICENSE)
+v0.9.0 | [Apache 2.0 with Common Clause](./LICENSE)

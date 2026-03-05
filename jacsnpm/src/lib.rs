@@ -840,6 +840,125 @@ impl JacsAgent {
             func: Some(Box::new(move |a| a.verify_a2a_artifact(&wrapped_json))),
         })
     }
+
+}
+
+// =============================================================================
+// Attestation methods on JacsAgent (feature-gated, separate impl block)
+// =============================================================================
+// In a separate `impl` block so the #[napi] macro only generates registration
+// code when the attestation feature is enabled.
+
+#[cfg(feature = "attestation")]
+#[napi]
+impl JacsAgent {
+    /// Create a signed attestation document (sync).
+    #[napi(js_name = "createAttestationSync")]
+    pub fn create_attestation_sync(&self, params_json: String) -> Result<String> {
+        self.inner.create_attestation(&params_json).to_napi()
+    }
+
+    /// Verify an attestation -- local tier (sync).
+    #[napi(js_name = "verifyAttestationSync")]
+    pub fn verify_attestation_sync(&self, document_key: String) -> Result<String> {
+        self.inner.verify_attestation(&document_key).to_napi()
+    }
+
+    /// Verify an attestation -- full tier (sync).
+    #[napi(js_name = "verifyAttestationFullSync")]
+    pub fn verify_attestation_full_sync(&self, document_key: String) -> Result<String> {
+        self.inner.verify_attestation_full(&document_key).to_napi()
+    }
+
+    /// Lift a signed document to attestation (sync).
+    #[napi(js_name = "liftToAttestationSync")]
+    pub fn lift_to_attestation_sync(
+        &self,
+        signed_doc_json: String,
+        claims_json: String,
+    ) -> Result<String> {
+        self.inner
+            .lift_to_attestation(&signed_doc_json, &claims_json)
+            .to_napi()
+    }
+
+    /// Export an attestation as a DSSE envelope (sync).
+    #[napi(js_name = "exportAttestationDsseSync")]
+    pub fn export_attestation_dsse_sync(&self, attestation_json: String) -> Result<String> {
+        self.inner
+            .export_attestation_dsse(&attestation_json)
+            .to_napi()
+    }
+
+    /// Create a signed attestation document (async).
+    #[napi(js_name = "createAttestation", ts_return_type = "Promise<string>")]
+    pub fn create_attestation_async(
+        &self,
+        params_json: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.create_attestation(&params_json))),
+        })
+    }
+
+    /// Verify an attestation -- local tier (async).
+    #[napi(js_name = "verifyAttestation", ts_return_type = "Promise<string>")]
+    pub fn verify_attestation_async(
+        &self,
+        document_key: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.verify_attestation(&document_key))),
+        })
+    }
+
+    /// Verify an attestation -- full tier (async).
+    #[napi(js_name = "verifyAttestationFull", ts_return_type = "Promise<string>")]
+    pub fn verify_attestation_full_async(
+        &self,
+        document_key: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.verify_attestation_full(&document_key))),
+        })
+    }
+
+    /// Lift a signed document to attestation (async).
+    #[napi(js_name = "liftToAttestation", ts_return_type = "Promise<string>")]
+    pub fn lift_to_attestation_async(
+        &self,
+        signed_doc_json: String,
+        claims_json: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.lift_to_attestation(&signed_doc_json, &claims_json)
+            })),
+        })
+    }
+
+    /// Export an attestation as a DSSE envelope (async).
+    #[napi(js_name = "exportAttestationDsse", ts_return_type = "Promise<string>")]
+    pub fn export_attestation_dsse_async(
+        &self,
+        attestation_json: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.export_attestation_dsse(&attestation_json)
+            })),
+        })
+    }
 }
 
 // ============================================================================

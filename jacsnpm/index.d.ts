@@ -13,7 +13,7 @@ export declare function createAgentSync(name: string, password: string, algorith
 export declare function createAgent(name: string, password: string, algorithm?: string | undefined | null, dataDirectory?: string | undefined | null, keyDirectory?: string | undefined | null, configPath?: string | undefined | null, agentType?: string | undefined | null, description?: string | undefined | null, domain?: string | undefined | null, defaultStorage?: string | undefined | null): Promise<string>
 /** Add an agent to the local trust store. */
 export declare function trustAgent(agentJson: string): string
-/** Add an agent to the local trust store with an explicit public key PEM. */
+/** Add an agent to the local trust store with an explicit public key. */
 export declare function trustAgentWithKey(agentJson: string, publicKeyPem: string): string
 /** List all trusted agent IDs. */
 export declare function listTrustedAgents(): Array<string>
@@ -193,4 +193,24 @@ export declare class JacsAgent {
   signArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
   /** Verify a JACS-wrapped A2A artifact. */
   verifyA2aArtifact(wrappedJson: string): Promise<string>
+  /** Create a signed attestation document (sync). */
+  createAttestationSync(paramsJson: string): string
+  /** Verify an attestation -- local tier (sync). */
+  verifyAttestationSync(documentKey: string): string
+  /** Verify an attestation -- full tier (sync). */
+  verifyAttestationFullSync(documentKey: string): string
+  /** Lift a signed document to attestation (sync). */
+  liftToAttestationSync(signedDocJson: string, claimsJson: string): string
+  /** Export an attestation as a DSSE envelope (sync). */
+  exportAttestationDsseSync(attestationJson: string): string
+  /** Create a signed attestation document (async). */
+  createAttestation(paramsJson: string): Promise<string>
+  /** Verify an attestation -- local tier (async). */
+  verifyAttestation(documentKey: string): Promise<string>
+  /** Verify an attestation -- full tier (async). */
+  verifyAttestationFull(documentKey: string): Promise<string>
+  /** Lift a signed document to attestation (async). */
+  liftToAttestation(signedDocJson: string, claimsJson: string): Promise<string>
+  /** Export an attestation as a DSSE envelope (async). */
+  exportAttestationDsse(attestationJson: string): Promise<string>
 }

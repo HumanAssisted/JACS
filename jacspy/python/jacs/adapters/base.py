@@ -4,6 +4,12 @@ Wraps a JacsClient instance and provides sign/verify primitives that
 framework-specific adapters can hook into. Supports strict mode
 (raise on failures) and permissive mode (log and passthrough).
 
+When ``attest=True`` is passed, the adapter produces attestation
+documents instead of plain signatures.  If the underlying client
+does not support attestation (feature not compiled in), the adapter
+falls back to plain signatures in permissive mode or raises in
+strict mode.
+
 Example:
     from jacs.adapters.base import BaseJacsAdapter
     from jacs.client import JacsClient
@@ -11,8 +17,13 @@ Example:
     adapter = BaseJacsAdapter(client=JacsClient.ephemeral())
     signed = adapter.sign_output({"result": "ok"})
     payload = adapter.verify_input(signed)
+
+    # With attestation:
+    adapter = BaseJacsAdapter(client=JacsClient.ephemeral(), attest=True)
+    attested = adapter.sign_output({"result": "ok"})
 """
 
+import hashlib
 import json
 import logging
 from typing import Any, Dict, List, Optional
@@ -35,6 +46,12 @@ class BaseJacsAdapter:
         strict: If True, sign/verify failures raise exceptions.
             If False (default), failures are logged and the original
             data is returned unchanged.
+        attest: If True, produce attestation documents instead of
+            plain signatures. Falls back to plain signatures when
+            attestation is unavailable (permissive mode) or raises
+            (strict mode). Default False.
+        default_claims: A list of claim dicts to include in every
+            attestation. Only used when attest=True.
     """
 
     def __init__(
@@ -42,8 +59,12 @@ class BaseJacsAdapter:
         client: Optional[Any] = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        attest: bool = False,
+        default_claims: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self._strict = strict
+        self._attest = attest
+        self._default_claims = default_claims or []
 
         if client is not None:
             self._client = client
@@ -71,15 +92,63 @@ class BaseJacsAdapter:
         """Whether the adapter is in strict mode."""
         return self._strict
 
-    def sign_output(self, data: Any) -> str:
+    @property
+    def attest(self) -> bool:
+        """Whether the adapter produces attestations instead of plain signatures."""
+        return self._attest
+
+    @property
+    def default_claims(self) -> List[Dict[str, Any]]:
+        """Default claims included in every attestation."""
+        return self._default_claims
+
+    def _build_attestation_params(
+        self,
+        data: Any,
+        extra_claims: Optional[List[Dict[str, Any]]] = None,
+    ) -> tuple:
+        """Build subject and claims for an attestation from arbitrary data.
+
+        Returns:
+            Tuple of (subject_dict, claims_list).
+        """
+        # Serialize data for hashing
+        if isinstance(data, str):
+            data_str = data
+        else:
+            data_str = json.dumps(data, sort_keys=True, default=str)
+
+        digest = hashlib.sha256(data_str.encode("utf-8")).hexdigest()
+
+        subject = {
+            "type": "adapter_output",
+            "id": f"urn:jacs:adapter:{digest[:16]}",
+            "digests": {"sha256": digest},
+        }
+
+        claims = list(self._default_claims)
+        if extra_claims:
+            claims.extend(extra_claims)
+        if not claims:
+            claims = [{"name": "signed_by_adapter", "value": "true", "confidence": 1.0}]
+
+        return subject, claims
+
+    def sign_output(self, data: Any, extra_claims: Optional[List[Dict[str, Any]]] = None) -> str:
         """Sign data and return signed JSON string.
 
-        Uses JacsClient.sign_message which wraps data into a JACS
-        document envelope with cryptographic signature.
+        When ``attest=True``, this produces an attestation document.
+        When ``attest=False`` (default), this produces a plain signed
+        document.
+
+        If attestation fails and strict mode is off, falls back to
+        plain signing.
 
         Args:
             data: The data to sign. Can be a dict, string, or any
                 JSON-serializable value.
+            extra_claims: Additional claims to include in the
+                attestation (only used when attest=True).
 
         Returns:
             Signed JSON string.
@@ -87,8 +156,28 @@ class BaseJacsAdapter:
         Raises:
             SigningError: If signing fails and strict mode is enabled.
         """
+        if self._attest:
+            return self._sign_as_attestation(data, extra_claims)
         signed_doc = self._client.sign_message(data)
         return signed_doc.raw_json
+
+    def _sign_as_attestation(self, data: Any, extra_claims: Optional[List[Dict[str, Any]]] = None) -> str:
+        """Attempt to create an attestation; fall back to plain signing on failure."""
+        try:
+            subject, claims = self._build_attestation_params(data, extra_claims)
+            signed_doc = self._client.create_attestation(
+                subject=subject,
+                claims=claims,
+            )
+            return signed_doc.raw_json
+        except Exception as exc:
+            if self._strict:
+                raise
+            logger.warning(
+                "JACS attestation failed, falling back to plain signing: %s", exc
+            )
+            signed_doc = self._client.sign_message(data)
+            return signed_doc.raw_json
 
     def verify_input(self, signed_json: str) -> Any:
         """Verify signed JSON and return the original payload.

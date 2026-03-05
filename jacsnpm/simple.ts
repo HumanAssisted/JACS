@@ -1109,3 +1109,176 @@ export function auditSync(options?: AuditOptions): Record<string, unknown> {
   const json = nativeAuditSync(options?.configPath ?? undefined, options?.recentN ?? undefined);
   return JSON.parse(json) as Record<string, unknown>;
 }
+
+// =============================================================================
+// Attestation (requires native module built with `attestation` feature)
+// =============================================================================
+
+/**
+ * Create a signed attestation document (async).
+ *
+ * Requires the native module to be built with the `attestation` feature.
+ * Throws if attestation is not available or if the claims are invalid.
+ *
+ * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+ * @returns The signed attestation as a SignedDocument.
+ */
+export async function createAttestation(params: {
+  subject: Record<string, unknown>;
+  claims: Record<string, unknown>[];
+  evidence?: Record<string, unknown>[];
+  derivation?: Record<string, unknown>;
+  policyContext?: Record<string, unknown>;
+}): Promise<SignedDocument> {
+  const agent = requireAgent();
+  const raw: string = await (agent as any).createAttestation(JSON.stringify(params));
+  const doc = JSON.parse(raw);
+  return {
+    raw,
+    documentId: doc.jacsId || '',
+    agentId: doc.jacsSignature?.agentID || '',
+    timestamp: doc.jacsSignature?.date || '',
+  };
+}
+
+/**
+ * Create a signed attestation document (sync).
+ *
+ * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+ * @returns The signed attestation as a SignedDocument.
+ */
+export function createAttestationSync(params: {
+  subject: Record<string, unknown>;
+  claims: Record<string, unknown>[];
+  evidence?: Record<string, unknown>[];
+  derivation?: Record<string, unknown>;
+  policyContext?: Record<string, unknown>;
+}): SignedDocument {
+  const agent = requireAgent();
+  const raw: string = (agent as any).createAttestationSync(JSON.stringify(params));
+  const doc = JSON.parse(raw);
+  return {
+    raw,
+    documentId: doc.jacsId || '',
+    agentId: doc.jacsSignature?.agentID || '',
+    timestamp: doc.jacsSignature?.date || '',
+  };
+}
+
+/**
+ * Verify an attestation document -- local tier (async).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @param opts - Optional. Set full: true for full-tier verification.
+ * @returns Verification result object.
+ */
+export async function verifyAttestation(
+  attestationJson: string,
+  opts?: { full?: boolean },
+): Promise<Record<string, unknown>> {
+  const agent = requireAgent();
+  const doc = JSON.parse(attestationJson);
+  const docKey = `${doc.jacsId}:${doc.jacsVersion}`;
+  let resultJson: string;
+  if (opts?.full) {
+    resultJson = await (agent as any).verifyAttestationFull(docKey);
+  } else {
+    resultJson = await (agent as any).verifyAttestation(docKey);
+  }
+  return JSON.parse(resultJson);
+}
+
+/**
+ * Verify an attestation document -- local tier (sync).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @param opts - Optional. Set full: true for full-tier verification.
+ * @returns Verification result object.
+ */
+export function verifyAttestationSync(
+  attestationJson: string,
+  opts?: { full?: boolean },
+): Record<string, unknown> {
+  const agent = requireAgent();
+  const doc = JSON.parse(attestationJson);
+  const docKey = `${doc.jacsId}:${doc.jacsVersion}`;
+  let resultJson: string;
+  if (opts?.full) {
+    resultJson = (agent as any).verifyAttestationFullSync(docKey);
+  } else {
+    resultJson = (agent as any).verifyAttestationSync(docKey);
+  }
+  return JSON.parse(resultJson);
+}
+
+/**
+ * Lift a signed document into an attestation (async).
+ *
+ * @param signedDocJson - Raw JSON string of the signed document.
+ * @param claims - Array of claim objects.
+ * @returns The lifted attestation as a SignedDocument.
+ */
+export async function liftToAttestation(
+  signedDocJson: string,
+  claims: Record<string, unknown>[],
+): Promise<SignedDocument> {
+  const agent = requireAgent();
+  const raw: string = await (agent as any).liftToAttestation(signedDocJson, JSON.stringify(claims));
+  const doc = JSON.parse(raw);
+  return {
+    raw,
+    documentId: doc.jacsId || '',
+    agentId: doc.jacsSignature?.agentID || '',
+    timestamp: doc.jacsSignature?.date || '',
+  };
+}
+
+/**
+ * Lift a signed document into an attestation (sync).
+ *
+ * @param signedDocJson - Raw JSON string of the signed document.
+ * @param claims - Array of claim objects.
+ * @returns The lifted attestation as a SignedDocument.
+ */
+export function liftToAttestationSync(
+  signedDocJson: string,
+  claims: Record<string, unknown>[],
+): SignedDocument {
+  const agent = requireAgent();
+  const raw: string = (agent as any).liftToAttestationSync(signedDocJson, JSON.stringify(claims));
+  const doc = JSON.parse(raw);
+  return {
+    raw,
+    documentId: doc.jacsId || '',
+    agentId: doc.jacsSignature?.agentID || '',
+    timestamp: doc.jacsSignature?.date || '',
+  };
+}
+
+/**
+ * Export an attestation as a DSSE (Dead Simple Signing Envelope) (async).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @returns The DSSE envelope as a parsed object.
+ */
+export async function exportAttestationDsse(
+  attestationJson: string,
+): Promise<Record<string, unknown>> {
+  const agent = requireAgent();
+  const raw: string = await (agent as any).exportAttestationDsse(attestationJson);
+  return JSON.parse(raw);
+}
+
+/**
+ * Export an attestation as a DSSE (Dead Simple Signing Envelope) (sync).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @returns The DSSE envelope as a parsed object.
+ */
+export function exportAttestationDsseSync(
+  attestationJson: string,
+): Record<string, unknown> {
+  const agent = requireAgent();
+  const raw: string = (agent as any).exportAttestationDsseSync(attestationJson);
+  return JSON.parse(raw);
+}
