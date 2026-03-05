@@ -460,6 +460,14 @@ class _EphemeralAgentAdapter:
     def __init__(self, native_agent):
         self._native = native_agent
 
+    def sign_string(self, data):
+        """Sign a raw string and return the base64-encoded signature.
+
+        Delegates to the native SimpleAgent.sign_string() method which
+        provides raw string signing (same as JacsAgent.sign_string()).
+        """
+        return self._native.sign_string(data)
+
     def verify_agent(self, agentfile=None):
         """Delegate to SimpleAgent.verify_self(); returns True or raises."""
         result = self._native.verify_self()

@@ -734,6 +734,27 @@ impl SimpleAgent {
         Ok(dict.into())
     }
 
+    /// Sign a raw string and return the base64-encoded signature.
+    ///
+    /// This provides the same raw-string signing as JacsAgent.sign_string(),
+    /// using the underlying KeyManager::sign_string() via sign_raw_bytes().
+    ///
+    /// Args:
+    ///     data: The UTF-8 string to sign
+    ///
+    /// Returns:
+    ///     Base64-encoded signature string
+    fn sign_string(&self, data: &str) -> PyResult<String> {
+        use base64::Engine;
+        let raw_bytes = self.inner.sign_raw_bytes(data.as_bytes()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to sign string: {}",
+                e
+            ))
+        })?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(&raw_bytes))
+    }
+
     /// Export the current agent's identity JSON for P2P exchange.
     ///
     /// Returns:
