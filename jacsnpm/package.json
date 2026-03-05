@@ -134,6 +134,7 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@types/node": "^22.15",
+    "ajv": "^8.17.1",
     "chai": "^6.2.2",
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",

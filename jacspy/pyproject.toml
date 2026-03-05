@@ -51,6 +51,7 @@ jacs = "jacs.cli_runner:main"
 asyncio_mode = "auto"
 markers = [
     "asyncio: mark async tests that require an event loop",
+    "contract: contract tests validating output against shared a2a-verification-result schema",
 ]
 
 [tool.maturin]
