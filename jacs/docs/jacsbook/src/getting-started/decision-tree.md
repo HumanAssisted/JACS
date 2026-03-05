@@ -29,6 +29,7 @@ This page helps you find the right integration path in under 2 minutes.
 | MCP Server (Node.js) | `require('@hai.ai/jacs/mcp')` | [MCP Guide](../nodejs/mcp.md) |
 | Go service / API | `import "github.com/HumanAssisted/JACS/jacsgo"` | [Go Quick Start](../go/installation.md) |
 | A2A Protocol | `from jacs.a2a import JACSA2AIntegration` | [A2A Guide](../integrations/a2a.md) |
+| A2A + Attestation (signed exchange with trust claims) | Combine `sign_artifact()` + `create_attestation()` | [A2A + Attestation Guide](../guides/a2a-attestation-composition.md) |
 | DID-compatible identity (no blockchain required) | Keep JACS signing + add DID mapping | [DID Guide](../integrations/did.md) |
 | Database-backed provenance | Store signed envelopes + query extracted fields | [Database Guide](../integrations/databases.md) |
 | Rust / CLI | `cargo install jacs --features cli` | [Rust Guide](../rust/installation.md) |
@@ -40,7 +41,7 @@ This page helps you find the right integration path in under 2 minutes.
 
 **Stage 2 -- Single-org production**: `jacs.load()` with persistent agent, strict mode, file-based keys. Add provenance to internal systems.
 
-**Stage 3 -- Cross-org production**: DNS trust anchoring, A2A agent cards, agreements with external agents. Operate across trust boundaries.
+**Stage 3 -- Cross-org production**: DNS trust anchoring, A2A agent cards, agreements with external agents. Operate across trust boundaries. For workflows requiring both cross-boundary exchange and trust claims, see the [A2A + Attestation Composition Guide](../guides/a2a-attestation-composition.md).
 
 **Stage 4 -- Regulated/enterprise**: Post-quantum algorithms (pq2025/ML-DSA-87), OpenTelemetry observability, audit trails for compliance.
 

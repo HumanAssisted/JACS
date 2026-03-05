@@ -64,11 +64,13 @@ Now add trust context -- *why* this document should be trusted:
 {{#tabs }}
 {{#tab name="Python" }}
 ```python
+import hashlib
+content_hash = hashlib.sha256(signed.raw_json.encode()).hexdigest()
 attestation = client.create_attestation(
     subject={
         "type": "artifact",
         "id": signed.document_id,
-        "digests": {"sha256": "computed-from-content"},
+        "digests": {"sha256": content_hash},
     },
     claims=[
         {
@@ -84,11 +86,13 @@ print(f"Attestation ID: {attestation.document_id}")
 {{#endtab }}
 {{#tab name="Node.js" }}
 ```javascript
+const { createHash } = require('crypto');
+const contentHash = createHash('sha256').update(signed.raw).digest('hex');
 const attestation = await client.createAttestation({
   subject: {
     type: 'artifact',
     id: signed.documentId,
-    digests: { sha256: 'computed-from-content' },
+    digests: { sha256: contentHash },
   },
   claims: [{
     name: 'reviewed_by',

@@ -22,6 +22,11 @@ This guide helps you choose the right JACS API for your use case.
    - Use `export_attestation_dsse()` / `exportAttestationDsse()`
    - This creates an in-toto DSSE envelope compatible with SLSA and Sigstore.
 
+5. **"I need to send signed data to another agent or service"**
+   - Use `sign_artifact()` / `signArtifact()` via the A2A integration.
+   - This wraps your data in a JACS provenance envelope for cross-boundary exchange.
+   - See [A2A Interoperability](../integrations/a2a.md) and [A2A + Attestation Composition](a2a-attestation-composition.md).
+
 ## Quick Reference
 
 | Scenario | API | Output |
@@ -33,6 +38,7 @@ This guide helps you choose the right JACS API for your use case.
 | Export for SLSA/Sigstore | `export_attestation_dsse()` | DSSE envelope |
 | Verify signature only | `verify()` | Valid/invalid + signer |
 | Verify signature + claims + evidence | `verify_attestation(full=True)` | Full verification result |
+| Exchange artifact with another agent | `sign_artifact()` / A2A | Signed wrapped artifact |
 
 ## Examples
 

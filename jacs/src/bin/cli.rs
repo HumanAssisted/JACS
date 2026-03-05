@@ -1316,6 +1316,23 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                 .help("Maximum derivation chain depth"),
                         ),
                 )
+                .subcommand(
+                    Command::new("export-dsse")
+                        .about("Export an attestation as a DSSE envelope for in-toto/SLSA")
+                        .arg(
+                            Arg::new("file")
+                                .help("Path to the signed attestation JSON file")
+                                .required(true)
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .long("output")
+                                .value_parser(value_parser!(String))
+                                .help("Write DSSE envelope to file instead of stdout"),
+                        ),
+                )
                 .subcommand_required(true)
                 .arg_required_else_help(true),
         )
@@ -2596,8 +2613,43 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
+                Some(("export-dsse", export_matches)) => {
+                    let file_path = export_matches
+                        .get_one::<String>("file")
+                        .expect("file argument required");
+                    let output_path = export_matches.get_one::<String>("output");
+
+                    let attestation_json =
+                        std::fs::read_to_string(file_path).unwrap_or_else(|e| {
+                            eprintln!("Cannot read {}: {}", file_path, e);
+                            process::exit(1);
+                        });
+
+                    let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap_or_else(|e| {
+                        eprintln!("Failed to create agent: {}", e);
+                        process::exit(1);
+                    });
+
+                    match agent.export_dsse(&attestation_json) {
+                        Ok(envelope_json) => {
+                            if let Some(out_path) = output_path {
+                                std::fs::write(out_path, &envelope_json).unwrap_or_else(|e| {
+                                    eprintln!("Cannot write to {}: {}", out_path, e);
+                                    process::exit(1);
+                                });
+                                println!("DSSE envelope written to {}", out_path);
+                            } else {
+                                println!("{}", envelope_json);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to export DSSE envelope: {}", e);
+                            process::exit(1);
+                        }
+                    }
+                }
                 _ => {
-                    eprintln!("Use 'jacs attest create' or 'jacs attest verify'. See --help.");
+                    eprintln!("Use 'jacs attest create', 'jacs attest verify', or 'jacs attest export-dsse'. See --help.");
                     process::exit(1);
                 }
             }

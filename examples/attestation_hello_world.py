@@ -10,6 +10,7 @@ Run:
     python examples/attestation_hello_world.py
 """
 
+import hashlib
 import json
 from jacs.client import JacsClient
 
@@ -21,11 +22,12 @@ signed = client.sign_message({"action": "approve", "amount": 100})
 print(f"Signed document: {signed.document_id}")
 
 # 3. Attest WHY this document is trustworthy
+content_hash = hashlib.sha256(signed.raw_json.encode()).hexdigest()
 attestation = client.create_attestation(
     subject={
         "type": "artifact",
         "id": signed.document_id,
-        "digests": {"sha256": "from-signed-doc"},
+        "digests": {"sha256": content_hash},
     },
     claims=[{"name": "reviewed_by", "value": "human", "confidence": 0.95}],
 )

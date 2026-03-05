@@ -465,6 +465,16 @@ Before merging A2A changes, ensure:
 4. All 5 well-known documents are generated and match output from all bindings.
 5. Trust policy behavior (open/verified/strict) is consistent across bindings.
 
+## A2A vs. Attestation
+
+A2A provides exchange, discovery, and trust policy (Layer B). It answers *"is this agent allowed to communicate?"* Attestation (Layer C) answers *"why should this data be trusted?"* They compose but are not interchangeable.
+
+- A2A trust policy (`open`/`verified`/`strict`) controls **agent admission**, not evidence quality.
+- Attestation claims and evidence provide **trust context**, not transport authorization.
+- Use `assess_remote_agent()` for admission decisions; use `verify_attestation()` for trust claims.
+
+See [Trust Layers](../getting-started/trust-layers.md) for the canonical layer model and [A2A + Attestation Composition](../guides/a2a-attestation-composition.md) for how to use both together.
+
 ## Troubleshooting
 
 - `Unverified` foreign signatures: no signer key available from configured resolution order.

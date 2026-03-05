@@ -1309,6 +1309,14 @@ pub struct AttestVerifyParams {
     pub full: bool,
 }
 
+/// Parameters for exporting an attestation as a DSSE envelope.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AttestExportDsseParams {
+    /// The signed attestation document JSON string.
+    #[schemars(description = "JSON string of the signed attestation document to export as DSSE")]
+    pub attestation_json: String,
+}
+
 /// Parameters for lifting a signed document to an attestation.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AttestLiftParams {
@@ -1594,6 +1602,13 @@ impl JacsMcpServer {
                  feature.",
                 Self::jacs_attest_lift_schema(),
             ),
+            Tool::new(
+                "jacs_attest_export_dsse",
+                "Export an attestation as a DSSE envelope for in-toto/SLSA compatibility. \
+                 Provide the signed attestation document JSON. Returns a DSSE envelope with \
+                 payloadType, payload, and signatures. Requires the attestation feature.",
+                Self::jacs_attest_export_dsse_schema(),
+            ),
         ]
     }
 
@@ -1847,6 +1862,14 @@ impl JacsMcpServer {
 
     fn jacs_attest_lift_schema() -> serde_json::Map<String, serde_json::Value> {
         let schema = schemars::schema_for!(AttestLiftParams);
+        match serde_json::to_value(schema) {
+            Ok(serde_json::Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        }
+    }
+
+    fn jacs_attest_export_dsse_schema() -> serde_json::Map<String, serde_json::Value> {
+        let schema = schemars::schema_for!(AttestExportDsseParams);
         match serde_json::to_value(schema) {
             Ok(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
@@ -3981,6 +4004,39 @@ impl JacsMcpServer {
             }).to_string()
         }
     }
+    /// Export a signed attestation as a DSSE (Dead Simple Signing Envelope) for
+    /// in-toto/SLSA compatibility.
+    #[tool(
+        name = "jacs_attest_export_dsse",
+        description = "Export an attestation as a DSSE envelope for in-toto/SLSA compatibility."
+    )]
+    pub async fn jacs_attest_export_dsse(
+        &self,
+        Parameters(params): Parameters<AttestExportDsseParams>,
+    ) -> String {
+        #[cfg(feature = "attestation")]
+        {
+            match self.agent.export_attestation_dsse(&params.attestation_json) {
+                Ok(result) => result,
+                Err(e) => {
+                    let error = serde_json::json!({
+                        "error": true,
+                        "message": format!("Failed to export DSSE envelope: {}", e),
+                    });
+                    serde_json::to_string_pretty(&error)
+                        .unwrap_or_else(|e| format!("Error: {}", e))
+                }
+            }
+        }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = params;
+            serde_json::json!({
+                "error": true,
+                "message": "Attestation feature not available. Rebuild with --features attestation."
+            }).to_string()
+        }
+    }
 }
 
 // Implement the tool handler for the server
@@ -4035,7 +4091,8 @@ impl ServerHandler for JacsMcpServer {
                  \
                  Attestation: jacs_attest_create (create signed attestation with claims), \
                  jacs_attest_verify (verify attestation, optionally with evidence checks), \
-                 jacs_attest_lift (lift signed document into attestation). \
+                 jacs_attest_lift (lift signed document into attestation), \
+                 jacs_attest_export_dsse (export attestation as DSSE envelope). \
                  \
                  Security: jacs_audit (read-only security audit and health checks)."
                     .to_string(),
@@ -4090,6 +4147,7 @@ mod tests {
         assert!(names.contains(&"jacs_attest_create"));
         assert!(names.contains(&"jacs_attest_verify"));
         assert!(names.contains(&"jacs_attest_lift"));
+        assert!(names.contains(&"jacs_attest_export_dsse"));
     }
 
     #[test]

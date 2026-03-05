@@ -73,6 +73,12 @@ result = client.verify_attestation(att.raw_json, full=True)
 print(f"Valid: {result['valid']}")
 ```
 
+## Attestation vs. A2A Trust Policy
+
+Attestation (Layer C) provides trust context: claims, evidence, and derivation chains. It answers *"why should this data be trusted?"* A2A trust policy (Layer B) handles agent admission: *"is this agent allowed to communicate?"*
+
+For transport trust decisions, see [A2A Interoperability](../integrations/a2a.md). For how attestation and A2A compose, see [A2A + Attestation Composition](../guides/a2a-attestation-composition.md). For the full three-layer model, see [Trust Layers](trust-layers.md).
+
 ## When to Use Attestations
 
 Use attestations when you need to answer questions like:

@@ -12,6 +12,7 @@
  */
 
 const { JacsClient } = require('@hai.ai/jacs/client');
+const { createHash } = require('crypto');
 
 async function main() {
   // 1. Create an ephemeral agent (in-memory keys, no files)
@@ -22,11 +23,12 @@ async function main() {
   console.log(`Signed document: ${signed.documentId}`);
 
   // 3. Attest WHY this document is trustworthy
+  const contentHash = createHash('sha256').update(signed.raw).digest('hex');
   const attestation = await client.createAttestation({
     subject: {
       type: 'artifact',
       id: signed.documentId,
-      digests: { sha256: 'from-signed-doc' },
+      digests: { sha256: contentHash },
     },
     claims: [{ name: 'reviewed_by', value: 'human', confidence: 0.95 }],
   });

@@ -38,10 +38,11 @@ echo "Document signed."
 
 echo ""
 echo "=== 4. Create an attestation ==="
+DOC_HASH=$(sha256sum mydata.json | awk '{print $1}')
 jacs attest create \
   --subject-type artifact \
   --subject-id "mydata-001" \
-  --subject-digest "sha256:from-signed-doc" \
+  --subject-digest "sha256:${DOC_HASH}" \
   --claims '[{"name": "reviewed_by", "value": "human", "confidence": 0.95}]'
 echo "Attestation created."
 
