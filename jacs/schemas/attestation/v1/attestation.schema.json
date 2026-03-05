@@ -8,6 +8,16 @@
     { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" }
   ],
   "properties": {
+    "jacsType": {
+      "type": "string",
+      "enum": ["attestation", "attestation-transform-receipt"],
+      "description": "Attestation document type. Must be 'attestation' or 'attestation-transform-receipt'."
+    },
+    "jacsLevel": {
+      "type": "string",
+      "enum": ["raw", "derived"],
+      "description": "Attestation data level. 'raw' for direct attestations, 'derived' for transform receipts."
+    },
     "attestation": {
       "type": "object",
       "properties": {

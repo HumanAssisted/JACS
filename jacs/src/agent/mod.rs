@@ -301,7 +301,7 @@ impl Agent {
             dns_validate_enabled: None,
             dns_required: None,
             #[cfg(feature = "attestation")]
-            adapters: Vec::new(),
+            adapters: crate::attestation::adapters::default_adapters(),
         })
     }
 
@@ -332,7 +332,7 @@ impl Agent {
             dns_validate_enabled: None,
             dns_required: None,
             #[cfg(feature = "attestation")]
-            adapters: Vec::new(),
+            adapters: crate::attestation::adapters::default_adapters(),
         })
     }
 
@@ -358,6 +358,14 @@ impl Agent {
     }
     pub fn set_dns_required(&mut self, required: bool) {
         self.dns_required = Some(required);
+    }
+
+    /// Register a custom evidence adapter with this agent.
+    /// The adapter will be consulted during full attestation verification
+    /// when evidence of a matching kind is encountered.
+    #[cfg(feature = "attestation")]
+    pub fn register_adapter(&mut self, adapter: Box<dyn crate::attestation::adapters::EvidenceAdapter>) {
+        self.adapters.push(adapter);
     }
 
     #[must_use = "agent loading result must be checked for errors"]
@@ -1782,7 +1790,7 @@ impl AgentBuilder {
             dns_validate_enabled: self.dns_validate,
             dns_required: self.dns_required,
             #[cfg(feature = "attestation")]
-            adapters: Vec::new(),
+            adapters: crate::attestation::adapters::default_adapters(),
         };
 
         // Apply DNS settings if specified

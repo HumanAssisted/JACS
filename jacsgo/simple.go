@@ -726,6 +726,70 @@ func ExportAttestationDSSE(attestationJSON string) (string, error) {
 	return globalAgent.ExportAttestationDSSE(attestationJSON)
 }
 
+// ============================================================================
+// A2A Simple API - Agent-to-Agent protocol operations using global agent
+// ============================================================================
+
+// ExportAgentCard exports an A2A Agent Card for the loaded agent.
+func ExportAgentCard() (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.ExportAgentCard()
+}
+
+// SignA2AArtifact wraps an artifact with a JACS signature for A2A exchange.
+func SignA2AArtifact(artifactJSON string, artifactType string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.SignA2AArtifact(artifactJSON, artifactType)
+}
+
+// VerifyA2AArtifact verifies a JACS-wrapped A2A artifact (crypto-only).
+func VerifyA2AArtifact(wrappedJSON string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.VerifyA2AArtifact(wrappedJSON)
+}
+
+// VerifyA2AArtifactWithPolicy verifies a JACS-wrapped artifact with trust policy enforcement.
+func VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy)
+}
+
+// AssessA2AAgent assesses an agent's trustworthiness against a trust policy.
+func AssessA2AAgent(agentCardJSON, policy string) (string, error) {
+	globalMutex.Lock()
+	defer globalMutex.Unlock()
+
+	if globalAgent == nil {
+		return "", ErrAgentNotLoaded
+	}
+
+	return globalAgent.AssessA2AAgent(agentCardJSON, policy)
+}
+
 func getNestedStringField(m map[string]interface{}, keys ...string) string {
 	current := m
 	for i, key := range keys {

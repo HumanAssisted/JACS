@@ -24,7 +24,8 @@ fn max_derivation_depth() -> u32 {
 }
 
 /// Parse a simple ISO 8601 duration string into seconds.
-/// Supports: PTnS, PTnM, PTnH, PnD and combinations like PT1H30M.
+/// Supports: PnY, PnM (months), PnD, PTnH, PTnM (minutes), PTnS and combinations.
+/// Uses standard approximations: 1 year = 365.25 days, 1 month = 30.44 days.
 pub fn parse_iso8601_duration_secs(duration: &str) -> Result<i64, Box<dyn Error>> {
     if !duration.starts_with('P') {
         return Err(
@@ -47,6 +48,21 @@ pub fn parse_iso8601_duration_secs(duration: &str) -> Result<i64, Box<dyn Error>
             }
             '0'..='9' | '.' => {
                 num_buf.push(ch);
+            }
+            'Y' if !in_time => {
+                let n: f64 = num_buf
+                    .parse()
+                    .map_err(|_| format!("Invalid number in duration: '{}'", num_buf))?;
+                seconds += (n * 365.25 * 86400.0) as i64;
+                num_buf.clear();
+            }
+            'M' if !in_time => {
+                // Months in the date section (before 'T')
+                let n: f64 = num_buf
+                    .parse()
+                    .map_err(|_| format!("Invalid number in duration: '{}'", num_buf))?;
+                seconds += (n * 30.44 * 86400.0) as i64;
+                num_buf.clear();
             }
             'D' if !in_time => {
                 let n: f64 = num_buf
@@ -293,6 +309,23 @@ impl Agent {
                 if let Ok(evidence_ref) =
                     serde_json::from_value::<EvidenceRef>(evidence_val.clone())
                 {
+                    // Dispatch to registered adapter if one matches the evidence kind,
+                    // falling back to the generic verify_evidence_ref().
+                    #[cfg(feature = "attestation")]
+                    let kind_str = evidence_ref.kind.as_str();
+                    #[cfg(feature = "attestation")]
+                    let mut ev_result = if let Some(adapter) = self.adapters.iter().find(|a| a.kind() == kind_str) {
+                        match adapter.verify_evidence(&evidence_ref) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                errors.push(format!("Adapter '{}' error: {}", kind_str, e));
+                                verify_evidence_ref(&evidence_ref)
+                            }
+                        }
+                    } else {
+                        verify_evidence_ref(&evidence_ref)
+                    };
+                    #[cfg(not(feature = "attestation"))]
                     let mut ev_result = verify_evidence_ref(&evidence_ref);
 
                     // Check freshness if policy specifies max age
@@ -797,5 +830,43 @@ mod tests {
     #[test]
     fn parse_iso8601_invalid() {
         assert!(parse_iso8601_duration_secs("5M").is_err());
+    }
+
+    #[test]
+    fn parse_iso8601_p6m_months() {
+        // 6 months: 6 * 30.44 days * 86400 sec/day
+        assert_eq!(
+            parse_iso8601_duration_secs("P6M").unwrap(),
+            (6.0_f64 * 30.44 * 86400.0) as i64
+        );
+    }
+
+    #[test]
+    fn parse_iso8601_p1y() {
+        // 1 year: 365.25 days * 86400 sec/day = 31,557,600
+        assert_eq!(
+            parse_iso8601_duration_secs("P1Y").unwrap(),
+            (365.25_f64 * 86400.0) as i64
+        );
+    }
+
+    #[test]
+    fn parse_iso8601_p1y6m() {
+        // 1 year + 6 months
+        let expected = (365.25_f64 * 86400.0) as i64 + (6.0_f64 * 30.44 * 86400.0) as i64;
+        assert_eq!(parse_iso8601_duration_secs("P1Y6M").unwrap(), expected);
+    }
+
+    #[test]
+    fn parse_iso8601_p1y6m3dt12h() {
+        // 1 year + 6 months + 3 days + 12 hours
+        let expected = (365.25_f64 * 86400.0) as i64
+            + (6.0_f64 * 30.44 * 86400.0) as i64
+            + (3.0_f64 * 86400.0) as i64
+            + (12.0_f64 * 3600.0) as i64;
+        assert_eq!(
+            parse_iso8601_duration_secs("P1Y6M3DT12H").unwrap(),
+            expected
+        );
     }
 }

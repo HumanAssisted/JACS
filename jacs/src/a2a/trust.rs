@@ -567,4 +567,77 @@ mod tests {
         let assessment = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Open);
         assert_eq!(assessment.agent_id, None);
     }
+
+    // =========================================================================
+    // Golden serialization tests (Task 006)
+    // =========================================================================
+
+    /// Pin exact JSON shape for TrustAssessment — all fields present, camelCase.
+    #[test]
+    fn test_trust_assessment_golden() {
+        let assessment = TrustAssessment {
+            allowed: true,
+            trust_level: TrustLevel::JacsVerified,
+            reason: "Verified policy: agent has JACS provenance extension".to_string(),
+            jacs_registered: true,
+            agent_id: Some("agent-golden-trust".to_string()),
+            policy: A2ATrustPolicy::Verified,
+        };
+
+        let actual: serde_json::Value = serde_json::to_value(&assessment).unwrap();
+        let expected = json!({
+            "allowed": true,
+            "trustLevel": "JacsVerified",
+            "reason": "Verified policy: agent has JACS provenance extension",
+            "jacsRegistered": true,
+            "agentId": "agent-golden-trust",
+            "policy": "Verified"
+        });
+
+        assert_eq!(actual, expected, "Golden JSON mismatch for TrustAssessment");
+
+        // Also pin with agent_id = None (Untrusted, Open policy)
+        let assessment_none = TrustAssessment {
+            allowed: true,
+            trust_level: TrustLevel::Untrusted,
+            reason: "Open policy: agent accepted (trust level: untrusted)".to_string(),
+            jacs_registered: false,
+            agent_id: None,
+            policy: A2ATrustPolicy::Open,
+        };
+
+        let actual_none: serde_json::Value = serde_json::to_value(&assessment_none).unwrap();
+        let expected_none = json!({
+            "allowed": true,
+            "trustLevel": "Untrusted",
+            "reason": "Open policy: agent accepted (trust level: untrusted)",
+            "jacsRegistered": false,
+            "agentId": null,
+            "policy": "Open"
+        });
+
+        assert_eq!(actual_none, expected_none, "Golden JSON mismatch for TrustAssessment (Untrusted/None)");
+
+        // Pin ExplicitlyTrusted + Strict policy
+        let assessment_strict = TrustAssessment {
+            allowed: true,
+            trust_level: TrustLevel::ExplicitlyTrusted,
+            reason: "Strict policy: agent is in local trust store".to_string(),
+            jacs_registered: true,
+            agent_id: Some("trusted-agent-xyz".to_string()),
+            policy: A2ATrustPolicy::Strict,
+        };
+
+        let actual_strict: serde_json::Value = serde_json::to_value(&assessment_strict).unwrap();
+        let expected_strict = json!({
+            "allowed": true,
+            "trustLevel": "ExplicitlyTrusted",
+            "reason": "Strict policy: agent is in local trust store",
+            "jacsRegistered": true,
+            "agentId": "trusted-agent-xyz",
+            "policy": "Strict"
+        });
+
+        assert_eq!(actual_strict, expected_strict, "Golden JSON mismatch for TrustAssessment (Strict)");
+    }
 }

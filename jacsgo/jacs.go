@@ -533,6 +533,109 @@ func (a *JacsAgent) ExportAttestationDSSE(attestationJSON string) (string, error
 	return C.GoString(result), nil
 }
 
+// ============================================================================
+// A2A API - Agent-to-Agent protocol operations
+// ============================================================================
+
+// ExportAgentCard exports an A2A Agent Card for this agent.
+func (a *JacsAgent) ExportAgentCard() (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	result := C.jacs_agent_export_agent_card(a.handle)
+	if result == nil {
+		return "", errors.New("failed to export agent card")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// SignA2AArtifact wraps an artifact with a JACS signature for A2A exchange.
+func (a *JacsAgent) SignA2AArtifact(artifactJSON string, artifactType string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cArtifact := C.CString(artifactJSON)
+	defer C.free(unsafe.Pointer(cArtifact))
+
+	cType := C.CString(artifactType)
+	defer C.free(unsafe.Pointer(cType))
+
+	result := C.jacs_agent_sign_a2a_artifact(a.handle, cArtifact, cType)
+	if result == nil {
+		return "", errors.New("failed to sign A2A artifact")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// VerifyA2AArtifact verifies a JACS-wrapped A2A artifact (crypto-only).
+func (a *JacsAgent) VerifyA2AArtifact(wrappedJSON string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cWrapped := C.CString(wrappedJSON)
+	defer C.free(unsafe.Pointer(cWrapped))
+
+	result := C.jacs_agent_verify_a2a_artifact(a.handle, cWrapped)
+	if result == nil {
+		return "", errors.New("failed to verify A2A artifact")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// VerifyA2AArtifactWithPolicy verifies a JACS-wrapped artifact with trust policy.
+func (a *JacsAgent) VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cWrapped := C.CString(wrappedJSON)
+	defer C.free(unsafe.Pointer(cWrapped))
+
+	cCard := C.CString(agentCardJSON)
+	defer C.free(unsafe.Pointer(cCard))
+
+	cPolicy := C.CString(policy)
+	defer C.free(unsafe.Pointer(cPolicy))
+
+	result := C.jacs_agent_verify_a2a_artifact_with_policy(a.handle, cWrapped, cCard, cPolicy)
+	if result == nil {
+		return "", errors.New("failed to verify A2A artifact with policy")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// AssessA2AAgent assesses an agent's trustworthiness against a trust policy.
+func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cCard := C.CString(agentCardJSON)
+	defer C.free(unsafe.Pointer(cCard))
+
+	cPolicy := C.CString(policy)
+	defer C.free(unsafe.Pointer(cPolicy))
+
+	result := C.jacs_agent_assess_a2a_agent(a.handle, cCard, cPolicy)
+	if result == nil {
+		return "", errors.New("failed to assess A2A agent")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
 // Helper function to get error messages for JacsAgent methods
 func getAgentErrorMessage(code int, operation string) string {
 	switch operation {

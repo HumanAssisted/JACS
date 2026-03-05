@@ -1177,4 +1177,257 @@ mod tests {
         assert!(parent.get("artifactId").is_some(), "missing parent.artifactId");
         assert!(parent.get("signerId").is_some(), "missing parent.signerId");
     }
+
+    // =========================================================================
+    // Golden serialization tests (Task 006)
+    //
+    // These tests pin the EXACT JSON output of core verification structs.
+    // If any field is renamed, reordered, or its serialization changes,
+    // the corresponding golden test will fail — signalling a breaking change
+    // to the cross-language contract.
+    // =========================================================================
+
+    /// Pin exact JSON for VerificationResult with Verified status.
+    #[test]
+    fn test_verification_result_golden_verified() {
+        let result = VerificationResult {
+            status: VerificationStatus::Verified,
+            valid: true,
+            signer_id: "agent-golden-001".to_string(),
+            signer_version: "v1".to_string(),
+            artifact_type: "a2a-task".to_string(),
+            timestamp: "2025-01-15T10:30:00Z".to_string(),
+            parent_signatures_valid: true,
+            parent_verification_results: vec![],
+            original_artifact: json!({"task": "golden"}),
+            trust_level: None,
+            trust_assessment: None,
+        };
+
+        let actual: Value = serde_json::to_value(&result).unwrap();
+        let expected = json!({
+            "status": "Verified",
+            "valid": true,
+            "signerId": "agent-golden-001",
+            "signerVersion": "v1",
+            "artifactType": "a2a-task",
+            "timestamp": "2025-01-15T10:30:00Z",
+            "parentSignaturesValid": true,
+            "parentVerificationResults": [],
+            "originalArtifact": {"task": "golden"}
+        });
+
+        assert_eq!(actual, expected, "Golden JSON mismatch for Verified result");
+    }
+
+    /// Pin exact JSON for VerificationResult with SelfSigned status.
+    #[test]
+    fn test_verification_result_golden_self_signed() {
+        let result = VerificationResult {
+            status: VerificationStatus::SelfSigned,
+            valid: true,
+            signer_id: "self-signer-001".to_string(),
+            signer_version: "v2".to_string(),
+            artifact_type: "a2a-message".to_string(),
+            timestamp: "2025-02-20T14:00:00Z".to_string(),
+            parent_signatures_valid: true,
+            parent_verification_results: vec![],
+            original_artifact: json!({"msg": "self-signed"}),
+            trust_level: None,
+            trust_assessment: None,
+        };
+
+        let actual: Value = serde_json::to_value(&result).unwrap();
+        let expected = json!({
+            "status": "SelfSigned",
+            "valid": true,
+            "signerId": "self-signer-001",
+            "signerVersion": "v2",
+            "artifactType": "a2a-message",
+            "timestamp": "2025-02-20T14:00:00Z",
+            "parentSignaturesValid": true,
+            "parentVerificationResults": [],
+            "originalArtifact": {"msg": "self-signed"}
+        });
+
+        assert_eq!(actual, expected, "Golden JSON mismatch for SelfSigned result");
+    }
+
+    /// Pin exact JSON for VerificationResult with Unverified status.
+    #[test]
+    fn test_verification_result_golden_unverified() {
+        let result = VerificationResult {
+            status: VerificationStatus::Unverified {
+                reason: "Public key not available".to_string(),
+            },
+            valid: false,
+            signer_id: "foreign-agent-xyz".to_string(),
+            signer_version: "v3".to_string(),
+            artifact_type: "a2a-artifact".to_string(),
+            timestamp: "2025-03-10T08:45:00Z".to_string(),
+            parent_signatures_valid: true,
+            parent_verification_results: vec![],
+            original_artifact: json!({"data": "unverified"}),
+            trust_level: None,
+            trust_assessment: None,
+        };
+
+        let actual: Value = serde_json::to_value(&result).unwrap();
+        let expected = json!({
+            "status": {
+                "Unverified": {
+                    "reason": "Public key not available"
+                }
+            },
+            "valid": false,
+            "signerId": "foreign-agent-xyz",
+            "signerVersion": "v3",
+            "artifactType": "a2a-artifact",
+            "timestamp": "2025-03-10T08:45:00Z",
+            "parentSignaturesValid": true,
+            "parentVerificationResults": [],
+            "originalArtifact": {"data": "unverified"}
+        });
+
+        assert_eq!(actual, expected, "Golden JSON mismatch for Unverified result");
+    }
+
+    /// Pin exact JSON for VerificationResult with Invalid status.
+    #[test]
+    fn test_verification_result_golden_invalid() {
+        let result = VerificationResult {
+            status: VerificationStatus::Invalid {
+                reason: "Signature mismatch".to_string(),
+            },
+            valid: false,
+            signer_id: "bad-actor-agent".to_string(),
+            signer_version: "v1".to_string(),
+            artifact_type: "a2a-task".to_string(),
+            timestamp: "2025-04-01T12:00:00Z".to_string(),
+            parent_signatures_valid: false,
+            parent_verification_results: vec![],
+            original_artifact: json!({"compromised": true}),
+            trust_level: None,
+            trust_assessment: None,
+        };
+
+        let actual: Value = serde_json::to_value(&result).unwrap();
+        let expected = json!({
+            "status": {
+                "Invalid": {
+                    "reason": "Signature mismatch"
+                }
+            },
+            "valid": false,
+            "signerId": "bad-actor-agent",
+            "signerVersion": "v1",
+            "artifactType": "a2a-task",
+            "timestamp": "2025-04-01T12:00:00Z",
+            "parentSignaturesValid": false,
+            "parentVerificationResults": [],
+            "originalArtifact": {"compromised": true}
+        });
+
+        assert_eq!(actual, expected, "Golden JSON mismatch for Invalid result");
+    }
+
+    /// Pin exact JSON for VerificationResult with trust fields populated.
+    #[test]
+    fn test_verification_result_golden_with_trust() {
+        use crate::a2a::trust::TrustAssessment;
+
+        let result = VerificationResult {
+            status: VerificationStatus::Verified,
+            valid: true,
+            signer_id: "trusted-agent-abc".to_string(),
+            signer_version: "v1".to_string(),
+            artifact_type: "a2a-task".to_string(),
+            timestamp: "2025-05-01T09:00:00Z".to_string(),
+            parent_signatures_valid: true,
+            parent_verification_results: vec![],
+            original_artifact: json!({"payload": "trusted"}),
+            trust_level: Some(TrustLevel::JacsVerified),
+            trust_assessment: Some(TrustAssessment {
+                allowed: true,
+                trust_level: TrustLevel::JacsVerified,
+                reason: "Verified policy: agent has JACS provenance extension".to_string(),
+                jacs_registered: true,
+                agent_id: Some("trusted-agent-abc".to_string()),
+                policy: A2ATrustPolicy::Verified,
+            }),
+        };
+
+        let actual: Value = serde_json::to_value(&result).unwrap();
+        let expected = json!({
+            "status": "Verified",
+            "valid": true,
+            "signerId": "trusted-agent-abc",
+            "signerVersion": "v1",
+            "artifactType": "a2a-task",
+            "timestamp": "2025-05-01T09:00:00Z",
+            "parentSignaturesValid": true,
+            "parentVerificationResults": [],
+            "originalArtifact": {"payload": "trusted"},
+            "trustLevel": "JacsVerified",
+            "trustAssessment": {
+                "allowed": true,
+                "trustLevel": "JacsVerified",
+                "reason": "Verified policy: agent has JACS provenance extension",
+                "jacsRegistered": true,
+                "agentId": "trusted-agent-abc",
+                "policy": "Verified"
+            }
+        });
+
+        assert_eq!(actual, expected, "Golden JSON mismatch for result with trust");
+    }
+
+    /// Pin exact JSON for ParentVerificationResult.
+    #[test]
+    fn test_parent_verification_result_golden() {
+        let parent = ParentVerificationResult {
+            index: 0,
+            artifact_id: "parent-artifact-001".to_string(),
+            signer_id: "parent-signer-agent".to_string(),
+            status: VerificationStatus::Verified,
+            verified: true,
+        };
+
+        let actual: Value = serde_json::to_value(&parent).unwrap();
+        let expected = json!({
+            "index": 0,
+            "artifactId": "parent-artifact-001",
+            "signerId": "parent-signer-agent",
+            "status": "Verified",
+            "verified": true
+        });
+
+        assert_eq!(actual, expected, "Golden JSON mismatch for ParentVerificationResult");
+
+        // Also verify a parent with Unverified status
+        let parent_unverified = ParentVerificationResult {
+            index: 2,
+            artifact_id: "parent-artifact-003".to_string(),
+            signer_id: "unknown-signer".to_string(),
+            status: VerificationStatus::Unverified {
+                reason: "Key not found".to_string(),
+            },
+            verified: false,
+        };
+
+        let actual2: Value = serde_json::to_value(&parent_unverified).unwrap();
+        let expected2 = json!({
+            "index": 2,
+            "artifactId": "parent-artifact-003",
+            "signerId": "unknown-signer",
+            "status": {
+                "Unverified": {
+                    "reason": "Key not found"
+                }
+            },
+            "verified": false
+        });
+
+        assert_eq!(actual2, expected2, "Golden JSON mismatch for ParentVerificationResult (Unverified)");
+    }
 }

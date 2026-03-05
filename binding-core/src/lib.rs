@@ -1238,6 +1238,64 @@ impl AgentWrapper {
         })
     }
 
+    /// Verify a JACS-wrapped A2A artifact with trust policy enforcement.
+    ///
+    /// Combines cryptographic signature verification with trust policy evaluation.
+    /// The remote agent's Agent Card is assessed against the specified policy,
+    /// and the trust level is included in the verification result.
+    ///
+    /// # Arguments
+    ///
+    /// * `wrapped_json` - JSON string of the JACS-wrapped artifact
+    /// * `agent_card_json` - JSON string of the remote agent's A2A Agent Card
+    /// * `policy` - Trust policy name: "open", "verified", or "strict"
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing the verification result with trust information.
+    pub fn verify_a2a_artifact_with_policy(
+        &self,
+        wrapped_json: &str,
+        agent_card_json: &str,
+        policy: &str,
+    ) -> BindingResult<String> {
+        use jacs::a2a::AgentCard;
+        use jacs::a2a::trust::A2ATrustPolicy;
+
+        let wrapped: Value = serde_json::from_str(wrapped_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid wrapped artifact JSON: {}", e))
+        })?;
+
+        let card: AgentCard = serde_json::from_str(agent_card_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
+        })?;
+
+        let trust_policy = A2ATrustPolicy::from_str_loose(policy).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid trust policy '{}': {}", policy, e))
+        })?;
+
+        let agent = self.lock()?;
+        let result = jacs::a2a::provenance::verify_wrapped_artifact_with_policy(
+            &agent,
+            &wrapped,
+            &card,
+            trust_policy,
+        )
+        .map_err(|e| {
+            BindingCoreError::verification_failed(format!(
+                "A2A artifact verification with policy error: {}",
+                e
+            ))
+        })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize verification result: {}",
+                e
+            ))
+        })
+    }
+
     // =========================================================================
     // Attestation API (gated behind `attestation` feature)
     // =========================================================================

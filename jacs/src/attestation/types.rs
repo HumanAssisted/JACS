@@ -96,6 +96,19 @@ pub enum EvidenceKind {
     Custom,
 }
 
+impl EvidenceKind {
+    /// Returns the lowercase string form matching the serde serialization.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::A2a => "a2a",
+            Self::Email => "email",
+            Self::Jwt => "jwt",
+            Self::Tlsnotary => "tlsnotary",
+            Self::Custom => "custom",
+        }
+    }
+}
+
 /// Privacy classification of evidence.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -158,6 +171,7 @@ pub struct PolicyContext {
 /// Full attestation verification result.
 /// `.valid` is true only if all present fields pass.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AttestationVerificationResult {
     pub valid: bool,
     pub crypto: CryptoVerificationResult,
@@ -168,6 +182,7 @@ pub struct AttestationVerificationResult {
 
 /// Cryptographic verification result.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CryptoVerificationResult {
     pub signature_valid: bool,
     pub hash_valid: bool,
@@ -177,6 +192,7 @@ pub struct CryptoVerificationResult {
 
 /// Verification result for a single piece of evidence.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EvidenceVerificationResult {
     pub kind: String,
     pub digest_valid: bool,
@@ -186,6 +202,7 @@ pub struct EvidenceVerificationResult {
 
 /// Verification result for derivation chain traversal.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChainVerificationResult {
     pub valid: bool,
     pub depth: u32,
@@ -195,6 +212,7 @@ pub struct ChainVerificationResult {
 
 /// A single link in a derivation chain.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChainLink {
     pub document_id: String,
     pub valid: bool,
@@ -350,6 +368,38 @@ mod tests {
         assert!(result.valid);
     }
 
+    /// Regression test: AssuranceLevel serialization must match the schema-defined
+    /// kebab-case enum values in attestation.schema.json exactly.
+    #[test]
+    fn assurance_level_matches_schema_enum() {
+        // Schema defines: ["self-asserted", "verified", "independently-attested"]
+        assert_eq!(
+            serde_json::to_string(&AssuranceLevel::SelfAsserted).unwrap(),
+            "\"self-asserted\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssuranceLevel::Verified).unwrap(),
+            "\"verified\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssuranceLevel::IndependentlyAttested).unwrap(),
+            "\"independently-attested\""
+        );
+
+        // Round-trip: schema string -> Rust enum -> schema string
+        let self_asserted: AssuranceLevel =
+            serde_json::from_str("\"self-asserted\"").unwrap();
+        assert_eq!(self_asserted, AssuranceLevel::SelfAsserted);
+
+        let verified: AssuranceLevel =
+            serde_json::from_str("\"verified\"").unwrap();
+        assert_eq!(verified, AssuranceLevel::Verified);
+
+        let independently: AssuranceLevel =
+            serde_json::from_str("\"independently-attested\"").unwrap();
+        assert_eq!(independently, AssuranceLevel::IndependentlyAttested);
+    }
+
     #[test]
     fn verification_result_invalid_on_any_failure() {
         let result = AttestationVerificationResult {
@@ -370,5 +420,78 @@ mod tests {
             errors: vec!["evidence digest verification failed".into()],
         };
         assert!(!result.valid);
+    }
+
+    #[test]
+    fn test_crypto_verification_result_uses_camel_case_signer_id() {
+        let result = CryptoVerificationResult {
+            signature_valid: true,
+            hash_valid: true,
+            signer_id: "agent-test-001".into(),
+            algorithm: "ed25519".into(),
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert!(json.get("signerId").is_some(), "Expected camelCase 'signerId'");
+        assert!(json.get("signer_id").is_none(), "Should not have snake_case 'signer_id'");
+    }
+
+    #[test]
+    fn test_crypto_verification_result_uses_camel_case_signature_valid() {
+        let result = CryptoVerificationResult {
+            signature_valid: true,
+            hash_valid: false,
+            signer_id: "agent-1".into(),
+            algorithm: "ed25519".into(),
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert!(json.get("signatureValid").is_some(), "Expected camelCase 'signatureValid'");
+        assert!(json.get("hashValid").is_some(), "Expected camelCase 'hashValid'");
+        assert!(json.get("signature_valid").is_none());
+        assert!(json.get("hash_valid").is_none());
+    }
+
+    #[test]
+    fn test_attestation_verification_result_uses_camel_case() {
+        let result = AttestationVerificationResult {
+            valid: true,
+            crypto: CryptoVerificationResult {
+                signature_valid: true,
+                hash_valid: true,
+                signer_id: "agent-1".into(),
+                algorithm: "ed25519".into(),
+            },
+            evidence: vec![EvidenceVerificationResult {
+                kind: "a2a".into(),
+                digest_valid: true,
+                freshness_valid: true,
+                detail: "ok".into(),
+            }],
+            chain: Some(ChainVerificationResult {
+                valid: true,
+                depth: 1,
+                max_depth: 5,
+                links: vec![ChainLink {
+                    document_id: "doc-1".into(),
+                    valid: true,
+                    detail: "ok".into(),
+                }],
+            }),
+            errors: vec![],
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        // Top-level camelCase
+        let crypto = json.get("crypto").unwrap();
+        assert!(crypto.get("signerId").is_some());
+        assert!(crypto.get("signatureValid").is_some());
+        assert!(crypto.get("hashValid").is_some());
+        // Evidence camelCase
+        let ev = &json.get("evidence").unwrap()[0];
+        assert!(ev.get("digestValid").is_some());
+        assert!(ev.get("freshnessValid").is_some());
+        // Chain camelCase
+        let chain = json.get("chain").unwrap();
+        assert!(chain.get("maxDepth").is_some());
+        let link = &chain.get("links").unwrap()[0];
+        assert!(link.get("documentId").is_some());
     }
 }

@@ -33,6 +33,7 @@ mod attestation_cross_lang {
     impl EnvVarGuard {
         fn set(key: &'static str, value: &str) -> Self {
             let previous = std::env::var_os(key);
+            // SAFETY: Tests using this guard are marked #[serial], preventing concurrent access.
             unsafe { std::env::set_var(key, value) }
             Self { key, previous }
         }
@@ -40,6 +41,7 @@ mod attestation_cross_lang {
 
     impl Drop for EnvVarGuard {
         fn drop(&mut self) {
+            // SAFETY: Tests using this guard are marked #[serial], preventing concurrent access.
             if let Some(prev) = &self.previous {
                 unsafe { std::env::set_var(self.key, prev) }
             } else {
@@ -222,30 +224,35 @@ mod attestation_cross_lang {
         );
     }
 
-    /// Verify an attestation fixture using SimpleAgent's verify methods.
-    fn verify_attestation_fixture(algorithm: &str, prefix: &str) {
-        let _iat_guard = EnvVarGuard::set("JACS_MAX_IAT_SKEW_SECONDS", "0");
-
+    /// Load fixture files (attestation JSON, public key, metadata) for a given prefix.
+    /// Returns None if fixtures are not found (caller should skip the test).
+    fn load_fixture(prefix: &str) -> Option<(String, Vec<u8>, Value)> {
         let out = fixtures_dir();
         let att_path = out.join(format!("{}_attestation.json", prefix));
+        let key_path = out.join(format!("{}_public_key.pem", prefix));
         let meta_path = out.join(format!("{}_metadata.json", prefix));
 
-        if !att_path.exists() || !meta_path.exists() {
+        if !att_path.exists() || !key_path.exists() || !meta_path.exists() {
             eprintln!(
                 "Skipping verify for {}: fixtures not found. Run with UPDATE_CROSS_LANG_FIXTURES=1 first.",
                 prefix
             );
-            return;
+            return None;
         }
 
         let att_json = fs::read_to_string(&att_path).expect("read attestation fixture");
+        let pub_key = fs::read(&key_path).expect("read public key fixture");
         let metadata: Value = serde_json::from_str(
             &fs::read_to_string(&meta_path).expect("read metadata"),
         )
         .expect("metadata should be valid JSON");
 
-        // Parse the attestation document to get the key
-        let doc: Value = serde_json::from_str(&att_json).expect("attestation should be valid JSON");
+        Some((att_json, pub_key, metadata))
+    }
+
+    /// Assert that the attestation document has the expected structure.
+    /// These are the original structural checks, preserved alongside cryptographic verification.
+    fn assert_attestation_structure(doc: &Value, metadata: &Value) {
         let jacs_id = doc["jacsId"].as_str().expect("should have jacsId");
         let jacs_version = doc["jacsVersion"].as_str().expect("should have jacsVersion");
 
@@ -260,14 +267,7 @@ mod attestation_cross_lang {
             "cross-lang-artifact-001"
         );
 
-        // Create an ephemeral agent that can load and verify the fixture
-        // We need to create a fresh agent, load the attestation into it, and verify.
-        let (agent, _info) = SimpleAgent::ephemeral(Some(algorithm))
-            .expect("Failed to create ephemeral agent");
-
-        // Sign a dummy doc to have the agent operational, then re-create the attestation
-        // from the fixture data. Since we can't load external docs into a fresh agent's
-        // storage directly, we instead verify the structure and metadata.
+        // Metadata checks
         assert_eq!(
             metadata["generated_by"].as_str().unwrap(),
             "rust",
@@ -277,19 +277,15 @@ mod attestation_cross_lang {
             metadata["has_attestation"].as_bool().unwrap(),
             "Metadata should indicate attestation"
         );
-        assert!(
-            !jacs_id.is_empty(),
-            "jacsId should not be empty"
-        );
-        assert!(
-            !jacs_version.is_empty(),
-            "jacsVersion should not be empty"
-        );
+        assert!(!jacs_id.is_empty(), "jacsId should not be empty");
+        assert!(!jacs_version.is_empty(), "jacsVersion should not be empty");
 
         // Verify the attestation document structure is complete
         assert!(attestation.get("subject").is_some(), "Should have subject");
         assert!(attestation.get("claims").is_some(), "Should have claims");
-        let claims = attestation["claims"].as_array().expect("claims should be array");
+        let claims = attestation["claims"]
+            .as_array()
+            .expect("claims should be array");
         assert!(!claims.is_empty(), "Claims should not be empty");
         assert_eq!(claims[0]["name"].as_str().unwrap(), "reviewed");
 
@@ -300,16 +296,191 @@ mod attestation_cross_lang {
         }
 
         // Verify the signature structure
-        let sig = doc.get("jacsSignature").expect("should have jacsSignature");
+        let sig = doc
+            .get("jacsSignature")
+            .expect("should have jacsSignature");
         assert!(sig.get("signature").is_some(), "should have signature");
-        assert!(sig.get("publicKeyHash").is_some(), "should have publicKeyHash");
-        assert!(sig.get("signingAlgorithm").is_some(), "should have signingAlgorithm");
+        assert!(
+            sig.get("publicKeyHash").is_some(),
+            "should have publicKeyHash"
+        );
+        assert!(
+            sig.get("signingAlgorithm").is_some(),
+            "should have signingAlgorithm"
+        );
+    }
+
+    /// Verify an attestation fixture using cryptographic verification (signature + hash).
+    ///
+    /// Uses `SimpleAgent::verify_with_key` to perform real cryptographic checks:
+    /// the document signature is verified against the fixture's public key, and
+    /// the document hash (jacsSha256) is recomputed and compared.
+    fn verify_attestation_fixture(algorithm: &str, prefix: &str) {
+        let _iat_guard = EnvVarGuard::set("JACS_MAX_IAT_SKEW_SECONDS", "0");
+        // Ensure strict mode is off so verify_with_key returns a result instead of erroring
+        let _strict_guard = EnvVarGuard::set("JACS_STRICT_MODE", "false");
+
+        let (att_json, pub_key, metadata) = match load_fixture(prefix) {
+            Some(fixture) => fixture,
+            None => return,
+        };
+
+        let doc: Value =
+            serde_json::from_str(&att_json).expect("attestation should be valid JSON");
+
+        // Structural checks (preserved from the original implementation)
+        assert_attestation_structure(&doc, &metadata);
+
+        // Cryptographic verification: signature + hash
+        let (agent, _info) = SimpleAgent::ephemeral(Some(algorithm))
+            .expect("Failed to create ephemeral agent for verification");
+
+        let result = agent
+            .verify_with_key(&att_json, pub_key)
+            .expect("verify_with_key should not return an error for valid fixture");
+
+        assert!(
+            result.valid,
+            "Cryptographic verification should pass for untampered fixture (prefix={}). Errors: {:?}",
+            prefix, result.errors
+        );
+        assert!(
+            result.errors.is_empty(),
+            "No verification errors expected for valid fixture (prefix={}). Got: {:?}",
+            prefix, result.errors
+        );
+
+        // The signer_id should match the metadata's agent_id
+        let expected_agent_id = metadata["agent_id"].as_str().unwrap_or("");
+        assert!(
+            !result.signer_id.is_empty(),
+            "Signer ID should not be empty after successful verification"
+        );
+        assert_eq!(
+            result.signer_id, expected_agent_id,
+            "Signer ID from verification should match fixture metadata"
+        );
 
         println!(
-            "Verified attestation fixture: prefix={}, agent_id={}, doc_id={}",
-            prefix,
-            metadata["agent_id"].as_str().unwrap_or("?"),
-            metadata["document_id"].as_str().unwrap_or("?"),
+            "Cryptographically verified attestation fixture: prefix={}, agent_id={}, valid=true",
+            prefix, expected_agent_id,
+        );
+    }
+
+    /// Verify that a tampered signature is detected and fails cryptographic verification.
+    fn verify_tampered_signature_fails(algorithm: &str, prefix: &str) {
+        let _iat_guard = EnvVarGuard::set("JACS_MAX_IAT_SKEW_SECONDS", "0");
+        let _strict_guard = EnvVarGuard::set("JACS_STRICT_MODE", "false");
+
+        let (att_json, pub_key, _metadata) = match load_fixture(prefix) {
+            Some(fixture) => fixture,
+            None => return,
+        };
+
+        // Tamper with the signature: flip characters in the base64 signature value
+        let mut doc: Value =
+            serde_json::from_str(&att_json).expect("attestation should be valid JSON");
+        let sig_value = doc["jacsSignature"]["signature"]
+            .as_str()
+            .expect("should have signature string")
+            .to_string();
+
+        // Replace first few characters to corrupt the signature while keeping valid base64
+        let tampered_sig = if sig_value.len() > 10 {
+            let mut chars: Vec<char> = sig_value.chars().collect();
+            // Flip case or substitute alphanumeric characters
+            for ch in chars.iter_mut().take(8) {
+                *ch = if ch.is_ascii_uppercase() {
+                    ch.to_ascii_lowercase()
+                } else if ch.is_ascii_lowercase() {
+                    ch.to_ascii_uppercase()
+                } else {
+                    *ch
+                };
+            }
+            chars.into_iter().collect::<String>()
+        } else {
+            "AAAA_TAMPERED_SIGNATURE".to_string()
+        };
+        doc["jacsSignature"]["signature"] = Value::String(tampered_sig);
+
+        let tampered_json =
+            serde_json::to_string(&doc).expect("tampered doc should serialize to JSON");
+
+        let (agent, _info) = SimpleAgent::ephemeral(Some(algorithm))
+            .expect("Failed to create ephemeral agent for tampered-signature test");
+
+        let result = agent
+            .verify_with_key(&tampered_json, pub_key)
+            .expect("verify_with_key should return a result (not error) in non-strict mode");
+
+        assert!(
+            !result.valid,
+            "Tampered signature MUST fail cryptographic verification (prefix={})",
+            prefix
+        );
+        assert!(
+            !result.errors.is_empty(),
+            "Tampered signature should produce verification errors (prefix={})",
+            prefix
+        );
+
+        println!(
+            "Tampered-signature correctly rejected for prefix={}: {:?}",
+            prefix, result.errors
+        );
+    }
+
+    /// Verify that a tampered document body is detected and fails hash verification.
+    fn verify_tampered_body_fails(algorithm: &str, prefix: &str) {
+        let _iat_guard = EnvVarGuard::set("JACS_MAX_IAT_SKEW_SECONDS", "0");
+        let _strict_guard = EnvVarGuard::set("JACS_STRICT_MODE", "false");
+
+        let (att_json, pub_key, _metadata) = match load_fixture(prefix) {
+            Some(fixture) => fixture,
+            None => return,
+        };
+
+        // Tamper with the document body: change the subject ID in the attestation
+        let mut doc: Value =
+            serde_json::from_str(&att_json).expect("attestation should be valid JSON");
+        doc["attestation"]["subject"]["id"] =
+            Value::String("TAMPERED-subject-id-999".to_string());
+
+        let tampered_json =
+            serde_json::to_string(&doc).expect("tampered doc should serialize to JSON");
+
+        let (agent, _info) = SimpleAgent::ephemeral(Some(algorithm))
+            .expect("Failed to create ephemeral agent for tampered-body test");
+
+        let result = agent
+            .verify_with_key(&tampered_json, pub_key)
+            .expect("verify_with_key should return a result (not error) in non-strict mode");
+
+        assert!(
+            !result.valid,
+            "Tampered document body MUST fail verification (prefix={})",
+            prefix
+        );
+        assert!(
+            !result.errors.is_empty(),
+            "Tampered body should produce verification errors (prefix={})",
+            prefix
+        );
+
+        // Check that at least one error mentions hash or signature failure
+        let error_text = result.errors.join(" ");
+        assert!(
+            error_text.contains("hash") || error_text.contains("Hash")
+                || error_text.contains("signature") || error_text.contains("Signature")
+                || error_text.contains("verifiable"),
+            "Error should mention hash or signature failure for tampered body (prefix={}). Got: {}",
+            prefix, error_text
+        );
+
+        println!(
+            "Tampered-body correctly rejected for prefix={}: {:?}",
+            prefix, result.errors
         );
     }
 
@@ -351,5 +522,37 @@ mod attestation_cross_lang {
     #[serial]
     fn verify_pq2025_attestation_fixture() {
         verify_attestation_fixture("pq2025", "pq2025");
+    }
+
+    // -----------------------------------------------------------------------
+    // Negative tests: tampered signature
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[serial]
+    fn tampered_signature_ed25519_fails() {
+        verify_tampered_signature_fails("ed25519", "ed25519");
+    }
+
+    #[test]
+    #[serial]
+    fn tampered_signature_pq2025_fails() {
+        verify_tampered_signature_fails("pq2025", "pq2025");
+    }
+
+    // -----------------------------------------------------------------------
+    // Negative tests: tampered body (hash mismatch)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[serial]
+    fn tampered_body_ed25519_fails() {
+        verify_tampered_body_fails("ed25519", "ed25519");
+    }
+
+    #[test]
+    #[serial]
+    fn tampered_body_pq2025_fails() {
+        verify_tampered_body_fails("pq2025", "pq2025");
     }
 }

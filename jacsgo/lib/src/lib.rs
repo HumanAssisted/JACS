@@ -809,6 +809,176 @@ pub extern "C" fn jacs_agent_export_attestation_dsse(
 }
 
 // ============================================================================
+// A2A API - Agent-to-Agent protocol operations
+// ============================================================================
+
+/// Export an A2A Agent Card for the current agent.
+/// Returns a JSON string of the Agent Card, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_export_agent_card(
+    handle: *mut JacsAgentHandle,
+) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.export_agent_card() {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Sign (wrap) an A2A artifact with the agent's key.
+/// `artifact_json` is the artifact payload, `artifact_type` is the type string.
+/// Returns a JSON string of the JACS-wrapped artifact, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_sign_a2a_artifact(
+    handle: *mut JacsAgentHandle,
+    artifact_json: *const c_char,
+    artifact_type: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || artifact_json.is_null() || artifact_type.is_null() {
+        return ptr::null_mut();
+    }
+
+    let art_str = match unsafe { CStr::from_ptr(artifact_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let type_str = match unsafe { CStr::from_ptr(artifact_type) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.wrap_a2a_artifact(art_str, type_str, None) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Verify a JACS-wrapped A2A artifact (crypto-only, no trust policy).
+/// Returns a JSON string of the verification result, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_a2a_artifact(
+    handle: *mut JacsAgentHandle,
+    wrapped_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || wrapped_json.is_null() {
+        return ptr::null_mut();
+    }
+
+    let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.verify_a2a_artifact(wrapped_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Verify a JACS-wrapped A2A artifact with trust policy enforcement.
+/// Combines crypto verification with trust assessment.
+/// Returns a JSON string of the verification result with trust info, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
+    handle: *mut JacsAgentHandle,
+    wrapped_json: *const c_char,
+    agent_card_json: *const c_char,
+    policy: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || wrapped_json.is_null() || agent_card_json.is_null() || policy.is_null()
+    {
+        return ptr::null_mut();
+    }
+
+    let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.verify_a2a_artifact_with_policy(wrapped_str, card_str, policy_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Assess an A2A agent's trustworthiness against a trust policy.
+/// Returns a JSON string of the trust assessment, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_assess_a2a_agent(
+    handle: *mut JacsAgentHandle,
+    agent_card_json: *const c_char,
+    policy: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || agent_card_json.is_null() || policy.is_null() {
+        return ptr::null_mut();
+    }
+
+    let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.assess_a2a_agent(card_str, policy_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+// ============================================================================
 // Legacy Global Singleton API - Deprecated, use JacsAgent handle API instead
 // ============================================================================
 // The following functions use a global singleton for backwards compatibility.
