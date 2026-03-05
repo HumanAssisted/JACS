@@ -180,8 +180,12 @@
 <div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Config Value</th><th>Description</th></tr></thead><tbody>
 <tr><td>Filesystem</td><td><code>fs</code></td><td>Local file storage (default)</td></tr>
 <tr><td>AWS S3</td><td><code>aws</code></td><td>Amazon S3 object storage</td></tr>
-<tr><td>HAI Cloud</td><td><code>hai</code></td><td>HAI managed storage</td></tr>
+<tr><td>HAI Cloud</td><td><code>hai</code></td><td>HTTP object store via <code>HAI_STORAGE_URL</code></td></tr>
 <tr><td>PostgreSQL</td><td><code>database</code></td><td>PostgreSQL with JSONB queries (requires <code>database</code> feature)</td></tr>
+<tr><td>Rusqlite</td><td><code>rusqlite</code></td><td>Embedded SQLite (requires <code>rusqlite-storage</code> feature)</td></tr>
+<tr><td>DuckDB</td><td><code>duckdb</code></td><td>Embedded analytical DB (requires <code>duckdb-storage</code> feature)</td></tr>
+<tr><td>Redb</td><td><code>redb</code></td><td>Pure-Rust embedded KV (requires <code>redb-storage</code> feature)</td></tr>
+<tr><td>SurrealDB</td><td><code>surrealdb</code></td><td>Multi-model DB with SurrealQL (requires <code>surrealdb-storage</code> feature)</td></tr>
 </tbody></table>
 </div>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
@@ -329,25 +333,19 @@ doc = agent.create_document(json.dumps({
 }))
 </code></pre>
 <h2 id="hai-cloud-storage-hai"><a class="header" href="#hai-cloud-storage-hai">HAI Cloud Storage (hai)</a></h2>
-<p>Managed storage provided by HAI.</p>
+<p>HTTP object store pointed at <code>HAI_STORAGE_URL</code>. This backend uses <code>object_store::http::HttpStore</code> under the hood — it is a generic HTTP store, not a managed platform.</p>
+<p>For HAI platform registration, attestation, and key discovery, use the separate <a href="https://github.com/HumanAssisted/haisdk">haisdk</a> package.</p>
 <h3 id="configuration-3"><a class="header" href="#configuration-3">Configuration</a></h3>
 <pre><code class="language-json">{
   "jacs_default_storage": "hai"
 }
 </code></pre>
-<h3 id="features"><a class="header" href="#features">Features</a></h3>
-<ul>
-<li>Managed infrastructure</li>
-<li>Built-in agent registry</li>
-<li>Cross-organization document sharing</li>
-<li>Integrated DNS verification</li>
-</ul>
+<pre><code class="language-bash">export HAI_STORAGE_URL="https://storage.hai.ai/v1"
+</code></pre>
 <h3 id="use-cases-2"><a class="header" href="#use-cases-2">Use Cases</a></h3>
 <ul>
-<li>Multi-agent ecosystems</li>
-<li>Cross-organization collaboration</li>
-<li>Managed deployments</li>
-<li>Integration with HAI services</li>
+<li>Remote document storage via HTTP</li>
+<li>Integration with HAI storage endpoints</li>
 </ul>
 <h2 id="postgresql-database-storage-database"><a class="header" href="#postgresql-database-storage-database">PostgreSQL Database Storage (database)</a></h2>
 <p>The <code>database</code> storage backend stores JACS documents in PostgreSQL, enabling JSONB queries, pagination, and agent-based lookups while preserving cryptographic signatures.</p>
@@ -447,6 +445,32 @@ let latest = storage.get_latest("some-document-id")?;
 <li>Compile-time feature flag (<code>database</code>)</li>
 <li>Network dependency on PostgreSQL server</li>
 </ul>
+<h2 id="embedded-database-backends"><a class="header" href="#embedded-database-backends">Embedded Database Backends</a></h2>
+<p>Four lightweight embedded database backends are available behind feature flags. None require an external server.</p>
+<h3 id="rusqlite-rusqlite-storage"><a class="header" href="#rusqlite-rusqlite-storage">Rusqlite (<code>rusqlite-storage</code>)</a></h3>
+<p>Embedded SQLite via rusqlite with WAL mode enabled. Pinned to rusqlite v0.31.</p>
+<pre><code class="language-bash">cargo build --features rusqlite-storage
+cargo test --features rusqlite-storage-tests
+</code></pre>
+<p><strong>When to use:</strong> You want SQL queries on a single-file database with no external dependencies.</p>
+<h3 id="duckdb-duckdb-storage"><a class="header" href="#duckdb-duckdb-storage">DuckDB (<code>duckdb-storage</code>)</a></h3>
+<p>Embedded analytical database with JSON path queries.</p>
+<pre><code class="language-bash">cargo build --features duckdb-storage
+cargo test --features duckdb-storage-tests
+</code></pre>
+<p><strong>When to use:</strong> You need analytical queries or columnar storage over signed documents.</p>
+<h3 id="redb-redb-storage"><a class="header" href="#redb-redb-storage">Redb (<code>redb-storage</code>)</a></h3>
+<p>Pure-Rust embedded key-value store. No C dependencies.</p>
+<pre><code class="language-bash">cargo build --features redb-storage
+cargo test --features redb-storage-tests
+</code></pre>
+<p><strong>When to use:</strong> You want the simplest embedded backend with zero non-Rust dependencies.</p>
+<h3 id="surrealdb-surrealdb-storage"><a class="header" href="#surrealdb-surrealdb-storage">SurrealDB (<code>surrealdb-storage</code>)</a></h3>
+<p>Multi-model database with SurrealQL. Uses <code>kv-mem</code> for in-memory mode.</p>
+<pre><code class="language-bash">cargo build --features surrealdb-storage
+cargo test --features surrealdb-storage-tests
+</code></pre>
+<p><strong>When to use:</strong> You want a multi-model query language or plan to scale to a SurrealDB cluster later.</p>
 <h2 id="in-memory-storage"><a class="header" href="#in-memory-storage">In-Memory Storage</a></h2>
 <p>For testing and temporary operations, documents can be created without saving:</p>
 <pre><code class="language-python"># Create document without saving
@@ -471,6 +495,10 @@ doc = agent.create_document(
 <tr><td>Cloud deployment</td><td><code>aws</code></td></tr>
 <tr><td>High availability</td><td><code>aws</code></td></tr>
 <tr><td>Multi-organization</td><td><code>hai</code></td></tr>
+<tr><td>Embedded SQL queries</td><td><code>rusqlite</code></td></tr>
+<tr><td>Analytical queries</td><td><code>duckdb</code></td></tr>
+<tr><td>Zero C-dep embedded KV</td><td><code>redb</code></td></tr>
+<tr><td>Multi-model queries</td><td><code>surrealdb</code></td></tr>
 <tr><td>Testing</td><td>In-memory (no_save)</td></tr>
 </tbody></table>
 </div>

@@ -526,7 +526,8 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <ul>
 <li><code>HAI_STORAGE_URL</code> - HAI.ai storage service endpoint</li>
 </ul>
-<p><strong>Best for:</strong> Integration with HAI.ai platform services</p>
+<p>This is an HTTP object store backend. Full HAI platform workflows (registration, attestation, key discovery) require the separate <a href="https://github.com/HumanAssisted/haisdk">haisdk</a> package.</p>
+<p><strong>Best for:</strong> Remote document storage via HTTP</p>
 <h4 id="memory-storage-memory"><a class="header" href="#memory-storage-memory">Memory Storage (<code>"memory"</code>)</a></h4>
 <pre><code class="language-json">{
   "jacs_default_storage": "memory"

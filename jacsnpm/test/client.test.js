@@ -458,4 +458,28 @@ describe('JacsClient', function () {
       );
     });
   });
+
+  describe('generateVerifyLink', () => {
+    (available ? it : it.skip)('should return URL with default base', () => {
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const link = client.generateVerifyLink('{"hello":"world"}');
+      expect(link).to.be.a('string');
+      expect(link).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+    });
+
+    (available ? it : it.skip)('should use custom baseUrl', () => {
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const link = client.generateVerifyLink('test', 'https://example.com/verify');
+      expect(link).to.match(/^https:\/\/example\.com\/verify\?s=/);
+    });
+
+    (available ? it : it.skip)('should round-trip decode to original', () => {
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const original = '{"signed":"document","data":123}';
+      const link = client.generateVerifyLink(original);
+      const encoded = link.split('?s=')[1];
+      const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+      expect(decoded).to.equal(original);
+    });
+  });
 });

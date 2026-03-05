@@ -20,5 +20,3 @@ Current Rust feature flags include:
 - Start with filesystem-backed signed envelopes unless you already know you need a database backend.
 - If you need Rust storage internals, read [Storage Backends](../advanced/storage.md) and inspect `jacs/src/storage/`.
 - If you need a polished database cookbook for Python or Node, that is not a first-class book workflow yet.
-
-The missing pieces are tracked in `docs/missing-features.md`.

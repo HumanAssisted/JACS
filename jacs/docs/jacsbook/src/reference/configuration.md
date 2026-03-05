@@ -432,7 +432,9 @@ The `jacs_default_storage` field determines where JACS stores agent data, docume
 **Required Environment Variables:**
 - `HAI_STORAGE_URL` - HAI.ai storage service endpoint
 
-**Best for:** Integration with HAI.ai platform services
+This is an HTTP object store backend. Full HAI platform workflows (registration, attestation, key discovery) require the separate [haisdk](https://github.com/HumanAssisted/haisdk) package.
+
+**Best for:** Remote document storage via HTTP
 
 #### Memory Storage (`"memory"`)
 ```json

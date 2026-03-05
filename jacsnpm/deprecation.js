@@ -1,21 +1,28 @@
 "use strict";
+/**
+ * JACS Deprecation Warning Utility
+ *
+ * Emits console.warn messages for deprecated methods when the
+ * `JACS_SHOW_DEPRECATIONS` environment variable is set.
+ *
+ * Warnings are emitted at most once per method name per process to avoid
+ * flooding logs.
+ */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.warnDeprecated = warnDeprecated;
-
 const _warned = new Set();
-
 /**
  * Emit a deprecation warning for a method alias.
  *
  * Only fires when `process.env.JACS_SHOW_DEPRECATIONS` is truthy, and at most
  * once per unique `oldName` per process lifetime.
  *
- * @param {string} oldName  - The deprecated method name.
- * @param {string} newName  - The replacement method name.
+ * @param oldName  - The deprecated method name.
+ * @param newName  - The replacement method name.
  */
 function warnDeprecated(oldName, newName) {
-  if (process.env.JACS_SHOW_DEPRECATIONS && !_warned.has(oldName)) {
-    _warned.add(oldName);
-    console.warn(`[JACS] ${oldName}() is deprecated, use ${newName}() instead`);
-  }
+    if (process.env.JACS_SHOW_DEPRECATIONS && !_warned.has(oldName)) {
+        _warned.add(oldName);
+        console.warn(`[JACS] ${oldName}() is deprecated, use ${newName}() instead`);
+    }
 }

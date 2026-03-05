@@ -1287,3 +1287,12 @@ export function exportAttestationDsseSync(
   const raw: string = (agent as any).exportAttestationDsseSync(attestationJson);
   return JSON.parse(raw);
 }
+
+// =============================================================================
+// Verification Link
+// =============================================================================
+
+export function generateVerifyLink(doc: string, baseUrl?: string): string {
+  const encoded = Buffer.from(doc).toString('base64url');
+  return `${baseUrl || 'https://hai.ai/jacs/verify'}?s=${encoded}`;
+}

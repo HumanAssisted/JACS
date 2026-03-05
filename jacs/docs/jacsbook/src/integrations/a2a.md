@@ -146,8 +146,6 @@ This is the cleanest path into `strict` policy.
 - **Python**: `jacs.a2a_server` is the clearest full discovery story.
 - **Node.js**: `jacsA2AMiddleware()` serves five `.well-known` routes from Express, but the generated `jwks.json` and `jacs-pubkey.json` payloads are still placeholder metadata. `listen()` is intentionally smaller and only suitable for demos.
 
-Those gaps are tracked outside the book in `docs/missing-features.md`.
-
 ## Example Paths In This Repo
 
 - `jacs-mcp/README.md`

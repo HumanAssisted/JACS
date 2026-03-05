@@ -867,4 +867,25 @@ describe('JACS Simple API', function() {
       expect(result.health_checks).to.be.an('array');
     });
   });
+
+  describe('generateVerifyLink', () => {
+    (simpleExists ? it : it.skip)('should return URL with default base', () => {
+      const link = simple.generateVerifyLink('{"hello":"world"}');
+      expect(link).to.be.a('string');
+      expect(link).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should use custom baseUrl', () => {
+      const link = simple.generateVerifyLink('test', 'https://example.com/verify');
+      expect(link).to.match(/^https:\/\/example\.com\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should round-trip decode to original', () => {
+      const original = '{"signed":"document","data":123}';
+      const link = simple.generateVerifyLink(original);
+      const encoded = link.split('?s=')[1];
+      const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+      expect(decoded).to.equal(original);
+    });
+  });
 });

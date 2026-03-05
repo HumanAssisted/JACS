@@ -832,3 +832,23 @@ class TestAudit:
         assert "summary" in result
         assert "overall_status" in result
         assert result["summary"]
+
+
+class TestGenerateVerifyLink:
+    """Tests for generate_verify_link() utility."""
+
+    def test_returns_url_with_default_base(self):
+        link = simple.generate_verify_link('{"hello":"world"}')
+        assert link.startswith("https://hai.ai/jacs/verify?s=")
+
+    def test_custom_base_url(self):
+        link = simple.generate_verify_link("test", base_url="https://example.com/verify")
+        assert link.startswith("https://example.com/verify?s=")
+
+    def test_round_trip_decode(self):
+        import base64
+        original = '{"signed":"document","data":123}'
+        link = simple.generate_verify_link(original)
+        encoded = link.split("?s=")[1]
+        decoded = base64.urlsafe_b64decode(encoded).decode("utf-8")
+        assert decoded == original

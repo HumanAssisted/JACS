@@ -1454,6 +1454,18 @@ def get_well_known_json() -> dict:
     }
 
 
+def generate_verify_link(doc: str, base_url: Optional[str] = None) -> str:
+    """Generate a verification URL for a signed document.
+
+    Base64url-encodes the document and returns a URL that can be used
+    to verify it via hai.ai or a custom verifier.
+    """
+    import base64
+    encoded = base64.urlsafe_b64encode(doc.encode("utf-8")).decode("ascii")
+    url = base_url or "https://hai.ai/jacs/verify"
+    return f"{url}?s={encoded}"
+
+
 def get_agent_info() -> Optional[AgentInfo]:
     """Get information about the currently loaded agent.
 
@@ -1712,6 +1724,7 @@ __all__ = [
     "export_agent",
     "get_dns_record",
     "get_well_known_json",
+    "generate_verify_link",
     "get_agent_info",
     "is_loaded",
     # Trust store

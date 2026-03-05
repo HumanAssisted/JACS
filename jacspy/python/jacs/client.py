@@ -494,6 +494,13 @@ class JacsClient:
                 raise VerificationError(f"Verification failed (strict mode): {e}") from e
             return VerificationResult(valid=False, errors=[str(e)])
 
+    def generate_verify_link(self, doc: str, base_url: Optional[str] = None) -> str:
+        """Generate a verification URL for a signed document."""
+        import base64
+        encoded = base64.urlsafe_b64encode(doc.encode("utf-8")).decode("ascii")
+        url = base_url or "https://hai.ai/jacs/verify"
+        return f"{url}?s={encoded}"
+
     # ------------------------------------------------------------------
     # Agreements
     # ------------------------------------------------------------------

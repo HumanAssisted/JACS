@@ -14,5 +14,3 @@ If OpenClaw becomes an actively maintained integration again, it should return w
 - a public implementation location
 - example code that runs against the current APIs
 - a small, concrete setup guide instead of a speculative platform chapter
-
-That work is tracked in `docs/missing-features.md`.

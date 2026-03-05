@@ -851,6 +851,15 @@ export class JacsClient {
   }
 
   // ---------------------------------------------------------------------------
+  // Verification Link
+  // ---------------------------------------------------------------------------
+
+  generateVerifyLink(doc: string, baseUrl?: string): string {
+    const encoded = Buffer.from(doc).toString('base64url');
+    return `${baseUrl || 'https://hai.ai/jacs/verify'}?s=${encoded}`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Audit
   // ---------------------------------------------------------------------------
 
