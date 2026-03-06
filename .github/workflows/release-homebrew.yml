@@ -3,7 +3,6 @@ name: Sync Homebrew Tap
 on:
   push:
     tags:
-      - 'cli/v*'
       - 'crate/v*'
   workflow_dispatch:
     inputs:
@@ -34,18 +33,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check for tap token
+        id: tap-token
         env:
           HAS_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
         run: |
           if [ "$HAS_TOKEN" != "true" ]; then
-            echo "::error::HOMEBREW_TAP_TOKEN secret is not configured. Set it at https://github.com/HumanAssisted/JACS/settings/secrets/actions"
-            exit 1
+            echo "::warning::HOMEBREW_TAP_TOKEN secret is not configured; skipping Homebrew tap sync."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
+        if: steps.tap-token.outputs.available == 'true'
 
       - name: Resolve versions and artifact checksums
         id: resolve
+        if: steps.tap-token.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -82,7 +86,18 @@ jobs:
           read -r haisdk_sdist_url haisdk_sha256 < <(python3 -c 'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); version=sys.argv[2]; entry=next((f for f in data.get("releases", {}).get(version, []) if f.get("packagetype")=="sdist"), None); (entry is not None) or sys.exit(f"No sdist found for version {version}"); print(entry["url"], entry["digests"]["sha256"])' "${pypi_json}" "${haisdk_version}")
 
           jacs_crate="$(mktemp)"
-          curl -fsSL "https://crates.io/api/v1/crates/jacs/${jacs_version}/download" -o "${jacs_crate}"
+          crate_url="https://crates.io/api/v1/crates/jacs/${jacs_version}/download"
+          for attempt in $(seq 1 30); do
+            if curl -fsSL "${crate_url}" -o "${jacs_crate}"; then
+              break
+            fi
+            if [ "${attempt}" -eq 30 ]; then
+              echo "::error::Timed out waiting for jacs ${jacs_version} to appear on crates.io"
+              exit 1
+            fi
+            echo "jacs ${jacs_version} not on crates.io yet; retrying in 10 seconds (${attempt}/30)"
+            sleep 10
+          done
           jacs_sha256="$(sha256sum "${jacs_crate}" | awk '{print $1}')"
 
           echo "jacs_version=${jacs_version}" >> "${GITHUB_OUTPUT}"
@@ -93,6 +108,7 @@ jobs:
           echo "haisdk_pypi_package=${haisdk_pkg}" >> "${GITHUB_OUTPUT}"
 
       - name: Generate formula files
+        if: steps.tap-token.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -109,6 +125,7 @@ jobs:
             .github/homebrew-templates/haisdk.rb.tmpl > generated/Formula/haisdk.rb
 
       - name: Checkout Homebrew tap repository
+        if: steps.tap-token.outputs.available == 'true'
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.inputs.tap_repository || 'HumanAssisted/homebrew-jacs' }}
@@ -117,6 +134,7 @@ jobs:
           path: tap
 
       - name: Publish updated formulas to tap
+        if: steps.tap-token.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail

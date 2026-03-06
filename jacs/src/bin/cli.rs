@@ -522,6 +522,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     // Create shutdown guard to ensure cleanup on exit (including early returns)
     let _shutdown_guard = ShutdownGuard::new();
     let matches = Command::new(crate_name!())
+        .version(env!("CARGO_PKG_VERSION"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
         .subcommand(
             Command::new("version")
                 .about("Prints version and build information")
