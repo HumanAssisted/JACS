@@ -1,11 +1,5 @@
-mod jacs_tools;
-
 #[cfg(feature = "mcp")]
-use jacs_binding_core::AgentWrapper;
-#[cfg(feature = "mcp")]
-use jacs_tools::JacsMcpServer;
-#[cfg(feature = "mcp")]
-use rmcp::{ServiceExt, transport::stdio};
+use jacs_mcp::{JacsMcpServer, load_agent_from_config_env, serve_stdio};
 
 #[cfg(feature = "mcp")]
 #[tokio::main]
@@ -18,77 +12,14 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("starting jacs-mcp (MCP mode)");
 
-    // Load the agent identity from config
-    let agent = load_agent_from_config()?;
-
-    // Create the MCP server
+    let agent = load_agent_from_config_env()?;
     let server = JacsMcpServer::new(agent);
 
     tracing::info!("JACS MCP server ready, waiting for client connection on stdio");
-
-    // Serve over stdin/stdout
-    let (stdin, stdout) = stdio();
-    let running = server.serve((stdin, stdout)).await?;
-
-    tracing::info!("MCP client connected, serving requests");
-
-    // Wait for the service to complete
-    running.waiting().await?;
+    serve_stdio(server).await?;
 
     tracing::info!("MCP server shutting down");
     Ok(())
-}
-
-#[cfg(feature = "mcp")]
-fn load_agent_from_config() -> anyhow::Result<AgentWrapper> {
-    let agent_wrapper = AgentWrapper::new();
-
-    // JACS_CONFIG is required for the MCP server
-    let cfg_path = std::env::var("JACS_CONFIG").map_err(|_| {
-        anyhow::anyhow!(
-            "JACS_CONFIG environment variable is not set. \n\
-             \n\
-             To use the JACS MCP server, you need to:\n\
-             1. Create a jacs.config.json file with your agent configuration\n\
-             2. Set JACS_CONFIG=/path/to/jacs.config.json\n\
-             \n\
-             See the README for a Quick Start guide on creating an agent."
-        )
-    })?;
-
-    tracing::info!(config_path = %cfg_path, "Loading agent from config file");
-
-    // Verify the config file exists before trying to read it
-    if !std::path::Path::new(&cfg_path).exists() {
-        return Err(anyhow::anyhow!(
-            "Config file not found at '{}'. \n\
-             \n\
-             Please create a jacs.config.json file or update JACS_CONFIG \
-             to point to an existing configuration file.",
-            cfg_path
-        ));
-    }
-
-    // Set up environment from config
-    let cfg_str = std::fs::read_to_string(&cfg_path).map_err(|e| {
-        anyhow::anyhow!(
-            "Failed to read config file '{}': {}. Check file permissions.",
-            cfg_path,
-            e
-        )
-    })?;
-
-    #[allow(deprecated)]
-    let _ = jacs::config::set_env_vars(true, Some(&cfg_str), false)
-        .map_err(|e| anyhow::anyhow!("Invalid config file '{}': {}", cfg_path, e))?;
-
-    // Load the agent using the full config file path
-    agent_wrapper
-        .load(cfg_path.clone())
-        .map_err(|e| anyhow::anyhow!("Failed to load agent: {}", e))?;
-
-    tracing::info!("Agent loaded successfully from config");
-    Ok(agent_wrapper)
 }
 
 #[cfg(not(feature = "mcp"))]
