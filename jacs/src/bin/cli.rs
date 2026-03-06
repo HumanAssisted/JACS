@@ -1,8 +1,8 @@
-use clap::{crate_name, value_parser, Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 
+use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::Agent;
 use jacs::cli_utils::create::handle_agent_create;
 use jacs::cli_utils::create::handle_config_create;
 use jacs::cli_utils::default_set_file_list;
@@ -13,8 +13,8 @@ use jacs::cli_utils::document::{
 use jacs::config::load_config_12factor_optional;
 // use jacs::create_task; // unused
 use jacs::dns::bootstrap as dns_bootstrap;
-use jacs::shutdown::{install_signal_handler, ShutdownGuard};
-use jacs::{load_agent, load_agent_with_dns_strict};
+use jacs::shutdown::{ShutdownGuard, install_signal_handler};
+use jacs::{load_agent, load_agent_with_dns_policy};
 
 use reqwest;
 use rpassword::read_password;
@@ -126,6 +126,37 @@ Configure exactly one source.\n\n{}",
     }
 
     Ok(())
+}
+
+fn resolve_dns_policy_overrides(
+    ignore_dns: bool,
+    require_strict: bool,
+    require_dns: bool,
+    non_strict: bool,
+) -> (Option<bool>, Option<bool>, Option<bool>) {
+    if ignore_dns {
+        (Some(false), Some(false), Some(false))
+    } else if require_strict {
+        (Some(true), Some(true), Some(true))
+    } else if require_dns {
+        (Some(true), Some(true), Some(false))
+    } else if non_strict {
+        (Some(true), Some(false), Some(false))
+    } else {
+        (None, None, None)
+    }
+}
+
+fn load_agent_with_cli_dns_policy(
+    agent_file: Option<String>,
+    ignore_dns: bool,
+    require_strict: bool,
+    require_dns: bool,
+    non_strict: bool,
+) -> Result<Agent, Box<dyn Error>> {
+    let (dns_validate, dns_required, dns_strict) =
+        resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
+    load_agent_with_dns_policy(agent_file, dns_validate, dns_required, dns_strict)
 }
 
 fn wrap_quickstart_error_with_password_help(
@@ -1405,37 +1436,19 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Load agent from optional path, supporting non-strict DNS for propagation
                 let agent_file = sub_m.get_one::<String>("agent-file").cloned();
                 let non_strict = *sub_m.get_one::<bool>("no-dns").unwrap_or(&false);
-                let mut agent: Agent = if let Some(path) = agent_file.clone() {
-                    if non_strict {
-                        load_agent_with_dns_strict(path, false)
-                            .expect("failed to load agent (non-strict)")
-                    } else {
-                        load_agent(Some(path)).expect("failed to load agent")
-                    }
-                } else {
-                    load_agent(None)
-                        .expect("Provide --agent-file or ensure config points to a readable agent")
-                };
-                if *sub_m.get_one::<bool>("ignore-dns").unwrap_or(&false) {
-                    agent.set_dns_validate(false);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                } else if *sub_m
+                let ignore_dns = *sub_m.get_one::<bool>("ignore-dns").unwrap_or(&false);
+                let require_strict = *sub_m
                     .get_one::<bool>("require-strict-dns")
-                    .unwrap_or(&false)
-                {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(true);
-                } else if *sub_m.get_one::<bool>("require-dns").unwrap_or(&false) {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(false);
-                } else if non_strict {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                }
+                    .unwrap_or(&false);
+                let require_dns = *sub_m.get_one::<bool>("require-dns").unwrap_or(&false);
+                let agent: Agent = load_agent_with_cli_dns_policy(
+                    agent_file,
+                    ignore_dns,
+                    require_strict,
+                    require_dns,
+                    non_strict,
+                )
+                .expect("Provide --agent-file or ensure config points to a readable agent");
                 let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
                 let pk = agent.get_public_key().expect("public key");
                 let digest = match enc {
@@ -1509,33 +1522,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let ignore_dns = *verify_matches
                     .get_one::<bool>("ignore-dns")
                     .unwrap_or(&false);
-                let mut agent: Agent = if let Some(path) = agentfile.cloned() {
-                    if non_strict {
-                        load_agent_with_dns_strict(path, false).expect("agent file")
-                    } else {
-                        load_agent(Some(path)).expect("agent file")
-                    }
-                } else {
-                    // No path provided; use default loader
-                    load_agent(None).expect("agent file")
-                };
-                if ignore_dns {
-                    agent.set_dns_validate(false);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                } else if require_strict {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(true);
-                } else if require_dns {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(false);
-                } else if non_strict {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                }
+                let mut agent: Agent = load_agent_with_cli_dns_policy(
+                    agentfile.cloned(),
+                    ignore_dns,
+                    require_strict,
+                    require_dns,
+                    non_strict,
+                )
+                .expect("agent file");
                 agent
                     .verify_self_signature()
                     .expect("signature verification");
@@ -1888,8 +1882,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         },
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
             Some(("assess", assess_matches)) => {
-                use jacs::a2a::trust::{assess_a2a_agent, A2ATrustPolicy};
                 use jacs::a2a::AgentCard;
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
                 let source = assess_matches.get_one::<String>("source").unwrap();
                 let policy_str = assess_matches
@@ -2002,8 +1996,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("  Added to local trust store with key: {}", key);
             }
             Some(("discover", discover_matches)) => {
-                use jacs::a2a::trust::{assess_a2a_agent, A2ATrustPolicy};
                 use jacs::a2a::AgentCard;
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
 
                 let base_url = discover_matches.get_one::<String>("url").unwrap();
                 let json_output = *discover_matches.get_one::<bool>("json").unwrap_or(&false);
@@ -2119,9 +2113,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     None,
                     None,
                 )
-                .map_err(|e| {
-                    wrap_quickstart_error_with_password_help("Failed to load agent", e)
-                })?;
+                .map_err(|e| wrap_quickstart_error_with_password_help("Failed to load agent", e))?;
 
                 // Export the Agent Card for display
                 let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
@@ -2221,16 +2213,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         quickstart_password_bootstrap_help()
                     )))
                 })?;
-                let (agent, info) = SimpleAgent::quickstart(
-                    name,
-                    domain,
-                    description,
-                    algorithm,
-                    None,
-                )
-                .map_err(|e| {
-                    wrap_quickstart_error_with_password_help("Failed to quickstart agent", e)
-                })?;
+                let (agent, info) =
+                    SimpleAgent::quickstart(name, domain, description, algorithm, None).map_err(
+                        |e| {
+                            wrap_quickstart_error_with_password_help(
+                                "Failed to quickstart agent",
+                                e,
+                            )
+                        },
+                    )?;
 
                 // Export the Agent Card
                 let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
@@ -2334,8 +2325,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     quickstart_password_bootstrap_help()
                 )))
             })?;
-            let (agent, info) =
-                SimpleAgent::quickstart(name, domain, description, algorithm, None)
+            let (agent, info) = SimpleAgent::quickstart(name, domain, description, algorithm, None)
                 .map_err(|e| wrap_quickstart_error_with_password_help("Quickstart failed", e))?;
 
             if do_sign {
@@ -2417,11 +2407,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         create_matches.get_one::<String>("from-document")
                     {
                         // Lift from existing signed document
-                        let doc_content = std::fs::read_to_string(doc_path)
-                            .map_err(|e| format!("Failed to read document '{}': {}", doc_path, e))?;
-                        let result = agent.lift_to_attestation(&doc_content, &claims).map_err(
-                            |e| format!("Failed to lift document to attestation: {}", e),
-                        )?;
+                        let doc_content = std::fs::read_to_string(doc_path).map_err(|e| {
+                            format!("Failed to read document '{}': {}", doc_path, e)
+                        })?;
+                        let result =
+                            agent
+                                .lift_to_attestation(&doc_content, &claims)
+                                .map_err(|e| {
+                                    format!("Failed to lift document to attestation: {}", e)
+                                })?;
                         result.raw
                     } else {
                         // Build from scratch: need subject-type, subject-id, subject-digest
@@ -2433,9 +2427,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             .ok_or("--subject-id is required when not using --from-document")?;
                         let subject_digest = create_matches
                             .get_one::<String>("subject-digest")
-                            .ok_or(
-                                "--subject-digest is required when not using --from-document",
-                            )?;
+                            .ok_or("--subject-digest is required when not using --from-document")?;
 
                         let subject_type = match subject_type_str.as_str() {
                             "agent" => SubjectType::Agent,
@@ -2443,7 +2435,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             "workflow" => SubjectType::Workflow,
                             "identity" => SubjectType::Identity,
                             other => {
-                                return Err(format!("Unknown subject type: '{}'", other).into())
+                                return Err(format!("Unknown subject type: '{}'", other).into());
                             }
                         };
 
@@ -2492,10 +2484,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     if let Some(depth) = max_depth {
                         // SAFETY: CLI is single-threaded at this point
                         unsafe {
-                            std::env::set_var(
-                                "JACS_MAX_DERIVATION_DEPTH",
-                                depth.to_string(),
-                            )
+                            std::env::set_var("JACS_MAX_DERIVATION_DEPTH", depth.to_string())
                         };
                     }
 
@@ -2516,10 +2505,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     };
 
                     // Load the attestation document into agent storage first
-                    let att_value: serde_json::Value =
-                        serde_json::from_str(&att_content).map_err(|e| {
-                            format!("Invalid attestation JSON: {}", e)
-                        })?;
+                    let att_value: serde_json::Value = serde_json::from_str(&att_content)
+                        .map_err(|e| format!("Invalid attestation JSON: {}", e))?;
                     let doc_key = format!(
                         "{}:{}",
                         att_value["jacsId"].as_str().unwrap_or("unknown"),
@@ -2535,10 +2522,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                 "valid": false,
                                 "error": e.to_string(),
                             });
-                            println!(
-                                "{}",
-                                serde_json::to_string_pretty(&out).unwrap()
-                            );
+                            println!("{}", serde_json::to_string_pretty(&out).unwrap());
                         } else {
                             eprintln!("Verification error: {}", e);
                         }
@@ -2555,10 +2539,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     match att_result {
                         Ok(r) => {
                             if json_output {
-                                println!(
-                                    "{}",
-                                    serde_json::to_string_pretty(&r).unwrap()
-                                );
+                                println!("{}", serde_json::to_string_pretty(&r).unwrap());
                             } else {
                                 println!(
                                     "Status:    {}",
@@ -2602,10 +2583,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                     "valid": false,
                                     "error": e.to_string(),
                                 });
-                                println!(
-                                    "{}",
-                                    serde_json::to_string_pretty(&out).unwrap()
-                                );
+                                println!("{}", serde_json::to_string_pretty(&out).unwrap());
                             } else {
                                 eprintln!("Attestation verification error: {}", e);
                             }
@@ -2619,16 +2597,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .expect("file argument required");
                     let output_path = export_matches.get_one::<String>("output");
 
-                    let attestation_json =
-                        std::fs::read_to_string(file_path).unwrap_or_else(|e| {
-                            eprintln!("Cannot read {}: {}", file_path, e);
-                            process::exit(1);
-                        });
-
-                    let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap_or_else(|e| {
-                        eprintln!("Failed to create agent: {}", e);
+                    let attestation_json = std::fs::read_to_string(file_path).unwrap_or_else(|e| {
+                        eprintln!("Cannot read {}: {}", file_path, e);
                         process::exit(1);
                     });
+
+                    let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519"))
+                        .unwrap_or_else(|e| {
+                            eprintln!("Failed to create agent: {}", e);
+                            process::exit(1);
+                        });
 
                     match agent.export_dsse(&attestation_json) {
                         Ok(envelope_json) => {
@@ -2649,7 +2627,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 _ => {
-                    eprintln!("Use 'jacs attest create', 'jacs attest verify', or 'jacs attest export-dsse'. See --help.");
+                    eprintln!(
+                        "Use 'jacs attest create', 'jacs attest verify', or 'jacs attest export-dsse'. See --help."
+                    );
                     process::exit(1);
                 }
             }

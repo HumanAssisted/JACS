@@ -316,21 +316,22 @@ impl StorageDocumentTraits for SqliteStorage {
     fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
         let (id, version) = Self::parse_key(key)?;
 
-        let count: i32 = self.block_on(async {
-            sqlx::query_scalar::<_, i32>(
-                "SELECT COUNT(*) FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2",
-            )
-            .bind(id)
-            .bind(version)
-            .fetch_one(&self.pool)
-            .await
-        })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "document_exists".to_string(),
-                reason: e.to_string(),
+        let count: i32 = self
+            .block_on(async {
+                sqlx::query_scalar::<_, i32>(
+                    "SELECT COUNT(*) FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2",
+                )
+                .bind(id)
+                .bind(version)
+                .fetch_one(&self.pool)
+                .await
             })
-        })?;
+            .map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "document_exists".to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
 
         Ok(count > 0)
     }

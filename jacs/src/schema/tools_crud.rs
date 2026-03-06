@@ -174,7 +174,10 @@ mod tests {
             .expect("wrapped tool should contain one entry");
 
         assert_eq!(tool["function"]["name"], json!("search"));
-        assert_eq!(tool["function"]["description"], json!("Searches indexed content"));
+        assert_eq!(
+            tool["function"]["description"],
+            json!("Searches indexed content")
+        );
         assert_eq!(tool["url"], json!("https://example.com/tool"));
     }
 

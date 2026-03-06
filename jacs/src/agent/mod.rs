@@ -364,7 +364,10 @@ impl Agent {
     /// The adapter will be consulted during full attestation verification
     /// when evidence of a matching kind is encountered.
     #[cfg(feature = "attestation")]
-    pub fn register_adapter(&mut self, adapter: Box<dyn crate::attestation::adapters::EvidenceAdapter>) {
+    pub fn register_adapter(
+        &mut self,
+        adapter: Box<dyn crate::attestation::adapters::EvidenceAdapter>,
+    ) {
         self.adapters.push(adapter);
     }
 
@@ -374,12 +377,14 @@ impl Agent {
         let default_config_path = crate::paths::default_config_path();
         let default_config_path = default_config_path.to_string_lossy().to_string();
 
-        self.config = Some(load_config_12factor_optional(Some(&default_config_path)).map_err(|e| {
-            format!(
-                "load_by_id failed for agent '{}': Could not find or load configuration: {}",
-                lookup_id, e
-            )
-        })?);
+        self.config = Some(
+            load_config_12factor_optional(Some(&default_config_path)).map_err(|e| {
+                format!(
+                    "load_by_id failed for agent '{}': Could not find or load configuration: {}",
+                    lookup_id, e
+                )
+            })?,
+        );
         debug!("load_by_id config {:?}", self.config);
 
         let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
@@ -485,7 +490,8 @@ impl Agent {
                     }
                     if dir_path.is_absolute() {
                         let normalized_abs = normalize_path(dir_path);
-                        if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute) {
+                        if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute)
+                        {
                             let relative = relative_tail
                                 .to_string_lossy()
                                 .trim_start_matches('/')
@@ -499,7 +505,8 @@ impl Agent {
                             }
                         } else {
                             has_external_absolute = true;
-                            config_value[field] = json!(normalized_abs.to_string_lossy().to_string());
+                            config_value[field] =
+                                json!(normalized_abs.to_string_lossy().to_string());
                         }
                     } else {
                         let normalized_rel = normalize_path(dir_path);
@@ -1291,17 +1298,19 @@ impl Agent {
     /// 4. Signs the new document with the **new** key
     ///
     /// Returns `(new_version, new_public_key_bytes, signed_agent_json)`.
-    pub fn rotate_self(
-        &mut self,
-    ) -> Result<(String, Vec<u8>, Value), Box<dyn Error>> {
+    pub fn rotate_self(&mut self) -> Result<(String, Vec<u8>, Value), Box<dyn Error>> {
         // Clone the current agent value up front to avoid borrow conflicts
-        let original_value = self.value.as_ref().ok_or_else(|| {
-            let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
-            format!(
-                "rotate_self failed for agent '{}': Agent value is not loaded.",
-                agent_id
-            )
-        })?.clone();
+        let original_value = self
+            .value
+            .as_ref()
+            .ok_or_else(|| {
+                let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
+                format!(
+                    "rotate_self failed for agent '{}': Agent value is not loaded.",
+                    agent_id
+                )
+            })?
+            .clone();
 
         let old_version = original_value
             .get_str("jacsVersion")

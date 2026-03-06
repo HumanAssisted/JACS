@@ -28,10 +28,7 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
     let header_bytes = &raw_email[..header_end];
     let raw_headers = parse_raw_headers(header_bytes)?;
     for (name, value) in raw_headers {
-        headers
-            .entry(name.to_lowercase())
-            .or_default()
-            .push(value);
+        headers.entry(name.to_lowercase()).or_default().push(value);
     }
 
     // Validate that the parsed message has a From header (RFC 5322 required).
@@ -52,16 +49,13 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
     let mut jacs_attachments = Vec::new();
 
     for part in message.parts.iter() {
-        let is_attachment = part
-            .content_disposition()
-            .map_or(false, |d| d.ctype() == "attachment" || d.ctype() == "inline");
+        let is_attachment = part.content_disposition().map_or(false, |d| {
+            d.ctype() == "attachment" || d.ctype() == "inline"
+        });
 
         let filename = part
             .attachment_name()
-            .or_else(|| {
-                part.content_type()
-                    .and_then(|ct| ct.attribute("name"))
-            })
+            .or_else(|| part.content_type().and_then(|ct| ct.attribute("name")))
             .unwrap_or("")
             .to_string();
 
@@ -89,9 +83,7 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
         let content = strip_trailing_crlf(raw_content).to_vec();
         let content_type = ct.clone();
         let cte = part.content_transfer_encoding().map(|s| s.to_string());
-        let cd = part
-            .content_disposition()
-            .map(|d| d.ctype().to_string());
+        let cd = part.content_disposition().map(|d| d.ctype().to_string());
 
         let nfc_filename: String = filename.nfc().collect();
 
@@ -123,7 +115,12 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
 pub(crate) fn find_header_body_boundary(raw: &[u8]) -> usize {
     // Look for \r\n\r\n or \n\n
     for i in 0..raw.len().saturating_sub(1) {
-        if raw[i] == b'\r' && i + 3 < raw.len() && raw[i + 1] == b'\n' && raw[i + 2] == b'\r' && raw[i + 3] == b'\n' {
+        if raw[i] == b'\r'
+            && i + 3 < raw.len()
+            && raw[i + 1] == b'\n'
+            && raw[i + 2] == b'\r'
+            && raw[i + 3] == b'\n'
+        {
             return i;
         }
         if raw[i] == b'\n' && raw[i + 1] == b'\n' {
@@ -204,9 +201,7 @@ fn extract_body_part(
                 s
             });
             let cte = part.content_transfer_encoding().map(|s| s.to_string());
-            let cd = part
-                .content_disposition()
-                .map(|d| format!("{}", d.ctype()));
+            let cd = part.content_disposition().map(|d| format!("{}", d.ctype()));
 
             return Some(ParsedBodyPart {
                 content,
@@ -484,10 +479,7 @@ pub(crate) fn compute_mime_headers_hash(
 
     lines.sort();
 
-    let input = lines
-        .iter()
-        .map(|l| format!("{}\n", l))
-        .collect::<String>();
+    let input = lines.iter().map(|l| format!("{}\n", l)).collect::<String>();
 
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
@@ -522,7 +514,11 @@ fn canonicalize_mime_header_value(value: &str) -> String {
 /// Any trailing-byte mutations will be detected as a hash mismatch.
 /// MIME boundary artifacts are handled at the extraction layer (mail-parser),
 /// not at the hashing layer.
-pub(crate) fn compute_attachment_hash(filename: &str, content_type: &str, raw_bytes: &[u8]) -> String {
+pub(crate) fn compute_attachment_hash(
+    filename: &str,
+    content_type: &str,
+    raw_bytes: &[u8],
+) -> String {
     let filename_nfc: String = filename.nfc().collect();
     let content_type_lower = content_type.to_lowercase();
 
@@ -567,23 +563,20 @@ mod tests {
 
     #[test]
     fn canonicalize_header_lowercases_email_domain_only() {
-        let result =
-            canonicalize_header("From", "  Agent@Example.COM  ").unwrap();
+        let result = canonicalize_header("From", "  Agent@Example.COM  ").unwrap();
         assert_eq!(result, "Agent@example.com");
     }
 
     #[test]
     fn canonicalize_header_decodes_rfc2047_subject() {
-        let result =
-            canonicalize_header("Subject", "=?UTF-8?B?Q2Fmw6k=?=").unwrap();
+        let result = canonicalize_header("Subject", "=?UTF-8?B?Q2Fmw6k=?=").unwrap();
         assert_eq!(result, "Caf\u{00e9}");
     }
 
     #[test]
     fn canonicalize_header_nfc_normalizes() {
         // NFD Cafe\u{0301} -> NFC Caf\u{00e9}
-        let result =
-            canonicalize_header("Subject", "=?UTF-8?B?Q2FmZcyB?=").unwrap();
+        let result = canonicalize_header("Subject", "=?UTF-8?B?Q2FmZcyB?=").unwrap();
         assert_eq!(result, "Caf\u{00e9}");
     }
 
@@ -624,16 +617,10 @@ mod tests {
 
     #[test]
     fn compute_mime_headers_hash_deterministic() {
-        let hash1 = compute_mime_headers_hash(
-            Some("text/plain; charset=utf-8"),
-            Some("7bit"),
-            None,
-        );
-        let hash2 = compute_mime_headers_hash(
-            Some("text/plain; charset=utf-8"),
-            Some("7bit"),
-            None,
-        );
+        let hash1 =
+            compute_mime_headers_hash(Some("text/plain; charset=utf-8"), Some("7bit"), None);
+        let hash2 =
+            compute_mime_headers_hash(Some("text/plain; charset=utf-8"), Some("7bit"), None);
         assert_eq!(hash1, hash2);
         assert!(hash1.starts_with("sha256:"));
     }
@@ -650,16 +637,8 @@ mod tests {
 
     #[test]
     fn compute_mime_headers_hash_omits_missing() {
-        let hash_with = compute_mime_headers_hash(
-            Some("text/plain"),
-            Some("7bit"),
-            None,
-        );
-        let hash_all = compute_mime_headers_hash(
-            Some("text/plain"),
-            Some("7bit"),
-            Some("inline"),
-        );
+        let hash_with = compute_mime_headers_hash(Some("text/plain"), Some("7bit"), None);
+        let hash_all = compute_mime_headers_hash(Some("text/plain"), Some("7bit"), Some("inline"));
         assert_ne!(hash_with, hash_all);
     }
 

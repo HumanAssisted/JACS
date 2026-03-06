@@ -28,9 +28,12 @@ impl EvidenceAdapter for A2aAdapter {
         let sensitivity = EvidenceSensitivity::Public;
         let embedded = should_embed_with_sensitivity(raw, &sensitivity);
         let embedded_data = if embedded {
-            Some(serde_json::from_slice(raw).unwrap_or(Value::String(
-                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw),
-            )))
+            Some(
+                serde_json::from_slice(raw).unwrap_or(Value::String(base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    raw,
+                ))),
+            )
         } else {
             None
         };

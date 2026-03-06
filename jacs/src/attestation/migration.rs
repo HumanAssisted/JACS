@@ -3,11 +3,11 @@
 //! Provides lift_to_attestation() to convert an existing signed JACS document
 //! into an attestation document that references the original.
 
-use crate::agent::document::JACSDocument;
 use crate::agent::Agent;
+use crate::agent::document::JACSDocument;
+use crate::attestation::AttestationTraits;
 use crate::attestation::digest::compute_digest_set;
 use crate::attestation::types::*;
-use crate::attestation::AttestationTraits;
 use serde_json::Value;
 use std::error::Error;
 
@@ -66,11 +66,9 @@ pub fn lift_to_attestation(
 
     // 6. Ensure at least one claim is provided
     if claims.is_empty() {
-        return Err(
-            "lift_to_attestation: at least one claim is required. \
+        return Err("lift_to_attestation: at least one claim is required. \
              Provide claims describing what is being attested about the document."
-                .into(),
-        );
+            .into());
     }
 
     // 7. Create the attestation using the existing infrastructure
@@ -196,7 +194,11 @@ mod tests {
         let key = format!("{}:{}", attestation.id, attestation.version);
 
         let result = agent.verify_attestation_local_impl(&key).unwrap();
-        assert!(result.valid, "Lifted attestation should verify: {:?}", result.errors);
+        assert!(
+            result.valid,
+            "Lifted attestation should verify: {:?}",
+            result.errors
+        );
     }
 
     #[test]

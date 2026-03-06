@@ -7,7 +7,7 @@
 //! - attestation_verify_full_no_network: full-tier with embedded evidence only
 //! - attestation_lift_to_attestation: lift an existing signed document
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use jacs::attestation::types::{
     AssuranceLevel, AttestationSubject, Claim, DigestSet, EvidenceKind, EvidenceRef,
     EvidenceSensitivity, SubjectType, VerifierInfo,

@@ -19,9 +19,9 @@ mod conformance;
 use jacs::storage::MultiStorage;
 use serial_test::serial;
 use std::path::PathBuf;
+use testcontainers::GenericImage;
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
-use testcontainers::GenericImage;
 
 /// Set up MinIO environment variables for the test.
 fn setup_minio_env(host_port: u16) {

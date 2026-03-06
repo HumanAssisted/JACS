@@ -17,8 +17,12 @@ fn load_fixture(name: &str) -> VerificationResult {
     let path = fixture_dir().join(name);
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("Failed to read fixture {}: {}", path.display(), e));
-    serde_json::from_str(&content)
-        .unwrap_or_else(|e| panic!("Failed to parse fixture {} as VerificationResult: {}", name, e))
+    serde_json::from_str(&content).unwrap_or_else(|e| {
+        panic!(
+            "Failed to parse fixture {} as VerificationResult: {}",
+            name, e
+        )
+    })
 }
 
 // =========================================================================
@@ -35,8 +39,14 @@ fn test_load_self_signed_verified_fixture() {
         result.status
     );
     assert!(!result.signer_id.is_empty(), "signer_id must be populated");
-    assert!(!result.signer_version.is_empty(), "signer_version must be populated");
-    assert!(!result.artifact_type.is_empty(), "artifact_type must be populated");
+    assert!(
+        !result.signer_version.is_empty(),
+        "signer_version must be populated"
+    );
+    assert!(
+        !result.artifact_type.is_empty(),
+        "artifact_type must be populated"
+    );
     assert!(!result.timestamp.is_empty(), "timestamp must be populated");
     assert!(result.parent_signatures_valid, "no parents means valid");
     assert!(
@@ -94,7 +104,10 @@ fn test_load_trust_blocked_fixture() {
         "trust_blocked fixture must include trust assessment"
     );
     let assessment = result.trust_assessment.as_ref().unwrap();
-    assert!(!assessment.allowed, "trust assessment should have allowed=false");
+    assert!(
+        !assessment.allowed,
+        "trust assessment should have allowed=false"
+    );
     assert!(
         !assessment.reason.is_empty(),
         "trust assessment reason must not be empty"

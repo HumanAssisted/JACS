@@ -73,8 +73,9 @@ impl From<EmailError> for crate::error::JacsError {
         use crate::error::JacsError;
         match &e {
             // Crypto-related errors
-            EmailError::SignatureVerificationFailed(_)
-            | EmailError::AlgorithmMismatch(_) => JacsError::CryptoError(e.to_string()),
+            EmailError::SignatureVerificationFailed(_) | EmailError::AlgorithmMismatch(_) => {
+                JacsError::CryptoError(e.to_string())
+            }
 
             // Validation / malformed-input errors
             EmailError::InvalidEmailFormat(_)
@@ -125,10 +126,7 @@ mod tests {
     #[test]
     fn signature_verification_failed_error() {
         let err = EmailError::SignatureVerificationFailed("wrong key".to_string());
-        assert_eq!(
-            err.to_string(),
-            "Signature verification failed: wrong key"
-        );
+        assert_eq!(err.to_string(), "Signature verification failed: wrong key");
     }
 
     #[test]
@@ -178,10 +176,7 @@ mod tests {
             Box::new(EmailError::ContentTampered("test".to_string())),
             Box::new(EmailError::ChainVerificationFailed("test".to_string())),
             Box::new(EmailError::AlgorithmMismatch("test".to_string())),
-            Box::new(EmailError::EmailTooLarge {
-                size: 100,
-                max: 50,
-            }),
+            Box::new(EmailError::EmailTooLarge { size: 100, max: 50 }),
             Box::new(EmailError::UnsupportedFeature("test".to_string())),
         ];
         assert_eq!(errors.len(), 10);
@@ -230,6 +225,9 @@ mod tests {
         // Document errors
         let jacs_err: crate::error::JacsError =
             EmailError::ChainVerificationFailed("broken link".into()).into();
-        assert!(matches!(jacs_err, crate::error::JacsError::DocumentError(_)));
+        assert!(matches!(
+            jacs_err,
+            crate::error::JacsError::DocumentError(_)
+        ));
     }
 }

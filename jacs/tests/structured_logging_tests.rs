@@ -535,7 +535,10 @@ mod attestation_tracing {
         assert!(
             !create_events.is_empty(),
             "Should emit 'attestation_created' event. All events: {:?}",
-            events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+            events
+                .iter()
+                .map(|e| (&e.message, &e.fields))
+                .collect::<Vec<_>>()
         );
 
         let ev = create_events[0];
@@ -574,7 +577,10 @@ mod attestation_tracing {
         assert!(
             !verify_events.is_empty(),
             "Should emit 'attestation_verify_local' event. All events: {:?}",
-            events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+            events
+                .iter()
+                .map(|e| (&e.message, &e.fields))
+                .collect::<Vec<_>>()
         );
 
         let ev = verify_events[0];
@@ -612,7 +618,10 @@ mod attestation_tracing {
         assert!(
             !verify_events.is_empty(),
             "Should emit 'attestation_verify_full' event. All events: {:?}",
-            events.iter().map(|e| (&e.message, &e.fields)).collect::<Vec<_>>()
+            events
+                .iter()
+                .map(|e| (&e.message, &e.fields))
+                .collect::<Vec<_>>()
         );
 
         let ev = verify_events[0];

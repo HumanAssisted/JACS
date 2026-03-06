@@ -503,13 +503,12 @@ impl DatabaseDocumentTraits for DuckDbStorage {
 
         let mut docs = Vec::new();
         for row in rows {
-            let (jacs_id, jacs_version, jacs_type, raw) =
-                row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_type".to_string(),
-                        reason: e.to_string(),
-                    })
-                })?;
+            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "query_by_type".to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
             let value: Value = serde_json::from_str(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,
@@ -693,13 +692,12 @@ impl DatabaseDocumentTraits for DuckDbStorage {
 
         let mut docs = Vec::new();
         for row in rows {
-            let (jacs_id, jacs_version, jacs_type, raw) =
-                row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "get_versions".to_string(),
-                        reason: e.to_string(),
-                    })
-                })?;
+            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "get_versions".to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
             let value: Value = serde_json::from_str(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,

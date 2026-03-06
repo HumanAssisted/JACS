@@ -1,7 +1,7 @@
+use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
-use jacs::agent::Agent;
 use jacs::config::Config;
 use log::debug;
 use serde_json::json;
@@ -561,8 +561,14 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
             data_dir.to_string_lossy().to_string(),
         );
         env::set_var("JACS_KEY_DIRECTORY", key_dir.to_string_lossy().to_string());
-        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-ring-Ed25519-private.pem.enc");
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-ring-Ed25519-public.pem");
+        env::set_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "test-ring-Ed25519-private.pem.enc",
+        );
+        env::set_var(
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+            "test-ring-Ed25519-public.pem",
+        );
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
         env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_FIXTURES);
         env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
@@ -646,10 +652,9 @@ pub fn setup_pq2025_env() {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time should be after UNIX_EPOCH")
         .as_nanos();
-    let base = std::path::PathBuf::from("tests").join("scratch").join(format!(
-        "jacs-pq2025-{}-{nonce}",
-        std::process::id()
-    ));
+    let base = std::path::PathBuf::from("tests")
+        .join("scratch")
+        .join(format!("jacs-pq2025-{}-{nonce}", std::process::id()));
     let data_dir = base.join("data");
     let key_dir = base.join("keys");
     std::fs::create_dir_all(&data_dir).expect("failed to create pq2025 data directory");

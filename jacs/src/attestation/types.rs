@@ -245,15 +245,30 @@ mod tests {
         };
         let json = serde_json::to_value(&ds).unwrap();
         assert_eq!(json["sha256"], "abc");
-        assert!(json.get("sha512").is_none(), "sha512 should be absent when None");
+        assert!(
+            json.get("sha512").is_none(),
+            "sha512 should be absent when None"
+        );
     }
 
     #[test]
     fn subject_type_serialization() {
-        assert_eq!(serde_json::to_string(&SubjectType::Agent).unwrap(), "\"agent\"");
-        assert_eq!(serde_json::to_string(&SubjectType::Artifact).unwrap(), "\"artifact\"");
-        assert_eq!(serde_json::to_string(&SubjectType::Workflow).unwrap(), "\"workflow\"");
-        assert_eq!(serde_json::to_string(&SubjectType::Identity).unwrap(), "\"identity\"");
+        assert_eq!(
+            serde_json::to_string(&SubjectType::Agent).unwrap(),
+            "\"agent\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SubjectType::Artifact).unwrap(),
+            "\"artifact\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SubjectType::Workflow).unwrap(),
+            "\"workflow\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SubjectType::Identity).unwrap(),
+            "\"identity\""
+        );
     }
 
     #[test]
@@ -274,11 +289,26 @@ mod tests {
 
     #[test]
     fn evidence_kind_serialization() {
-        assert_eq!(serde_json::to_string(&EvidenceKind::A2a).unwrap(), "\"a2a\"");
-        assert_eq!(serde_json::to_string(&EvidenceKind::Email).unwrap(), "\"email\"");
-        assert_eq!(serde_json::to_string(&EvidenceKind::Jwt).unwrap(), "\"jwt\"");
-        assert_eq!(serde_json::to_string(&EvidenceKind::Tlsnotary).unwrap(), "\"tlsnotary\"");
-        assert_eq!(serde_json::to_string(&EvidenceKind::Custom).unwrap(), "\"custom\"");
+        assert_eq!(
+            serde_json::to_string(&EvidenceKind::A2a).unwrap(),
+            "\"a2a\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EvidenceKind::Email).unwrap(),
+            "\"email\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EvidenceKind::Jwt).unwrap(),
+            "\"jwt\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EvidenceKind::Tlsnotary).unwrap(),
+            "\"tlsnotary\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EvidenceKind::Custom).unwrap(),
+            "\"custom\""
+        );
     }
 
     #[test]
@@ -294,7 +324,10 @@ mod tests {
         let json = serde_json::to_value(&claim).unwrap();
         assert_eq!(json["name"], "test");
         assert_eq!(json["value"], "ok");
-        assert!(json.get("confidence").is_none(), "Optional fields should be absent");
+        assert!(
+            json.get("confidence").is_none(),
+            "Optional fields should be absent"
+        );
         assert!(json.get("assuranceLevel").is_none());
         assert!(json.get("issuer").is_none());
         assert!(json.get("issuedAt").is_none());
@@ -387,12 +420,10 @@ mod tests {
         );
 
         // Round-trip: schema string -> Rust enum -> schema string
-        let self_asserted: AssuranceLevel =
-            serde_json::from_str("\"self-asserted\"").unwrap();
+        let self_asserted: AssuranceLevel = serde_json::from_str("\"self-asserted\"").unwrap();
         assert_eq!(self_asserted, AssuranceLevel::SelfAsserted);
 
-        let verified: AssuranceLevel =
-            serde_json::from_str("\"verified\"").unwrap();
+        let verified: AssuranceLevel = serde_json::from_str("\"verified\"").unwrap();
         assert_eq!(verified, AssuranceLevel::Verified);
 
         let independently: AssuranceLevel =
@@ -431,8 +462,14 @@ mod tests {
             algorithm: "ed25519".into(),
         };
         let json = serde_json::to_value(&result).unwrap();
-        assert!(json.get("signerId").is_some(), "Expected camelCase 'signerId'");
-        assert!(json.get("signer_id").is_none(), "Should not have snake_case 'signer_id'");
+        assert!(
+            json.get("signerId").is_some(),
+            "Expected camelCase 'signerId'"
+        );
+        assert!(
+            json.get("signer_id").is_none(),
+            "Should not have snake_case 'signer_id'"
+        );
     }
 
     #[test]
@@ -444,8 +481,14 @@ mod tests {
             algorithm: "ed25519".into(),
         };
         let json = serde_json::to_value(&result).unwrap();
-        assert!(json.get("signatureValid").is_some(), "Expected camelCase 'signatureValid'");
-        assert!(json.get("hashValid").is_some(), "Expected camelCase 'hashValid'");
+        assert!(
+            json.get("signatureValid").is_some(),
+            "Expected camelCase 'signatureValid'"
+        );
+        assert!(
+            json.get("hashValid").is_some(),
+            "Expected camelCase 'hashValid'"
+        );
         assert!(json.get("signature_valid").is_none());
         assert!(json.get("hash_valid").is_none());
     }

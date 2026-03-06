@@ -42,11 +42,10 @@ pub use error::EmailError;
 // Public type definitions (needed to inspect results and documents).
 pub mod types;
 pub use types::{
-    AttachmentEntry, BodyPartEntry, ChainEntry, ContentVerificationResult,
-    EmailSignatureHeaders, EmailSignaturePayload, FieldResult, FieldStatus,
-    JacsEmailMetadata, JacsEmailSignature, JacsEmailSignatureDocument,
-    ParsedAttachment, ParsedBodyPart, ParsedEmailParts, SignedHeaderEntry,
-    VerifiedEmailDocument,
+    AttachmentEntry, BodyPartEntry, ChainEntry, ContentVerificationResult, EmailSignatureHeaders,
+    EmailSignaturePayload, FieldResult, FieldStatus, JacsEmailMetadata, JacsEmailSignature,
+    JacsEmailSignatureDocument, ParsedAttachment, ParsedBodyPart, ParsedEmailParts,
+    SignedHeaderEntry, VerifiedEmailDocument,
 };
 
 // Signing: the primary sender-side function.

@@ -658,8 +658,7 @@ pub extern "C" fn jacs_agent_create_attestation(
         };
 
         let handle_ref = unsafe { &*handle };
-        let wrapper =
-            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
         match wrapper.create_attestation(params_str) {
             Ok(result) => match CString::new(result) {
@@ -699,8 +698,7 @@ pub extern "C" fn jacs_agent_verify_attestation(
         };
 
         let handle_ref = unsafe { &*handle };
-        let wrapper =
-            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
         let result = if full != 0 {
             wrapper.verify_attestation_full(key_str)
@@ -751,8 +749,7 @@ pub extern "C" fn jacs_agent_lift_to_attestation(
         };
 
         let handle_ref = unsafe { &*handle };
-        let wrapper =
-            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
         match wrapper.lift_to_attestation(doc_str, claims_str) {
             Ok(result) => match CString::new(result) {
@@ -790,8 +787,7 @@ pub extern "C" fn jacs_agent_export_attestation_dsse(
         };
 
         let handle_ref = unsafe { &*handle };
-        let wrapper =
-            jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
         match wrapper.export_attestation_dsse(att_str) {
             Ok(result) => match CString::new(result) {
@@ -816,9 +812,7 @@ pub extern "C" fn jacs_agent_export_attestation_dsse(
 /// Returns a JSON string of the Agent Card, or null on error.
 /// Must be freed with jacs_free_string().
 #[unsafe(no_mangle)]
-pub extern "C" fn jacs_agent_export_agent_card(
-    handle: *mut JacsAgentHandle,
-) -> *mut c_char {
+pub extern "C" fn jacs_agent_export_agent_card(handle: *mut JacsAgentHandle) -> *mut c_char {
     if handle.is_null() {
         return ptr::null_mut();
     }
@@ -912,8 +906,7 @@ pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
     agent_card_json: *const c_char,
     policy: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || wrapped_json.is_null() || agent_card_json.is_null() || policy.is_null()
-    {
+    if handle.is_null() || wrapped_json.is_null() || agent_card_json.is_null() || policy.is_null() {
         return ptr::null_mut();
     }
 

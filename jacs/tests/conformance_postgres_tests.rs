@@ -19,8 +19,9 @@ use testcontainers_modules::postgres::Postgres;
 
 /// Shared container handle — kept alive by each test via the returned tuple.
 /// We return the storage and the container handle so the container stays alive.
-static CONTAINER: std::sync::OnceLock<tokio::sync::Mutex<Option<(DatabaseStorage, Box<dyn std::any::Any + Send>)>>> =
-    std::sync::OnceLock::new();
+static CONTAINER: std::sync::OnceLock<
+    tokio::sync::Mutex<Option<(DatabaseStorage, Box<dyn std::any::Any + Send>)>>,
+> = std::sync::OnceLock::new();
 
 async fn create_postgres_storage() -> DatabaseStorage {
     let container = Postgres::default()

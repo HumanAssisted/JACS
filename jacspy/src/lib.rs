@@ -494,7 +494,9 @@ impl JacsAgent {
     ///     JSON string of the lifted attestation document
     #[cfg(feature = "attestation")]
     fn lift_to_attestation(&self, signed_doc_json: &str, claims_json: &str) -> PyResult<String> {
-        self.inner.lift_to_attestation(signed_doc_json, claims_json).to_py()
+        self.inner
+            .lift_to_attestation(signed_doc_json, claims_json)
+            .to_py()
     }
 
     /// Export an attestation as a DSSE envelope.
@@ -920,12 +922,14 @@ impl SimpleAgent {
     fn verify_attestation(&self, document_key: &str) -> PyResult<String> {
         let result = self.inner.verify_attestation(document_key).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to verify attestation: {}", e
+                "Failed to verify attestation: {}",
+                e
             ))
         })?;
         serde_json::to_string(&result).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to serialize result: {}", e
+                "Failed to serialize result: {}",
+                e
             ))
         })
     }
@@ -933,14 +937,19 @@ impl SimpleAgent {
     /// Verify an attestation (full tier: crypto + evidence + chain).
     #[cfg(feature = "attestation")]
     fn verify_attestation_full(&self, document_key: &str) -> PyResult<String> {
-        let result = self.inner.verify_attestation_full(document_key).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to verify attestation (full): {}", e
-            ))
-        })?;
+        let result = self
+            .inner
+            .verify_attestation_full(document_key)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to verify attestation (full): {}",
+                    e
+                ))
+            })?;
         serde_json::to_string(&result).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to serialize result: {}", e
+                "Failed to serialize result: {}",
+                e
             ))
         })
     }
@@ -953,7 +962,8 @@ impl SimpleAgent {
             .map(|d| d.raw)
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                    "Failed to lift to attestation: {}", e
+                    "Failed to lift to attestation: {}",
+                    e
                 ))
             })
     }
@@ -963,7 +973,8 @@ impl SimpleAgent {
     fn export_dsse(&self, attestation_json: &str) -> PyResult<String> {
         self.inner.export_dsse(attestation_json).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to export DSSE: {}", e
+                "Failed to export DSSE: {}",
+                e
             ))
         })
     }

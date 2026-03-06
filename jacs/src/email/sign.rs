@@ -10,15 +10,17 @@
 
 use sha2::{Digest, Sha256};
 
-use super::attachment::{add_jacs_attachment, ensure_multipart_mixed, get_jacs_attachment, remove_jacs_attachment, rfind_bytes};
+use super::attachment::{
+    add_jacs_attachment, ensure_multipart_mixed, get_jacs_attachment, remove_jacs_attachment,
+    rfind_bytes,
+};
 use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
     compute_header_entry, compute_mime_headers_hash, extract_email_parts,
 };
-use super::error::{check_email_size, EmailError};
+use super::error::{EmailError, check_email_size};
 use super::types::{
-    AttachmentEntry, BodyPartEntry, EmailSignatureHeaders, EmailSignaturePayload,
-    SignedHeaderEntry,
+    AttachmentEntry, BodyPartEntry, EmailSignatureHeaders, EmailSignaturePayload, SignedHeaderEntry,
 };
 
 use crate::simple::SimpleAgent;
@@ -35,16 +37,12 @@ use crate::simple::SimpleAgent;
 /// signing, hashing, or key management in this module.
 ///
 /// Returns the modified email bytes with the JACS attachment.
-pub fn sign_email(
-    raw_email: &[u8],
-    agent: &SimpleAgent,
-) -> Result<Vec<u8>, EmailError> {
+pub fn sign_email(raw_email: &[u8], agent: &SimpleAgent) -> Result<Vec<u8>, EmailError> {
     // Step 0: Size check
     check_email_size(raw_email)?;
 
     // Step 0b: Check for existing JACS signature (forwarding case)
-    let (email_for_signing, parent_signature_hash) =
-        prepare_for_forwarding(raw_email)?;
+    let (email_for_signing, parent_signature_hash) = prepare_for_forwarding(raw_email)?;
 
     // Step 0c: Ensure the email is multipart/mixed BEFORE parsing.
     // This guarantees that the MIME headers hashed during signing match what
@@ -138,9 +136,7 @@ pub fn sign_email(
 /// 3. Re-attach it as `jacs-signature-{N}.json` where N is the next index
 ///
 /// Returns (prepared_email_bytes, parent_signature_hash_option).
-fn prepare_for_forwarding(
-    raw_email: &[u8],
-) -> Result<(Vec<u8>, Option<String>), EmailError> {
+fn prepare_for_forwarding(raw_email: &[u8]) -> Result<(Vec<u8>, Option<String>), EmailError> {
     // Try to extract the existing jacs-signature.json
     let jacs_bytes = match get_jacs_attachment(raw_email) {
         Ok(bytes) => bytes,
@@ -166,9 +162,7 @@ fn prepare_for_forwarding(
     let renamed_count = parts
         .jacs_attachments
         .iter()
-        .filter(|a| {
-            a.filename.starts_with("jacs-signature-") && a.filename.ends_with(".json")
-        })
+        .filter(|a| a.filename.starts_with("jacs-signature-") && a.filename.ends_with(".json"))
         .count();
 
     let new_name = format!("jacs-signature-{}.json", renamed_count);
@@ -177,11 +171,7 @@ fn prepare_for_forwarding(
     let email_without_active = remove_jacs_attachment(raw_email)?;
 
     // Re-attach it with the new name
-    let renamed_email = add_named_jacs_attachment(
-        &email_without_active,
-        &jacs_bytes,
-        &new_name,
-    )?;
+    let renamed_email = add_named_jacs_attachment(&email_without_active, &jacs_bytes, &new_name)?;
 
     Ok((renamed_email, Some(parent_hash)))
 }
@@ -195,13 +185,9 @@ fn add_named_jacs_attachment(
 ) -> Result<Vec<u8>, EmailError> {
     use mail_parser::{MessageParser, MimeHeaders as _};
 
-    let message = MessageParser::default()
-        .parse(raw_email)
-        .ok_or_else(|| {
-            EmailError::InvalidEmailFormat(
-                "Cannot parse email for named attachment injection".into(),
-            )
-        })?;
+    let message = MessageParser::default().parse(raw_email).ok_or_else(|| {
+        EmailError::InvalidEmailFormat("Cannot parse email for named attachment injection".into())
+    })?;
 
     let content_type = message
         .content_type()
@@ -233,9 +219,7 @@ fn add_named_jacs_attachment(
                 .content_type()
                 .and_then(|ct: &mail_parser::ContentType<'_>| ct.attribute("boundary"))
                 .ok_or_else(|| {
-                    EmailError::InvalidEmailFormat(
-                        "multipart/mixed without boundary".into(),
-                    )
+                    EmailError::InvalidEmailFormat("multipart/mixed without boundary".into())
                 })?
                 .to_string();
 
@@ -289,9 +273,7 @@ fn build_signed_headers(
     Ok(EmailSignatureHeaders {
         from: build_header_entry("from", &from)?,
         to: build_header_entry("to", &to)?,
-        cc: cc
-            .map(|v| build_header_entry("cc", &v))
-            .transpose()?,
+        cc: cc.map(|v| build_header_entry("cc", &v)).transpose()?,
         subject: build_header_entry("subject", &subject)?,
         date: build_header_entry("date", &date)?,
         message_id: build_header_entry("message-id", &message_id)?,
@@ -347,10 +329,7 @@ fn get_optional_header(
 }
 
 /// Build a `SignedHeaderEntry` from a header name and raw value.
-fn build_header_entry(
-    name: &str,
-    value: &str,
-) -> Result<SignedHeaderEntry, EmailError> {
+fn build_header_entry(name: &str, value: &str) -> Result<SignedHeaderEntry, EmailError> {
     let canonical = canonicalize_header(name, value)?;
     let hash = compute_header_entry(&canonical);
     Ok(SignedHeaderEntry {
@@ -380,9 +359,7 @@ pub(crate) fn build_jacs_email_document(
     // then calls create_document_and_load() which handles schema validation,
     // canonical hashing, and cryptographic signing through the agent's identity.
     let signed_doc = agent.sign_message(&payload_value).map_err(|e| {
-        EmailError::SignatureVerificationFailed(format!(
-            "JACS document signing failed: {e}"
-        ))
+        EmailError::SignatureVerificationFailed(format!("JACS document signing failed: {e}"))
     })?;
 
     Ok(signed_doc.raw)
@@ -410,7 +387,11 @@ mod tests {
     /// Create a test SimpleAgent and set the env vars needed for signing.
     ///
     /// MUST be called while holding `EMAIL_TEST_MUTEX`.
-    fn create_test_agent() -> (SimpleAgent, tempfile::TempDir, crate::email::EmailTestEnvGuard) {
+    fn create_test_agent() -> (
+        SimpleAgent,
+        tempfile::TempDir,
+        crate::email::EmailTestEnvGuard,
+    ) {
         use crate::simple::CreateAgentParams;
 
         let tmp = tempfile::tempdir().expect("create temp dir");
@@ -427,8 +408,7 @@ mod tests {
             .config_path(&format!("{}/jacs.config.json", tmp_path))
             .build();
 
-        let (agent, _info) = SimpleAgent::create_with_params(params)
-            .expect("create test agent");
+        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create test agent");
 
         // Set env vars needed by the keystore at signing time and restore on drop.
         let env_guard = crate::email::EmailTestEnvGuard::set(&[
@@ -480,7 +460,11 @@ mod tests {
         let signed = sign_email(&email, &agent).unwrap();
         let signed_str = String::from_utf8_lossy(&signed);
         assert!(signed_str.contains("jacs-signature.json"));
-        assert!(mail_parser::MessageParser::default().parse(&signed).is_some());
+        assert!(
+            mail_parser::MessageParser::default()
+                .parse(&signed)
+                .is_some()
+        );
     }
     #[test]
     #[serial]
@@ -494,7 +478,11 @@ mod tests {
         let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
 
         let result = agent.verify(doc_str).unwrap();
-        assert!(result.valid, "JACS document should be valid: {:?}", result.errors);
+        assert!(
+            result.valid,
+            "JACS document should be valid: {:?}",
+            result.errors
+        );
     }
     #[test]
     #[serial]
@@ -557,10 +545,22 @@ mod tests {
         let jacs_doc: serde_json::Value = serde_json::from_str(doc_str).unwrap();
 
         assert!(jacs_doc.get("jacsId").is_some(), "should have jacsId");
-        assert!(jacs_doc.get("jacsVersion").is_some(), "should have jacsVersion");
-        assert!(jacs_doc.get("jacsSignature").is_some(), "should have jacsSignature");
-        assert!(jacs_doc.get("jacsSha256").is_some(), "should have jacsSha256");
-        assert!(jacs_doc.get("content").is_some(), "should have content field");
+        assert!(
+            jacs_doc.get("jacsVersion").is_some(),
+            "should have jacsVersion"
+        );
+        assert!(
+            jacs_doc.get("jacsSignature").is_some(),
+            "should have jacsSignature"
+        );
+        assert!(
+            jacs_doc.get("jacsSha256").is_some(),
+            "should have jacsSha256"
+        );
+        assert!(
+            jacs_doc.get("content").is_some(),
+            "should have content field"
+        );
         assert_eq!(jacs_doc["jacsType"].as_str(), Some("message"));
     }
     #[test]

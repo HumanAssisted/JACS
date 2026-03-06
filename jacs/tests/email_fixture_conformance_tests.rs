@@ -47,18 +47,20 @@ fn load_fixture(name: &str) -> (Vec<u8>, Value) {
 /// Assert that a required header value matches expected after canonicalization.
 fn assert_header_value(parts: &jacs::email::ParsedEmailParts, header_name: &str, expected: &Value) {
     if let Some(expected_value) = expected.get("value").and_then(|v| v.as_str()) {
-        let raw_values = parts.headers.get(header_name).expect(&format!(
-            "header '{}' should be present",
-            header_name
-        ));
+        let raw_values = parts
+            .headers
+            .get(header_name)
+            .expect(&format!("header '{}' should be present", header_name));
         assert_eq!(
             raw_values.len(),
             1,
             "header '{}' should have exactly one value",
             header_name
         );
-        let canonical = canonicalize_header(header_name, &raw_values[0])
-            .expect(&format!("canonicalize_header('{}') should succeed", header_name));
+        let canonical = canonicalize_header(header_name, &raw_values[0]).expect(&format!(
+            "canonicalize_header('{}') should succeed",
+            header_name
+        ));
         assert_eq!(
             canonical, expected_value,
             "header '{}' canonical value mismatch",
@@ -84,9 +86,19 @@ fn fixture_01_canonical_baseline() {
     assert_header_value(&parts, "date", &payload["headers"]["date"]);
     assert_header_value(&parts, "message-id", &payload["headers"]["message_id"]);
 
-    assert!(parts.body_plain.is_some(), "F01 should have text/plain body");
-    assert!(parts.body_html.is_none(), "F01 should not have text/html body");
-    assert_eq!(parts.attachments.len(), 0, "F01 should have 0 non-JACS attachments");
+    assert!(
+        parts.body_plain.is_some(),
+        "F01 should have text/plain body"
+    );
+    assert!(
+        parts.body_html.is_none(),
+        "F01 should not have text/html body"
+    );
+    assert_eq!(
+        parts.attachments.len(),
+        0,
+        "F01 should have 0 non-JACS attachments"
+    );
 }
 
 #[test]
@@ -102,8 +114,12 @@ fn fixture_02_subject_folded_whitespace() {
 
     // Subject has folded whitespace — verify it parses without error
     let subject_raw = &parts.headers.get("subject").expect("subject present")[0];
-    let canonical = canonicalize_header("subject", subject_raw).expect("subject should canonicalize");
-    assert!(!canonical.is_empty(), "F02 canonical subject should not be empty");
+    let canonical =
+        canonicalize_header("subject", subject_raw).expect("subject should canonicalize");
+    assert!(
+        !canonical.is_empty(),
+        "F02 canonical subject should not be empty"
+    );
 
     assert!(parts.body_plain.is_some());
     assert!(parts.body_html.is_none());
@@ -116,8 +132,12 @@ fn fixture_03_subject_rfc2047_utf8() {
     let parts = extract_email_parts(&raw).expect("F03 should parse");
 
     let subject_raw = &parts.headers.get("subject").expect("subject present")[0];
-    let canonical = canonicalize_header("subject", subject_raw).expect("subject should canonicalize");
-    assert!(!canonical.is_empty(), "F03 canonical subject should not be empty");
+    let canonical =
+        canonicalize_header("subject", subject_raw).expect("subject should canonicalize");
+    assert!(
+        !canonical.is_empty(),
+        "F03 canonical subject should not be empty"
+    );
     assert!(parts.body_plain.is_some());
 }
 
@@ -179,7 +199,10 @@ fn fixture_08_duplicate_message_id_required_fail() {
     let (raw, _expected) = load_fixture("08_duplicate_message_id_required_fail");
     let parts = extract_email_parts(&raw).expect("F08 parsing should succeed");
 
-    let mid_values = parts.headers.get("message-id").expect("message-id header present");
+    let mid_values = parts
+        .headers
+        .get("message-id")
+        .expect("message-id header present");
     assert!(
         mid_values.len() > 1,
         "F08 should have duplicate Message-ID headers, found {}",
@@ -210,7 +233,10 @@ fn fixture_10_duplicate_references_optional_fail() {
     let (raw, _expected) = load_fixture("10_duplicate_references_optional_fail");
     let parts = extract_email_parts(&raw).expect("F10 parsing should succeed");
 
-    let ref_values = parts.headers.get("references").expect("references header present");
+    let ref_values = parts
+        .headers
+        .get("references")
+        .expect("references header present");
     assert!(
         ref_values.len() > 1,
         "F10 should have duplicate References headers, found {}",
@@ -227,12 +253,18 @@ fn fixture_11_plain_qp_body() {
     let (raw, _expected) = load_fixture("11_plain_qp_body");
     let parts = extract_email_parts(&raw).expect("F11 should parse");
 
-    assert!(parts.body_plain.is_some(), "F11 should have text/plain body");
+    assert!(
+        parts.body_plain.is_some(),
+        "F11 should have text/plain body"
+    );
     assert!(parts.body_html.is_none());
     // QP body should be decoded
     let body = parts.body_plain.as_ref().unwrap();
     let text = String::from_utf8_lossy(&body.content);
-    assert!(text.contains("Canonical body"), "F11 body should be decoded from QP");
+    assert!(
+        text.contains("Canonical body"),
+        "F11 body should be decoded from QP"
+    );
 }
 
 #[test]
@@ -240,12 +272,18 @@ fn fixture_12_plain_base64_body() {
     let (raw, _expected) = load_fixture("12_plain_base64_body");
     let parts = extract_email_parts(&raw).expect("F12 should parse");
 
-    assert!(parts.body_plain.is_some(), "F12 should have text/plain body");
+    assert!(
+        parts.body_plain.is_some(),
+        "F12 should have text/plain body"
+    );
     assert!(parts.body_html.is_none());
     // Base64 body should be decoded to same content as F11
     let body = parts.body_plain.as_ref().unwrap();
     let text = String::from_utf8_lossy(&body.content);
-    assert!(text.contains("Canonical body"), "F12 body should be decoded from base64");
+    assert!(
+        text.contains("Canonical body"),
+        "F12 body should be decoded from base64"
+    );
 }
 
 #[test]
@@ -265,7 +303,10 @@ fn fixture_14_unicode_subject_nfc() {
     let subject_raw = &parts.headers.get("subject").expect("subject present")[0];
     let canonical = canonicalize_header("subject", subject_raw).expect("canonicalize");
     // Should decode to NFC "Fixture 14 Cafe\u{0301}" -> "Fixture 14 Caf\u{00e9}"
-    assert!(canonical.contains("Caf\u{00e9}"), "F14 subject should contain NFC cafe");
+    assert!(
+        canonical.contains("Caf\u{00e9}"),
+        "F14 subject should contain NFC cafe"
+    );
 }
 
 #[test]
@@ -276,7 +317,10 @@ fn fixture_15_unicode_subject_nfd() {
     let subject_raw = &parts.headers.get("subject").expect("subject present")[0];
     let canonical = canonicalize_header("subject", subject_raw).expect("canonicalize");
     // NFD input should normalize to NFC, matching F14
-    assert!(canonical.contains("Caf\u{00e9}"), "F15 subject should normalize NFD to NFC cafe");
+    assert!(
+        canonical.contains("Caf\u{00e9}"),
+        "F15 subject should normalize NFD to NFC cafe"
+    );
 }
 
 #[test]
@@ -325,7 +369,11 @@ fn fixture_16_attachment_base64_text() {
     let parts = extract_email_parts(&raw).expect("F16 should parse");
 
     assert!(parts.body_plain.is_some());
-    assert_eq!(parts.attachments.len(), 1, "F16 should have 1 non-JACS attachment");
+    assert_eq!(
+        parts.attachments.len(),
+        1,
+        "F16 should have 1 non-JACS attachment"
+    );
     assert_eq!(parts.attachments[0].filename, "report.txt");
 }
 
@@ -335,7 +383,11 @@ fn fixture_17_attachment_qp_text_same_bytes() {
     let parts = extract_email_parts(&raw).expect("F17 should parse");
 
     assert!(parts.body_plain.is_some());
-    assert_eq!(parts.attachments.len(), 1, "F17 should have 1 non-JACS attachment");
+    assert_eq!(
+        parts.attachments.len(),
+        1,
+        "F17 should have 1 non-JACS attachment"
+    );
     assert_eq!(parts.attachments[0].filename, "report.txt");
 }
 
@@ -345,7 +397,11 @@ fn fixture_18_attachment_filename_rfc2231() {
     let parts = extract_email_parts(&raw).expect("F18 should parse");
 
     assert!(parts.body_plain.is_some());
-    assert_eq!(parts.attachments.len(), 1, "F18 should have 1 non-JACS attachment");
+    assert_eq!(
+        parts.attachments.len(),
+        1,
+        "F18 should have 1 non-JACS attachment"
+    );
     // RFC 2231 filename should be decoded to NFC UTF-8
     let filename = &parts.attachments[0].filename;
     assert!(
@@ -370,7 +426,10 @@ fn fixture_19_identity_issuer_registry_mismatch() {
     assert_eq!(expected["expected_error"], "IssuerRegistryMismatch");
 
     // The jacs-signature.json should be present
-    assert!(!parts.jacs_attachments.is_empty(), "F19 should have JACS signature attachment");
+    assert!(
+        !parts.jacs_attachments.is_empty(),
+        "F19 should have JACS signature attachment"
+    );
 }
 
 #[test]
@@ -402,7 +461,10 @@ fn fixture_21_simple_text() {
     assert_header_value(&parts, "to", &payload["headers"]["to"]);
     assert_header_value(&parts, "message-id", &payload["headers"]["message_id"]);
 
-    assert!(parts.body_plain.is_some(), "F21 should have text/plain body");
+    assert!(
+        parts.body_plain.is_some(),
+        "F21 should have text/plain body"
+    );
     assert!(parts.body_html.is_none());
     assert_eq!(parts.attachments.len(), 0);
     assert!(parts.jacs_attachments.is_empty());
@@ -416,7 +478,10 @@ fn fixture_22_html_only() {
 
     assert_header_value(&parts, "from", &payload["headers"]["from"]);
 
-    assert!(parts.body_plain.is_none(), "F22 should not have text/plain body");
+    assert!(
+        parts.body_plain.is_none(),
+        "F22 should not have text/plain body"
+    );
     assert!(parts.body_html.is_some(), "F22 should have text/html body");
     assert_eq!(parts.attachments.len(), 0);
 }
@@ -426,7 +491,10 @@ fn fixture_23_multipart_alternative() {
     let (raw, _expected) = load_fixture("23_multipart_alternative");
     let parts = extract_email_parts(&raw).expect("F23 should parse");
 
-    assert!(parts.body_plain.is_some(), "F23 should have text/plain body");
+    assert!(
+        parts.body_plain.is_some(),
+        "F23 should have text/plain body"
+    );
     assert!(parts.body_html.is_some(), "F23 should have text/html body");
     assert_eq!(parts.attachments.len(), 0);
 }
@@ -439,16 +507,29 @@ fn fixture_24_with_attachments() {
 
     assert_header_value(&parts, "from", &payload["headers"]["from"]);
 
-    assert!(parts.body_plain.is_some(), "F24 should have text/plain body");
+    assert!(
+        parts.body_plain.is_some(),
+        "F24 should have text/plain body"
+    );
     assert_eq!(
         parts.attachments.len(),
         2,
         "F24 should have 2 non-JACS attachments"
     );
 
-    let filenames: Vec<&str> = parts.attachments.iter().map(|a| a.filename.as_str()).collect();
-    assert!(filenames.contains(&"notes.txt"), "F24 should have notes.txt");
-    assert!(filenames.contains(&"report.pdf"), "F24 should have report.pdf");
+    let filenames: Vec<&str> = parts
+        .attachments
+        .iter()
+        .map(|a| a.filename.as_str())
+        .collect();
+    assert!(
+        filenames.contains(&"notes.txt"),
+        "F24 should have notes.txt"
+    );
+    assert!(
+        filenames.contains(&"report.pdf"),
+        "F24 should have report.pdf"
+    );
 }
 
 #[test]
@@ -492,7 +573,10 @@ fn fixture_27_forwarded_chain() {
     assert_header_value(&parts, "from", &payload["headers"]["from"]);
     assert_header_value(&parts, "to", &payload["headers"]["to"]);
 
-    assert!(parts.body_plain.is_some(), "F27 should have text/plain body");
+    assert!(
+        parts.body_plain.is_some(),
+        "F27 should have text/plain body"
+    );
 
     // Should have 2 JACS signature attachments (jacs-signature-0.json and jacs-signature.json)
     assert_eq!(
@@ -552,9 +636,21 @@ fn all_fixtures_have_matching_expected_jsons() {
         let content = fs::read_to_string(&json_path).expect("read expected JSON");
         let json: Value = serde_json::from_str(&content).expect("parse expected JSON");
 
-        assert!(json.get("fixture_id").is_some(), "{}: missing fixture_id", base);
-        assert!(json.get("expected_result").is_some(), "{}: missing expected_result", base);
-        assert!(json.get("expected_reason").is_some(), "{}: missing expected_reason", base);
+        assert!(
+            json.get("fixture_id").is_some(),
+            "{}: missing fixture_id",
+            base
+        );
+        assert!(
+            json.get("expected_result").is_some(),
+            "{}: missing expected_result",
+            base
+        );
+        assert!(
+            json.get("expected_reason").is_some(),
+            "{}: missing expected_reason",
+            base
+        );
 
         let result = json["expected_result"].as_str().unwrap();
         assert!(

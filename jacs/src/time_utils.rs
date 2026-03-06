@@ -337,7 +337,10 @@ mod tests {
         // Documents are eternal — only API callers enforce freshness.
         let now = now_timestamp();
         let result = validate_signature_iat(now - 86400); // 1 day old
-        assert!(result.is_ok(), "iat skew check should be disabled by default");
+        assert!(
+            result.is_ok(),
+            "iat skew check should be disabled by default"
+        );
     }
 
     #[test]

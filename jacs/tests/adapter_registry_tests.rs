@@ -9,15 +9,15 @@
 //! - Custom adapter receives evidence for its registered kind
 
 use jacs::agent::Agent;
+use jacs::attestation::AttestationTraits;
 use jacs::attestation::adapters::EvidenceAdapter;
 use jacs::attestation::digest::compute_digest_set_bytes;
 use jacs::attestation::types::*;
-use jacs::attestation::AttestationTraits;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 fn ephemeral_agent() -> Agent {
     let algo = "ring-Ed25519";
@@ -115,9 +115,10 @@ impl EvidenceAdapter for MockAdapter {
             digests,
             uri: None,
             embedded: true,
-            embedded_data: Some(Value::String(
-                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw),
-            )),
+            embedded_data: Some(Value::String(base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                raw,
+            ))),
             collected_at: jacs::time_utils::now_rfc3339(),
             resolved_at: None,
             sensitivity: EvidenceSensitivity::Public,
@@ -241,9 +242,10 @@ fn full_verify_dispatches_to_email_adapter() {
         digests: compute_digest_set_bytes(data),
         uri: None,
         embedded: true,
-        embedded_data: Some(Value::String(
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, data),
-        )),
+        embedded_data: Some(Value::String(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            data,
+        ))),
         collected_at: jacs::time_utils::now_rfc3339(),
         resolved_at: None,
         sensitivity: EvidenceSensitivity::Public,
@@ -293,9 +295,10 @@ fn custom_adapter_receives_evidence_for_its_kind() {
         digests: compute_digest_set_bytes(data),
         uri: None,
         embedded: true,
-        embedded_data: Some(Value::String(
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, data),
-        )),
+        embedded_data: Some(Value::String(base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            data,
+        ))),
         collected_at: jacs::time_utils::now_rfc3339(),
         resolved_at: None,
         sensitivity: EvidenceSensitivity::Public,

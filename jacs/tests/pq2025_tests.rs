@@ -5,7 +5,7 @@ use jacs::crypt::KeyManager;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 mod utils;
-use utils::{create_agent_v1, PASSWORD_ENV_VAR, TEST_PASSWORD};
+use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD, create_agent_v1};
 
 fn env_guard() -> std::sync::MutexGuard<'static, ()> {
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();

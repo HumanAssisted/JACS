@@ -28,13 +28,11 @@ fn max_derivation_depth() -> u32 {
 /// Uses standard approximations: 1 year = 365.25 days, 1 month = 30.44 days.
 pub fn parse_iso8601_duration_secs(duration: &str) -> Result<i64, Box<dyn Error>> {
     if !duration.starts_with('P') {
-        return Err(
-            format!(
-                "Invalid ISO 8601 duration: must start with 'P': '{}'",
-                duration
-            )
-            .into(),
-        );
+        return Err(format!(
+            "Invalid ISO 8601 duration: must start with 'P': '{}'",
+            duration
+        )
+        .into());
     }
     let rest = &duration[1..];
     let mut seconds: i64 = 0;
@@ -117,9 +115,7 @@ fn verify_document_hash(doc_value: &Value) -> Result<bool, Box<dyn Error>> {
         .ok_or("Document missing jacsSha256 field")?;
 
     let mut doc_copy = doc_value.clone();
-    doc_copy
-        .as_object_mut()
-        .map(|obj| obj.remove("jacsSha256"));
+    doc_copy.as_object_mut().map(|obj| obj.remove("jacsSha256"));
     let canonical = canonicalize_json(&doc_copy)?;
     let computed_hash = hash_string(&canonical);
 
@@ -143,10 +139,7 @@ fn verify_document_crypto(agent: &Agent, doc_value: &Value) -> Result<(), Box<dy
 /// Extract signer info from the document's signature block.
 fn extract_signer_info(doc_value: &Value) -> (String, String) {
     let sig_block = &doc_value["jacsSignature"];
-    let signer_id = sig_block["agentID"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let signer_id = sig_block["agentID"].as_str().unwrap_or("").to_string();
     let algorithm = sig_block["signingAlgorithm"]
         .as_str()
         .unwrap_or("")
@@ -189,10 +182,7 @@ fn verify_evidence_ref(evidence: &EvidenceRef) -> EvidenceVerificationResult {
 }
 
 /// Check evidence freshness against a max age duration.
-fn check_evidence_freshness(
-    collected_at: &str,
-    max_age_iso: &str,
-) -> Result<bool, Box<dyn Error>> {
+fn check_evidence_freshness(collected_at: &str, max_age_iso: &str) -> Result<bool, Box<dyn Error>> {
     let max_age_secs = parse_iso8601_duration_secs(max_age_iso)?;
     let collected = chrono::DateTime::parse_from_rfc3339(collected_at)
         .map_err(|e| format!("Invalid collectedAt timestamp '{}': {}", collected_at, e))?;
@@ -314,7 +304,9 @@ impl Agent {
                     #[cfg(feature = "attestation")]
                     let kind_str = evidence_ref.kind.as_str();
                     #[cfg(feature = "attestation")]
-                    let mut ev_result = if let Some(adapter) = self.adapters.iter().find(|a| a.kind() == kind_str) {
+                    let mut ev_result = if let Some(adapter) =
+                        self.adapters.iter().find(|a| a.kind() == kind_str)
+                    {
                         match adapter.verify_evidence(&evidence_ref) {
                             Ok(r) => r,
                             Err(e) => {
@@ -330,10 +322,7 @@ impl Agent {
 
                     // Check freshness if policy specifies max age
                     if let Some(ref max_age_str) = max_age {
-                        match check_evidence_freshness(
-                            &evidence_ref.collected_at,
-                            max_age_str,
-                        ) {
+                        match check_evidence_freshness(&evidence_ref.collected_at, max_age_str) {
                             Ok(fresh) => {
                                 ev_result.freshness_valid = fresh;
                                 if !fresh {
@@ -345,10 +334,7 @@ impl Agent {
                             }
                             Err(e) => {
                                 ev_result.freshness_valid = false;
-                                errors.push(format!(
-                                    "Failed to check evidence freshness: {}",
-                                    e
-                                ));
+                                errors.push(format!("Failed to check evidence freshness: {}", e));
                             }
                         }
                     }
@@ -466,10 +452,8 @@ impl Agent {
                     match self.get_document(input_id) {
                         Ok(input_doc) => {
                             let input_value = input_doc.getvalue();
-                            let hash_ok =
-                                verify_document_hash(input_value).unwrap_or(false);
-                            let sig_ok =
-                                verify_document_crypto(self, input_value).is_ok();
+                            let hash_ok = verify_document_hash(input_value).unwrap_or(false);
+                            let sig_ok = verify_document_crypto(self, input_value).is_ok();
                             let link_valid = hash_ok && sig_ok;
 
                             if !link_valid {
@@ -516,8 +500,7 @@ impl Agent {
                         }
                         Err(_) => {
                             // Input document not found in storage
-                            let detail = if let Some(expected) =
-                                input["digests"]["sha256"].as_str()
+                            let detail = if let Some(expected) = input["digests"]["sha256"].as_str()
                             {
                                 format!(
                                     "Input document not found in storage (expected sha256: {})",
@@ -560,7 +543,12 @@ impl super::AttestationTraits for Agent {
     ) -> Result<crate::agent::document::JACSDocument, Box<dyn Error>> {
         // Delegate to create.rs implementation
         crate::attestation::create::create_attestation_impl(
-            self, subject, claims, evidence, derivation, policy_context,
+            self,
+            subject,
+            claims,
+            evidence,
+            derivation,
+            policy_context,
         )
     }
 
@@ -582,9 +570,9 @@ impl super::AttestationTraits for Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::attestation::AttestationTraits;
     use crate::attestation::digest::compute_digest_set_string;
     use crate::attestation::types::*;
-    use crate::attestation::AttestationTraits;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -702,10 +690,7 @@ mod tests {
         agent.store_jacs_document(&tampered).unwrap();
 
         let result = agent.verify_attestation_local_impl(&key).unwrap();
-        assert!(
-            !result.valid,
-            "Tampered signature should fail verification"
-        );
+        assert!(!result.valid, "Tampered signature should fail verification");
         assert!(!result.crypto.signature_valid);
     }
 

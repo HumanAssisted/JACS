@@ -11,12 +11,11 @@ use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
     compute_header_entry, compute_mime_headers_hash, extract_email_parts,
 };
-use super::error::{check_email_size, EmailError};
+use super::error::{EmailError, check_email_size};
 use super::types::{
     ChainEntry, ContentVerificationResult, FieldResult, FieldStatus, JacsEmailSignatureDocument,
     ParsedEmailParts, SignedHeaderEntry,
 };
-
 
 /// Normalize an algorithm name to its canonical form.
 ///
@@ -38,7 +37,6 @@ pub fn normalize_algorithm(algorithm: &str) -> String {
     }
     s
 }
-
 
 /// Extract and verify the JACS email signature document from a raw email.
 ///
@@ -97,8 +95,8 @@ pub fn verify_email_document(
         EmailError::InvalidJacsDocument("JACS document missing 'content' field".to_string())
     })?;
 
-    let payload: super::types::EmailSignaturePayload =
-        serde_json::from_value(content.clone()).map_err(|e| {
+    let payload: super::types::EmailSignaturePayload = serde_json::from_value(content.clone())
+        .map_err(|e| {
             EmailError::InvalidJacsDocument(format!(
                 "failed to parse email payload from JACS document: {e}"
             ))
@@ -306,9 +304,7 @@ pub fn verify_email_content(
     );
 
     // valid = true only if no Fail results
-    let fields_valid = !field_results
-        .iter()
-        .any(|r| r.status == FieldStatus::Fail);
+    let fields_valid = !field_results.iter().any(|r| r.status == FieldStatus::Fail);
 
     // Build chain from the current signer
     let is_forwarded = doc.payload.parent_signature_hash.is_some();
@@ -348,11 +344,7 @@ pub fn verify_email_content(
 ///
 /// Supports both real JACS documents (v2, with `content` and `jacsSignature`
 /// fields) and legacy `JacsEmailSignatureDocument` (v1).
-fn build_parent_chain(
-    parent_hash: &str,
-    parts: &ParsedEmailParts,
-    chain: &mut Vec<ChainEntry>,
-) {
+fn build_parent_chain(parent_hash: &str, parts: &ParsedEmailParts, chain: &mut Vec<ChainEntry>) {
     // Search for the parent document among JACS attachments
     for jacs_att in &parts.jacs_attachments {
         // Compute sha256 of the exact attachment bytes (no trimming)
@@ -408,9 +400,7 @@ fn build_parent_chain(
 /// Try to parse raw bytes as a real JACS document (new format).
 ///
 /// Returns the extracted `EmailSignaturePayload` and signer ID on success.
-fn try_parse_jacs_document(
-    raw: &[u8],
-) -> Option<(super::types::EmailSignaturePayload, String)> {
+fn try_parse_jacs_document(raw: &[u8]) -> Option<(super::types::EmailSignaturePayload, String)> {
     let value: serde_json::Value = serde_json::from_slice(raw).ok()?;
 
     // Real JACS documents have a `content` field containing the payload
@@ -707,7 +697,11 @@ mod tests {
     /// MUST be called while holding `EMAIL_TEST_MUTEX`.
     fn create_test_agent(
         name: &str,
-    ) -> (SimpleAgent, tempfile::TempDir, crate::email::EmailTestEnvGuard) {
+    ) -> (
+        SimpleAgent,
+        tempfile::TempDir,
+        crate::email::EmailTestEnvGuard,
+    ) {
         use crate::simple::CreateAgentParams;
 
         let tmp = tempfile::tempdir().expect("create temp dir");
@@ -724,8 +718,7 @@ mod tests {
             .config_path(&format!("{}/jacs.config.json", tmp_path))
             .build();
 
-        let (agent, _info) = SimpleAgent::create_with_params(params)
-            .expect("create test agent");
+        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create test agent");
 
         // Set env vars needed by the keystore at signing time and restore on drop.
         let env_guard = crate::email::EmailTestEnvGuard::set(&[
@@ -744,7 +737,6 @@ mod tests {
         (agent, tmp, env_guard)
     }
 
-
     /// Extract the email signature payload from a signed email's JACS attachment.
     fn extract_payload(signed_email: &[u8]) -> EmailSignaturePayload {
         let doc_bytes = crate::email::attachment::get_jacs_attachment(signed_email).unwrap();
@@ -760,7 +752,9 @@ mod tests {
 
     /// Helper: get the public key bytes for a test agent.
     fn get_pubkey(agent: &SimpleAgent) -> Vec<u8> {
-        agent.get_public_key().expect("get_public_key should succeed")
+        agent
+            .get_public_key()
+            .expect("get_public_key should succeed")
     }
 
     // -- verify_email_document tests --
@@ -773,8 +767,7 @@ mod tests {
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let (doc, parts) =
-            verify_email_document(&signed, &agent, &pubkey).unwrap();
+        let (doc, parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
 
         assert_eq!(doc.document_type, "email_signature");
         assert!(parts.body_plain.is_some());
@@ -805,7 +798,9 @@ mod tests {
         let doc_bytes = crate::email::attachment::get_jacs_attachment(&signed).unwrap();
         let doc_str = std::str::from_utf8(&doc_bytes).unwrap();
         let mut jacs_doc: serde_json::Value = serde_json::from_str(doc_str).unwrap();
-        jacs_doc["content"]["headers"]["from"]["hash"] = serde_json::json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+        jacs_doc["content"]["headers"]["from"]["hash"] = serde_json::json!(
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        );
         let tampered_json = serde_json::to_string(&jacs_doc).unwrap();
 
         let email_without = crate::email::attachment::remove_jacs_attachment(&signed).unwrap();
@@ -814,7 +809,10 @@ mod tests {
                 .unwrap();
 
         let result = verify_email_document(&tampered_email, &agent, &pubkey);
-        assert!(result.is_err(), "Tampered JACS document should fail verification");
+        assert!(
+            result.is_err(),
+            "Tampered JACS document should fail verification"
+        );
     }
 
     // -- verify_email_content tests --
@@ -827,14 +825,25 @@ mod tests {
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
 
-        let (doc, parts) =
-            verify_email_document(&signed, &agent, &pubkey).unwrap();
+        let (doc, parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        assert!(result.valid, "valid is false, field_results: {:?}", result.field_results);
-        let from_result = result.field_results.iter().find(|r| r.field == "headers.from").unwrap();
+        assert!(
+            result.valid,
+            "valid is false, field_results: {:?}",
+            result.field_results
+        );
+        let from_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "headers.from")
+            .unwrap();
         assert_eq!(from_result.status, FieldStatus::Pass);
-        let subject_result = result.field_results.iter().find(|r| r.field == "headers.subject").unwrap();
+        let subject_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "headers.subject")
+            .unwrap();
         assert_eq!(subject_result.status, FieldStatus::Pass);
     }
     #[test]
@@ -847,11 +856,17 @@ mod tests {
         let signed = sign_email(&email, &agent).unwrap();
 
         let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
-        parts.headers.insert("from".to_string(), vec!["attacker@evil.com".to_string()]);
+        parts
+            .headers
+            .insert("from".to_string(), vec!["attacker@evil.com".to_string()]);
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-        let from_result = result.field_results.iter().find(|r| r.field == "headers.from").unwrap();
+        let from_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "headers.from")
+            .unwrap();
         assert_eq!(from_result.status, FieldStatus::Fail);
     }
     #[test]
@@ -870,7 +885,11 @@ mod tests {
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-        let body_result = result.field_results.iter().find(|r| r.field == "body_plain").unwrap();
+        let body_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "body_plain")
+            .unwrap();
         assert_eq!(body_result.status, FieldStatus::Fail);
     }
     #[test]
@@ -885,7 +904,11 @@ mod tests {
         let (doc, parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        let mid_result = result.field_results.iter().find(|r| r.field == "headers.message_id").unwrap();
+        let mid_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "headers.message_id")
+            .unwrap();
         assert_eq!(mid_result.status, FieldStatus::Unverifiable);
     }
     #[test]
@@ -899,17 +922,23 @@ mod tests {
         let signed = sign_email(email_with_att, &agent).unwrap();
         let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
 
-        parts.attachments.push(super::super::types::ParsedAttachment {
-            filename: "extra.txt".to_string(),
-            content_type: "text/plain".to_string(),
-            content: b"extra content".to_vec(),
-            content_transfer_encoding: None,
-            content_disposition: Some("attachment".to_string()),
-        });
+        parts
+            .attachments
+            .push(super::super::types::ParsedAttachment {
+                filename: "extra.txt".to_string(),
+                content_type: "text/plain".to_string(),
+                content: b"extra content".to_vec(),
+                content_transfer_encoding: None,
+                content_disposition: Some("attachment".to_string()),
+            });
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-        let att_result = result.field_results.iter().find(|r| r.field == "attachments").unwrap();
+        let att_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "attachments")
+            .unwrap();
         assert_eq!(att_result.status, FieldStatus::Fail);
     }
 
@@ -924,12 +953,18 @@ mod tests {
         let signed = sign_email(&email, &agent).unwrap();
 
         let result = verify_email(&signed, &agent, &pubkey).unwrap();
-        assert!(result.valid, "roundtrip should be valid: {:?}", result.field_results);
         assert!(
-            result.field_results.iter().all(|r|
-                r.status == FieldStatus::Pass || r.status == FieldStatus::Unverifiable
-            ),
-            "unexpected field status: {:?}", result.field_results
+            result.valid,
+            "roundtrip should be valid: {:?}",
+            result.field_results
+        );
+        assert!(
+            result
+                .field_results
+                .iter()
+                .all(|r| r.status == FieldStatus::Pass || r.status == FieldStatus::Unverifiable),
+            "unexpected field status: {:?}",
+            result.field_results
         );
     }
     #[test]
@@ -942,11 +977,17 @@ mod tests {
         let signed = sign_email(&email, &agent).unwrap();
 
         let (doc, mut parts) = verify_email_document(&signed, &agent, &pubkey).unwrap();
-        parts.headers.insert("from".to_string(), vec!["fake@evil.com".to_string()]);
+        parts
+            .headers
+            .insert("from".to_string(), vec!["fake@evil.com".to_string()]);
 
         let result = verify_email_content(&doc, &parts);
         assert!(!result.valid);
-        let from_result = result.field_results.iter().find(|r| r.field == "headers.from").unwrap();
+        let from_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "headers.from")
+            .unwrap();
         assert_eq!(from_result.status, FieldStatus::Fail);
         assert!(from_result.original_value.is_some());
         assert!(from_result.current_value.is_some());
@@ -956,7 +997,13 @@ mod tests {
 
     /// Create a forwarded email: A signs, B re-signs.
     /// MUST be called while holding `EMAIL_TEST_MUTEX`.
-    fn forwarded_email_from_b() -> (Vec<u8>, SimpleAgent, SimpleAgent, tempfile::TempDir, tempfile::TempDir) {
+    fn forwarded_email_from_b() -> (
+        Vec<u8>,
+        SimpleAgent,
+        SimpleAgent,
+        tempfile::TempDir,
+        tempfile::TempDir,
+    ) {
         let (agent_a, tmp_a, _env_guard_a) = create_test_agent("agent-a-fwd");
         // env now points to agent_a's keys
         let original = b"From: agentA@example.com\r\nTo: agentB@example.com\r\nSubject: Report\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <orig@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHere is the report.\r\n";
@@ -985,9 +1032,19 @@ mod tests {
         let (signed_by_b, _, _, _tmp_a, _tmp_b) = forwarded_email_from_b();
 
         let parts = extract_email_parts(&signed_by_b).unwrap();
-        let renamed = parts.jacs_attachments.iter().find(|a| a.filename == "jacs-signature-0.json");
-        assert!(renamed.is_some(), "Expected jacs-signature-0.json attachment, found: {:?}",
-            parts.jacs_attachments.iter().map(|a| &a.filename).collect::<Vec<_>>());
+        let renamed = parts
+            .jacs_attachments
+            .iter()
+            .find(|a| a.filename == "jacs-signature-0.json");
+        assert!(
+            renamed.is_some(),
+            "Expected jacs-signature-0.json attachment, found: {:?}",
+            parts
+                .jacs_attachments
+                .iter()
+                .map(|a| &a.filename)
+                .collect::<Vec<_>>()
+        );
     }
     #[test]
     #[serial]
@@ -997,7 +1054,13 @@ mod tests {
 
         let payload = extract_payload(&signed_by_b);
         assert!(payload.parent_signature_hash.is_some());
-        assert!(payload.parent_signature_hash.as_ref().unwrap().starts_with("sha256:"));
+        assert!(
+            payload
+                .parent_signature_hash
+                .as_ref()
+                .unwrap()
+                .starts_with("sha256:")
+        );
     }
     #[test]
     #[serial]
@@ -1009,13 +1072,29 @@ mod tests {
         let (doc, parts) = verify_email_document(&signed_by_b, &agent_b, &pubkey_b).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        assert!(!result.valid, "expected valid=false for forwarded email at JACS level");
         assert!(
-            !result.field_results.iter().any(|r| r.status == FieldStatus::Fail),
-            "field-level failures unexpected: {:?}",
-            result.field_results.iter().filter(|r| r.status == FieldStatus::Fail).collect::<Vec<_>>()
+            !result.valid,
+            "expected valid=false for forwarded email at JACS level"
         );
-        assert_eq!(result.chain.len(), 2, "Expected 2 chain entries, got {}: {:?}", result.chain.len(), result.chain);
+        assert!(
+            !result
+                .field_results
+                .iter()
+                .any(|r| r.status == FieldStatus::Fail),
+            "field-level failures unexpected: {:?}",
+            result
+                .field_results
+                .iter()
+                .filter(|r| r.status == FieldStatus::Fail)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            result.chain.len(),
+            2,
+            "Expected 2 chain entries, got {}: {:?}",
+            result.chain.len(),
+            result.chain
+        );
         assert!(result.chain[0].forwarded);
         assert!(!result.chain[1].forwarded);
         assert!(!result.chain[1].valid);
@@ -1056,7 +1135,10 @@ mod tests {
         let signed_by_b = sign_email(&signed_by_a, &agent_b).unwrap();
 
         let b_payload = extract_payload(&signed_by_b);
-        assert_eq!(b_payload.parent_signature_hash.as_ref().unwrap(), &a_doc_hash);
+        assert_eq!(
+            b_payload.parent_signature_hash.as_ref().unwrap(),
+            &a_doc_hash
+        );
     }
     #[test]
     #[serial]
@@ -1093,13 +1175,24 @@ mod tests {
         let (doc, parts) = verify_email_document(&signed_by_c, &agent_c, &pubkey_c).unwrap();
         let result = verify_email_content(&doc, &parts);
 
-        assert!(!result.valid, "expected valid=false for deep forwarded email at JACS level");
         assert!(
-            !result.field_results.iter().any(|r| r.status == FieldStatus::Fail),
+            !result.valid,
+            "expected valid=false for deep forwarded email at JACS level"
+        );
+        assert!(
+            !result
+                .field_results
+                .iter()
+                .any(|r| r.status == FieldStatus::Fail),
             "field-level failures unexpected"
         );
-        assert_eq!(result.chain.len(), 3,
-            "Expected 3 chain entries, got {}: {:?}", result.chain.len(), result.chain);
+        assert_eq!(
+            result.chain.len(),
+            3,
+            "Expected 3 chain entries, got {}: {:?}",
+            result.chain.len(),
+            result.chain
+        );
         assert!(result.chain[0].forwarded);
         assert!(result.chain[1].forwarded);
         assert!(!result.chain[2].forwarded);
@@ -1123,9 +1216,17 @@ mod tests {
         }
 
         let result = verify_email_content(&doc, &parts);
-        let body_result = result.field_results.iter().find(|r| r.field == "body_plain").unwrap();
-        assert_eq!(body_result.status, FieldStatus::Fail,
-            "MIME header tamper should be Fail, not {:?}", body_result.status);
+        let body_result = result
+            .field_results
+            .iter()
+            .find(|r| r.field == "body_plain")
+            .unwrap();
+        assert_eq!(
+            body_result.status,
+            FieldStatus::Fail,
+            "MIME header tamper should be Fail, not {:?}",
+            body_result.status
+        );
         assert!(!result.valid, "MIME header tamper should invalidate result");
     }
     #[test]
@@ -1170,8 +1271,10 @@ mod tests {
         let result = verify_email_content(&doc, &parts);
 
         assert!(result.chain.len() >= 2);
-        assert!(!result.chain[1].valid,
-            "Parent chain entry should have valid=false without crypto verification");
+        assert!(
+            !result.chain[1].valid,
+            "Parent chain entry should have valid=false without crypto verification"
+        );
     }
 
     // -- Pure function tests (no agent needed, no mutex needed) --
@@ -1202,8 +1305,14 @@ mod tests {
     #[test]
     #[serial]
     fn extract_addr_specs_handles_rfc5322_edge_cases() {
-        assert_eq!(extract_addr_specs("user@example.com"), vec!["user@example.com"]);
-        assert_eq!(extract_addr_specs("<user@example.com>"), vec!["user@example.com"]);
+        assert_eq!(
+            extract_addr_specs("user@example.com"),
+            vec!["user@example.com"]
+        );
+        assert_eq!(
+            extract_addr_specs("<user@example.com>"),
+            vec!["user@example.com"]
+        );
         assert_eq!(
             extract_addr_specs("\"John Doe\" <john@example.com>"),
             vec!["john@example.com"]
@@ -1233,11 +1342,20 @@ mod tests {
         let pubkey_b = get_pubkey(&agent_b);
         let (doc, parts) = verify_email_document(&signed_by_b, &agent_b, &pubkey_b).unwrap();
         let result = verify_email_content(&doc, &parts);
-        assert!(!result.valid, "forwarded email should be invalid at JACS level due to unverified chain");
-        let failing_fields: Vec<_> = result.field_results.iter()
+        assert!(
+            !result.valid,
+            "forwarded email should be invalid at JACS level due to unverified chain"
+        );
+        let failing_fields: Vec<_> = result
+            .field_results
+            .iter()
             .filter(|r| r.status == FieldStatus::Fail)
             .collect();
-        assert!(failing_fields.is_empty(), "no field-level failures expected: {:?}", failing_fields);
+        assert!(
+            failing_fields.is_empty(),
+            "no field-level failures expected: {:?}",
+            failing_fields
+        );
     }
     #[test]
     #[serial]
@@ -1284,5 +1402,4 @@ mod tests {
         forwarded.extend_from_slice(body);
         forwarded
     }
-
 }

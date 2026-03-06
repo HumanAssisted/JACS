@@ -10,13 +10,14 @@
 
 mod conformance;
 
-use jacs::storage::rusqlite_storage::RusqliteStorage;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
+use jacs::storage::rusqlite_storage::RusqliteStorage;
 use serial_test::serial;
 
 async fn create_rusqlite_storage() -> RusqliteStorage {
     let db = RusqliteStorage::in_memory().expect("Failed to create in-memory rusqlite");
-    db.run_migrations().expect("Failed to run rusqlite migrations");
+    db.run_migrations()
+        .expect("Failed to run rusqlite migrations");
     db
 }
 

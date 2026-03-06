@@ -109,9 +109,7 @@ impl SurrealDbStorage {
     fn parse_key(key: &str) -> Result<(String, String), Box<dyn Error>> {
         let parts: Vec<&str> = key.splitn(2, ':').collect();
         if parts.len() != 2 {
-            return Err(
-                format!("Invalid document key '{}': expected 'id:version'", key).into(),
-            );
+            return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());
         }
         Ok((parts[0].to_string(), parts[1].to_string()))
     }
@@ -154,8 +152,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let created_at =
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let created_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let jacs_id = doc.id.clone();
         let jacs_version = doc.version.clone();
         let jacs_type = doc.jacs_type.clone();
@@ -216,16 +213,15 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 })
             })?;
 
-        let record =
-            records
-                .into_iter()
-                .next()
-                .ok_or_else(|| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "get_document".to_string(),
-                        reason: format!("Document not found: {}", key),
-                    })
-                })?;
+        let record = records
+            .into_iter()
+            .next()
+            .ok_or_else(|| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "get_document".to_string(),
+                    reason: format!("Document not found: {}", key),
+                })
+            })?;
 
         Self::record_to_document(&record)
     }
@@ -369,16 +365,15 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 })
             })?;
 
-        let record =
-            records
-                .into_iter()
-                .next()
-                .ok_or_else(|| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "get_latest_document".to_string(),
-                        reason: format!("No documents found with ID: {}", document_id),
-                    })
-                })?;
+        let record = records
+            .into_iter()
+            .next()
+            .ok_or_else(|| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "get_latest_document".to_string(),
+                    reason: format!("No documents found with ID: {}", document_id),
+                })
+            })?;
 
         Self::record_to_document(&record)
     }
@@ -395,10 +390,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
         }))
     }
 
-    fn store_documents(
-        &self,
-        docs: Vec<JACSDocument>,
-    ) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
         let mut errors = Vec::new();
         let mut keys = Vec::new();
         for doc in &docs {
@@ -414,10 +406,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
         }
     }
 
-    fn get_documents(
-        &self,
-        keys: Vec<String>,
-    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
         let mut docs = Vec::new();
         let mut errors = Vec::new();
         for key in &keys {

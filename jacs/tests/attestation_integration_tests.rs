@@ -6,14 +6,16 @@
 //! create, verify (both tiers), adapters, migration, derivation chains,
 //! schema validation, tampering detection, and DSSE export.
 
-use jacs::agent::document::DocumentTraits;
 use jacs::agent::Agent;
-use jacs::attestation::adapters::EvidenceAdapter;
-use jacs::attestation::dsse::{export_dsse, DSSE_PAYLOAD_TYPE, INTOTO_STATEMENT_TYPE, JACS_PREDICATE_TYPE};
-use jacs::attestation::types::*;
+use jacs::agent::document::DocumentTraits;
 use jacs::attestation::AttestationTraits;
+use jacs::attestation::adapters::EvidenceAdapter;
+use jacs::attestation::dsse::{
+    DSSE_PAYLOAD_TYPE, INTOTO_STATEMENT_TYPE, JACS_PREDICATE_TYPE, export_dsse,
+};
+use jacs::attestation::types::*;
 use jacs::simple::SimpleAgent;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 fn ephemeral_agent() -> Agent {
@@ -75,7 +77,11 @@ fn attestation_create_verify_round_trip() {
     );
 
     let result = agent.verify_attestation(&key).expect("verify attestation");
-    assert!(result.valid, "round-trip attestation should verify: {:?}", result.errors);
+    assert!(
+        result.valid,
+        "round-trip attestation should verify: {:?}",
+        result.errors
+    );
     assert!(result.crypto.signature_valid);
     assert!(result.crypto.hash_valid);
 }
@@ -103,7 +109,11 @@ fn attestation_create_with_a2a_evidence_verify() {
     let result = agent
         .verify_attestation_full_impl(&key)
         .expect("full verify");
-    assert!(result.valid, "A2A evidence attestation should verify: {:?}", result.errors);
+    assert!(
+        result.valid,
+        "A2A evidence attestation should verify: {:?}",
+        result.errors
+    );
     assert!(!result.evidence.is_empty(), "should have evidence results");
 }
 
@@ -170,7 +180,11 @@ fn attestation_lift_existing_document_verify() {
         att_doc["jacsVersion"].as_str().unwrap()
     );
     let result = agent.verify_attestation(&att_key).expect("verify lifted");
-    assert!(result.valid, "lifted attestation should verify: {:?}", result.errors);
+    assert!(
+        result.valid,
+        "lifted attestation should verify: {:?}",
+        result.errors
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -216,11 +230,10 @@ fn attestation_tampered_body_verify_fails() {
     agent.store_jacs_document(&tampered_doc.value).unwrap();
 
     let key = format!("{}:{}", doc.id, doc.version);
-    let result = agent.verify_attestation_local_impl(&key).expect("verify should not error");
-    assert!(
-        !result.valid,
-        "tampered body should fail verification"
-    );
+    let result = agent
+        .verify_attestation_local_impl(&key)
+        .expect("verify should not error");
+    assert!(!result.valid, "tampered body should fail verification");
 }
 
 // ---------------------------------------------------------------------------
@@ -250,11 +263,10 @@ fn attestation_tampered_signature_verify_fails() {
     agent.store_jacs_document(&tampered_doc.value).unwrap();
 
     let key = format!("{}:{}", doc.id, doc.version);
-    let result = agent.verify_attestation_local_impl(&key).expect("verify should not error");
-    assert!(
-        !result.valid,
-        "tampered signature should fail verification"
-    );
+    let result = agent
+        .verify_attestation_local_impl(&key)
+        .expect("verify should not error");
+    assert!(!result.valid, "tampered signature should fail verification");
 }
 
 // ---------------------------------------------------------------------------
@@ -267,18 +279,18 @@ fn attestation_multiple_evidence_items() {
     let a2a_adapter = jacs::attestation::adapters::a2a::A2aAdapter;
     let email_adapter = jacs::attestation::adapters::email::EmailAdapter;
 
-    let (_, ev1) = a2a_adapter
-        .normalize(b"a2a msg 1", &json!({}))
-        .unwrap();
-    let (_, ev2) = email_adapter
-        .normalize(b"email data", &json!({}))
-        .unwrap();
-    let (_, ev3) = a2a_adapter
-        .normalize(b"a2a msg 2", &json!({}))
-        .unwrap();
+    let (_, ev1) = a2a_adapter.normalize(b"a2a msg 1", &json!({})).unwrap();
+    let (_, ev2) = email_adapter.normalize(b"email data", &json!({})).unwrap();
+    let (_, ev3) = a2a_adapter.normalize(b"a2a msg 2", &json!({})).unwrap();
 
     let doc = agent
-        .create_attestation(&test_subject(), &[test_claim()], &[ev1, ev2, ev3], None, None)
+        .create_attestation(
+            &test_subject(),
+            &[test_claim()],
+            &[ev1, ev2, ev3],
+            None,
+            None,
+        )
         .expect("create with 3 evidence items");
 
     let key = format!("{}:{}", doc.id, doc.version);
@@ -379,21 +391,15 @@ fn attestation_dsse_export() {
 
     let envelope = export_dsse(&doc.value).expect("export DSSE");
 
-    assert_eq!(
-        envelope["payloadType"].as_str().unwrap(),
-        DSSE_PAYLOAD_TYPE
-    );
+    assert_eq!(envelope["payloadType"].as_str().unwrap(), DSSE_PAYLOAD_TYPE);
 
     // Decode and verify the payload
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     let payload_b64 = envelope["payload"].as_str().unwrap();
     let payload_bytes = STANDARD.decode(payload_b64).expect("valid base64");
     let statement: Value = serde_json::from_slice(&payload_bytes).expect("valid JSON");
 
-    assert_eq!(
-        statement["_type"].as_str().unwrap(),
-        INTOTO_STATEMENT_TYPE
-    );
+    assert_eq!(statement["_type"].as_str().unwrap(), INTOTO_STATEMENT_TYPE);
     assert_eq!(
         statement["predicateType"].as_str().unwrap(),
         JACS_PREDICATE_TYPE
@@ -486,13 +492,7 @@ fn attestation_with_policy_context() {
     };
 
     let doc = agent
-        .create_attestation(
-            &test_subject(),
-            &[test_claim()],
-            &[],
-            None,
-            Some(&policy),
-        )
+        .create_attestation(&test_subject(), &[test_claim()], &[], None, Some(&policy))
         .expect("create with policy context");
 
     let att = &doc.value["attestation"];
@@ -511,9 +511,7 @@ fn attestation_with_policy_context() {
 
     // Should still verify
     let key = format!("{}:{}", doc.id, doc.version);
-    let result = agent
-        .verify_attestation_local_impl(&key)
-        .expect("verify");
+    let result = agent.verify_attestation_local_impl(&key).expect("verify");
     assert!(result.valid);
 }
 
@@ -529,9 +527,7 @@ fn attestation_verify_contains_signer_info() {
         .expect("create attestation");
 
     let key = format!("{}:{}", doc.id, doc.version);
-    let result = agent
-        .verify_attestation_local_impl(&key)
-        .expect("verify");
+    let result = agent.verify_attestation_local_impl(&key).expect("verify");
     assert!(result.valid);
     assert!(
         !result.crypto.signer_id.is_empty(),

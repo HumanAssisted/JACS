@@ -16,8 +16,8 @@ mod attestation_cross_lang {
         EvidenceSensitivity, SubjectType, VerifierInfo,
     };
     use jacs::simple::SimpleAgent;
-    use serial_test::serial;
     use serde_json::{Value, json};
+    use serial_test::serial;
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
@@ -242,10 +242,9 @@ mod attestation_cross_lang {
 
         let att_json = fs::read_to_string(&att_path).expect("read attestation fixture");
         let pub_key = fs::read(&key_path).expect("read public key fixture");
-        let metadata: Value = serde_json::from_str(
-            &fs::read_to_string(&meta_path).expect("read metadata"),
-        )
-        .expect("metadata should be valid JSON");
+        let metadata: Value =
+            serde_json::from_str(&fs::read_to_string(&meta_path).expect("read metadata"))
+                .expect("metadata should be valid JSON");
 
         Some((att_json, pub_key, metadata))
     }
@@ -254,7 +253,9 @@ mod attestation_cross_lang {
     /// These are the original structural checks, preserved alongside cryptographic verification.
     fn assert_attestation_structure(doc: &Value, metadata: &Value) {
         let jacs_id = doc["jacsId"].as_str().expect("should have jacsId");
-        let jacs_version = doc["jacsVersion"].as_str().expect("should have jacsVersion");
+        let jacs_version = doc["jacsVersion"]
+            .as_str()
+            .expect("should have jacsVersion");
 
         // Verify the attestation has the expected structure
         assert!(
@@ -296,9 +297,7 @@ mod attestation_cross_lang {
         }
 
         // Verify the signature structure
-        let sig = doc
-            .get("jacsSignature")
-            .expect("should have jacsSignature");
+        let sig = doc.get("jacsSignature").expect("should have jacsSignature");
         assert!(sig.get("signature").is_some(), "should have signature");
         assert!(
             sig.get("publicKeyHash").is_some(),
@@ -325,8 +324,7 @@ mod attestation_cross_lang {
             None => return,
         };
 
-        let doc: Value =
-            serde_json::from_str(&att_json).expect("attestation should be valid JSON");
+        let doc: Value = serde_json::from_str(&att_json).expect("attestation should be valid JSON");
 
         // Structural checks (preserved from the original implementation)
         assert_attestation_structure(&doc, &metadata);
@@ -347,7 +345,8 @@ mod attestation_cross_lang {
         assert!(
             result.errors.is_empty(),
             "No verification errors expected for valid fixture (prefix={}). Got: {:?}",
-            prefix, result.errors
+            prefix,
+            result.errors
         );
 
         // The signer_id should match the metadata's agent_id
@@ -444,8 +443,7 @@ mod attestation_cross_lang {
         // Tamper with the document body: change the subject ID in the attestation
         let mut doc: Value =
             serde_json::from_str(&att_json).expect("attestation should be valid JSON");
-        doc["attestation"]["subject"]["id"] =
-            Value::String("TAMPERED-subject-id-999".to_string());
+        doc["attestation"]["subject"]["id"] = Value::String("TAMPERED-subject-id-999".to_string());
 
         let tampered_json =
             serde_json::to_string(&doc).expect("tampered doc should serialize to JSON");
@@ -471,11 +469,14 @@ mod attestation_cross_lang {
         // Check that at least one error mentions hash or signature failure
         let error_text = result.errors.join(" ");
         assert!(
-            error_text.contains("hash") || error_text.contains("Hash")
-                || error_text.contains("signature") || error_text.contains("Signature")
+            error_text.contains("hash")
+                || error_text.contains("Hash")
+                || error_text.contains("signature")
+                || error_text.contains("Signature")
                 || error_text.contains("verifiable"),
             "Error should mention hash or signature failure for tampered body (prefix={}). Got: {}",
-            prefix, error_text
+            prefix,
+            error_text
         );
 
         println!(

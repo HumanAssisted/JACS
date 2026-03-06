@@ -23,12 +23,7 @@ use serde_json::json;
 use serial_test::serial;
 
 /// Create a test document with the given fields.
-fn make_test_doc(
-    id: &str,
-    version: &str,
-    jacs_type: &str,
-    agent_id: Option<&str>,
-) -> JACSDocument {
+fn make_test_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
     let mut value = json!({
         "jacsId": id,
         "jacsVersion": version,
@@ -67,9 +62,7 @@ async fn test_surrealdb_json_round_trip() {
     let expected_value = doc.value.clone();
 
     storage.store_document(&doc).expect("store failed");
-    let retrieved = storage
-        .get_document("roundtrip-1:v1")
-        .expect("get failed");
+    let retrieved = storage.get_document("roundtrip-1:v1").expect("get failed");
 
     assert_eq!(
         retrieved.value, expected_value,
@@ -198,9 +191,8 @@ async fn test_surrealdb_special_characters() {
     let storage = create_storage().await;
 
     let mut doc = make_test_doc("special-1", "v1", "agent", None);
-    doc.value["data"] = json!(
-        "Hello 'world' with \"quotes\" and \nnewlines\tand\ttabs and unicode: \u{1F600}"
-    );
+    doc.value["data"] =
+        json!("Hello 'world' with \"quotes\" and \nnewlines\tand\ttabs and unicode: \u{1F600}");
 
     storage
         .store_document(&doc)
@@ -223,12 +215,7 @@ async fn test_surrealdb_count_accuracy() {
     // Add documents
     for i in 0..7 {
         storage
-            .store_document(&make_test_doc(
-                &format!("cnt-{}", i),
-                "v1",
-                "widget",
-                None,
-            ))
+            .store_document(&make_test_doc(&format!("cnt-{}", i), "v1", "widget", None))
             .unwrap();
     }
     assert_eq!(storage.count_by_type("widget").unwrap(), 7);

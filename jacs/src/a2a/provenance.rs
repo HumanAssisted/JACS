@@ -1003,8 +1003,7 @@ mod tests {
             }),
         };
 
-        let json_value: Value =
-            serde_json::to_value(&result).expect("should serialize to Value");
+        let json_value: Value = serde_json::to_value(&result).expect("should serialize to Value");
 
         // All top-level fields must be camelCase
         assert!(json_value.get("status").is_some(), "missing 'status'");
@@ -1079,7 +1078,10 @@ mod tests {
 
         // Trust assessment fields should also be camelCase
         let trust = json_value.get("trustAssessment").unwrap();
-        assert!(trust.get("trustLevel").is_some(), "missing trust.trustLevel");
+        assert!(
+            trust.get("trustLevel").is_some(),
+            "missing trust.trustLevel"
+        );
         assert!(
             trust.get("jacsRegistered").is_some(),
             "missing trust.jacsRegistered"
@@ -1174,7 +1176,10 @@ mod tests {
         // Verify the parent verification result also uses camelCase
         let json_value: Value = serde_json::from_str(&json_str).unwrap();
         let parent = &json_value["parentVerificationResults"][0];
-        assert!(parent.get("artifactId").is_some(), "missing parent.artifactId");
+        assert!(
+            parent.get("artifactId").is_some(),
+            "missing parent.artifactId"
+        );
         assert!(parent.get("signerId").is_some(), "missing parent.signerId");
     }
 
@@ -1250,7 +1255,10 @@ mod tests {
             "originalArtifact": {"msg": "self-signed"}
         });
 
-        assert_eq!(actual, expected, "Golden JSON mismatch for SelfSigned result");
+        assert_eq!(
+            actual, expected,
+            "Golden JSON mismatch for SelfSigned result"
+        );
     }
 
     /// Pin exact JSON for VerificationResult with Unverified status.
@@ -1289,7 +1297,10 @@ mod tests {
             "originalArtifact": {"data": "unverified"}
         });
 
-        assert_eq!(actual, expected, "Golden JSON mismatch for Unverified result");
+        assert_eq!(
+            actual, expected,
+            "Golden JSON mismatch for Unverified result"
+        );
     }
 
     /// Pin exact JSON for VerificationResult with Invalid status.
@@ -1379,7 +1390,10 @@ mod tests {
             }
         });
 
-        assert_eq!(actual, expected, "Golden JSON mismatch for result with trust");
+        assert_eq!(
+            actual, expected,
+            "Golden JSON mismatch for result with trust"
+        );
     }
 
     /// Pin exact JSON for ParentVerificationResult.
@@ -1402,7 +1416,10 @@ mod tests {
             "verified": true
         });
 
-        assert_eq!(actual, expected, "Golden JSON mismatch for ParentVerificationResult");
+        assert_eq!(
+            actual, expected,
+            "Golden JSON mismatch for ParentVerificationResult"
+        );
 
         // Also verify a parent with Unverified status
         let parent_unverified = ParentVerificationResult {
@@ -1428,6 +1445,9 @@ mod tests {
             "verified": false
         });
 
-        assert_eq!(actual2, expected2, "Golden JSON mismatch for ParentVerificationResult (Unverified)");
+        assert_eq!(
+            actual2, expected2,
+            "Golden JSON mismatch for ParentVerificationResult (Unverified)"
+        );
     }
 }

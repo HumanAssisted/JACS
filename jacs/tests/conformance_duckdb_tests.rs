@@ -10,13 +10,14 @@
 
 mod conformance;
 
-use jacs::storage::duckdb_storage::DuckDbStorage;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
+use jacs::storage::duckdb_storage::DuckDbStorage;
 use serial_test::serial;
 
 async fn create_duckdb_storage() -> DuckDbStorage {
     let db = DuckDbStorage::in_memory().expect("Failed to create in-memory DuckDB");
-    db.run_migrations().expect("Failed to run DuckDB migrations");
+    db.run_migrations()
+        .expect("Failed to run DuckDB migrations");
     db
 }
 

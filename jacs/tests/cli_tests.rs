@@ -748,6 +748,60 @@ fn test_quickstart_fails_with_ambiguous_password_sources() -> Result<(), Box<dyn
 }
 
 #[test]
+fn test_agent_verify_uses_configured_default_agent_without_agent_file() -> Result<(), Box<dyn Error>>
+{
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let quickstart_dir =
+        std::env::temp_dir().join(format!("jacs_cli_test_verify_default_agent_{}", unique));
+    let probe_dir = std::env::temp_dir().join(format!(
+        "jacs_cli_test_verify_default_agent_probe_{}",
+        unique
+    ));
+    let _ = fs::remove_dir_all(&quickstart_dir);
+    let _ = fs::remove_dir_all(&probe_dir);
+    fs::create_dir_all(&quickstart_dir)?;
+    fs::create_dir_all(&probe_dir)?;
+
+    let mut quickstart = Command::cargo_bin("jacs")?;
+    quickstart
+        .current_dir(&quickstart_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
+        .arg("quickstart")
+        .arg("--name=verify-default-agent")
+        .arg("--domain=verify-default.example.test")
+        .arg("--algorithm=ed25519");
+    quickstart
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("JACS agent ready"));
+
+    let config_path = quickstart_dir.join("jacs.config.json");
+    assert!(
+        config_path.exists(),
+        "quickstart should create jacs.config.json"
+    );
+
+    let mut verify = Command::cargo_bin("jacs")?;
+    verify
+        .current_dir(&probe_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
+        .env("JACS_CONFIG", config_path.to_string_lossy().as_ref())
+        .arg("agent")
+        .arg("verify")
+        .arg("--no-dns");
+    verify
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("signature verified OK"));
+
+    let _ = fs::remove_dir_all(&quickstart_dir);
+    let _ = fs::remove_dir_all(&probe_dir);
+    Ok(())
+}
+
+#[test]
 fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Use quickstart --sign to create a signed document, then verify it
     let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_roundtrip");

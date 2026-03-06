@@ -116,9 +116,13 @@ fn test_duckdb_large_document() {
     let mut doc = make_test_doc("large-1", "v1", "artifact", None);
     doc.value["largeField"] = json!(large_data);
 
-    storage.store_document(&doc).expect("store large doc failed");
+    storage
+        .store_document(&doc)
+        .expect("store large doc failed");
 
-    let retrieved = storage.get_document("large-1:v1").expect("get large doc failed");
+    let retrieved = storage
+        .get_document("large-1:v1")
+        .expect("get large doc failed");
     assert_eq!(
         retrieved.value["largeField"].as_str().unwrap().len(),
         100_000,
@@ -132,10 +136,15 @@ fn test_duckdb_special_characters_in_data() {
     storage.run_migrations().expect("migrations failed");
 
     let mut doc = make_test_doc("special-1", "v1", "agent", None);
-    doc.value["data"] = json!("Hello 'world' with \"quotes\" and \nnewlines\tand\ttabs and unicode: \u{1F600}");
+    doc.value["data"] =
+        json!("Hello 'world' with \"quotes\" and \nnewlines\tand\ttabs and unicode: \u{1F600}");
 
-    storage.store_document(&doc).expect("store special chars failed");
-    let retrieved = storage.get_document("special-1:v1").expect("get special chars failed");
+    storage
+        .store_document(&doc)
+        .expect("store special chars failed");
+    let retrieved = storage
+        .get_document("special-1:v1")
+        .expect("get special chars failed");
 
     assert_eq!(retrieved.value["data"], doc.value["data"]);
 }
@@ -166,11 +175,17 @@ fn test_duckdb_multiple_versions_ordering() {
     storage.run_migrations().expect("migrations failed");
 
     // Insert versions with small delays to ensure different timestamps
-    storage.store_document(&make_test_doc("mvo-1", "alpha", "agent", None)).unwrap();
+    storage
+        .store_document(&make_test_doc("mvo-1", "alpha", "agent", None))
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(30));
-    storage.store_document(&make_test_doc("mvo-1", "beta", "agent", None)).unwrap();
+    storage
+        .store_document(&make_test_doc("mvo-1", "beta", "agent", None))
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(30));
-    storage.store_document(&make_test_doc("mvo-1", "gamma", "agent", None)).unwrap();
+    storage
+        .store_document(&make_test_doc("mvo-1", "gamma", "agent", None))
+        .unwrap();
 
     let versions = storage.get_versions("mvo-1").expect("get_versions failed");
     assert_eq!(versions.len(), 3);
@@ -193,7 +208,9 @@ fn test_duckdb_count_accuracy() {
 
     // Add documents
     for i in 0..7 {
-        storage.store_document(&make_test_doc(&format!("cnt-{}", i), "v1", "widget", None)).unwrap();
+        storage
+            .store_document(&make_test_doc(&format!("cnt-{}", i), "v1", "widget", None))
+            .unwrap();
     }
     assert_eq!(storage.count_by_type("widget").unwrap(), 7);
 

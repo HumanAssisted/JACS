@@ -153,11 +153,7 @@ impl FsEncryptedStore {
     }
 
     /// Build versioned archive paths from the standard paths.
-    fn archive_paths(
-        priv_path: &str,
-        pub_path: &str,
-        old_version: &str,
-    ) -> (String, String) {
+    fn archive_paths(priv_path: &str, pub_path: &str, old_version: &str) -> (String, String) {
         // For private key: insert version before the extension cluster
         // e.g. "keys/jacs.private.pem.enc" -> "keys/jacs.private.{ver}.pem.enc"
         let archive_priv = Self::insert_version_in_path(priv_path, old_version);
@@ -388,11 +384,7 @@ impl KeyStore for FsEncryptedStore {
                 debug!("FsEncryptedStore::rotate generation failed, rolling back");
                 let _ = std::fs::rename(&archive_priv, &priv_path);
                 let _ = std::fs::rename(&archive_pub, &pub_path);
-                Err(format!(
-                    "Key generation failed after archival, rolled back: {}",
-                    e
-                )
-                .into())
+                Err(format!("Key generation failed after archival, rolled back: {}", e).into())
             }
         }
     }
@@ -558,8 +550,8 @@ impl KeyStore for InMemoryKeyStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
     use serial_test::serial;
+    use std::path::Path;
 
     #[test]
     fn test_in_memory_generate_returns_keys() {

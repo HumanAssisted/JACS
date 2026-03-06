@@ -395,9 +395,9 @@ impl DocumentTraits for Agent {
                         .get("path")
                         .and_then(|path| path.as_str())
                         .ok_or("Missing file path")?;
-                    let resolved_path = self.make_data_directory_path(file_path).map_err(|e| {
-                        format!("Invalid jacsFiles path '{}': {}", file_path, e)
-                    })?;
+                    let resolved_path = self
+                        .make_data_directory_path(file_path)
+                        .map_err(|e| format!("Invalid jacsFiles path '{}': {}", file_path, e))?;
                     self.fs_get_document_content(resolved_path)?
                 };
 

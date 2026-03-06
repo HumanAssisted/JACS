@@ -617,7 +617,10 @@ mod tests {
             "policy": "Open"
         });
 
-        assert_eq!(actual_none, expected_none, "Golden JSON mismatch for TrustAssessment (Untrusted/None)");
+        assert_eq!(
+            actual_none, expected_none,
+            "Golden JSON mismatch for TrustAssessment (Untrusted/None)"
+        );
 
         // Pin ExplicitlyTrusted + Strict policy
         let assessment_strict = TrustAssessment {
@@ -639,6 +642,9 @@ mod tests {
             "policy": "Strict"
         });
 
-        assert_eq!(actual_strict, expected_strict, "Golden JSON mismatch for TrustAssessment (Strict)");
+        assert_eq!(
+            actual_strict, expected_strict,
+            "Golden JSON mismatch for TrustAssessment (Strict)"
+        );
     }
 }

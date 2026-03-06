@@ -96,7 +96,8 @@ mod tests {
         let replacement_tool = json!({"function": {"name": "classify"}});
 
         add_tool_to_action(&mut action, original_tool.clone()).unwrap();
-        update_tool_in_action(&mut action, original_tool.clone(), replacement_tool.clone()).unwrap();
+        update_tool_in_action(&mut action, original_tool.clone(), replacement_tool.clone())
+            .unwrap();
         remove_tool_from_action(&mut action, replacement_tool).unwrap();
 
         assert_eq!(action["tools"], json!([]));

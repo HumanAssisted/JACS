@@ -188,16 +188,20 @@ impl Agent {
     /// This is the byte-level equivalent of `sign_string`. Used by
     /// the email signing module where the payload is binary.
     pub fn sign_bytes(&mut self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        let config = self.config.as_ref().ok_or(
-            "Byte signing failed: agent configuration not initialized.",
-        )?;
+        let config = self
+            .config
+            .as_ref()
+            .ok_or("Byte signing failed: agent configuration not initialized.")?;
         let key_algorithm = config.get_key_algorithm().map_err(|e| {
-            format!("Byte signing failed: could not determine signing algorithm: {}", e)
+            format!(
+                "Byte signing failed: could not determine signing algorithm: {}",
+                e
+            )
         })?;
 
-        let binding = self.get_private_key().map_err(|e| {
-            format!("Byte signing failed: private key not loaded: {}", e)
-        })?;
+        let binding = self
+            .get_private_key()
+            .map_err(|e| format!("Byte signing failed: private key not loaded: {}", e))?;
 
         let is_ephemeral = self.is_ephemeral();
         let has_key_store = self.get_key_store().is_some();
@@ -226,7 +230,10 @@ impl Agent {
         let sig_bytes = ks_box
             .sign_detached(&key_bytes, data, &key_algorithm)
             .map_err(|e| {
-                format!("Byte signing failed: cryptographic signing operation failed: {}", e)
+                format!(
+                    "Byte signing failed: cryptographic signing operation failed: {}",
+                    e
+                )
             })?;
 
         Ok(sig_bytes)

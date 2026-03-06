@@ -31,8 +31,5 @@ pub trait EvidenceAdapter: Send + Sync + std::fmt::Debug {
 
 /// Returns the default set of evidence adapters.
 pub fn default_adapters() -> Vec<Box<dyn EvidenceAdapter>> {
-    vec![
-        Box::new(a2a::A2aAdapter),
-        Box::new(email::EmailAdapter),
-    ]
+    vec![Box::new(a2a::A2aAdapter), Box::new(email::EmailAdapter)]
 }

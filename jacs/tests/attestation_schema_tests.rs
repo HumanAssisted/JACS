@@ -6,13 +6,16 @@
 use jacs::schema::utils::DEFAULT_SCHEMA_STRINGS;
 use serde_json::Value;
 
-const ATTESTATION_SCHEMA: &str =
-    include_str!("../schemas/attestation/v1/attestation.schema.json");
+const ATTESTATION_SCHEMA: &str = include_str!("../schemas/attestation/v1/attestation.schema.json");
 
 #[test]
 fn schema_is_valid_json() {
     let result: Result<Value, _> = serde_json::from_str(ATTESTATION_SCHEMA);
-    assert!(result.is_ok(), "Schema must be valid JSON: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Schema must be valid JSON: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -20,7 +23,9 @@ fn schema_has_required_fields() {
     let schema: Value = serde_json::from_str(ATTESTATION_SCHEMA).unwrap();
 
     // "attestation" must be in the root "required" array
-    let root_required = schema["required"].as_array().expect("root required must be an array");
+    let root_required = schema["required"]
+        .as_array()
+        .expect("root required must be an array");
     assert!(
         root_required.iter().any(|v| v == "attestation"),
         "Root required must include 'attestation'"
@@ -43,9 +48,10 @@ fn schema_has_required_fields() {
 #[test]
 fn schema_subject_type_enum() {
     let schema: Value = serde_json::from_str(ATTESTATION_SCHEMA).unwrap();
-    let type_enum = schema["properties"]["attestation"]["properties"]["subject"]["properties"]["type"]["enum"]
-        .as_array()
-        .expect("subject.type.enum must be an array");
+    let type_enum =
+        schema["properties"]["attestation"]["properties"]["subject"]["properties"]["type"]["enum"]
+            .as_array()
+            .expect("subject.type.enum must be an array");
 
     let expected = vec!["agent", "artifact", "workflow", "identity"];
     let actual: Vec<&str> = type_enum.iter().map(|v| v.as_str().unwrap()).collect();
@@ -78,7 +84,9 @@ fn schema_uses_allof_with_header() {
     let schema: Value = serde_json::from_str(ATTESTATION_SCHEMA).unwrap();
     let all_of = schema["allOf"].as_array().expect("allOf must be an array");
     assert!(
-        all_of.iter().any(|v| v["$ref"] == "https://hai.ai/schemas/header/v1/header.schema.json"),
+        all_of
+            .iter()
+            .any(|v| v["$ref"] == "https://hai.ai/schemas/header/v1/header.schema.json"),
         "allOf must reference header.schema.json"
     );
 }
@@ -144,7 +152,11 @@ fn attestation_schema_validator_exists() {
         }
     });
     let result = schema.validate_attestation(&minimal_attestation.to_string());
-    assert!(result.is_ok(), "Minimal attestation should validate: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Minimal attestation should validate: {:?}",
+        result.err()
+    );
 }
 
 // ---- Tests for jacsType and jacsLevel enum constraints ----
@@ -184,7 +196,11 @@ fn schema_accepts_jacs_level_raw() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("attestation", "raw");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_ok(), "jacsLevel='raw' should be accepted: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "jacsLevel='raw' should be accepted: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -192,7 +208,11 @@ fn schema_accepts_jacs_level_derived() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("attestation-transform-receipt", "derived");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_ok(), "jacsLevel='derived' should be accepted: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "jacsLevel='derived' should be accepted: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -200,7 +220,10 @@ fn schema_rejects_jacs_level_verified() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("attestation", "verified");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_err(), "jacsLevel='verified' must be rejected by attestation schema");
+    assert!(
+        result.is_err(),
+        "jacsLevel='verified' must be rejected by attestation schema"
+    );
 }
 
 #[test]
@@ -208,7 +231,10 @@ fn schema_rejects_jacs_level_config() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("attestation", "config");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_err(), "jacsLevel='config' must be rejected by attestation schema");
+    assert!(
+        result.is_err(),
+        "jacsLevel='config' must be rejected by attestation schema"
+    );
 }
 
 #[test]
@@ -216,7 +242,10 @@ fn schema_rejects_jacs_level_artifact() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("attestation", "artifact");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_err(), "jacsLevel='artifact' must be rejected by attestation schema");
+    assert!(
+        result.is_err(),
+        "jacsLevel='artifact' must be rejected by attestation schema"
+    );
 }
 
 #[test]
@@ -224,7 +253,11 @@ fn schema_accepts_jacs_type_attestation() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("attestation", "raw");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_ok(), "jacsType='attestation' should be accepted: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "jacsType='attestation' should be accepted: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -232,7 +265,11 @@ fn schema_accepts_jacs_type_transform_receipt() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("attestation-transform-receipt", "derived");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_ok(), "jacsType='attestation-transform-receipt' should be accepted: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "jacsType='attestation-transform-receipt' should be accepted: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -240,7 +277,10 @@ fn schema_rejects_jacs_type_unknown() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("unknown", "raw");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_err(), "jacsType='unknown' must be rejected by attestation schema");
+    assert!(
+        result.is_err(),
+        "jacsType='unknown' must be rejected by attestation schema"
+    );
 }
 
 #[test]
@@ -248,7 +288,10 @@ fn schema_rejects_jacs_type_agent() {
     let schema = jacs::schema::Schema::new("v1", "v1", "v1").unwrap();
     let doc = minimal_attestation_doc("agent", "raw");
     let result = schema.validate_attestation(&doc.to_string());
-    assert!(result.is_err(), "jacsType='agent' must be rejected by attestation schema");
+    assert!(
+        result.is_err(),
+        "jacsType='agent' must be rejected by attestation schema"
+    );
 }
 
 // ---- Schema structure tests for the enum definitions themselves ----
@@ -275,7 +318,10 @@ fn schema_jacs_level_has_enum() {
         .as_array()
         .expect("jacsLevel must have an enum constraint in the attestation schema");
 
-    let actual: Vec<&str> = jacs_level_enum.iter().map(|v| v.as_str().unwrap()).collect();
+    let actual: Vec<&str> = jacs_level_enum
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
     assert_eq!(
         actual,
         vec!["raw", "derived"],

@@ -3,13 +3,13 @@
 //! Gated behind the `attestation` feature flag.
 //! "Signing says WHO. Attestation says WHO plus WHY."
 
-pub mod types;
-pub mod create;
-pub mod verify;
 pub mod adapters;
-pub mod migration;
+pub mod create;
 pub mod digest;
 pub mod dsse;
+pub mod migration;
+pub mod types;
+pub mod verify;
 
 use crate::agent::document::JACSDocument;
 use std::error::Error;

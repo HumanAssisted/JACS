@@ -791,11 +791,7 @@ impl JacsAgent {
 
     /// Assess a remote agent's trust level based on its Agent Card and a policy (sync).
     #[napi(js_name = "assessA2aAgentSync")]
-    pub fn assess_a2a_agent_sync(
-        &self,
-        agent_card_json: String,
-        policy: String,
-    ) -> Result<String> {
+    pub fn assess_a2a_agent_sync(&self, agent_card_json: String, policy: String) -> Result<String> {
         self.inner
             .assess_a2a_agent(&agent_card_json, &policy)
             .to_napi()
@@ -869,7 +865,10 @@ impl JacsAgent {
     }
 
     /// Verify a JACS-wrapped A2A artifact with policy-aware trust assessment.
-    #[napi(js_name = "verifyA2aArtifactWithPolicy", ts_return_type = "Promise<string>")]
+    #[napi(
+        js_name = "verifyA2aArtifactWithPolicy",
+        ts_return_type = "Promise<string>"
+    )]
     pub fn verify_a2a_artifact_with_policy_async(
         &self,
         wrapped_json: String,
@@ -900,7 +899,6 @@ impl JacsAgent {
             })),
         })
     }
-
 }
 
 // =============================================================================
@@ -952,10 +950,7 @@ impl JacsAgent {
 
     /// Create a signed attestation document (async).
     #[napi(js_name = "createAttestation", ts_return_type = "Promise<string>")]
-    pub fn create_attestation_async(
-        &self,
-        params_json: String,
-    ) -> AsyncTask<AgentStringTask> {
+    pub fn create_attestation_async(&self, params_json: String) -> AsyncTask<AgentStringTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentStringTask {
             agent,
@@ -965,10 +960,7 @@ impl JacsAgent {
 
     /// Verify an attestation -- local tier (async).
     #[napi(js_name = "verifyAttestation", ts_return_type = "Promise<string>")]
-    pub fn verify_attestation_async(
-        &self,
-        document_key: String,
-    ) -> AsyncTask<AgentStringTask> {
+    pub fn verify_attestation_async(&self, document_key: String) -> AsyncTask<AgentStringTask> {
         let agent = self.inner.clone();
         AsyncTask::new(AgentStringTask {
             agent,

@@ -214,15 +214,13 @@ impl StorageDocumentTraits for RedbStorage {
             .open_table(DOCUMENTS)
             .map_err(db_err("open_table"))?;
 
-        let guard = table
-            .get(key)
-            .map_err(db_err("get_document"))?
-            .ok_or_else(|| -> Box<dyn Error> {
-                db_err_box(
-                    "get_document",
-                    format!("Document not found: {}", key),
-                )
-            })?;
+        let guard =
+            table
+                .get(key)
+                .map_err(db_err("get_document"))?
+                .ok_or_else(|| -> Box<dyn Error> {
+                    db_err_box("get_document", format!("Document not found: {}", key))
+                })?;
 
         Self::bytes_to_document(guard.value())
     }
@@ -540,9 +538,7 @@ impl DatabaseDocumentTraits for RedbStorage {
                 .map_err(db_err("create_version_index"))?;
         }
 
-        write_txn
-            .commit()
-            .map_err(db_err("commit_migrations"))?;
+        write_txn.commit().map_err(db_err("commit_migrations"))?;
 
         Ok(())
     }

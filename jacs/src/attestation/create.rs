@@ -7,7 +7,7 @@
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::agent::{Agent, DOCUMENT_AGENT_SIGNATURE_FIELDNAME, SHA256_FIELDNAME};
 use crate::attestation::types::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::error::Error;
 use tracing::info;
 
@@ -72,10 +72,7 @@ fn build_attestation_json(
 
 /// Create a signed attestation document.
 /// Called by the AttestationTraits impl (in verify.rs) to separate concerns.
-#[tracing::instrument(
-    name = "jacs.attestation.create",
-    skip_all,
-)]
+#[tracing::instrument(name = "jacs.attestation.create", skip_all)]
 pub fn create_attestation_impl(
     agent: &mut Agent,
     subject: &AttestationSubject,
@@ -125,21 +122,16 @@ pub fn create_attestation_impl(
 mod tests {
     use super::*;
     use crate::agent::Agent;
-    use crate::attestation::digest::compute_digest_set_string;
     use crate::attestation::AttestationTraits;
+    use crate::attestation::digest::compute_digest_set_string;
     use std::collections::HashMap;
 
     /// Helper: create a loaded ephemeral Agent for testing.
     fn test_agent() -> Agent {
         let algo = "ring-Ed25519";
         let mut agent = Agent::ephemeral(algo).expect("create ephemeral agent");
-        let agent_json = crate::create_minimal_blank_agent(
-            "ai".to_string(),
-            None,
-            None,
-            None,
-        )
-        .expect("create agent template");
+        let agent_json = crate::create_minimal_blank_agent("ai".to_string(), None, None, None)
+            .expect("create agent template");
         agent
             .create_agent_and_load(&agent_json, true, Some(algo))
             .expect("load ephemeral agent");
@@ -357,7 +349,9 @@ mod tests {
             .expect("create_attestation should succeed");
 
         let key = format!("{}:{}", doc.id, doc.version);
-        let retrieved = agent.get_document(&key).expect("document should be retrievable");
+        let retrieved = agent
+            .get_document(&key)
+            .expect("document should be retrievable");
         assert_eq!(retrieved.id, doc.id);
         assert_eq!(retrieved.version, doc.version);
     }

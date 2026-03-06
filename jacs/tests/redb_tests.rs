@@ -24,12 +24,7 @@ use serial_test::serial;
 use tempfile::TempDir;
 
 /// Create a test document with the given fields.
-fn make_test_doc(
-    id: &str,
-    version: &str,
-    jacs_type: &str,
-    agent_id: Option<&str>,
-) -> JACSDocument {
+fn make_test_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
     let mut value = json!({
         "jacsId": id,
         "jacsVersion": version,
@@ -107,9 +102,7 @@ async fn test_redb_json_round_trip() {
     let expected_value = doc.value.clone();
 
     storage.store_document(&doc).expect("store failed");
-    let retrieved = storage
-        .get_document("roundtrip-1:v1")
-        .expect("get failed");
+    let retrieved = storage.get_document("roundtrip-1:v1").expect("get failed");
 
     assert_eq!(
         retrieved.value, expected_value,
@@ -128,7 +121,9 @@ async fn test_redb_large_document() {
     let mut doc = make_test_doc("large-1", "v1", "artifact", None);
     doc.value["largeField"] = json!(large_data);
 
-    storage.store_document(&doc).expect("store large doc failed");
+    storage
+        .store_document(&doc)
+        .expect("store large doc failed");
 
     let retrieved = storage
         .get_document("large-1:v1")
@@ -195,11 +190,7 @@ async fn test_redb_secondary_index_correctness() {
     let alice_agents = storage
         .query_by_agent("alice", Some("agent"), 100, 0)
         .unwrap();
-    assert_eq!(
-        alice_agents.len(),
-        1,
-        "Alice should have 1 agent document"
-    );
+    assert_eq!(alice_agents.len(), 1, "Alice should have 1 agent document");
 
     // Count
     assert_eq!(storage.count_by_type("agent").unwrap(), 2);
@@ -250,12 +241,7 @@ async fn test_redb_concurrent_reads() {
 
     for i in 0..10 {
         storage
-            .store_document(&make_test_doc(
-                &format!("conc-{}", i),
-                "v1",
-                "agent",
-                None,
-            ))
+            .store_document(&make_test_doc(&format!("conc-{}", i), "v1", "agent", None))
             .expect("store failed");
     }
 
@@ -282,10 +268,7 @@ async fn test_redb_remove_cleans_indexes() {
 
     assert_eq!(storage.count_by_type("agent").unwrap(), 2);
     assert_eq!(
-        storage
-            .query_by_agent("alice", None, 100, 0)
-            .unwrap()
-            .len(),
+        storage.query_by_agent("alice", None, 100, 0).unwrap().len(),
         2
     );
 
@@ -294,10 +277,7 @@ async fn test_redb_remove_cleans_indexes() {
 
     assert_eq!(storage.count_by_type("agent").unwrap(), 1);
     assert_eq!(
-        storage
-            .query_by_agent("alice", None, 100, 0)
-            .unwrap()
-            .len(),
+        storage.query_by_agent("alice", None, 100, 0).unwrap().len(),
         1
     );
     assert!(!storage.document_exists("rm-idx-1:v1").unwrap());

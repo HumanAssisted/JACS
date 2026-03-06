@@ -21,7 +21,10 @@ fn hash_string_matches_fixture_golden_value() {
         expected_hash.trim(),
         "hash_string() should remain byte-for-byte stable for the fixture input",
     );
-    assert_eq!(expected_hash.trim(), EXPECTED_RAW_HASH_WITH_TRAILING_NEWLINE);
+    assert_eq!(
+        expected_hash.trim(),
+        EXPECTED_RAW_HASH_WITH_TRAILING_NEWLINE
+    );
 }
 
 #[test]

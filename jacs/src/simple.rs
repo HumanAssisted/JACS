@@ -1267,41 +1267,41 @@ impl SimpleAgent {
                 .to_string();
             let (algo, key_dir, data_dir, private_key_filename, public_key_filename) =
                 if let Some(ref cfg) = inner.config {
-                let a = cfg
-                    .jacs_agent_key_algorithm()
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_string();
-                let k = cfg
-                    .jacs_key_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_keys")
-                    .to_string();
-                let d = cfg
-                    .jacs_data_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_data")
-                    .to_string();
-                let priv_name = cfg
-                    .jacs_agent_private_key_filename()
-                    .as_deref()
-                    .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME)
-                    .to_string();
-                let pub_name = cfg
-                    .jacs_agent_public_key_filename()
-                    .as_deref()
-                    .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME)
-                    .to_string();
-                (a, k, d, priv_name, pub_name)
-            } else {
-                (
-                    String::new(),
-                    "./jacs_keys".to_string(),
-                    "./jacs_data".to_string(),
-                    DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
-                    DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
-                )
-            };
+                    let a = cfg
+                        .jacs_agent_key_algorithm()
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_string();
+                    let k = cfg
+                        .jacs_key_directory()
+                        .as_deref()
+                        .unwrap_or("./jacs_keys")
+                        .to_string();
+                    let d = cfg
+                        .jacs_data_directory()
+                        .as_deref()
+                        .unwrap_or("./jacs_data")
+                        .to_string();
+                    let priv_name = cfg
+                        .jacs_agent_private_key_filename()
+                        .as_deref()
+                        .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME)
+                        .to_string();
+                    let pub_name = cfg
+                        .jacs_agent_public_key_filename()
+                        .as_deref()
+                        .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME)
+                        .to_string();
+                    (a, k, d, priv_name, pub_name)
+                } else {
+                    (
+                        String::new(),
+                        "./jacs_keys".to_string(),
+                        "./jacs_data".to_string(),
+                        DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
+                        DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
+                    )
+                };
             drop(inner);
 
             let info = AgentInfo {
@@ -1619,8 +1619,8 @@ impl SimpleAgent {
     /// Returns the raw signature bytes (decoded from the base64 output of the
     /// underlying crypto module).
     pub fn sign_raw_bytes(&self, data: &[u8]) -> Result<Vec<u8>, JacsError> {
-        use base64::Engine;
         use crate::crypt::KeyManager;
+        use base64::Engine;
 
         let data_str = std::str::from_utf8(data).map_err(|e| JacsError::Internal {
             message: format!("Data is not valid UTF-8: {}", e),
@@ -1630,9 +1630,11 @@ impl SimpleAgent {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
-        let sig_b64 = agent.sign_string(data_str).map_err(|e| JacsError::SigningFailed {
-            reason: format!("Raw byte signing failed: {}", e),
-        })?;
+        let sig_b64 = agent
+            .sign_string(data_str)
+            .map_err(|e| JacsError::SigningFailed {
+                reason: format!("Raw byte signing failed: {}", e),
+            })?;
 
         let sig_bytes = base64::engine::general_purpose::STANDARD
             .decode(&sig_b64)
@@ -1649,11 +1651,10 @@ impl SimpleAgent {
     pub fn get_agent_id(&self) -> Result<String, JacsError> {
         // Use export_agent which returns the agent document JSON
         let agent_json = self.export_agent()?;
-        let doc: serde_json::Value = serde_json::from_str(&agent_json).map_err(|e| {
-            JacsError::Internal {
+        let doc: serde_json::Value =
+            serde_json::from_str(&agent_json).map_err(|e| JacsError::Internal {
                 message: format!("Failed to parse agent JSON: {}", e),
-            }
-        })?;
+            })?;
 
         // Try to extract the agent ID from the document
         let agent_id = doc
@@ -2228,12 +2229,14 @@ impl SimpleAgent {
             let agent = self.agent.lock().map_err(|e| JacsError::Internal {
                 message: format!("Failed to acquire agent lock: {}", e),
             })?;
-            let jacs_doc = agent.get_document(document_id).map_err(|e| JacsError::Internal {
-                message: format!(
-                    "Failed to load document '{}' from agent storage: {}",
-                    document_id, e
-                ),
-            })?;
+            let jacs_doc = agent
+                .get_document(document_id)
+                .map_err(|e| JacsError::Internal {
+                    message: format!(
+                        "Failed to load document '{}' from agent storage: {}",
+                        document_id, e
+                    ),
+                })?;
 
             serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
                 message: format!("Failed to serialize document '{}': {}", document_id, e),
@@ -3021,7 +3024,10 @@ impl SimpleAgent {
         })?;
 
         // 1. Capture pre-rotation state
-        let agent_value = agent.get_value().cloned().ok_or(JacsError::AgentNotLoaded)?;
+        let agent_value = agent
+            .get_value()
+            .cloned()
+            .ok_or(JacsError::AgentNotLoaded)?;
         let jacs_id = agent_value["jacsId"]
             .as_str()
             .ok_or(JacsError::AgentNotLoaded)?
@@ -3061,10 +3067,7 @@ impl SimpleAgent {
 
                 let new_lookup = format!("{}:{}", jacs_id, new_version);
                 if let Some(obj) = config_value.as_object_mut() {
-                    obj.insert(
-                        "jacs_agent_id_and_version".to_string(),
-                        json!(new_lookup),
-                    );
+                    obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
                 }
 
                 let updated_str = serde_json::to_string_pretty(&config_value).map_err(|e| {
@@ -3226,43 +3229,73 @@ impl SimpleAgent {
     /// Convenience method that accepts a JSON string with `subject`, `claims`,
     /// `evidence` (optional), `derivation` (optional), and `policyContext` (optional).
     #[cfg(feature = "attestation")]
-    pub fn create_attestation_from_json(&self, params_json: &str) -> Result<SignedDocument, JacsError> {
+    pub fn create_attestation_from_json(
+        &self,
+        params_json: &str,
+    ) -> Result<SignedDocument, JacsError> {
         use crate::attestation::types::*;
 
-        let params: serde_json::Value = serde_json::from_str(params_json)
-            .map_err(|e| JacsError::Internal { message: format!("Invalid JSON params: {}", e) })?;
+        let params: serde_json::Value =
+            serde_json::from_str(params_json).map_err(|e| JacsError::Internal {
+                message: format!("Invalid JSON params: {}", e),
+            })?;
 
-        let subject: AttestationSubject = serde_json::from_value(
-            params.get("subject").cloned().ok_or_else(|| JacsError::Internal {
-                message: "Missing required 'subject' field".into(),
-            })?,
-        ).map_err(|e| JacsError::Internal { message: format!("Invalid subject: {}", e) })?;
+        let subject: AttestationSubject =
+            serde_json::from_value(params.get("subject").cloned().ok_or_else(|| {
+                JacsError::Internal {
+                    message: "Missing required 'subject' field".into(),
+                }
+            })?)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Invalid subject: {}", e),
+            })?;
 
-        let claims: Vec<Claim> = serde_json::from_value(
-            params.get("claims").cloned().ok_or_else(|| JacsError::Internal {
-                message: "Missing required 'claims' field".into(),
-            })?,
-        ).map_err(|e| JacsError::Internal { message: format!("Invalid claims: {}", e) })?;
+        let claims: Vec<Claim> =
+            serde_json::from_value(params.get("claims").cloned().ok_or_else(|| {
+                JacsError::Internal {
+                    message: "Missing required 'claims' field".into(),
+                }
+            })?)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Invalid claims: {}", e),
+            })?;
 
         let evidence: Vec<EvidenceRef> = match params.get("evidence") {
-            Some(v) if !v.is_null() => serde_json::from_value(v.clone())
-                .map_err(|e| JacsError::Internal { message: format!("Invalid evidence: {}", e) })?,
+            Some(v) if !v.is_null() => {
+                serde_json::from_value(v.clone()).map_err(|e| JacsError::Internal {
+                    message: format!("Invalid evidence: {}", e),
+                })?
+            }
             _ => vec![],
         };
 
-        let derivation: Option<Derivation> = match params.get("derivation") {
-            Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone())
-                .map_err(|e| JacsError::Internal { message: format!("Invalid derivation: {}", e) })?),
-            _ => None,
-        };
+        let derivation: Option<Derivation> =
+            match params.get("derivation") {
+                Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone()).map_err(
+                    |e| JacsError::Internal {
+                        message: format!("Invalid derivation: {}", e),
+                    },
+                )?),
+                _ => None,
+            };
 
-        let policy_context: Option<PolicyContext> = match params.get("policyContext") {
-            Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone())
-                .map_err(|e| JacsError::Internal { message: format!("Invalid policyContext: {}", e) })?),
-            _ => None,
-        };
+        let policy_context: Option<PolicyContext> =
+            match params.get("policyContext") {
+                Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone()).map_err(
+                    |e| JacsError::Internal {
+                        message: format!("Invalid policyContext: {}", e),
+                    },
+                )?),
+                _ => None,
+            };
 
-        self.create_attestation(&subject, &claims, &evidence, derivation.as_ref(), policy_context.as_ref())
+        self.create_attestation(
+            &subject,
+            &claims,
+            &evidence,
+            derivation.as_ref(),
+            policy_context.as_ref(),
+        )
     }
 
     /// Lift a signed document into an attestation from a JSON claims string.
@@ -3276,8 +3309,10 @@ impl SimpleAgent {
     ) -> Result<SignedDocument, JacsError> {
         use crate::attestation::types::Claim;
 
-        let claims: Vec<Claim> = serde_json::from_str(claims_json)
-            .map_err(|e| JacsError::Internal { message: format!("Invalid claims JSON: {}", e) })?;
+        let claims: Vec<Claim> =
+            serde_json::from_str(claims_json).map_err(|e| JacsError::Internal {
+                message: format!("Invalid claims JSON: {}", e),
+            })?;
 
         self.lift_to_attestation(signed_doc_json, &claims)
     }
@@ -4102,7 +4137,8 @@ mod tests {
 
     #[test]
     fn test_verify_by_id_uses_loaded_agent_storage_backend() {
-        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).expect("create ephemeral agent");
+        let (agent, _info) =
+            SimpleAgent::ephemeral(Some("ed25519")).expect("create ephemeral agent");
         let signed = agent
             .sign_message(&json!({"hello": "verify-by-id"}))
             .expect("sign message");
@@ -4277,8 +4313,7 @@ mod tests {
             .config_path(&format!("{}/jacs.config.json", tmp_path))
             .build();
 
-        let (agent, _info) =
-            SimpleAgent::create_with_params(params).expect("create test agent");
+        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create test agent");
 
         unsafe {
             std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestVerify!2026");
@@ -4344,14 +4379,8 @@ mod tests {
             .verify_with_key(&signed.raw, agent_b_pubkey)
             .expect("verify_with_key should return Ok with errors, not Err");
 
-        assert!(
-            !result.valid,
-            "verification with wrong key should fail"
-        );
-        assert!(
-            !result.errors.is_empty(),
-            "should have verification errors"
-        );
+        assert!(!result.valid, "verification with wrong key should fail");
+        assert!(!result.errors.is_empty(), "should have verification errors");
     }
 
     // =========================================================================
@@ -4398,8 +4427,7 @@ mod tests {
             .config_path("./jacs.config.json")
             .build();
 
-        let (agent, info) =
-            SimpleAgent::create_with_params(params).expect("create test agent");
+        let (agent, info) = SimpleAgent::create_with_params(params).expect("create test agent");
 
         // Set env vars so key operations work
         unsafe {
@@ -4494,10 +4522,9 @@ mod tests {
         let config_path = tmp.path().join("jacs.config.json");
 
         // Make key directory absolute while keeping data directory relative.
-        let mut config_value: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&config_path).expect("read config"),
-        )
-        .expect("parse config json");
+        let mut config_value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config_path).expect("read config"))
+                .expect("parse config json");
         config_value["jacs_key_directory"] =
             serde_json::Value::String(tmp.path().join("jacs_keys").to_string_lossy().to_string());
         std::fs::write(
@@ -4542,10 +4569,9 @@ mod tests {
         let (_agent, _info, tmp, guard) = create_persistent_test_agent("reject-parent-dir-test");
         let config_path = tmp.path().join("jacs.config.json");
 
-        let mut config_value: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&config_path).expect("read config"),
-        )
-        .expect("parse config json");
+        let mut config_value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config_path).expect("read config"))
+                .expect("parse config json");
         config_value["jacs_data_directory"] =
             serde_json::Value::String("../outside-data".to_string());
         std::fs::write(
@@ -4591,7 +4617,10 @@ mod tests {
 
         let result = agent.rotate().expect("rotation should succeed");
 
-        assert_eq!(result.jacs_id, original_id, "jacsId must not change after rotation");
+        assert_eq!(
+            result.jacs_id, original_id,
+            "jacsId must not change after rotation"
+        );
         assert_ne!(
             result.new_version, original_version,
             "jacsVersion must change after rotation"
@@ -4638,8 +4667,14 @@ mod tests {
 
         // All fields should be non-empty
         assert!(!result.jacs_id.is_empty(), "jacs_id should not be empty");
-        assert!(!result.old_version.is_empty(), "old_version should not be empty");
-        assert!(!result.new_version.is_empty(), "new_version should not be empty");
+        assert!(
+            !result.old_version.is_empty(),
+            "old_version should not be empty"
+        );
+        assert!(
+            !result.new_version.is_empty(),
+            "new_version should not be empty"
+        );
         assert!(
             !result.new_public_key_pem.is_empty(),
             "new_public_key_pem should not be empty"
@@ -4709,7 +4744,11 @@ mod tests {
             .sign_message(&json!({"ephemeral": "after rotate"}))
             .expect("signing after ephemeral rotation should work");
         let verification = agent.verify(&signed.raw).expect("verify should work");
-        assert!(verification.valid, "ephemeral post-rotation verify failed: {:?}", verification.errors);
+        assert!(
+            verification.valid,
+            "ephemeral post-rotation verify failed: {:?}",
+            verification.errors
+        );
     }
 
     #[test]
@@ -4755,28 +4794,32 @@ mod tests {
 
         // Phase 1: Sign with original key
         let old_public_key = agent.get_public_key().expect("get old key");
-        let signed_v1 = agent
-            .sign_message(&json!({"version": 1}))
-            .expect("sign v1");
+        let signed_v1 = agent.sign_message(&json!({"version": 1})).expect("sign v1");
 
         // Phase 2: Rotate
         let result = agent.rotate().expect("rotation should succeed");
 
         // Phase 3: Sign with new key
-        let signed_v2 = agent
-            .sign_message(&json!({"version": 2}))
-            .expect("sign v2");
+        let signed_v2 = agent.sign_message(&json!({"version": 2})).expect("sign v2");
 
         // Phase 4: Verify both documents
         // v1 doc with old key
         let v1_check = agent
             .verify_with_key(&signed_v1.raw, old_public_key)
             .expect("verify v1 with old key");
-        assert!(v1_check.valid, "v1 should verify with old key: {:?}", v1_check.errors);
+        assert!(
+            v1_check.valid,
+            "v1 should verify with old key: {:?}",
+            v1_check.errors
+        );
 
         // v2 doc with current agent (new key)
         let v2_check = agent.verify(&signed_v2.raw).expect("verify v2");
-        assert!(v2_check.valid, "v2 should verify with new key: {:?}", v2_check.errors);
+        assert!(
+            v2_check.valid,
+            "v2 should verify with new key: {:?}",
+            v2_check.errors
+        );
 
         // Version chain is correct
         let doc: Value =
@@ -4830,7 +4873,11 @@ mod tests {
             let agent = ephemeral_agent();
             let subject = test_subject();
             let result = agent.create_attestation(&subject, &[test_claim()], &[], None, None);
-            assert!(result.is_ok(), "create_attestation should succeed: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "create_attestation should succeed: {:?}",
+                result.err()
+            );
 
             let signed = result.unwrap();
             assert!(!signed.raw.is_empty(), "raw JSON should not be empty");
@@ -4848,7 +4895,10 @@ mod tests {
                 .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
-            assert!(doc.get("attestation").is_some(), "should contain attestation field");
+            assert!(
+                doc.get("attestation").is_some(),
+                "should contain attestation field"
+            );
             assert!(doc.get("jacsSignature").is_some(), "should be signed");
             assert_eq!(
                 doc["attestation"]["subject"]["id"].as_str().unwrap(),
@@ -4872,7 +4922,11 @@ mod tests {
             );
 
             let result = agent.verify_attestation(&key);
-            assert!(result.is_ok(), "verify_attestation should succeed: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "verify_attestation should succeed: {:?}",
+                result.err()
+            );
 
             let verification = result.unwrap();
             assert!(
@@ -5023,14 +5077,12 @@ mod tests {
                 },
             }];
 
-            let result = agent.create_attestation(
-                &subject,
-                &[test_claim()],
-                &evidence,
-                None,
-                None,
+            let result = agent.create_attestation(&subject, &[test_claim()], &evidence, None, None);
+            assert!(
+                result.is_ok(),
+                "attestation with evidence should succeed: {:?}",
+                result.err()
             );
-            assert!(result.is_ok(), "attestation with evidence should succeed: {:?}", result.err());
 
             let signed = result.unwrap();
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();

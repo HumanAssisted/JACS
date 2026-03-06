@@ -28,9 +28,10 @@ impl EvidenceAdapter for EmailAdapter {
         let sensitivity = EvidenceSensitivity::Public;
         let embedded = should_embed_with_sensitivity(raw, &sensitivity);
         let embedded_data = if embedded {
-            Some(Value::String(
-                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw),
-            ))
+            Some(Value::String(base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                raw,
+            )))
         } else {
             None
         };
@@ -77,11 +78,9 @@ impl EvidenceAdapter for EmailAdapter {
     ) -> Result<EvidenceVerificationResult, Box<dyn Error>> {
         let digest_valid = if let Some(ref data) = evidence.embedded_data {
             let data_str = data.as_str().unwrap_or("");
-            let decoded = base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                data_str,
-            )
-            .unwrap_or_default();
+            let decoded =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data_str)
+                    .unwrap_or_default();
             let recomputed = compute_digest_set_bytes(&decoded);
             recomputed.sha256 == evidence.digests.sha256
         } else {
@@ -200,12 +199,10 @@ mod tests {
             },
             uri: None,
             embedded: true,
-            embedded_data: Some(Value::String(
-                base64::Engine::encode(
-                    &base64::engine::general_purpose::STANDARD,
-                    b"data",
-                ),
-            )),
+            embedded_data: Some(Value::String(base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                b"data",
+            ))),
             collected_at: crate::time_utils::now_rfc3339(),
             resolved_at: None,
             sensitivity: EvidenceSensitivity::Public,

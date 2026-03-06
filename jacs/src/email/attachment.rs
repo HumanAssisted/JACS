@@ -29,9 +29,9 @@ pub(crate) fn rfind_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 ///
 /// Returns the new raw email bytes with the attachment included.
 pub fn add_jacs_attachment(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, EmailError> {
-    let message = MessageParser::default()
-        .parse(raw_email)
-        .ok_or_else(|| EmailError::InvalidEmailFormat("Cannot parse email for attachment injection".into()))?;
+    let message = MessageParser::default().parse(raw_email).ok_or_else(|| {
+        EmailError::InvalidEmailFormat("Cannot parse email for attachment injection".into())
+    })?;
 
     let content_type = message
         .content_type()
@@ -43,7 +43,9 @@ pub fn add_jacs_attachment(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
             let boundary = message
                 .content_type()
                 .and_then(|ct| ct.attribute("boundary"))
-                .ok_or_else(|| EmailError::InvalidEmailFormat("multipart/mixed without boundary".into()))?
+                .ok_or_else(|| {
+                    EmailError::InvalidEmailFormat("multipart/mixed without boundary".into())
+                })?
                 .to_string();
             insert_part_before_closing_boundary(raw_email, &boundary, doc)
         }
@@ -62,9 +64,9 @@ pub fn add_jacs_attachment(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
 ///
 /// Returns the raw bytes of the attachment content (MIME-decoded).
 pub fn get_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
-    let message = MessageParser::default()
-        .parse(raw_email)
-        .ok_or_else(|| EmailError::InvalidEmailFormat("Cannot parse email for attachment extraction".into()))?;
+    let message = MessageParser::default().parse(raw_email).ok_or_else(|| {
+        EmailError::InvalidEmailFormat("Cannot parse email for attachment extraction".into())
+    })?;
 
     for part in message.parts.iter() {
         let filename = part
@@ -85,9 +87,9 @@ pub fn get_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
 ///
 /// Returns the email without the JACS attachment. The result is valid RFC 5322.
 pub fn remove_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
-    let message = MessageParser::default()
-        .parse(raw_email)
-        .ok_or_else(|| EmailError::InvalidEmailFormat("Cannot parse email for attachment removal".into()))?;
+    let message = MessageParser::default().parse(raw_email).ok_or_else(|| {
+        EmailError::InvalidEmailFormat("Cannot parse email for attachment removal".into())
+    })?;
 
     // Find the JACS part to remove
     let mut jacs_part_idx = None;
@@ -355,8 +357,11 @@ fn rebuild_headers_for_multipart(headers: &[u8], boundary: &str) -> Result<Vec<u
             skip_current = true;
             if !replaced_ct {
                 result.extend_from_slice(
-                    format!("Content-Type: multipart/mixed; boundary=\"{}\"\r\n", boundary)
-                        .as_bytes(),
+                    format!(
+                        "Content-Type: multipart/mixed; boundary=\"{}\"\r\n",
+                        boundary
+                    )
+                    .as_bytes(),
                 );
                 replaced_ct = true;
             }
@@ -376,7 +381,11 @@ fn rebuild_headers_for_multipart(headers: &[u8], boundary: &str) -> Result<Vec<u
 
     if !replaced_ct {
         result.extend_from_slice(
-            format!("Content-Type: multipart/mixed; boundary=\"{}\"\r\n", boundary).as_bytes(),
+            format!(
+                "Content-Type: multipart/mixed; boundary=\"{}\"\r\n",
+                boundary
+            )
+            .as_bytes(),
         );
     }
 
@@ -400,7 +409,9 @@ fn build_jacs_mime_part_bytes(boundary: &str, doc: &[u8]) -> Vec<u8> {
     let mut part = Vec::new();
     part.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
     part.extend_from_slice(b"Content-Type: application/json; name=\"jacs-signature.json\"\r\n");
-    part.extend_from_slice(b"Content-Disposition: attachment; filename=\"jacs-signature.json\"\r\n");
+    part.extend_from_slice(
+        b"Content-Disposition: attachment; filename=\"jacs-signature.json\"\r\n",
+    );
     part.extend_from_slice(b"Content-Transfer-Encoding: 7bit\r\n");
     part.extend_from_slice(b"\r\n");
     part.extend_from_slice(doc);

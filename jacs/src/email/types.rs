@@ -225,7 +225,6 @@ pub struct ContentVerificationResult {
     pub chain: Vec<ChainEntry>,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,7 +347,6 @@ mod tests {
         let result = ContentVerificationResult {
             valid: false,
             field_results: vec![
-
                 FieldResult {
                     field: "headers.from".to_string(),
                     status: FieldStatus::Pass,

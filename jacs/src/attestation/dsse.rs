@@ -7,8 +7,8 @@
 //! - in-toto Statement spec: <https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md>
 //! - DSSE spec: <https://github.com/secure-systems-lab/dsse/blob/master/envelope.md>
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use serde_json::{json, Value};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde_json::{Value, json};
 use std::error::Error;
 
 /// The `_type` field for in-toto Statements.
@@ -67,7 +67,10 @@ pub fn export_dsse(attestation_value: &Value) -> Result<Value, Box<dyn Error>> {
 
     // 3. Redact confidential evidence data before export
     let mut attestation_redacted = attestation.clone();
-    if let Some(evidence_arr) = attestation_redacted.get_mut("evidence").and_then(|v| v.as_array_mut()) {
+    if let Some(evidence_arr) = attestation_redacted
+        .get_mut("evidence")
+        .and_then(|v| v.as_array_mut())
+    {
         for ev in evidence_arr.iter_mut() {
             if ev.get("sensitivity").and_then(|s| s.as_str()) == Some("confidential") {
                 if let Some(obj) = ev.as_object_mut() {
@@ -134,10 +137,10 @@ fn build_dsse_signatures(doc: &Value) -> Result<Vec<Value>, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::document::DocumentTraits;
     use crate::agent::Agent;
-    use crate::attestation::types::*;
+    use crate::agent::document::DocumentTraits;
     use crate::attestation::AttestationTraits;
+    use crate::attestation::types::*;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -201,7 +204,9 @@ mod tests {
         let envelope = export_dsse(&att_value).unwrap();
 
         let payload_b64 = envelope["payload"].as_str().unwrap();
-        let payload_bytes = STANDARD.decode(payload_b64).expect("payload should be valid base64");
+        let payload_bytes = STANDARD
+            .decode(payload_b64)
+            .expect("payload should be valid base64");
         let statement: Value =
             serde_json::from_slice(&payload_bytes).expect("payload should be valid JSON");
 
@@ -239,7 +244,9 @@ mod tests {
         let payload_bytes = STANDARD.decode(payload_b64).unwrap();
         let statement: Value = serde_json::from_slice(&payload_bytes).unwrap();
 
-        let subjects = statement["subject"].as_array().expect("subject should be array");
+        let subjects = statement["subject"]
+            .as_array()
+            .expect("subject should be array");
         assert_eq!(subjects.len(), 1, "should have exactly one subject");
 
         assert_eq!(
@@ -350,7 +357,10 @@ mod tests {
 
         // Inject confidential evidence with embedded data into the attestation
         let mut modified = att_value.clone();
-        if let Some(attestation) = modified.get_mut("attestation").and_then(|a| a.as_object_mut()) {
+        if let Some(attestation) = modified
+            .get_mut("attestation")
+            .and_then(|a| a.as_object_mut())
+        {
             attestation.insert(
                 "evidence".to_string(),
                 json!([{
