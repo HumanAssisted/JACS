@@ -15,24 +15,6 @@ jobs:
       version: ${{ steps.extract.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            /Cargo.toml
-            /Cargo.lock
-            /README.md
-            /LICENSE
-            /binding-core/Cargo.toml
-            /binding-core/src/**
-            /jacs/Cargo.toml
-            /jacs/build.rs
-            /jacs/src/**
-            /jacs/schemas/**
-            /jacs-mcp/Cargo.toml
-            /jacs-mcp/src/**
-            /jacsnpm/Cargo.toml
-            /jacspy/Cargo.toml
-            /jacsgo/lib/Cargo.toml
-          sparse-checkout-cone-mode: false
 
       - name: Extract version from tag
         id: extract
@@ -90,24 +72,58 @@ jobs:
       MCP_ASSET_NAME: jacs-mcp-${{ needs.verify-version.outputs.version }}-${{ matrix.asset_suffix }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            /Cargo.toml
-            /Cargo.lock
-            /README.md
-            /LICENSE
-            /binding-core/Cargo.toml
-            /binding-core/src/**
-            /jacs/Cargo.toml
-            /jacs/build.rs
-            /jacs/src/**
-            /jacs/schemas/**
-            /jacs-mcp/Cargo.toml
-            /jacs-mcp/src/**
-            /jacsnpm/Cargo.toml
-            /jacspy/Cargo.toml
-            /jacsgo/lib/Cargo.toml
-          sparse-checkout-cone-mode: false
+        if: runner.os != 'Windows'
+
+      - name: Stage source tree (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'jacs-cli-source.tar.gz'
+          $manifest = Join-Path $env:RUNNER_TEMP 'jacs-cli-source-files.txt'
+          $workspace = $env:GITHUB_WORKSPACE
+
+          Invoke-WebRequest `
+            -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN"; "X-GitHub-Api-Version" = "2022-11-28" } `
+            -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/tarball/$env:GITHUB_SHA" `
+            -OutFile $archive
+
+          $entries = tar -tf $archive
+          $prefix = ($entries | Select-Object -First 1).TrimEnd('/')
+
+          $requiredFiles = $entries | Where-Object {
+            $_ -eq "$prefix/Cargo.toml" -or
+            $_ -eq "$prefix/Cargo.lock" -or
+            $_ -eq "$prefix/README.md" -or
+            $_ -eq "$prefix/LICENSE" -or
+            $_ -eq "$prefix/binding-core/Cargo.toml" -or
+            $_ -eq "$prefix/jacs/Cargo.toml" -or
+            $_ -eq "$prefix/jacs/README.md" -or
+            $_ -eq "$prefix/jacs/LICENSE" -or
+            $_ -eq "$prefix/jacs/build.rs" -or
+            $_ -like "$prefix/jacs/benches/*" -or
+            $_ -eq "$prefix/jacs-mcp/Cargo.toml" -or
+            $_ -eq "$prefix/jacs-mcp/README.md" -or
+            $_ -eq "$prefix/jacsnpm/Cargo.toml" -or
+            $_ -eq "$prefix/jacsnpm/src/lib.rs" -or
+            $_ -eq "$prefix/jacspy/Cargo.toml" -or
+            $_ -eq "$prefix/jacspy/src/lib.rs" -or
+            $_ -eq "$prefix/jacsgo/lib/Cargo.toml" -or
+            $_ -eq "$prefix/jacsgo/lib/src/lib.rs" -or
+            $_ -like "$prefix/binding-core/src/*" -or
+            $_ -like "$prefix/jacs/src/*" -or
+            $_ -like "$prefix/jacs/schemas/*" -or
+            $_ -like "$prefix/jacs-mcp/src/*"
+          }
+
+          if (-not $requiredFiles) {
+            throw 'Failed to determine the Windows source file subset for CLI builds.'
+          }
+
+          $requiredFiles | Set-Content -Path $manifest
+          tar -xf $archive -C $workspace --strip-components 1 -T $manifest
 
       - uses: dtolnay/rust-toolchain@stable
         with:
