@@ -79,6 +79,13 @@ fn extract_document_lookup_key(doc: &serde_json::Value) -> Option<String> {
     }
 }
 
+/// Parse a signed document JSON string and return its stable lookup key.
+fn extract_document_lookup_key_from_str(document_json: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(document_json)
+        .ok()
+        .and_then(|v| extract_document_lookup_key(&v))
+}
+
 /// Pull embedded state content from a signed agent-state document.
 fn extract_embedded_state_content(doc: &serde_json::Value) -> Option<String> {
     doc.get("jacsAgentStateContent")
@@ -113,6 +120,19 @@ fn update_embedded_state_content(doc: &mut serde_json::Value, new_content: &str)
     }
 
     new_hash
+}
+
+fn value_string(doc: &serde_json::Value, field: &str) -> Option<String> {
+    doc.get(field).and_then(|v| v.as_str()).map(str::to_string)
+}
+
+fn value_string_vec(doc: &serde_json::Value, field: &str) -> Option<Vec<String>> {
+    doc.get(field).and_then(|v| v.as_array()).map(|items| {
+        items
+            .iter()
+            .filter_map(|item| item.as_str().map(str::to_string))
+            .collect::<Vec<_>>()
+    })
 }
 
 /// Extract verification validity from `verify_a2a_artifact` details JSON.
@@ -1973,18 +1993,42 @@ impl JacsMcpServer {
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            false, // no_save
-            None,  // attachments
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
             Some(embed || params.state_type == "hook"),
         ) {
             Ok(signed_doc_string) => {
-                // Extract a storage lookup key (jacsId:jacsVersion) from the signed document.
-                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
-                    .ok()
-                    .and_then(|v| extract_document_lookup_key(&v))
-                    .unwrap_or_else(|| "unknown".to_string());
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&SignStateResult {
+                            success: false,
+                            jacs_document_id: None,
+                            state_type: params.state_type,
+                            name: params.name,
+                            message: "Failed to determine the signed document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) = self
+                    .agent
+                    .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&SignStateResult {
+                        success: false,
+                        jacs_document_id: Some(doc_id),
+                        state_type: params.state_type,
+                        name: params.name,
+                        message: "Failed to persist signed state document".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
 
                 SignStateResult {
                     success: true,
@@ -2341,26 +2385,90 @@ impl JacsMcpServer {
     }
 
     /// List signed agent state documents.
-    ///
-    /// Currently returns a placeholder since document indexing is not yet
-    /// implemented. Will be fully functional once document storage lookup is added.
     #[tool(
         name = "jacs_list_state",
         description = "List signed agent state documents, with optional filtering."
     )]
     pub async fn jacs_list_state(
         &self,
-        Parameters(_params): Parameters<ListStateParams>,
+        Parameters(params): Parameters<ListStateParams>,
     ) -> String {
-        // Document indexing/listing is not yet implemented.
-        // This will be connected to the document storage layer when available.
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = ListStateResult {
+                    success: false,
+                    documents: Vec::new(),
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut matched = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+
+            let state_type = value_string(&doc, "jacsAgentStateType").unwrap_or_default();
+            if let Some(filter) = params.state_type.as_deref()
+                && state_type != filter
+            {
+                continue;
+            }
+
+            let framework = value_string(&doc, "jacsAgentStateFramework");
+            if let Some(filter) = params.framework.as_deref()
+                && framework.as_deref() != Some(filter)
+            {
+                continue;
+            }
+
+            let tags = value_string_vec(&doc, "jacsAgentStateTags");
+            if let Some(filter_tags) = params.tags.as_ref() {
+                let doc_tags = tags.clone().unwrap_or_default();
+                if !filter_tags.iter().all(|tag| doc_tags.iter().any(|item| item == tag)) {
+                    continue;
+                }
+            }
+
+            let name = value_string(&doc, "jacsAgentStateName").unwrap_or_else(|| key.clone());
+            let version_date = value_string(&doc, "jacsVersionDate").unwrap_or_default();
+
+            matched.push((
+                version_date,
+                key.clone(),
+                StateListEntry {
+                    jacs_document_id: key,
+                    state_type,
+                    name,
+                    framework,
+                    tags: tags.filter(|items| !items.is_empty()),
+                },
+            ));
+        }
+
+        matched.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
         let result = ListStateResult {
             success: true,
-            documents: Vec::new(),
-            message: "Agent state document listing is not yet fully implemented. \
-                     Documents are signed and stored but a centralized index is pending. \
-                     Use jacs_verify_state with a jacs_id to check individual documents."
-                .to_string(),
+            documents: matched.into_iter().map(|(_, _, entry)| entry).collect(),
+            message: match params.state_type.as_deref() {
+                Some(filter) => format!("Listed agent state documents (state_type='{}').", filter),
+                None => "Listed agent state documents.".to_string(),
+            },
             error: None,
         };
 
@@ -2442,17 +2550,42 @@ impl JacsMcpServer {
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None,  // custom_schema
-            None,  // outputfilename
-            false, // no_save
-            None,  // attachments
+            None, // custom_schema
+            None, // outputfilename
+            true, // no_save
+            None, // attachments
             Some(true),
         ) {
             Ok(signed_doc_string) => {
-                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
-                    .ok()
-                    .and_then(|v| extract_document_lookup_key(&v))
-                    .unwrap_or_else(|| "unknown".to_string());
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&AdoptStateResult {
+                            success: false,
+                            jacs_document_id: None,
+                            state_type: params.state_type,
+                            name: params.name,
+                            message: "Failed to determine the adopted document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) = self
+                    .agent
+                    .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&AdoptStateResult {
+                        success: false,
+                        jacs_document_id: Some(doc_id),
+                        state_type: params.state_type,
+                        name: params.name,
+                        message: "Failed to persist adopted state document".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
 
                 AdoptStateResult {
                     success: true,

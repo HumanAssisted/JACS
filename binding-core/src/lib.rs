@@ -613,6 +613,36 @@ impl AgentWrapper {
         .map_err(|e| BindingCoreError::document_failed(format!("Failed to create document: {}", e)))
     }
 
+    /// Persist an already-signed JACS document and return its lookup key.
+    pub fn save_signed_document(
+        &self,
+        document_string: &str,
+        outputfilename: Option<String>,
+        export_embedded: Option<bool>,
+        extract_only: Option<bool>,
+    ) -> BindingResult<String> {
+        let mut agent = self.lock()?;
+        let doc = agent.load_document(document_string).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to load signed document: {}", e))
+        })?;
+        let document_key = doc.getkey();
+        agent
+            .save_document(&document_key, outputfilename, export_embedded, extract_only)
+            .map_err(|e| {
+                BindingCoreError::document_failed(format!(
+                    "Failed to persist signed document '{}': {}",
+                    document_key, e
+                ))
+            })?;
+        Ok(document_key)
+    }
+
+    /// Return all known document lookup keys from the agent's configured storage.
+    pub fn list_document_keys(&self) -> BindingResult<Vec<String>> {
+        let mut agent = self.lock()?;
+        Ok(agent.get_document_keys())
+    }
+
     /// Check an agreement on a document.
     pub fn check_agreement(
         &self,
@@ -811,6 +841,24 @@ impl AgentWrapper {
                 document_id, e
             ))
         })
+    }
+
+    /// Get the loaded agent's canonical JACS identifier.
+    pub fn get_agent_id(&self) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let value = agent.get_value().ok_or_else(|| {
+            BindingCoreError::agent_load("Agent not loaded. Call load() first.")
+        })?;
+        value
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| {
+                BindingCoreError::agent_load(
+                    "Agent not loaded or has no jacsId. Call load() first.",
+                )
+            })
     }
 
     /// Re-encrypt the agent's private key with a new password.

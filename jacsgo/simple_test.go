@@ -498,7 +498,7 @@ func TestAudit_ContainsOverallStatus(t *testing.T) {
 		if !containsSubstring(summary, name+":") {
 			t.Fatalf("summary should include a line for component %q, got %q", name, summary)
 		}
-		if !containsSubstring(summary, "risks:") {
+		if !containsSubstring(summary, "risk(s)") && !containsSubstring(summary, "risks: 0") {
 			t.Fatalf("summary should include risk totals, got %q", summary)
 		}
 	})

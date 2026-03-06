@@ -25,6 +25,7 @@ try {
 // Path to test fixtures (use shared fixtures from jacs/tests/scratch)
 const FIXTURES_DIR = path.resolve(__dirname, '../../jacs/tests/scratch');
 const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
+const TEST_PASSWORD = 'TestP@ss123!#';
 const HEALTH_STATUSES = ['Healthy', 'Degraded', 'Unhealthy', 'Unavailable'];
 const RISK_SEVERITIES = ['low', 'medium', 'high'];
 const RISK_CATEGORIES = [
@@ -80,7 +81,7 @@ function expectAuditReport(result) {
   expect(result.overall_status).to.be.a('string');
   expect(HEALTH_STATUSES).to.include(result.overall_status);
   expect(result.summary).to.be.a('string').and.not.empty;
-  expect(result.summary).to.include('risks:');
+  expect(result.summary.includes('risk(s)') || result.summary.includes('risks: 0')).to.equal(true);
   expect(result.checked_at).to.be.a('number');
 
   expect(result.risks).to.be.an('array');
@@ -137,11 +138,24 @@ describe('JACS Simple API', function() {
 
   const simpleExists = simple !== null;
   const fixturesExist = fs.existsSync(TEST_CONFIG);
+  let originalPassword;
 
   before(function() {
+    originalPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+    if (!originalPassword) {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
+    }
     if (!simpleExists) {
       console.log('  Skipping simple API tests - simple.js not compiled');
       this.skip();
+    }
+  });
+
+  after(() => {
+    if (originalPassword === undefined) {
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+    } else {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = originalPassword;
     }
   });
 
@@ -230,21 +244,23 @@ describe('JACS Simple API', function() {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-quickstart-'));
+      const customDir = path.join(tmpDir, 'custom');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
 
       try {
-        process.chdir(tmpDir);
+        fs.mkdirSync(customDir, { recursive: true });
+        process.chdir(customDir);
         const info = await freshSimple.quickstart({
           name: 'simple-test-agent',
           domain: 'simple-test.example.com',
           algorithm: 'ring-Ed25519',
-          configPath: 'custom/jacs.config.json',
+          configPath: path.join(customDir, 'jacs.config.json'),
         });
         expect(info).to.have.property('agentId').that.is.a('string').and.not.empty;
         expect(freshSimple.isLoaded()).to.equal(true);
-        expect(fs.existsSync(path.join(tmpDir, 'custom', 'jacs.config.json'))).to.equal(true);
+        expect(fs.existsSync(path.join(customDir, 'jacs.config.json'))).to.equal(true);
 
         const signed = await freshSimple.signMessage({ quickstart: true });
         expect(signed.documentId).to.be.a('string').and.not.empty;
@@ -498,6 +514,8 @@ describe('JACS Simple API', function() {
       const modulePath = require.resolve('../simple.js');
       const password = 'TestP@ss123!#';
       const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));
+      const agent1Dir = path.join(root, 'agent1');
+      const agent2Dir = path.join(root, 'agent2');
       const originalCwd = process.cwd();
 
       function freshSimpleModule() {
@@ -506,39 +524,44 @@ describe('JACS Simple API', function() {
       }
 
       try {
-        // Use relative paths from an isolated working directory to match storage path handling.
         process.chdir(root);
-        fs.mkdirSync('agent1', { recursive: true });
-        fs.mkdirSync('agent2', { recursive: true });
+        fs.mkdirSync(agent1Dir, { recursive: true });
+        fs.mkdirSync(agent2Dir, { recursive: true });
 
         const simpleA = freshSimpleModule();
         const simpleB = freshSimpleModule();
 
+        process.chdir(agent1Dir);
         simpleA.createSync({
           name: 'mocha-agent-a',
           password,
           algorithm: 'ring-Ed25519',
-          dataDirectory: 'shared-data',
-          keyDirectory: 'agent1/keys',
-          configPath: 'agent1/jacs.config.json',
+          dataDirectory: 'jacs_data',
+          keyDirectory: 'keys',
+          configPath: 'jacs.config.json',
         });
+
+        process.chdir(agent2Dir);
         simpleB.createSync({
           name: 'mocha-agent-b',
           password,
           algorithm: 'ring-Ed25519',
-          dataDirectory: 'shared-data',
-          keyDirectory: 'agent2/keys',
-          configPath: 'agent2/jacs.config.json',
+          dataDirectory: 'jacs_data',
+          keyDirectory: 'keys',
+          configPath: 'jacs.config.json',
         });
 
-        simpleA.loadSync('agent1/jacs.config.json');
-        simpleB.loadSync('agent2/jacs.config.json');
+        process.chdir(agent1Dir);
+        simpleA.loadSync('jacs.config.json');
+        process.chdir(agent2Dir);
+        simpleB.loadSync('jacs.config.json');
 
         const infoA = simpleA.getAgentInfo();
         const infoB = simpleB.getAgentInfo();
         expect(infoA).to.be.an('object');
         expect(infoB).to.be.an('object');
 
+        process.chdir(agent1Dir);
         const agreement = simpleA.createAgreementSync(
           { proposal: 'two-party-approval', scope: 'integration-test' },
           [infoA.agentId, infoB.agentId],
@@ -552,6 +575,7 @@ describe('JACS Simple API', function() {
         const signedByA = simpleA.signAgreementSync(agreement);
         expect(() => simpleA.checkAgreementSync(signedByA)).to.throw(/not all agents have signed/i);
 
+        process.chdir(agent2Dir);
         const signedByBoth = simpleB.signAgreementSync(signedByA);
         const status = simpleB.checkAgreementSync(signedByBoth);
         expect(status.complete).to.equal(true);

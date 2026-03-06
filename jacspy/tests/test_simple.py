@@ -43,7 +43,7 @@ def assert_audit_result(result: dict) -> None:
     assert result["overall_status"] in HEALTH_STATUSES
     assert isinstance(result["summary"], str)
     assert result["summary"].strip()
-    assert "risks:" in result["summary"]
+    assert "risk(s)" in result["summary"] or "risks: 0" in result["summary"]
     assert isinstance(result["checked_at"], int)
 
     assert isinstance(result["risks"], list)
@@ -796,38 +796,36 @@ class TestAgreementWorkflow:
         """Two distinct agents should both sign before agreement check succeeds."""
         password = "TestP@ss123!#"
 
-        shared_data = tmp_path / "shared-data"
         a1_root = tmp_path / "agent1"
         a2_root = tmp_path / "agent2"
-        shared_data.mkdir()
         a1_root.mkdir()
         a2_root.mkdir()
 
         original_cwd = os.getcwd()
         try:
-            # Use relative paths so storage and config resolution match across backends.
-            os.chdir(tmp_path)
-
-            # Create two independent agents with separate keys and shared public key cache.
+            os.chdir(a1_root)
             a1 = simple.create(
                 name="pytest-agent-1",
                 password=password,
                 algorithm="ring-Ed25519",
-                data_directory="shared-data",
-                key_directory="agent1/keys",
-                config_path="agent1/jacs.config.json",
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
             )
+
+            os.chdir(a2_root)
             a2 = simple.create(
                 name="pytest-agent-2",
                 password=password,
                 algorithm="ring-Ed25519",
-                data_directory="shared-data",
-                key_directory="agent2/keys",
-                config_path="agent2/jacs.config.json",
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
             )
 
             # Agent 1 creates agreement requiring signatures from both agents.
-            simple.load("agent1/jacs.config.json")
+            os.chdir(a1_root)
+            simple.load("jacs.config.json")
             agreement = simple.create_agreement(
                 document={"proposal": "two-party-approval", "amount": 25000},
                 agent_ids=[a1.agent_id, a2.agent_id],
@@ -844,7 +842,8 @@ class TestAgreementWorkflow:
                 simple.check_agreement(signed_by_a1)
 
             # Agent 2 signs and completion succeeds.
-            simple.load("agent2/jacs.config.json")
+            os.chdir(a2_root)
+            simple.load("jacs.config.json")
             signed_by_both = simple.sign_agreement(signed_by_a1)
             status = simple.check_agreement(signed_by_both)
             assert status.complete is True
