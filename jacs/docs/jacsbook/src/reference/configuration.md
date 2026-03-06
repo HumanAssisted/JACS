@@ -1,30 +1,37 @@
 # Configuration Reference
 
+This is the comprehensive configuration guide covering zero-config quickstart, storage backends, observability, and environment variables. For the raw schema field list, see [Config File Schema](../schemas/configuration.md).
+
 ## Overview
 
 ### Key resolution for verifiers
 
-When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set **`JACS_KEY_RESOLUTION`** (environment variable or in config) to a comma-separated list of sources: `local` (trust store), `dns` (DNS TXT record), `hai` (HAI key service). Example: `JACS_KEY_RESOLUTION=local,hai` or `local,dns,hai`. The first source that returns a key for the signer’s ID is used. Use `verify_standalone()` with explicit `keyResolution` for one-off verification without loading a full config.
+When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set **`JACS_KEY_RESOLUTION`** (environment variable or in config) to a comma-separated list of sources: `local` (local key cache by `publicKeyHash`), `dns` (DNS TXT fingerprint validation), `hai` (HAI key service). Example: `JACS_KEY_RESOLUTION=local,hai` or `local,dns,hai`. The first source that yields verifiable key material is used. Use `verify_standalone()` with explicit `keyResolution` for one-off verification without loading a full config.
 
 ## Zero-Config Path
 
-If you just want to sign and verify without any configuration, use `quickstart()`:
+If you just want to sign and verify without manual config setup, use `quickstart(name, domain, ...)`:
 
 ```python
 import jacs.simple as jacs
-jacs.quickstart()  # No config file needed
+info = jacs.quickstart(name="config-agent", domain="config.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 ```
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
-jacs.quickstart();  // No config file needed
+const info = await jacs.quickstart({
+  name: 'config-agent',
+  domain: 'config.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 ```
 
 ```bash
-jacs quickstart  # CLI -- no config file needed
+jacs quickstart --name config-agent --domain config.example.com
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`.
+{{#include ../_snippets/quickstart-persistent-agent.md}}
 
 ## Minimal Configuration
 
@@ -34,7 +41,7 @@ For persistent agents, a config file needs only two fields (plus `$schema`):
 {
   "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_agent_id_and_version": "YOUR_AGENT_ID:YOUR_VERSION",
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 ```
 
@@ -50,7 +57,7 @@ All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` sto
   "jacs_key_directory": "./jacs_keys",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
   "jacs_agent_public_key_filename": "jacs.public.pem",
-  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_default_storage": "fs",
   "observability": {
     "logs": {
@@ -363,7 +370,7 @@ All other JACS settings are **configuration file fields** that have sensible def
 
 - `jacs_data_directory` - Where agent/document data is stored (default: `./jacs_data`)
 - `jacs_key_directory` - Where cryptographic keys are stored (default: `./jacs_keys`)
-- `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `RSA-PSS`)
+- `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `pq2025`)
 - `jacs_default_storage` - Storage backend (default: `fs`)
 - `jacs_use_security` / `JACS_ENABLE_FILESYSTEM_QUARANTINE` - Enable filesystem quarantine of executable files (default: `false`). The env var `JACS_USE_SECURITY` is deprecated; use `JACS_ENABLE_FILESYSTEM_QUARANTINE` instead.
 
@@ -425,7 +432,9 @@ The `jacs_default_storage` field determines where JACS stores agent data, docume
 **Required Environment Variables:**
 - `HAI_STORAGE_URL` - HAI.ai storage service endpoint
 
-**Best for:** Integration with HAI.ai platform services
+This is an HTTP object store backend. Full HAI platform workflows (registration, attestation, key discovery) require the separate [haisdk](https://github.com/HumanAssisted/haisdk) package.
+
+**Best for:** Remote document storage via HTTP
 
 #### Memory Storage (`"memory"`)
 ```json

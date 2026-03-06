@@ -13,7 +13,8 @@ use std::{
     process::{Command, Stdio},
 }; // Run programs // To read CARGO_PKG_VERSION
 mod utils;
-use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD, fixtures_raw_dir};
+use utils::{PASSWORD_ENV_VAR, TEST_PASSWORD};
+const PASSWORD_FILE_ENV_VAR: &str = "JACS_PASSWORD_FILE";
 // static INIT: Once = Once::new();
 
 // fn setup() {
@@ -676,6 +677,131 @@ fn test_verify_unsigned_json() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn test_quickstart_help_shows_password_bootstrap_options() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("quickstart").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Password bootstrap options (set exactly one explicit source)",
+        ))
+        .stdout(predicate::str::contains("JACS_PRIVATE_KEY_PASSWORD"))
+        .stdout(predicate::str::contains(PASSWORD_FILE_ENV_VAR));
+    Ok(())
+}
+
+#[test]
+fn test_quickstart_uses_password_file_bootstrap() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_quickstart_password_file");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let password_file = tmp_dir.join("password.txt");
+    fs::write(&password_file, format!("{}\n", TEST_PASSWORD))?;
+    let password_file_value = password_file.to_string_lossy().to_string();
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.current_dir(&tmp_dir)
+        .env_remove(PASSWORD_ENV_VAR)
+        .env(PASSWORD_FILE_ENV_VAR, &password_file_value)
+        .arg("quickstart")
+        .arg("--name=test-quickstart")
+        .arg("--domain=test.example.com")
+        .arg("--algorithm=ed25519");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("JACS agent ready"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_quickstart_fails_with_ambiguous_password_sources() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_quickstart_password_conflict");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let password_file = tmp_dir.join("password.txt");
+    fs::write(&password_file, format!("{}\n", TEST_PASSWORD))?;
+    let password_file_value = password_file.to_string_lossy().to_string();
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
+        .env(PASSWORD_FILE_ENV_VAR, &password_file_value)
+        .arg("quickstart")
+        .arg("--name=test-quickstart")
+        .arg("--domain=test.example.com")
+        .arg("--algorithm=ed25519");
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Multiple password sources configured",
+        ))
+        .stderr(predicate::str::contains(PASSWORD_FILE_ENV_VAR));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_agent_verify_uses_configured_default_agent_without_agent_file() -> Result<(), Box<dyn Error>>
+{
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let quickstart_dir =
+        std::env::temp_dir().join(format!("jacs_cli_test_verify_default_agent_{}", unique));
+    let probe_dir = std::env::temp_dir().join(format!(
+        "jacs_cli_test_verify_default_agent_probe_{}",
+        unique
+    ));
+    let _ = fs::remove_dir_all(&quickstart_dir);
+    let _ = fs::remove_dir_all(&probe_dir);
+    fs::create_dir_all(&quickstart_dir)?;
+    fs::create_dir_all(&probe_dir)?;
+
+    let mut quickstart = Command::cargo_bin("jacs")?;
+    quickstart
+        .current_dir(&quickstart_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
+        .arg("quickstart")
+        .arg("--name=verify-default-agent")
+        .arg("--domain=verify-default.example.test")
+        .arg("--algorithm=ed25519");
+    quickstart
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("JACS agent ready"));
+
+    let config_path = quickstart_dir.join("jacs.config.json");
+    assert!(
+        config_path.exists(),
+        "quickstart should create jacs.config.json"
+    );
+
+    let mut verify = Command::cargo_bin("jacs")?;
+    verify
+        .current_dir(&probe_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
+        .env("JACS_CONFIG", config_path.to_string_lossy().as_ref())
+        .arg("agent")
+        .arg("verify")
+        .arg("--no-dns");
+    verify
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("signature verified OK"));
+
+    let _ = fs::remove_dir_all(&quickstart_dir);
+    let _ = fs::remove_dir_all(&probe_dir);
+    Ok(())
+}
+
+#[test]
 fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Use quickstart --sign to create a signed document, then verify it
     let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_roundtrip");
@@ -689,7 +815,10 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Sign it with quickstart
     let sign_output = Command::cargo_bin("jacs")?
         .current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
+        .arg("--name=verify-roundtrip")
+        .arg("--domain=verify.example.com")
         .arg("--algorithm=ed25519")
         .arg("--sign")
         .arg("-f")
@@ -709,6 +838,7 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Now verify with `jacs verify` — it picks up jacs.config.json from cwd
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
         .arg(signed_file.to_string_lossy().as_ref());
     cmd.assert()
@@ -733,7 +863,10 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
     // Sign
     let sign_output = Command::cargo_bin("jacs")?
         .current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
+        .arg("--name=verify-json")
+        .arg("--domain=verify-json.example.com")
         .arg("--algorithm=ed25519")
         .arg("--sign")
         .arg("-f")
@@ -748,6 +881,7 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
     // Verify with --json flag
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
         .arg(signed_file.to_string_lossy().as_ref())
         .arg("--json");
@@ -773,7 +907,10 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
     // Sign
     let sign_output = Command::cargo_bin("jacs")?
         .current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("quickstart")
+        .arg("--name=verify-tamper")
+        .arg("--domain=verify-tamper.example.com")
         .arg("--algorithm=ed25519")
         .arg("--sign")
         .arg("-f")
@@ -790,10 +927,341 @@ fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
     // Verify should fail (exit code 1)
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.current_dir(&tmp_dir)
+        .env(PASSWORD_ENV_VAR, TEST_PASSWORD)
         .arg("verify")
         .arg(tampered_file.to_string_lossy().as_ref());
     cmd.assert().failure();
 
     let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+// =============================================================================
+// jacs a2a (A2A trust and discovery commands)
+// =============================================================================
+
+#[test]
+fn test_a2a_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("A2A"))
+        .stdout(predicate::str::contains("assess"))
+        .stdout(predicate::str::contains("trust"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_jacs");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    // Create an Agent Card with JACS extension
+    let card_json = r#"{
+        "name": "JACS Test Agent",
+        "description": "An agent with JACS provenance",
+        "version": "1.0",
+        "protocolVersions": ["0.4.0"],
+        "supportedInterfaces": [{"url": "https://test.example.com", "protocolBinding": "jsonrpc"}],
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "capabilities": {
+            "extensions": [{
+                "uri": "urn:jacs:provenance-v1",
+                "description": "JACS cryptographic provenance"
+            }]
+        },
+        "skills": [],
+        "metadata": {"jacsId": "test-agent-001", "jacsVersion": "v1"}
+    }"#;
+
+    let card_file = tmp_dir.join("agent-card.json");
+    fs::write(&card_file, card_json)?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("assess")
+        .arg(card_file.to_string_lossy().as_ref())
+        .arg("--policy=verified");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("JACS Test Agent"))
+        .stdout(predicate::str::contains("Allowed:     YES"))
+        .stdout(predicate::str::contains("jacs_verified"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_a2a_assess_non_jacs_agent_rejected() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_nojacs");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    // Create an Agent Card WITHOUT JACS extension
+    let card_json = r#"{
+        "name": "Plain A2A Agent",
+        "description": "An agent without JACS provenance",
+        "version": "1.0",
+        "protocolVersions": ["0.4.0"],
+        "supportedInterfaces": [{"url": "https://test.example.com", "protocolBinding": "jsonrpc"}],
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "capabilities": {},
+        "skills": []
+    }"#;
+
+    let card_file = tmp_dir.join("plain-card.json");
+    fs::write(&card_file, card_json)?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("assess")
+        .arg(card_file.to_string_lossy().as_ref())
+        .arg("--policy=verified");
+
+    // Should fail (exit code 1) because verified policy rejects non-JACS agents
+    cmd.assert()
+        .failure()
+        .stdout(predicate::str::contains("Allowed:     NO"))
+        .stdout(predicate::str::contains("untrusted"));
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+#[test]
+fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_json");
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(&tmp_dir)?;
+
+    let card_json = r#"{
+        "name": "JSON Output Agent",
+        "description": "Test JSON output",
+        "version": "1.0",
+        "protocolVersions": ["0.4.0"],
+        "supportedInterfaces": [{"url": "https://test.example.com", "protocolBinding": "jsonrpc"}],
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "capabilities": {
+            "extensions": [{
+                "uri": "urn:jacs:provenance-v1",
+                "description": "JACS"
+            }]
+        },
+        "skills": [],
+        "metadata": {"jacsId": "json-agent", "jacsVersion": "v1"}
+    }"#;
+
+    let card_file = tmp_dir.join("json-card.json");
+    fs::write(&card_file, card_json)?;
+
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("assess")
+        .arg(card_file.to_string_lossy().as_ref())
+        .arg("--json");
+
+    let output = cmd.output()?;
+    assert!(
+        output.status.success(),
+        "a2a assess --json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let assessment: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(assessment["allowed"], true);
+    assert_eq!(assessment["trustLevel"], "jacs_verified");
+    assert_eq!(assessment["policy"], "Verified");
+    assert_eq!(assessment["agentId"], "json-agent");
+
+    let _ = fs::remove_dir_all(&tmp_dir);
+    Ok(())
+}
+
+// =========================================================================
+// A2A Discovery CLI tests
+// =========================================================================
+
+#[test]
+fn test_a2a_discover_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("discover").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Discover a remote A2A agent"))
+        .stdout(predicate::str::contains("--json"))
+        .stdout(predicate::str::contains("--policy"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_serve_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("serve").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Serve this agent"))
+        .stdout(predicate::str::contains("--port"))
+        .stdout(predicate::str::contains("--host"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_discover_nonexistent_domain() -> Result<(), Box<dyn Error>> {
+    // Discovery against a URL that won't have an Agent Card
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("discover").arg("https://example.com");
+
+    // Should fail because there's no .well-known/agent-card.json at example.com
+    cmd.assert().failure();
+    Ok(())
+}
+
+#[test]
+fn test_a2a_help_shows_all_subcommands() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("assess"))
+        .stdout(predicate::str::contains("trust"))
+        .stdout(predicate::str::contains("discover"))
+        .stdout(predicate::str::contains("serve"))
+        .stdout(predicate::str::contains("quickstart"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_quickstart_help() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a").arg("quickstart").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("--port"))
+        .stdout(predicate::str::contains("--host"))
+        .stdout(predicate::str::contains("--algorithm"))
+        .stdout(predicate::str::contains("--name"))
+        .stdout(predicate::str::contains("--domain"))
+        .stdout(predicate::str::contains("Create/load an agent"));
+    Ok(())
+}
+
+#[test]
+fn test_a2a_quickstart_invalid_algorithm() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("a2a")
+        .arg("quickstart")
+        .arg("--name")
+        .arg("a2a-quickstart")
+        .arg("--domain")
+        .arg("a2a.example.com")
+        .arg("--algorithm")
+        .arg("invalid-algo");
+    // Should fail because "invalid-algo" is not a valid algorithm choice
+    cmd.assert().failure();
+    Ok(())
+}
+
+#[test]
+fn test_mcp_help_shows_install_and_run() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("install"))
+        .stdout(predicate::str::contains("run"))
+        .stdout(predicate::str::contains(
+            "Install and run the JACS MCP server",
+        ));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_install_dry_run_shows_prebuilt_plan() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("install").arg("--dry-run");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Dry run: MCP prebuilt install plan",
+        ))
+        .stdout(predicate::str::contains("jacs-mcp-"))
+        .stdout(predicate::str::contains(
+            "github.com/HumanAssisted/JACS/releases/download",
+        ));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_install_dry_run_custom_url() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp")
+        .arg("install")
+        .arg("--dry-run")
+        .arg("--url")
+        .arg("https://example.invalid/jacs-mcp.tar.gz");
+    cmd.assert().success().stdout(predicate::str::contains(
+        "https://example.invalid/jacs-mcp.tar.gz",
+    ));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_install_from_cargo_dry_run_shows_cargo_plan() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp")
+        .arg("install")
+        .arg("--from-cargo")
+        .arg("--dry-run")
+        .arg("--version")
+        .arg("0.8.0");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run: MCP cargo install plan"))
+        .stdout(predicate::str::contains(
+            "cargo install jacs-mcp --locked --version 0.8.0",
+        ));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_run_missing_binary_shows_install_hint() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp")
+        .arg("run")
+        .arg("--bin")
+        .arg("/definitely/not/a/real/jacs-mcp");
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Install it with `jacs mcp install`",
+    ));
+    Ok(())
+}
+
+#[test]
+fn test_mcp_run_help_mentions_stdio_and_no_forwarded_args() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("run").arg("--help");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("stdio transport"))
+        .stdout(predicate::str::contains("--bin <bin>"))
+        .stdout(predicate::str::contains("[args]").not())
+        .stdout(predicate::str::contains("Arguments forwarded").not());
+    Ok(())
+}
+
+#[test]
+fn test_mcp_run_rejects_forwarded_runtime_args() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("run").arg("--transport").arg("http");
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "unexpected argument '--transport'",
+    ));
     Ok(())
 }

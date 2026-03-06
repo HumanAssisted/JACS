@@ -55,6 +55,49 @@ pub fn create_minimal_task(
     Ok(task)
 }
 
+fn get_array_mut<'a>(task: &'a mut Value, field: &str) -> Result<&'a mut Vec<Value>, String> {
+    task[field]
+        .as_array_mut()
+        .ok_or_else(|| "Invalid task format".to_string())
+}
+
+fn get_or_init_array_mut<'a>(
+    task: &'a mut Value,
+    field: &str,
+) -> Result<&'a mut Vec<Value>, String> {
+    if task.get(field).is_none() {
+        task[field] = json!([]);
+    }
+    get_array_mut(task, field)
+}
+
+fn update_value_in_array(
+    values: &mut [Value],
+    old_value: &Value,
+    new_value: Value,
+    not_found_message: &str,
+) -> Result<(), String> {
+    let index = values
+        .iter()
+        .position(|v| v == old_value)
+        .ok_or_else(|| not_found_message.to_string())?;
+    values[index] = new_value;
+    Ok(())
+}
+
+fn remove_value_from_array(
+    values: &mut Vec<Value>,
+    target: &Value,
+    not_found_message: &str,
+) -> Result<(), String> {
+    let index = values
+        .iter()
+        .position(|v| v == target)
+        .ok_or_else(|| not_found_message.to_string())?;
+    values.remove(index);
+    Ok(())
+}
+
 /// Adds an action to a task.
 ///
 /// # Arguments
@@ -67,13 +110,7 @@ pub fn create_minimal_task(
 /// * `Ok(())` - If the action was added successfully.
 /// * `Err(String)` - If an error occurred while adding the action.
 pub fn add_action_to_task(task: &mut Value, action: Value) -> Result<(), String> {
-    if task.get("jacsTaskActionsDesired").is_none() {
-        task["jacsTaskActionsDesired"] = json!([]);
-    }
-    task["jacsTaskActionsDesired"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?
-        .push(action);
+    get_or_init_array_mut(task, "jacsTaskActionsDesired")?.push(action);
     Ok(())
 }
 
@@ -94,17 +131,12 @@ pub fn update_action_in_task(
     old_action: Value,
     new_action: Value,
 ) -> Result<(), String> {
-    let actions = task["jacsTaskActionsDesired"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?;
-
-    let index = actions
-        .iter()
-        .position(|a| a == &old_action)
-        .ok_or_else(|| "Action not found".to_string())?;
-
-    actions[index] = new_action;
-    Ok(())
+    update_value_in_array(
+        get_array_mut(task, "jacsTaskActionsDesired")?,
+        &old_action,
+        new_action,
+        "Action not found",
+    )
 }
 
 /// Removes an action from a task.
@@ -119,17 +151,11 @@ pub fn update_action_in_task(
 /// * `Ok(())` - If the action was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the action.
 pub fn remove_action_from_task(task: &mut Value, action: Value) -> Result<(), String> {
-    let actions = task["jacsTaskActionsDesired"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?;
-
-    let index = actions
-        .iter()
-        .position(|a| a == &action)
-        .ok_or_else(|| "Action not found".to_string())?;
-
-    actions.remove(index);
-    Ok(())
+    remove_value_from_array(
+        get_array_mut(task, "jacsTaskActionsDesired")?,
+        &action,
+        "Action not found",
+    )
 }
 
 /// Updates the state of a task.
@@ -236,13 +262,7 @@ pub fn remove_task_complete_date(task: &mut Value) -> Result<(), String> {
 /// * `Ok(())` - If the subtask was added successfully.
 /// * `Err(String)` - If an error occurred while adding the subtask.
 pub fn add_subtask_to_task(task: &mut Value, subtask_id: &str) -> Result<(), String> {
-    if task.get("jacsTaskSubTaskOf").is_none() {
-        task["jacsTaskSubTaskOf"] = json!([]);
-    }
-    task["jacsTaskSubTaskOf"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?
-        .push(json!(subtask_id));
+    get_or_init_array_mut(task, "jacsTaskSubTaskOf")?.push(json!(subtask_id));
     Ok(())
 }
 
@@ -258,17 +278,11 @@ pub fn add_subtask_to_task(task: &mut Value, subtask_id: &str) -> Result<(), Str
 /// * `Ok(())` - If the subtask was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the subtask.
 pub fn remove_subtask_from_task(task: &mut Value, subtask_id: &str) -> Result<(), String> {
-    let subtasks = task["jacsTaskSubTaskOf"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?;
-
-    let index = subtasks
-        .iter()
-        .position(|s| s == subtask_id)
-        .ok_or_else(|| "Subtask not found".to_string())?;
-
-    subtasks.remove(index);
-    Ok(())
+    remove_value_from_array(
+        get_array_mut(task, "jacsTaskSubTaskOf")?,
+        &json!(subtask_id),
+        "Subtask not found",
+    )
 }
 
 /// Adds a copy task to a task.
@@ -283,13 +297,7 @@ pub fn remove_subtask_from_task(task: &mut Value, subtask_id: &str) -> Result<()
 /// * `Ok(())` - If the copy task was added successfully.
 /// * `Err(String)` - If an error occurred while adding the copy task.
 pub fn add_copy_task_to_task(task: &mut Value, copy_task_id: &str) -> Result<(), String> {
-    if task.get("jacsTaskCopyOf").is_none() {
-        task["jacsTaskCopyOf"] = json!([]);
-    }
-    task["jacsTaskCopyOf"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?
-        .push(json!(copy_task_id));
+    get_or_init_array_mut(task, "jacsTaskCopyOf")?.push(json!(copy_task_id));
     Ok(())
 }
 
@@ -305,17 +313,11 @@ pub fn add_copy_task_to_task(task: &mut Value, copy_task_id: &str) -> Result<(),
 /// * `Ok(())` - If the copy task was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the copy task.
 pub fn remove_copy_task_from_task(task: &mut Value, copy_task_id: &str) -> Result<(), String> {
-    let copy_tasks = task["jacsTaskCopyOf"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?;
-
-    let index = copy_tasks
-        .iter()
-        .position(|c| c == copy_task_id)
-        .ok_or_else(|| "Copy task not found".to_string())?;
-
-    copy_tasks.remove(index);
-    Ok(())
+    remove_value_from_array(
+        get_array_mut(task, "jacsTaskCopyOf")?,
+        &json!(copy_task_id),
+        "Copy task not found",
+    )
 }
 
 /// Adds a merged task to a task.
@@ -330,13 +332,7 @@ pub fn remove_copy_task_from_task(task: &mut Value, copy_task_id: &str) -> Resul
 /// * `Ok(())` - If the merged task was added successfully.
 /// * `Err(String)` - If an error occurred while adding the merged task.
 pub fn add_merged_task_to_task(task: &mut Value, merged_task_id: &str) -> Result<(), String> {
-    if task.get("jacsTaskMergedTasks").is_none() {
-        task["jacsTaskMergedTasks"] = json!([]);
-    }
-    task["jacsTaskMergedTasks"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?
-        .push(json!(merged_task_id));
+    get_or_init_array_mut(task, "jacsTaskMergedTasks")?.push(json!(merged_task_id));
     Ok(())
 }
 
@@ -352,15 +348,59 @@ pub fn add_merged_task_to_task(task: &mut Value, merged_task_id: &str) -> Result
 /// * `Ok(())` - If the merged task was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the merged task.
 pub fn remove_merged_task_from_task(task: &mut Value, merged_task_id: &str) -> Result<(), String> {
-    let merged_tasks = task["jacsTaskMergedTasks"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid task format".to_string())?;
+    remove_value_from_array(
+        get_array_mut(task, "jacsTaskMergedTasks")?,
+        &json!(merged_task_id),
+        "Merged task not found",
+    )
+}
 
-    let index = merged_tasks
-        .iter()
-        .position(|m| m == merged_task_id)
-        .ok_or_else(|| "Merged task not found".to_string())?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    merged_tasks.remove(index);
-    Ok(())
+    #[test]
+    fn list_field_crud_helpers_work_for_task_refs() {
+        let mut task = create_minimal_task(None, None, None, None).expect("create task");
+
+        add_subtask_to_task(&mut task, "sub-1").expect("add subtask");
+        add_copy_task_to_task(&mut task, "copy-1").expect("add copy");
+        add_merged_task_to_task(&mut task, "merge-1").expect("add merged");
+
+        assert_eq!(
+            task["jacsTaskSubTaskOf"].as_array().map(|a| a.len()),
+            Some(1)
+        );
+        assert_eq!(task["jacsTaskCopyOf"].as_array().map(|a| a.len()), Some(1));
+        assert_eq!(
+            task["jacsTaskMergedTasks"].as_array().map(|a| a.len()),
+            Some(1)
+        );
+
+        remove_subtask_from_task(&mut task, "sub-1").expect("remove subtask");
+        remove_copy_task_from_task(&mut task, "copy-1").expect("remove copy");
+        remove_merged_task_from_task(&mut task, "merge-1").expect("remove merged");
+
+        assert_eq!(
+            task["jacsTaskSubTaskOf"].as_array().map(|a| a.len()),
+            Some(0)
+        );
+        assert_eq!(task["jacsTaskCopyOf"].as_array().map(|a| a.len()), Some(0));
+        assert_eq!(
+            task["jacsTaskMergedTasks"].as_array().map(|a| a.len()),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn update_task_state_rejects_invalid_value() {
+        let mut task = create_minimal_task(None, None, None, None).expect("create task");
+        let result = update_task_state(&mut task, "invalid-state");
+        assert!(result.is_err());
+        assert!(
+            result
+                .expect_err("invalid state should fail")
+                .contains("Invalid task state")
+        );
+    }
 }

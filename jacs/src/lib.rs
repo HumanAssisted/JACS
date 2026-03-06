@@ -19,6 +19,7 @@ pub mod audit;
 pub mod config;
 pub mod crypt;
 pub mod dns;
+pub mod email;
 pub mod error;
 pub mod health;
 pub mod keystore;
@@ -26,6 +27,7 @@ pub mod mime;
 pub mod observability;
 pub mod paths;
 pub mod rate_limit;
+pub mod replay;
 pub mod schema;
 pub mod shared;
 pub mod shutdown;
@@ -34,6 +36,9 @@ pub mod storage;
 pub mod time_utils;
 pub mod trust;
 pub mod validation;
+
+#[cfg(feature = "attestation")]
+pub mod attestation;
 
 // #[cfg(feature = "cli")]
 pub mod cli_utils;
@@ -185,10 +190,40 @@ fn prepare_agent_for_agent_path(agent: &mut Agent, filepath: &str) {
     }
 }
 
-/// Load agent using specific path
-fn load_path_agent(filepath: String) -> Agent {
+fn default_config_path() -> String {
+    std::env::var("JACS_CONFIG")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "./jacs.config.json".to_string())
+}
+
+fn apply_dns_policy(
+    agent: &mut Agent,
+    dns_validate: Option<bool>,
+    dns_required: Option<bool>,
+    dns_strict: Option<bool>,
+) {
+    if let Some(validate) = dns_validate {
+        agent.set_dns_validate(validate);
+    }
+    if let Some(required) = dns_required {
+        agent.set_dns_required(required);
+    }
+    if let Some(strict) = dns_strict {
+        agent.set_dns_strict(strict);
+    }
+}
+
+/// Load agent using specific path.
+fn load_path_agent(
+    filepath: String,
+    dns_validate: Option<bool>,
+    dns_required: Option<bool>,
+    dns_strict: Option<bool>,
+) -> Result<Agent, Box<dyn Error>> {
     debug!("[load_path_agent] Loading from path: {}", filepath);
-    let mut agent = get_empty_agent(); // Assuming get_empty_agent() returns Agent directly
+    let mut agent = get_empty_agent();
+    apply_dns_policy(&mut agent, dns_validate, dns_required, dns_strict);
     prepare_agent_for_agent_path(&mut agent, &filepath);
 
     // Extract filename (e.g., "ID:VERSION.json") from the full path
@@ -196,38 +231,49 @@ fn load_path_agent(filepath: String) -> Agent {
         .file_name()
         .and_then(|os_str| os_str.to_str())
         .map(|s| s.to_string())
-        .expect("Could not extract filename from agent path");
+        .ok_or("Could not extract filename from agent path")?;
 
     // Strip the .json suffix to get the logical ID
     let agent_id = agent_filename
         .strip_suffix(".json")
-        .expect("Agent filename does not end with .json");
+        .ok_or("Agent filename does not end with .json")?;
 
     debug!("[load_path_agent] Extracted agent ID: {}", agent_id);
 
     // Pass ONLY the logical ID (without .json) to fs_agent_load
     let agent_string = agent
         .fs_agent_load(agent_id) // Pass ID string
-        .map_err(|e| format!("Agent file loading failed for ID '{}': {}", agent_id, e))
-        .expect("Agent file loading failed: could not load from storage");
+        .map_err(|e| format!("Agent file loading failed for ID '{}': {}", agent_id, e))?;
 
-    agent
-        .load(&agent_string)
-        .expect("Agent loading failed: could not parse agent data");
+    agent.load(&agent_string)?;
     debug!(
         "[load_path_agent] Agent loaded and validated successfully using ID: {}",
         agent_id
     );
-    agent
+    Ok(agent)
+}
+
+pub fn load_agent_with_dns_policy(
+    agentfile: Option<String>,
+    dns_validate: Option<bool>,
+    dns_required: Option<bool>,
+    dns_strict: Option<bool>,
+) -> Result<agent::Agent, Box<dyn Error>> {
+    debug!("load_agent agentfile = {:?}", agentfile);
+    if let Some(file) = agentfile {
+        load_path_agent(file, dns_validate, dns_required, dns_strict)
+    } else {
+        let config_path = default_config_path();
+        debug!("load_agent defaulting to config path '{}'", config_path);
+        let mut agent = get_empty_agent();
+        apply_dns_policy(&mut agent, dns_validate, dns_required, dns_strict);
+        agent.load_by_config(config_path)?;
+        Ok(agent)
+    }
 }
 
 pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Error>> {
-    debug!("load_agent agentfile = {:?}", agentfile);
-    if let Some(file) = agentfile {
-        Ok(load_path_agent(file.to_string()))
-    } else {
-        Err("No agent file provided: specify an agent file path".into())
-    }
+    load_agent_with_dns_policy(agentfile, None, None, None)
 }
 
 /// Load an agent from a file path while controlling DNS strictness before validation runs.
@@ -235,25 +281,7 @@ pub fn load_agent_with_dns_strict(
     agentfile: String,
     dns_strict: bool,
 ) -> Result<agent::Agent, Box<dyn Error>> {
-    let mut agent = get_empty_agent();
-    agent.set_dns_strict(dns_strict);
-    prepare_agent_for_agent_path(&mut agent, &agentfile);
-
-    // Extract logical ID from provided path (expects .../agent/ID:VERSION.json)
-    let agent_filename = std::path::Path::new(&agentfile)
-        .file_name()
-        .and_then(|os_str| os_str.to_str())
-        .ok_or("Could not extract filename from agent path")?;
-    let agent_id = agent_filename
-        .strip_suffix(".json")
-        .ok_or("Agent filename does not end with .json")?;
-
-    let agent_string = agent
-        .fs_agent_load(agent_id)
-        .map_err(|e| format!("Agent file loading failed for ID '{}': {}", agent_id, e))?;
-
-    agent.load(&agent_string)?;
-    Ok(agent)
+    load_agent_with_dns_policy(Some(agentfile), None, None, Some(dns_strict))
 }
 
 /// Creates a minimal agent JSON string with a default service.

@@ -11,7 +11,10 @@
  * import { JacsClient } from './client';
  * import { jacsMiddleware } from './express';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'express-agent',
+ *   domain: 'express.local',
+ * });
  * const app = express();
  * app.use(express.text({ type: 'application/json' }));
  * app.use(jacsMiddleware({ client, verify: true }));
@@ -24,6 +27,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.jacsMiddleware = jacsMiddleware;
+const auth_replay_js_1 = require("./auth-replay.js");
 // =============================================================================
 // Internal helpers
 // =============================================================================
@@ -40,7 +44,11 @@ async function resolveClient(options) {
         await client.load(options.configPath);
         return client;
     }
-    return ClientCtor.quickstart();
+    return ClientCtor.quickstart({
+        name: 'jacs-express',
+        domain: 'localhost',
+        description: 'JACS Express middleware agent',
+    });
 }
 // =============================================================================
 // Middleware factory
@@ -57,6 +65,9 @@ function jacsMiddleware(options = {}) {
     const shouldVerify = options.verify !== false;
     const shouldSign = options.sign === true;
     const isOptional = options.optional === true;
+    const enableA2A = options.a2a === true;
+    const authReplay = (0, auth_replay_js_1.normalizeAuthReplayOptions)(options.authReplay);
+    const replayCache = new auth_replay_js_1.InMemoryReplayCache();
     // Client is resolved once (lazy, on first request) then cached.
     let clientPromise = null;
     function getClient() {
@@ -69,6 +80,24 @@ function jacsMiddleware(options = {}) {
     if (options.client) {
         clientPromise = Promise.resolve(options.client);
     }
+    // A2A well-known documents are built once and cached.
+    let a2aDocuments = null;
+    const A2A_CORS = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Accept',
+        'Access-Control-Max-Age': '86400',
+    };
+    function getA2ADocuments(client) {
+        if (!a2aDocuments) {
+            const { buildWellKnownDocuments } = require('./src/a2a-server');
+            a2aDocuments = buildWellKnownDocuments(client, {
+                skills: options.a2aSkills,
+                url: options.a2aUrl,
+            });
+        }
+        return a2aDocuments;
+    }
     return async function jacsExpressMiddleware(req, res, next) {
         let client;
         try {
@@ -80,14 +109,55 @@ function jacsMiddleware(options = {}) {
         }
         // Always expose the client on the request for manual use in route handlers.
         req.jacsClient = client;
+        // ----- A2A well-known endpoints -----
+        if (enableA2A && req.path && req.path.startsWith('/.well-known/')) {
+            const documents = getA2ADocuments(client);
+            if (req.method === 'OPTIONS' && documents[req.path]) {
+                for (const [key, value] of Object.entries(A2A_CORS)) {
+                    res.set(key, value);
+                }
+                res.status(204).send('');
+                return;
+            }
+            if (req.method === 'GET' && documents[req.path]) {
+                for (const [key, value] of Object.entries(A2A_CORS)) {
+                    res.set(key, value);
+                }
+                res.json(documents[req.path]);
+                return;
+            }
+        }
         // ----- Verify incoming body -----
         if (shouldVerify && BODY_METHODS.has(req.method)) {
-            const rawBody = typeof req.body === 'string' ? req.body : null;
+            const rawBody = typeof req.body === 'string'
+                ? req.body
+                : Buffer.isBuffer(req.body)
+                    ? req.body.toString('utf8')
+                    : req.body && typeof req.body === 'object'
+                        ? (() => {
+                            try {
+                                return JSON.stringify(req.body);
+                            }
+                            catch {
+                                return null;
+                            }
+                        })()
+                        : null;
             if (rawBody) {
                 try {
                     const result = await client.verify(rawBody);
                     if (result.valid) {
                         req.jacsPayload = result.data;
+                        if (authReplay.enabled) {
+                            const replayError = (0, auth_replay_js_1.checkAuthReplay)(rawBody, result, replayCache, authReplay);
+                            if (replayError) {
+                                res.status(401).json({
+                                    error: 'JACS verification failed',
+                                    details: [replayError],
+                                });
+                                return;
+                            }
+                        }
                     }
                     else if (!isOptional) {
                         res.status(401).json({ error: 'JACS verification failed', details: result.errors });
@@ -102,9 +172,12 @@ function jacsMiddleware(options = {}) {
                     }
                 }
             }
-            else if (!isOptional && req.body !== undefined) {
-                // Body exists but is not a string — cannot verify.
-                // Only reject if body is present; missing body on POST may be handled by route.
+            else if (!isOptional && req.body !== undefined && req.body !== null) {
+                res.status(401).json({
+                    error: 'JACS verification failed',
+                    details: ['Request body could not be serialized for verification'],
+                });
+                return;
             }
         }
         // ----- Auto-sign responses -----

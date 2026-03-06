@@ -1,0 +1,412 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Attestation CLI Reference - JACS Usage Documentation</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/tabs.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="../getting-started/what-is-jacs.html"><strong aria-hidden="true">1.</strong> What is JACS?</a></li><li class="chapter-item expanded "><a href="../getting-started/decision-tree.html"><strong aria-hidden="true">2.</strong> Which Integration?</a></li><li class="chapter-item expanded "><a href="../usecases.html"><strong aria-hidden="true">3.</strong> Use cases</a></li><li class="chapter-item expanded "><a href="../getting-started/concepts.html"><strong aria-hidden="true">4.</strong> Core Concepts</a></li><li class="chapter-item expanded "><a href="../getting-started/quick-start.html"><strong aria-hidden="true">5.</strong> Quick Start</a></li><li class="chapter-item expanded "><a href="../getting-started/multi-agent-agreement.html"><strong aria-hidden="true">6.</strong> Multi-Agent Agreements</a></li><li class="chapter-item expanded "><a href="../getting-started/verification.html"><strong aria-hidden="true">7.</strong> Verifying Signed Documents</a></li><li class="chapter-item expanded "><a href="../getting-started/attestation.html"><strong aria-hidden="true">8.</strong> What Is an Attestation?</a></li><li class="chapter-item expanded "><a href="../getting-started/trust-layers.html"><strong aria-hidden="true">9.</strong> Trust Layers</a></li><li class="chapter-item expanded "><a href="../getting-started/deployment.html"><strong aria-hidden="true">10.</strong> Deployment Compatibility</a></li><li class="chapter-item expanded "><a href="../getting-started/troubleshooting.html"><strong aria-hidden="true">11.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="../rust/installation.html"><strong aria-hidden="true">12.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../rust/cli.html"><strong aria-hidden="true">13.</strong> CLI Tutorial</a></li><li class="chapter-item expanded "><a href="../rust/agent.html"><strong aria-hidden="true">14.</strong> Creating an Agent</a></li><li class="chapter-item expanded "><a href="../rust/documents.html"><strong aria-hidden="true">15.</strong> Working with Documents</a></li><li class="chapter-item expanded "><a href="../rust/agreements.html"><strong aria-hidden="true">16.</strong> Creating and Using Agreements</a></li><li class="chapter-item expanded "><a href="../rust/dns.html"><strong aria-hidden="true">17.</strong> DNS-Based Verification</a></li><li class="chapter-item expanded "><a href="../rust/library.html"><strong aria-hidden="true">18.</strong> Rust Library API</a></li><li class="chapter-item expanded "><a href="../rust/observability.html"><strong aria-hidden="true">19.</strong> Observability (Rust API)</a></li><li class="chapter-item expanded "><a href="../nodejs/installation.html"><strong aria-hidden="true">20.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../nodejs/simple-api.html"><strong aria-hidden="true">21.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../nodejs/basic-usage.html"><strong aria-hidden="true">22.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../nodejs/mcp.html"><strong aria-hidden="true">23.</strong> MCP Integration (Node.js)</a></li><li class="chapter-item expanded "><a href="../nodejs/langchain.html"><strong aria-hidden="true">24.</strong> LangChain.js</a></li><li class="chapter-item expanded "><a href="../nodejs/vercel-ai.html"><strong aria-hidden="true">25.</strong> Vercel AI SDK</a></li><li class="chapter-item expanded "><a href="../nodejs/express.html"><strong aria-hidden="true">26.</strong> Express Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/koa.html"><strong aria-hidden="true">27.</strong> Koa Middleware</a></li><li class="chapter-item expanded "><a href="../nodejs/http.html"><strong aria-hidden="true">28.</strong> HTTP Server</a></li><li class="chapter-item expanded "><a href="../nodejs/api.html"><strong aria-hidden="true">29.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../python/installation.html"><strong aria-hidden="true">30.</strong> Installation</a></li><li class="chapter-item expanded "><a href="../python/simple-api.html"><strong aria-hidden="true">31.</strong> Simplified API</a></li><li class="chapter-item expanded "><a href="../python/basic-usage.html"><strong aria-hidden="true">32.</strong> Basic Usage</a></li><li class="chapter-item expanded "><a href="../python/mcp.html"><strong aria-hidden="true">33.</strong> MCP Integration (Python)</a></li><li class="chapter-item expanded "><a href="../python/adapters.html"><strong aria-hidden="true">34.</strong> Framework Adapters</a></li><li class="chapter-item expanded "><a href="../python/api.html"><strong aria-hidden="true">35.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="../go/installation.html"><strong aria-hidden="true">36.</strong> Installation & Quick Start</a></li><li class="chapter-item expanded "><a href="../schemas/overview.html"><strong aria-hidden="true">37.</strong> JSON Schemas</a></li><li class="chapter-item expanded "><a href="../schemas/agent.html"><strong aria-hidden="true">38.</strong> Agent Schema</a></li><li class="chapter-item expanded "><a href="../schemas/document.html"><strong aria-hidden="true">39.</strong> Document Schema</a></li><li class="chapter-item expanded "><a href="../schemas/task.html"><strong aria-hidden="true">40.</strong> Task Schema</a></li><li class="chapter-item expanded "><a href="../schemas/agentstate.html"><strong aria-hidden="true">41.</strong> Agent State Schema</a></li><li class="chapter-item expanded "><a href="../schemas/commitment.html"><strong aria-hidden="true">42.</strong> Commitment Schema</a></li><li class="chapter-item expanded "><a href="../schemas/todo.html"><strong aria-hidden="true">43.</strong> Todo List Schema</a></li><li class="chapter-item expanded "><a href="../schemas/conversation.html"><strong aria-hidden="true">44.</strong> Conversation Schema</a></li><li class="chapter-item expanded "><a href="../schemas/configuration.html"><strong aria-hidden="true">45.</strong> Config File Schema</a></li><li class="chapter-item expanded "><a href="../concepts/attestation-comparison.html"><strong aria-hidden="true">46.</strong> JACS Attestation vs. Other Standards</a></li><li class="chapter-item expanded "><a href="../advanced/security.html"><strong aria-hidden="true">47.</strong> Security Model</a></li><li class="chapter-item expanded "><a href="../advanced/key-rotation.html"><strong aria-hidden="true">48.</strong> Key Rotation</a></li><li class="chapter-item expanded "><a href="../advanced/crypto.html"><strong aria-hidden="true">49.</strong> Cryptographic Algorithms</a></li><li class="chapter-item expanded "><a href="../advanced/algorithm-guide.html"><strong aria-hidden="true">50.</strong> Algorithm Selection Guide</a></li><li class="chapter-item expanded "><a href="../advanced/storage.html"><strong aria-hidden="true">51.</strong> Storage Backends</a></li><li class="chapter-item expanded "><a href="../advanced/custom-schemas.html"><strong aria-hidden="true">52.</strong> Custom Schemas</a></li><li class="chapter-item expanded "><a href="../advanced/trust-store.html"><strong aria-hidden="true">53.</strong> Trust Store</a></li><li class="chapter-item expanded "><a href="../advanced/infrastructure.html"><strong aria-hidden="true">54.</strong> Infrastructure vs Tools</a></li><li class="chapter-item expanded "><a href="../advanced/dns-trust.html"><strong aria-hidden="true">55.</strong> DNS Trust Anchoring</a></li><li class="chapter-item expanded "><a href="../advanced/failure-modes.html"><strong aria-hidden="true">56.</strong> Failure Modes</a></li><li class="chapter-item expanded "><a href="../advanced/testing.html"><strong aria-hidden="true">57.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../integrations/mcp.html"><strong aria-hidden="true">58.</strong> MCP Overview</a></li><li class="chapter-item expanded "><a href="../integrations/a2a.html"><strong aria-hidden="true">59.</strong> A2A Interoperability</a></li><li class="chapter-item expanded "><a href="../guides/a2a-quickstart.html"><strong aria-hidden="true">60.</strong> A2A Quickstart</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../guides/a2a-serve.html"><strong aria-hidden="true">60.1.</strong> Serve Your Agent Card</a></li><li class="chapter-item expanded "><a href="../guides/a2a-discover.html"><strong aria-hidden="true">60.2.</strong> Discover & Trust Remote Agents</a></li><li class="chapter-item expanded "><a href="../guides/a2a-exchange.html"><strong aria-hidden="true">60.3.</strong> Exchange Signed Artifacts</a></li></ol></li><li class="chapter-item expanded "><a href="../guides/sign-vs-attest.html"><strong aria-hidden="true">61.</strong> Sign vs. Attest Decision Guide</a></li><li class="chapter-item expanded "><a href="../guides/attestation-tutorial.html"><strong aria-hidden="true">62.</strong> Attestation Tutorial</a></li><li class="chapter-item expanded "><a href="../guides/custom-adapters.html"><strong aria-hidden="true">63.</strong> Writing a Custom Evidence Adapter</a></li><li class="chapter-item expanded "><a href="../guides/framework-attestation.html"><strong aria-hidden="true">64.</strong> Framework Adapter Attestation Guide</a></li><li class="chapter-item expanded "><a href="../guides/a2a-attestation-composition.html"><strong aria-hidden="true">65.</strong> A2A + Attestation Composition</a></li><li class="chapter-item expanded "><a href="../guides/observability.html"><strong aria-hidden="true">66.</strong> Observability & Monitoring Guide</a></li><li class="chapter-item expanded "><a href="../guides/email-signing.html"><strong aria-hidden="true">67.</strong> Email Signing & Verification</a></li><li class="chapter-item expanded "><a href="../guides/streaming.html"><strong aria-hidden="true">68.</strong> Streaming Signing</a></li><li class="chapter-item expanded "><a href="../examples/cli.html"><strong aria-hidden="true">69.</strong> CLI Examples</a></li><li class="chapter-item expanded "><a href="../examples/nodejs.html"><strong aria-hidden="true">70.</strong> Node.js Examples</a></li><li class="chapter-item expanded "><a href="../examples/python.html"><strong aria-hidden="true">71.</strong> Python Examples</a></li><li class="chapter-item expanded "><a href="../examples/integrations.html"><strong aria-hidden="true">72.</strong> Integration Examples</a></li><li class="chapter-item expanded affix "><li class="part-title">Reference</li><li class="chapter-item expanded "><a href="../reference/cli-commands.html"><strong aria-hidden="true">73.</strong> CLI Command Reference</a></li><li class="chapter-item expanded "><a href="../reference/configuration.html"><strong aria-hidden="true">74.</strong> Configuration Reference</a></li><li class="chapter-item expanded "><a href="../reference/errors.html"><strong aria-hidden="true">75.</strong> Error Codes</a></li><li class="chapter-item expanded "><a href="../reference/attestation-errors.html"><strong aria-hidden="true">76.</strong> Attestation Verification Results</a></li><li class="chapter-item expanded "><a href="../reference/attest-cli.html" class="active"><strong aria-hidden="true">77.</strong> Attestation CLI Reference</a></li><li class="chapter-item expanded "><a href="../reference/migration.html"><strong aria-hidden="true">78.</strong> Migration Guide</a></li><li class="spacer"></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">JACS Usage Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="cli-reference-jacs-attest"><a class="header" href="#cli-reference-jacs-attest">CLI Reference: jacs attest</a></h1>
+<p>The <code>jacs attest</code> command creates and verifies attestation documents from
+the command line. Attestation extends basic signing with structured claims,
+evidence references, and derivation chains.</p>
+<h2 id="jacs-attest-create"><a class="header" href="#jacs-attest-create">jacs attest create</a></h2>
+<p>Create a signed attestation document.</p>
+<h3 id="synopsis"><a class="header" href="#synopsis">Synopsis</a></h3>
+<pre><code class="language-bash">jacs attest create --claims '&lt;JSON&gt;' [options]
+</code></pre>
+<h3 id="options"><a class="header" href="#options">Options</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Flag</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--claims '&lt;JSON&gt;'</code></td><td>Yes</td><td>JSON array of claims. Each claim must have <code>name</code> and <code>value</code> fields.</td></tr>
+<tr><td><code>--subject-type &lt;TYPE&gt;</code></td><td>No</td><td>Type of subject: <code>agent</code>, <code>artifact</code>, <code>workflow</code>, <code>identity</code>. Default: derived from context.</td></tr>
+<tr><td><code>--subject-id &lt;ID&gt;</code></td><td>No</td><td>Identifier of the subject being attested.</td></tr>
+<tr><td><code>--subject-digest &lt;SHA256&gt;</code></td><td>No</td><td>SHA-256 digest of the subject content.</td></tr>
+<tr><td><code>--evidence '&lt;JSON&gt;'</code></td><td>No</td><td>JSON array of evidence references.</td></tr>
+<tr><td><code>--from-document &lt;FILE&gt;</code></td><td>No</td><td>Lift an existing signed JACS document into an attestation. Overrides subject flags.</td></tr>
+<tr><td><code>-o, --output &lt;FILE&gt;</code></td><td>No</td><td>Write attestation to file instead of stdout.</td></tr>
+</tbody></table>
+</div>
+<h3 id="examples"><a class="header" href="#examples">Examples</a></h3>
+<p><strong>Create a basic attestation:</strong></p>
+<pre><code class="language-bash">jacs attest create \
+  --subject-type artifact \
+  --subject-id "doc-001" \
+  --subject-digest "abc123def456..." \
+  --claims '[{"name": "reviewed_by", "value": "human", "confidence": 0.95}]'
+</code></pre>
+<p><strong>Attestation with multiple claims:</strong></p>
+<pre><code class="language-bash">jacs attest create \
+  --subject-type agent \
+  --subject-id "agent-abc" \
+  --subject-digest "sha256hash..." \
+  --claims '[
+    {"name": "reviewed", "value": true, "confidence": 0.95},
+    {"name": "source", "value": "internal_db", "assuranceLevel": "verified"}
+  ]'
+</code></pre>
+<p><strong>Lift an existing signed document to attestation:</strong></p>
+<pre><code class="language-bash">jacs attest create \
+  --from-document mydata.signed.json \
+  --claims '[{"name": "approved", "value": true}]'
+</code></pre>
+<p><strong>With evidence references:</strong></p>
+<pre><code class="language-bash">jacs attest create \
+  --subject-type artifact \
+  --subject-id "report-456" \
+  --subject-digest "def789..." \
+  --claims '[{"name": "scanned", "value": true}]' \
+  --evidence '[{
+    "kind": "custom",
+    "digests": {"sha256": "evidence-hash..."},
+    "uri": "https://scanner.example.com/results/123",
+    "collectedAt": "2026-03-04T00:00:00Z",
+    "verifier": {"name": "security-scanner", "version": "2.0"}
+  }]'
+</code></pre>
+<p><strong>Write to file:</strong></p>
+<pre><code class="language-bash">jacs attest create \
+  --subject-type artifact \
+  --subject-id "doc-001" \
+  --subject-digest "abc123..." \
+  --claims '[{"name": "ok", "value": true}]' \
+  -o attestation.json
+</code></pre>
+<h2 id="jacs-attest-verify"><a class="header" href="#jacs-attest-verify">jacs attest verify</a></h2>
+<p>Verify an attestation document.</p>
+<h3 id="synopsis-1"><a class="header" href="#synopsis-1">Synopsis</a></h3>
+<pre><code class="language-bash">jacs attest verify &lt;FILE&gt; [options]
+</code></pre>
+<h3 id="arguments"><a class="header" href="#arguments">Arguments</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Argument</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>&lt;FILE&gt;</code></td><td>Yes</td><td>Path to the attestation JSON file to verify.</td></tr>
+</tbody></table>
+</div>
+<h3 id="options-1"><a class="header" href="#options-1">Options</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Flag</th><th>Required</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--full</code></td><td>No</td><td>Use full verification (evidence + derivation chain). Default: local verification (crypto + hash only).</td></tr>
+<tr><td><code>--json</code></td><td>No</td><td>Output the verification result as JSON.</td></tr>
+<tr><td><code>--key-dir &lt;DIR&gt;</code></td><td>No</td><td>Directory containing public keys for verification.</td></tr>
+<tr><td><code>--max-depth &lt;N&gt;</code></td><td>No</td><td>Maximum derivation chain depth. Default: 10.</td></tr>
+</tbody></table>
+</div>
+<h3 id="examples-1"><a class="header" href="#examples-1">Examples</a></h3>
+<p><strong>Basic verification (local tier):</strong></p>
+<pre><code class="language-bash">jacs attest verify attestation.json
+</code></pre>
+<p>Output:</p>
+<pre><code>Attestation verification: VALID
+  Signature: OK
+  Hash: OK
+  Signer: agent-id-abc123
+  Algorithm: ring-Ed25519
+</code></pre>
+<p><strong>Full verification:</strong></p>
+<pre><code class="language-bash">jacs attest verify attestation.json --full
+</code></pre>
+<p>Output:</p>
+<pre><code>Attestation verification: VALID
+  Signature: OK
+  Hash: OK
+  Signer: agent-id-abc123
+  Algorithm: ring-Ed25519
+  Evidence: 1 item(s) verified
+    [0] custom: digest OK, freshness OK
+  Chain: not present
+</code></pre>
+<p><strong>JSON output (for scripting):</strong></p>
+<pre><code class="language-bash">jacs attest verify attestation.json --json
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-json">{
+  "valid": true,
+  "crypto": {
+    "signature_valid": true,
+    "hash_valid": true,
+    "signer_id": "agent-id-abc123",
+    "algorithm": "ring-Ed25519"
+  },
+  "evidence": [],
+  "chain": null,
+  "errors": []
+}
+</code></pre>
+<p><strong>Verify with external keys:</strong></p>
+<pre><code class="language-bash">jacs attest verify attestation.json --key-dir ./trusted_keys/
+</code></pre>
+<p><strong>Pipe through jq:</strong></p>
+<pre><code class="language-bash">jacs attest verify attestation.json --json | jq '.crypto'
+</code></pre>
+<h2 id="piping-and-scripting-patterns"><a class="header" href="#piping-and-scripting-patterns">Piping and Scripting Patterns</a></h2>
+<h3 id="create-and-verify-in-one-pipeline"><a class="header" href="#create-and-verify-in-one-pipeline">Create and verify in one pipeline</a></h3>
+<pre><code class="language-bash">jacs attest create \
+  --subject-type artifact \
+  --subject-id "doc-001" \
+  --subject-digest "abc..." \
+  --claims '[{"name": "ok", "value": true}]' \
+  -o att.json &amp;&amp; \
+jacs attest verify att.json --json | jq '.valid'
+</code></pre>
+<h3 id="check-validity-in-a-script"><a class="header" href="#check-validity-in-a-script">Check validity in a script</a></h3>
+<pre><code class="language-bash">#!/bin/bash
+set -e
+
+RESULT=$(jacs attest verify "$1" --json 2&gt;/dev/null)
+VALID=$(echo "$RESULT" | jq -r '.valid')
+
+if [ "$VALID" = "true" ]; then
+    echo "Attestation is valid"
+    exit 0
+else
+    echo "Attestation is INVALID"
+    echo "$RESULT" | jq '.errors'
+    exit 1
+fi
+</code></pre>
+<h3 id="batch-verify-multiple-attestations"><a class="header" href="#batch-verify-multiple-attestations">Batch verify multiple attestations</a></h3>
+<pre><code class="language-bash">for file in attestations/*.json; do
+    echo -n "$file: "
+    jacs attest verify "$file" --json | jq -r '.valid'
+done
+</code></pre>
+<h2 id="exit-codes"><a class="header" href="#exit-codes">Exit Codes</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Code</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>0</td><td>Success (create: attestation created; verify: attestation valid)</td></tr>
+<tr><td>1</td><td>Failure (create: error creating attestation; verify: attestation invalid or error)</td></tr>
+</tbody></table>
+</div>
+<h2 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>JACS_PRIVATE_KEY_PASSWORD</code></td><td>Password for the agent's private key</td></tr>
+<tr><td><code>JACS_MAX_DERIVATION_DEPTH</code></td><td>Override maximum derivation chain depth (default: 10)</td></tr>
+<tr><td><code>JACS_DATA_DIRECTORY</code></td><td>Directory for JACS data files</td></tr>
+<tr><td><code>JACS_KEY_DIRECTORY</code></td><td>Directory containing keys</td></tr>
+<tr><td><code>JACS_AGENT_ID_AND_VERSION</code></td><td>Agent identity for signing</td></tr>
+</tbody></table>
+</div>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="../guides/sign-vs-attest.html">Sign vs. Attest Decision Guide</a></li>
+<li><a href="../guides/attestation-tutorial.html">Attestation Tutorial</a></li>
+<li><a href="attestation-errors.html">Attestation Verification Results</a></li>
+<li><a href="cli-commands.html">CLI Command Reference</a></li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../reference/attestation-errors.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../reference/migration.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../reference/attestation-errors.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../reference/migration.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

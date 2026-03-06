@@ -4,6 +4,8 @@ use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
 use jacs::config::Config;
 use log::debug;
+use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -257,11 +259,15 @@ pub fn set_min_test_env_vars() {
     let fixtures_dir = fixtures_dir_string();
     let keys_dir = fixtures_keys_dir_string();
     unsafe {
+        env::set_var("JACS_USE_SECURITY", "false");
         env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_LEGACY);
         env::set_var("JACS_KEY_DIRECTORY", &keys_dir);
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
         env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
+        // Fixture signatures are historical; disable iat skew enforcement in fixture-based tests.
+        env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");
         // Enable filesystem schema loading for tests that use custom schemas
         env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
     }
@@ -344,8 +350,44 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
     let json_data = fs::read_to_string(document_path);
     match json_data {
         Ok(data) => {
-            debug!("testing data {}", data);
-            Ok(data.to_string())
+            let mut value: serde_json::Value = serde_json::from_str(&data)?;
+            let mut touched_signature = false;
+
+            if let Some(signature) = value
+                .get_mut("jacsSignature")
+                .and_then(|v| v.as_object_mut())
+            {
+                let now_iat = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs() as i64;
+
+                if !signature.contains_key("iat") {
+                    signature.insert("iat".to_string(), json!(now_iat));
+                    touched_signature = true;
+                }
+                if !signature.contains_key("jti") {
+                    signature.insert(
+                        "jti".to_string(),
+                        json!(format!("fixture-{}-{}", now_iat, std::process::id())),
+                    );
+                    touched_signature = true;
+                }
+            }
+
+            if touched_signature && value.get("jacsSha256").is_some() {
+                let mut to_hash = value.clone();
+                if let Some(obj) = to_hash.as_object_mut() {
+                    obj.remove("jacsSha256");
+                }
+                let canonical = serde_json_canonicalizer::to_string(&to_hash)?;
+                let mut hasher = Sha256::new();
+                hasher.update(canonical.as_bytes());
+                value["jacsSha256"] = json!(format!("{:x}", hasher.finalize()));
+            }
+
+            let serialized = serde_json::to_string(&value)?;
+            debug!("testing data {}", serialized);
+            Ok(serialized)
         }
         Err(e) => {
             panic!("Failed to find file: {} {}", filepath, e);
@@ -368,6 +410,8 @@ pub fn set_test_env_vars() {
             "JACS_AGENT_ID_AND_VERSION",
             "123e4567-e89b-12d3-a456-426614174000:123e4567-e89b-12d3-a456-426614174001",
         );
+        // Fixture-based test signatures may be older than replay window.
+        env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");
         // Enable filesystem schema loading for tests that use custom schemas
         env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
     }
@@ -390,6 +434,7 @@ pub fn clear_test_env_vars() {
         "JACS_DNS_VALIDATE",
         "JACS_DNS_STRICT",
         "JACS_DNS_REQUIRED",
+        "JACS_MAX_IAT_SKEW_SECONDS",
         "JACS_ALLOW_FILESYSTEM_SCHEMAS",
     ];
     for var in vars {
@@ -497,8 +542,51 @@ pub fn get_pq_config() -> String {
 /// ```
 #[cfg(test)]
 pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time should be after UNIX_EPOCH")
+        .as_nanos();
+    let base = std::path::PathBuf::from("tests")
+        .join("scratch")
+        .join(format!("jacs-ring-{}-{nonce}", std::process::id()));
+    let data_dir = base.join("data");
+    let key_dir = base.join("keys");
+    std::fs::create_dir_all(&data_dir).expect("failed to create ring data directory");
+    std::fs::create_dir_all(&key_dir).expect("failed to create ring key directory");
+
+    unsafe {
+        env::set_var("JACS_USE_SECURITY", "false");
+        env::set_var(
+            "JACS_DATA_DIRECTORY",
+            data_dir.to_string_lossy().to_string(),
+        );
+        env::set_var("JACS_KEY_DIRECTORY", key_dir.to_string_lossy().to_string());
+        env::set_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "test-ring-Ed25519-private.pem.enc",
+        );
+        env::set_var(
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+            "test-ring-Ed25519-public.pem",
+        );
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
+        env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_FIXTURES);
+        env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
+    }
+
     let mut agent = create_agent_v1()?;
-    agent.load_by_config(get_ring_config())?;
+    let config = Config::new(
+        Some("false".to_string()),
+        Some(std::env::var("JACS_DATA_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_KEY_DIRECTORY").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PRIVATE_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_PUBLIC_KEY_FILENAME").unwrap_or_default()),
+        Some(std::env::var("JACS_AGENT_KEY_ALGORITHM").unwrap_or_default()),
+        Some(std::env::var(PASSWORD_ENV_VAR).unwrap_or_default()),
+        None,
+        Some("fs".to_string()),
+    );
+    agent.config = Some(config);
     Ok(agent)
 }
 
@@ -556,12 +644,29 @@ pub fn create_pq_test_agent() -> Result<Agent, Box<dyn Error>> {
 /// Sets up the environment for pq2025 (ML-DSA-87) tests.
 ///
 /// This configures environment variables for the post-quantum 2025 algorithm.
+/// Paths are made unique per invocation to avoid key-file collisions across
+/// test binaries (for example, `pq2025_tests` then `pq_tests` in one run).
 #[cfg(test)]
 pub fn setup_pq2025_env() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time should be after UNIX_EPOCH")
+        .as_nanos();
+    let base = std::path::PathBuf::from("tests")
+        .join("scratch")
+        .join(format!("jacs-pq2025-{}-{nonce}", std::process::id()));
+    let data_dir = base.join("data");
+    let key_dir = base.join("keys");
+    std::fs::create_dir_all(&data_dir).expect("failed to create pq2025 data directory");
+    std::fs::create_dir_all(&key_dir).expect("failed to create pq2025 key directory");
+
     unsafe {
         env::set_var("JACS_USE_SECURITY", "false");
-        env::set_var("JACS_DATA_DIRECTORY", "tests/scratch/pq2025_data");
-        env::set_var("JACS_KEY_DIRECTORY", "tests/scratch/pq2025_keys");
+        env::set_var(
+            "JACS_DATA_DIRECTORY",
+            data_dir.to_string_lossy().to_string(),
+        );
+        env::set_var("JACS_KEY_DIRECTORY", key_dir.to_string_lossy().to_string());
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "pq2025_private.bin.enc");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "pq2025_public.bin");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "pq2025");

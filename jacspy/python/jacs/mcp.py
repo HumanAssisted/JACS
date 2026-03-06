@@ -24,11 +24,13 @@ Requires (optional): fastmcp, mcp, starlette
 """
 
 import contextlib
+import ipaddress
 import json
 import logging
 import os
 from typing import Any, Callable, Dict, Optional
 from functools import wraps
+from urllib.parse import urlparse
 
 from . import simple
 
@@ -38,6 +40,58 @@ def _resolve_strict(strict: Optional[bool] = None) -> bool:
     if strict is not None:
         return strict
     return os.environ.get("JACS_STRICT_MODE", "").lower() in ("1", "true")
+
+
+def _resolve_local_only(local_only: Optional[bool] = None) -> bool:
+    """Return True for MCP local-only mode; disabling is not allowed."""
+    raw = os.environ.get("JACS_MCP_LOCAL_ONLY", "").strip().lower()
+    env_disable = raw in ("0", "false", "no")
+    if local_only is False or env_disable:
+        raise simple.ConfigError(
+            "JACS MCP local mode only: disabling local-only mode is not allowed."
+        )
+    return True
+
+
+def _resolve_allow_unsigned_fallback(
+    allow_unsigned_fallback: Optional[bool] = None,
+) -> bool:
+    """Return True if unsigned fallback is explicitly allowed (default: False)."""
+    if allow_unsigned_fallback is not None:
+        return allow_unsigned_fallback
+    raw = os.environ.get("JACS_MCP_ALLOW_UNSIGNED_FALLBACK", "").strip().lower()
+    return raw in ("1", "true", "yes")
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = host.strip().lower().strip("[]")
+    if normalized == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_loopback_url(url: str) -> bool:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not parsed.hostname:
+        return False
+    return _is_loopback_host(parsed.hostname)
+
+
+def _enforce_local_url(url: str, context: str, local_only: bool) -> None:
+    if not local_only:
+        raise simple.ConfigError(
+            "JACS MCP local mode only: disabling local-only mode is not allowed."
+        )
+    if not _is_loopback_url(url):
+        raise simple.ConfigError(
+            f"{context}: local mode only. URL must use localhost/127.0.0.1/::1. "
+            "Remote MCP URLs are not allowed."
+        )
 
 try:
     import jacs
@@ -74,7 +128,14 @@ LOGGER = logging.getLogger("jacs.mcp")
 # ---------------------------------------------------------------------------
 
 
-def JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs):
+def JACSMCPClient(
+    url,
+    config_path="./jacs.config.json",
+    strict=False,
+    local_only: Optional[bool] = None,
+    allow_unsigned_fallback: Optional[bool] = None,
+    **kwargs,
+):
     """Creates a FastMCP client with JACS signing/verification interceptors.
 
     Args:
@@ -82,6 +143,9 @@ def JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)
         config_path: Path to jacs.config.json
         strict: If True, config failures raise instead of falling back to
             unsigned transport. Also enabled by JACS_STRICT_MODE env var.
+        local_only: Reserved for compatibility. Local-only is always enforced.
+        allow_unsigned_fallback: If True, signing/verification failures
+            can pass through unsigned messages (default: False).
         **kwargs: Additional arguments passed to FastMCP Client
     """
     if Client is None or SSETransport is None:
@@ -92,16 +156,20 @@ def JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)
         raise ImportError("jacs native module is required for JACSMCPClient")
 
     strict = _resolve_strict(strict)
+    local_only = _resolve_local_only(local_only)
+    allow_unsigned_fallback = _resolve_allow_unsigned_fallback(allow_unsigned_fallback)
+    _enforce_local_url(url, "JACSMCPClient", local_only)
     agent = JacsAgent()
     agent_ready = True
     try:
         agent.load(config_path)
     except Exception as e:
-        if strict:
+        if strict or not allow_unsigned_fallback:
             raise simple.ConfigError(
-                f"JACS strict mode: refusing to run unsigned. "
-                f"Fix config at '{config_path}' or set strict=False to allow "
-                f"unsigned transport. Error: {e}"
+                f"JACS secure mode: refusing to run unsigned. "
+                f"Fix config at '{config_path}' or set "
+                f"JACS_MCP_ALLOW_UNSIGNED_FALLBACK=true to allow unsigned "
+                f"transport. Error: {e}"
             ) from e
         LOGGER.warning(
             "Failed to load JACS config '%s' for MCP client; transport will run unsigned: %s",
@@ -120,8 +188,15 @@ def JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)
             original_send = original_write_stream.send
             async def intercepted_send(message, **send_kwargs):
                 if agent_ready and isinstance(message.root, dict):
-                    signed_json = agent.sign_request(message.root)
-                    message.root = json.loads(signed_json)
+                    try:
+                        signed_json = agent.sign_request(message.root)
+                        message.root = json.loads(signed_json)
+                    except Exception as e:
+                        if not allow_unsigned_fallback:
+                            raise simple.SigningError(
+                                f"JACS signing failed and unsigned fallback is disabled: {e}"
+                            ) from e
+                        LOGGER.warning("JACS signing failed, falling back to unsigned message: %s", e)
                 return await original_send(message, **send_kwargs)
 
             original_write_stream.send = intercepted_send
@@ -130,8 +205,19 @@ def JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)
             async def intercepted_receive(**receive_kwargs):
                 message = await original_receive(**receive_kwargs)
                 if agent_ready and isinstance(message.root, dict):
-                    payload = agent.verify_response(json.dumps(message.root))
-                    message.root = payload
+                    try:
+                        payload = agent.verify_response(json.dumps(message.root))
+                        message.root = payload
+                    except Exception as e:
+                        if not allow_unsigned_fallback:
+                            raise simple.VerificationError(
+                                "JACS verification failed and unsigned fallback is disabled: "
+                                f"{e}"
+                            ) from e
+                        LOGGER.warning(
+                            "JACS verification failed, falling back to unsigned message: %s",
+                            e,
+                        )
                 return message
 
             original_read_stream.receive = intercepted_receive
@@ -146,7 +232,13 @@ def JACSMCPClient(url, config_path="./jacs.config.json", strict=False, **kwargs)
     return Client(transport, **kwargs)
 
 
-def JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False):
+def JACSMCPServer(
+    mcp_server,
+    config_path="./jacs.config.json",
+    strict=False,
+    local_only: Optional[bool] = None,
+    allow_unsigned_fallback: Optional[bool] = None,
+):
     """Creates a FastMCP server with JACS signing/verification interceptors.
 
     Args:
@@ -154,6 +246,9 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False):
         config_path: Path to jacs.config.json
         strict: If True, config failures raise instead of falling back to
             unsigned passthrough. Also enabled by JACS_STRICT_MODE env var.
+        local_only: Reserved for compatibility. Local-only is always enforced.
+        allow_unsigned_fallback: If True, verification/signing failures
+            can pass through unsigned messages (default: False).
     """
     if not hasattr(mcp_server, "sse_app"):
         raise AttributeError("mcp_server is missing required attribute 'sse_app'")
@@ -162,16 +257,19 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False):
         raise ImportError("jacs native module is required for JACSMCPServer")
 
     strict = _resolve_strict(strict)
+    local_only = _resolve_local_only(local_only)
+    allow_unsigned_fallback = _resolve_allow_unsigned_fallback(allow_unsigned_fallback)
     agent = JacsAgent()
     agent_ready = True
     try:
         agent.load(config_path)
     except Exception as e:
-        if strict:
+        if strict or not allow_unsigned_fallback:
             raise simple.ConfigError(
-                f"JACS strict mode: refusing to run unsigned. "
-                f"Fix config at '{config_path}' or set strict=False to allow "
-                f"unsigned passthrough. Error: {e}"
+                f"JACS secure mode: refusing to run unsigned. "
+                f"Fix config at '{config_path}' or set "
+                f"JACS_MCP_ALLOW_UNSIGNED_FALLBACK=true to allow unsigned "
+                f"passthrough. Error: {e}"
             ) from e
         LOGGER.warning(
             "Failed to load JACS config '%s' for MCP server; middleware will pass through unsigned: %s",
@@ -187,6 +285,17 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False):
 
         @app.middleware("http")
         async def jacs_authentication_middleware(request, call_next):
+            request_host = getattr(getattr(request, "client", None), "host", "") or ""
+            if local_only and not _is_loopback_host(request_host):
+                if JSONResponse is not None:
+                    return JSONResponse(
+                        {"error": "MCP local mode only: remote clients are not allowed"},
+                        status_code=403,
+                    )
+                raise simple.VerificationError(
+                    "MCP local mode only: remote clients are not allowed"
+                )
+
             if request.url.path.endswith("/messages/"):
                 body = await request.body()
                 if agent_ready and body:
@@ -195,7 +304,15 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False):
                         payload = agent.verify_response(json.dumps(data))
                         request._body = json.dumps(payload).encode()
                     except Exception as e:
-                        LOGGER.warning("JACS verification failed: %s", e)
+                        if allow_unsigned_fallback:
+                            LOGGER.warning("JACS verification failed: %s", e)
+                        elif JSONResponse is not None:
+                            return JSONResponse(
+                                {"error": f"JACS verification failed: {e}"},
+                                status_code=401,
+                            )
+                        else:
+                            raise
 
             response = await call_next(request)
 
@@ -215,7 +332,15 @@ def JACSMCPServer(mcp_server, config_path="./jacs.config.json", strict=False):
                             media_type=response.media_type,
                         )
                     except Exception as e:
-                        LOGGER.warning("JACS signing failed: %s", e)
+                        if allow_unsigned_fallback:
+                            LOGGER.warning("JACS signing failed: %s", e)
+                        elif JSONResponse is not None:
+                            return JSONResponse(
+                                {"error": f"JACS signing failed: {e}"},
+                                status_code=500,
+                            )
+                        else:
+                            raise
 
             return response
 
@@ -319,12 +444,17 @@ def jacs_tool(func: Callable) -> Callable:
     return wrapper
 
 
-def jacs_middleware():
+def jacs_middleware(
+    *,
+    local_only: Optional[bool] = None,
+    allow_unsigned_fallback: Optional[bool] = None,
+):
     """Create Starlette HTTP middleware for JACS authentication.
 
     Returns middleware that can be added to FastMCP servers via
     ``app.middleware("http")`` to automatically sign all JSON responses
     and verify incoming requests that carry a JACS signature.
+    Defaults to local-only + fail-closed behavior.
 
     Uses the simplified ``simple.*`` module API (module-level globals).
 
@@ -336,7 +466,21 @@ def jacs_middleware():
         async def mw(request, call_next):
             return await jacs_middleware()(request, call_next)
     """
+    local_only = _resolve_local_only(local_only)
+    allow_unsigned_fallback = _resolve_allow_unsigned_fallback(allow_unsigned_fallback)
+
     async def middleware(request, call_next):
+        request_host = getattr(getattr(request, "client", None), "host", "") or ""
+        if local_only and not _is_loopback_host(request_host):
+            if JSONResponse is not None:
+                return JSONResponse(
+                    {"error": "MCP local mode only: remote clients are not allowed"},
+                    status_code=403,
+                )
+            raise simple.VerificationError(
+                "MCP local mode only: remote clients are not allowed"
+            )
+
         # Verify incoming request if it has a JACS signature
         body = await request.body()
         if body:
@@ -352,6 +496,16 @@ def jacs_middleware():
                             )
             except json.JSONDecodeError:
                 pass
+            except Exception as e:
+                if allow_unsigned_fallback:
+                    LOGGER.warning("JACS verification failed: %s", e)
+                elif JSONResponse is not None:
+                    return JSONResponse(
+                        {"error": f"JACS verification failed: {e}"},
+                        status_code=401,
+                    )
+                else:
+                    raise
 
         response = await call_next(request)
 
@@ -373,7 +527,15 @@ def jacs_middleware():
                         media_type=response.media_type,
                     )
                 except Exception as e:
-                    LOGGER.warning("JACS response signing failed: %s", e)
+                    if allow_unsigned_fallback:
+                        LOGGER.warning("JACS response signing failed: %s", e)
+                    elif JSONResponse is not None:
+                        return JSONResponse(
+                            {"error": f"JACS response signing failed: {e}"},
+                            status_code=500,
+                        )
+                    else:
+                        raise
 
         return response
 
@@ -399,12 +561,24 @@ class JacsSSETransport:
             result = await client.call_tool("hello", {"name": "World"})
     """
 
-    def __init__(self, url: str, headers: Optional[Dict[str, str]] = None):
+    def __init__(
+        self,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        *,
+        local_only: Optional[bool] = None,
+        allow_unsigned_fallback: Optional[bool] = None,
+    ):
         if SSETransport is None:
             raise ImportError(
                 "fastmcp is required for JacsSSETransport. "
                 "Install with: pip install fastmcp"
             )
+        local_only = _resolve_local_only(local_only)
+        _enforce_local_url(url, "JacsSSETransport", local_only)
+        self._allow_unsigned_fallback = _resolve_allow_unsigned_fallback(
+            allow_unsigned_fallback
+        )
         self._inner = SSETransport(url, headers=headers)
 
     # Proxy attributes so fastmcp.Client can use this as a transport
@@ -433,8 +607,14 @@ class JacsSSETransport:
             original_send = original_write_stream.send
             async def intercepted_send(message, **send_kwargs):
                 if agent_ready and isinstance(message.root, dict):
-                    signed = sign_mcp_message(message.root)
-                    message.root = json.loads(signed)
+                    try:
+                        signed = sign_mcp_message(message.root)
+                        message.root = json.loads(signed)
+                    except Exception as e:
+                        LOGGER.warning(
+                            "JACS signing on send failed; forwarding unsigned message: %s",
+                            e,
+                        )
                 return await original_send(message, **send_kwargs)
 
             original_write_stream.send = intercepted_send
@@ -447,7 +627,13 @@ class JacsSSETransport:
                         payload = verify_mcp_message(json.dumps(message.root))
                         message.root = payload
                     except Exception as e:
-                        LOGGER.warning("JACS verification on receive failed: %s", e)
+                        if self._allow_unsigned_fallback:
+                            LOGGER.warning("JACS verification on receive failed: %s", e)
+                        else:
+                            raise simple.VerificationError(
+                                "JACS verification failed and unsigned fallback is disabled: "
+                                f"{e}"
+                            ) from e
                 return message
 
             original_read_stream.receive = intercepted_receive
@@ -459,7 +645,13 @@ class JacsSSETransport:
                 yield session
 
 
-def create_jacs_mcp_server(name: str, config_path: Optional[str] = None):
+def create_jacs_mcp_server(
+    name: str,
+    config_path: Optional[str] = None,
+    *,
+    local_only: Optional[bool] = None,
+    allow_unsigned_fallback: Optional[bool] = None,
+):
     """Create a FastMCP server with JACS authentication built-in.
 
     This is the simplest way to create an authenticated MCP server.
@@ -499,7 +691,10 @@ def create_jacs_mcp_server(name: str, config_path: Optional[str] = None):
 
     # Wire JACS middleware into the SSE app
     original_sse_app = mcp_server.sse_app
-    middleware_fn = jacs_middleware()
+    middleware_fn = jacs_middleware(
+        local_only=local_only,
+        allow_unsigned_fallback=allow_unsigned_fallback,
+    )
 
     def patched_sse_app():
         app = original_sse_app()
@@ -517,6 +712,7 @@ def create_jacs_mcp_server(name: str, config_path: Optional[str] = None):
 async def jacs_call(
     server_url: str,
     method: str,
+    local_only: Optional[bool] = None,
     **params: Any,
 ) -> Any:
     """Make an authenticated MCP call to a server.
@@ -527,6 +723,7 @@ async def jacs_call(
     Args:
         server_url: URL of the MCP server
         method: MCP method to call
+        local_only: Reserved for compatibility. Local-only is always enforced.
         **params: Parameters for the method
 
     Returns:
@@ -549,6 +746,9 @@ async def jacs_call(
             "fastmcp is required for MCP client support. "
             "Install with: pip install fastmcp"
         )
+
+    local_only = _resolve_local_only(local_only)
+    _enforce_local_url(server_url, "jacs_call", local_only)
 
     transport = SSETransport(server_url)
     client = Client(transport)

@@ -458,3 +458,34 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         ),
     };
 }
+
+#[test]
+fn test_update_document_rejects_non_owner_editor() {
+    let mut owner = load_test_agent_one();
+    let mut non_owner = load_test_agent_two();
+
+    let original_document_string = load_local_document(&DOCTESTFILECONFIG.to_string())
+        .expect("Failed to load source document fixture");
+    let original_document = owner
+        .load_document(&original_document_string)
+        .expect("Owner should load source document");
+    let original_key = original_document.getkey();
+
+    let modified_document_string = load_local_document(&TESTFILE_MODIFIED.to_string())
+        .expect("Failed to load modified document fixture");
+    let result = non_owner.update_document(&original_key, &modified_document_string, None, None);
+
+    assert!(
+        result.is_err(),
+        "A different agent identity should not be allowed to update the owner's document"
+    );
+    let err = result
+        .err()
+        .expect("result was asserted as error")
+        .to_string();
+    assert!(
+        err.contains("cannot be updated by"),
+        "Unexpected error message: {}",
+        err
+    );
+}

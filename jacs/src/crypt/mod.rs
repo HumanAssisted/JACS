@@ -4,16 +4,14 @@ pub mod aes_encrypt;
 pub mod constants;
 pub mod hash;
 pub mod kem;
-pub mod pq;
 pub mod pq2025;
 pub mod private_key;
 pub mod ringwrapper;
 pub mod rsawrapper; // ML-DSA signatures // ML-KEM encryption
 
 use constants::{
-    DILITHIUM_ALT_SIG_SIZE_MAX, DILITHIUM_ALT_SIG_SIZE_MIN, DILITHIUM_MIN_KEY_LENGTH,
-    DILITHIUM_NON_ASCII_RATIO, ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE,
-    ML_DSA_87_PUBLIC_KEY_SIZE, PQ_SMALL_KEY_THRESHOLD, RSA_MIN_KEY_LENGTH, RSA_NON_ASCII_RATIO,
+    ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE,
+    RSA_MIN_KEY_LENGTH, RSA_NON_ASCII_RATIO,
 };
 
 use crate::agent::Agent;
@@ -53,22 +51,18 @@ pub enum CryptoSigningAlgorithm {
     RsaPss,
     #[strum(serialize = "ring-Ed25519")]
     RingEd25519,
-    #[strum(serialize = "pq-dilithium")]
-    PqDilithium,
-    #[strum(serialize = "pq-dilithium-alt")]
-    PqDilithiumAlt, // Alternative version with different signature size
     #[strum(serialize = "pq2025")]
     Pq2025, // ML-DSA-87 (FIPS-204)
 }
 
 /// Returns the list of verification algorithms actually implemented in JACS.
 pub fn supported_verification_algorithms() -> Vec<&'static str> {
-    vec!["ring-Ed25519", "RSA-PSS", "pq-dilithium", "pq2025"]
+    vec!["ring-Ed25519", "RSA-PSS", "pq2025"]
 }
 
 /// Returns the list of post-quantum algorithms actually implemented in JACS.
 pub fn supported_pq_algorithms() -> Vec<&'static str> {
-    vec!["pq-dilithium", "pq2025"]
+    vec!["pq2025"]
 }
 
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
@@ -83,7 +77,6 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 /// Each algorithm has unique characteristics in their public keys:
 /// - Ed25519: Fixed length of 32 bytes, contains non-ASCII characters
 /// - RSA-PSS: Typically longer (512+ bytes), mostly ASCII-compatible and starts with specific ASN.1 DER encoding
-/// - Dilithium: Has a specific binary format with non-ASCII characters and varying lengths based on the parameter set
 /// - Pq2025 (ML-DSA-87): 2592-byte public keys
 pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
@@ -126,35 +119,14 @@ pub fn detect_algorithm_from_public_key(
         return Ok(CryptoSigningAlgorithm::Pq2025);
     }
 
-    // PQ Dilithium keys have specific formats with many non-ASCII characters and larger sizes
-    if public_key.len() > DILITHIUM_MIN_KEY_LENGTH && non_ascii_ratio > DILITHIUM_NON_ASCII_RATIO {
-        debug!(
-            algorithm = "pq-dilithium",
-            "Detected PQ-Dilithium from public key format"
-        );
-        warn!(
-            "DEPRECATED: Detected 'pq-dilithium' algorithm from public key. \
-            'pq-dilithium' is deprecated; use 'pq2025' (ML-DSA-87, FIPS-204) for new agents."
-        );
-        return Ok(CryptoSigningAlgorithm::PqDilithium);
-    }
-
     // If we have a high proportion of non-ASCII characters but don't match other criteria,
-    // it's more likely to be Ed25519 or PQ Dilithium than RSA
+    // it's more likely to be Ed25519 than RSA.
     if non_ascii_ratio > ED25519_NON_ASCII_RATIO {
-        if public_key.len() > PQ_SMALL_KEY_THRESHOLD {
-            debug!(
-                algorithm = "pq-dilithium",
-                "Detected PQ-Dilithium from public key format (fallback)"
-            );
-            return Ok(CryptoSigningAlgorithm::PqDilithium);
-        } else {
-            debug!(
-                algorithm = "RingEd25519",
-                "Detected Ed25519 from public key format (fallback)"
-            );
-            return Ok(CryptoSigningAlgorithm::RingEd25519);
-        }
+        debug!(
+            algorithm = "RingEd25519",
+            "Detected Ed25519 from public key format (fallback)"
+        );
+        return Ok(CryptoSigningAlgorithm::RingEd25519);
     }
 
     warn!(
@@ -171,25 +143,10 @@ pub fn detect_algorithm_from_public_key(
 /// Detects which algorithm to use based on signature length and other characteristics
 /// This helps handle version differences in the same algorithm family (like different PQ versions)
 pub fn detect_algorithm_from_signature(
-    signature_bytes: &[u8],
+    _signature_bytes: &[u8],
     detected_algo: &CryptoSigningAlgorithm,
 ) -> CryptoSigningAlgorithm {
-    match detected_algo {
-        CryptoSigningAlgorithm::PqDilithium => {
-            // Handle different Dilithium signature lengths
-            if signature_bytes.len() > DILITHIUM_ALT_SIG_SIZE_MIN
-                && signature_bytes.len() < DILITHIUM_ALT_SIG_SIZE_MAX
-            {
-                // This appears to be the newer version with ~4644 byte signatures
-                CryptoSigningAlgorithm::PqDilithiumAlt
-            } else {
-                // Stick with the original detection
-                CryptoSigningAlgorithm::PqDilithium
-            }
-        }
-        // For other algorithms, just return the detected algorithm as-is
-        _ => detected_algo.clone(),
-    }
+    detected_algo.clone()
 }
 
 pub trait KeyManager {
@@ -226,6 +183,62 @@ pub trait KeyManager {
 }
 
 impl Agent {
+    /// Sign raw bytes and return the base64-encoded signature.
+    ///
+    /// This is the byte-level equivalent of `sign_string`. Used by
+    /// the email signing module where the payload is binary.
+    pub fn sign_bytes(&mut self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let config = self
+            .config
+            .as_ref()
+            .ok_or("Byte signing failed: agent configuration not initialized.")?;
+        let key_algorithm = config.get_key_algorithm().map_err(|e| {
+            format!(
+                "Byte signing failed: could not determine signing algorithm: {}",
+                e
+            )
+        })?;
+
+        let binding = self
+            .get_private_key()
+            .map_err(|e| format!("Byte signing failed: private key not loaded: {}", e))?;
+
+        let is_ephemeral = self.is_ephemeral();
+        let has_key_store = self.get_key_store().is_some();
+        let stored_algo = self.get_key_algorithm().cloned();
+        let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+            let raw = binding.expose_secret().clone();
+            let ks: Box<dyn KeyStore> = if has_key_store {
+                let algo = stored_algo.as_deref().unwrap_or("pq2025");
+                Box::new(crate::keystore::InMemoryKeyStore::new(algo))
+            } else {
+                Box::new(FsEncryptedStore)
+            };
+            (raw, ks)
+        } else {
+            let decrypted =
+                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                    .map_err(|e| {
+                        format!("Byte signing failed: could not decrypt private key: {}", e)
+                    })?;
+            (
+                decrypted.as_slice().to_vec(),
+                Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+            )
+        };
+
+        let sig_bytes = ks_box
+            .sign_detached(&key_bytes, data, &key_algorithm)
+            .map_err(|e| {
+                format!(
+                    "Byte signing failed: cryptographic signing operation failed: {}",
+                    e
+                )
+            })?;
+
+        Ok(sig_bytes)
+    }
+
     /// Generate keys using a specific KeyStore implementation.
     /// For ephemeral agents, uses set_keys_raw (no AES encryption).
     /// For persistent agents, uses set_keys (AES-encrypts private key).
@@ -279,7 +292,7 @@ impl KeyManager for Agent {
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
             format!(
                 "Document signing failed: unknown signing algorithm '{}'. \
-                Supported algorithms: ring-Ed25519, RSA-PSS, pq-dilithium, pq2025.",
+                Supported algorithms: ring-Ed25519, RSA-PSS, pq2025.",
                 key_algorithm
             )
         })?;
@@ -300,7 +313,7 @@ impl KeyManager for Agent {
             let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
                 let raw = binding.expose_secret().clone();
                 let ks: Box<dyn KeyStore> = if has_key_store {
-                    let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                    let algo = stored_algo.as_deref().unwrap_or("pq2025");
                     Box::new(crate::keystore::InMemoryKeyStore::new(algo))
                 } else {
                     Box::new(FsEncryptedStore)
@@ -375,7 +388,7 @@ impl KeyManager for Agent {
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
             format!(
                 "Batch signing failed: unknown signing algorithm '{}'. \
-                Supported algorithms: ring-Ed25519, RSA-PSS, pq-dilithium, pq2025.",
+                Supported algorithms: ring-Ed25519, RSA-PSS, pq2025.",
                 key_algorithm
             )
         })?;
@@ -395,7 +408,7 @@ impl KeyManager for Agent {
         let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
             let raw = binding.expose_secret().clone();
             let ks: Box<dyn KeyStore> = if has_key_store {
-                let algo = stored_algo.as_deref().unwrap_or("ring-Ed25519");
+                let algo = stored_algo.as_deref().unwrap_or("pq2025");
                 Box::new(crate::keystore::InMemoryKeyStore::new(algo))
             } else {
                 Box::new(FsEncryptedStore)
@@ -520,22 +533,6 @@ impl KeyManager for Agent {
             }
             CryptoSigningAlgorithm::RingEd25519 => {
                 ringwrapper::verify_string(public_key, data, signature_base64)
-            }
-            CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-                // Try the standard PQ verification first
-                let result = pq::verify_string(public_key.clone(), data, signature_base64);
-
-                if result.is_ok() {
-                    result
-                } else if let Err(e) = &result
-                    && e.to_string().contains("BadLength")
-                    && matches!(algo, CryptoSigningAlgorithm::PqDilithiumAlt)
-                {
-                    Err(format!("Detected PQ-Dilithium version mismatch. Signature length {} bytes is not compatible with the current implementation. Error: {}",
-                            signature_bytes.len(), e).into())
-                } else {
-                    result
-                }
             }
             CryptoSigningAlgorithm::Pq2025 => {
                 pq2025::verify_string(public_key, data, signature_base64)

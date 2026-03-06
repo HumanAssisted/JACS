@@ -12,7 +12,10 @@
  * import { JacsClient } from './client';
  * import { jacsKoaMiddleware } from './koa';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'koa-agent',
+ *   domain: 'koa.local',
+ * });
  * const app = new Koa();
  * app.use(bodyParser({ enableTypes: ['text'] }));
  * app.use(jacsKoaMiddleware({ client, verify: true }));
@@ -25,6 +28,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.jacsKoaMiddleware = jacsKoaMiddleware;
+const auth_replay_js_1 = require("./auth-replay.js");
 // =============================================================================
 // Internal helpers
 // =============================================================================
@@ -39,7 +43,11 @@ async function resolveClient(options) {
         await client.load(options.configPath);
         return client;
     }
-    return ClientCtor.quickstart();
+    return ClientCtor.quickstart({
+        name: 'jacs-koa',
+        domain: 'localhost',
+        description: 'JACS Koa middleware agent',
+    });
 }
 // =============================================================================
 // Middleware factory
@@ -56,6 +64,9 @@ function jacsKoaMiddleware(options = {}) {
     const shouldVerify = options.verify !== false;
     const shouldSign = options.sign === true;
     const isOptional = options.optional === true;
+    const enableA2A = options.a2a === true;
+    const authReplay = (0, auth_replay_js_1.normalizeAuthReplayOptions)(options.authReplay);
+    const replayCache = new auth_replay_js_1.InMemoryReplayCache();
     let clientPromise = null;
     function getClient() {
         if (!clientPromise) {
@@ -65,6 +76,24 @@ function jacsKoaMiddleware(options = {}) {
     }
     if (options.client) {
         clientPromise = Promise.resolve(options.client);
+    }
+    // A2A well-known documents are built once and cached.
+    let a2aDocuments = null;
+    const A2A_CORS = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Accept',
+        'Access-Control-Max-Age': '86400',
+    };
+    function getA2ADocuments(client) {
+        if (!a2aDocuments) {
+            const { buildWellKnownDocuments } = require('./src/a2a-server');
+            a2aDocuments = buildWellKnownDocuments(client, {
+                skills: options.a2aSkills,
+                url: options.a2aUrl,
+            });
+        }
+        return a2aDocuments;
     }
     return async function jacsKoaMiddlewareHandler(ctx, next) {
         let client;
@@ -78,19 +107,64 @@ function jacsKoaMiddleware(options = {}) {
         }
         // Expose client on context state for manual use in route handlers.
         ctx.state.jacsClient = client;
+        // ----- A2A well-known endpoints -----
+        if (enableA2A && ctx.path && ctx.path.startsWith('/.well-known/')) {
+            const documents = getA2ADocuments(client);
+            if (ctx.method === 'OPTIONS' && documents[ctx.path]) {
+                for (const [key, value] of Object.entries(A2A_CORS)) {
+                    ctx.set(key, value);
+                }
+                ctx.status = 204;
+                ctx.body = '';
+                return;
+            }
+            if (ctx.method === 'GET' && documents[ctx.path]) {
+                for (const [key, value] of Object.entries(A2A_CORS)) {
+                    ctx.set(key, value);
+                }
+                ctx.type = 'application/json';
+                ctx.body = documents[ctx.path];
+                return;
+            }
+        }
         // ----- Verify incoming body -----
         if (shouldVerify && BODY_METHODS.has(ctx.method)) {
             // koa-bodyparser puts parsed body on ctx.request.body
-            const rawBody = typeof ctx.request.body === 'string'
+            const verificationInput = ctx.request.body !== undefined
                 ? ctx.request.body
-                : typeof ctx.body === 'string' && ctx.method !== 'GET'
+                : typeof ctx.body !== 'undefined' && ctx.method !== 'GET'
                     ? ctx.body
-                    : null;
+                    : undefined;
+            const rawBody = typeof verificationInput === 'string'
+                ? verificationInput
+                : Buffer.isBuffer(verificationInput)
+                    ? verificationInput.toString('utf8')
+                    : verificationInput && typeof verificationInput === 'object'
+                        ? (() => {
+                            try {
+                                return JSON.stringify(verificationInput);
+                            }
+                            catch {
+                                return null;
+                            }
+                        })()
+                        : null;
             if (rawBody) {
                 try {
                     const result = await client.verify(rawBody);
                     if (result.valid) {
                         ctx.state.jacsPayload = result.data;
+                        if (authReplay.enabled) {
+                            const replayError = (0, auth_replay_js_1.checkAuthReplay)(rawBody, result, replayCache, authReplay);
+                            if (replayError) {
+                                ctx.status = 401;
+                                ctx.body = {
+                                    error: 'JACS verification failed',
+                                    details: [replayError],
+                                };
+                                return;
+                            }
+                        }
                     }
                     else if (!isOptional) {
                         ctx.status = 401;
@@ -105,6 +179,14 @@ function jacsKoaMiddleware(options = {}) {
                         return;
                     }
                 }
+            }
+            else if (!isOptional && verificationInput !== undefined && verificationInput !== null) {
+                ctx.status = 401;
+                ctx.body = {
+                    error: 'JACS verification failed',
+                    details: ['Request body could not be serialized for verification'],
+                };
+                return;
             }
         }
         await next();

@@ -14,14 +14,506 @@ use jacs::config::load_config_12factor_optional;
 // use jacs::create_task; // unused
 use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::shutdown::{ShutdownGuard, install_signal_handler};
-use jacs::{load_agent, load_agent_with_dns_strict};
+use jacs::{load_agent, load_agent_with_dns_policy};
 
 use reqwest;
 use rpassword::read_password;
 use std::env;
 use std::error::Error;
+use std::path::{Path, PathBuf};
 // use std::os::unix::fs::DirBuilderExt; // unused
 use std::process;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
+const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
+const DEFAULT_MCP_RELEASE_BASE_URL: &str =
+    "https://github.com/HumanAssisted/JACS/releases/download";
+const DEFAULT_MCP_RELEASE_TAG_PREFIX: &str = "cli/v";
+
+fn quickstart_password_bootstrap_help() -> &'static str {
+    "Password bootstrap options (set exactly one explicit source):
+  1) Direct env (recommended):
+     export JACS_PRIVATE_KEY_PASSWORD='your-strong-password'
+  2) Export from a secret file:
+     export JACS_PRIVATE_KEY_PASSWORD=\"$(cat /path/to/password)\"
+  3) CLI convenience (file path):
+     export JACS_PASSWORD_FILE=/path/to/password
+If both JACS_PRIVATE_KEY_PASSWORD and JACS_PASSWORD_FILE are set, CLI fails to avoid ambiguity.
+If neither is set, CLI will try legacy ./jacs_keys/.jacs_password when present."
+}
+
+fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
+    // Preserve intentional leading/trailing spaces in passphrases; strip only line endings.
+    let password = raw.trim_end_matches(|c| c == '\n' || c == '\r');
+    if password.is_empty() {
+        return Err(format!(
+            "{} '{}' is empty. {}",
+            source_name,
+            path.display(),
+            quickstart_password_bootstrap_help()
+        ));
+    }
+    Ok(password.to_string())
+}
+
+fn get_non_empty_env_var(key: &str) -> Result<Option<String>, String> {
+    match env::var(key) {
+        Ok(value) => {
+            if value.trim().is_empty() {
+                Err(format!(
+                    "{} is set but empty. {}",
+                    key,
+                    quickstart_password_bootstrap_help()
+                ))
+            } else {
+                Ok(Some(value))
+            }
+        }
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!(
+            "{} contains non-UTF-8 data. {}",
+            key,
+            quickstart_password_bootstrap_help()
+        )),
+    }
+}
+
+fn ensure_cli_private_key_password() -> Result<(), String> {
+    let env_password = get_non_empty_env_var("JACS_PRIVATE_KEY_PASSWORD")?;
+    let password_file = get_non_empty_env_var(CLI_PASSWORD_FILE_ENV)?;
+
+    if env_password.is_some() && password_file.is_some() {
+        return Err(format!(
+            "Multiple password sources configured: JACS_PRIVATE_KEY_PASSWORD and {}. \
+Configure exactly one source.\n\n{}",
+            CLI_PASSWORD_FILE_ENV,
+            quickstart_password_bootstrap_help()
+        ));
+    }
+
+    if let Some(password) = env_password {
+        // SAFETY: CLI process is single-threaded for command handling at this point.
+        unsafe {
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+        }
+        return Ok(());
+    }
+
+    if let Some(path) = password_file {
+        let password = read_password_from_file(Path::new(path.trim()), CLI_PASSWORD_FILE_ENV)?;
+        // SAFETY: CLI process is single-threaded for command handling at this point.
+        unsafe {
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+        }
+        return Ok(());
+    }
+
+    let legacy_path = Path::new(DEFAULT_LEGACY_PASSWORD_FILE);
+    if legacy_path.exists() {
+        let password = read_password_from_file(legacy_path, "legacy password file")?;
+        // SAFETY: CLI process is single-threaded for command handling at this point.
+        unsafe {
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+        }
+        eprintln!(
+            "Using legacy password source '{}'. Prefer JACS_PRIVATE_KEY_PASSWORD or {}.",
+            legacy_path.display(),
+            CLI_PASSWORD_FILE_ENV
+        );
+    }
+
+    Ok(())
+}
+
+fn resolve_dns_policy_overrides(
+    ignore_dns: bool,
+    require_strict: bool,
+    require_dns: bool,
+    non_strict: bool,
+) -> (Option<bool>, Option<bool>, Option<bool>) {
+    if ignore_dns {
+        (Some(false), Some(false), Some(false))
+    } else if require_strict {
+        (Some(true), Some(true), Some(true))
+    } else if require_dns {
+        (Some(true), Some(true), Some(false))
+    } else if non_strict {
+        (Some(true), Some(false), Some(false))
+    } else {
+        (None, None, None)
+    }
+}
+
+fn load_agent_with_cli_dns_policy(
+    agent_file: Option<String>,
+    ignore_dns: bool,
+    require_strict: bool,
+    require_dns: bool,
+    non_strict: bool,
+) -> Result<Agent, Box<dyn Error>> {
+    let (dns_validate, dns_required, dns_strict) =
+        resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
+    load_agent_with_dns_policy(agent_file, dns_validate, dns_required, dns_strict)
+}
+
+fn wrap_quickstart_error_with_password_help(
+    context: &str,
+    err: impl std::fmt::Display,
+) -> Box<dyn Error> {
+    Box::new(std::io::Error::other(format!(
+        "{}: {}\n\n{}",
+        context,
+        err,
+        quickstart_password_bootstrap_help()
+    )))
+}
+
+fn install_jacs_mcp_via_cargo(
+    version: Option<&str>,
+    force: bool,
+    dry_run: bool,
+) -> Result<(), Box<dyn Error>> {
+    let resolved_version = version
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(env!("CARGO_PKG_VERSION"));
+
+    if dry_run {
+        let force_suffix = if force { " --force" } else { "" };
+        println!("Dry run: MCP cargo install plan");
+        println!(
+            "  Command: cargo install jacs-mcp --locked --version {}{}",
+            resolved_version, force_suffix
+        );
+        return Ok(());
+    }
+
+    let mut command = std::process::Command::new("cargo");
+    command
+        .arg("install")
+        .arg("jacs-mcp")
+        .arg("--locked")
+        .arg("--version")
+        .arg(resolved_version);
+
+    if force {
+        command.arg("--force");
+    }
+
+    let status = command.status().map_err(|e| -> Box<dyn Error> {
+        Box::new(std::io::Error::other(format!(
+            "Failed to execute cargo: {}. Install Rust/Cargo first, then run `jacs mcp install`.",
+            e
+        )))
+    })?;
+
+    if !status.success() {
+        return Err(Box::new(std::io::Error::other(format!(
+            "cargo install jacs-mcp failed with status {}",
+            status
+        ))));
+    }
+
+    println!("Installed jacs-mcp v{}.", resolved_version);
+    println!("Run it with: jacs mcp run");
+    Ok(())
+}
+
+fn default_user_bin_dir() -> Result<PathBuf, Box<dyn Error>> {
+    if let Ok(cargo_home) = env::var("CARGO_HOME") {
+        let trimmed = cargo_home.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed).join("bin"));
+        }
+    }
+
+    let home = dirs::home_dir().ok_or_else(|| -> Box<dyn Error> {
+        Box::new(std::io::Error::other(
+            "Could not determine home directory for MCP binary install.",
+        ))
+    })?;
+    Ok(home.join(".cargo").join("bin"))
+}
+
+fn resolve_mcp_install_dir(bin_dir: Option<&str>) -> Result<PathBuf, Box<dyn Error>> {
+    if let Some(path) = bin_dir {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
+    if let Ok(env_path) = env::var("JACS_BIN_DIR") {
+        let trimmed = env_path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
+    default_user_bin_dir()
+}
+
+fn mcp_binary_filename() -> &'static str {
+    if cfg!(windows) {
+        "jacs-mcp.exe"
+    } else {
+        "jacs-mcp"
+    }
+}
+
+fn mcp_asset_filename_for_current_platform(version: &str) -> Result<String, Box<dyn Error>> {
+    let suffix = match (env::consts::OS, env::consts::ARCH) {
+        ("macos", "aarch64") => "darwin-arm64",
+        ("macos", "x86_64") => "darwin-x64",
+        ("linux", "x86_64") => "linux-x64",
+        ("linux", "aarch64") => "linux-arm64",
+        ("windows", "x86_64") => "windows-x64",
+        _ => {
+            return Err(Box::new(std::io::Error::other(format!(
+                "Unsupported platform for prebuilt jacs-mcp: os='{}' arch='{}'. Use `jacs mcp install --from-cargo`.",
+                env::consts::OS,
+                env::consts::ARCH
+            ))));
+        }
+    };
+
+    let extension = if env::consts::OS == "windows" {
+        "zip"
+    } else {
+        "tar.gz"
+    };
+    Ok(format!("jacs-mcp-{}-{}.{}", version, suffix, extension))
+}
+
+fn mcp_release_download_url(version: &str, asset_name: &str, url_override: Option<&str>) -> String {
+    if let Some(override_url) = url_override {
+        let trimmed = override_url.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    if let Ok(override_url) = env::var("JACS_MCP_RELEASE_URL") {
+        let trimmed = override_url.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    let tag = format!("{}{}", DEFAULT_MCP_RELEASE_TAG_PREFIX, version);
+    format!("{}/{}/{}", DEFAULT_MCP_RELEASE_BASE_URL, tag, asset_name)
+}
+
+fn extract_archive_to_dir(archive_path: &Path, extract_dir: &Path) -> Result<(), Box<dyn Error>> {
+    if archive_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.ends_with(".tar.gz"))
+        .unwrap_or(false)
+    {
+        let status = std::process::Command::new("tar")
+            .arg("-xzf")
+            .arg(archive_path)
+            .arg("-C")
+            .arg(extract_dir)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(Box::new(std::io::Error::other(format!(
+            "Failed to extract '{}'. `tar` exited with status {}.",
+            archive_path.display(),
+            status
+        ))));
+    }
+
+    if archive_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.ends_with(".zip"))
+        .unwrap_or(false)
+    {
+        if cfg!(windows) {
+            let status = std::process::Command::new("powershell")
+                .arg("-NoProfile")
+                .arg("-Command")
+                .arg(format!(
+                    "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+                    archive_path.display(),
+                    extract_dir.display()
+                ))
+                .status()?;
+            if status.success() {
+                return Ok(());
+            }
+            return Err(Box::new(std::io::Error::other(format!(
+                "Failed to extract '{}'. PowerShell exited with status {}.",
+                archive_path.display(),
+                status
+            ))));
+        }
+
+        let status = std::process::Command::new("unzip")
+            .arg("-o")
+            .arg(archive_path)
+            .arg("-d")
+            .arg(extract_dir)
+            .status()?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(Box::new(std::io::Error::other(format!(
+            "Failed to extract '{}'. Ensure `unzip` is installed. Exit status: {}.",
+            archive_path.display(),
+            status
+        ))));
+    }
+
+    Err(Box::new(std::io::Error::other(format!(
+        "Unsupported archive format for '{}'",
+        archive_path.display()
+    ))))
+}
+
+fn find_extracted_binary(extract_dir: &Path, binary_name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let direct = extract_dir.join(binary_name);
+    if direct.exists() {
+        return Ok(direct);
+    }
+
+    for entry in std::fs::read_dir(extract_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n == binary_name)
+                .unwrap_or(false)
+        {
+            return Ok(path);
+        }
+    }
+
+    Err(Box::new(std::io::Error::other(format!(
+        "Extracted archive did not contain '{}'.",
+        binary_name
+    ))))
+}
+
+fn install_jacs_mcp_prebuilt(
+    version: Option<&str>,
+    force: bool,
+    bin_dir: Option<&str>,
+    url_override: Option<&str>,
+    dry_run: bool,
+) -> Result<(), Box<dyn Error>> {
+    let resolved_version = version
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(env!("CARGO_PKG_VERSION"));
+
+    let asset_name = mcp_asset_filename_for_current_platform(resolved_version)?;
+    let download_url = mcp_release_download_url(resolved_version, &asset_name, url_override);
+    let install_dir = resolve_mcp_install_dir(bin_dir)?;
+    let binary_name = mcp_binary_filename();
+    let target_path = install_dir.join(binary_name);
+
+    if dry_run {
+        println!("Dry run: MCP prebuilt install plan");
+        println!("  Version: {}", resolved_version);
+        println!("  Asset:   {}", asset_name);
+        println!("  URL:     {}", download_url);
+        println!("  Target:  {}", target_path.display());
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&install_dir)?;
+    if target_path.exists() {
+        if force {
+            std::fs::remove_file(&target_path)?;
+        } else {
+            return Err(Box::new(std::io::Error::other(format!(
+                "{} already exists. Re-run with --force to overwrite.",
+                target_path.display()
+            ))));
+        }
+    }
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| -> Box<dyn Error> { Box::new(std::io::Error::other(e.to_string())) })?
+        .as_nanos();
+    let temp_root = env::temp_dir().join(format!("jacs-mcp-install-{}-{}", process::id(), nonce));
+    let extract_dir = temp_root.join("extract");
+    std::fs::create_dir_all(&extract_dir)?;
+    let archive_path = temp_root.join(&asset_name);
+
+    let result = (|| -> Result<(), Box<dyn Error>> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()?;
+        let response = client.get(&download_url).send()?;
+        if !response.status().is_success() {
+            return Err(Box::new(std::io::Error::other(format!(
+                "Download failed (HTTP {}) from {}",
+                response.status(),
+                download_url
+            ))));
+        }
+        let bytes = response.bytes()?;
+        std::fs::write(&archive_path, bytes.as_ref())?;
+
+        extract_archive_to_dir(&archive_path, &extract_dir)?;
+        let extracted_binary = find_extracted_binary(&extract_dir, binary_name)?;
+
+        std::fs::copy(&extracted_binary, &target_path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&target_path)?.permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&target_path, perms)?;
+        }
+
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_dir_all(&temp_root);
+    result?;
+
+    println!("Installed {} to {}", binary_name, target_path.display());
+    println!("Run it with: jacs mcp run");
+    Ok(())
+}
+
+fn run_jacs_mcp_binary(binary: &str) -> Result<(), Box<dyn Error>> {
+    let status = std::process::Command::new(binary)
+        .status()
+        .map_err(|e| -> Box<dyn Error> {
+            Box::new(std::io::Error::other(format!(
+                "Failed to launch MCP server '{}': {}. Install it with `jacs mcp install` \
+or pass --bin <path> (or set JACS_MCP_BIN).",
+                binary, e
+            )))
+        })?;
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let status_text = status
+        .code()
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "terminated by signal".to_string());
+    Err(Box::new(std::io::Error::other(format!(
+        "jacs-mcp exited unsuccessfully ({})",
+        status_text
+    ))))
+}
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Install signal handler for graceful shutdown (Ctrl+C, SIGTERM)
@@ -546,8 +1038,204 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 )
         )
         .subcommand(
+            Command::new("mcp")
+                .about("Install and run the JACS MCP server")
+                .subcommand(
+                    Command::new("install")
+                        .about("Install jacs-mcp from prebuilt release assets (or cargo)")
+                        .arg(
+                            Arg::new("version")
+                                .long("version")
+                                .value_parser(value_parser!(String))
+                                .help("Version to install (default: current jacs CLI version)"),
+                        )
+                        .arg(
+                            Arg::new("force")
+                                .long("force")
+                                .help("Reinstall even if jacs-mcp is already present")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("from-cargo")
+                                .long("from-cargo")
+                                .help("Install via `cargo install jacs-mcp` instead of prebuilt binaries")
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("bin-dir")
+                                .long("bin-dir")
+                                .value_parser(value_parser!(String))
+                                .help("Directory to install jacs-mcp into (default: JACS_BIN_DIR or ~/.cargo/bin)"),
+                        )
+                        .arg(
+                            Arg::new("url")
+                                .long("url")
+                                .value_parser(value_parser!(String))
+                                .help("Override download URL for the prebuilt archive"),
+                        )
+                        .arg(
+                            Arg::new("dry-run")
+                                .long("dry-run")
+                                .help("Print install plan without downloading/installing")
+                                .action(ArgAction::SetTrue),
+                        ),
+                )
+                .subcommand(
+                    Command::new("run")
+                        .about("Run jacs-mcp (stdio transport)")
+                        .arg(
+                            Arg::new("bin")
+                                .long("bin")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs-mcp binary (default: JACS_MCP_BIN or PATH)"),
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("a2a")
+                .about("A2A (Agent-to-Agent) trust and discovery commands")
+                .subcommand(
+                    Command::new("assess")
+                        .about("Assess trust level of a remote A2A Agent Card")
+                        .arg(
+                            Arg::new("source")
+                                .required(true)
+                                .help("Path to Agent Card JSON file or URL"),
+                        )
+                        .arg(
+                            Arg::new("policy")
+                                .long("policy")
+                                .short('p')
+                                .value_parser(["open", "verified", "strict"])
+                                .default_value("verified")
+                                .help("Trust policy to apply (default: verified)"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .action(ArgAction::SetTrue)
+                                .help("Output result as JSON"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("trust")
+                        .about("Add a remote A2A agent to the local trust store")
+                        .arg(
+                            Arg::new("source")
+                                .required(true)
+                                .help("Path to Agent Card JSON file or URL"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("discover")
+                        .about("Discover a remote A2A agent via its well-known Agent Card")
+                        .arg(
+                            Arg::new("url")
+                                .required(true)
+                                .help("Base URL of the agent (e.g. https://agent.example.com)"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .action(ArgAction::SetTrue)
+                                .help("Output the full Agent Card as JSON"),
+                        )
+                        .arg(
+                            Arg::new("policy")
+                                .long("policy")
+                                .short('p')
+                                .value_parser(["open", "verified", "strict"])
+                                .default_value("verified")
+                                .help("Trust policy to apply against the discovered card"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("serve")
+                        .about("Serve this agent's .well-known endpoints for A2A discovery")
+                        .arg(
+                            Arg::new("port")
+                                .long("port")
+                                .value_parser(value_parser!(u16))
+                                .default_value("8080")
+                                .help("Port to listen on (default: 8080)"),
+                        )
+                        .arg(
+                            Arg::new("host")
+                                .long("host")
+                                .default_value("127.0.0.1")
+                                .help("Host to bind to (default: 127.0.0.1)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("quickstart")
+                        .about("Create/load an agent and start serving A2A endpoints (password required)")
+                        .after_help(quickstart_password_bootstrap_help())
+                        .arg(
+                            Arg::new("name")
+                                .long("name")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("Agent name used for first-time quickstart creation"),
+                        )
+                        .arg(
+                            Arg::new("domain")
+                                .long("domain")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("Agent domain used for DNS/public-key verification workflows"),
+                        )
+                        .arg(
+                            Arg::new("description")
+                                .long("description")
+                                .value_parser(value_parser!(String))
+                                .help("Optional human-readable agent description"),
+                        )
+                        .arg(
+                            Arg::new("port")
+                                .long("port")
+                                .value_parser(value_parser!(u16))
+                                .default_value("8080")
+                                .help("Port to listen on (default: 8080)"),
+                        )
+                        .arg(
+                            Arg::new("host")
+                                .long("host")
+                                .default_value("127.0.0.1")
+                                .help("Host to bind to (default: 127.0.0.1)"),
+                        )
+                        .arg(
+                            Arg::new("algorithm")
+                                .long("algorithm")
+                                .short('a')
+                                .value_parser(["pq2025", "ring-Ed25519", "RSA-PSS"])
+                                .help("Signing algorithm (default: pq2025)"),
+                        ),
+                ),
+        )
+        .subcommand(
             Command::new("quickstart")
-                .about("Create or load a persistent agent for instant sign/verify (zero config)")
+                .about("Create or load a persistent agent for instant sign/verify (password required)")
+                .after_help(quickstart_password_bootstrap_help())
+                .arg(
+                    Arg::new("name")
+                        .long("name")
+                        .value_parser(value_parser!(String))
+                        .required(true)
+                        .help("Agent name used for first-time quickstart creation"),
+                )
+                .arg(
+                    Arg::new("domain")
+                        .long("domain")
+                        .value_parser(value_parser!(String))
+                        .required(true)
+                        .help("Agent domain used for DNS/public-key verification workflows"),
+                )
+                .arg(
+                    Arg::new("description")
+                        .long("description")
+                        .value_parser(value_parser!(String))
+                        .help("Optional human-readable agent description"),
+                )
                 .arg(
                     Arg::new("algorithm")
                         .long("algorithm")
@@ -573,6 +1261,111 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         .subcommand(
             Command::new("init")
                 .about("Initialize JACS by creating both config and agent (with keys)")
+        )
+        .subcommand(
+            Command::new("attest")
+                .about("Create and verify attestation documents")
+                .subcommand(
+                    Command::new("create")
+                        .about("Create a signed attestation")
+                        .arg(
+                            Arg::new("subject-type")
+                                .long("subject-type")
+                                .value_parser(["agent", "artifact", "workflow", "identity"])
+                                .help("Type of subject being attested"),
+                        )
+                        .arg(
+                            Arg::new("subject-id")
+                                .long("subject-id")
+                                .value_parser(value_parser!(String))
+                                .help("Identifier of the subject"),
+                        )
+                        .arg(
+                            Arg::new("subject-digest")
+                                .long("subject-digest")
+                                .value_parser(value_parser!(String))
+                                .help("SHA-256 digest of the subject"),
+                        )
+                        .arg(
+                            Arg::new("claims")
+                                .long("claims")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("JSON array of claims, e.g. '[{\"name\":\"reviewed\",\"value\":true}]'"),
+                        )
+                        .arg(
+                            Arg::new("evidence")
+                                .long("evidence")
+                                .value_parser(value_parser!(String))
+                                .help("JSON array of evidence references"),
+                        )
+                        .arg(
+                            Arg::new("from-document")
+                                .long("from-document")
+                                .value_parser(value_parser!(String))
+                                .help("Lift attestation from an existing signed document file"),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .long("output")
+                                .value_parser(value_parser!(String))
+                                .help("Write attestation to file instead of stdout"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("verify")
+                        .about("Verify an attestation document")
+                        .arg(
+                            Arg::new("file")
+                                .help("Path to the attestation JSON file")
+                                .required(true)
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("full")
+                                .long("full")
+                                .action(ArgAction::SetTrue)
+                                .help("Use full verification (evidence + derivation chain)"),
+                        )
+                        .arg(
+                            Arg::new("json")
+                                .long("json")
+                                .action(ArgAction::SetTrue)
+                                .help("Output result as JSON"),
+                        )
+                        .arg(
+                            Arg::new("key-dir")
+                                .long("key-dir")
+                                .value_parser(value_parser!(String))
+                                .help("Directory containing public keys for verification"),
+                        )
+                        .arg(
+                            Arg::new("max-depth")
+                                .long("max-depth")
+                                .value_parser(value_parser!(u32))
+                                .help("Maximum derivation chain depth"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("export-dsse")
+                        .about("Export an attestation as a DSSE envelope for in-toto/SLSA")
+                        .arg(
+                            Arg::new("file")
+                                .help("Path to the signed attestation JSON file")
+                                .required(true)
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("output")
+                                .short('o')
+                                .long("output")
+                                .value_parser(value_parser!(String))
+                                .help("Write DSSE envelope to file instead of stdout"),
+                        ),
+                )
+                .subcommand_required(true)
+                .arg_required_else_help(true),
         )
         .subcommand(
             Command::new("verify")
@@ -643,37 +1436,19 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Load agent from optional path, supporting non-strict DNS for propagation
                 let agent_file = sub_m.get_one::<String>("agent-file").cloned();
                 let non_strict = *sub_m.get_one::<bool>("no-dns").unwrap_or(&false);
-                let mut agent: Agent = if let Some(path) = agent_file.clone() {
-                    if non_strict {
-                        load_agent_with_dns_strict(path, false)
-                            .expect("failed to load agent (non-strict)")
-                    } else {
-                        load_agent(Some(path)).expect("failed to load agent")
-                    }
-                } else {
-                    load_agent(None)
-                        .expect("Provide --agent-file or ensure config points to a readable agent")
-                };
-                if *sub_m.get_one::<bool>("ignore-dns").unwrap_or(&false) {
-                    agent.set_dns_validate(false);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                } else if *sub_m
+                let ignore_dns = *sub_m.get_one::<bool>("ignore-dns").unwrap_or(&false);
+                let require_strict = *sub_m
                     .get_one::<bool>("require-strict-dns")
-                    .unwrap_or(&false)
-                {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(true);
-                } else if *sub_m.get_one::<bool>("require-dns").unwrap_or(&false) {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(false);
-                } else if non_strict {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                }
+                    .unwrap_or(&false);
+                let require_dns = *sub_m.get_one::<bool>("require-dns").unwrap_or(&false);
+                let agent: Agent = load_agent_with_cli_dns_policy(
+                    agent_file,
+                    ignore_dns,
+                    require_strict,
+                    require_dns,
+                    non_strict,
+                )
+                .expect("Provide --agent-file or ensure config points to a readable agent");
                 let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
                 let pk = agent.get_public_key().expect("public key");
                 let digest = match enc {
@@ -747,33 +1522,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let ignore_dns = *verify_matches
                     .get_one::<bool>("ignore-dns")
                     .unwrap_or(&false);
-                let mut agent: Agent = if let Some(path) = agentfile.cloned() {
-                    if non_strict {
-                        load_agent_with_dns_strict(path, false).expect("agent file")
-                    } else {
-                        load_agent(Some(path)).expect("agent file")
-                    }
-                } else {
-                    // No path provided; use default loader
-                    load_agent(None).expect("agent file")
-                };
-                if ignore_dns {
-                    agent.set_dns_validate(false);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                } else if require_strict {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(true);
-                } else if require_dns {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(true);
-                    agent.set_dns_strict(false);
-                } else if non_strict {
-                    agent.set_dns_validate(true);
-                    agent.set_dns_required(false);
-                    agent.set_dns_strict(false);
-                }
+                let mut agent: Agent = load_agent_with_cli_dns_policy(
+                    agentfile.cloned(),
+                    ignore_dns,
+                    require_strict,
+                    require_dns,
+                    non_strict,
+                )
+                .expect("agent file");
                 agent
                     .verify_self_signature()
                     .expect("signature verification");
@@ -1087,22 +1843,490 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             }
             _ => println!("please enter subcommand see jacs key --help"),
         },
+        Some(("mcp", mcp_matches)) => match mcp_matches.subcommand() {
+            Some(("install", install_matches)) => {
+                let version = install_matches
+                    .get_one::<String>("version")
+                    .map(|s| s.as_str());
+                let force = *install_matches.get_one::<bool>("force").unwrap_or(&false);
+                let from_cargo = *install_matches
+                    .get_one::<bool>("from-cargo")
+                    .unwrap_or(&false);
+                let bin_dir = install_matches
+                    .get_one::<String>("bin-dir")
+                    .map(|s| s.as_str());
+                let url_override = install_matches.get_one::<String>("url").map(|s| s.as_str());
+                let dry_run = *install_matches.get_one::<bool>("dry-run").unwrap_or(&false);
+
+                if from_cargo {
+                    install_jacs_mcp_via_cargo(version, force, dry_run)?;
+                } else {
+                    install_jacs_mcp_prebuilt(version, force, bin_dir, url_override, dry_run)?;
+                }
+            }
+            Some(("run", run_matches)) => {
+                let binary = run_matches
+                    .get_one::<String>("bin")
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        env::var("JACS_MCP_BIN")
+                            .ok()
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or_else(|| "jacs-mcp".to_string());
+
+                run_jacs_mcp_binary(&binary)?;
+            }
+            _ => println!("please enter subcommand see jacs mcp --help"),
+        },
+        Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
+            Some(("assess", assess_matches)) => {
+                use jacs::a2a::AgentCard;
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
+
+                let source = assess_matches.get_one::<String>("source").unwrap();
+                let policy_str = assess_matches
+                    .get_one::<String>("policy")
+                    .map(|s| s.as_str())
+                    .unwrap_or("verified");
+                let json_output = *assess_matches.get_one::<bool>("json").unwrap_or(&false);
+
+                let policy = A2ATrustPolicy::from_str_loose(policy_str)
+                    .map_err(|e| Box::<dyn Error>::from(format!("Invalid policy: {}", e)))?;
+
+                // Load the Agent Card from file or URL
+                let card_json = if source.starts_with("http://") || source.starts_with("https://") {
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .build()
+                        .map_err(|e| format!("HTTP client error: {}", e))?;
+                    client
+                        .get(source.as_str())
+                        .send()
+                        .map_err(|e| format!("Fetch failed: {}", e))?
+                        .text()
+                        .map_err(|e| format!("Read body failed: {}", e))?
+                } else {
+                    std::fs::read_to_string(source)
+                        .map_err(|e| format!("Read file failed: {}", e))?
+                };
+
+                let card: AgentCard = serde_json::from_str(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
+
+                // Create an empty agent for assessment context
+                let agent = jacs::get_empty_agent();
+                let assessment = assess_a2a_agent(&agent, &card, policy);
+
+                if json_output {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&assessment)
+                            .expect("assessment serialization")
+                    );
+                } else {
+                    println!("Agent:       {}", card.name);
+                    println!(
+                        "Agent ID:    {}",
+                        assessment.agent_id.as_deref().unwrap_or("(not specified)")
+                    );
+                    println!("Policy:      {}", assessment.policy);
+                    println!("Trust Level: {}", assessment.trust_level);
+                    println!(
+                        "Allowed:     {}",
+                        if assessment.allowed { "YES" } else { "NO" }
+                    );
+                    println!("JACS Ext:    {}", assessment.jacs_registered);
+                    println!("Reason:      {}", assessment.reason);
+                    if !assessment.allowed {
+                        process::exit(1);
+                    }
+                }
+            }
+            Some(("trust", trust_matches)) => {
+                use jacs::a2a::AgentCard;
+                use jacs::trust;
+
+                let source = trust_matches.get_one::<String>("source").unwrap();
+
+                // Load the Agent Card from file or URL
+                let card_json = if source.starts_with("http://") || source.starts_with("https://") {
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .build()
+                        .map_err(|e| format!("HTTP client error: {}", e))?;
+                    client
+                        .get(source.as_str())
+                        .send()
+                        .map_err(|e| format!("Fetch failed: {}", e))?
+                        .text()
+                        .map_err(|e| format!("Read body failed: {}", e))?
+                } else {
+                    std::fs::read_to_string(source)
+                        .map_err(|e| format!("Read file failed: {}", e))?
+                };
+
+                let card: AgentCard = serde_json::from_str(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON: {}", e))?;
+
+                // Extract agent ID and version from metadata
+                let agent_id = card
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("jacsId"))
+                    .and_then(|v| v.as_str())
+                    .ok_or("Agent Card has no jacsId in metadata")?;
+                let agent_version = card
+                    .metadata
+                    .as_ref()
+                    .and_then(|m| m.get("jacsVersion"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+
+                let key = format!("{}:{}", agent_id, agent_version);
+
+                // Add to trust store with the card JSON as the public key PEM
+                // (the trust store stores agent metadata; public key comes from
+                //  well-known endpoints or DNS in practice)
+                trust::trust_a2a_card(&key, &card_json)?;
+
+                println!("Trusted agent '{}' ({})", card.name, agent_id);
+                println!("  Version: {}", agent_version);
+                println!("  Added to local trust store with key: {}", key);
+            }
+            Some(("discover", discover_matches)) => {
+                use jacs::a2a::AgentCard;
+                use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
+
+                let base_url = discover_matches.get_one::<String>("url").unwrap();
+                let json_output = *discover_matches.get_one::<bool>("json").unwrap_or(&false);
+                let policy_str = discover_matches
+                    .get_one::<String>("policy")
+                    .map(|s| s.as_str())
+                    .unwrap_or("verified");
+
+                let policy = A2ATrustPolicy::from_str_loose(policy_str)
+                    .map_err(|e| Box::<dyn Error>::from(format!("Invalid policy: {}", e)))?;
+
+                // Construct the well-known URL
+                let trimmed = base_url.trim_end_matches('/');
+                let card_url = format!("{}/.well-known/agent-card.json", trimmed);
+
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(|e| format!("HTTP client error: {}", e))?;
+
+                let response = client
+                    .get(&card_url)
+                    .send()
+                    .map_err(|e| format!("Failed to fetch {}: {}", card_url, e))?;
+
+                if !response.status().is_success() {
+                    eprintln!(
+                        "Failed to discover agent at {}: HTTP {}",
+                        card_url,
+                        response.status()
+                    );
+                    process::exit(1);
+                }
+
+                let card_json = response
+                    .text()
+                    .map_err(|e| format!("Read body failed: {}", e))?;
+
+                let card: AgentCard = serde_json::from_str(&card_json)
+                    .map_err(|e| format!("Invalid Agent Card JSON at {}: {}", card_url, e))?;
+
+                if json_output {
+                    // Print the full Agent Card
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&card).expect("card serialization")
+                    );
+                } else {
+                    // Human-readable summary
+                    println!("Discovered A2A Agent: {}", card.name);
+                    println!("  Description: {}", card.description);
+                    println!("  Version:     {}", card.version);
+                    println!("  Protocol:    {}", card.protocol_versions.join(", "));
+
+                    // Show interfaces
+                    for iface in &card.supported_interfaces {
+                        println!("  Endpoint:    {} ({})", iface.url, iface.protocol_binding);
+                    }
+
+                    // Show skills
+                    if !card.skills.is_empty() {
+                        println!("  Skills:");
+                        for skill in &card.skills {
+                            println!("    - {} ({})", skill.name, skill.id);
+                        }
+                    }
+
+                    // JACS extension check
+                    let has_jacs = card
+                        .capabilities
+                        .extensions
+                        .as_ref()
+                        .map(|exts| exts.iter().any(|e| e.uri == jacs::a2a::JACS_EXTENSION_URI))
+                        .unwrap_or(false);
+                    println!("  JACS:        {}", if has_jacs { "YES" } else { "NO" });
+
+                    // Trust assessment
+                    let agent = jacs::get_empty_agent();
+                    let assessment = assess_a2a_agent(&agent, &card, policy);
+                    println!(
+                        "  Trust:       {} ({})",
+                        assessment.trust_level, assessment.reason
+                    );
+                    if !assessment.allowed {
+                        println!(
+                            "  WARNING:     Agent not allowed under '{}' policy",
+                            policy_str
+                        );
+                    }
+                }
+            }
+            Some(("serve", serve_matches)) => {
+                use jacs::simple::SimpleAgent;
+
+                let port = *serve_matches.get_one::<u16>("port").unwrap();
+                let host = serve_matches
+                    .get_one::<String>("host")
+                    .map(|s| s.as_str())
+                    .unwrap_or("127.0.0.1");
+
+                // Load or quickstart the agent
+                ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::other(format!(
+                        "Password bootstrap failed: {}\n\n{}",
+                        e,
+                        quickstart_password_bootstrap_help()
+                    )))
+                })?;
+                let (agent, info) = SimpleAgent::quickstart(
+                    "jacs-agent",
+                    "localhost",
+                    Some("JACS A2A agent"),
+                    None,
+                    None,
+                )
+                .map_err(|e| wrap_quickstart_error_with_password_help("Failed to load agent", e))?;
+
+                // Export the Agent Card for display
+                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to export Agent Card: {}", e),
+                    ))
+                })?;
+
+                // Generate well-known documents via public API
+                let documents =
+                    agent
+                        .generate_well_known_documents(None)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Failed to generate well-known documents: {}", e),
+                            ))
+                        })?;
+
+                // Build a lookup map: path -> JSON body
+                let mut routes: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+                for (path, value) in &documents {
+                    routes.insert(
+                        path.clone(),
+                        serde_json::to_string_pretty(value).unwrap_or_default(),
+                    );
+                }
+
+                let addr = format!("{}:{}", host, port);
+                let server = tiny_http::Server::http(&addr)
+                    .map_err(|e| format!("Failed to start server on {}: {}", addr, e))?;
+
+                println!("Serving A2A well-known endpoints at http://{}", addr);
+                println!("  Agent: {} ({})", agent_card.name, info.agent_id);
+                println!("  Endpoints:");
+                for path in routes.keys() {
+                    println!("    http://{}{}", addr, path);
+                }
+                println!("\nPress Ctrl+C to stop.");
+
+                for request in server.incoming_requests() {
+                    let url = request.url().to_string();
+                    if let Some(body) = routes.get(&url) {
+                        let response = tiny_http::Response::from_string(body.clone()).with_header(
+                            tiny_http::Header::from_bytes(
+                                &b"Content-Type"[..],
+                                &b"application/json"[..],
+                            )
+                            .unwrap(),
+                        );
+                        let _ = request.respond(response);
+                    } else {
+                        let response =
+                            tiny_http::Response::from_string("{\"error\": \"not found\"}")
+                                .with_status_code(404)
+                                .with_header(
+                                    tiny_http::Header::from_bytes(
+                                        &b"Content-Type"[..],
+                                        &b"application/json"[..],
+                                    )
+                                    .unwrap(),
+                                );
+                        let _ = request.respond(response);
+                    }
+                }
+            }
+            Some(("quickstart", qs_matches)) => {
+                use jacs::simple::SimpleAgent;
+
+                let port = *qs_matches.get_one::<u16>("port").unwrap();
+                let host = qs_matches
+                    .get_one::<String>("host")
+                    .map(|s| s.as_str())
+                    .unwrap_or("127.0.0.1");
+                let algorithm = qs_matches
+                    .get_one::<String>("algorithm")
+                    .map(|s| s.as_str());
+                let name = qs_matches
+                    .get_one::<String>("name")
+                    .map(|s| s.as_str())
+                    .unwrap_or("jacs-agent");
+                let domain = qs_matches
+                    .get_one::<String>("domain")
+                    .map(|s| s.as_str())
+                    .unwrap_or("localhost");
+                let description = qs_matches
+                    .get_one::<String>("description")
+                    .map(|s| s.as_str());
+
+                // Create or load the agent via quickstart
+                ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::other(format!(
+                        "Password bootstrap failed: {}\n\n{}",
+                        e,
+                        quickstart_password_bootstrap_help()
+                    )))
+                })?;
+                let (agent, info) =
+                    SimpleAgent::quickstart(name, domain, description, algorithm, None).map_err(
+                        |e| {
+                            wrap_quickstart_error_with_password_help(
+                                "Failed to quickstart agent",
+                                e,
+                            )
+                        },
+                    )?;
+
+                // Export the Agent Card
+                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Failed to export Agent Card: {}", e),
+                    ))
+                })?;
+
+                // Generate well-known documents
+                let documents =
+                    agent
+                        .generate_well_known_documents(None)
+                        .map_err(|e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Failed to generate well-known documents: {}", e),
+                            ))
+                        })?;
+
+                // Build route map
+                let mut routes: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+                for (path, value) in &documents {
+                    routes.insert(
+                        path.clone(),
+                        serde_json::to_string_pretty(value).unwrap_or_default(),
+                    );
+                }
+
+                let addr = format!("{}:{}", host, port);
+                let server = tiny_http::Server::http(&addr)
+                    .map_err(|e| format!("Failed to start server on {}: {}", addr, e))?;
+
+                println!("A2A Quickstart");
+                println!("==============");
+                println!("Agent: {} ({})", agent_card.name, info.agent_id);
+                println!("Algorithm: {}", algorithm.unwrap_or("pq2025"));
+                println!();
+                println!("Discovery URL: http://{}/.well-known/agent-card.json", addr);
+                println!();
+                println!("Endpoints:");
+                for path in routes.keys() {
+                    println!("  http://{}{}", addr, path);
+                }
+                println!();
+                println!("Press Ctrl+C to stop.");
+
+                for request in server.incoming_requests() {
+                    let url = request.url().to_string();
+                    if let Some(body) = routes.get(&url) {
+                        let response = tiny_http::Response::from_string(body.clone()).with_header(
+                            tiny_http::Header::from_bytes(
+                                &b"Content-Type"[..],
+                                &b"application/json"[..],
+                            )
+                            .unwrap(),
+                        );
+                        let _ = request.respond(response);
+                    } else {
+                        let response =
+                            tiny_http::Response::from_string("{\"error\": \"not found\"}")
+                                .with_status_code(404)
+                                .with_header(
+                                    tiny_http::Header::from_bytes(
+                                        &b"Content-Type"[..],
+                                        &b"application/json"[..],
+                                    )
+                                    .unwrap(),
+                                );
+                        let _ = request.respond(response);
+                    }
+                }
+            }
+            _ => println!("please enter subcommand see jacs a2a --help"),
+        },
         Some(("quickstart", qs_matches)) => {
             use jacs::simple::SimpleAgent;
 
             let algorithm = qs_matches
                 .get_one::<String>("algorithm")
                 .map(|s| s.as_str());
+            let name = qs_matches
+                .get_one::<String>("name")
+                .map(|s| s.as_str())
+                .unwrap_or("jacs-agent");
+            let domain = qs_matches
+                .get_one::<String>("domain")
+                .map(|s| s.as_str())
+                .unwrap_or("localhost");
+            let description = qs_matches
+                .get_one::<String>("description")
+                .map(|s| s.as_str());
             let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
             let sign_file = qs_matches.get_one::<String>("file");
 
-            let (agent, info) =
-                SimpleAgent::quickstart(algorithm, None).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("{}", e),
-                    ))
-                })?;
+            ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
+                Box::new(std::io::Error::other(format!(
+                    "Password bootstrap failed: {}\n\n{}",
+                    e,
+                    quickstart_password_bootstrap_help()
+                )))
+            })?;
+            let (agent, info) = SimpleAgent::quickstart(name, domain, description, algorithm, None)
+                .map_err(|e| wrap_quickstart_error_with_password_help("Quickstart failed", e))?;
 
             if do_sign {
                 // Sign mode: read JSON, sign it, print signed document
@@ -1136,6 +2360,278 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!();
                 println!("Sign something:");
                 println!("  echo '{{\"hello\":\"world\"}}' | jacs quickstart --sign");
+            }
+        }
+        #[cfg(feature = "attestation")]
+        Some(("attest", attest_matches)) => {
+            use jacs::attestation::types::*;
+            use jacs::simple::SimpleAgent;
+
+            match attest_matches.subcommand() {
+                Some(("create", create_matches)) => {
+                    // Ensure password is available for signing
+                    ensure_cli_private_key_password()?;
+
+                    // Load agent
+                    let agent = match SimpleAgent::load(None, None) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            eprintln!("Failed to load agent: {}", e);
+                            eprintln!("Run `jacs quickstart` first to create an agent.");
+                            process::exit(1);
+                        }
+                    };
+
+                    // Parse claims (required)
+                    let claims_str = create_matches
+                        .get_one::<String>("claims")
+                        .expect("claims is required");
+                    let claims: Vec<Claim> = serde_json::from_str(claims_str).map_err(|e| {
+                        format!(
+                            "Invalid claims JSON: {}. \
+                             Provide a JSON array like '[{{\"name\":\"reviewed\",\"value\":true}}]'",
+                            e
+                        )
+                    })?;
+
+                    // Parse optional evidence
+                    let evidence: Vec<EvidenceRef> =
+                        if let Some(ev_str) = create_matches.get_one::<String>("evidence") {
+                            serde_json::from_str(ev_str)
+                                .map_err(|e| format!("Invalid evidence JSON: {}", e))?
+                        } else {
+                            vec![]
+                        };
+
+                    let att_json = if let Some(doc_path) =
+                        create_matches.get_one::<String>("from-document")
+                    {
+                        // Lift from existing signed document
+                        let doc_content = std::fs::read_to_string(doc_path).map_err(|e| {
+                            format!("Failed to read document '{}': {}", doc_path, e)
+                        })?;
+                        let result =
+                            agent
+                                .lift_to_attestation(&doc_content, &claims)
+                                .map_err(|e| {
+                                    format!("Failed to lift document to attestation: {}", e)
+                                })?;
+                        result.raw
+                    } else {
+                        // Build from scratch: need subject-type, subject-id, subject-digest
+                        let subject_type_str = create_matches
+                            .get_one::<String>("subject-type")
+                            .ok_or("--subject-type is required when not using --from-document")?;
+                        let subject_id = create_matches
+                            .get_one::<String>("subject-id")
+                            .ok_or("--subject-id is required when not using --from-document")?;
+                        let subject_digest = create_matches
+                            .get_one::<String>("subject-digest")
+                            .ok_or("--subject-digest is required when not using --from-document")?;
+
+                        let subject_type = match subject_type_str.as_str() {
+                            "agent" => SubjectType::Agent,
+                            "artifact" => SubjectType::Artifact,
+                            "workflow" => SubjectType::Workflow,
+                            "identity" => SubjectType::Identity,
+                            other => {
+                                return Err(format!("Unknown subject type: '{}'", other).into());
+                            }
+                        };
+
+                        let subject = AttestationSubject {
+                            subject_type,
+                            id: subject_id.clone(),
+                            digests: DigestSet {
+                                sha256: subject_digest.clone(),
+                                sha512: None,
+                                additional: std::collections::HashMap::new(),
+                            },
+                        };
+
+                        let result = agent
+                            .create_attestation(&subject, &claims, &evidence, None, None)
+                            .map_err(|e| format!("Failed to create attestation: {}", e))?;
+                        result.raw
+                    };
+
+                    // Output to file or stdout
+                    if let Some(output_path) = create_matches.get_one::<String>("output") {
+                        std::fs::write(output_path, &att_json).map_err(|e| {
+                            format!("Failed to write output file '{}': {}", output_path, e)
+                        })?;
+                        eprintln!("Attestation written to {}", output_path);
+                    } else {
+                        println!("{}", att_json);
+                    }
+                }
+                Some(("verify", verify_matches)) => {
+                    let file_path = verify_matches
+                        .get_one::<String>("file")
+                        .expect("file is required");
+                    let full = *verify_matches.get_one::<bool>("full").unwrap_or(&false);
+                    let json_output = *verify_matches.get_one::<bool>("json").unwrap_or(&false);
+                    let key_dir = verify_matches.get_one::<String>("key-dir");
+                    let max_depth = verify_matches.get_one::<u32>("max-depth");
+
+                    // Set key directory if specified
+                    if let Some(kd) = key_dir {
+                        // SAFETY: CLI is single-threaded at this point
+                        unsafe { std::env::set_var("JACS_KEY_DIRECTORY", kd) };
+                    }
+
+                    // Set max derivation depth if specified
+                    if let Some(depth) = max_depth {
+                        // SAFETY: CLI is single-threaded at this point
+                        unsafe {
+                            std::env::set_var("JACS_MAX_DERIVATION_DEPTH", depth.to_string())
+                        };
+                    }
+
+                    // Read the attestation file
+                    let att_content = std::fs::read_to_string(file_path).map_err(|e| {
+                        format!("Failed to read attestation file '{}': {}", file_path, e)
+                    })?;
+
+                    // Load or create ephemeral agent for verification
+                    ensure_cli_private_key_password().ok();
+                    let agent = match SimpleAgent::load(None, None) {
+                        Ok(a) => a,
+                        Err(_) => {
+                            let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
+                                .map_err(|e| format!("Failed to create verifier: {}", e))?;
+                            a
+                        }
+                    };
+
+                    // Load the attestation document into agent storage first
+                    let att_value: serde_json::Value = serde_json::from_str(&att_content)
+                        .map_err(|e| format!("Invalid attestation JSON: {}", e))?;
+                    let doc_key = format!(
+                        "{}:{}",
+                        att_value["jacsId"].as_str().unwrap_or("unknown"),
+                        att_value["jacsVersion"].as_str().unwrap_or("unknown")
+                    );
+
+                    // We need to store the document so verify can find it by key.
+                    // Use verify() which parses and stores the doc, then verify attestation.
+                    let verify_result = agent.verify(&att_content);
+                    if let Err(e) = &verify_result {
+                        if json_output {
+                            let out = serde_json::json!({
+                                "valid": false,
+                                "error": e.to_string(),
+                            });
+                            println!("{}", serde_json::to_string_pretty(&out).unwrap());
+                        } else {
+                            eprintln!("Verification error: {}", e);
+                        }
+                        process::exit(1);
+                    }
+
+                    // Now do attestation-specific verification
+                    let att_result = if full {
+                        agent.verify_attestation_full(&doc_key)
+                    } else {
+                        agent.verify_attestation(&doc_key)
+                    };
+
+                    match att_result {
+                        Ok(r) => {
+                            if json_output {
+                                println!("{}", serde_json::to_string_pretty(&r).unwrap());
+                            } else {
+                                println!(
+                                    "Status:    {}",
+                                    if r.valid { "VALID" } else { "INVALID" }
+                                );
+                                println!(
+                                    "Signature: {}",
+                                    if r.crypto.signature_valid {
+                                        "valid"
+                                    } else {
+                                        "INVALID"
+                                    }
+                                );
+                                println!(
+                                    "Hash:      {}",
+                                    if r.crypto.hash_valid {
+                                        "valid"
+                                    } else {
+                                        "INVALID"
+                                    }
+                                );
+                                if !r.crypto.signer_id.is_empty() {
+                                    println!("Signer:    {}", r.crypto.signer_id);
+                                }
+                                if !r.evidence.is_empty() {
+                                    println!("Evidence:  {} items checked", r.evidence.len());
+                                }
+                                if !r.errors.is_empty() {
+                                    for err in &r.errors {
+                                        eprintln!("  Error: {}", err);
+                                    }
+                                }
+                            }
+                            if !r.valid {
+                                process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            if json_output {
+                                let out = serde_json::json!({
+                                    "valid": false,
+                                    "error": e.to_string(),
+                                });
+                                println!("{}", serde_json::to_string_pretty(&out).unwrap());
+                            } else {
+                                eprintln!("Attestation verification error: {}", e);
+                            }
+                            process::exit(1);
+                        }
+                    }
+                }
+                Some(("export-dsse", export_matches)) => {
+                    let file_path = export_matches
+                        .get_one::<String>("file")
+                        .expect("file argument required");
+                    let output_path = export_matches.get_one::<String>("output");
+
+                    let attestation_json = std::fs::read_to_string(file_path).unwrap_or_else(|e| {
+                        eprintln!("Cannot read {}: {}", file_path, e);
+                        process::exit(1);
+                    });
+
+                    let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519"))
+                        .unwrap_or_else(|e| {
+                            eprintln!("Failed to create agent: {}", e);
+                            process::exit(1);
+                        });
+
+                    match agent.export_dsse(&attestation_json) {
+                        Ok(envelope_json) => {
+                            if let Some(out_path) = output_path {
+                                std::fs::write(out_path, &envelope_json).unwrap_or_else(|e| {
+                                    eprintln!("Cannot write to {}: {}", out_path, e);
+                                    process::exit(1);
+                                });
+                                println!("DSSE envelope written to {}", out_path);
+                            } else {
+                                println!("{}", envelope_json);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to export DSSE envelope: {}", e);
+                            process::exit(1);
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!(
+                        "Use 'jacs attest create', 'jacs attest verify', or 'jacs attest export-dsse'. See --help."
+                    );
+                    process::exit(1);
+                }
             }
         }
         Some(("verify", verify_matches)) => {
@@ -1180,22 +2676,24 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             // This gives access to the agent's own keys for verifying self-signed docs.
             // Fall back to an ephemeral agent if no config is available.
             let agent = if std::path::Path::new("./jacs.config.json").exists() {
-                // If password not set, try reading from quickstart's password file
-                if env::var("JACS_PRIVATE_KEY_PASSWORD")
-                    .unwrap_or_default()
-                    .is_empty()
-                {
-                    let pw_path = std::path::Path::new("./jacs_keys/.jacs_password");
-                    if pw_path.exists() {
-                        if let Ok(pw) = std::fs::read_to_string(pw_path) {
-                            // SAFETY: CLI is single-threaded at this point
-                            unsafe { env::set_var("JACS_PRIVATE_KEY_PASSWORD", pw.trim()) };
-                        }
-                    }
+                if let Err(e) = ensure_cli_private_key_password() {
+                    eprintln!("Warning: Password bootstrap failed: {}", e);
+                    eprintln!("{}", quickstart_password_bootstrap_help());
                 }
                 match SimpleAgent::load(None, None) {
                     Ok(a) => a,
-                    Err(_) => {
+                    Err(e) => {
+                        let lower = e.to_string().to_lowercase();
+                        if lower.contains("password")
+                            || lower.contains("decrypt")
+                            || lower.contains("private key")
+                        {
+                            eprintln!(
+                                "Warning: Could not load local agent from ./jacs.config.json: {}",
+                                e
+                            );
+                            eprintln!("{}", quickstart_password_bootstrap_help());
+                        }
                         let (a, _) = SimpleAgent::ephemeral(Some("ed25519"))
                             .map_err(|e| format!("Failed to create verifier: {}", e))?;
                         a

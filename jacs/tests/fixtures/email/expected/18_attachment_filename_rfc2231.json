@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F18",
+  "expected_result": "pass",
+  "expected_reason": "rfc2231_filename_decode_nfc",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 18 RFC2231 Filename" },
+      "date": { "value": "Fri, 27 Feb 2026 12:17:00 +0000" },
+      "message_id": { "value": "<fixture-18@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 1,
+    "parent_signature_hash": null,
+    "notes": "Attachment filename uses RFC 2231 percent-encoded UTF-8; verifier must decode and NFC-normalize filename"
+  }
+}

@@ -2,23 +2,71 @@ name: Rust (jacs crate)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+    tags: ["v*"]
     paths:
-      - 'jacs/**'
-      - '.github/workflows/rust.yml'
+      - "jacs/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust.yml"
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
     paths:
-      - 'jacs/**'
-      - '.github/workflows/rust.yml'
-  workflow_dispatch: # Allows manual triggering 
+      - "jacs/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+    inputs:
+      run_full:
+        description: "Run full release-level Rust test matrix"
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "0 9 * * *"
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test-jacs: # Renamed job for clarity
-    name: Test jacs crate (${{ matrix.os }})
+  quick-jacs:
+    name: Quick jacs checks (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Install cargo-audit and run audit
+        run: |
+          cargo install cargo-audit --locked --version 0.22.1
+          cargo audit --ignore RUSTSEC-2023-0071
+
+      - name: Run quick Rust test suite
+        run: |
+          cargo test -p jacs --verbose --lib --features cli
+          cargo test -p jacs --verbose --test pq2025_tests
+          cargo test -p jacs --verbose --test cross_language_tests
+          cargo test -p jacs --verbose --test structured_logging_tests
+          cargo test -p jacs-binding-core --verbose
+
+  full-jacs-release:
+    name: Full jacs suite (${{ matrix.os }})
+    if: |
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full == 'true')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -26,21 +74,45 @@ jobs:
         os: [ubuntu-latest, macos-latest]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: '1.93'
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
 
-    - name: Install cargo-audit and run audit
-      if: runner.os == 'Linux'
-      working-directory: jacs
-      run: |
-        cargo install cargo-audit
-        cargo audit || true
+      - name: Install cargo-audit and run audit (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cargo install cargo-audit --locked --version 0.22.1
+          cargo audit --ignore RUSTSEC-2023-0071
 
-    - name: Run jacs tests
-      working-directory: jacs
-      run: cargo test --verbose --features cli
+      - name: Run full jacs tests
+        run: |
+          cargo test -p jacs --verbose --features cli
+          cargo test -p jacs-binding-core --verbose
+
+  full-jacs-nightly:
+    name: Full jacs suite (nightly ubuntu)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Install cargo-audit and run audit
+        run: |
+          cargo install cargo-audit --locked --version 0.22.1
+          cargo audit --ignore RUSTSEC-2023-0071
+
+      - name: Run nightly full Rust tests
+        run: |
+          cargo test -p jacs --verbose --features cli
+          cargo test -p jacs-binding-core --verbose

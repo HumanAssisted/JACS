@@ -20,10 +20,10 @@ use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key}
 use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
-use crate::keystore::{KeySpec, KeyStore};
+use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::dns::bootstrap::verify_hai_registration_sync;
+use crate::dns::bootstrap::verify_registry_registration_sync;
 use crate::dns::bootstrap::{pubkey_digest_hex, verify_pubkey_via_dns_or_embedded};
 #[cfg(feature = "observability-convenience")]
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
@@ -33,7 +33,8 @@ use crate::time_utils;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use serde_json::{Value, json, to_value};
-use std::collections::HashMap;
+use serde_json_canonicalizer::to_string as to_canonical_string;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -69,6 +70,146 @@ pub const JACS_IGNORE_FIELDS: [&str; 7] = [
     TASK_START_AGREEMENT_FIELDNAME,
     TASK_END_AGREEMENT_FIELDNAME,
 ];
+
+/// Controls how signature payload content is built from document fields.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum SignatureContentMode {
+    /// Canonicalized field values (includes non-string JSON types).
+    CanonicalV2,
+}
+
+/// Extract the signature `fields` array from a signature object.
+pub(crate) fn extract_signature_fields(
+    json_value: &Value,
+    signature_key_from: &str,
+) -> Option<Vec<String>> {
+    let arr = json_value
+        .get(signature_key_from)?
+        .get("fields")?
+        .as_array()?;
+    let mut out = Vec::with_capacity(arr.len());
+    for entry in arr {
+        if let Some(field) = entry.as_str() {
+            out.push(field.to_string());
+        }
+    }
+    Some(out)
+}
+
+pub(crate) fn canonicalize_json(value: &Value) -> Result<String, Box<dyn Error>> {
+    let canonical = to_canonical_string(value)
+        .map_err(|e| std::io::Error::other(format!("Failed to canonicalize JSON: {}", e)))?;
+    Ok(canonical)
+}
+
+fn validate_signature_temporal_claims(
+    json_value: &Value,
+    signature_key_from: &str,
+) -> Result<(), Box<dyn Error>> {
+    let signature = json_value.get(signature_key_from).ok_or_else(|| {
+        JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Missing '{}' signature object while validating temporal claims.",
+                signature_key_from
+            ),
+        }
+    })?;
+
+    let iat = signature
+        .get("iat")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Missing or invalid '{}.iat'. Signature metadata must include a Unix timestamp.",
+                signature_key_from
+            ),
+        })?;
+
+    if iat < 0 {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Invalid '{}.iat': timestamp must be non-negative.",
+                signature_key_from
+            ),
+        }
+        .into());
+    }
+
+    let jti = signature
+        .get("jti")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Missing or invalid '{}.jti'. Signature metadata must include a nonce.",
+                signature_key_from
+            ),
+        })?;
+
+    if jti.is_empty() {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Invalid '{}.jti': nonce cannot be empty.",
+                signature_key_from
+            ),
+        }
+        .into());
+    }
+
+    time_utils::validate_signature_iat(iat)?;
+    Ok(())
+}
+
+pub(crate) fn build_signature_content(
+    json_value: &Value,
+    keys: Option<Vec<String>>,
+    placement_key: &str,
+    _mode: SignatureContentMode,
+) -> Result<(String, Vec<String>), Box<dyn Error>> {
+    debug!("build_signature_content keys:\n{:?}", keys);
+    let defaults = keys.is_none();
+    let mut accepted_fields = match keys {
+        Some(keys) => keys,
+        None => json_value
+            .as_object()
+            .unwrap_or(&serde_json::Map::new())
+            .keys()
+            .filter(|&key| key != placement_key && !JACS_IGNORE_FIELDS.contains(&key.as_str()))
+            .map(std::string::ToString::to_string)
+            .collect(),
+    };
+
+    // Canonical default behavior: stable ordering by field name.
+    if defaults {
+        accepted_fields.sort();
+    }
+
+    // Eliminate duplicates while preserving order.
+    let mut seen = HashSet::new();
+    accepted_fields.retain(|field| seen.insert(field.clone()));
+
+    let mut content_parts: Vec<String> = Vec::with_capacity(accepted_fields.len());
+    for key in &accepted_fields {
+        if key == placement_key || JACS_IGNORE_FIELDS.contains(&key.as_str()) {
+            let error_message = format!(
+                "Field names for signature must not include reserved key '{}' (reserved: {:?})",
+                key, JACS_IGNORE_FIELDS
+            );
+            error!("{}", error_message);
+            return Err(error_message.into());
+        }
+        if let Some(value) = json_value.get(key) {
+            content_parts.push(canonicalize_json(value)?);
+        }
+    }
+
+    let content = content_parts.join(" ");
+    debug!(
+        "build_signature_content result: {:?} fields {:?} mode {:?}",
+        content, accepted_fields, _mode
+    );
+    Ok((content, accepted_fields))
+}
 
 // Just use Vec<u8> directly since it already implements the needed traits
 pub type PrivateKey = Vec<u8>;
@@ -117,6 +258,9 @@ pub struct Agent {
     dns_validate_enabled: Option<bool>,
     /// whether DNS validation is required (must have domain and successful DNS check)
     dns_required: Option<bool>,
+    /// Evidence adapters for attestation (gated behind `attestation` feature).
+    #[cfg(feature = "attestation")]
+    pub adapters: Vec<Box<dyn crate::attestation::adapters::EvidenceAdapter>>,
 }
 
 impl fmt::Display for Agent {
@@ -156,6 +300,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            #[cfg(feature = "attestation")]
+            adapters: crate::attestation::adapters::default_adapters(),
         })
     }
 
@@ -185,6 +331,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            #[cfg(feature = "attestation")]
+            adapters: crate::attestation::adapters::default_adapters(),
         })
     }
 
@@ -212,16 +360,31 @@ impl Agent {
         self.dns_required = Some(required);
     }
 
+    /// Register a custom evidence adapter with this agent.
+    /// The adapter will be consulted during full attestation verification
+    /// when evidence of a matching kind is encountered.
+    #[cfg(feature = "attestation")]
+    pub fn register_adapter(
+        &mut self,
+        adapter: Box<dyn crate::attestation::adapters::EvidenceAdapter>,
+    ) {
+        self.adapters.push(adapter);
+    }
+
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
+        let default_config_path = crate::paths::default_config_path();
+        let default_config_path = default_config_path.to_string_lossy().to_string();
 
-        self.config = Some(load_config_12factor_optional(None).map_err(|e| {
-            format!(
-                "load_by_id failed for agent '{}': Could not find or load configuration: {}",
-                lookup_id, e
-            )
-        })?);
+        self.config = Some(
+            load_config_12factor_optional(Some(&default_config_path)).map_err(|e| {
+                format!(
+                    "load_by_id failed for agent '{}': Could not find or load configuration: {}",
+                    lookup_id, e
+                )
+            })?,
+        );
         debug!("load_by_id config {:?}", self.config);
 
         let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
@@ -259,16 +422,10 @@ impl Agent {
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
         // load config string
-        self.config = Some(load_config_12factor(Some(&path)).map_err(|e| {
+        let mut config = load_config_12factor(Some(&path)).map_err(|e| {
             format!(
                 "load_by_config failed: Could not load configuration from '{}': {}",
                 path, e
-            )
-        })?);
-        let config = self.config.as_ref().ok_or_else(|| {
-            format!(
-                "load_by_config failed: Configuration object is unexpectedly None after loading from '{}'",
-                path
             )
         })?;
         // Clone values needed for error messages to avoid borrow conflicts
@@ -282,7 +439,112 @@ impl Agent {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        self.storage = MultiStorage::new(storage_type.clone()).map_err(|e| {
+        let storage_root = if storage_type == "fs" {
+            let config_dir = std::path::Path::new(&path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let config_dir_absolute = if config_dir.is_absolute() {
+                config_dir.to_path_buf()
+            } else {
+                std::env::current_dir()?.join(config_dir)
+            };
+            let normalize_path = |p: &std::path::Path| -> std::path::PathBuf {
+                let mut normalized = std::path::PathBuf::new();
+                for component in p.components() {
+                    match component {
+                        std::path::Component::CurDir => {}
+                        std::path::Component::ParentDir => {
+                            normalized.pop();
+                        }
+                        other => normalized.push(other.as_os_str()),
+                    }
+                }
+                normalized
+            };
+
+            // Normalize configured filesystem directories.
+            // - Relative directories are treated as config-dir relative.
+            // - Absolute directories inside the config-dir root are rewritten
+            //   to relative paths so storage can stay rooted at config_dir.
+            // - Absolute directories outside config_dir require root "/".
+            let mut config_value = to_value(&config).map_err(|e| {
+                format!(
+                    "load_by_config failed: Could not serialize configuration from '{}': {}",
+                    path, e
+                )
+            })?;
+            let mut has_external_absolute = false;
+            for field in ["jacs_data_directory", "jacs_key_directory"] {
+                if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                    let dir_path = std::path::Path::new(dir);
+                    if dir_path
+                        .components()
+                        .any(|component| matches!(component, std::path::Component::ParentDir))
+                    {
+                        return Err(format!(
+                            "load_by_config failed: Config field '{}' in '{}' contains unsafe parent-directory segment ('..'): '{}'",
+                            field, path, dir
+                        )
+                        .into());
+                    }
+                    if dir_path.is_absolute() {
+                        let normalized_abs = normalize_path(dir_path);
+                        if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute)
+                        {
+                            let relative = relative_tail
+                                .to_string_lossy()
+                                .trim_start_matches('/')
+                                .to_string();
+                            if relative.is_empty() {
+                                has_external_absolute = true;
+                                config_value[field] =
+                                    json!(normalized_abs.to_string_lossy().to_string());
+                            } else {
+                                config_value[field] = json!(relative);
+                            }
+                        } else {
+                            has_external_absolute = true;
+                            config_value[field] =
+                                json!(normalized_abs.to_string_lossy().to_string());
+                        }
+                    } else {
+                        let normalized_rel = normalize_path(dir_path);
+                        config_value[field] = json!(normalized_rel.to_string_lossy().to_string());
+                    }
+                }
+            }
+
+            let storage_root = if has_external_absolute {
+                // When rooting at "/", convert any remaining relative dirs to
+                // absolute config-dir-based paths so they remain stable.
+                for field in ["jacs_data_directory", "jacs_key_directory"] {
+                    if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                        let dir_path = std::path::Path::new(dir);
+                        if !dir_path.is_absolute() {
+                            let abs = normalize_path(&config_dir_absolute.join(dir_path));
+                            config_value[field] = json!(abs.to_string_lossy().to_string());
+                        }
+                    }
+                }
+                std::path::PathBuf::from("/")
+            } else {
+                config_dir_absolute
+            };
+
+            config = serde_json::from_value(config_value).map_err(|e| {
+                format!(
+                    "load_by_config failed: Could not normalize filesystem directories in config '{}': {}",
+                    path, e
+                )
+            })?;
+            storage_root
+        } else {
+            std::env::current_dir()?
+        };
+
+        self.config = Some(config);
+        self.storage = MultiStorage::_new(storage_type.clone(), storage_root).map_err(|e| {
             format!(
                 "load_by_config failed: Could not initialize storage type '{}' (from config '{}'): {}",
                 storage_type, path, e
@@ -344,7 +606,7 @@ impl Agent {
     /// Get the verification claim from the agent's value.
     ///
     /// Returns the claim as a string, or None if not set.
-    /// Valid claims are: "unverified", "verified", "verified-hai.ai"
+    /// Valid claims are: "unverified", "verified", "verified-registry" (legacy: "verified-hai.ai")
     fn get_verification_claim(&self) -> Option<String> {
         self.value
             .as_ref()?
@@ -428,7 +690,7 @@ impl Agent {
             }
         }
 
-        let agent_id_for_errors = self.id.clone().unwrap_or_else(|| "<unknown>".to_string());
+        let agent_id_for_errors = self.id.as_deref().unwrap_or("<unknown>").to_string();
 
         if self.id.is_some() {
             // check if keys are already loaded
@@ -464,7 +726,7 @@ impl Agent {
 
     #[must_use = "signature verification result must be checked"]
     pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
-        let agent_id = self.id.clone().unwrap_or_else(|| "<unknown>".to_string());
+        let agent_id = self.id.as_deref().unwrap_or("<unknown>");
         let public_key = self.get_public_key().map_err(|e| {
             format!(
                 "verify_self_signature failed for agent '{}': Could not retrieve public key: {}",
@@ -472,8 +734,8 @@ impl Agent {
             )
         })?;
         // validate header
-        let signature_key_from = &AGENT_SIGNATURE_FIELDNAME.to_string();
-        match &self.value.clone() {
+        let signature_key_from = AGENT_SIGNATURE_FIELDNAME;
+        match self.value.as_ref() {
             Some(embedded_value) => self.signature_verification_procedure(
                 embedded_value,
                 None,
@@ -513,11 +775,8 @@ impl Agent {
     ) -> Result<String, Box<dyn Error>> {
         let document = self.get_document(&document_key)?;
         let document_value = document.getvalue();
-        let binding = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
-        let signature_key_from_final = match signature_key_from {
-            Some(signature_key_from) => signature_key_from,
-            None => binding,
-        };
+        let signature_key_from_final =
+            signature_key_from.unwrap_or(DOCUMENT_AGENT_SIGNATURE_FIELDNAME);
         self.get_signature_agent_id_and_version(document_value, signature_key_from_final)
     }
 
@@ -529,13 +788,11 @@ impl Agent {
         let agentid = json_value[signature_key_from]["agentID"]
             .as_str()
             .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+            .trim_matches('"');
         let agentversion = json_value[signature_key_from]["agentVersion"]
             .as_str()
             .unwrap_or("")
-            .trim_matches('"')
-            .to_string();
+            .trim_matches('"');
         Ok(format!("{}:{}", agentid, agentversion))
     }
 
@@ -556,21 +813,15 @@ impl Agent {
         signature: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         let start_time = std::time::Instant::now();
-
-        let (document_values_string, _) = Agent::get_values_as_string(
-            json_value,
-            fields.map(|s| s.to_vec()),
-            signature_key_from,
-        )?;
-        debug!(
-            "signature_verification_procedure document_values_string:\n{}",
-            document_values_string
-        );
+        let resolved_fields = fields
+            .map(|s| s.to_vec())
+            .or_else(|| extract_signature_fields(json_value, signature_key_from));
 
         debug!(
             "signature_verification_procedure placement_key:\n{}",
             signature_key_from
         );
+        validate_signature_temporal_claims(json_value, signature_key_from)?;
 
         let public_key_hash: String = match original_public_key_hash {
             Some(orig) => orig,
@@ -594,25 +845,23 @@ impl Agent {
             .value
             .as_ref()
             .and_then(|v| v.get("jacsAgentDomain").and_then(|x| x.as_str()))
-            .map(|s| s.to_string())
             .or_else(|| {
                 self.config
                     .as_ref()
-                    .and_then(|c| c.jacs_agent_domain().clone())
+                    .and_then(|c| c.jacs_agent_domain().as_deref())
             });
 
         let maybe_agent_id = json_value
             .get(signature_key_from)
             .and_then(|sig| sig.get("agentID"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .and_then(|v| v.as_str());
 
         // Claim-based policy enforcement
         // "If you claim it, you must prove it"
         let verification_claim = self.get_verification_claim();
         let domain_present = maybe_domain.is_some();
         let (validate, strict, required) = match verification_claim.as_deref() {
-            Some("verified") | Some("verified-hai.ai") => {
+            Some("verified") | Some("verified-registry") | Some("verified-hai.ai") => {
                 // Verified claims MUST use strict settings
                 if !domain_present {
                     return Err(JacsError::VerificationClaimFailed {
@@ -634,9 +883,7 @@ impl Agent {
         };
 
         if validate && domain_present {
-            if let (Some(domain), Some(agent_id_for_dns)) =
-                (maybe_domain.clone(), maybe_agent_id.clone())
-            {
+            if let (Some(domain), Some(agent_id_for_dns)) = (maybe_domain, maybe_agent_id) {
                 // Allow embedded fallback only if not required
                 let embedded = if required {
                     None
@@ -646,7 +893,7 @@ impl Agent {
                 if let Err(e) = verify_pubkey_via_dns_or_embedded(
                     &public_key,
                     &agent_id_for_dns,
-                    Some(&domain),
+                    Some(domain),
                     embedded.map(|s| s.as_str()),
                     strict,
                 ) {
@@ -658,7 +905,7 @@ impl Agent {
             }
         } else {
             // DNS not validated -> rely on embedded fingerprint
-            let public_key_rehash = hash_public_key(public_key.clone());
+            let public_key_rehash = hash_public_key(&public_key);
             if public_key_rehash != public_key_hash {
                 let error_message = format!(
                     "Incorrect public key used to verify signature public_key_rehash {} public_key_hash {} ",
@@ -677,29 +924,30 @@ impl Agent {
             }
         }
 
-        // HAI.ai verification for verified-hai.ai claims
-        // This MUST succeed for agents claiming verified-hai.ai status
+        // Registry verification for verified-registry (and legacy verified-hai.ai) claims
+        // This MUST succeed for agents claiming registry-verified status
         #[cfg(not(target_arch = "wasm32"))]
-        if verification_claim.as_deref() == Some("verified-hai.ai") {
-            let agent_id_for_hai = maybe_agent_id
-                .clone()
-                .unwrap_or_else(|| self.id.clone().unwrap_or_default());
+        if matches!(
+            verification_claim.as_deref(),
+            Some("verified-registry") | Some("verified-hai.ai")
+        ) {
+            let agent_id_for_registry = maybe_agent_id.or(self.id.as_deref()).unwrap_or_default();
             let pk_hash = pubkey_digest_hex(&public_key);
 
-            match verify_hai_registration_sync(&agent_id_for_hai, &pk_hash) {
+            match verify_registry_registration_sync(&agent_id_for_registry, &pk_hash) {
                 Ok(registration) => {
                     info!(
-                        "HAI.ai verification successful for agent '{}': verified at {:?}",
-                        agent_id_for_hai, registration.verified_at
+                        "Registry verification successful for agent '{}': verified at {:?}",
+                        agent_id_for_registry, registration.verified_at
                     );
                 }
                 Err(e) => {
                     error!(
-                        "HAI.ai verification failed for agent '{}': {}",
-                        agent_id_for_hai, e
+                        "Registry verification failed for agent '{}': {}",
+                        agent_id_for_registry, e
                     );
                     return Err(JacsError::VerificationClaimFailed {
-                        claim: "verified-hai.ai".to_string(),
+                        claim: verification_claim.unwrap_or_default(),
                         reason: e,
                     }
                     .into());
@@ -707,8 +955,9 @@ impl Agent {
             }
         }
 
-        let signature_base64 = match signature.clone() {
-            Some(sig) => sig,
+        let provided_signature = signature.as_deref();
+        let signature_base64 = match provided_signature {
+            Some(sig) => sig.to_string(),
             _ => json_value[signature_key_from]["signature"]
                 .as_str()
                 .unwrap_or("")
@@ -716,21 +965,29 @@ impl Agent {
                 .to_string(),
         };
 
+        let standard_signature = json_value[signature_key_from]["signature"]
+            .as_str()
+            .unwrap_or("")
+            .trim_matches('"');
+
         debug!(
             "\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n",
-            json_value[signature_key_from]["signature"]
-                .as_str()
-                .unwrap_or("")
-                .trim_matches('"')
-                .to_string(),
-            signature,
-            signature_base64
+            standard_signature, provided_signature, signature_base64
         );
-
+        let (document_values_string, _) = build_signature_content(
+            json_value,
+            resolved_fields.clone(),
+            signature_key_from,
+            SignatureContentMode::CanonicalV2,
+        )?;
+        debug!(
+            "signature_verification_procedure canonical payload:\n{}",
+            document_values_string
+        );
         let result = self.verify_string(
             &document_values_string,
             &signature_base64,
-            public_key,
+            public_key.clone(),
             resolved_public_key_enc_type.clone(),
         );
 
@@ -840,6 +1097,8 @@ impl Agent {
         let agent_id = self.id.as_ref().unwrap_or(&binding);
         let agent_version = self.version.as_ref().unwrap_or(&binding);
         let date = time_utils::now_rfc3339();
+        let iat = time_utils::now_timestamp();
+        let jti = Uuid::now_v7().to_string();
 
         let config = self.config.as_ref().ok_or_else(|| {
             let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
@@ -856,7 +1115,7 @@ impl Agent {
             Err(err) => return Err(Box::new(err)),
         };
         let public_key = self.get_public_key()?;
-        let public_key_hash = hash_public_key(public_key);
+        let public_key_hash = hash_public_key(&public_key);
         debug!("hash {:?} ", public_key_hash);
         //TODO fields must never include sha256 at top level
         // error
@@ -865,6 +1124,8 @@ impl Agent {
             "agentID": agent_id,
             "agentVersion": agent_version,
             "date": date,
+            "iat": iat,
+            "jti": jti,
             "signature":signature,
             "signingAlgorithm":signing_algorithm,
             "publicKeyHash": public_key_hash,
@@ -895,48 +1156,12 @@ impl Agent {
         keys: Option<Vec<String>>,
         placement_key: &str,
     ) -> Result<(String, Vec<String>), Box<dyn Error>> {
-        let mut result = String::new();
-        debug!("get_values_as_string keys:\n{:?}", keys);
-        let accepted_fields = match keys {
-            Some(keys) => keys,
-            None => {
-                // Choose default field names
-                let default_keys: Vec<String> = json_value
-                    .as_object()
-                    .unwrap_or(&serde_json::Map::new())
-                    .keys()
-                    .filter(|&key| {
-                        key != placement_key && !JACS_IGNORE_FIELDS.contains(&key.as_str())
-                    })
-                    .map(|key| key.to_string())
-                    .collect();
-                default_keys
-            }
-        };
-
-        for key in &accepted_fields {
-            if let Some(value) = json_value.get(key)
-                && let Some(str_value) = value.as_str()
-            {
-                if str_value == placement_key || JACS_IGNORE_FIELDS.contains(&str_value) {
-                    let error_message = format!(
-                        "Field names for signature must not include itself or hashing
-                              - these are reserved for this signature {}: see {:?}",
-                        placement_key, JACS_IGNORE_FIELDS
-                    );
-                    error!("{}", error_message);
-                    return Err(error_message.into());
-                }
-                result.push_str(str_value);
-                result.push(' ');
-            }
-        }
-        debug!(
-            "get_values_as_string result: {:?} fields {:?}",
-            result.trim().to_string(),
-            accepted_fields
-        );
-        Ok((result.trim().to_string(), accepted_fields))
+        build_signature_content(
+            json_value,
+            keys,
+            placement_key,
+            SignatureContentMode::CanonicalV2,
+        )
     }
 
     /// verify the hash of a complete document that has SHA256_FIELDNAME
@@ -1014,7 +1239,7 @@ impl Agent {
         // Security: Once an agent claims verified status, it cannot be downgraded
         fn claim_level(claim: &str) -> u8 {
             match claim {
-                "verified-hai.ai" => 2,
+                "verified-registry" | "verified-hai.ai" => 2,
                 "verified" => 1,
                 _ => 0, // "unverified" or missing
             }
@@ -1062,6 +1287,99 @@ impl Agent {
         self.validate_agent(&self.to_string())?;
         self.verify_self_signature()?;
         Ok(new_self.to_string())
+    }
+
+    /// Rotates the agent's keys and creates a new version of the agent document.
+    ///
+    /// Unlike `update_self` which re-signs with the *existing* key, this method:
+    /// 1. Archives old keys (filesystem) or discards them (ephemeral)
+    /// 2. Generates a new keypair
+    /// 3. Creates a new agent version
+    /// 4. Signs the new document with the **new** key
+    ///
+    /// Returns `(new_version, new_public_key_bytes, signed_agent_json)`.
+    pub fn rotate_self(&mut self) -> Result<(String, Vec<u8>, Value), Box<dyn Error>> {
+        // Clone the current agent value up front to avoid borrow conflicts
+        let original_value = self
+            .value
+            .as_ref()
+            .ok_or_else(|| {
+                let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
+                format!(
+                    "rotate_self failed for agent '{}': Agent value is not loaded.",
+                    agent_id
+                )
+            })?
+            .clone();
+
+        let old_version = original_value
+            .get_str("jacsVersion")
+            .ok_or("Agent has no jacsVersion")?;
+
+        // Determine key algorithm
+        let key_algorithm = {
+            let config = self.config.as_ref().ok_or("Agent config not initialized")?;
+            config.get_key_algorithm()?
+        };
+
+        let spec = KeySpec {
+            algorithm: key_algorithm.clone(),
+            key_id: None,
+        };
+
+        // Rotate keys: ephemeral uses in-memory key_store, FS uses FsEncryptedStore
+        let (new_private_key, new_public_key) = if let Some(ref ks) = self.key_store {
+            ks.rotate(&old_version, &spec)?
+        } else {
+            FsEncryptedStore.rotate(&old_version, &spec)?
+        };
+
+        // Set new keys on the agent
+        if self.ephemeral {
+            self.set_keys_raw(new_private_key, new_public_key.clone(), &key_algorithm);
+        } else {
+            self.set_keys(new_private_key, new_public_key.clone(), &key_algorithm)?;
+        }
+
+        // Build new version document
+        let new_version = Uuid::new_v4().to_string();
+        let version_date = time_utils::now_rfc3339();
+
+        let mut new_doc = original_value.clone();
+        new_doc["jacsPreviousVersion"] = json!(old_version);
+        new_doc["jacsVersion"] = json!(new_version.clone());
+        new_doc["jacsVersionDate"] = json!(version_date);
+
+        // Remove old signature and hash — they will be regenerated with new key
+        if let Some(obj) = new_doc.as_object_mut() {
+            obj.remove(AGENT_SIGNATURE_FIELDNAME);
+            obj.remove(SHA256_FIELDNAME);
+        }
+
+        // Sign with the new key
+        new_doc[AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&new_doc, None, AGENT_SIGNATURE_FIELDNAME)?;
+        let document_hash = self.hash_doc(&new_doc)?;
+        new_doc[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
+
+        // Update in-memory state
+        self.version = Some(new_version.clone());
+        self.value = Some(new_doc.clone());
+
+        // Verify the new self-signature
+        self.verify_self_signature()?;
+
+        // Save public key hash (skip for ephemeral)
+        if !self.ephemeral {
+            let public_key_hash = hash_public_key(&new_public_key);
+            let _ = self.fs_save_remote_public_key(
+                &public_key_hash,
+                &new_public_key,
+                key_algorithm.as_bytes(),
+            );
+        }
+
+        Ok((new_version, new_public_key, new_doc))
     }
 
     pub fn validate_header(
@@ -1155,7 +1473,7 @@ impl Agent {
         if !self.ephemeral {
             if let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm)
             {
-                let public_key_hash = hash_public_key(public_key.clone());
+                let public_key_hash = hash_public_key(public_key);
                 let _ = self.fs_save_remote_public_key(
                     &public_key_hash,
                     public_key,
@@ -1480,6 +1798,8 @@ impl AgentBuilder {
             dns_strict: self.dns_strict.unwrap_or(false),
             dns_validate_enabled: self.dns_validate,
             dns_required: self.dns_required,
+            #[cfg(feature = "attestation")]
+            adapters: crate::attestation::adapters::default_adapters(),
         };
 
         // Apply DNS settings if specified
@@ -1706,6 +2026,80 @@ mod builder_tests {
         for result in &results {
             assert!(result.is_err());
         }
+    }
+
+    #[test]
+    fn test_build_signature_content_canonical_includes_non_string_fields() {
+        let value = json!({
+            "content": {"z": 1, "a": 2},
+            "title": "hello"
+        });
+        let keys = Some(vec![
+            "content".to_string(),
+            "title".to_string(),
+            "enabled".to_string(),
+        ]);
+        let value = value
+            .as_object()
+            .cloned()
+            .map(serde_json::Value::Object)
+            .unwrap_or_default();
+        let mut value = value;
+        value["enabled"] = json!(true);
+
+        let (canonical_payload, _) = build_signature_content(
+            &value,
+            keys,
+            AGENT_SIGNATURE_FIELDNAME,
+            SignatureContentMode::CanonicalV2,
+        )
+        .expect("canonical payload should build");
+
+        assert!(
+            canonical_payload.contains("{\"a\":2,\"z\":1}"),
+            "canonical payload should include canonicalized object value"
+        );
+        assert!(
+            canonical_payload.contains("\"hello\""),
+            "canonical payload should include JSON-encoded strings"
+        );
+        assert!(
+            canonical_payload.contains("true"),
+            "canonical payload should include boolean values"
+        );
+    }
+
+    #[test]
+    fn test_build_signature_content_default_fields_sorted() {
+        let value = json!({
+            "z": "last",
+            "a": "first",
+            AGENT_SIGNATURE_FIELDNAME: {"fields": []},
+            SHA256_FIELDNAME: "ignored"
+        });
+
+        let (_, fields) = build_signature_content(
+            &value,
+            None,
+            AGENT_SIGNATURE_FIELDNAME,
+            SignatureContentMode::CanonicalV2,
+        )
+        .expect("canonical payload should build");
+
+        assert_eq!(fields, vec!["a".to_string(), "z".to_string()]);
+    }
+
+    #[test]
+    fn test_extract_signature_fields_reads_signature_metadata() {
+        let value = json!({
+            AGENT_SIGNATURE_FIELDNAME: {
+                "fields": ["b", "a", "content"]
+            }
+        });
+
+        let fields = extract_signature_fields(&value, AGENT_SIGNATURE_FIELDNAME)
+            .expect("fields should be extracted");
+        assert_eq!(fields, vec!["b", "a", "content"]);
     }
 }
 

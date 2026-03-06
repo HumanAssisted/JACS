@@ -8,9 +8,13 @@ use jacs::simple::SimpleAgent;
 use serde_json::json;
 use serial_test::serial;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::Level;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
+
+const PASSWORD_ENV_VAR: &str = "JACS_PRIVATE_KEY_PASSWORD";
+const TEST_PASSWORD: &str = "StructLogP@ssw0rd!2026";
 
 // ---------------------------------------------------------------------------
 // In-memory log capture layer
@@ -99,24 +103,77 @@ fn with_captured_logs<F: FnOnce()>(f: F) -> Vec<CapturedEvent> {
         .expect("events mutex not poisoned")
 }
 
+/// Guard for temporary test workspace + password env setup.
+///
+/// Ensures cwd/env are always restored even if the test panics mid-flow.
+struct PasswordEnvGuard {
+    previous_password: Option<std::ffi::OsString>,
+}
+
+impl PasswordEnvGuard {
+    fn set() -> Self {
+        let previous_password = std::env::var_os(PASSWORD_ENV_VAR);
+        // SAFETY: tests in this module are #[serial], so env mutation is single-threaded here.
+        unsafe { std::env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD) };
+        Self { previous_password }
+    }
+}
+
+impl Drop for PasswordEnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: restore process env var state after serial test execution.
+        unsafe {
+            if let Some(prev) = &self.previous_password {
+                std::env::set_var(PASSWORD_ENV_VAR, prev);
+            } else {
+                std::env::remove_var(PASSWORD_ENV_VAR);
+            }
+        }
+    }
+}
+
+struct ScopedTempCwd {
+    original_cwd: std::path::PathBuf,
+    tmp: std::path::PathBuf,
+}
+
+impl ScopedTempCwd {
+    fn enter(prefix: &str) -> Self {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("{}_{}_{}", prefix, std::process::id(), nonce));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("create temp dir");
+
+        let original_cwd = std::env::current_dir().expect("get cwd");
+        std::env::set_current_dir(&tmp).expect("cd to temp");
+
+        Self { original_cwd, tmp }
+    }
+}
+
+impl Drop for ScopedTempCwd {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original_cwd);
+        let _ = std::fs::remove_dir_all(&self.tmp);
+    }
+}
+
 /// Helper: create an ephemeral agent in a temp dir for testing.
 fn create_test_agent(algorithm: &str) -> SimpleAgent {
-    let tmp = std::env::temp_dir().join(format!(
-        "jacs_structlog_test_{}_{}",
-        algorithm,
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let _scope = ScopedTempCwd::enter(&format!("jacs_structlog_test_{}", algorithm));
 
-    let original_cwd = std::env::current_dir().expect("get cwd");
-    unsafe { std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD") };
-    std::env::set_current_dir(&tmp).expect("cd to temp");
+    let (agent, _info) = SimpleAgent::quickstart(
+        "structured-log-agent",
+        "structured-log.example.com",
+        Some("Structured logging test agent"),
+        Some(algorithm),
+        None,
+    )
+    .expect("quickstart should succeed");
 
-    let (agent, _info) =
-        SimpleAgent::quickstart(Some(algorithm), None).expect("quickstart should succeed");
-
-    std::env::set_current_dir(&original_cwd).expect("restore cwd");
     agent
 }
 
@@ -159,6 +216,7 @@ fn get_field<'a>(event: &'a CapturedEvent, field_name: &str) -> Option<&'a str> 
 #[test]
 #[serial]
 fn test_sign_emits_document_signed_event() {
+    let _password = PasswordEnvGuard::set();
     let agent = create_test_agent("ed25519");
     let payload = json!({"test": "structured_logging", "value": 42});
 
@@ -181,6 +239,7 @@ fn test_sign_emits_document_signed_event() {
 #[test]
 #[serial]
 fn test_sign_emits_signing_procedure_complete() {
+    let _password = PasswordEnvGuard::set();
     let agent = create_test_agent("ed25519");
     let payload = json!({"test": "signing_procedure"});
 
@@ -208,6 +267,7 @@ fn test_sign_emits_signing_procedure_complete() {
 #[test]
 #[serial]
 fn test_verify_emits_verification_complete_event() {
+    let _password = PasswordEnvGuard::set();
     let agent = create_test_agent("ed25519");
     let payload = json!({"test": "verify_event"});
     let signed = agent.sign_message(&payload).expect("sign should succeed");
@@ -240,6 +300,7 @@ fn test_verify_emits_verification_complete_event() {
 #[test]
 #[serial]
 fn test_verify_emits_signature_verified_event() {
+    let _password = PasswordEnvGuard::set();
     let agent = create_test_agent("ed25519");
     let payload = json!({"test": "sig_verified"});
     let signed = agent.sign_message(&payload).expect("sign should succeed");
@@ -267,16 +328,17 @@ fn test_verify_emits_signature_verified_event() {
 #[test]
 #[serial]
 fn test_agreement_created_event() {
-    let tmp = std::env::temp_dir().join(format!("jacs_structlog_agreement_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let _password = PasswordEnvGuard::set();
+    let _scope = ScopedTempCwd::enter("jacs_structlog_agreement");
 
-    let original_cwd = std::env::current_dir().expect("get cwd");
-    unsafe { std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD") };
-    std::env::set_current_dir(&tmp).expect("cd to temp");
-
-    let (agent, info) =
-        SimpleAgent::quickstart(Some("ed25519"), None).expect("quickstart should succeed");
+    let (agent, info) = SimpleAgent::quickstart(
+        "structured-log-agreement-agent",
+        "agreement.example.com",
+        Some("Agreement structured logging test agent"),
+        Some("ed25519"),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     // Use agent_id from the quickstart info
     let agent_id = info.agent_id.clone();
@@ -294,9 +356,6 @@ fn test_agreement_created_event() {
             )
             .expect("create_agreement should succeed");
     });
-
-    std::env::set_current_dir(&original_cwd).expect("restore cwd");
-    let _ = std::fs::remove_dir_all(&tmp);
 
     let created_events = events_with_name(&events, "agreement_created");
     assert!(
@@ -318,16 +377,17 @@ fn test_agreement_created_event() {
 #[test]
 #[serial]
 fn test_signature_added_and_quorum_events() {
-    let tmp = std::env::temp_dir().join(format!("jacs_structlog_sig_added_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let _password = PasswordEnvGuard::set();
+    let _scope = ScopedTempCwd::enter("jacs_structlog_sig_added");
 
-    let original_cwd = std::env::current_dir().expect("get cwd");
-    unsafe { std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD") };
-    std::env::set_current_dir(&tmp).expect("cd to temp");
-
-    let (agent, info) =
-        SimpleAgent::quickstart(Some("ed25519"), None).expect("quickstart should succeed");
+    let (agent, info) = SimpleAgent::quickstart(
+        "structured-log-signature-agent",
+        "signature.example.com",
+        Some("Signature structured logging test agent"),
+        Some("ed25519"),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     let agent_id = info.agent_id.clone();
 
@@ -350,9 +410,6 @@ fn test_signature_added_and_quorum_events() {
             .sign_agreement(&agreement.raw)
             .expect("sign_agreement should succeed");
     });
-
-    std::env::set_current_dir(&original_cwd).expect("restore cwd");
-    let _ = std::fs::remove_dir_all(&tmp);
 
     let added_events = events_with_name(&events, "signature_added");
     assert!(
@@ -392,6 +449,7 @@ fn test_signature_added_and_quorum_events() {
 #[test]
 #[serial]
 fn test_pq2025_sign_verify_events() {
+    let _password = PasswordEnvGuard::set();
     let agent = create_test_agent("pq2025");
     let payload = json!({"test": "pq2025_logging"});
 
@@ -421,4 +479,160 @@ fn test_pq2025_sign_verify_events() {
         "Should emit 'verification_complete'"
     );
     assert_eq!(get_field(verify_events[0], "valid"), Some("true"));
+}
+
+// ---------------------------------------------------------------------------
+// Attestation-specific structured logging tests
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "attestation")]
+mod attestation_tracing {
+    use super::*;
+    use jacs::attestation::types::*;
+    use serial_test::serial;
+    use std::collections::HashMap;
+
+    fn ephemeral_agent() -> SimpleAgent {
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        agent
+    }
+
+    fn test_subject() -> AttestationSubject {
+        AttestationSubject {
+            subject_type: SubjectType::Artifact,
+            id: "trace-artifact-001".into(),
+            digests: DigestSet {
+                sha256: "abc123".into(),
+                sha512: None,
+                additional: HashMap::new(),
+            },
+        }
+    }
+
+    fn test_claim() -> Claim {
+        Claim {
+            name: "reviewed".into(),
+            value: serde_json::json!(true),
+            confidence: Some(0.95),
+            assurance_level: Some(AssuranceLevel::Verified),
+            issuer: None,
+            issued_at: None,
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn attestation_create_emits_structured_event() {
+        let agent = ephemeral_agent();
+
+        let events = with_captured_logs(|| {
+            let _doc = agent
+                .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
+                .expect("create attestation");
+        });
+
+        let create_events = events_with_name(&events, "attestation_created");
+        assert!(
+            !create_events.is_empty(),
+            "Should emit 'attestation_created' event. All events: {:?}",
+            events
+                .iter()
+                .map(|e| (&e.message, &e.fields))
+                .collect::<Vec<_>>()
+        );
+
+        let ev = create_events[0];
+        // Verify target includes attestation::create
+        assert!(
+            ev.target.contains("attestation"),
+            "Event target should include 'attestation', got: {}",
+            ev.target
+        );
+        assert_has_field(ev, "subject_type");
+        assert_has_field(ev, "claims_count");
+        assert_has_field(ev, "evidence_count");
+        assert_has_field(ev, "has_derivation");
+    }
+
+    #[test]
+    #[serial]
+    fn attestation_verify_local_emits_event() {
+        let agent = ephemeral_agent();
+        let signed = agent
+            .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
+            .expect("create attestation");
+
+        let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
+        let key = format!(
+            "{}:{}",
+            doc["jacsId"].as_str().unwrap(),
+            doc["jacsVersion"].as_str().unwrap()
+        );
+
+        let events = with_captured_logs(|| {
+            let _result = agent.verify_attestation(&key).expect("local verify");
+        });
+
+        let verify_events = events_with_name(&events, "attestation_verify_local");
+        assert!(
+            !verify_events.is_empty(),
+            "Should emit 'attestation_verify_local' event. All events: {:?}",
+            events
+                .iter()
+                .map(|e| (&e.message, &e.fields))
+                .collect::<Vec<_>>()
+        );
+
+        let ev = verify_events[0];
+        assert!(
+            ev.target.contains("attestation"),
+            "Event target should include 'attestation', got: {}",
+            ev.target
+        );
+        assert_has_field(ev, "tier");
+        assert_eq!(get_field(ev, "tier"), Some("local"));
+        assert_has_field(ev, "valid");
+        assert_has_field(ev, "document_key");
+    }
+
+    #[test]
+    #[serial]
+    fn attestation_verify_full_emits_event() {
+        let agent = ephemeral_agent();
+        let signed = agent
+            .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
+            .expect("create attestation");
+
+        let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
+        let key = format!(
+            "{}:{}",
+            doc["jacsId"].as_str().unwrap(),
+            doc["jacsVersion"].as_str().unwrap()
+        );
+
+        let events = with_captured_logs(|| {
+            let _result = agent.verify_attestation_full(&key).expect("full verify");
+        });
+
+        let verify_events = events_with_name(&events, "attestation_verify_full");
+        assert!(
+            !verify_events.is_empty(),
+            "Should emit 'attestation_verify_full' event. All events: {:?}",
+            events
+                .iter()
+                .map(|e| (&e.message, &e.fields))
+                .collect::<Vec<_>>()
+        );
+
+        let ev = verify_events[0];
+        assert!(
+            ev.target.contains("attestation"),
+            "Event target should include 'attestation', got: {}",
+            ev.target
+        );
+        assert_has_field(ev, "tier");
+        assert_eq!(get_field(ev, "tier"), Some("full"));
+        assert_has_field(ev, "valid");
+        assert_has_field(ev, "evidence_count");
+    }
 }

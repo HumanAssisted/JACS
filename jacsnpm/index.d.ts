@@ -13,6 +13,8 @@ export declare function createAgentSync(name: string, password: string, algorith
 export declare function createAgent(name: string, password: string, algorithm?: string | undefined | null, dataDirectory?: string | undefined | null, keyDirectory?: string | undefined | null, configPath?: string | undefined | null, agentType?: string | undefined | null, description?: string | undefined | null, domain?: string | undefined | null, defaultStorage?: string | undefined | null): Promise<string>
 /** Add an agent to the local trust store. */
 export declare function trustAgent(agentJson: string): string
+/** Add an agent to the local trust store with an explicit public key. */
+export declare function trustAgentWithKey(agentJson: string, publicKeyPem: string): string
 /** List all trusted agent IDs. */
 export declare function listTrustedAgents(): Array<string>
 /** Remove an agent from the trust store. */
@@ -72,23 +74,6 @@ export declare function legacySignRequest(params: any): string
 export declare function legacyVerifyResponse(documentString: string): object
 /** @deprecated Use `new JacsAgent()` and instance methods instead. */
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
-/** Information about a public key fetched from HAI key service. */
-export interface RemotePublicKeyInfo {
-  /** The raw public key bytes (DER encoded). */
-  publicKey: Buffer
-  /** The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256"). */
-  algorithm: string
-  /** The hash of the public key (SHA-256). */
-  publicKeyHash: string
-  /** The agent ID the key belongs to. */
-  agentId: string
-  /** The version of the key. */
-  version: string
-}
-/** Fetch a public key from HAI's key distribution service. */
-export declare function fetchRemoteKey(agentId: string, version?: string | undefined | null): RemotePublicKeyInfo
-/** Build a verification URL for a signed JACS document. */
-export declare function generateVerifyLink(document: string, baseUrl: string): string
 /**
  * JacsAgent is a handle to a JACS agent instance.
  * Each instance maintains its own state and can be used independently.
@@ -132,8 +117,6 @@ export declare class JacsAgent {
   checkAgreementSync(documentString: string, agreementFieldname?: string | undefined | null): string
   /** Get setup instructions (sync, blocks event loop). */
   getSetupInstructionsSync(domain: string, ttl?: number | undefined | null): string
-  /** Register with HAI.ai (sync, blocks event loop). */
-  registerWithHaiSync(apiKey?: string | undefined | null, haiUrl?: string | undefined | null, preview?: boolean | undefined | null): string
   /**
    * Returns diagnostic information as a JSON string.
    * Lightweight — no async variant needed.
@@ -188,12 +171,46 @@ export declare class JacsAgent {
   createDocument(documentString: string, customSchema?: string | undefined | null, outputfilename?: string | undefined | null, noSave?: boolean | undefined | null, attachments?: string | undefined | null, embed?: boolean | undefined | null): Promise<string>
   /** Check an agreement on a document. */
   checkAgreement(documentString: string, agreementFieldname?: string | undefined | null): Promise<string>
-  /** Get setup instructions for DNS records, DNSSEC, and HAI registration. */
+  /** Get setup instructions for DNS records and DNSSEC. */
   getSetupInstructions(domain: string, ttl?: number | undefined | null): Promise<string>
-  /** Register this agent with HAI.ai. */
-  registerWithHai(apiKey?: string | undefined | null, haiUrl?: string | undefined | null, preview?: boolean | undefined | null): Promise<string>
   /** Verify a document looked up by ID from storage. */
   verifyDocumentById(documentId: string): Promise<boolean>
   /** Re-encrypt the agent's private key with a new password. */
   reencryptKey(oldPassword: string, newPassword: string): Promise<void>
+  /** Export this agent as an A2A Agent Card (sync, blocks event loop). */
+  exportAgentCardSync(): string
+  /** Wrap an A2A artifact with JACS provenance signature (sync). */
+  wrapA2aArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
+  /** @deprecated Use wrapA2aArtifactSync() instead. Alias for wrapA2aArtifactSync. */
+  signArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
+  /** Verify a JACS-wrapped A2A artifact (sync). */
+  verifyA2aArtifactSync(wrappedJson: string): string
+  /** Export this agent as an A2A Agent Card. */
+  exportAgentCard(): Promise<string>
+  /** Wrap an A2A artifact with JACS provenance signature. */
+  wrapA2aArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
+  /** @deprecated Use wrapA2aArtifact() instead. Alias for wrapA2aArtifact. */
+  signArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
+  /** Verify a JACS-wrapped A2A artifact. */
+  verifyA2aArtifact(wrappedJson: string): Promise<string>
+  /** Create a signed attestation document (sync). */
+  createAttestationSync(paramsJson: string): string
+  /** Verify an attestation -- local tier (sync). */
+  verifyAttestationSync(documentKey: string): string
+  /** Verify an attestation -- full tier (sync). */
+  verifyAttestationFullSync(documentKey: string): string
+  /** Lift a signed document to attestation (sync). */
+  liftToAttestationSync(signedDocJson: string, claimsJson: string): string
+  /** Export an attestation as a DSSE envelope (sync). */
+  exportAttestationDsseSync(attestationJson: string): string
+  /** Create a signed attestation document (async). */
+  createAttestation(paramsJson: string): Promise<string>
+  /** Verify an attestation -- local tier (async). */
+  verifyAttestation(documentKey: string): Promise<string>
+  /** Verify an attestation -- full tier (async). */
+  verifyAttestationFull(documentKey: string): Promise<string>
+  /** Lift a signed document to attestation (async). */
+  liftToAttestation(signedDocJson: string, claimsJson: string): Promise<string>
+  /** Export an attestation as a DSSE envelope (async). */
+  exportAttestationDsse(attestationJson: string): Promise<string>
 }

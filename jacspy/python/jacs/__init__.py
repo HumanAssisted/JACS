@@ -90,14 +90,11 @@ try:
 except ImportError:
     mcp = None  # fastmcp not installed
 
-# Make HAI.ai integration available (optional, may fail if httpx not installed)
-try:
-    from . import hai
-except ImportError:
-    hai = None  # httpx not installed
-
 # Make framework adapters available (optional, no hard deps)
 from . import adapters
+
+# Allow namespace package extensions (e.g., jacs.hai from haisdk)
+__path__ = __import__('pkgutil').extend_path(__path__, __name__)
 
 __all__ = [
     # Primary API Classes
@@ -107,9 +104,9 @@ __all__ = [
     # Stateless utilities
     "hash_string",
     "verify_string",
-    "fetch_remote_key",
     # Trust store
     "trust_agent",
+    "trust_agent_with_key",
     "list_trusted_agents",
     "untrust_agent",
     "is_trusted",
@@ -133,7 +130,6 @@ __all__ = [
     "simple",
     "async_simple",
     "testing",
-    "hai",
     "adapters",
 ]
 

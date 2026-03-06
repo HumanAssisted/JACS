@@ -634,6 +634,345 @@ pub extern "C" fn jacs_agent_get_json(handle: *mut JacsAgentHandle) -> *mut c_ch
 }
 
 // ============================================================================
+// Attestation API (feature-gated)
+// ============================================================================
+
+/// Create a signed attestation document.
+/// params_json is a JSON string with subject, claims, and optional evidence/derivation/policyContext.
+/// Returns a JSON string of the signed attestation document, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_create_attestation(
+    handle: *mut JacsAgentHandle,
+    params_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || params_json.is_null() {
+            return ptr::null_mut();
+        }
+
+        let params_str = match unsafe { CStr::from_ptr(params_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        match wrapper.create_attestation(params_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, params_json);
+        ptr::null_mut()
+    }
+}
+
+/// Verify an attestation document.
+/// document_key is in "jacsId:jacsVersion" format.
+/// full: 0 for local (signature+hash), non-zero for full (evidence+chain).
+/// Returns a JSON string of the verification result, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_attestation(
+    handle: *mut JacsAgentHandle,
+    document_key: *const c_char,
+    full: c_int,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || document_key.is_null() {
+            return ptr::null_mut();
+        }
+
+        let key_str = match unsafe { CStr::from_ptr(document_key) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        let result = if full != 0 {
+            wrapper.verify_attestation_full(key_str)
+        } else {
+            wrapper.verify_attestation(key_str)
+        };
+
+        match result {
+            Ok(json) => match CString::new(json) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, document_key, full);
+        ptr::null_mut()
+    }
+}
+
+/// Lift an existing signed document into an attestation with additional claims.
+/// signed_doc_json: the signed JACS document JSON string.
+/// claims_json: JSON array of claim objects.
+/// Returns a JSON string of the new attestation document, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_lift_to_attestation(
+    handle: *mut JacsAgentHandle,
+    signed_doc_json: *const c_char,
+    claims_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || signed_doc_json.is_null() || claims_json.is_null() {
+            return ptr::null_mut();
+        }
+
+        let doc_str = match unsafe { CStr::from_ptr(signed_doc_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let claims_str = match unsafe { CStr::from_ptr(claims_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        match wrapper.lift_to_attestation(doc_str, claims_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, signed_doc_json, claims_json);
+        ptr::null_mut()
+    }
+}
+
+/// Export an attestation as a DSSE (Dead Simple Signing Envelope) for in-toto/SLSA compatibility.
+/// attestation_json: the attestation document JSON string.
+/// Returns a JSON string of the DSSE envelope, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_export_attestation_dsse(
+    handle: *mut JacsAgentHandle,
+    attestation_json: *const c_char,
+) -> *mut c_char {
+    #[cfg(feature = "attestation")]
+    {
+        if handle.is_null() || attestation_json.is_null() {
+            return ptr::null_mut();
+        }
+
+        let att_str = match unsafe { CStr::from_ptr(attestation_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+        match wrapper.export_attestation_dsse(att_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            Err(_) => ptr::null_mut(),
+        }
+    }
+    #[cfg(not(feature = "attestation"))]
+    {
+        let _ = (handle, attestation_json);
+        ptr::null_mut()
+    }
+}
+
+// ============================================================================
+// A2A API - Agent-to-Agent protocol operations
+// ============================================================================
+
+/// Export an A2A Agent Card for the current agent.
+/// Returns a JSON string of the Agent Card, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_export_agent_card(handle: *mut JacsAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.export_agent_card() {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Sign (wrap) an A2A artifact with the agent's key.
+/// `artifact_json` is the artifact payload, `artifact_type` is the type string.
+/// Returns a JSON string of the JACS-wrapped artifact, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_sign_a2a_artifact(
+    handle: *mut JacsAgentHandle,
+    artifact_json: *const c_char,
+    artifact_type: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || artifact_json.is_null() || artifact_type.is_null() {
+        return ptr::null_mut();
+    }
+
+    let art_str = match unsafe { CStr::from_ptr(artifact_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let type_str = match unsafe { CStr::from_ptr(artifact_type) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    #[allow(deprecated)]
+    match wrapper.wrap_a2a_artifact(art_str, type_str, None) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Verify a JACS-wrapped A2A artifact (crypto-only, no trust policy).
+/// Returns a JSON string of the verification result, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_a2a_artifact(
+    handle: *mut JacsAgentHandle,
+    wrapped_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || wrapped_json.is_null() {
+        return ptr::null_mut();
+    }
+
+    let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.verify_a2a_artifact(wrapped_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Verify a JACS-wrapped A2A artifact with trust policy enforcement.
+/// Combines crypto verification with trust assessment.
+/// Returns a JSON string of the verification result with trust info, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
+    handle: *mut JacsAgentHandle,
+    wrapped_json: *const c_char,
+    agent_card_json: *const c_char,
+    policy: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || wrapped_json.is_null() || agent_card_json.is_null() || policy.is_null() {
+        return ptr::null_mut();
+    }
+
+    let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.verify_a2a_artifact_with_policy(wrapped_str, card_str, policy_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Assess an A2A agent's trustworthiness against a trust policy.
+/// Returns a JSON string of the trust assessment, or null on error.
+/// Must be freed with jacs_free_string().
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_assess_a2a_agent(
+    handle: *mut JacsAgentHandle,
+    agent_card_json: *const c_char,
+    policy: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || agent_card_json.is_null() || policy.is_null() {
+        return ptr::null_mut();
+    }
+
+    let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.assess_a2a_agent(card_str, policy_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+// ============================================================================
 // Legacy Global Singleton API - Deprecated, use JacsAgent handle API instead
 // ============================================================================
 // The following functions use a global singleton for backwards compatibility.
@@ -869,6 +1208,53 @@ pub extern "C" fn jacs_create_config(
     );
 
     match serde_json::to_string_pretty(&config) {
+        Ok(serialized) => match CString::new(serialized) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Create a JACS agent programmatically.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_create_agent(
+    name: *const c_char,
+    password: *const c_char,
+    algorithm: *const c_char,
+    data_directory: *const c_char,
+    key_directory: *const c_char,
+    config_path: *const c_char,
+    agent_type: *const c_char,
+    description: *const c_char,
+    domain: *const c_char,
+    default_storage: *const c_char,
+) -> *mut c_char {
+    if name.is_null() || password.is_null() {
+        return ptr::null_mut();
+    }
+
+    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let password_str = match unsafe { CStr::from_ptr(password) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match jacs_binding_core::create_agent_programmatic(
+        name_str,
+        password_str,
+        c_string_to_option(algorithm).as_deref(),
+        c_string_to_option(data_directory).as_deref(),
+        c_string_to_option(key_directory).as_deref(),
+        c_string_to_option(config_path).as_deref(),
+        c_string_to_option(agent_type).as_deref(),
+        c_string_to_option(description).as_deref(),
+        c_string_to_option(domain).as_deref(),
+        c_string_to_option(default_storage).as_deref(),
+    ) {
         Ok(serialized) => match CString::new(serialized) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
@@ -1394,36 +1780,6 @@ pub extern "C" fn jacs_audit(config_path: *const c_char, recent_n: c_int) -> *mu
 
     match jacs_binding_core::audit(config, recent) {
         Ok(json_string) => match CString::new(json_string) {
-            Ok(c_string) => c_string.into_raw(),
-            Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
-}
-
-/// Generate a verification URL for a signed JACS document.
-/// Returns a C string that must be freed with jacs_free_string(), or null on error.
-#[unsafe(no_mangle)]
-pub extern "C" fn jacs_generate_verify_link(
-    document: *const c_char,
-    base_url: *const c_char,
-) -> *mut c_char {
-    if document.is_null() || base_url.is_null() {
-        return ptr::null_mut();
-    }
-
-    let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-
-    let base_url_str = match unsafe { CStr::from_ptr(base_url) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-
-    match jacs_binding_core::hai::generate_verify_link(doc_str, base_url_str) {
-        Ok(url) => match CString::new(url) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
         },

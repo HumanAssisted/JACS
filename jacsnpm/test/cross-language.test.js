@@ -38,7 +38,9 @@ try {
 const WORKSPACE_ROOT = path.resolve(__dirname, '../..');
 const FIXTURES_DIR = path.join(WORKSPACE_ROOT, 'jacs', 'tests', 'fixtures', 'cross-language');
 const UPDATE_FIXTURES = /^(1|true|yes)$/i.test(process.env.UPDATE_CROSS_LANG_FIXTURES || '');
+const IAT_SKEW_ENV_VAR = 'JACS_MAX_IAT_SKEW_SECONDS';
 let STANDALONE_CACHE_DIR = null;
+let previousIatSkewEnv = undefined;
 
 // Relative path from CWD to standalone key cache dir (required by standalone verifier).
 function fixturesRelPath() {
@@ -154,6 +156,10 @@ describe('Cross-language verification', function () {
       console.log('  Skipping cross-language tests - fixtures directory not found');
       this.skip();
     }
+    // Cross-language fixtures are committed snapshots; disable iat skew checks
+    // for compatibility verification against older fixture timestamps.
+    previousIatSkewEnv = process.env[IAT_SKEW_ENV_VAR];
+    process.env[IAT_SKEW_ENV_VAR] = '0';
     STANDALONE_CACHE_DIR = buildStandaloneKeyCache();
     console.log(`  Standalone key cache: ${STANDALONE_CACHE_DIR}`);
   });
@@ -162,6 +168,11 @@ describe('Cross-language verification', function () {
     if (STANDALONE_CACHE_DIR) {
       fs.rmSync(STANDALONE_CACHE_DIR, { recursive: true, force: true });
       STANDALONE_CACHE_DIR = null;
+    }
+    if (previousIatSkewEnv === undefined) {
+      delete process.env[IAT_SKEW_ENV_VAR];
+    } else {
+      process.env[IAT_SKEW_ENV_VAR] = previousIatSkewEnv;
     }
   });
 
@@ -415,30 +426,6 @@ describe('Cross-language verification', function () {
         // Export for potential Rust verification
         const outputPath = path.join(FIXTURES_DIR, 'node_chain_countersigned.json');
         writeFixtureIfEnabled(outputPath, countersigned.raw);
-      },
-    );
-  });
-
-  // ---------------------------------------------------------------------------
-  // generateVerifyLink on cross-language fixtures
-  // ---------------------------------------------------------------------------
-
-  describe('generateVerifyLink with cross-language fixtures', () => {
-    const ed25519Exists = fixturesDirExists && fixtureExists('ed25519');
-
-    (available && ed25519Exists ? it : it.skip)(
-      'should generate a verify link for a Rust-signed Ed25519 document',
-      () => {
-        const { signed } = readFixture('ed25519');
-        // The full signed document may exceed URL length limits
-        try {
-          const url = simple.generateVerifyLink(signed);
-          expect(url).to.be.a('string');
-          expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-        } catch (e) {
-          // Expected if document is too large for URL encoding
-          expect(String(e)).to.match(/max length/i);
-        }
       },
     );
   });

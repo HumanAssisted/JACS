@@ -1,4 +1,6 @@
-# CLI Usage
+# CLI Tutorial
+
+This page walks through common CLI workflows. For a complete command reference, see the [CLI Command Reference](../reference/cli-commands.md). For practical scripting examples, see [CLI Examples](../examples/cli.md).
 
 The JACS CLI provides a command-line interface for managing agents, documents, tasks, and agreements.
 
@@ -24,6 +26,7 @@ jacs task --help
 | `jacs agent` | Manage agents |
 | `jacs document` | Manage documents |
 | `jacs task` | Manage tasks |
+| `jacs mcp` | Install and run the Rust MCP server |
 
 ## Initialization
 
@@ -37,6 +40,23 @@ This command:
 1. Creates a configuration file (`jacs.config.json`)
 2. Generates cryptographic keys
 3. Creates an initial agent document
+
+## MCP Commands
+
+### Install MCP Server
+```bash
+# Install jacs-mcp from prebuilt platform assets (defaults to matching CLI version)
+jacs mcp install
+```
+
+### Run MCP Server
+```bash
+# Start stdio MCP server
+jacs mcp run
+
+# Run a custom binary path
+jacs mcp run --bin /path/to/jacs-mcp
+```
 
 ## Configuration Commands
 

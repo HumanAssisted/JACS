@@ -56,6 +56,9 @@ This document describes fictional but detailed scenarios for using JACS. Each se
 1. **Create a JACS agent.** Locally create and configure the agent (e.g. `jacs init` or Python/Node/Go `create`/`load`). Ensure you have the agent’s public key and identity (e.g. agent ID, public key hash).
 2. **Get an HAI API key.** Obtain an API key from HAI.ai (e.g. https://hai.ai or https://hai.ai/developers). Set `HAI_API_KEY` in the environment or pass it to the registration call.
 3. **Register the agent.** Use the HAI registration flow:
+
+   > **Note:** The registration functions below (`register_with_hai`, `registerWithHai`, etc.) are provided by the separate [haisdk](https://github.com/HumanAssisted/haisdk) package, not by the core `jacs` library. Install `haisdk` alongside `jacs` for HAI platform workflows.
+
    - **Python:** Use the `register_with_hai` example or `register_new_agent()` from `jacs.hai` (see `jacspy/examples/register_with_hai.py` and `jacspy/examples/hai_quickstart.py`). Quick path: `hai_quickstart.py` can create and register in one step.
    - **Node:** `registerWithHai()` (jacsnpm).
    - **Go:** `RegisterWithHai()` (jacsgo).

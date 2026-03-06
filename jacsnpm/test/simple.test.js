@@ -25,6 +25,18 @@ try {
 // Path to test fixtures (use shared fixtures from jacs/tests/scratch)
 const FIXTURES_DIR = path.resolve(__dirname, '../../jacs/tests/scratch');
 const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
+const TEST_PASSWORD = 'TestP@ss123!#';
+const HEALTH_STATUSES = ['Healthy', 'Degraded', 'Unhealthy', 'Unavailable'];
+const RISK_SEVERITIES = ['low', 'medium', 'high'];
+const RISK_CATEGORIES = [
+  'config',
+  'secrets',
+  'trust',
+  'storage',
+  'verification',
+  'quarantine',
+  'directories',
+];
 
 // Helper to get a fresh simple module and load it in the fixtures directory (sync)
 function loadSimpleInFixtures() {
@@ -52,6 +64,54 @@ function runInFixturesDir(fn) {
   } finally {
     process.chdir(originalCwd);
   }
+}
+
+async function runInFixturesDirAsync(fn) {
+  const originalCwd = process.cwd();
+  process.chdir(FIXTURES_DIR);
+  try {
+    return await fn();
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
+function expectAuditReport(result) {
+  expect(result).to.be.an('object');
+  expect(result.overall_status).to.be.a('string');
+  expect(HEALTH_STATUSES).to.include(result.overall_status);
+  expect(result.summary).to.be.a('string').and.not.empty;
+  expect(result.summary.includes('risk(s)') || result.summary.includes('risks: 0')).to.equal(true);
+  expect(result.checked_at).to.be.a('number');
+
+  expect(result.risks).to.be.an('array');
+  expect(result.health_checks).to.be.an('array').and.not.empty;
+
+  const firstHealth = result.health_checks[0];
+  expect(firstHealth).to.include.all.keys('name', 'status', 'message');
+  expect(firstHealth.name).to.be.a('string').and.not.empty;
+  expect(HEALTH_STATUSES).to.include(firstHealth.status);
+  expect(firstHealth.message).to.be.a('string').and.not.empty;
+
+  if (result.risks.length > 0) {
+    const firstRisk = result.risks[0];
+    expect(firstRisk).to.include.all.keys('category', 'severity', 'message');
+    expect(RISK_CATEGORIES).to.include(firstRisk.category);
+    expect(RISK_SEVERITIES).to.include(firstRisk.severity);
+    expect(firstRisk.message).to.be.a('string').and.not.empty;
+  }
+}
+
+function seedPublicKeyCache(agentDir, agentJson, publicKeyPem) {
+  const agent = JSON.parse(agentJson);
+  const signature = agent.jacsSignature || {};
+  const keyHash = signature.publicKeyHash;
+  const signingAlgorithm = signature.signingAlgorithm || 'RSA-PSS';
+  const publicKeysDir = path.join(agentDir, 'jacs_data', 'public_keys');
+
+  fs.mkdirSync(publicKeysDir, { recursive: true });
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), publicKeyPem);
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.enc_type`), signingAlgorithm);
 }
 
 function buildStandaloneKeyCacheFromSigned(signedRaw) {
@@ -90,11 +150,24 @@ describe('JACS Simple API', function() {
 
   const simpleExists = simple !== null;
   const fixturesExist = fs.existsSync(TEST_CONFIG);
+  let originalPassword;
 
   before(function() {
+    originalPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+    if (!originalPassword) {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
+    }
     if (!simpleExists) {
       console.log('  Skipping simple API tests - simple.js not compiled');
       this.skip();
+    }
+  });
+
+  after(() => {
+    if (originalPassword === undefined) {
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+    } else {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = originalPassword;
     }
   });
 
@@ -154,24 +227,52 @@ describe('JACS Simple API', function() {
   });
 
   describe('quickstart', () => {
+    (simpleExists ? it : it.skip)('should reject missing quickstart identity fields', async () => {
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+
+      let missingOptionsErr = null;
+      try {
+        await freshSimple.quickstart();
+      } catch (e) {
+        missingOptionsErr = e;
+      }
+      expect(String(missingOptionsErr)).to.match(/requires options\.name and options\.domain/);
+
+      let missingNameErr = null;
+      try {
+        await freshSimple.quickstart({ domain: 'simple-test.example.com' });
+      } catch (e) {
+        missingNameErr = e;
+      }
+      expect(String(missingNameErr)).to.match(/requires options\.name/);
+
+      expect(() => freshSimple.quickstartSync({ name: 'simple-test-agent' }))
+        .to.throw(/requires options\.domain/);
+    });
+
     (simpleExists ? it : it.skip)('should create and load an agent at a custom configPath', async function () {
       this.timeout(30000);
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-quickstart-'));
+      const customDir = path.join(tmpDir, 'custom');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
 
       try {
-        process.chdir(tmpDir);
+        fs.mkdirSync(customDir, { recursive: true });
+        process.chdir(customDir);
         const info = await freshSimple.quickstart({
+          name: 'simple-test-agent',
+          domain: 'simple-test.example.com',
           algorithm: 'ring-Ed25519',
-          configPath: 'custom/jacs.config.json',
+          configPath: path.join(customDir, 'jacs.config.json'),
         });
         expect(info).to.have.property('agentId').that.is.a('string').and.not.empty;
         expect(freshSimple.isLoaded()).to.equal(true);
-        expect(fs.existsSync(path.join(tmpDir, 'custom', 'jacs.config.json'))).to.equal(true);
+        expect(fs.existsSync(path.join(customDir, 'jacs.config.json'))).to.equal(true);
 
         const signed = await freshSimple.signMessage({ quickstart: true });
         expect(signed.documentId).to.be.a('string').and.not.empty;
@@ -322,54 +423,6 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('generateVerifyLink', () => {
-    (simpleExists ? it : it.skip)('should produce a valid hai.ai URL with base64url-encoded document', () => {
-      const doc = '{"jacsId":"test","jacsSignature":{}}';
-      const url = simple.generateVerifyLink(doc);
-      expect(url).to.be.a('string');
-      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-      // Should not contain standard base64 chars that are URL-unsafe
-      const param = url.split('?s=')[1];
-      expect(param).to.not.include('+');
-      expect(param).to.not.include('/');
-      expect(param).to.not.include('=');
-    });
-
-    (simpleExists ? it : it.skip)('should allow a custom base URL', () => {
-      const doc = '{"test": true}';
-      const url = simple.generateVerifyLink(doc, 'https://custom.example.com');
-      expect(url).to.match(/^https:\/\/custom\.example\.com\/jacs\/verify\?s=/);
-    });
-
-    (simpleExists ? it : it.skip)('should strip trailing slashes from base URL', () => {
-      const doc = '{"test": true}';
-      const url = simple.generateVerifyLink(doc, 'https://hai.ai///');
-      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-    });
-
-    (simpleExists ? it : it.skip)('should round-trip: decode produces the original document', () => {
-      const doc = '{"jacsId":"abc-123","content":"hello"}';
-      const url = simple.generateVerifyLink(doc);
-      const encoded = url.split('?s=')[1];
-      // Restore standard base64 padding
-      let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-      while (b64.length % 4 !== 0) b64 += '=';
-      const decoded = Buffer.from(b64, 'base64').toString('utf8');
-      expect(decoded).to.equal(doc);
-    });
-
-    (simpleExists ? it : it.skip)('should throw for documents exceeding max URL length', () => {
-      // Create a document larger than MAX_VERIFY_DOCUMENT_BYTES
-      const bigDoc = JSON.stringify({ data: 'x'.repeat(2000) });
-      expect(() => simple.generateVerifyLink(bigDoc)).to.throw(/max length/i);
-    });
-
-    (simpleExists ? it : it.skip)('should export MAX_VERIFY_URL_LEN and MAX_VERIFY_DOCUMENT_BYTES constants', () => {
-      expect(simple.MAX_VERIFY_URL_LEN).to.equal(2048);
-      expect(simple.MAX_VERIFY_DOCUMENT_BYTES).to.equal(1515);
-    });
-  });
-
   describe('signMessageSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
@@ -473,6 +526,8 @@ describe('JACS Simple API', function() {
       const modulePath = require.resolve('../simple.js');
       const password = 'TestP@ss123!#';
       const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));
+      const agent1Dir = path.join(root, 'agent1');
+      const agent2Dir = path.join(root, 'agent2');
       const originalCwd = process.cwd();
 
       function freshSimpleModule() {
@@ -481,39 +536,48 @@ describe('JACS Simple API', function() {
       }
 
       try {
-        // Use relative paths from an isolated working directory to match storage path handling.
         process.chdir(root);
-        fs.mkdirSync('agent1', { recursive: true });
-        fs.mkdirSync('agent2', { recursive: true });
+        fs.mkdirSync(agent1Dir, { recursive: true });
+        fs.mkdirSync(agent2Dir, { recursive: true });
 
         const simpleA = freshSimpleModule();
         const simpleB = freshSimpleModule();
 
+        process.chdir(agent1Dir);
         simpleA.createSync({
           name: 'mocha-agent-a',
           password,
-          algorithm: 'ring-Ed25519',
-          dataDirectory: 'shared-data',
-          keyDirectory: 'agent1/keys',
-          configPath: 'agent1/jacs.config.json',
+          algorithm: 'RSA-PSS',
+          dataDirectory: 'jacs_data',
+          keyDirectory: 'keys',
+          configPath: 'jacs.config.json',
         });
+
+        process.chdir(agent2Dir);
         simpleB.createSync({
           name: 'mocha-agent-b',
           password,
-          algorithm: 'ring-Ed25519',
-          dataDirectory: 'shared-data',
-          keyDirectory: 'agent2/keys',
-          configPath: 'agent2/jacs.config.json',
+          algorithm: 'RSA-PSS',
+          dataDirectory: 'jacs_data',
+          keyDirectory: 'keys',
+          configPath: 'jacs.config.json',
         });
 
-        simpleA.loadSync('agent1/jacs.config.json');
-        simpleB.loadSync('agent2/jacs.config.json');
+        process.chdir(agent1Dir);
+        simpleA.loadSync('jacs.config.json');
+        const agentAJson = simpleA.exportAgent();
+        const agentAPublicKey = simpleA.getPublicKey();
+        process.chdir(agent2Dir);
+        simpleB.loadSync('jacs.config.json');
+        simpleB.trustAgentWithKey(agentAJson, agentAPublicKey);
+        seedPublicKeyCache(agent2Dir, agentAJson, agentAPublicKey);
 
         const infoA = simpleA.getAgentInfo();
         const infoB = simpleB.getAgentInfo();
         expect(infoA).to.be.an('object');
         expect(infoB).to.be.an('object');
 
+        process.chdir(agent1Dir);
         const agreement = simpleA.createAgreementSync(
           { proposal: 'two-party-approval', scope: 'integration-test' },
           [infoA.agentId, infoB.agentId],
@@ -527,6 +591,7 @@ describe('JACS Simple API', function() {
         const signedByA = simpleA.signAgreementSync(agreement);
         expect(() => simpleA.checkAgreementSync(signedByA)).to.throw(/not all agents have signed/i);
 
+        process.chdir(agent2Dir);
         const signedByBoth = simpleB.signAgreementSync(signedByA);
         const status = simpleB.checkAgreementSync(signedByBoth);
         expect(status.complete).to.equal(true);
@@ -696,6 +761,26 @@ describe('JACS Simple API', function() {
     });
   });
 
+  describe('verifyById / verifyByIdSync', () => {
+    (simpleExists && fixturesExist ? it : it.skip)('verifyByIdSync should return invalid format error payload', () => {
+      const freshSimple = loadSimpleInFixtures();
+      const result = freshSimple.verifyByIdSync('not-a-versioned-id');
+
+      expect(result.valid).to.be.false;
+      expect(result.errors).to.be.an('array').that.is.not.empty;
+      expect(result.errors[0]).to.match(/Document ID must be in 'uuid:version' format/);
+    });
+
+    (simpleExists && fixturesExist ? it : it.skip)('verifyById should return invalid format error payload', async () => {
+      const freshSimple = loadSimpleInFixtures();
+      const result = await freshSimple.verifyById('not-a-versioned-id');
+
+      expect(result.valid).to.be.false;
+      expect(result.errors).to.be.an('array').that.is.not.empty;
+      expect(result.errors[0]).to.match(/Document ID must be in 'uuid:version' format/);
+    });
+  });
+
   describe('signFileSync', () => {
     (simpleExists ? it : it.skip)('should throw when no agent is loaded', () => {
       delete require.cache[require.resolve('../simple.js')];
@@ -751,72 +836,13 @@ describe('JACS Simple API', function() {
     });
   });
 
-  describe('registerWithHai', () => {
-    (simpleExists ? it : it.skip)('should throw when no apiKey and no HAI_API_KEY', async () => {
-      delete require.cache[require.resolve('../simple.js')];
-      const freshSimple = require('../simple.js');
-      const orig = process.env.HAI_API_KEY;
-      delete process.env.HAI_API_KEY;
-      try {
-        if (fixturesExist) {
-          const loadedSimple = loadSimpleInFixtures();
-          let caught = null;
-          try {
-            await loadedSimple.registerWithHai({ haiUrl: 'https://hai.ai' });
-          } catch (e) {
-            caught = e;
-          }
-          expect(caught).to.not.equal(null);
-          expect(String(caught)).to.match(/api key|HAI_API_KEY|required/i);
-        }
-      } finally {
-        if (orig !== undefined) process.env.HAI_API_KEY = orig;
-      }
-    });
-
-    (simpleExists && fixturesExist ? it : it.skip)('should POST to /api/v1/agents/register with Bearer and agent JSON', async () => {
-      const freshSimple = loadSimpleInFixtures();
-      const baseUrl = 'http://mock-hai.test';
-      let capturedRequest = null;
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = (url, opts) => {
-        capturedRequest = { url, method: opts?.method, headers: opts?.headers, body: opts?.body };
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            agent_id: 'mock-agent-id',
-            jacs_id: 'mock-jacs-id',
-            dns_verified: true,
-            signatures: [{ key_id: 'k1', signature: 'sig1', algorithm: 'Ed25519', signed_at: '2025-01-01T00:00:00Z' }],
-          }),
-        });
-      };
-      try {
-        const result = await freshSimple.registerWithHai({ apiKey: 'test-key', haiUrl: baseUrl });
-        expect(capturedRequest).to.not.be.null;
-        expect(capturedRequest.url).to.equal(`${baseUrl}/api/v1/agents/register`);
-        expect(capturedRequest.method).to.equal('POST');
-        expect(capturedRequest.headers?.Authorization).to.equal('Bearer test-key');
-        const body = typeof capturedRequest.body === 'string' ? JSON.parse(capturedRequest.body) : capturedRequest.body;
-        expect(body).to.have.property('agent_json');
-        expect(result).to.have.property('agentId', 'mock-agent-id');
-        expect(result).to.have.property('jacsId', 'mock-jacs-id');
-        expect(result).to.have.property('dnsVerified', true);
-        expect(result.signatures).to.be.an('array');
-        expect(result.signatures).to.include('sig1');
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    });
-  });
-
   describe('DNS helpers', () => {
     (simpleExists && fixturesExist ? it : it.skip)('getDnsRecord returns TXT line in expected format', () => {
       const freshSimple = loadSimpleInFixtures();
       const record = freshSimple.getDnsRecord('example.com', 3600);
       expect(record).to.be.a('string');
       expect(record).to.match(/^_v1\.agent\.jacs\.example\.com\.\s+3600\s+IN\s+TXT\s+"/);
-      expect(record).to.include('v=hai.ai');
+      expect(record).to.include('v=jacs');
       expect(record).to.include('jacs_agent_id=');
       expect(record).to.include('alg=SHA-256');
       expect(record).to.include('enc=base64');
@@ -903,29 +929,43 @@ describe('JACS Simple API', function() {
   });
 
   describe('auditSync', () => {
-    (simpleExists ? it : it.skip)('should return object with risks and health_checks', () => {
-      const result = simple.auditSync();
-      expect(result).to.have.property('risks');
-      expect(result).to.have.property('health_checks');
-      expect(result.risks).to.be.an('array');
-      expect(result.health_checks).to.be.an('array');
+    (simpleExists && fixturesExist ? it : it.skip)('should return a structured audit report for a valid config', () => {
+      const result = runInFixturesDir(() => simple.auditSync({ configPath: TEST_CONFIG, recentN: 1 }));
+      expectAuditReport(result);
     });
 
-    (simpleExists ? it : it.skip)('should return summary and overall_status', () => {
-      const result = simple.auditSync();
-      expect(result).to.have.property('summary');
-      expect(result).to.have.property('overall_status');
-      expect(result.summary).to.be.a('string');
+    (simpleExists && fixturesExist ? it : it.skip)('should summarize component health in the report body', () => {
+      const result = runInFixturesDir(() => simple.auditSync({ configPath: TEST_CONFIG, recentN: 1 }));
+      expectAuditReport(result);
+      expect(result.summary).to.include(`${result.health_checks[0].name}:`);
     });
   });
 
   describe('audit (async)', () => {
-    (simpleExists ? it : it.skip)('should return object with risks and health_checks (async)', async () => {
-      const result = await simple.audit();
-      expect(result).to.have.property('risks');
-      expect(result).to.have.property('health_checks');
-      expect(result.risks).to.be.an('array');
-      expect(result.health_checks).to.be.an('array');
+    (simpleExists && fixturesExist ? it : it.skip)('should return a structured audit report (async)', async () => {
+      const result = await runInFixturesDirAsync(() => simple.audit({ configPath: TEST_CONFIG, recentN: 1 }));
+      expectAuditReport(result);
+    });
+  });
+
+  describe('generateVerifyLink', () => {
+    (simpleExists ? it : it.skip)('should return URL with default base', () => {
+      const link = simple.generateVerifyLink('{"hello":"world"}');
+      expect(link).to.be.a('string');
+      expect(link).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should use custom baseUrl', () => {
+      const link = simple.generateVerifyLink('test', 'https://example.com/verify');
+      expect(link).to.match(/^https:\/\/example\.com\/verify\?s=/);
+    });
+
+    (simpleExists ? it : it.skip)('should round-trip decode to original', () => {
+      const original = '{"signed":"document","data":123}';
+      const link = simple.generateVerifyLink(original);
+      const encoded = link.split('?s=')[1];
+      const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+      expect(decoded).to.equal(original);
     });
   });
 });

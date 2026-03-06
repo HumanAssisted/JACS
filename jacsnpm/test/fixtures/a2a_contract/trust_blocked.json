@@ -1,0 +1,26 @@
+{
+  "status": {
+    "Invalid": {
+      "reason": "Strict policy: agent 'agent-blocked-005' is not in the local trust store. Use trust_agent() to add it first."
+    }
+  },
+  "valid": false,
+  "signerId": "agent-blocked-005",
+  "signerVersion": "v1-blocked",
+  "artifactType": "a2a-task",
+  "timestamp": "2025-06-03T14:00:00Z",
+  "parentSignaturesValid": false,
+  "parentVerificationResults": [],
+  "originalArtifact": {
+    "task": "access-restricted-resource"
+  },
+  "trustLevel": "JacsVerified",
+  "trustAssessment": {
+    "allowed": false,
+    "trustLevel": "JacsVerified",
+    "reason": "Strict policy: agent 'agent-blocked-005' is not in the local trust store. Use trust_agent() to add it first.",
+    "jacsRegistered": true,
+    "agentId": "agent-blocked-005",
+    "policy": "Strict"
+  }
+}

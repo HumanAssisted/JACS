@@ -153,3 +153,65 @@ fn remove_tool_url(tool: &mut Value) -> Result<(), String> {
         .remove("url");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_minimal_tool_wraps_function_definition_in_array() {
+        let wrapped_tool = create_minimal_tool(
+            "search",
+            "Searches indexed content",
+            json!({"type": "object"}),
+            Some("https://example.com/tool"),
+        )
+        .expect("tool should be created");
+
+        let tool = wrapped_tool
+            .as_array()
+            .and_then(|tools| tools.first())
+            .expect("wrapped tool should contain one entry");
+
+        assert_eq!(tool["function"]["name"], json!("search"));
+        assert_eq!(
+            tool["function"]["description"],
+            json!("Searches indexed content")
+        );
+        assert_eq!(tool["url"], json!("https://example.com/tool"));
+    }
+
+    #[test]
+    fn tool_helpers_update_nested_function_fields_and_remove_url() {
+        let mut wrapped_tool = create_minimal_tool(
+            "search",
+            "Searches indexed content",
+            json!({"type": "object"}),
+            Some("https://example.com/tool"),
+        )
+        .expect("tool should be created");
+        let tool = wrapped_tool
+            .as_array_mut()
+            .and_then(|tools| tools.first_mut())
+            .expect("wrapped tool should contain one entry");
+
+        update_tool_name(tool, "summarize").unwrap();
+        update_tool_description(tool, "Summarizes content").unwrap();
+        update_tool_parameters(tool, json!({"type": "string"})).unwrap();
+        update_tool_url(tool, "https://example.com/summary").unwrap();
+        remove_tool_url(tool).unwrap();
+
+        assert_eq!(tool["function"]["name"], json!("summarize"));
+        assert_eq!(tool["function"]["description"], json!("Summarizes content"));
+        assert_eq!(tool["function"]["parameters"], json!({"type": "string"}));
+        assert!(tool.get("url").is_none());
+    }
+
+    #[test]
+    fn create_minimal_tool_rejects_invalid_input() {
+        assert!(create_minimal_tool("", "desc", json!({}), None).is_err());
+        assert!(create_minimal_tool("name", "", json!({}), None).is_err());
+        assert!(create_minimal_tool("name", "desc", json!(null), None).is_err());
+        assert!(create_minimal_tool("name", "desc", json!({}), Some("not-a-url")).is_err());
+    }
+}

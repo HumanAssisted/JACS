@@ -4,34 +4,36 @@
 
 ## Getting Started
 - [What is JACS?](getting-started/what-is-jacs.md)
+- [Which Integration?](getting-started/decision-tree.md)
+- [Use cases](usecases.md)
 - [Core Concepts](getting-started/concepts.md)
 - [Quick Start](getting-started/quick-start.md)
-- [Which Integration?](getting-started/decision-tree.md)
 - [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
 - [Verifying Signed Documents](getting-started/verification.md)
-- [Use cases](usecases.md)
+- [What Is an Attestation?](getting-started/attestation.md)
+- [Trust Layers](getting-started/trust-layers.md)
 - [Deployment Compatibility](getting-started/deployment.md)
 - [Troubleshooting](getting-started/troubleshooting.md)
 
 ## Rust CLI & Library
 - [Installation](rust/installation.md)
-- [CLI Usage](rust/cli.md)
+- [CLI Tutorial](rust/cli.md)
 - [Creating an Agent](rust/agent.md)
 - [Working with Documents](rust/documents.md)
 - [Creating and Using Agreements](rust/agreements.md)
 - [DNS-Based Verification](rust/dns.md)
 - [Rust Library API](rust/library.md)
-- [Observability](rust/observability.md)
+- [Observability (Rust API)](rust/observability.md)
 
 ## Node.js (@hai.ai/jacs)
 - [Installation](nodejs/installation.md)
 - [Simplified API](nodejs/simple-api.md)
 - [Basic Usage](nodejs/basic-usage.md)
+- [MCP Integration (Node.js)](nodejs/mcp.md)
 - [LangChain.js](nodejs/langchain.md)
 - [Vercel AI SDK](nodejs/vercel-ai.md)
 - [Express Middleware](nodejs/express.md)
 - [Koa Middleware](nodejs/koa.md)
-- [MCP Integration](nodejs/mcp.md)
 - [HTTP Server](nodejs/http.md)
 - [API Reference](nodejs/api.md)
 
@@ -39,12 +41,15 @@
 - [Installation](python/installation.md)
 - [Simplified API](python/simple-api.md)
 - [Basic Usage](python/basic-usage.md)
+- [MCP Integration (Python)](python/mcp.md)
 - [Framework Adapters](python/adapters.md)
-- [MCP Integration](python/mcp.md)
 <!-- - [FastMCP Integration](python/fastmcp.md) -->
 - [API Reference](python/api.md)
 
-## Schemas & Configuration
+## Go (jacsgo)
+- [Installation & Quick Start](go/installation.md)
+
+## Schemas
 - [JSON Schemas](schemas/overview.md)
 - [Agent Schema](schemas/agent.md)
 - [Document Schema](schemas/document.md)
@@ -53,7 +58,10 @@
 - [Commitment Schema](schemas/commitment.md)
 - [Todo List Schema](schemas/todo.md)
 - [Conversation Schema](schemas/conversation.md)
-- [Configuration](schemas/configuration.md)
+- [Config File Schema](schemas/configuration.md)
+
+## Concepts
+- [JACS Attestation vs. Other Standards](concepts/attestation-comparison.md)
 
 ## Advanced Topics
 - [Security Model](advanced/security.md)
@@ -69,15 +77,21 @@
 - [Testing](advanced/testing.md)
 
 ## Integrations
-- [Model Context Protocol (MCP)](integrations/mcp.md)
+- [MCP Overview](integrations/mcp.md)
 - [A2A Interoperability](integrations/a2a.md)
-- [HAI.ai Platform](integrations/hai.md)
-- [OpenClaw](integrations/openclaw.md)
-- [Web Servers](integrations/web-servers.md)
-- [Databases](integrations/databases.md)
 
 ## Guides
-- [Observability & Monitoring](guides/observability.md)
+- [A2A Quickstart](guides/a2a-quickstart.md)
+  - [Serve Your Agent Card](guides/a2a-serve.md)
+  - [Discover & Trust Remote Agents](guides/a2a-discover.md)
+  - [Exchange Signed Artifacts](guides/a2a-exchange.md)
+- [Sign vs. Attest Decision Guide](guides/sign-vs-attest.md)
+- [Attestation Tutorial](guides/attestation-tutorial.md)
+- [Writing a Custom Evidence Adapter](guides/custom-adapters.md)
+- [Framework Adapter Attestation Guide](guides/framework-attestation.md)
+- [A2A + Attestation Composition](guides/a2a-attestation-composition.md)
+- [Observability & Monitoring Guide](guides/observability.md)
+- [Email Signing & Verification](guides/email-signing.md)
 - [Streaming Signing](guides/streaming.md)
 
 ## Examples
@@ -90,6 +104,8 @@
 - [CLI Command Reference](reference/cli-commands.md)
 - [Configuration Reference](reference/configuration.md)
 - [Error Codes](reference/errors.md)
+- [Attestation Verification Results](reference/attestation-errors.md)
+- [Attestation CLI Reference](reference/attest-cli.md)
 - [Migration Guide](reference/migration.md)
 
 -----------

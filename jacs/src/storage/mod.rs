@@ -23,13 +23,58 @@ pub mod jenv;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
 pub mod database;
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(
+        feature = "database",
+        feature = "sqlite",
+        feature = "rusqlite-storage",
+        feature = "surrealdb-storage",
+        feature = "duckdb-storage",
+        feature = "redb-storage"
+    )
+))]
 pub mod database_traits;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
 pub use database::DatabaseStorage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(
+        feature = "database",
+        feature = "sqlite",
+        feature = "rusqlite-storage",
+        feature = "surrealdb-storage",
+        feature = "duckdb-storage",
+        feature = "redb-storage"
+    )
+))]
 pub use database_traits::DatabaseDocumentTraits;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+pub mod sqlite;
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+pub use sqlite::SqliteStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+pub mod rusqlite_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+pub use rusqlite_storage::RusqliteStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+pub mod surrealdb_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+pub use surrealdb_storage::SurrealDbStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+pub mod duckdb_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+pub use duckdb_storage::DuckDbStorage;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+pub mod redb_storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+pub use redb_storage::RedbStorage;
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -175,6 +220,21 @@ pub enum StorageType {
     #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
     #[strum(serialize = "database")]
     Database,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+    #[strum(serialize = "sqlite")]
+    Sqlite,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+    #[strum(serialize = "rusqlite")]
+    Rusqlite,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+    #[strum(serialize = "surrealdb")]
+    SurrealDb,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+    #[strum(serialize = "duckdb")]
+    DuckDb,
+    #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+    #[strum(serialize = "redb")]
+    Redb,
 }
 
 impl MultiStorage {
@@ -217,9 +277,12 @@ impl MultiStorage {
             let bucket_name = get_required_env_var("JACS_ENABLE_AWS_BUCKET_NAME", true).expect(
                 "JACS_ENABLE_AWS_BUCKET_NAME must be set when JACS_ENABLE_AWS_STORAGE is set",
             );
+            let allow_http = std::env::var("AWS_ALLOW_HTTP")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false);
             let s3 = AmazonS3Builder::from_env()
                 .with_bucket_name(bucket_name)
-                .with_allow_http(false)
+                .with_allow_http(allow_http)
                 .build()?;
             let tmps3 = Arc::new(s3);
             _s3 = Some(tmps3.clone());
@@ -389,22 +452,27 @@ impl MultiStorage {
     }
 
     pub fn rename_file(&self, from: &str, to: &str) -> Result<(), ObjectStoreError> {
-        // First get the contents of the original file
-        let contents = self.get_file(from, None)?;
+        let from_path = ObjectPath::parse(Self::clean_path(from))?;
+        let to_path = ObjectPath::parse(Self::clean_path(to))?;
+        let mut errors = Vec::new();
 
-        // Save contents to new location
-        self.save_file(to, &contents)?;
-
-        // Delete the original file
         for storage in &self.storages {
-            let from_path = ObjectPath::parse(Self::clean_path(from))?;
-            if let Err(e) = block_on(storage.delete(&from_path)) {
-                // Log error but continue if file doesn't exist or other errors
-                debug!("Error deleting original file during rename: {:?}", e);
+            if let Err(e) = block_on(storage.rename(&from_path, &to_path)) {
+                errors.push(e);
             }
         }
 
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(format!(
+                    "Failed to rename in some storages: {:?}",
+                    errors
+                ))),
+            })
+        }
     }
 
     fn get_read_storage(&self, preference: Option<StorageType>) -> Arc<dyn ObjectStore> {
@@ -426,6 +494,26 @@ impl MultiStorage {
             #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
             StorageType::Database => {
                 panic!("Database storage does not use ObjectStore. Use DatabaseStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+            StorageType::Sqlite => {
+                panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+            StorageType::Rusqlite => {
+                panic!("Rusqlite storage does not use ObjectStore. Use RusqliteStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
+            StorageType::SurrealDb => {
+                panic!("SurrealDB storage does not use ObjectStore. Use SurrealDbStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
+            StorageType::DuckDb => {
+                panic!("DuckDB storage does not use ObjectStore. Use DuckDbStorage directly.")
+            }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
+            StorageType::Redb => {
+                panic!("Redb storage does not use ObjectStore. Use RedbStorage directly.")
             }
         }
     }
@@ -536,14 +624,8 @@ impl StorageDocumentTraits for MultiStorage {
         let old_path = format!("documents/{}.json", key);
         let archive_path = format!("documents/archive/{}.json", key);
 
-        // Read the content
-        let contents = self.get_file(&old_path, None)?;
-
-        // Save to archive
-        self.save_file(&archive_path, &contents)?;
-
-        // Note: We don't have a delete method in object_store, so we'll just move to archive
-        // In a real implementation, we might want to add a delete method to MultiStorage
+        // Move the object so the primary key no longer resolves after removal.
+        self.rename_file(&old_path, &archive_path)?;
 
         Ok(doc)
     }
@@ -621,11 +703,32 @@ impl StorageDocumentTraits for MultiStorage {
             .into());
         }
 
-        // For now, return the last one in the list
-        // TODO: In the future, implement proper version tree traversal
-        // by checking jacsPreviousVersion field
-        let latest_key = versions.last().unwrap();
-        self.get_document(latest_key)
+        // Select deterministically by latest `jacsVersionDate` (RFC3339), falling back to key.
+        let mut latest_doc: Option<JACSDocument> = None;
+        let mut latest_date = String::new();
+        let mut latest_key = String::new();
+
+        for key in versions {
+            let doc = self.get_document(&key)?;
+            let date = doc
+                .value
+                .get("jacsVersionDate")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            if latest_doc.is_none()
+                || date > latest_date
+                || (date == latest_date && key > latest_key)
+            {
+                latest_date = date;
+                latest_key = key;
+                latest_doc = Some(doc);
+            }
+        }
+
+        latest_doc.ok_or_else(|| {
+            JacsError::DocumentError(format!("No documents found with ID: {}", document_id)).into()
+        })
     }
 
     fn merge_documents(
@@ -781,5 +884,95 @@ impl StorageDocumentTraits for CachedMultiStorage {
 
     fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
         self.storage.get_documents(keys)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MultiStorage;
+    use super::StorageDocumentTraits;
+    use crate::agent::document::JACSDocument;
+    use serde_json::json;
+
+    #[test]
+    fn rename_file_moves_content_and_removes_source() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        storage
+            .save_file("source/path.txt", b"hello world")
+            .expect("write source");
+
+        storage
+            .rename_file("source/path.txt", "dest/path.txt")
+            .expect("rename should succeed");
+
+        let moved = storage
+            .get_file("dest/path.txt", None)
+            .expect("destination file should exist");
+        assert_eq!(moved, b"hello world");
+
+        let source_exists = storage
+            .file_exists("source/path.txt", None)
+            .expect("source exists check");
+        assert!(!source_exists, "source file should not exist after rename");
+    }
+
+    #[test]
+    fn rename_file_accepts_paths_with_leading_slashes() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        storage
+            .save_file("/source/leading.txt", b"slash-test")
+            .expect("write source with leading slash");
+
+        storage
+            .rename_file("/source/leading.txt", "/dest/leading.txt")
+            .expect("rename should succeed");
+
+        let moved = storage
+            .get_file("dest/leading.txt", None)
+            .expect("destination file should exist");
+        assert_eq!(moved, b"slash-test");
+    }
+
+    #[test]
+    fn rename_file_missing_source_returns_error() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let result = storage.rename_file("missing/source.txt", "dest/path.txt");
+        assert!(result.is_err(), "renaming a missing source should fail");
+    }
+
+    #[test]
+    fn remove_document_removes_primary_copy() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let doc = JACSDocument {
+            id: "rm-doc".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "message".to_string(),
+            value: json!({
+                "jacsId": "rm-doc",
+                "jacsVersion": "v1",
+                "jacsType": "message",
+                "jacsLevel": "raw",
+                "content": {"ok": true}
+            }),
+        };
+
+        storage.store_document(&doc).expect("store document");
+        assert!(
+            storage
+                .document_exists("rm-doc:v1")
+                .expect("exists before remove"),
+            "document should exist before remove_document"
+        );
+
+        storage
+            .remove_document("rm-doc:v1")
+            .expect("remove_document should succeed");
+
+        assert!(
+            !storage
+                .document_exists("rm-doc:v1")
+                .expect("exists after remove"),
+            "document should not remain at primary location after remove_document"
+        );
     }
 }

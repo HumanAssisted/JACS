@@ -25,6 +25,56 @@ from jacs.types import (
     AgentNotLoadedError,
 )
 
+HEALTH_STATUSES = {"Healthy", "Degraded", "Unhealthy", "Unavailable"}
+RISK_SEVERITIES = {"low", "medium", "high"}
+RISK_CATEGORIES = {
+    "config",
+    "secrets",
+    "trust",
+    "storage",
+    "verification",
+    "quarantine",
+    "directories",
+}
+
+
+def assert_audit_result(result: dict) -> None:
+    assert isinstance(result, dict)
+    assert result["overall_status"] in HEALTH_STATUSES
+    assert isinstance(result["summary"], str)
+    assert result["summary"].strip()
+    assert "risk(s)" in result["summary"] or "risks: 0" in result["summary"]
+    assert isinstance(result["checked_at"], int)
+
+    assert isinstance(result["risks"], list)
+    assert isinstance(result["health_checks"], list)
+    assert result["health_checks"]
+
+    first_health = result["health_checks"][0]
+    assert isinstance(first_health, dict)
+    assert first_health["name"]
+    assert first_health["status"] in HEALTH_STATUSES
+    assert first_health["message"]
+
+    if result["risks"]:
+        first_risk = result["risks"][0]
+        assert isinstance(first_risk, dict)
+        assert first_risk["category"] in RISK_CATEGORIES
+        assert first_risk["severity"] in RISK_SEVERITIES
+        assert first_risk["message"]
+
+
+def seed_public_key_cache(agent_root: Path, agent_json: str, public_key_pem: str) -> None:
+    agent_data = json.loads(agent_json)
+    signature = agent_data.get("jacsSignature", {})
+    key_hash = signature["publicKeyHash"]
+    signing_algorithm = signature.get("signingAlgorithm", "RSA-PSS")
+
+    public_keys_dir = agent_root / "jacs_data" / "public_keys"
+    public_keys_dir.mkdir(parents=True, exist_ok=True)
+    (public_keys_dir / f"{key_hash}.pem").write_text(public_key_pem, encoding="utf-8")
+    (public_keys_dir / f"{key_hash}.enc_type").write_text(signing_algorithm, encoding="utf-8")
+
 
 # Fixtures
 
@@ -201,64 +251,6 @@ class TestVerifyStandalone:
         assert result.valid is False
 
 
-# Test generate_verify_link()
-
-
-class TestGenerateVerifyLink:
-    """Tests for generate_verify_link()."""
-
-    def test_returns_url_string(self):
-        """generate_verify_link() should return a URL string."""
-        doc = '{"test": true}'
-        url = simple.generate_verify_link(doc)
-        assert isinstance(url, str)
-        assert url.startswith("https://hai.ai/jacs/verify?s=")
-
-    def test_url_contains_base64_encoded_document(self):
-        """URL should contain base64url-encoded document data."""
-        import base64
-        doc = '{"hello": "world"}'
-        url = simple.generate_verify_link(doc)
-        # Extract the s= parameter
-        s_param = url.split("?s=")[1]
-        # Pad and decode
-        padded = s_param + "=" * (-len(s_param) % 4)
-        decoded = base64.urlsafe_b64decode(padded).decode("utf-8")
-        assert decoded == doc
-
-    def test_custom_base_url(self):
-        """generate_verify_link() should use a custom base URL."""
-        doc = '{"custom": true}'
-        url = simple.generate_verify_link(doc, base_url="https://example.com")
-        assert url.startswith("https://example.com/jacs/verify?s=")
-
-    def test_strips_trailing_slash_from_base_url(self):
-        """Trailing slash on base URL should be stripped."""
-        doc = '{"slash": true}'
-        url = simple.generate_verify_link(doc, base_url="https://hai.ai/")
-        assert "//" not in url.replace("https://", "", 1)
-
-    def test_raises_for_oversized_document(self):
-        """generate_verify_link() should raise ValueError for documents exceeding size limit."""
-        # Create a document larger than MAX_VERIFY_DOCUMENT_BYTES
-        big_doc = json.dumps({"data": "x" * (simple.MAX_VERIFY_DOCUMENT_BYTES + 500)})
-        with pytest.raises(ValueError, match="max length"):
-            simple.generate_verify_link(big_doc)
-
-    def test_roundtrip_with_signed_document(self, loaded_agent):
-        """generate_verify_link() should work with a small signed document."""
-        # Sign a small message
-        signed = simple.sign_message("hi")
-        # Only test if the raw_json is small enough
-        if len(signed.raw_json.encode("utf-8")) <= simple.MAX_VERIFY_DOCUMENT_BYTES:
-            url = simple.generate_verify_link(signed.raw_json)
-            assert "?s=" in url
-        else:
-            # Document too large for URL encoding - that's expected for most real docs
-            with pytest.raises(ValueError):
-                simple.generate_verify_link(signed.raw_json)
-
-
 # Test verify_dns()
 
 
@@ -314,7 +306,7 @@ class TestDnsHelpers:
         assert "_v1.agent.jacs.example.com." in record
         assert "3600" in record
         assert "IN TXT" in record
-        assert "v=hai.ai" in record
+        assert "v=jacs" in record
         assert "jacs_agent_id=" in record
         assert "alg=SHA-256" in record
         assert "enc=base64" in record
@@ -816,38 +808,38 @@ class TestAgreementWorkflow:
         """Two distinct agents should both sign before agreement check succeeds."""
         password = "TestP@ss123!#"
 
-        shared_data = tmp_path / "shared-data"
         a1_root = tmp_path / "agent1"
         a2_root = tmp_path / "agent2"
-        shared_data.mkdir()
         a1_root.mkdir()
         a2_root.mkdir()
 
         original_cwd = os.getcwd()
         try:
-            # Use relative paths so storage and config resolution match across backends.
-            os.chdir(tmp_path)
-
-            # Create two independent agents with separate keys and shared public key cache.
+            os.chdir(a1_root)
             a1 = simple.create(
                 name="pytest-agent-1",
                 password=password,
-                algorithm="ring-Ed25519",
-                data_directory="shared-data",
-                key_directory="agent1/keys",
-                config_path="agent1/jacs.config.json",
+                algorithm="RSA-PSS",
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
             )
+            agent1_json = simple.export_agent()
+            agent1_public_key = simple.get_public_key()
+
+            os.chdir(a2_root)
             a2 = simple.create(
                 name="pytest-agent-2",
                 password=password,
-                algorithm="ring-Ed25519",
-                data_directory="shared-data",
-                key_directory="agent2/keys",
-                config_path="agent2/jacs.config.json",
+                algorithm="RSA-PSS",
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
             )
 
             # Agent 1 creates agreement requiring signatures from both agents.
-            simple.load("agent1/jacs.config.json")
+            os.chdir(a1_root)
+            simple.load("jacs.config.json")
             agreement = simple.create_agreement(
                 document={"proposal": "two-party-approval", "amount": 25000},
                 agent_ids=[a1.agent_id, a2.agent_id],
@@ -864,7 +856,10 @@ class TestAgreementWorkflow:
                 simple.check_agreement(signed_by_a1)
 
             # Agent 2 signs and completion succeeds.
-            simple.load("agent2/jacs.config.json")
+            os.chdir(a2_root)
+            simple.load("jacs.config.json")
+            simple.trust_agent_with_key(agent1_json, agent1_public_key)
+            seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
             signed_by_both = simple.sign_agreement(signed_by_a1)
             status = simple.check_agreement(signed_by_both)
             assert status.complete is True
@@ -876,17 +871,35 @@ class TestAgreementWorkflow:
 class TestAudit:
     """Tests for audit() security audit and health checks."""
 
-    def test_audit_returns_dict_with_risks_and_health_checks(self):
-        """audit() returns a dict with 'risks' and 'health_checks'."""
-        result = simple.audit()
-        assert "risks" in result
-        assert "health_checks" in result
-        assert isinstance(result["risks"], list)
-        assert isinstance(result["health_checks"], list)
+    def test_audit_returns_structured_report(self, in_fixtures_dir, shared_config_path):
+        """audit() returns the stable audit contract for a valid config."""
+        result = simple.audit(config_path=shared_config_path, recent_n=1)
+        assert_audit_result(result)
 
-    def test_audit_returns_summary_and_overall_status(self):
-        """audit() includes summary and overall_status."""
-        result = simple.audit()
-        assert "summary" in result
-        assert "overall_status" in result
-        assert result["summary"]
+    def test_audit_summary_mentions_component_health(self, in_fixtures_dir, shared_config_path):
+        """audit() summary should include the component lines from health_checks."""
+        result = simple.audit(config_path=shared_config_path, recent_n=1)
+        assert_audit_result(result)
+
+        first_health = result["health_checks"][0]
+        assert f"{first_health['name']}:" in result["summary"]
+
+
+class TestGenerateVerifyLink:
+    """Tests for generate_verify_link() utility."""
+
+    def test_returns_url_with_default_base(self):
+        link = simple.generate_verify_link('{"hello":"world"}')
+        assert link.startswith("https://hai.ai/jacs/verify?s=")
+
+    def test_custom_base_url(self):
+        link = simple.generate_verify_link("test", base_url="https://example.com/verify")
+        assert link.startswith("https://example.com/verify?s=")
+
+    def test_round_trip_decode(self):
+        import base64
+        original = '{"signed":"document","data":123}'
+        link = simple.generate_verify_link(original)
+        encoded = link.split("?s=")[1]
+        decoded = base64.urlsafe_b64decode(encoded).decode("utf-8")
+        assert decoded == original

@@ -57,7 +57,7 @@ If you're calling an LLM API directly without a framework adapter, accumulate th
 ```python
 import jacs.simple as jacs
 
-jacs.quickstart()
+jacs.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Accumulate streamed response
 chunks = []
@@ -72,7 +72,7 @@ signed = jacs.sign_message({"response": complete_text, "model": "gpt-4o"})
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'my-agent.example.com' });
 
 const chunks = [];
 for await (const chunk of llmStream('What is trust?')) {

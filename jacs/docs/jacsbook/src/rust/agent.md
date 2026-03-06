@@ -47,10 +47,10 @@ Create an agent definition file (`my-agent.json`):
   "description": "AI agent specialized in content creation",
   "jacsServices": [
     {
-      "jacsServiceName": "content-generation",
-      "jacsServiceDescription": "Generate high-quality content",
-      "jacsServiceSuccess": "Engaging, accurate content delivered",
-      "jacsServiceFailure": "Unable to generate requested content"
+      "name": "content-generation",
+      "serviceDescription": "Generate high-quality content",
+      "successDescription": "Engaging, accurate content delivered",
+      "failureDescription": "Unable to generate requested content"
     }
   ]
 }
@@ -83,8 +83,10 @@ JACS supports four agent types:
   "description": "Data processing agent",
   "jacsServices": [
     {
-      "jacsServiceName": "data-processing",
-      "jacsServiceDescription": "Process and transform data"
+      "name": "data-processing",
+      "serviceDescription": "Process and transform data",
+      "successDescription": "Data transformed successfully",
+      "failureDescription": "Input data could not be processed"
     }
   ]
 }
@@ -100,14 +102,18 @@ JACS supports four agent types:
   "description": "Software engineer",
   "jacsContacts": [
     {
-      "jacsContactType": "email",
-      "jacsContactValue": "john@example.com"
+      "firstName": "John",
+      "lastName": "Smith",
+      "email": "john@example.com",
+      "isPrimary": true
     }
   ],
   "jacsServices": [
     {
-      "jacsServiceName": "code-review",
-      "jacsServiceDescription": "Review code for quality and security"
+      "name": "code-review",
+      "serviceDescription": "Review code for quality and security",
+      "successDescription": "Actionable review delivered",
+      "failureDescription": "Could not complete review"
     }
   ]
 }
@@ -119,39 +125,24 @@ Services define what an agent can do. Each service has:
 
 ```json
 {
-  "jacsServiceName": "service-identifier",
-  "jacsServiceDescription": "What the service does",
-  "jacsServiceSuccess": "Definition of successful completion",
-  "jacsServiceFailure": "What constitutes failure",
-  "jacsServiceActions": [
-    {
-      "jacsActionName": "action-1",
-      "jacsActionDescription": "First action in this service"
-    }
-  ]
+  "name": "service-identifier",
+  "serviceDescription": "What the service does",
+  "successDescription": "Definition of successful completion",
+  "failureDescription": "What constitutes failure"
 }
 ```
 
-### Service with Actions
+### Detailed Service Example
 
 ```json
 {
-  "jacsServiceName": "document-processing",
-  "jacsServiceDescription": "Process and analyze documents",
-  "jacsServiceActions": [
-    {
-      "jacsActionName": "extract-text",
-      "jacsActionDescription": "Extract text from PDF documents"
-    },
-    {
-      "jacsActionName": "summarize",
-      "jacsActionDescription": "Generate document summaries"
-    },
-    {
-      "jacsActionName": "translate",
-      "jacsActionDescription": "Translate documents between languages"
-    }
-  ]
+  "name": "document-processing",
+  "serviceDescription": "Process and analyze documents",
+  "successDescription": "Documents processed accurately",
+  "failureDescription": "Unable to process one or more documents",
+  "costDescription": "Usage-based pricing",
+  "privacyPolicy": "https://example.com/privacy",
+  "termsOfService": "https://example.com/terms"
 }
 ```
 
@@ -163,16 +154,11 @@ For human and hybrid agents, contacts are required:
 {
   "jacsContacts": [
     {
-      "jacsContactType": "email",
-      "jacsContactValue": "agent@example.com"
-    },
-    {
-      "jacsContactType": "website",
-      "jacsContactValue": "https://example.com"
-    },
-    {
-      "jacsContactType": "phone",
-      "jacsContactValue": "+1-555-0123"
+      "firstName": "Example",
+      "lastName": "Agent",
+      "email": "agent@example.com",
+      "phone": "+1-555-0123",
+      "isPrimary": true
     }
   ]
 }
@@ -188,7 +174,8 @@ JACS supports multiple cryptographic algorithms:
 |-----------|-------------|-----------------|
 | `ring-Ed25519` | Fast elliptic curve signatures | General use (default) |
 | `RSA-PSS` | Traditional RSA signatures | Legacy compatibility |
-| `pq-dilithium` | Post-quantum signatures | Future-proof security |
+| `pq2025` | Post-quantum ML-DSA-87 signatures | Future-proof security |
+| `pq-dilithium` | Legacy post-quantum signatures | Backward compatibility only (deprecated) |
 
 ### Configure Key Algorithm
 
@@ -271,8 +258,10 @@ A complete agent document looks like:
 
   "jacsServices": [
     {
-      "jacsServiceName": "content-generation",
-      "jacsServiceDescription": "Generate high-quality content"
+      "name": "content-generation",
+      "serviceDescription": "Generate high-quality content",
+      "successDescription": "High-quality content generated",
+      "failureDescription": "Unable to generate requested content"
     }
   ],
 

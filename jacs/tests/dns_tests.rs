@@ -18,13 +18,13 @@ fn test_build_and_parse_txt_b64() {
     let agent_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     let digest = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd";
     let txt = dns::build_agent_dns_txt(agent_id, digest, dns::DigestEncoding::Base64);
-    assert!(txt.contains("v=hai.ai"));
+    assert!(txt.contains("v=jacs"));
     assert!(txt.contains("jacs_agent_id=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
     assert!(txt.contains("alg=SHA-256"));
     assert!(txt.contains("enc=base64"));
     assert!(txt.contains("jac_public_key_hash=abcdabcd"));
     let parsed = dns::parse_agent_txt(&txt).expect("parse");
-    assert_eq!(parsed.v, "hai.ai");
+    assert_eq!(parsed.v, "jacs");
     assert_eq!(parsed.jacs_agent_id, agent_id);
     assert_eq!(parsed.alg, "SHA-256");
     assert!(matches!(parsed.enc, dns::DigestEncoding::Base64));
@@ -64,7 +64,7 @@ fn test_emitters() {
         dns::DigestEncoding::Base64,
     );
     let plain = dns::emit_plain_bind(&rr);
-    assert!(plain.contains("IN TXT \"v=hai.ai;"));
+    assert!(plain.contains("IN TXT \"v=jacs;"));
     let r53 = dns::emit_route53_change_batch(&rr);
     assert!(r53.contains("\"TXT\""));
     let gcloud = dns::emit_gcloud_dns(&rr, "Z");
@@ -99,4 +99,13 @@ fn test_verify_pubkey_via_embedded_fallback() {
     )
     .unwrap_err();
     assert!(err.contains("embedded fingerprint mismatch"));
+}
+
+#[test]
+fn test_parse_legacy_hai_version_txt_is_still_supported() {
+    let txt = "v=hai.ai; jacs_agent_id=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa; alg=SHA-256; enc=base64; jac_public_key_hash=abcd";
+    let parsed = dns::parse_agent_txt(txt).expect("legacy format should parse");
+    assert_eq!(parsed.v, "hai.ai");
+    assert_eq!(parsed.jacs_agent_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    assert!(matches!(parsed.enc, dns::DigestEncoding::Base64));
 }

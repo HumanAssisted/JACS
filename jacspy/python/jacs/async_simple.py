@@ -106,7 +106,7 @@ async def create(
         password: Password for encrypting the private key. If not provided,
             uses JACS_PRIVATE_KEY_PASSWORD env var.
         algorithm: Cryptographic algorithm: "pq2025" (default, post-quantum),
-            "ring-Ed25519", or "RSA-PSS". "pq-dilithium" is deprecated.
+            "ring-Ed25519", or "RSA-PSS".
         data_directory: Directory for agent data (default: "./jacs_data")
         key_directory: Directory for cryptographic keys (default: "./jacs_keys")
         config_path: Where to save the config (default: ./jacs.config.json)
@@ -141,7 +141,14 @@ async def create(
     )
 
 
-async def quickstart(algorithm=None, strict=None, config_path=None) -> AgentInfo:
+async def quickstart(
+    name: str,
+    domain: str,
+    description: Optional[str] = None,
+    algorithm: Optional[str] = None,
+    strict: Optional[bool] = None,
+    config_path: Optional[str] = None,
+) -> AgentInfo:
     """One-line agent creation with persistent keys on disk.
 
     If a config file already exists, loads the existing agent. Otherwise,
@@ -151,18 +158,29 @@ async def quickstart(algorithm=None, strict=None, config_path=None) -> AgentInfo
         import jacs.async_simple as jacs
 
         async def main():
-            await jacs.quickstart()
+            await jacs.quickstart(name="my-agent", domain="agent.example.com")
             signed = await jacs.sign_message({"hello": "world"})
 
     Args:
-        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        name: Agent name for first-time quickstart creation.
+        domain: Agent domain for DNS/public-key verification workflows.
+        description: Optional human-readable agent description.
+        algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
         strict: Enable strict verification mode
         config_path: Path to config file (default: "./jacs.config.json")
 
     Returns:
         AgentInfo with agent_id, name, algorithm, version
     """
-    return await asyncio.to_thread(simple.quickstart, algorithm, strict, config_path)
+    return await asyncio.to_thread(
+        simple.quickstart,
+        name,
+        domain,
+        description,
+        algorithm,
+        strict,
+        config_path,
+    )
 
 
 async def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> AgentInfo:
@@ -545,6 +563,11 @@ async def trust_agent(agent_json: str) -> str:
     return await asyncio.to_thread(simple.trust_agent, agent_json)
 
 
+async def trust_agent_with_key(agent_json: str, public_key_pem: str) -> str:
+    """Trust an agent using an explicit PEM public key for first-contact verification."""
+    return await asyncio.to_thread(simple.trust_agent_with_key, agent_json, public_key_pem)
+
+
 async def list_trusted_agents() -> List[str]:
     """List all trusted agent IDs in the local trust store.
 
@@ -589,37 +612,6 @@ async def get_trusted_agent(agent_id: str) -> str:
     return await asyncio.to_thread(simple.get_trusted_agent, agent_id)
 
 
-async def fetch_remote_key(agent_id: str, version: str = "latest"):
-    """Fetch a public key from HAI's key distribution service.
-
-    Args:
-        agent_id: The unique identifier of the agent
-        version: The key version ("latest" for most recent)
-
-    Returns:
-        PublicKeyInfo with key details
-    """
-    return await asyncio.to_thread(simple.fetch_remote_key, agent_id, version)
-
-
-def generate_verify_link(
-    document: str,
-    base_url: str = "https://hai.ai",
-) -> str:
-    """Build a verification URL for a signed JACS document.
-
-    Note: This is synchronous as it is a pure computation (no I/O).
-
-    Args:
-        document: The full signed JACS document string (JSON).
-        base_url: Base URL of the verifier (default "https://hai.ai").
-
-    Returns:
-        Full URL: {base_url}/jacs/verify?s={base64url(document)}
-    """
-    return simple.generate_verify_link(document, base_url)
-
-
 async def verify_standalone(
     document,
     key_resolution: str = "local",
@@ -662,7 +654,7 @@ async def verify_dns(
 
 
 async def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
-    """Get setup instructions for DNS, DNSSEC, and HAI registration.
+    """Get setup instructions for DNS and DNSSEC.
 
     Args:
         domain: The domain to publish the DNS TXT record under.
@@ -672,24 +664,6 @@ async def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
         Dict with dns_record_bind, provider_commands, dnssec_instructions, etc.
     """
     return await asyncio.to_thread(simple.get_setup_instructions, domain, ttl)
-
-
-async def register_with_hai(
-    api_key: Optional[str] = None,
-    hai_url: str = "https://hai.ai",
-    preview: bool = False,
-) -> dict:
-    """Register this agent with HAI.ai.
-
-    Args:
-        api_key: HAI API key (reads HAI_API_KEY env var if None).
-        hai_url: Base URL for HAI (default: "https://hai.ai").
-        preview: If True, validate without actually registering.
-
-    Returns:
-        Dict with hai_registered, hai_error, dns_record, dns_route53.
-    """
-    return await asyncio.to_thread(simple.register_with_hai, api_key, hai_url, preview)
 
 
 def get_agent_info() -> Optional[AgentInfo]:
@@ -738,7 +712,6 @@ __all__ = [
     "verify_by_id",
     "verify_standalone",
     "verify_dns",
-    "generate_verify_link",
     # Key management
     "reencrypt_key",
     # Agreements
@@ -752,17 +725,15 @@ __all__ = [
     "is_loaded",
     # Trust store
     "trust_agent",
+    "trust_agent_with_key",
     "list_trusted_agents",
     "untrust_agent",
     "is_trusted",
     "get_trusted_agent",
     # Test utilities
     "reset",
-    # Remote key fetch
-    "fetch_remote_key",
-    # Setup and registration
+    # Setup
     "get_setup_instructions",
-    "register_with_hai",
     # Types (re-exported for convenience)
     "AgentInfo",
     "SignedDocument",

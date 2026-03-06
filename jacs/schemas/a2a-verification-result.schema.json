@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/a2a/v1/verification-result.schema.json",
+  "title": "A2A Verification Result",
+  "description": "Cross-language schema for A2A artifact verification results. Defines the normalized contract per TR-3 of the ATTESTATION_A2A_RESOLUTION PRD. All field names use camelCase.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "description": "Detailed verification status indicating whether and how the signature was verified.",
+      "$ref": "#/definitions/VerificationStatus"
+    },
+    "valid": {
+      "type": "boolean",
+      "description": "Whether the signature was cryptographically verified. False for both Invalid and Unverified statuses."
+    },
+    "signerId": {
+      "type": "string",
+      "description": "ID of the signing agent."
+    },
+    "signerVersion": {
+      "type": "string",
+      "description": "Version of the signing agent."
+    },
+    "artifactType": {
+      "type": "string",
+      "description": "Type of the artifact (e.g., 'a2a-task', 'a2a-message')."
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Timestamp when the artifact was signed (RFC 3339)."
+    },
+    "parentSignaturesValid": {
+      "type": "boolean",
+      "description": "Whether all parent signatures in the chain are valid."
+    },
+    "parentVerificationResults": {
+      "type": "array",
+      "description": "Individual verification results for each parent signature.",
+      "items": {
+        "$ref": "#/definitions/ParentVerificationResult"
+      }
+    },
+    "originalArtifact": {
+      "description": "The original A2A artifact that was wrapped."
+    },
+    "trustLevel": {
+      "description": "Trust level of the signing agent (present when policy-based verification is used).",
+      "$ref": "#/definitions/TrustLevel"
+    },
+    "trustAssessment": {
+      "description": "Trust policy assessment details (present when policy-based verification is used).",
+      "$ref": "#/definitions/TrustAssessment"
+    }
+  },
+  "required": [
+    "status",
+    "valid",
+    "signerId",
+    "signerVersion",
+    "artifactType",
+    "timestamp",
+    "parentSignaturesValid",
+    "parentVerificationResults",
+    "originalArtifact"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "VerificationStatus": {
+      "description": "Verification status enum. Simple variants serialize as strings; Unverified and Invalid serialize as objects with a reason field.",
+      "oneOf": [
+        {
+          "const": "Verified",
+          "description": "Signature was cryptographically verified."
+        },
+        {
+          "const": "SelfSigned",
+          "description": "Signature is from the current agent (self-signed) and was verified."
+        },
+        {
+          "type": "object",
+          "description": "Signature could not be verified because the public key is not available.",
+          "properties": {
+            "Unverified": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "description": "Explanation of why verification was not possible."
+                }
+              },
+              "required": ["reason"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["Unverified"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Signature verification failed - the signature is invalid.",
+          "properties": {
+            "Invalid": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "description": "Explanation of why the signature is invalid."
+                }
+              },
+              "required": ["reason"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["Invalid"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TrustLevel": {
+      "description": "Assessed trust level of the signing agent.",
+      "type": "string",
+      "enum": ["Untrusted", "JacsVerified", "ExplicitlyTrusted"]
+    },
+    "TrustAssessment": {
+      "description": "Result of assessing a remote agent's trustworthiness.",
+      "type": "object",
+      "properties": {
+        "allowed": {
+          "type": "boolean",
+          "description": "Whether the agent is allowed to interact under the applied policy."
+        },
+        "trustLevel": {
+          "$ref": "#/definitions/TrustLevel",
+          "description": "The assessed trust level."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable explanation of the assessment."
+        },
+        "jacsRegistered": {
+          "type": "boolean",
+          "description": "Whether the remote agent declares the JACS provenance extension."
+        },
+        "agentId": {
+          "type": ["string", "null"],
+          "description": "The agent ID from the remote card's metadata (null if unavailable)."
+        },
+        "policy": {
+          "$ref": "#/definitions/A2ATrustPolicy",
+          "description": "The trust policy that was applied."
+        }
+      },
+      "required": ["allowed", "trustLevel", "reason", "jacsRegistered", "agentId", "policy"],
+      "additionalProperties": false
+    },
+    "A2ATrustPolicy": {
+      "description": "Trust policy controlling which remote agents are allowed to interact.",
+      "type": "string",
+      "enum": ["Open", "Verified", "Strict"]
+    },
+    "ParentVerificationResult": {
+      "description": "Result of verifying a parent signature in a chain of custody.",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index in the parent signatures array."
+        },
+        "artifactId": {
+          "type": "string",
+          "description": "ID of the parent artifact."
+        },
+        "signerId": {
+          "type": "string",
+          "description": "ID of the agent that signed the parent."
+        },
+        "status": {
+          "$ref": "#/definitions/VerificationStatus",
+          "description": "Verification status of this parent signature."
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether the parent signature was verified (convenience field)."
+        }
+      },
+      "required": ["index", "artifactId", "signerId", "status", "verified"],
+      "additionalProperties": false
+    }
+  }
+}

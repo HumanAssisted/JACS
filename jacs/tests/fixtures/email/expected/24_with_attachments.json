@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F24",
+  "expected_result": "pass",
+  "expected_reason": "two_file_attachments",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Email With Attachments" },
+      "date": { "value": "Fri, 27 Feb 2026 12:23:00 +0000" },
+      "message_id": { "value": "<fixture-24@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 2,
+    "parent_signature_hash": null,
+    "notes": "Two file attachments (notes.txt, report.pdf) in multipart/mixed; both decoded and hashed"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "status": {
+    "Unverified": {
+      "reason": "Could not resolve signer key abc123... using sources [Local, Registry]. Last error: Local key lookup failed: key file not found"
+    }
+  },
+  "valid": false,
+  "signerId": "agent-foreign-003",
+  "signerVersion": "v1-unknown",
+  "artifactType": "a2a-task",
+  "timestamp": "2025-06-02T08:00:00Z",
+  "parentSignaturesValid": true,
+  "parentVerificationResults": [],
+  "originalArtifact": {
+    "task": "process-data",
+    "input": "dataset-42"
+  }
+}

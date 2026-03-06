@@ -10,7 +10,7 @@ Example:
     from jacs.adapters.crewai import jacs_guardrail, JacsSignedTool
     from jacs.client import JacsClient
 
-    client = JacsClient.quickstart()
+    client = JacsClient.quickstart(name="crewai-agent", domain="crewai.local")
 
     # Task guardrail that signs every output
     task = Task(
@@ -46,6 +46,7 @@ def jacs_guardrail(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ) -> Callable[[Any], Tuple[bool, Any]]:
     """Create a CrewAI task guardrail that signs task outputs with JACS.
 
@@ -62,6 +63,7 @@ def jacs_guardrail(
             is None).
         strict: If True, signing failures cause the guardrail to
             reject the output (return ``(False, error_msg)``).
+        attest: If True, produce attestation documents.
 
     Returns:
         A guardrail function suitable for ``Task(guardrail=...)``.
@@ -73,7 +75,7 @@ def jacs_guardrail(
             guardrail=jacs_guardrail(client=jacs_client),
         )
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     def guardrail(result: Any) -> Tuple[bool, Any]:
         raw = getattr(result, "raw", None)
@@ -97,6 +99,7 @@ def signed_task(
     client: Optional[Any] = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
     **task_kwargs: Any,
 ) -> Callable:
     """Decorator/factory that creates a CrewAI Task with a JACS guardrail.
@@ -134,7 +137,7 @@ def signed_task(
     _require_crewai("signed_task")
     from crewai import Task
 
-    guardrail_fn = jacs_guardrail(client=client, config_path=config_path, strict=strict)
+    guardrail_fn = jacs_guardrail(client=client, config_path=config_path, strict=strict, attest=attest)
 
     if task_kwargs:
         task_kwargs.setdefault("guardrail", guardrail_fn)
@@ -169,6 +172,7 @@ class JacsSignedTool:
         config_path: Path to jacs.config.json.
         strict: If True, signing failures raise. If False (default),
             the unsigned output is returned.
+        attest: If True, produce attestation documents.
 
     Example:
         from crewai_tools import SerperDevTool
@@ -181,10 +185,11 @@ class JacsSignedTool:
         client: Optional[Any] = None,
         config_path: Optional[str] = None,
         strict: bool = False,
+        attest: bool = False,
     ) -> None:
         self._inner = inner_tool
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict
+            client=client, config_path=config_path, strict=strict, attest=attest
         )
         # Mirror tool metadata for CrewAI discovery
         self.name = getattr(inner_tool, "name", "unknown_tool")

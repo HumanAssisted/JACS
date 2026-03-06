@@ -10,7 +10,7 @@ npm install @hai.ai/jacs
 
 ## v0.7.0: Async-First API
 
-All NAPI operations now return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
+{{#include ../_snippets/node-async-first.md}}
 
 ```javascript
 // Async (default, recommended)
@@ -196,6 +196,39 @@ Check the status of an agreement.
 - `agreementFieldName` (string, optional): Field name (default: 'jacsAgreement')
 
 **Returns:** `Promise<string>` (async) or `string` (sync) -- JSON string with agreement status
+
+---
+
+### agent.signArtifact(...) / agent.signArtifactSync(...)
+
+Sign an A2A artifact with JACS provenance. This is the canonical method name.
+
+**Parameters:**
+- `artifactJson` (string): JSON string of the artifact to sign
+- `artifactType` (string): Type of artifact (e.g., `"task"`, `"message"`)
+- `parentSignaturesJson` (string, optional): JSON string of parent signatures for chain of custody
+
+**Returns:** `Promise<string>` (async) or `string` (sync) -- The signed, wrapped artifact as a JSON string
+
+**Example:**
+```javascript
+const signed = await agent.signArtifact(
+  JSON.stringify({ action: 'classify', input: 'hello' }),
+  'task'
+);
+```
+
+---
+
+### agent.wrapA2aArtifact(...) / agent.wrapA2aArtifactSync(...)
+
+> **Deprecated since 0.9.0.** Use `signArtifact()` / `signArtifactSync()` instead. This method will be removed in 1.0.0.
+>
+> Set `JACS_SHOW_DEPRECATIONS=1` to see runtime warnings when deprecated methods are called.
+
+Wraps an A2A artifact with JACS provenance signature. Identical behavior to `signArtifact()` / `signArtifactSync()`.
+
+**Parameters:** Same as `signArtifact()` / `signArtifactSync()`.
 
 ---
 

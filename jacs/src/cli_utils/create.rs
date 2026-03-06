@@ -21,6 +21,8 @@ use std::process;
 
 use crate::simple::{AgentInfo, CreateAgentParams, SimpleAgent};
 
+const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
+
 /// Programmatic agent creation for non-interactive use.
 ///
 /// Accepts pre-built `CreateAgentParams` and delegates to `SimpleAgent::create_with_params()`.
@@ -48,6 +50,85 @@ fn request_string(message: &str, default: &str) -> String {
         }
         Err(_) => default.to_string(), // Return default on error
     }
+}
+
+fn resolve_cli_password_for_config_create() -> Result<Option<String>, Box<dyn Error>> {
+    let env_password = match env::var("JACS_PRIVATE_KEY_PASSWORD") {
+        Ok(value) => {
+            if value.trim().is_empty() {
+                return Err(
+                    "JACS_PRIVATE_KEY_PASSWORD is set but empty. Provide a non-empty password."
+                        .into(),
+                );
+            }
+            Some(value)
+        }
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err("JACS_PRIVATE_KEY_PASSWORD contains non-UTF-8 data.".into());
+        }
+    };
+
+    let password_file = match env::var(CLI_PASSWORD_FILE_ENV) {
+        Ok(value) => {
+            if value.trim().is_empty() {
+                return Err(format!(
+                    "{} is set but empty. Provide a non-empty file path.",
+                    CLI_PASSWORD_FILE_ENV
+                )
+                .into());
+            }
+            Some(value)
+        }
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(format!("{} contains non-UTF-8 data.", CLI_PASSWORD_FILE_ENV).into());
+        }
+    };
+
+    if env_password.is_some() && password_file.is_some() {
+        return Err(format!(
+            "Multiple password sources configured: JACS_PRIVATE_KEY_PASSWORD and {}. Configure exactly one.",
+            CLI_PASSWORD_FILE_ENV
+        )
+        .into());
+    }
+
+    if let Some(env_password) = env_password {
+        println!("Using password from JACS_PRIVATE_KEY_PASSWORD environment variable.");
+        return Ok(Some(env_password));
+    }
+
+    if let Some(path) = password_file {
+        let password_path = Path::new(path.trim());
+        let raw = std::fs::read_to_string(password_path).map_err(|e| {
+            format!(
+                "Failed to read {} at '{}': {}",
+                CLI_PASSWORD_FILE_ENV,
+                password_path.display(),
+                e
+            )
+        })?;
+        // Preserve intentional leading/trailing spaces in passphrases; strip only line endings.
+        let password = raw.trim_end_matches(|c| c == '\n' || c == '\r').to_string();
+        if password.is_empty() {
+            return Err(format!(
+                "{} at '{}' is empty.",
+                CLI_PASSWORD_FILE_ENV,
+                password_path.display()
+            )
+            .into());
+        }
+
+        println!(
+            "Using password from {} ('{}').",
+            CLI_PASSWORD_FILE_ENV,
+            password_path.display()
+        );
+        return Ok(Some(password));
+    }
+
+    Ok(None)
 }
 
 // Function to handle the 'config create' logic
@@ -129,15 +210,19 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
     );
     let jacs_default_storage = request_string("Enter the default storage (fs, aws, hai)", "fs");
 
-    // Check for password in environment variable first
-    let jacs_private_key_password = match env::var("JACS_PRIVATE_KEY_PASSWORD") {
-        Ok(env_password) if !env_password.is_empty() => {
-            println!("Using password from JACS_PRIVATE_KEY_PASSWORD environment variable.");
-            env_password // Use password from env var
-        }
-        _ => {
-            // Environment variable not set or empty, prompt user interactively.
-            println!("\n{}", crate::crypt::aes_encrypt::password_requirements());
+    // Check for password in environment/bootstrap source first
+    let jacs_private_key_password = match resolve_cli_password_for_config_create()? {
+        Some(password) => password,
+        None => {
+            // No non-interactive source set; prompt user interactively.
+            println!(
+                "\nNo password source configured. Set exactly one non-interactive source:\n  \
+                 export JACS_PRIVATE_KEY_PASSWORD='your-strong-password'\n  \
+                 export {}=/path/to/password\n  \
+                 # or: export JACS_PRIVATE_KEY_PASSWORD=\"$(cat /path/to/password)\"\n",
+                CLI_PASSWORD_FILE_ENV
+            );
+            println!("{}", crate::crypt::aes_encrypt::password_requirements());
             loop {
                 println!("Please enter a password (used to encrypt private key):");
                 let password = match read_password() {

@@ -67,15 +67,15 @@ The `@hai.ai/jacs/simple` module follows the same pattern:
 
 ```javascript
 // v0.6.x
-jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 async (recommended)
-await jacs.quickstart();
+await jacs.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = await jacs.signMessage({ action: 'approve' });
 
 // v0.7.0 sync
-jacs.quickstartSync();
+jacs.quickstartSync({ name: 'my-agent', domain: 'agent.example.com' });
 const signed = jacs.signMessageSync({ action: 'approve' });
 ```
 
@@ -116,6 +116,78 @@ jacs keygen
 | `JACS_MAX_SIGNATURE_AGE_SECONDS` | `0` (no expiration) | Maximum age of valid signatures. Set to a positive value to enable (e.g., `7776000` for 90 days). |
 | `JACS_REQUIRE_EXPLICIT_ALGORITHM` | `false` | When `true`, reject verification if `signingAlgorithm` is missing. |
 | `JACS_ENABLE_FILESYSTEM_QUARANTINE` | `false` | Enable filesystem quarantine (replaces `JACS_USE_SECURITY`). |
+
+## Deprecated Method Aliases (0.9.0)
+
+In v0.9.0, several method names were standardized. The old names remain as aliases for backward compatibility but are deprecated and will be removed in 1.0.0 (minimum 2 minor releases after deprecation).
+
+### Runtime Deprecation Warnings
+
+Set the `JACS_SHOW_DEPRECATIONS=1` environment variable to emit runtime warnings when deprecated methods are called:
+
+```bash
+export JACS_SHOW_DEPRECATIONS=1
+```
+
+This is recommended during development and CI to identify code that needs updating.
+
+### Deprecated Alias Table
+
+| SDK | Deprecated Method | Canonical Replacement | Since | Removal |
+|-----|-------------------|-----------------------|-------|---------|
+| Python (binding) | `agent.wrap_a2a_artifact()` | `agent.sign_artifact()` | 0.9.0 | 1.0.0 |
+| Python (A2A) | `a2a.wrap_artifact_with_provenance()` | `a2a.sign_artifact()` | 0.9.0 | 1.0.0 |
+| Node.js (binding) | `agent.wrapA2aArtifact()` | `agent.signArtifact()` | 0.9.0 | 1.0.0 |
+| Node.js (binding) | `agent.wrapA2aArtifactSync()` | `agent.signArtifactSync()` | 0.9.0 | 1.0.0 |
+| Node.js (A2A) | `a2a.wrapArtifactWithProvenance()` | `a2a.signArtifact()` | 0.9.0 | 1.0.0 |
+| Rust (core) | `agent.wrap_a2a_artifact()` | `agent.sign_artifact()` | 0.9.0 | 1.0.0 |
+| Go | `SignA2AArtifact()` (simple API) | Uses `sign_artifact` internally | -- | -- |
+
+All aliases behave identically to their canonical replacements. No behavioral changes are needed when migrating -- only rename the method call.
+
+### Migration Examples
+
+**Python:**
+```python
+# Before (deprecated)
+wrapped = agent.wrap_a2a_artifact(artifact_json, "task")
+
+# After (canonical)
+signed = agent.sign_artifact(artifact_json, "task")
+```
+
+**Node.js:**
+```javascript
+// Before (deprecated)
+const wrapped = await agent.wrapA2aArtifact(artifactJson, 'task');
+
+// After (canonical)
+const signed = await agent.signArtifact(artifactJson, 'task');
+```
+
+**Python A2A integration:**
+```python
+# Before (deprecated)
+wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
+
+# After (canonical)
+signed = a2a.sign_artifact(artifact, "task")
+```
+
+**Node.js A2A integration:**
+```javascript
+// Before (deprecated)
+const wrapped = await a2a.wrapArtifactWithProvenance(artifact, 'task');
+
+// After (canonical)
+const signed = await a2a.signArtifact(artifact, 'task');
+```
+
+### Module-Level Function Deprecation (Reminder)
+
+Module-level functions (e.g., `jacs.load()`, `jacs.sign_request()` in Python; `load()`, `signRequest()` in Node.js) were deprecated in earlier releases. Use `JacsAgent` instance methods instead. See the Python and Node.js API references for the full list.
+
+---
 
 ## Migrating from 0.2.x to 0.3.x
 

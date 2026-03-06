@@ -57,12 +57,11 @@
 
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::DocumentTraits;
+use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::create_minimal_blank_agent;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
 use crate::schema::utils::{ValueExt, check_document_size};
-use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs;
@@ -93,41 +92,8 @@ pub fn diagnostics() -> serde_json::Value {
     })
 }
 
-// =============================================================================
-// Verify link constants (HAI / public verification URLs)
-// =============================================================================
-
-/// Maximum length for a full verify URL (scheme + host + path + ?s=...) to stay within
-/// typical HTTP GET URL limits (e.g. 2048 chars in many clients/servers).
-pub const MAX_VERIFY_URL_LEN: usize = 2048;
-
-/// Maximum UTF-8 byte length of a JACS document that can be encoded into a verify link
-/// while staying under MAX_VERIFY_URL_LEN (base64 expands by ~4/3; with typical base URL
-/// the `s` parameter is limited to 2020 chars).
-pub const MAX_VERIFY_DOCUMENT_BYTES: usize = 1515;
-
 const DEFAULT_PRIVATE_KEY_FILENAME: &str = "jacs.private.pem.enc";
 const DEFAULT_PUBLIC_KEY_FILENAME: &str = "jacs.public.pem";
-
-/// Generate a cryptographically secure random password that meets JACS requirements.
-/// (8+ chars, uppercase, lowercase, digit, special character.)
-fn generate_secure_password() -> String {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    let charset: &[u8] =
-        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+";
-    // Guarantee complexity: start with one of each required class
-    let mut password = String::with_capacity(32);
-    password.push(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rng.random_range(0..26)] as char);
-    password.push(b"abcdefghijklmnopqrstuvwxyz"[rng.random_range(0..26)] as char);
-    password.push(b"0123456789"[rng.random_range(0..10)] as char);
-    password.push(b"!@#$%^&*()-_=+"[rng.random_range(0..14)] as char);
-    // Fill rest with random charset
-    for _ in 4..32 {
-        password.push(charset[rng.random_range(0..charset.len())] as char);
-    }
-    password
-}
 
 fn build_agent_document(
     agent_type: &str,
@@ -155,30 +121,6 @@ fn build_agent_document(
     obj.insert("name".to_string(), json!(name));
     obj.insert("description".to_string(), json!(description));
     Ok(agent_json)
-}
-
-/// Build a verification URL for a signed JACS document (e.g. for hai.ai or custom verifier).
-///
-/// Encodes `document` as URL-safe base64 and appends it as the `s` query parameter.
-/// Returns an error if the resulting URL would exceed [`MAX_VERIFY_URL_LEN`].
-///
-/// # Example
-/// ```ignore
-/// let url = jacs::simple::generate_verify_link(r#"{"signed":...}"#, "https://hai.ai")?;
-/// // => "https://hai.ai/jacs/verify?s=eyJzaWduZWQi..."
-/// ```
-pub fn generate_verify_link(document: &str, base_url: &str) -> Result<String, JacsError> {
-    let base = base_url.trim_end_matches('/');
-    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(document.as_bytes());
-    let path_and_query = format!("/jacs/verify?s={}", encoded);
-    let full_url = format!("{}{}", base, path_and_query);
-    if full_url.len() > MAX_VERIFY_URL_LEN {
-        return Err(JacsError::ValidationError(format!(
-            "Verify URL would exceed max length ({}). Document size must be at most {} UTF-8 bytes.",
-            MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES
-        )));
-    }
-    Ok(full_url)
 }
 
 // =============================================================================
@@ -217,9 +159,6 @@ pub struct AgentInfo {
     /// DNS TXT record to publish (if domain was configured).
     #[serde(default)]
     pub dns_record: String,
-    /// Whether the agent was registered with HAI.
-    #[serde(default)]
-    pub hai_registered: bool,
 }
 
 /// A signed JACS document.
@@ -233,6 +172,31 @@ pub struct SignedDocument {
     pub agent_id: String,
     /// ISO 8601 timestamp of when the document was signed.
     pub timestamp: String,
+}
+
+impl SignedDocument {
+    fn from_jacs_document(
+        jacs_doc: JACSDocument,
+        serialized_kind: &str,
+    ) -> Result<Self, JacsError> {
+        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize {}: {}", serialized_kind, e),
+        })?;
+
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+        let agent_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
+
+        Ok(Self {
+            raw,
+            document_id: jacs_doc.id,
+            agent_id,
+            timestamp,
+        })
+    }
 }
 
 /// Result of verifying a signed document.
@@ -342,8 +306,7 @@ mod base64_bytes {
     }
 }
 
-/// Setup instructions for publishing a JACS agent's DNS record, enabling DNSSEC,
-/// and registering with HAI.ai.
+/// Setup instructions for publishing a JACS agent's DNS record and enabling DNSSEC.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupInstructions {
     /// BIND-format DNS record line (e.g. `_v1.agent.jacs.example.com. 3600 IN TXT "..."`)
@@ -360,12 +323,6 @@ pub struct SetupInstructions {
     pub tld_requirement: String,
     /// JSON payload for `/.well-known/jacs-agent.json`.
     pub well_known_json: String,
-    /// HAI.ai registration URL.
-    pub hai_registration_url: String,
-    /// JSON payload to POST to HAI.ai for registration.
-    pub hai_registration_payload: String,
-    /// Human-readable instructions for HAI.ai registration.
-    pub hai_registration_instructions: String,
     /// Human-readable summary of all setup steps.
     pub summary: String,
 }
@@ -424,12 +381,6 @@ pub struct CreateAgentParams {
     /// Default storage backend. Default: "fs".
     #[serde(default = "default_storage")]
     pub default_storage: String,
-    /// HAI API key for registration (optional).
-    #[serde(default)]
-    pub hai_api_key: String,
-    /// HAI endpoint URL (optional).
-    #[serde(default)]
-    pub hai_endpoint: String,
 }
 
 fn default_algorithm() -> String {
@@ -474,8 +425,6 @@ impl Default for CreateAgentParams {
             description: String::new(),
             domain: String::new(),
             default_storage: default_storage(),
-            hai_api_key: String::new(),
-            hai_endpoint: String::new(),
         }
     }
 }
@@ -534,36 +483,10 @@ impl CreateAgentParamsBuilder {
         self.params.default_storage = storage.to_string();
         self
     }
-    pub fn hai_api_key(mut self, key: &str) -> Self {
-        self.params.hai_api_key = key.to_string();
-        self
-    }
-    pub fn hai_endpoint(mut self, endpoint: &str) -> Self {
-        self.params.hai_endpoint = endpoint.to_string();
-        self
-    }
-
     /// Build the `CreateAgentParams`. Name is required.
     pub fn build(self) -> CreateAgentParams {
         self.params
     }
-}
-
-/// Information returned from HAI registration during agent creation.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RegistrationInfo {
-    /// DNS TXT record to publish (if domain was provided).
-    #[serde(default)]
-    pub dns_record: String,
-    /// Route53-specific DNS record (if applicable).
-    #[serde(default)]
-    pub dns_route53: String,
-    /// Whether HAI registration succeeded.
-    #[serde(default)]
-    pub hai_registered: bool,
-    /// Error from HAI registration (if any).
-    #[serde(default)]
-    pub hai_error: String,
 }
 
 /// Mutex to prevent concurrent environment variable stomping during creation.
@@ -589,6 +512,34 @@ pub struct AgreementStatus {
     pub signers: Vec<SignerStatus>,
     /// List of agent IDs that haven't signed yet.
     pub pending: Vec<String>,
+}
+
+// =============================================================================
+// Key Rotation
+// =============================================================================
+
+/// Result of a key rotation operation.
+///
+/// Returned by [`SimpleAgent::rotate()`] after successfully generating new keys,
+/// archiving old keys, and producing a new self-signed agent document.
+///
+/// The `signed_agent_json` field contains the complete, self-signed agent document
+/// with the new version and new public key. This is the document that should be
+/// sent to HAI for re-registration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotationResult {
+    /// The agent's stable identity (unchanged across rotations).
+    pub jacs_id: String,
+    /// The version string of the agent before rotation.
+    pub old_version: String,
+    /// The new version string assigned during rotation.
+    pub new_version: String,
+    /// PEM-encoded public key for the new keypair.
+    pub new_public_key_pem: String,
+    /// SHA-256 hash of the new public key (hex-encoded).
+    pub new_public_key_hash: String,
+    /// The complete, self-signed agent JSON document with the new version.
+    pub signed_agent_json: String,
 }
 
 // =============================================================================
@@ -636,6 +587,13 @@ impl SimpleAgent {
         self.strict
     }
 
+    /// Returns the JACS agent ID, used as the signing key identifier.
+    /// Derived from the underlying Agent — no cached copy needed.
+    pub fn key_id(&self) -> String {
+        let agent = self.agent.lock().unwrap();
+        agent.get_id().unwrap_or_default()
+    }
+
     /// Creates a new JACS agent with persistent identity.
     ///
     /// This generates cryptographic keys, creates configuration files, and saves
@@ -645,7 +603,7 @@ impl SimpleAgent {
     ///
     /// * `name` - Human-readable name for the agent
     /// * `purpose` - Optional description of the agent's purpose
-    /// * `key_algorithm` - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+    /// * `key_algorithm` - Signing algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
     ///
     /// # Returns
     ///
@@ -672,7 +630,7 @@ impl SimpleAgent {
         purpose: Option<&str>,
         key_algorithm: Option<&str>,
     ) -> Result<(Self, AgentInfo), JacsError> {
-        let algorithm = key_algorithm.unwrap_or("ed25519");
+        let algorithm = key_algorithm.unwrap_or("pq2025");
 
         info!(
             "Creating new agent '{}' with algorithm '{}'",
@@ -751,13 +709,13 @@ impl SimpleAgent {
             key_directory: "./jacs_keys".to_string(),
             domain: String::new(),
             dns_record: String::new(),
-            hai_registered: false,
         };
 
         Ok((
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(config_path.to_string()),
+
                 strict: resolve_strict(None),
             },
             info,
@@ -1104,13 +1062,13 @@ impl SimpleAgent {
             key_directory: params.key_directory.clone(),
             domain: params.domain.clone(),
             dns_record,
-            hai_registered: false,
         };
 
         Ok((
             Self {
                 agent: Mutex::new(agent),
                 config_path: Some(params.config_path),
+
                 strict: resolve_strict(None),
             },
             info,
@@ -1166,7 +1124,7 @@ impl SimpleAgent {
     ///
     /// # Arguments
     ///
-    /// * `algorithm` - Signing algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+    /// * `algorithm` - Signing algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
     ///
     /// # Returns
     ///
@@ -1184,7 +1142,7 @@ impl SimpleAgent {
     #[must_use = "ephemeral agent result must be checked for errors"]
     pub fn ephemeral(algorithm: Option<&str>) -> Result<(Self, AgentInfo), JacsError> {
         // Map user-friendly names to internal algorithm strings
-        let algo = match algorithm.unwrap_or("ed25519") {
+        let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
             "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
@@ -1216,13 +1174,13 @@ impl SimpleAgent {
             key_directory: String::new(),
             domain: String::new(),
             dns_record: String::new(),
-            hai_registered: false,
         };
 
         Ok((
             Self {
                 agent: Mutex::new(agent),
                 config_path: None,
+
                 strict: resolve_strict(None),
             },
             info,
@@ -1235,12 +1193,15 @@ impl SimpleAgent {
     /// loads the existing agent. Otherwise, creates a new persistent agent with keys
     /// on disk and a minimal config file.
     ///
-    /// If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure random password is
-    /// generated and written to `<key_directory>/.jacs_password` (mode 0600).
+    /// `JACS_PRIVATE_KEY_PASSWORD` must be set (or provided by caller wrappers).
+    /// Quickstart fails hard if no password is available.
     ///
     /// # Arguments
     ///
-    /// * `algorithm` - Signing algorithm (default: "ed25519"). Also: "rsa-pss", "pq2025"
+    /// * `name` - Agent name to use when creating a new config/identity
+    /// * `domain` - Agent domain to use for DNS/public-key verification workflows
+    /// * `description` - Optional human-readable description for a newly created agent
+    /// * `algorithm` - Signing algorithm (default: "pq2025"). Also: "ed25519", "rsa-pss"
     /// * `config_path` - Config file path (default: "./jacs.config.json")
     ///
     /// # Returns
@@ -1252,12 +1213,21 @@ impl SimpleAgent {
     /// ```rust,ignore
     /// use jacs::simple::SimpleAgent;
     ///
-    /// let (agent, info) = SimpleAgent::quickstart(None, None)?;
+    /// let (agent, info) = SimpleAgent::quickstart(
+    ///     "my-agent",
+    ///     "agent.example.com",
+    ///     Some("My JACS agent"),
+    ///     None,
+    ///     None,
+    /// )?;
     /// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
     /// // Keys and config are saved to disk -- the same agent is loaded next time.
     /// ```
     #[must_use = "quickstart result must be checked for errors"]
     pub fn quickstart(
+        name: &str,
+        domain: &str,
+        description: Option<&str>,
         algorithm: Option<&str>,
         config_path: Option<&str>,
     ) -> Result<(Self, AgentInfo), JacsError> {
@@ -1284,45 +1254,68 @@ impl SimpleAgent {
                 .as_str()
                 .unwrap_or("")
                 .to_string();
-            let (algo, key_dir, data_dir) = if let Some(ref cfg) = inner.config {
-                let a = cfg
-                    .jacs_agent_key_algorithm()
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_string();
-                let k = cfg
-                    .jacs_key_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_keys")
-                    .to_string();
-                let d = cfg
-                    .jacs_data_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_data")
-                    .to_string();
-                (a, k, d)
-            } else {
-                (
-                    String::new(),
-                    "./jacs_keys".to_string(),
-                    "./jacs_data".to_string(),
-                )
-            };
+            let loaded_name = agent_value
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(name)
+                .to_string();
+            let loaded_domain = agent_value
+                .get("jacsAgentDomain")
+                .and_then(|v| v.as_str())
+                .or_else(|| agent_value.get("domain").and_then(|v| v.as_str()))
+                .unwrap_or(domain)
+                .to_string();
+            let (algo, key_dir, data_dir, private_key_filename, public_key_filename) =
+                if let Some(ref cfg) = inner.config {
+                    let a = cfg
+                        .jacs_agent_key_algorithm()
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_string();
+                    let k = cfg
+                        .jacs_key_directory()
+                        .as_deref()
+                        .unwrap_or("./jacs_keys")
+                        .to_string();
+                    let d = cfg
+                        .jacs_data_directory()
+                        .as_deref()
+                        .unwrap_or("./jacs_data")
+                        .to_string();
+                    let priv_name = cfg
+                        .jacs_agent_private_key_filename()
+                        .as_deref()
+                        .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME)
+                        .to_string();
+                    let pub_name = cfg
+                        .jacs_agent_public_key_filename()
+                        .as_deref()
+                        .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME)
+                        .to_string();
+                    (a, k, d, priv_name, pub_name)
+                } else {
+                    (
+                        String::new(),
+                        "./jacs_keys".to_string(),
+                        "./jacs_data".to_string(),
+                        DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
+                        DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
+                    )
+                };
             drop(inner);
 
             let info = AgentInfo {
                 agent_id,
-                name: "jacs-agent".to_string(),
-                public_key_path: format!("{}/{}", key_dir, DEFAULT_PUBLIC_KEY_FILENAME),
+                name: loaded_name,
+                public_key_path: format!("{}/{}", key_dir, public_key_filename),
                 config_path: config.to_string(),
                 version,
                 algorithm: algo,
-                private_key_path: format!("{}/{}", key_dir, DEFAULT_PRIVATE_KEY_FILENAME),
+                private_key_path: format!("{}/{}", key_dir, private_key_filename),
                 data_directory: data_dir,
                 key_directory: key_dir,
-                domain: String::new(),
+                domain: loaded_domain,
                 dns_record: String::new(),
-                hai_registered: false,
             };
 
             return Ok((agent, info));
@@ -1334,42 +1327,31 @@ impl SimpleAgent {
             config
         );
 
-        // Ensure password is available
-        let password = match std::env::var("JACS_PRIVATE_KEY_PASSWORD") {
-            Ok(pw) if !pw.is_empty() => pw,
-            _ => {
-                // Auto-generate a secure password and save it
-                let generated = generate_secure_password();
-                let keys_dir = Path::new("./jacs_keys");
-                fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-                    path: keys_dir.to_string_lossy().to_string(),
-                    reason: e.to_string(),
-                })?;
-                let password_file = keys_dir.join(".jacs_password");
-                fs::write(&password_file, &generated).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to write password file: {}", e),
-                })?;
-                // Set restrictive permissions (Unix only)
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let perms = std::fs::Permissions::from_mode(0o600);
-                    let _ = std::fs::set_permissions(&password_file, perms);
-                }
-                info!(
-                    "quickstart: generated password saved to {}",
-                    password_file.display()
-                );
-                // Set env var for the current process so create() can use it
-                unsafe {
-                    std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &generated);
-                }
-                generated
-            }
-        };
+        if name.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "Quickstart requires a non-empty agent name.".to_string(),
+            ));
+        }
+        if domain.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "Quickstart requires a non-empty domain.".to_string(),
+            ));
+        }
+
+        // Fail hard if no password is available.
+        let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD")
+            .ok()
+            .filter(|pw| !pw.trim().is_empty())
+            .ok_or_else(|| {
+                JacsError::ConfigError(
+                    "Missing private key password. Set JACS_PRIVATE_KEY_PASSWORD \
+                    from your environment or secret manager before calling quickstart()."
+                        .to_string(),
+                )
+            })?;
 
         // Use create_with_params for full control
-        let algo = match algorithm.unwrap_or("ed25519") {
+        let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
             "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
@@ -1377,10 +1359,12 @@ impl SimpleAgent {
         };
 
         let params = CreateAgentParams {
-            name: "jacs-agent".to_string(),
+            name: name.to_string(),
             password,
             algorithm: algo.to_string(),
             config_path: config.to_string(),
+            description: description.unwrap_or("").to_string(),
+            domain: domain.to_string(),
             ..Default::default()
         };
 
@@ -1554,23 +1538,7 @@ impl SimpleAgent {
                 message: format!("Failed to update document: {}", e),
             })?;
 
-        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document: {}", e),
-        })?;
-
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-        Ok(SignedDocument {
-            raw,
-            document_id: jacs_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(jacs_doc, "document")
     }
 
     /// Signs arbitrary data as a JACS message.
@@ -1637,25 +1605,67 @@ impl SimpleAgent {
                 ),
             })?;
 
-        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document: {}", e),
-        })?;
-
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
         info!("Message signed: document_id={}", jacs_doc.id);
 
-        Ok(SignedDocument {
-            raw,
-            document_id: jacs_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(jacs_doc, "document")
+    }
+
+    /// Sign raw bytes and return the raw signature bytes.
+    ///
+    /// This is a low-level signing method used by JACS email signing and other
+    /// protocols that need to sign arbitrary data (not JSON documents).
+    /// The data must be valid UTF-8 (JACS canonical payloads always are).
+    ///
+    /// Returns the raw signature bytes (decoded from the base64 output of the
+    /// underlying crypto module).
+    pub fn sign_raw_bytes(&self, data: &[u8]) -> Result<Vec<u8>, JacsError> {
+        use crate::crypt::KeyManager;
+        use base64::Engine;
+
+        let data_str = std::str::from_utf8(data).map_err(|e| JacsError::Internal {
+            message: format!("Data is not valid UTF-8: {}", e),
+        })?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let sig_b64 = agent
+            .sign_string(data_str)
+            .map_err(|e| JacsError::SigningFailed {
+                reason: format!("Raw byte signing failed: {}", e),
+            })?;
+
+        let sig_bytes = base64::engine::general_purpose::STANDARD
+            .decode(&sig_b64)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to decode signature base64: {}", e),
+            })?;
+
+        Ok(sig_bytes)
+    }
+
+    /// Get the JACS agent ID.
+    ///
+    /// Returns the agent's unique identifier from the exported agent JSON.
+    pub fn get_agent_id(&self) -> Result<String, JacsError> {
+        // Use export_agent which returns the agent document JSON
+        let agent_json = self.export_agent()?;
+        let doc: serde_json::Value =
+            serde_json::from_str(&agent_json).map_err(|e| JacsError::Internal {
+                message: format!("Failed to parse agent JSON: {}", e),
+            })?;
+
+        // Try to extract the agent ID from the document
+        let agent_id = doc
+            .pointer("/jacsAgentID")
+            .or_else(|| doc.pointer("/id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| JacsError::Internal {
+                message: "Agent ID not found in agent document".to_string(),
+            })?;
+
+        Ok(agent_id.to_string())
     }
 
     /// Signs a file with optional content embedding.
@@ -1734,23 +1744,7 @@ impl SimpleAgent {
                 ),
             })?;
 
-        let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document: {}", e),
-        })?;
-
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-        Ok(SignedDocument {
-            raw,
-            document_id: jacs_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(jacs_doc, "document")
     }
 
     /// Signs multiple messages in a batch operation.
@@ -1862,23 +1856,7 @@ impl SimpleAgent {
         // Convert to SignedDocument results
         let mut results = Vec::with_capacity(jacs_docs.len());
         for jacs_doc in jacs_docs {
-            let raw = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-                message: format!("Failed to serialize document: {}", e),
-            })?;
-
-            let timestamp = jacs_doc
-                .value
-                .get_path_str_or(&["jacsSignature", "date"], "");
-            let agent_id = jacs_doc
-                .value
-                .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-            results.push(SignedDocument {
-                raw,
-                document_id: jacs_doc.id,
-                agent_id,
-                timestamp,
-            });
+            results.push(SignedDocument::from_jacs_document(jacs_doc, "document")?);
         }
 
         info!(
@@ -2015,6 +1993,135 @@ impl SimpleAgent {
         })
     }
 
+    /// Verifies a signed JACS document using a provided public key.
+    ///
+    /// This is identical to [`verify()`](Self::verify) but uses the supplied
+    /// `public_key` bytes instead of the agent's own key. This allows any
+    /// agent to verify documents signed by a different agent, given the
+    /// signer's public key (e.g., from a registry or trust store).
+    ///
+    /// # Arguments
+    ///
+    /// * `signed_document` - The JSON string of the signed JACS document
+    /// * `public_key` - The signer's public key bytes (PEM file content)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // agent_b verifies a document that agent_a signed
+    /// let result = agent_b.verify_with_key(&signed_doc, agent_a_pubkey)?;
+    /// if result.valid {
+    ///     println!("Verified: signed by {}", result.signer_id);
+    /// }
+    /// ```
+    #[must_use = "verification result must be checked"]
+    pub fn verify_with_key(
+        &self,
+        signed_document: &str,
+        public_key: Vec<u8>,
+    ) -> Result<VerificationResult, JacsError> {
+        debug!("verify_with_key() called");
+
+        // Pre-check: if input doesn't look like JSON, give a helpful error
+        let trimmed = signed_document.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+            return Err(JacsError::DocumentMalformed {
+                field: "json".to_string(),
+                reason: format!(
+                    "Input does not appear to be a JSON document. \
+                    If you have a document ID (e.g., 'uuid:version'), use verify_by_id() instead. \
+                    Received: '{}'",
+                    if trimmed.len() > 60 {
+                        &trimmed[..60]
+                    } else {
+                        trimmed
+                    }
+                ),
+            });
+        }
+
+        // Check document size before processing
+        check_document_size(signed_document)?;
+
+        // Parse the document to validate JSON
+        let _: Value =
+            serde_json::from_str(signed_document).map_err(|e| JacsError::DocumentMalformed {
+                field: "json".to_string(),
+                reason: e.to_string(),
+            })?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        // Load the document
+        let jacs_doc =
+            agent
+                .load_document(signed_document)
+                .map_err(|e| JacsError::DocumentMalformed {
+                    field: "document".to_string(),
+                    reason: e.to_string(),
+                })?;
+
+        let document_key = jacs_doc.getkey();
+
+        // Verify the signature using the provided public key
+        let verification_result =
+            agent.verify_document_signature(&document_key, None, None, Some(public_key), None);
+
+        let mut errors = Vec::new();
+        if let Err(e) = verification_result {
+            errors.push(e.to_string());
+        }
+
+        // Verify hash
+        if let Err(e) = agent.verify_hash(&jacs_doc.value) {
+            errors.push(format!("Hash verification failed: {}", e));
+        }
+
+        let valid = errors.is_empty();
+
+        // In strict mode, verification failure is a hard error
+        if self.strict && !valid {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: errors.join("; "),
+            });
+        }
+
+        // Extract signer info
+        let signer_id = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = jacs_doc
+            .value
+            .get_path_str_or(&["jacsSignature", "date"], "");
+
+        info!(
+            "Document verified with key: valid={}, signer={}",
+            valid, signer_id
+        );
+
+        // Extract original content
+        let data = if let Some(content) = jacs_doc.value.get("content") {
+            content.clone()
+        } else {
+            jacs_doc.value.clone()
+        };
+
+        // Extract attachments
+        let attachments = extract_attachments(&jacs_doc.value);
+
+        Ok(VerificationResult {
+            valid,
+            data,
+            signer_id,
+            signer_name: None,
+            timestamp,
+            attachments,
+            errors,
+        })
+    }
+
     /// Re-encrypts the agent's private key from one password to another.
     ///
     /// This reads the encrypted private key file, decrypts with the old password,
@@ -2102,8 +2209,6 @@ impl SimpleAgent {
     /// ```
     #[must_use = "verification result must be checked"]
     pub fn verify_by_id(&self, document_id: &str) -> Result<VerificationResult, JacsError> {
-        use crate::storage::StorageDocumentTraits;
-
         debug!("verify_by_id() called with id: {}", document_id);
 
         // Validate document_id format
@@ -2119,25 +2224,24 @@ impl SimpleAgent {
             });
         }
 
-        // Load the document from storage
-        let storage =
-            crate::storage::MultiStorage::default_new().map_err(|e| JacsError::Internal {
-                message: format!("Failed to initialize storage: {}", e),
+        // Load from the already-configured agent storage backend (fs, memory, s3, etc.).
+        let doc_str = {
+            let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+                message: format!("Failed to acquire agent lock: {}", e),
             })?;
+            let jacs_doc = agent
+                .get_document(document_id)
+                .map_err(|e| JacsError::Internal {
+                    message: format!(
+                        "Failed to load document '{}' from agent storage: {}",
+                        document_id, e
+                    ),
+                })?;
 
-        let jacs_doc = storage
-            .get_document(document_id)
-            .map_err(|e| JacsError::Internal {
-                message: format!(
-                    "Failed to load document '{}' from storage: {}",
-                    document_id, e
-                ),
-            })?;
-
-        // Serialize the document value back to a JSON string for verify()
-        let doc_str = serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize document '{}': {}", document_id, e),
-        })?;
+            serde_json::to_string(&jacs_doc.value).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize document '{}': {}", document_id, e),
+            })?
+        };
 
         self.verify(&doc_str)
     }
@@ -2158,12 +2262,48 @@ impl SimpleAgent {
         })
     }
 
+    /// Returns the agent's public key bytes from memory.
+    ///
+    /// This returns the raw public key bytes as stored in the agent's internal
+    /// state. The format depends on the algorithm (e.g., raw 32 bytes for
+    /// Ed25519, PEM for RSA-PSS). These bytes are the same format expected by
+    /// [`verify_with_key()`](Self::verify_with_key) and
+    /// [`verify_document_signature()`](crate::agent::document::DocumentTraits::verify_document_signature).
+    #[must_use = "public key data must be used"]
+    pub fn get_public_key(&self) -> Result<Vec<u8>, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        use crate::agent::boilerplate::BoilerPlate;
+        agent.get_public_key().map_err(|e| JacsError::Internal {
+            message: format!("Failed to get public key: {}", e),
+        })
+    }
+
     /// Returns the agent's public key in PEM format.
     #[must_use = "public key data must be used"]
     pub fn get_public_key_pem(&self) -> Result<String, JacsError> {
-        // Read from the standard key file location
-        let key_path = "./jacs_keys/jacs.public.pem";
-        fs::read_to_string(key_path).map_err(|e| {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let (key_dir, key_file) = if let Some(config) = &agent.config {
+            (
+                config
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys"),
+                config
+                    .jacs_agent_public_key_filename()
+                    .as_deref()
+                    .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME),
+            )
+        } else {
+            ("./jacs_keys", DEFAULT_PUBLIC_KEY_FILENAME)
+        };
+        let key_path = Path::new(key_dir).join(key_file);
+        let key_path_string = key_path.to_string_lossy().to_string();
+
+        fs::read_to_string(&key_path).map_err(|e| {
             let reason = match e.kind() {
                 std::io::ErrorKind::NotFound => {
                     "file does not exist. Run agent creation to generate keys first.".to_string()
@@ -2174,7 +2314,7 @@ impl SimpleAgent {
                 _ => e.to_string(),
             };
             JacsError::FileReadFailed {
-                path: key_path.to_string(),
+                path: key_path_string,
                 reason,
             }
         })
@@ -2218,8 +2358,8 @@ impl SimpleAgent {
         self.config_path.as_deref()
     }
 
-    /// Returns setup instructions for publishing the agent's DNS record,
-    /// enabling DNSSEC, and registering with HAI.ai.
+    /// Returns setup instructions for publishing the agent's DNS record
+    /// and enabling DNSSEC.
     ///
     /// # Arguments
     ///
@@ -2286,22 +2426,6 @@ impl SimpleAgent {
         });
         let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
-        // HAI registration
-        let hai_url =
-            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
-        let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
-        let hai_payload = json!({
-            "agent_id": agent_id,
-            "public_key_hash": digest,
-            "domain": domain,
-        });
-        let hai_registration_payload =
-            serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
-        let hai_registration_instructions = format!(
-            "POST the payload to {} with your HAI API key in the Authorization header.",
-            hai_registration_url
-        );
-
         // Build summary
         let summary = format!(
             "Setup instructions for agent {agent_id} on domain {domain}:\n\
@@ -2313,15 +2437,12 @@ impl SimpleAgent {
              \n\
              3. Domain requirement: {tld}\n\
              \n\
-             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json\n\
-             \n\
-             5. HAI registration: {hai_instr}",
+             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json",
             agent_id = agent_id,
             domain = domain,
             bind = dns_record_bind,
             dnssec = dnssec_guidance("aws"),
             tld = tld_requirement,
-            hai_instr = hai_registration_instructions,
         );
 
         Ok(SetupInstructions {
@@ -2332,9 +2453,6 @@ impl SimpleAgent {
             dnssec_instructions,
             tld_requirement,
             well_known_json,
-            hai_registration_url,
-            hai_registration_payload,
-            hai_registration_instructions,
             summary,
         })
     }
@@ -2505,25 +2623,9 @@ impl SimpleAgent {
                 message: format!("Failed to create agreement: {}", e),
             })?;
 
-        let raw = serde_json::to_string(&agreement_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize agreement: {}", e),
-        })?;
-
-        let timestamp = agreement_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = agreement_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
         info!("Agreement created: document_id={}", agreement_doc.id);
 
-        Ok(SignedDocument {
-            raw,
-            document_id: agreement_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(agreement_doc, "agreement")
     }
 
     /// Signs an existing multi-party agreement as the current agent.
@@ -2600,23 +2702,7 @@ impl SimpleAgent {
                 reason: format!("Failed to sign agreement: {}", e),
             })?;
 
-        let raw = serde_json::to_string(&signed_doc.value).map_err(|e| JacsError::Internal {
-            message: format!("Failed to serialize signed agreement: {}", e),
-        })?;
-
-        let timestamp = signed_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-        let agent_id = signed_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-
-        Ok(SignedDocument {
-            raw,
-            document_id: signed_doc.id,
-            agent_id,
-            timestamp,
-        })
+        SignedDocument::from_jacs_document(signed_doc, "signed agreement")
     }
 
     /// Checks the status of a multi-party agreement.
@@ -2717,78 +2803,543 @@ impl SimpleAgent {
         })
     }
 
-    /// Register the loaded agent with HAI.ai.
+    // =========================================================================
+    // A2A Protocol Methods
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card (v0.4.0).
     ///
-    /// POSTs the exported agent JSON to the HAI registration endpoint.
-    /// If `preview` is true, returns a preview result without actually registering.
+    /// The Agent Card describes the agent's capabilities, skills, and
+    /// cryptographic configuration for zero-config A2A discovery.
+    pub fn export_agent_card(&self) -> Result<crate::a2a::AgentCard, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        crate::a2a::agent_card::export_agent_card(&agent).map_err(|e| JacsError::Internal {
+            message: format!("Failed to export agent card: {}", e),
+        })
+    }
+
+    /// Generate .well-known documents for A2A discovery.
+    ///
+    /// Creates all well-known endpoint documents including the signed Agent Card,
+    /// JWKS, JACS descriptor, public key document, and extension descriptor.
+    ///
+    /// Returns a vector of (path, JSON value) tuples suitable for serving.
+    pub fn generate_well_known_documents(
+        &self,
+        a2a_algorithm: Option<&str>,
+    ) -> Result<Vec<(String, serde_json::Value)>, JacsError> {
+        let agent_card = self.export_agent_card()?;
+
+        let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
+        let dual_keys = crate::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to generate A2A keys: {}", e),
+            }
+        })?;
+
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let agent_id = agent.get_id().map_err(|e| JacsError::Internal {
+            message: format!("Failed to get agent ID: {}", e),
+        })?;
+
+        let jws = crate::a2a::extension::sign_agent_card_jws(
+            &agent_card,
+            &dual_keys.a2a_private_key,
+            &dual_keys.a2a_algorithm,
+            &agent_id,
+        )
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to sign Agent Card: {}", e),
+        })?;
+
+        crate::a2a::extension::generate_well_known_documents(
+            &agent,
+            &agent_card,
+            &dual_keys.a2a_public_key,
+            &dual_keys.a2a_algorithm,
+            &jws,
+        )
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to generate well-known documents: {}", e),
+        })
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    ///
+    /// This creates a signed envelope around arbitrary JSON content,
+    /// binding the signer's identity to the artifact.
     ///
     /// # Arguments
-    /// * `api_key` - HAI API key (or reads `HAI_API_KEY` env var if `None`)
-    /// * `hai_url` - Base URL for HAI (e.g. `"https://hai.ai"`)
-    /// * `preview` - If true, validate without registering
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn register_with_hai(
+    ///
+    /// * `artifact_json` - JSON string of the artifact to wrap
+    /// * `artifact_type` - Type label (e.g., "artifact", "message", "task")
+    /// * `parent_signatures_json` - Optional JSON array of parent signatures for chain-of-custody
+    ///
+    /// # Returns
+    ///
+    /// JSON string of the wrapped, signed artifact.
+    #[deprecated(since = "0.9.0", note = "Use sign_artifact() instead")]
+    pub fn wrap_a2a_artifact(
         &self,
-        api_key: Option<&str>,
-        hai_url: &str,
-        preview: bool,
-    ) -> Result<RegistrationInfo, Box<dyn std::error::Error>> {
-        if preview {
-            return Ok(RegistrationInfo {
-                hai_registered: false,
-                hai_error: "preview mode".to_string(),
-                dns_record: String::new(),
-                dns_route53: String::new(),
-            });
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> Result<String, JacsError> {
+        if std::env::var("JACS_SHOW_DEPRECATIONS").is_ok() {
+            tracing::warn!("wrap_a2a_artifact is deprecated, use sign_artifact instead");
         }
 
-        let key = match api_key {
-            Some(k) => k.to_string(),
-            None => std::env::var("HAI_API_KEY")
-                .map_err(|_| "No API key provided and HAI_API_KEY environment variable not set")?,
+        let artifact: Value =
+            serde_json::from_str(artifact_json).map_err(|e| JacsError::DocumentMalformed {
+                field: "artifact_json".to_string(),
+                reason: format!("Invalid JSON: {}", e),
+            })?;
+
+        let parent_signatures: Option<Vec<Value>> = match parent_signatures_json {
+            Some(json_str) => {
+                let parsed: Vec<Value> =
+                    serde_json::from_str(json_str).map_err(|e| JacsError::DocumentMalformed {
+                        field: "parent_signatures_json".to_string(),
+                        reason: format!("Invalid JSON array: {}", e),
+                    })?;
+                Some(parsed)
+            }
+            None => None,
         };
 
-        let agent_json = self.export_agent()?;
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
 
-        let url = format!("{}/api/v1/agents/register", hai_url.trim_end_matches('/'));
+        let wrapped = crate::a2a::provenance::wrap_artifact_with_provenance(
+            &mut agent,
+            artifact,
+            artifact_type,
+            parent_signatures,
+        )
+        .map_err(|e| JacsError::SigningFailed {
+            reason: format!("Failed to wrap artifact: {}", e),
+        })?;
 
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()?;
+        serde_json::to_string_pretty(&wrapped).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize wrapped artifact: {}", e),
+        })
+    }
 
-        let response = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", key))
-            .header("Content-Type", "application/json")
-            .json(&serde_json::json!({ "agent_json": agent_json }))
-            .send()?;
+    /// Sign an A2A artifact with JACS provenance.
+    ///
+    /// This is the recommended primary API, replacing the deprecated
+    /// [`wrap_a2a_artifact`](Self::wrap_a2a_artifact).
+    pub fn sign_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> Result<String, JacsError> {
+        #[allow(deprecated)]
+        self.wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json)
+    }
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Ok(RegistrationInfo {
-                hai_registered: false,
-                hai_error: format!("HTTP {}: {}", status, body),
-                dns_record: String::new(),
-                dns_route53: String::new(),
-            });
+    /// Verify a JACS-wrapped A2A artifact.
+    ///
+    /// Returns a JSON string containing the verification result, including
+    /// the verification status, signer identity, and the original artifact.
+    ///
+    /// # Arguments
+    ///
+    /// * `wrapped_json` - JSON string of the wrapped artifact to verify
+    pub fn verify_a2a_artifact(&self, wrapped_json: &str) -> Result<String, JacsError> {
+        let wrapped: Value =
+            serde_json::from_str(wrapped_json).map_err(|e| JacsError::DocumentMalformed {
+                field: "wrapped_json".to_string(),
+                reason: format!("Invalid JSON: {}", e),
+            })?;
+
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let result =
+            crate::a2a::provenance::verify_wrapped_artifact(&agent, &wrapped).map_err(|e| {
+                JacsError::SignatureVerificationFailed {
+                    reason: format!("A2A artifact verification error: {}", e),
+                }
+            })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize verification result: {}", e),
+        })
+    }
+
+    // =========================================================================
+    // Key Rotation
+    // =========================================================================
+
+    /// Rotates the agent's cryptographic keys.
+    ///
+    /// This generates a new keypair, archives the old keys (for filesystem-backed
+    /// agents), creates a new agent version with the new public key, self-signs it,
+    /// and updates the config file.
+    ///
+    /// The old keys remain on disk (archived with a version suffix) so that
+    /// documents signed with the old key can still be verified.
+    ///
+    /// # Returns
+    ///
+    /// A [`RotationResult`] containing the old and new version strings, the new
+    /// public key in PEM format, and the complete self-signed agent JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The agent is not loaded (no `jacsId`)
+    /// - Key generation fails
+    /// - Signing fails
+    /// - Config file cannot be updated
+    ///
+    /// On failure after key archival, the old keys are restored (rollback).
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let (agent, _info) = SimpleAgent::create("my-agent", None, None)?;
+    /// let rotation = agent.rotate()?;
+    /// println!("Rotated from {} to {}", rotation.old_version, rotation.new_version);
+    /// ```
+    pub fn rotate(&self) -> Result<RotationResult, JacsError> {
+        use crate::crypt::hash::hash_public_key;
+
+        info!("Starting key rotation");
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        // 1. Capture pre-rotation state
+        let agent_value = agent
+            .get_value()
+            .cloned()
+            .ok_or(JacsError::AgentNotLoaded)?;
+        let jacs_id = agent_value["jacsId"]
+            .as_str()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .to_string();
+        let old_version = agent_value["jacsVersion"]
+            .as_str()
+            .ok_or_else(|| JacsError::Internal {
+                message: "Agent has no jacsVersion".to_string(),
+            })?
+            .to_string();
+
+        // 2. Delegate to Agent::rotate_self() (archives keys, generates new, signs, verifies)
+        let (new_version, new_public_key, new_doc) =
+            agent.rotate_self().map_err(|e| JacsError::Internal {
+                message: format!("Key rotation failed: {}", e),
+            })?;
+
+        // 3. Save agent document to disk (non-ephemeral only)
+        if !agent.is_ephemeral() {
+            agent.save().map_err(|e| JacsError::Internal {
+                message: format!("Failed to save rotated agent: {}", e),
+            })?;
         }
 
-        let body: Value = response.json()?;
+        // 4. Update config file with the new version
+        if let Some(ref config_path) = self.config_path {
+            let config_path_p = Path::new(config_path);
+            if config_path_p.exists() {
+                let config_str =
+                    fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
+                        message: format!("Failed to read config for rotation update: {}", e),
+                    })?;
+                let mut config_value: Value =
+                    serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
+                        message: format!("Failed to parse config: {}", e),
+                    })?;
 
-        Ok(RegistrationInfo {
-            hai_registered: true,
-            hai_error: String::new(),
-            dns_record: body
-                .get("dns_record")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string(),
-            dns_route53: body
-                .get("dns_route53")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string(),
+                let new_lookup = format!("{}:{}", jacs_id, new_version);
+                if let Some(obj) = config_value.as_object_mut() {
+                    obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
+                }
+
+                let updated_str = serde_json::to_string_pretty(&config_value).map_err(|e| {
+                    JacsError::Internal {
+                        message: format!("Failed to serialize updated config: {}", e),
+                    }
+                })?;
+                fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to write updated config: {}", e),
+                })?;
+
+                info!(
+                    "Config updated with new version: {}:{}",
+                    jacs_id, new_version
+                );
+            }
+        }
+
+        // 5. Build the PEM string for the new public key
+        // We always encode from the raw bytes since the on-disk public key may
+        // be raw bytes (ring Ed25519) rather than actual PEM text.
+        let new_public_key_pem = {
+            use base64::{Engine as _, engine::general_purpose::STANDARD};
+            format!(
+                "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----",
+                STANDARD.encode(&new_public_key)
+            )
+        };
+        drop(agent); // Release lock — no longer needed
+
+        let new_public_key_hash = hash_public_key(&new_public_key);
+        let signed_agent_json =
+            serde_json::to_string_pretty(&new_doc).map_err(|e| JacsError::Internal {
+                message: format!("Failed to serialize rotated agent: {}", e),
+            })?;
+
+        info!(
+            "Key rotation complete: {} -> {} (id={})",
+            old_version, new_version, jacs_id
+        );
+
+        Ok(RotationResult {
+            jacs_id,
+            old_version,
+            new_version,
+            new_public_key_pem,
+            new_public_key_hash,
+            signed_agent_json,
+        })
+    }
+
+    // =========================================================================
+    // Attestation API (gated behind `attestation` feature)
+    // =========================================================================
+
+    /// Create a signed attestation document.
+    ///
+    /// Wraps `Agent::create_attestation()` with SimpleAgent's mutex + error handling.
+    ///
+    /// # Arguments
+    /// * `subject` - The attestation subject (who/what is being attested)
+    /// * `claims` - Claims about the subject (minimum 1 required by schema)
+    /// * `evidence` - Optional evidence references supporting the claims
+    /// * `derivation` - Optional derivation/transform receipt
+    /// * `policy_context` - Optional policy evaluation context
+    #[cfg(feature = "attestation")]
+    pub fn create_attestation(
+        &self,
+        subject: &crate::attestation::types::AttestationSubject,
+        claims: &[crate::attestation::types::Claim],
+        evidence: &[crate::attestation::types::EvidenceRef],
+        derivation: Option<&crate::attestation::types::Derivation>,
+        policy_context: Option<&crate::attestation::types::PolicyContext>,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::attestation::AttestationTraits;
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let jacs_doc = agent
+            .create_attestation(subject, claims, evidence, derivation, policy_context)
+            .map_err(|e| JacsError::AttestationFailed {
+                message: format!("Failed to create attestation: {}", e),
+            })?;
+        SignedDocument::from_jacs_document(jacs_doc, "attestation")
+    }
+
+    /// Verify an attestation using local (crypto-only) verification.
+    ///
+    /// Fast path: checks signature + hash only. No network calls, no evidence checks.
+    ///
+    /// # Arguments
+    /// * `document_key` - The document key in "id:version" format
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation(
+        &self,
+        document_key: &str,
+    ) -> Result<crate::attestation::types::AttestationVerificationResult, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        agent
+            .verify_attestation_local_impl(document_key)
+            .map_err(|e| JacsError::VerificationFailed {
+                message: format!("Attestation local verification failed: {}", e),
+            })
+    }
+
+    /// Verify an attestation using full verification.
+    ///
+    /// Full path: checks signature + hash + evidence digests + freshness + derivation chain.
+    ///
+    /// # Arguments
+    /// * `document_key` - The document key in "id:version" format
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation_full(
+        &self,
+        document_key: &str,
+    ) -> Result<crate::attestation::types::AttestationVerificationResult, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        agent
+            .verify_attestation_full_impl(document_key)
+            .map_err(|e| JacsError::VerificationFailed {
+                message: format!("Attestation full verification failed: {}", e),
+            })
+    }
+
+    /// Lift an existing signed document into an attestation.
+    ///
+    /// Convenience wrapper that takes a signed JACS document JSON string
+    /// and produces a new attestation document referencing the original.
+    ///
+    /// # Arguments
+    /// * `signed_document_json` - JSON string of the existing signed document
+    /// * `claims` - Claims about the document (minimum 1 required)
+    #[cfg(feature = "attestation")]
+    pub fn lift_to_attestation(
+        &self,
+        signed_document_json: &str,
+        claims: &[crate::attestation::types::Claim],
+    ) -> Result<SignedDocument, JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let jacs_doc = crate::attestation::migration::lift_to_attestation(
+            &mut agent,
+            signed_document_json,
+            claims,
+        )
+        .map_err(|e| JacsError::AttestationFailed {
+            message: format!("Failed to lift document to attestation: {}", e),
+        })?;
+        SignedDocument::from_jacs_document(jacs_doc, "attestation")
+    }
+
+    /// Create a signed attestation from a JSON params string.
+    ///
+    /// Convenience method that accepts a JSON string with `subject`, `claims`,
+    /// `evidence` (optional), `derivation` (optional), and `policyContext` (optional).
+    #[cfg(feature = "attestation")]
+    pub fn create_attestation_from_json(
+        &self,
+        params_json: &str,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::attestation::types::*;
+
+        let params: serde_json::Value =
+            serde_json::from_str(params_json).map_err(|e| JacsError::Internal {
+                message: format!("Invalid JSON params: {}", e),
+            })?;
+
+        let subject: AttestationSubject =
+            serde_json::from_value(params.get("subject").cloned().ok_or_else(|| {
+                JacsError::Internal {
+                    message: "Missing required 'subject' field".into(),
+                }
+            })?)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Invalid subject: {}", e),
+            })?;
+
+        let claims: Vec<Claim> =
+            serde_json::from_value(params.get("claims").cloned().ok_or_else(|| {
+                JacsError::Internal {
+                    message: "Missing required 'claims' field".into(),
+                }
+            })?)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Invalid claims: {}", e),
+            })?;
+
+        let evidence: Vec<EvidenceRef> = match params.get("evidence") {
+            Some(v) if !v.is_null() => {
+                serde_json::from_value(v.clone()).map_err(|e| JacsError::Internal {
+                    message: format!("Invalid evidence: {}", e),
+                })?
+            }
+            _ => vec![],
+        };
+
+        let derivation: Option<Derivation> =
+            match params.get("derivation") {
+                Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone()).map_err(
+                    |e| JacsError::Internal {
+                        message: format!("Invalid derivation: {}", e),
+                    },
+                )?),
+                _ => None,
+            };
+
+        let policy_context: Option<PolicyContext> =
+            match params.get("policyContext") {
+                Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone()).map_err(
+                    |e| JacsError::Internal {
+                        message: format!("Invalid policyContext: {}", e),
+                    },
+                )?),
+                _ => None,
+            };
+
+        self.create_attestation(
+            &subject,
+            &claims,
+            &evidence,
+            derivation.as_ref(),
+            policy_context.as_ref(),
+        )
+    }
+
+    /// Lift a signed document into an attestation from a JSON claims string.
+    ///
+    /// Convenience method that accepts claims as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn lift_to_attestation_from_json(
+        &self,
+        signed_doc_json: &str,
+        claims_json: &str,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::attestation::types::Claim;
+
+        let claims: Vec<Claim> =
+            serde_json::from_str(claims_json).map_err(|e| JacsError::Internal {
+                message: format!("Invalid claims JSON: {}", e),
+            })?;
+
+        self.lift_to_attestation(signed_doc_json, &claims)
+    }
+
+    /// Export a signed attestation as a DSSE (Dead Simple Signing Envelope).
+    ///
+    /// Produces an in-toto Statement wrapped in a DSSE envelope.
+    /// Export-only for v0.9.0 (no import).
+    ///
+    /// # Arguments
+    /// * `attestation_json` - JSON string of the signed attestation document
+    ///
+    /// # Returns
+    /// A DSSE envelope JSON string containing the in-toto Statement.
+    #[cfg(feature = "attestation")]
+    pub fn export_dsse(&self, attestation_json: &str) -> Result<String, JacsError> {
+        let att_value: serde_json::Value =
+            serde_json::from_str(attestation_json).map_err(|e| JacsError::AttestationFailed {
+                message: format!("Invalid attestation JSON: {}", e),
+            })?;
+        let envelope = crate::attestation::dsse::export_dsse(&att_value).map_err(|e| {
+            JacsError::AttestationFailed {
+                message: format!("Failed to export DSSE envelope: {}", e),
+            }
+        })?;
+        serde_json::to_string(&envelope).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize DSSE envelope: {}", e),
         })
     }
 }
@@ -3073,6 +3624,7 @@ fn extract_attachments(doc: &Value) -> Vec<Attachment> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_diagnostics_returns_version() {
@@ -3098,7 +3650,6 @@ mod tests {
             key_directory: "./keys".to_string(),
             domain: String::new(),
             dns_record: String::new(),
-            hai_registered: false,
         };
 
         let json = serde_json::to_string(&info).unwrap();
@@ -3150,6 +3701,30 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":true"));
         assert!(json.contains("agent-123"));
+    }
+
+    #[test]
+    fn test_signed_document_from_jacs_document_extracts_signature_fields() {
+        let jacs_doc = JACSDocument {
+            id: "doc-123".to_string(),
+            version: "ver-1".to_string(),
+            value: json!({
+                "content": {"k": "v"},
+                "jacsSignature": {
+                    "agentID": "agent-abc",
+                    "date": "2026-02-17T00:00:00Z"
+                }
+            }),
+            jacs_type: "message".to_string(),
+        };
+
+        let signed = SignedDocument::from_jacs_document(jacs_doc, "document")
+            .expect("conversion should succeed");
+
+        assert_eq!(signed.document_id, "doc-123");
+        assert_eq!(signed.agent_id, "agent-abc");
+        assert_eq!(signed.timestamp, "2026-02-17T00:00:00Z");
+        assert!(signed.raw.contains("\"content\""));
     }
 
     #[test]
@@ -3363,6 +3938,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
@@ -3383,6 +3959,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
@@ -3403,29 +3980,13 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
         // Empty string should fail at JSON parse, not at pre-check
         let result = agent.verify("");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_register_with_hai_preview() {
-        let agent = SimpleAgent {
-            agent: Mutex::new(crate::get_empty_agent()),
-            config_path: None,
-            strict: false,
-        };
-
-        let result = agent
-            .register_with_hai(None, "https://hai.ai", true)
-            .expect("preview should succeed");
-        assert!(!result.hai_registered);
-        assert_eq!(result.hai_error, "preview mode");
-        assert!(result.dns_record.is_empty());
-        assert!(result.dns_route53.is_empty());
     }
 
     #[test]
@@ -3438,16 +3999,12 @@ mod tests {
             dnssec_instructions: std::collections::HashMap::new(),
             tld_requirement: "You must own a domain".to_string(),
             well_known_json: "{}".to_string(),
-            hai_registration_url: "https://api.hai.ai/v1/agents".to_string(),
-            hai_registration_payload: "{}".to_string(),
-            hai_registration_instructions: "POST to the URL".to_string(),
             summary: "Setup summary".to_string(),
         };
 
         let json = serde_json::to_string(&instr).unwrap();
         assert!(json.contains("dns_record_bind"));
         assert!(json.contains("_v1.agent.jacs.example.com."));
-        assert!(json.contains("hai_registration_url"));
     }
 
     #[test]
@@ -3455,6 +4012,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
 
@@ -3508,6 +4066,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: true,
         };
         assert!(agent.is_strict());
@@ -3515,6 +4074,7 @@ mod tests {
         let agent2 = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: false,
         };
         assert!(!agent2.is_strict());
@@ -3527,6 +4087,7 @@ mod tests {
         let agent = SimpleAgent {
             agent: Mutex::new(crate::get_empty_agent()),
             config_path: None,
+
             strict: true,
         };
 
@@ -3539,10 +4100,10 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_ephemeral_default_ed25519() {
+    fn test_simple_ephemeral_default_pq2025() {
         let (agent, info) = SimpleAgent::ephemeral(None).unwrap();
         assert!(!info.agent_id.is_empty());
-        assert_eq!(info.algorithm, "ring-Ed25519");
+        assert_eq!(info.algorithm, "pq2025");
         assert_eq!(info.name, "ephemeral");
         assert!(info.config_path.is_empty());
         assert!(info.public_key_path.is_empty());
@@ -3575,6 +4136,30 @@ mod tests {
     }
 
     #[test]
+    fn test_verify_by_id_uses_loaded_agent_storage_backend() {
+        let (agent, _info) =
+            SimpleAgent::ephemeral(Some("ed25519")).expect("create ephemeral agent");
+        let signed = agent
+            .sign_message(&json!({"hello": "verify-by-id"}))
+            .expect("sign message");
+        let signed_value: Value = serde_json::from_str(&signed.raw).expect("parse signed document");
+        let document_key = format!(
+            "{}:{}",
+            signed_value["jacsId"].as_str().expect("jacsId"),
+            signed_value["jacsVersion"].as_str().expect("jacsVersion")
+        );
+
+        let result = agent
+            .verify_by_id(&document_key)
+            .expect("verify_by_id should read from the agent's configured storage");
+        assert!(
+            result.valid,
+            "verify_by_id should succeed for a document stored in memory: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
     fn test_simple_ephemeral_no_files() {
         let temp = std::env::temp_dir().join("jacs_simple_ephemeral_no_files");
         let _ = std::fs::remove_dir_all(&temp);
@@ -3583,5 +4168,961 @@ mod tests {
         let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
         assert!(entries.is_empty());
         let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    // =========================================================================
+    // A2A Protocol Method Tests
+    // =========================================================================
+
+    #[test]
+    fn test_export_agent_card() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let card = agent.export_agent_card().unwrap();
+        assert!(!card.name.is_empty());
+        assert!(!card.protocol_versions.is_empty());
+        assert_eq!(card.protocol_versions[0], "0.4.0");
+        assert!(!card.supported_interfaces.is_empty());
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_wrap_and_verify_a2a_artifact() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let artifact = r#"{"text": "hello from A2A"}"#;
+
+        let wrapped = agent.wrap_a2a_artifact(artifact, "message", None).unwrap();
+
+        // Wrapped should be valid JSON with JACS fields
+        let wrapped_value: Value = serde_json::from_str(&wrapped).unwrap();
+        assert!(wrapped_value.get("jacsId").is_some());
+        assert!(wrapped_value.get("jacsSignature").is_some());
+        assert_eq!(wrapped_value["jacsType"], "a2a-message");
+
+        // Verify the wrapped artifact
+        let result_json = agent.verify_a2a_artifact(&wrapped).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+        assert_eq!(result["status"], "SelfSigned");
+    }
+
+    #[test]
+    fn test_sign_artifact_alias() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let artifact = r#"{"data": "test"}"#;
+
+        // sign_artifact should produce the same structure as wrap_a2a_artifact
+        let signed = agent.sign_artifact(artifact, "artifact", None).unwrap();
+        let value: Value = serde_json::from_str(&signed).unwrap();
+        assert!(value.get("jacsId").is_some());
+        assert_eq!(value["jacsType"], "a2a-artifact");
+
+        // And it should verify
+        let result_json = agent.verify_a2a_artifact(&signed).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_wrap_a2a_artifact_with_parent_signatures() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+
+        // Create a first artifact
+        let first = agent
+            .wrap_a2a_artifact(r#"{"step": 1}"#, "task", None)
+            .unwrap();
+
+        // Use the first as a parent signature for a second
+        let parents = format!("[{}]", first);
+        let second = agent
+            .wrap_a2a_artifact(r#"{"step": 2}"#, "task", Some(&parents))
+            .unwrap();
+
+        let second_value: Value = serde_json::from_str(&second).unwrap();
+        assert!(second_value.get("jacsParentSignatures").is_some());
+        let parent_sigs = second_value["jacsParentSignatures"].as_array().unwrap();
+        assert_eq!(parent_sigs.len(), 1);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_wrap_a2a_artifact_invalid_json() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let result = agent.wrap_a2a_artifact("not json", "artifact", None);
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::DocumentMalformed { field, .. }) => {
+                assert_eq!(field, "artifact_json");
+            }
+            other => panic!("Expected DocumentMalformed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_verify_a2a_artifact_invalid_json() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let result = agent.verify_a2a_artifact("not json");
+        assert!(result.is_err());
+        match result {
+            Err(JacsError::DocumentMalformed { field, .. }) => {
+                assert_eq!(field, "wrapped_json");
+            }
+            other => panic!("Expected DocumentMalformed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_wrap_a2a_artifact_pq2025() {
+        let (agent, _info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
+        let artifact = r#"{"quantum": "safe"}"#;
+
+        let wrapped = agent.wrap_a2a_artifact(artifact, "artifact", None).unwrap();
+        let result_json = agent.verify_a2a_artifact(&wrapped).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+    }
+
+    #[test]
+    fn test_export_agent_card_has_jacs_extension() {
+        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let card = agent.export_agent_card().unwrap();
+
+        let extensions = card.capabilities.extensions.unwrap();
+        assert!(!extensions.is_empty());
+        assert_eq!(extensions[0].uri, crate::a2a::JACS_EXTENSION_URI);
+    }
+
+    /// Shared mutex for verify_with_key tests that set global env vars.
+    static VERIFY_WITH_KEY_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Create a test SimpleAgent with its own temp directory.
+    /// MUST be called while holding `VERIFY_WITH_KEY_MUTEX`.
+    fn create_test_agent_for_verify(name: &str) -> (SimpleAgent, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let tmp_path = tmp.path().to_string_lossy().to_string();
+
+        let params = CreateAgentParams::builder()
+            .name(name)
+            .password("TestVerify!2026")
+            .algorithm("ring-Ed25519")
+            .domain("test.example.com")
+            .description("Test agent for verify_with_key")
+            .data_directory(&format!("{}/jacs_data", tmp_path))
+            .key_directory(&format!("{}/jacs_keys", tmp_path))
+            .config_path(&format!("{}/jacs.config.json", tmp_path))
+            .build();
+
+        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create test agent");
+
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestVerify!2026");
+            std::env::set_var("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path));
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        (agent, tmp)
+    }
+
+    #[test]
+    #[serial]
+    fn verify_with_key_cross_agent_succeeds() {
+        let _lock = VERIFY_WITH_KEY_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // agent_a signs a message
+        let (agent_a, _tmp_a) = create_test_agent_for_verify("agent-a-vwk");
+        let signed = agent_a
+            .sign_message(&json!({"msg": "hello from A"}))
+            .expect("sign_message should succeed");
+
+        let agent_a_pubkey = agent_a
+            .get_public_key()
+            .expect("get_public_key should succeed");
+
+        // agent_b verifies using agent_a's public key
+        let (agent_b, _tmp_b) = create_test_agent_for_verify("agent-b-vwk");
+        let result = agent_b
+            .verify_with_key(&signed.raw, agent_a_pubkey)
+            .expect("verify_with_key should succeed");
+
+        assert!(
+            result.valid,
+            "cross-agent verification should pass: {:?}",
+            result.errors
+        );
+        assert!(!result.signer_id.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn verify_with_key_wrong_key_fails() {
+        let _lock = VERIFY_WITH_KEY_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // agent_a signs a message
+        let (agent_a, _tmp_a) = create_test_agent_for_verify("agent-a-wrong");
+        let signed = agent_a
+            .sign_message(&json!({"msg": "hello from A"}))
+            .expect("sign_message should succeed");
+
+        // agent_b tries to verify with its OWN key (wrong key)
+        let (agent_b, _tmp_b) = create_test_agent_for_verify("agent-b-wrong");
+        let agent_b_pubkey = agent_b
+            .get_public_key()
+            .expect("get_public_key should succeed");
+
+        let result = agent_b
+            .verify_with_key(&signed.raw, agent_b_pubkey)
+            .expect("verify_with_key should return Ok with errors, not Err");
+
+        assert!(!result.valid, "verification with wrong key should fail");
+        assert!(!result.errors.is_empty(), "should have verification errors");
+    }
+
+    // =========================================================================
+    // Key Rotation Tests
+    // =========================================================================
+
+    /// Shared mutex for rotation tests that manipulate env vars / filesystem.
+    static ROTATION_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// RAII guard that restores the working directory when dropped (even on panic).
+    struct CwdGuard {
+        saved: std::path::PathBuf,
+    }
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.saved);
+        }
+    }
+
+    /// Helper: create a persistent test agent in a temp directory.
+    /// Returns (SimpleAgent, AgentInfo, TempDir, CwdGuard). Caller MUST hold ROTATION_TEST_MUTEX.
+    ///
+    /// This changes CWD to the temp dir so that the MultiStorage (which saves
+    /// public keys relative to CWD) and the FsEncryptedStore key_paths (which
+    /// computes paths from the env var) agree on file locations.
+    /// The CwdGuard restores CWD automatically when dropped, even on panic.
+    fn create_persistent_test_agent(
+        name: &str,
+    ) -> (SimpleAgent, AgentInfo, tempfile::TempDir, CwdGuard) {
+        let saved_cwd = std::env::current_dir().expect("get cwd");
+        let tmp = tempfile::tempdir().expect("create temp dir");
+
+        // Change CWD to temp dir so relative paths work
+        std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
+        let guard = CwdGuard { saved: saved_cwd };
+
+        let params = CreateAgentParams::builder()
+            .name(name)
+            .password("RotateTest!2026")
+            .algorithm("ring-Ed25519")
+            .description("Test agent for key rotation")
+            .data_directory("./jacs_data")
+            .key_directory("./jacs_keys")
+            .config_path("./jacs.config.json")
+            .build();
+
+        let (agent, info) = SimpleAgent::create_with_params(params).expect("create test agent");
+
+        // Set env vars so key operations work
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "RotateTest!2026");
+            std::env::set_var("JACS_KEY_DIRECTORY", "./jacs_keys");
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        (agent, info, tmp, guard)
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_roots_relative_paths_to_config_directory() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, tmp, guard) = create_persistent_test_agent("load-relative-root-test");
+        let config_path = tmp.path().join("jacs.config.json");
+        drop(guard);
+
+        let signed = agent
+            .sign_message(&json!({"load": "relative"}))
+            .expect("signing should succeed");
+        drop(agent);
+
+        let loaded = SimpleAgent::load(Some(config_path.to_string_lossy().as_ref()), Some(true))
+            .expect("loading should succeed from any CWD when config uses relative paths");
+        let result = loaded.verify(&signed.raw).expect("verify should succeed");
+        assert!(
+            result.valid,
+            "loaded agent should verify documents after CWD change: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_embedded_export_writes_to_data_directory_only() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, tmp, guard) = create_persistent_test_agent("embedded-export-root-test");
+        let source_name = "source-embed.bin";
+        let source_path = tmp.path().join(source_name);
+        std::fs::write(&source_path, b"embedded payload").expect("write source file");
+        drop(guard);
+
+        {
+            let mut inner = agent.agent.lock().expect("lock agent");
+            let content = json!({
+                "jacsType": "file",
+                "jacsLevel": "raw",
+                "filename": source_name,
+                "mimetype": "application/octet-stream"
+            });
+            let doc = inner
+                .create_document_and_load(
+                    &content.to_string(),
+                    Some(vec![source_name.to_string()]),
+                    Some(true),
+                )
+                .expect("create embedded document");
+            std::fs::remove_file(&source_path).expect("remove original source file");
+            inner
+                .save_document(&doc.getkey(), None, Some(true), Some(true))
+                .expect("save_document export should succeed");
+        }
+
+        let extracted_in_data_dir = tmp.path().join("jacs_data").join(source_name);
+        assert!(
+            extracted_in_data_dir.exists(),
+            "embedded export should be written under jacs_data"
+        );
+        assert!(
+            !tmp.path().join(source_name).exists(),
+            "embedded export must not be written to repository root paths"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_handles_mixed_relative_data_and_absolute_key_directories() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, tmp, guard) = create_persistent_test_agent("mixed-dir-root-test");
+        let config_path = tmp.path().join("jacs.config.json");
+
+        // Make key directory absolute while keeping data directory relative.
+        let mut config_value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config_path).expect("read config"))
+                .expect("parse config json");
+        config_value["jacs_key_directory"] =
+            serde_json::Value::String(tmp.path().join("jacs_keys").to_string_lossy().to_string());
+        std::fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&config_value).expect("serialize config"),
+        )
+        .expect("write updated config");
+
+        let signed = agent
+            .sign_message(&json!({"mixed": "dirs"}))
+            .expect("signing should succeed");
+        drop(agent);
+        drop(guard);
+
+        // Ensure file config is honored (do not let helper env vars override it).
+        unsafe {
+            std::env::remove_var("JACS_DATA_DIRECTORY");
+            std::env::remove_var("JACS_KEY_DIRECTORY");
+            std::env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
+            std::env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
+            std::env::remove_var("JACS_DEFAULT_STORAGE");
+            std::env::remove_var("JACS_AGENT_ID_AND_VERSION");
+        }
+
+        let loaded = SimpleAgent::load(Some(config_path.to_string_lossy().as_ref()), Some(true))
+            .expect("loading should succeed with mixed absolute/relative config directories");
+        let result = loaded.verify(&signed.raw).expect("verify should succeed");
+        assert!(
+            result.valid,
+            "loaded agent should verify when key dir is absolute and data dir is relative: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_rejects_parent_directory_segments_in_storage_dirs() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (_agent, _info, tmp, guard) = create_persistent_test_agent("reject-parent-dir-test");
+        let config_path = tmp.path().join("jacs.config.json");
+
+        let mut config_value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&config_path).expect("read config"))
+                .expect("parse config json");
+        config_value["jacs_data_directory"] =
+            serde_json::Value::String("../outside-data".to_string());
+        std::fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&config_value).expect("serialize config"),
+        )
+        .expect("write updated config");
+        drop(guard);
+
+        unsafe {
+            std::env::remove_var("JACS_DATA_DIRECTORY");
+            std::env::remove_var("JACS_KEY_DIRECTORY");
+            std::env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
+            std::env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
+            std::env::remove_var("JACS_DEFAULT_STORAGE");
+            std::env::remove_var("JACS_AGENT_ID_AND_VERSION");
+        }
+
+        let load_result =
+            SimpleAgent::load(Some(config_path.to_string_lossy().as_ref()), Some(true));
+        assert!(
+            load_result.is_err(),
+            "loading should reject parent-directory segments in configured storage directories"
+        );
+        let err_text = load_result.err().unwrap().to_string();
+        assert!(
+            err_text.contains("parent-directory segment"),
+            "error should mention parent-directory segment rejection, got: {}",
+            err_text
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_preserves_jacs_id() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("rotate-id-test");
+        let original_id = info.agent_id.clone();
+        let original_version = info.version.clone();
+
+        let result = agent.rotate().expect("rotation should succeed");
+
+        assert_eq!(
+            result.jacs_id, original_id,
+            "jacsId must not change after rotation"
+        );
+        assert_ne!(
+            result.new_version, original_version,
+            "jacsVersion must change after rotation"
+        );
+        assert_eq!(result.old_version, original_version);
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_new_key_signs_correctly() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-sign-test");
+
+        let _result = agent.rotate().expect("rotation should succeed");
+
+        // Sign a message with the rotated agent's new key
+        let signed = agent
+            .sign_message(&json!({"after": "rotation"}))
+            .expect("signing with new key should succeed");
+
+        // Verify the message
+        let verification = agent.verify(&signed.raw).expect("verify should succeed");
+
+        assert!(
+            verification.valid,
+            "Message signed with new key should verify: {:?}",
+            verification.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_returns_rotation_result() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-result-test");
+
+        let result = agent.rotate().expect("rotation should succeed");
+
+        // All fields should be non-empty
+        assert!(!result.jacs_id.is_empty(), "jacs_id should not be empty");
+        assert!(
+            !result.old_version.is_empty(),
+            "old_version should not be empty"
+        );
+        assert!(
+            !result.new_version.is_empty(),
+            "new_version should not be empty"
+        );
+        assert!(
+            !result.new_public_key_pem.is_empty(),
+            "new_public_key_pem should not be empty"
+        );
+        assert!(
+            !result.new_public_key_hash.is_empty(),
+            "new_public_key_hash should not be empty"
+        );
+        assert!(
+            !result.signed_agent_json.is_empty(),
+            "signed_agent_json should not be empty"
+        );
+
+        // signed_agent_json should be valid JSON containing the new version
+        let doc: Value =
+            serde_json::from_str(&result.signed_agent_json).expect("should be valid JSON");
+        assert_eq!(
+            doc["jacsVersion"].as_str().unwrap(),
+            result.new_version,
+            "signed doc should contain new version"
+        );
+        assert_eq!(
+            doc["jacsId"].as_str().unwrap(),
+            result.jacs_id,
+            "signed doc should contain same jacsId"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_config_updated() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("rotate-config-test");
+
+        let result = agent.rotate().expect("rotation should succeed");
+
+        // Read the config (CWD is still temp dir, so relative path works)
+        let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
+
+        let config: Value = serde_json::from_str(&config_str).expect("parse config");
+        let expected_lookup = format!("{}:{}", info.agent_id, result.new_version);
+        assert_eq!(
+            config["jacs_agent_id_and_version"].as_str().unwrap(),
+            expected_lookup,
+            "Config should be updated with new version"
+        );
+    }
+
+    #[test]
+    fn test_rotate_ephemeral_agent() {
+        // Ephemeral agents should support rotation (no filesystem involved)
+        let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+        let original_version = info.version.clone();
+
+        let result = agent.rotate().expect("ephemeral rotation should succeed");
+
+        assert_eq!(result.jacs_id, info.agent_id);
+        assert_ne!(result.new_version, original_version);
+        assert!(!result.new_public_key_pem.is_empty());
+        assert!(!result.signed_agent_json.is_empty());
+
+        // Agent should still be functional after rotation
+        let signed = agent
+            .sign_message(&json!({"ephemeral": "after rotate"}))
+            .expect("signing after ephemeral rotation should work");
+        let verification = agent.verify(&signed.raw).expect("verify should work");
+        assert!(
+            verification.valid,
+            "ephemeral post-rotation verify failed: {:?}",
+            verification.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_old_key_still_verifies_old_doc() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-old-key-test");
+
+        // Sign a document with the original key
+        let signed_before = agent
+            .sign_message(&json!({"pre_rotation": true}))
+            .expect("signing before rotation should succeed");
+
+        // Save the old public key bytes
+        let old_public_key = agent.get_public_key().expect("get old public key");
+
+        // Rotate
+        let _result = agent.rotate().expect("rotation should succeed");
+
+        // Verify the pre-rotation doc using the old public key
+        let verification = agent
+            .verify_with_key(&signed_before.raw, old_public_key)
+            .expect("verify_with_key should return a result");
+
+        assert!(
+            verification.valid,
+            "Old doc should still verify with old key: {:?}",
+            verification.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_rotate_full_cycle() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-full-cycle");
+
+        // Phase 1: Sign with original key
+        let old_public_key = agent.get_public_key().expect("get old key");
+        let signed_v1 = agent.sign_message(&json!({"version": 1})).expect("sign v1");
+
+        // Phase 2: Rotate
+        let result = agent.rotate().expect("rotation should succeed");
+
+        // Phase 3: Sign with new key
+        let signed_v2 = agent.sign_message(&json!({"version": 2})).expect("sign v2");
+
+        // Phase 4: Verify both documents
+        // v1 doc with old key
+        let v1_check = agent
+            .verify_with_key(&signed_v1.raw, old_public_key)
+            .expect("verify v1 with old key");
+        assert!(
+            v1_check.valid,
+            "v1 should verify with old key: {:?}",
+            v1_check.errors
+        );
+
+        // v2 doc with current agent (new key)
+        let v2_check = agent.verify(&signed_v2.raw).expect("verify v2");
+        assert!(
+            v2_check.valid,
+            "v2 should verify with new key: {:?}",
+            v2_check.errors
+        );
+
+        // Version chain is correct
+        let doc: Value =
+            serde_json::from_str(&result.signed_agent_json).expect("parse signed agent");
+        assert_eq!(
+            doc["jacsPreviousVersion"].as_str().unwrap(),
+            result.old_version,
+            "jacsPreviousVersion should reference old version"
+        );
+    }
+
+    // =========================================================================
+    // Attestation API Tests (gated behind `attestation` feature)
+    // =========================================================================
+
+    #[cfg(feature = "attestation")]
+    mod attestation_tests {
+        use super::*;
+        use crate::attestation::types::*;
+
+        fn ephemeral_agent() -> SimpleAgent {
+            let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519")).unwrap();
+            agent
+        }
+
+        fn test_subject() -> AttestationSubject {
+            AttestationSubject {
+                subject_type: SubjectType::Artifact,
+                id: "test-artifact-001".into(),
+                digests: DigestSet {
+                    sha256: "abc123".into(),
+                    sha512: None,
+                    additional: std::collections::HashMap::new(),
+                },
+            }
+        }
+
+        fn test_claim() -> Claim {
+            Claim {
+                name: "reviewed".into(),
+                value: json!(true),
+                confidence: Some(0.95),
+                assurance_level: Some(AssuranceLevel::Verified),
+                issuer: None,
+                issued_at: None,
+            }
+        }
+
+        #[test]
+        fn simple_create_attestation_returns_signed_document() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let result = agent.create_attestation(&subject, &[test_claim()], &[], None, None);
+            assert!(
+                result.is_ok(),
+                "create_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let signed = result.unwrap();
+            assert!(!signed.raw.is_empty(), "raw JSON should not be empty");
+            assert!(!signed.document_id.is_empty(), "document_id should be set");
+            assert!(!signed.agent_id.is_empty(), "agent_id should be set");
+            assert!(!signed.timestamp.is_empty(), "timestamp should be set");
+        }
+
+        #[test]
+        fn simple_create_attestation_raw_contains_attestation_fields() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            assert!(
+                doc.get("attestation").is_some(),
+                "should contain attestation field"
+            );
+            assert!(doc.get("jacsSignature").is_some(), "should be signed");
+            assert_eq!(
+                doc["attestation"]["subject"]["id"].as_str().unwrap(),
+                "test-artifact-001"
+            );
+        }
+
+        #[test]
+        fn simple_verify_attestation_local_valid() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = agent.verify_attestation(&key);
+            assert!(
+                result.is_ok(),
+                "verify_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let verification = result.unwrap();
+            assert!(
+                verification.valid,
+                "attestation should verify: {:?}",
+                verification.errors
+            );
+        }
+
+        #[test]
+        fn simple_verify_attestation_full_valid() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = agent.verify_attestation_full(&key);
+            assert!(
+                result.is_ok(),
+                "verify_attestation_full should succeed: {:?}",
+                result.err()
+            );
+
+            let verification = result.unwrap();
+            assert!(
+                verification.valid,
+                "full attestation should verify: {:?}",
+                verification.errors
+            );
+        }
+
+        #[test]
+        fn simple_verify_attestation_returns_signer_info() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let verification = agent.verify_attestation(&key).unwrap();
+            assert!(
+                !verification.crypto.signer_id.is_empty(),
+                "should include signer info in crypto result"
+            );
+        }
+
+        #[test]
+        fn simple_lift_to_attestation_from_signed_document() {
+            let agent = ephemeral_agent();
+
+            // First sign a regular message
+            let msg = json!({"title": "Test Document", "content": "Some content"});
+            let signed_msg = agent.sign_message(&msg).unwrap();
+
+            // Lift it to an attestation
+            let claims = vec![test_claim()];
+            let result = agent.lift_to_attestation(&signed_msg.raw, &claims);
+            assert!(
+                result.is_ok(),
+                "lift_to_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let attestation = result.unwrap();
+            assert!(!attestation.raw.is_empty());
+            assert!(!attestation.document_id.is_empty());
+
+            // Verify the lifted attestation
+            let att_doc: Value = serde_json::from_str(&attestation.raw).unwrap();
+            let att_key = format!(
+                "{}:{}",
+                att_doc["jacsId"].as_str().unwrap(),
+                att_doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let verification = agent.verify_attestation(&att_key).unwrap();
+            assert!(
+                verification.valid,
+                "lifted attestation should verify: {:?}",
+                verification.errors
+            );
+        }
+
+        #[test]
+        fn simple_lift_to_attestation_subject_references_original() {
+            let agent = ephemeral_agent();
+
+            let msg = json!({"title": "Original Document"});
+            let signed_msg = agent.sign_message(&msg).unwrap();
+            let original_id = signed_msg.document_id.clone();
+
+            let attestation = agent
+                .lift_to_attestation(&signed_msg.raw, &[test_claim()])
+                .unwrap();
+
+            let att_doc: Value = serde_json::from_str(&attestation.raw).unwrap();
+            assert_eq!(
+                att_doc["attestation"]["subject"]["id"].as_str().unwrap(),
+                original_id,
+                "attestation subject ID should reference the original document ID"
+            );
+        }
+
+        #[test]
+        fn simple_lift_unsigned_document_fails() {
+            let agent = ephemeral_agent();
+            let unsigned = json!({"title": "Not Signed"}).to_string();
+            let result = agent.lift_to_attestation(&unsigned, &[test_claim()]);
+            assert!(result.is_err(), "lifting unsigned document should fail");
+        }
+
+        #[test]
+        fn simple_create_attestation_with_evidence() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+
+            let evidence = vec![EvidenceRef {
+                kind: EvidenceKind::Custom,
+                digests: DigestSet {
+                    sha256: "ev_hash_123".into(),
+                    sha512: None,
+                    additional: std::collections::HashMap::new(),
+                },
+                uri: Some("https://example.com/evidence.pdf".into()),
+                embedded: false,
+                embedded_data: None,
+                collected_at: crate::time_utils::now_rfc3339(),
+                resolved_at: None,
+                sensitivity: EvidenceSensitivity::Public,
+                verifier: VerifierInfo {
+                    name: "test-verifier".into(),
+                    version: "1.0".into(),
+                },
+            }];
+
+            let result = agent.create_attestation(&subject, &[test_claim()], &evidence, None, None);
+            assert!(
+                result.is_ok(),
+                "attestation with evidence should succeed: {:?}",
+                result.err()
+            );
+
+            let signed = result.unwrap();
+            let doc: Value = serde_json::from_str(&signed.raw).unwrap();
+            let ev_arr = doc["attestation"]["evidence"]
+                .as_array()
+                .expect("evidence should be array");
+            assert_eq!(ev_arr.len(), 1);
+            assert_eq!(ev_arr[0]["kind"], "custom");
+        }
+
+        #[test]
+        fn simple_verify_attestation_nonexistent_key_returns_error() {
+            let agent = ephemeral_agent();
+            let result = agent.verify_attestation("nonexistent-id:v1");
+            assert!(
+                result.is_err(),
+                "verifying nonexistent attestation should fail"
+            );
+        }
+
+        #[test]
+        fn simple_export_dsse_produces_valid_envelope() {
+            let agent = ephemeral_agent();
+            let subject = test_subject();
+            let signed = agent
+                .create_attestation(&subject, &[test_claim()], &[], None, None)
+                .unwrap();
+
+            let dsse_json = agent.export_dsse(&signed.raw).unwrap();
+            let envelope: Value = serde_json::from_str(&dsse_json).unwrap();
+
+            assert_eq!(
+                envelope["payloadType"].as_str().unwrap(),
+                "application/vnd.in-toto+json"
+            );
+            assert!(envelope.get("payload").is_some());
+            assert!(envelope.get("signatures").is_some());
+
+            let sigs = envelope["signatures"].as_array().unwrap();
+            assert!(!sigs.is_empty(), "should have at least one signature");
+        }
     }
 }

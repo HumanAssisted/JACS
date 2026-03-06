@@ -28,6 +28,7 @@ function createMockTransport() {
     onclose: null,
     onerror: null,
     sessionId: 'test-session-123',
+    url: 'http://localhost:9999/sse',
   };
 }
 
@@ -80,8 +81,25 @@ function createMockJacsClient(agent) {
       timestamp: '2025-01-01T00:00:00Z',
     }),
     trustAgent: sinon.stub().returns('trusted'),
+    trustAgentWithKey: sinon.stub().returns('trusted-with-key'),
     listTrustedAgents: sinon.stub().returns(['agent-a', 'agent-b']),
+    getTrustedAgent: sinon.stub().returns('{"jacsId":"agent-a","jacsVersion":"v1"}'),
+    untrustAgent: sinon.stub().returns(),
     isTrusted: sinon.stub().returns(true),
+    exportAgentCard: sinon.stub().returns({ name: 'test-agent', capabilities: {} }),
+    signArtifact: sinon.stub().resolves({ jacsId: 'artifact-1', a2aArtifact: { task: 'test' } }),
+    verifyArtifact: sinon.stub().resolves({ valid: true, signerId: 'agent-b', artifactType: 'task' }),
+    getA2A: sinon.stub().returns({
+      assessRemoteAgent: sinon.stub().returns({
+        allowed: true,
+        trustLevel: 'Verified',
+        jacsRegistered: true,
+        inTrustStore: false,
+        reason: 'ok',
+      }),
+    }),
+    sharePublicKey: sinon.stub().returns('-----BEGIN PUBLIC KEY-----\nMIIB...\n-----END PUBLIC KEY-----'),
+    shareAgent: sinon.stub().returns('{"jacsId":"client-agent-123","jacsVersion":"v1"}'),
   };
 }
 
@@ -177,6 +195,45 @@ describe('JACSTransportProxy', function () {
 
       expect(proxy.sessionId).to.equal('test-session-123');
     });
+
+    (available ? it : it.skip)('should reject remote transports in local-only mode by default', () => {
+      const transport = createMockTransport();
+      transport.url = 'https://remote.example.com/sse';
+
+      expect(() => {
+        new mcpModule.JACSTransportProxy(transport, { agent: createMockAgent() });
+      }).to.throw(/local mode only/i);
+    });
+
+    (available ? it : it.skip)('should reject attempts to disable local-only mode', () => {
+      const transport = createMockTransport();
+
+      expect(() => {
+        new mcpModule.JACSTransportProxy(
+          transport,
+          { agent: createMockAgent() },
+          'server',
+          { localOnly: false },
+        );
+      }).to.throw(/disabling local-only mode is not allowed/i);
+    });
+
+    (available ? it : it.skip)('should reject env-based attempts to disable local-only mode', () => {
+      const transport = createMockTransport();
+      const original = process.env.JACS_MCP_LOCAL_ONLY;
+      process.env.JACS_MCP_LOCAL_ONLY = 'false';
+      try {
+        expect(() => {
+          new mcpModule.JACSTransportProxy(transport, { agent: createMockAgent() });
+        }).to.throw(/disabling local-only mode is not allowed/i);
+      } finally {
+        if (typeof original === 'undefined') {
+          delete process.env.JACS_MCP_LOCAL_ONLY;
+        } else {
+          process.env.JACS_MCP_LOCAL_ONLY = original;
+        }
+      }
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -227,12 +284,37 @@ describe('JACSTransportProxy', function () {
       expect(signedInput).to.not.have.property('params');
     });
 
-    (available ? it : it.skip)('should fall back to plain message if signing fails', async () => {
+    (available ? it : it.skip)('should fail closed if signing fails and fallback is disabled', async () => {
       const transport = createMockTransport();
       const agent = createMockAgent();
       agent.signRequest.throws(new Error('signing error'));
 
       const proxy = new mcpModule.JACSTransportProxy(transport, { agent }, 'server');
+
+      const message = { jsonrpc: '2.0', method: 'test', id: 1 };
+      let caught;
+      try {
+        await proxy.send(message);
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).to.be.an('error');
+      expect(String(caught.message || caught)).to.match(/unsigned fallback is disabled/i);
+      expect(transport.send.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should fall back to plain message if signing fails when explicitly enabled', async () => {
+      const transport = createMockTransport();
+      const agent = createMockAgent();
+      agent.signRequest.throws(new Error('signing error'));
+
+      const proxy = new mcpModule.JACSTransportProxy(
+        transport,
+        { agent },
+        'server',
+        { allowUnsignedFallback: true },
+      );
 
       const message = { jsonrpc: '2.0', method: 'test', id: 1 };
       await proxy.send(message);
@@ -283,12 +365,37 @@ describe('JACSTransportProxy', function () {
       expect(messageSpy.firstCall.args[0]).to.deep.equal(innerPayload);
     });
 
-    (available ? it : it.skip)('should fall through as plain JSON when verification fails', () => {
+    (available ? it : it.skip)('should fail closed on verification failure by default', () => {
       const transport = createMockTransport();
       const agent = createMockAgent();
       agent.verifyResponse.throws(new Error('not a JACS artifact'));
 
       const proxy = new mcpModule.JACSTransportProxy(transport, { agent }, 'server');
+
+      const messageSpy = sinon.spy();
+      const errorSpy = sinon.spy();
+      proxy.onmessage = messageSpy;
+      proxy.onerror = errorSpy;
+
+      const plainMessage = { jsonrpc: '2.0', method: 'ping', id: 42 };
+      transport.onmessage(JSON.stringify(plainMessage));
+
+      expect(messageSpy.called).to.be.false;
+      expect(errorSpy.calledOnce).to.be.true;
+      expect(errorSpy.firstCall.args[0].message).to.match(/unsigned fallback is disabled/i);
+    });
+
+    (available ? it : it.skip)('should fall through as plain JSON when verification fails and fallback is enabled', () => {
+      const transport = createMockTransport();
+      const agent = createMockAgent();
+      agent.verifyResponse.throws(new Error('not a JACS artifact'));
+
+      const proxy = new mcpModule.JACSTransportProxy(
+        transport,
+        { agent },
+        'server',
+        { allowUnsignedFallback: true },
+      );
 
       const messageSpy = sinon.spy();
       proxy.onmessage = messageSpy;
@@ -468,10 +575,10 @@ describe('JACSTransportProxy', function () {
   // -------------------------------------------------------------------------
 
   describe('getJacsMcpToolDefinitions()', () => {
-    (available ? it : it.skip)('should return an array of 17 tool definitions', () => {
+    (available ? it : it.skip)('should return an array of 28 tool definitions', () => {
       const tools = mcpModule.getJacsMcpToolDefinitions();
       expect(tools).to.be.an('array');
-      expect(tools).to.have.length(17);
+      expect(tools).to.have.length(28);
     });
 
     (available ? it : it.skip)('should include core JACS tools', () => {
@@ -484,9 +591,20 @@ describe('JACSTransportProxy', function () {
       expect(names).to.include('jacs_check_agreement');
       expect(names).to.include('jacs_audit');
       expect(names).to.include('jacs_verify_self');
+      expect(names).to.include('jacs_export_agent');
+      expect(names).to.include('jacs_export_agent_card');
+      expect(names).to.include('jacs_wrap_a2a_artifact');
+      expect(names).to.include('jacs_verify_a2a_artifact');
+      expect(names).to.include('jacs_assess_a2a_agent');
       expect(names).to.include('fetch_agent_key');
       expect(names).to.include('jacs_trust_agent');
+      expect(names).to.include('jacs_trust_agent_with_key');
       expect(names).to.include('jacs_list_trusted');
+      expect(names).to.include('jacs_list_trusted_agents');
+      expect(names).to.include('jacs_get_trusted_agent');
+      expect(names).to.include('jacs_untrust_agent');
+      expect(names).to.include('jacs_share_public_key');
+      expect(names).to.include('jacs_share_agent');
     });
 
     (available ? it : it.skip)('each tool should have name, description, and inputSchema', () => {
@@ -540,17 +658,26 @@ describe('JACSTransportProxy', function () {
       const client = createMockJacsClient();
       const result = await mcpModule.handleJacsMcpToolCall(
         client, 'jacs_create_agreement',
-        { document: '{"action":"deploy"}', agent_ids: ['a', 'b'], question: 'OK?', quorum: 2 },
+        {
+          document: '{"action":"deploy"}',
+          agent_ids: ['a', 'b'],
+          question: 'OK?',
+          context: 'review requested',
+          quorum: 2,
+          required_algorithms: ['pq2025'],
+          minimum_strength: 'post-quantum',
+        },
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed).to.have.property('success', true);
       expect(parsed).to.have.property('documentId', 'agr-1:1');
+      expect(client.createAgreement.calledOnce).to.be.true;
     });
 
     (available ? it : it.skip)('jacs_check_agreement should check status', async () => {
       const client = createMockJacsClient();
       const result = await mcpModule.handleJacsMcpToolCall(
-        client, 'jacs_check_agreement', { document: '{"agr":"doc"}' },
+        client, 'jacs_check_agreement', { signed_agreement: '{"agr":"doc"}' },
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed).to.have.property('complete', true);
@@ -559,11 +686,81 @@ describe('JACSTransportProxy', function () {
     (available ? it : it.skip)('jacs_audit should run audit', async () => {
       const client = createMockJacsClient();
       const result = await mcpModule.handleJacsMcpToolCall(
-        client, 'jacs_audit', { recent_n: 10 },
+        client, 'jacs_audit', { config_path: './jacs.config.json', recent_n: 10 },
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed).to.have.property('success', true);
       expect(parsed).to.have.property('status', 'ok');
+      expect(client.audit.calledOnce).to.be.true;
+    });
+
+    (available ? it : it.skip)('fetch_agent_key should resolve uncached keys via default HAI endpoint', async () => {
+      const client = createMockJacsClient();
+      const originalFetch = globalThis.fetch;
+      const fetchStub = sinon.stub().resolves({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({
+          jacs_id: 'agent-123',
+          version: 'latest',
+          public_key: '-----BEGIN PUBLIC KEY-----...',
+        }),
+      });
+      globalThis.fetch = fetchStub;
+
+      try {
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client,
+          'fetch_agent_key',
+          { jacs_id: 'agent-123' },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(fetchStub.calledOnce).to.be.true;
+        expect(fetchStub.firstCall.args[0]).to.equal('https://hai.ai/jacs/v1/agents/agent-123/keys/latest');
+        expect(parsed).to.have.property('success', true);
+        expect(parsed).to.have.property('jacs_id', 'agent-123');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    (available ? it : it.skip)('fetch_agent_key should use by-hash endpoint and sha256 normalization', async () => {
+      const client = createMockJacsClient();
+      const originalFetch = globalThis.fetch;
+      const oldBaseUrl = process.env.JACS_KEYS_BASE_URL;
+      process.env.JACS_KEYS_BASE_URL = 'https://hai.ai/';
+
+      const fetchStub = sinon.stub().resolves({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        text: async () => JSON.stringify({
+          jacs_id: 'agent-xyz',
+          public_key_hash: 'sha256:abcd',
+        }),
+      });
+      globalThis.fetch = fetchStub;
+
+      try {
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client,
+          'fetch_agent_key',
+          { public_key_hash: 'abcd' },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(fetchStub.calledOnce).to.be.true;
+        expect(fetchStub.firstCall.args[0]).to.equal('https://hai.ai/jacs/v1/keys/by-hash/sha256%3Aabcd');
+        expect(parsed).to.have.property('success', true);
+        expect(parsed).to.have.property('public_key_hash', 'sha256:abcd');
+      } finally {
+        if (oldBaseUrl === undefined) {
+          delete process.env.JACS_KEYS_BASE_URL;
+        } else {
+          process.env.JACS_KEYS_BASE_URL = oldBaseUrl;
+        }
+        globalThis.fetch = originalFetch;
+      }
     });
 
     (available ? it : it.skip)('jacs_trust_agent should add to trust store', async () => {
@@ -575,6 +772,67 @@ describe('JACSTransportProxy', function () {
       expect(parsed).to.have.property('success', true);
     });
 
+    (available ? it : it.skip)('jacs_agent_info should not expose local filesystem paths', async () => {
+      const client = createMockJacsClient();
+      const result = await mcpModule.handleJacsMcpToolCall(
+        client,
+        'jacs_agent_info',
+        {},
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed).to.have.property('agentId', 'client-agent-123');
+      expect(parsed).to.not.have.property('configPath');
+      expect(parsed).to.not.have.property('publicKeyPath');
+    });
+
+    (available ? it : it.skip)('jacs_trust_agent_with_key should trust using explicit PEM key', async () => {
+      const client = createMockJacsClient();
+      const result = await mcpModule.handleJacsMcpToolCall(
+        client,
+        'jacs_trust_agent_with_key',
+        { agent_json: '{"id":"x"}', public_key_pem: '-----BEGIN PUBLIC KEY-----\nMIIB...\n-----END PUBLIC KEY-----' },
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed).to.have.property('success', true);
+      expect(client.trustAgentWithKey.calledOnce).to.be.true;
+    });
+
+    (available ? it : it.skip)('jacs_share_public_key should return PEM', async () => {
+      const client = createMockJacsClient();
+      const result = await mcpModule.handleJacsMcpToolCall(
+        client,
+        'jacs_share_public_key',
+        {},
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed).to.have.property('success', true);
+      expect(parsed.publicKeyPem).to.include('BEGIN PUBLIC KEY');
+    });
+
+    (available ? it : it.skip)('jacs_share_agent should return agent document', async () => {
+      const client = createMockJacsClient();
+      const result = await mcpModule.handleJacsMcpToolCall(
+        client,
+        'jacs_share_agent',
+        {},
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed).to.have.property('success', true);
+      expect(parsed.agentJson).to.include('jacsId');
+    });
+
+    (available ? it : it.skip)('jacs_export_agent should return agent document', async () => {
+      const client = createMockJacsClient();
+      const result = await mcpModule.handleJacsMcpToolCall(
+        client,
+        'jacs_export_agent',
+        {},
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed).to.have.property('success', true);
+      expect(parsed.agentJson).to.include('jacsId');
+    });
+
     (available ? it : it.skip)('jacs_list_trusted should list agents', async () => {
       const client = createMockJacsClient();
       const result = await mcpModule.handleJacsMcpToolCall(
@@ -582,6 +840,56 @@ describe('JACSTransportProxy', function () {
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.trustedAgents).to.deep.equal(['agent-a', 'agent-b']);
+    });
+
+    (available ? it : it.skip)('jacs_list_trusted_agents should list agents', async () => {
+      const client = createMockJacsClient();
+      const result = await mcpModule.handleJacsMcpToolCall(
+        client, 'jacs_list_trusted_agents', {},
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.trustedAgents).to.deep.equal(['agent-a', 'agent-b']);
+    });
+
+    (available ? it : it.skip)('jacs_untrust_agent should require explicit opt-in', async () => {
+      const client = createMockJacsClient();
+      const original = process.env.JACS_MCP_ALLOW_UNTRUST;
+      delete process.env.JACS_MCP_ALLOW_UNTRUST;
+      try {
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_untrust_agent', { agent_id: 'agent-a' },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).to.have.property('success', false);
+        expect(parsed).to.have.property('error', 'UNTRUST_DISABLED');
+        expect(client.untrustAgent.called).to.be.false;
+      } finally {
+        if (typeof original === 'undefined') {
+          delete process.env.JACS_MCP_ALLOW_UNTRUST;
+        } else {
+          process.env.JACS_MCP_ALLOW_UNTRUST = original;
+        }
+      }
+    });
+
+    (available ? it : it.skip)('jacs_untrust_agent should untrust when enabled', async () => {
+      const client = createMockJacsClient();
+      const original = process.env.JACS_MCP_ALLOW_UNTRUST;
+      process.env.JACS_MCP_ALLOW_UNTRUST = 'true';
+      try {
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_untrust_agent', { agent_id: 'agent-a' },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).to.have.property('success', true);
+        expect(client.untrustAgent.calledOnceWith('agent-a')).to.be.true;
+      } finally {
+        if (typeof original === 'undefined') {
+          delete process.env.JACS_MCP_ALLOW_UNTRUST;
+        } else {
+          process.env.JACS_MCP_ALLOW_UNTRUST = original;
+        }
+      }
     });
 
     (available ? it : it.skip)('unknown tool should return error', async () => {

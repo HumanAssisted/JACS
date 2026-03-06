@@ -87,3 +87,79 @@ pub fn verify_string(
         Err("ML-DSA signature verification failed".into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sign_verify_roundtrip() {
+        let (private_key, public_key) = generate_keys().expect("key generation should succeed");
+        let data = "ml-dsa-87 test message".to_string();
+
+        let signature = sign_string(private_key, &data).expect("signing should succeed");
+        let result = verify_string(public_key, &data, &signature);
+        assert!(result.is_ok(), "valid signature should verify");
+    }
+
+    #[test]
+    fn test_verify_wrong_message_rejected() {
+        let (private_key, public_key) = generate_keys().expect("key generation should succeed");
+        let original_data = "original message".to_string();
+        let tampered_data = "tampered message";
+
+        let signature = sign_string(private_key, &original_data).expect("signing should succeed");
+        let result = verify_string(public_key, tampered_data, &signature);
+        assert!(result.is_err(), "tampered message should not verify");
+    }
+
+    #[test]
+    fn test_verify_malformed_base64_signature_rejected() {
+        let (_, public_key) = generate_keys().expect("key generation should succeed");
+        let data = "test data";
+
+        for invalid_sig in ["!!!not-base64!!!", "abc@#$%", "===="] {
+            let result = verify_string(public_key.clone(), data, invalid_sig);
+            assert!(result.is_err(), "malformed signature should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_verify_wrong_signature_length_rejected() {
+        let (private_key, public_key) = generate_keys().expect("key generation should succeed");
+        let data = "test data".to_string();
+
+        let signature = sign_string(private_key, &data).expect("signing should succeed");
+        let mut sig_bytes = B64.decode(&signature).expect("decode should succeed");
+        sig_bytes.truncate(sig_bytes.len().saturating_sub(8));
+        let truncated = B64.encode(sig_bytes);
+
+        let result = verify_string(public_key, &data, &truncated);
+        assert!(
+            result.is_err(),
+            "signature with wrong length should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_verify_invalid_public_key_length_rejected() {
+        let (private_key, _) = generate_keys().expect("key generation should succeed");
+        let data = "test data".to_string();
+        let signature = sign_string(private_key, &data).expect("signing should succeed");
+
+        let invalid_public_keys = vec![vec![], vec![0u8; 64], vec![0xFF; 1024]];
+        for invalid_key in invalid_public_keys {
+            let result = verify_string(invalid_key, &data, &signature);
+            assert!(result.is_err(), "invalid public key should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_sign_invalid_private_key_length_rejected() {
+        let data = "test data".to_string();
+        for invalid_key in [vec![], vec![0u8; 64], vec![0xAA; 1024]] {
+            let result = sign_string(invalid_key, &data);
+            assert!(result.is_err(), "invalid private key should be rejected");
+        }
+    }
+}

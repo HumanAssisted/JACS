@@ -1,0 +1,20 @@
+{
+  "fixture_id": "F27",
+  "expected_result": "pass",
+  "expected_reason": "forwarded_chain_two_signers",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "forwarder@example.com" },
+      "to": { "value": "final-recipient@example.com" },
+      "subject": { "value": "Fwd: Original Message" },
+      "date": { "value": "Fri, 27 Feb 2026 12:26:00 +0000" },
+      "message_id": { "value": "<fixture-27@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": "sha256:origmeta",
+    "signature_chain_length": 2,
+    "notes": "Two jacs-signature attachments: jacs-signature-0.json (original sender) and jacs-signature.json (forwarder). parent_signature_hash links current to original."
+  }
+}

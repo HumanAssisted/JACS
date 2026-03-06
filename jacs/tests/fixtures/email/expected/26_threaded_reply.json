@@ -1,0 +1,21 @@
+{
+  "fixture_id": "F26",
+  "expected_result": "pass",
+  "expected_reason": "threaded_reply_with_references",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Re: Original Thread" },
+      "date": { "value": "Fri, 27 Feb 2026 12:25:00 +0000" },
+      "message_id": { "value": "<fixture-26@example.com>" },
+      "in_reply_to": { "value": "<original-thread@example.com>" },
+      "references": { "value": "<original-thread@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "Threaded reply with In-Reply-To and References headers populated"
+  }
+}

@@ -56,6 +56,49 @@ pub fn create_minimal_service(
     Ok(service)
 }
 
+fn get_array_mut<'a>(service: &'a mut Value, field: &str) -> Result<&'a mut Vec<Value>, String> {
+    service[field]
+        .as_array_mut()
+        .ok_or_else(|| "Invalid service format".to_string())
+}
+
+fn get_or_init_array_mut<'a>(
+    service: &'a mut Value,
+    field: &str,
+) -> Result<&'a mut Vec<Value>, String> {
+    if service.get(field).is_none() {
+        service[field] = json!([]);
+    }
+    get_array_mut(service, field)
+}
+
+fn update_value_in_array(
+    values: &mut [Value],
+    old_value: &Value,
+    new_value: Value,
+    not_found_message: &str,
+) -> Result<(), String> {
+    let index = values
+        .iter()
+        .position(|v| v == old_value)
+        .ok_or_else(|| not_found_message.to_string())?;
+    values[index] = new_value;
+    Ok(())
+}
+
+fn remove_value_from_array(
+    values: &mut Vec<Value>,
+    target: &Value,
+    not_found_message: &str,
+) -> Result<(), String> {
+    let index = values
+        .iter()
+        .position(|v| v == target)
+        .ok_or_else(|| not_found_message.to_string())?;
+    values.remove(index);
+    Ok(())
+}
+
 /// Adds a tool to a service.
 ///
 /// # Arguments
@@ -68,13 +111,7 @@ pub fn create_minimal_service(
 /// * `Ok(())` - If the tool was added successfully.
 /// * `Err(String)` - If an error occurred while adding the tool.
 fn add_tool_to_service(service: &mut Value, tool: Value) -> Result<(), String> {
-    if service.get("tools").is_none() {
-        service["tools"] = json!([]);
-    }
-    service["tools"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid service format".to_string())?
-        .push(tool);
+    get_or_init_array_mut(service, "tools")?.push(tool);
     Ok(())
 }
 
@@ -95,17 +132,12 @@ fn update_tool_in_service(
     old_tool: Value,
     new_tool: Value,
 ) -> Result<(), String> {
-    let tools = service["tools"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid service format".to_string())?;
-
-    let index = tools
-        .iter()
-        .position(|t| t == &old_tool)
-        .ok_or_else(|| "Tool not found".to_string())?;
-
-    tools[index] = new_tool;
-    Ok(())
+    update_value_in_array(
+        get_array_mut(service, "tools")?,
+        &old_tool,
+        new_tool,
+        "Tool not found",
+    )
 }
 
 /// Removes a tool from a service.
@@ -120,17 +152,7 @@ fn update_tool_in_service(
 /// * `Ok(())` - If the tool was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the tool.
 fn remove_tool_from_service(service: &mut Value, tool: Value) -> Result<(), String> {
-    let tools = service["tools"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid service format".to_string())?;
-
-    let index = tools
-        .iter()
-        .position(|t| t == &tool)
-        .ok_or_else(|| "Tool not found".to_string())?;
-
-    tools.remove(index);
-    Ok(())
+    remove_value_from_array(get_array_mut(service, "tools")?, &tool, "Tool not found")
 }
 
 /// Adds desired PII to a service.
@@ -145,13 +167,7 @@ fn remove_tool_from_service(service: &mut Value, tool: Value) -> Result<(), Stri
 /// * `Ok(())` - If the desired PII was added successfully.
 /// * `Err(String)` - If an error occurred while adding the desired PII.
 fn add_pii_desired_to_service(service: &mut Value, pii: String) -> Result<(), String> {
-    if service.get("piiDesired").is_none() {
-        service["piiDesired"] = json!([]);
-    }
-    service["piiDesired"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid service format".to_string())?
-        .push(json!(pii));
+    get_or_init_array_mut(service, "piiDesired")?.push(json!(pii));
     Ok(())
 }
 
@@ -167,15 +183,50 @@ fn add_pii_desired_to_service(service: &mut Value, pii: String) -> Result<(), St
 /// * `Ok(())` - If the desired PII was removed successfully.
 /// * `Err(String)` - If an error occurred while removing the desired PII.
 fn remove_pii_desired_from_service(service: &mut Value, pii: String) -> Result<(), String> {
-    let pii_desired = service["piiDesired"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid service format".to_string())?;
+    remove_value_from_array(
+        get_array_mut(service, "piiDesired")?,
+        &json!(pii),
+        "Desired PII not found",
+    )
+}
 
-    let index = pii_desired
-        .iter()
-        .position(|p| p == &pii)
-        .ok_or_else(|| "Desired PII not found".to_string())?;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
 
-    pii_desired.remove(index);
-    Ok(())
+    #[test]
+    fn service_tool_crud_round_trip() {
+        let mut service = create_minimal_service("desc", "ok", "bad", None, None)
+            .expect("minimal service should be created");
+
+        add_tool_to_service(&mut service, json!({"name": "tool-a"})).expect("add tool");
+        add_tool_to_service(&mut service, json!({"name": "tool-b"})).expect("add tool");
+        assert_eq!(service["tools"].as_array().map(|a| a.len()), Some(2));
+
+        update_tool_in_service(
+            &mut service,
+            json!({"name": "tool-a"}),
+            json!({"name": "tool-a2"}),
+        )
+        .expect("update tool");
+        assert_eq!(service["tools"][0]["name"], "tool-a2");
+
+        remove_tool_from_service(&mut service, json!({"name": "tool-b"})).expect("remove tool");
+        assert_eq!(service["tools"].as_array().map(|a| a.len()), Some(1));
+    }
+
+    #[test]
+    fn pii_desired_crud_round_trip() {
+        let mut service = create_minimal_service("desc", "ok", "bad", None, None)
+            .expect("minimal service should be created");
+
+        add_pii_desired_to_service(&mut service, "email".to_string()).expect("add pii");
+        add_pii_desired_to_service(&mut service, "phone".to_string()).expect("add pii");
+        assert_eq!(service["piiDesired"].as_array().map(|a| a.len()), Some(2));
+
+        remove_pii_desired_from_service(&mut service, "email".to_string()).expect("remove pii");
+        assert_eq!(service["piiDesired"].as_array().map(|a| a.len()), Some(1));
+        assert_eq!(service["piiDesired"][0], "phone");
+    }
 }

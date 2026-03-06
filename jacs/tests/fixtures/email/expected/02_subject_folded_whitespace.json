@@ -1,0 +1,18 @@
+{
+  "fixture_id": "F02",
+  "expected_result": "pass",
+  "expected_reason": "folded_whitespace_normalized",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value_note": "Folded subject should be normalized to single-line" },
+      "date": { "value": "Fri, 27 Feb 2026 12:01:00 +0000" },
+      "message_id": { "value": "<fixture-02@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null
+  }
+}

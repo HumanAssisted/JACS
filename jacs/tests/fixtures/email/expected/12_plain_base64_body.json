@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F12",
+  "expected_result": "pass",
+  "expected_reason": "base64_body_decode_then_hash",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 12 Plain Base64" },
+      "date": { "value": "Fri, 27 Feb 2026 12:11:00 +0000" },
+      "message_id": { "value": "<fixture-12@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "Body is base64 encoded; decoded bytes must match F11 decoded bytes for same content hash"
+  }
+}

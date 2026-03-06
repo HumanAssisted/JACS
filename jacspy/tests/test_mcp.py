@@ -1,8 +1,11 @@
 """Tests for the JACS MCP integration wrappers."""
 
+import asyncio
+import contextlib
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import json
+from types import SimpleNamespace
 
 
 class TestJACSMCPServerWrapper:
@@ -23,7 +26,10 @@ class TestJACSMCPServerWrapper:
         mock_server.sse_app = Mock(return_value=Mock())
 
         # Wrap it
-        wrapped_server = JACSMCPServer(mock_server)
+        wrapped_server = JACSMCPServer(
+            mock_server,
+            allow_unsigned_fallback=True,
+        )
 
         # The wrapper should return the same object (modified in place)
         assert wrapped_server is mock_server
@@ -40,7 +46,10 @@ class TestJACSMCPServerWrapper:
         mock_server.some_attribute = "test_value"
         mock_server.some_method = Mock(return_value="method_result")
 
-        wrapped_server = JACSMCPServer(mock_server)
+        wrapped_server = JACSMCPServer(
+            mock_server,
+            allow_unsigned_fallback=True,
+        )
 
         # Other attributes should be preserved
         assert wrapped_server.some_attribute == "test_value"
@@ -84,6 +93,79 @@ class TestMCPModuleStructure:
         assert "import jacs" in source
 
 
+class TestMCPSecurityDefaults:
+    """Security defaults for MCP wrappers should be hardened."""
+
+    def test_local_only_default_enabled(self):
+        from jacs import mcp
+        assert mcp._resolve_local_only() is True
+
+    def test_disabling_local_only_is_rejected(self):
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._resolve_local_only(False)
+
+    def test_env_cannot_disable_local_only(self, monkeypatch):
+        monkeypatch.setenv("JACS_MCP_LOCAL_ONLY", "false")
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._resolve_local_only()
+
+    def test_unsigned_fallback_default_disabled(self):
+        from jacs import mcp
+        assert mcp._resolve_allow_unsigned_fallback() is False
+
+    def test_remote_url_rejected_in_local_mode(self):
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._enforce_local_url("https://remote.example.com/sse", "test", True)
+
+    def test_loopback_url_allowed_in_local_mode(self):
+        from jacs import mcp
+        assert mcp._enforce_local_url("http://127.0.0.1:9000/sse", "test", True) is None
+
+    def test_enforce_local_url_rejects_false_local_only(self):
+        from jacs import mcp
+        with pytest.raises(mcp.simple.ConfigError):
+            mcp._enforce_local_url("http://localhost:9000/sse", "test", False)
+
+    def test_middleware_rejects_remote_client(self):
+        from jacs import mcp
+
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="203.0.113.9"),
+            url=SimpleNamespace(path="/messages/"),
+            body=AsyncMock(return_value=b"{}"),
+        )
+        call_next = AsyncMock()
+        middleware = mcp.jacs_middleware()
+
+        if mcp.JSONResponse is None:
+            with pytest.raises(mcp.simple.VerificationError):
+                asyncio.run(middleware(request, call_next))
+            call_next.assert_not_awaited()
+        else:
+            response = asyncio.run(middleware(request, call_next))
+            assert response.status_code == 403
+            call_next.assert_not_awaited()
+
+    def test_middleware_allows_loopback_client(self):
+        from jacs import mcp
+
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="127.0.0.1"),
+            url=SimpleNamespace(path="/messages/"),
+            body=AsyncMock(return_value=b"{}"),
+        )
+        expected_response = SimpleNamespace(headers={"content-type": "text/plain"})
+        call_next = AsyncMock(return_value=expected_response)
+        middleware = mcp.jacs_middleware()
+
+        response = asyncio.run(middleware(request, call_next))
+        assert response is expected_response
+        call_next.assert_awaited_once()
+
+
 class TestMCPMiddlewareBehavior:
     """Test the middleware behavior of the MCP wrappers."""
 
@@ -100,7 +182,10 @@ class TestMCPMiddlewareBehavior:
         mock_server.sse_app = original_sse_app
 
         # Wrap the server
-        wrapped = JACSMCPServer(mock_server)
+        wrapped = JACSMCPServer(
+            mock_server,
+            allow_unsigned_fallback=True,
+        )
 
         # Call the patched sse_app to trigger middleware creation
         result_app = wrapped.sse_app()
@@ -135,3 +220,62 @@ class TestMCPIntegrationTypes:
             serialized = json.dumps(payload)
             deserialized = json.loads(serialized)
             assert deserialized == payload
+
+
+class TestJacsSSETransportBehavior:
+    """Behavior checks for JacsSSETransport interceptors."""
+
+    def test_send_does_not_fail_when_signing_errors(self, monkeypatch):
+        from jacs import mcp
+
+        sent_payloads = []
+
+        class FakeSSETransport:
+            def __init__(self, url, headers=None):
+                self.url = url
+                self.headers = headers
+
+        class FakeReadStream:
+            async def receive(self, **_kwargs):
+                return SimpleNamespace(root={"jsonrpc": "2.0", "id": 1})
+
+        class FakeWriteStream:
+            async def send(self, message, **_kwargs):
+                sent_payloads.append(message.root)
+
+        read_stream = FakeReadStream()
+        write_stream = FakeWriteStream()
+
+        @contextlib.asynccontextmanager
+        async def fake_sse_client(_url, headers=None):
+            yield (read_stream, write_stream)
+
+        class FakeClientSession:
+            def __init__(self, _read_stream, _write_stream, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, _exc_type, _exc, _tb):
+                return False
+
+            async def initialize(self):
+                return None
+
+        monkeypatch.setattr(mcp, "SSETransport", FakeSSETransport)
+        monkeypatch.setattr(mcp, "sse_client", fake_sse_client)
+        monkeypatch.setattr(mcp, "ClientSession", FakeClientSession)
+        monkeypatch.setattr(mcp.simple, "is_loaded", lambda: True)
+        monkeypatch.setattr(mcp, "sign_mcp_message", Mock(side_effect=RuntimeError("sign failure")))
+
+        transport = mcp.JacsSSETransport("http://127.0.0.1:9000/sse")
+        message = SimpleNamespace(root={"jsonrpc": "2.0", "id": 7, "method": "ping"})
+
+        async def run_send():
+            async with transport.connect_session():
+                await write_stream.send(message)
+
+        asyncio.run(run_send())
+
+        assert sent_payloads == [{"jsonrpc": "2.0", "id": 7, "method": "ping"}]

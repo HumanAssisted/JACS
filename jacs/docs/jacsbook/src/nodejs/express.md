@@ -17,7 +17,10 @@ npm install @hai.ai/jacs express
 ```typescript
 import { JacsClient } from '@hai.ai/jacs/client';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 ```
 
 ### 3. Add signing middleware
@@ -47,7 +50,10 @@ import express from 'express';
 import { JacsClient } from '@hai.ai/jacs/client';
 import { jacsMiddleware } from '@hai.ai/jacs/express';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = express();
 
 app.use(express.text({ type: 'application/json' }));
@@ -70,10 +76,16 @@ jacsMiddleware({
   sign?: boolean;            // Auto-sign res.json() responses (default: false)
   verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
   optional?: boolean;        // Allow unsigned requests through (default: false)
+  authReplay?: boolean | {   // Replay protection for auth-style endpoints (default: false)
+    enabled?: boolean;
+    maxAgeSeconds?: number;    // default: 30
+    clockSkewSeconds?: number; // default: 5
+    cacheTtlSeconds?: number;  // default: maxAge + skew
+  };
 })
 ```
 
-If neither `client` nor `configPath` is provided, the middleware calls `JacsClient.quickstart()` on first request.
+If neither `client` nor `configPath` is provided, the middleware initializes a client with `JacsClient.quickstart({ name: 'jacs-express', domain: 'localhost' })` on first request.
 
 ## What the Middleware Does
 
@@ -114,6 +126,30 @@ app.post('/api/mixed', (req, res) => {
   }
 });
 ```
+
+## Auth Replay Protection (Auth Endpoints)
+
+Enable replay protection when signed JACS bodies are used as authentication artifacts:
+
+```typescript
+app.use(
+  jacsMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  })
+);
+```
+
+When enabled, middleware enforces:
+
+- signature timestamp freshness (`maxAgeSeconds` + `clockSkewSeconds`)
+- single-use `(signerId, signature)` dedupe inside a TTL cache
+
+Notes:
+
+- Keep this mode scoped to auth-style endpoints.
+- Cache is in-memory per process; use a shared cache for multi-instance deployments.
 
 ## Auto-Sign Responses
 
@@ -168,8 +204,16 @@ app.post('/api/secure', (req, res) => {
 Use different `JacsClient` instances per route group:
 
 ```typescript
-const adminClient = await JacsClient.quickstart({ algorithm: 'pq2025' });
-const userClient = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+const adminClient = await JacsClient.quickstart({
+  name: 'admin-agent',
+  domain: 'admin.example.com',
+  algorithm: 'pq2025',
+});
+const userClient = await JacsClient.quickstart({
+  name: 'user-agent',
+  domain: 'user.example.com',
+  algorithm: 'ring-Ed25519',
+});
 
 app.use('/admin', express.text({ type: 'application/json' }));
 app.use('/admin', jacsMiddleware({ client: adminClient }));

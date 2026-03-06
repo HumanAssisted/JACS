@@ -10,6 +10,25 @@ use chrono::{DateTime, Utc};
 /// Signatures dated more than this many seconds in the future are rejected.
 pub const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
 
+/// Maximum skew tolerance for `iat` (issued-at) signature claims in seconds.
+/// Default: 0 (disabled) so that long-lived JACS documents remain verifiable.
+/// Set `JACS_MAX_IAT_SKEW_SECONDS` to a positive value (e.g., 300) when JACS
+/// is used for auth in HTTP servers, MCP transports, or any context where
+/// replay-attack prevention requires temporal freshness guarantees.
+pub const MAX_IAT_SKEW_SECONDS: i64 = 0;
+
+/// Returns the effective `iat` skew window in seconds.
+///
+/// Set `JACS_MAX_IAT_SKEW_SECONDS` to override:
+/// - Positive value: enforce that window
+/// - `0` or negative: disable `iat` skew checks
+pub fn max_iat_skew_seconds() -> i64 {
+    std::env::var("JACS_MAX_IAT_SKEW_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(MAX_IAT_SKEW_SECONDS)
+}
+
 /// Default maximum signature age (in seconds).
 /// Default: 0 (no expiration). JACS documents are designed to be idempotent and eternal.
 /// Set `JACS_MAX_SIGNATURE_AGE_SECONDS` to a positive value to enable expiration
@@ -51,6 +70,31 @@ pub fn now_utc() -> DateTime<Utc> {
 #[must_use]
 pub fn now_timestamp() -> i64 {
     Utc::now().timestamp()
+}
+
+/// Validates an issued-at (`iat`) Unix timestamp.
+///
+/// The timestamp must be within ±`MAX_IAT_SKEW_SECONDS` of current system time.
+/// This is used to limit replay windows for signed envelopes.
+pub fn validate_signature_iat(iat: i64) -> Result<(), JacsError> {
+    let max_skew_seconds = max_iat_skew_seconds();
+    if max_skew_seconds <= 0 {
+        return Ok(());
+    }
+
+    let now = now_timestamp();
+    let skew = (now - iat).abs();
+
+    if skew > max_skew_seconds {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Signature iat skew is {} seconds, exceeding maximum allowed {} seconds.",
+                skew, max_skew_seconds
+            ),
+        });
+    }
+
+    Ok(())
 }
 
 /// Parses an RFC 3339 timestamp string into a `DateTime<Utc>`.
@@ -278,6 +322,25 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Invalid RFC 3339 timestamp"));
+    }
+
+    #[test]
+    fn test_validate_signature_iat_recent() {
+        let now = now_timestamp();
+        let result = validate_signature_iat(now - 10);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_signature_iat_disabled_by_default() {
+        // With MAX_IAT_SKEW_SECONDS=0, iat skew checks are disabled.
+        // Documents are eternal — only API callers enforce freshness.
+        let now = now_timestamp();
+        let result = validate_signature_iat(now - 86400); // 1 day old
+        assert!(
+            result.is_ok(),
+            "iat skew check should be disabled by default"
+        );
     }
 
     #[test]

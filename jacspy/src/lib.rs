@@ -4,9 +4,6 @@
 //! shared `jacs-binding-core` crate for common functionality.
 
 use ::jacs as jacs_core;
-use jacs_binding_core::hai::{
-    BenchmarkResult, ConnectionState, HaiClient, HaiError, RegistrationResult, StatusResult,
-};
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
@@ -54,9 +51,11 @@ impl<T> ToPyResult<T> for BindingResult<T> {
 /// concurrently. This is the recommended API for all code.
 ///
 /// Example:
-///     agent = jacs.JacsAgent()
-///     agent.load("/path/to/config.json")
-///     signed = agent.sign_string("hello")
+/// ```python
+/// agent = jacs.JacsAgent()
+/// agent.load("/path/to/config.json")
+/// signed = agent.sign_string("hello")
+/// ```
 #[pyclass]
 pub struct JacsAgent {
     inner: AgentWrapper,
@@ -328,7 +327,7 @@ impl JacsAgent {
         self.inner.get_agent_json().to_py()
     }
 
-    /// Get setup instructions for publishing DNS records, DNSSEC, and HAI registration.
+    /// Get setup instructions for publishing DNS records and DNSSEC.
     ///
     /// Args:
     ///     domain: The domain to publish DNS TXT records under
@@ -343,27 +342,6 @@ impl JacsAgent {
             .to_py()
     }
 
-    /// Register this agent with HAI.ai.
-    ///
-    /// Args:
-    ///     api_key: HAI API key (or reads HAI_API_KEY env var if None)
-    ///     hai_url: Base URL for HAI (default: "https://hai.ai")
-    ///     preview: If True, validate without registering (default: False)
-    ///
-    /// Returns:
-    ///     JSON string with hai_registered, hai_error, dns_record, dns_route53
-    #[pyo3(signature = (api_key=None, hai_url="https://hai.ai", preview=false))]
-    fn register_with_hai(
-        &self,
-        api_key: Option<&str>,
-        hai_url: &str,
-        preview: bool,
-    ) -> PyResult<String> {
-        self.inner
-            .register_with_hai(api_key, hai_url, preview)
-            .to_py()
-    }
-
     /// Returns diagnostic information as a JSON string.
     fn diagnostics(&self) -> PyResult<String> {
         Ok(self.inner.diagnostics())
@@ -373,6 +351,164 @@ impl JacsAgent {
     #[staticmethod]
     fn hash_string(data: &str) -> PyResult<String> {
         Ok(jacs_binding_core::hash_string(data))
+    }
+
+    // =========================================================================
+    // A2A Protocol Methods
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card (v0.4.0).
+    ///
+    /// Returns the Agent Card as a JSON string.
+    fn export_agent_card(&self) -> PyResult<String> {
+        self.inner.export_agent_card().to_py()
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    ///
+    /// Args:
+    ///     artifact_json: JSON string of the artifact to wrap
+    ///     artifact_type: Type label (e.g., "artifact", "message", "task")
+    ///     parent_signatures_json: Optional JSON array of parent signatures
+    ///
+    /// Returns:
+    ///     JSON string of the wrapped, signed artifact
+    #[pyo3(signature = (artifact_json, artifact_type, parent_signatures_json=None))]
+    #[allow(deprecated)]
+    fn wrap_a2a_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> PyResult<String> {
+        self.inner
+            .wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json)
+            .to_py()
+    }
+
+    /// Sign an A2A artifact with JACS provenance.
+    ///
+    /// Alias for wrap_a2a_artifact(). This is the recommended primary API name.
+    #[pyo3(signature = (artifact_json, artifact_type, parent_signatures_json=None))]
+    fn sign_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> PyResult<String> {
+        self.inner
+            .sign_artifact(artifact_json, artifact_type, parent_signatures_json)
+            .to_py()
+    }
+
+    /// Verify a JACS-wrapped A2A artifact.
+    ///
+    /// Args:
+    ///     wrapped_json: JSON string of the wrapped artifact to verify
+    ///
+    /// Returns:
+    ///     JSON string containing the verification result
+    fn verify_a2a_artifact(&self, wrapped_json: &str) -> PyResult<String> {
+        self.inner.verify_a2a_artifact(wrapped_json).to_py()
+    }
+
+    /// Verify a JACS-wrapped A2A artifact with policy-aware trust assessment.
+    ///
+    /// Args:
+    ///     wrapped_json: JSON string of the wrapped artifact
+    ///     agent_card_json: JSON string of the signer's Agent Card
+    ///     policy: Trust policy ("open", "verified", "strict")
+    ///
+    /// Returns:
+    ///     JSON string containing the verification result with trust assessment
+    fn verify_a2a_artifact_with_policy(
+        &self,
+        wrapped_json: &str,
+        agent_card_json: &str,
+        policy: &str,
+    ) -> PyResult<String> {
+        self.inner
+            .verify_a2a_artifact_with_policy(wrapped_json, agent_card_json, policy)
+            .to_py()
+    }
+
+    /// Assess a remote agent's trust level based on its Agent Card and a policy.
+    ///
+    /// Args:
+    ///     agent_card_json: JSON string of the Agent Card
+    ///     policy: Trust policy ("open", "verified", "strict")
+    ///
+    /// Returns:
+    ///     JSON string containing the trust assessment result
+    fn assess_a2a_agent(&self, agent_card_json: &str, policy: &str) -> PyResult<String> {
+        self.inner.assess_a2a_agent(agent_card_json, policy).to_py()
+    }
+
+    // =========================================================================
+    // Attestation methods (feature-gated)
+    // =========================================================================
+
+    /// Create a signed attestation document.
+    ///
+    /// Args:
+    ///     params_json: JSON string containing subject, claims, evidence, derivation, policyContext
+    ///
+    /// Returns:
+    ///     JSON string of the signed attestation document
+    #[cfg(feature = "attestation")]
+    fn create_attestation(&self, params_json: &str) -> PyResult<String> {
+        self.inner.create_attestation(params_json).to_py()
+    }
+
+    /// Verify an attestation (local tier: crypto + hash only).
+    ///
+    /// Args:
+    ///     document_key: The "id:version" key of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string containing the verification result
+    #[cfg(feature = "attestation")]
+    fn verify_attestation(&self, document_key: &str) -> PyResult<String> {
+        self.inner.verify_attestation(document_key).to_py()
+    }
+
+    /// Verify an attestation (full tier: crypto + evidence + chain).
+    ///
+    /// Args:
+    ///     document_key: The "id:version" key of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string containing the full verification result
+    #[cfg(feature = "attestation")]
+    fn verify_attestation_full(&self, document_key: &str) -> PyResult<String> {
+        self.inner.verify_attestation_full(document_key).to_py()
+    }
+
+    /// Lift a signed document into an attestation.
+    ///
+    /// Args:
+    ///     signed_doc_json: JSON string of the signed document
+    ///     claims_json: JSON string of the claims array
+    ///
+    /// Returns:
+    ///     JSON string of the lifted attestation document
+    #[cfg(feature = "attestation")]
+    fn lift_to_attestation(&self, signed_doc_json: &str, claims_json: &str) -> PyResult<String> {
+        self.inner
+            .lift_to_attestation(signed_doc_json, claims_json)
+            .to_py()
+    }
+
+    /// Export an attestation as a DSSE envelope.
+    ///
+    /// Args:
+    ///     attestation_json: JSON string of the attestation document
+    ///
+    /// Returns:
+    ///     JSON string of the DSSE envelope
+    #[cfg(feature = "attestation")]
+    fn export_attestation_dsse(&self, attestation_json: &str) -> PyResult<String> {
+        self.inner.export_attestation_dsse(attestation_json).to_py()
     }
 }
 
@@ -390,18 +526,20 @@ impl JacsAgent {
 /// agents to operate concurrently.
 ///
 /// Example:
-///     # Create a new agent
-///     agent, info = jacs.SimpleAgent.create("my-agent")
-///     print(f"Created agent: {info['agent_id']}")
+/// ```python
+/// # Create a new agent
+/// agent, info = jacs.SimpleAgent.create("my-agent")
+/// print(f"Created agent: {info['agent_id']}")
 ///
-///     # Sign a message
-///     signed = agent.sign_message({"action": "approve"})
-///     print(f"Document ID: {signed['document_id']}")
+/// # Sign a message
+/// signed = agent.sign_message({"action": "approve"})
+/// print(f"Document ID: {signed['document_id']}")
 ///
-///     # Load an existing agent
-///     agent = jacs.SimpleAgent.load("./jacs.config.json")
-///     result = agent.verify_self()
-///     assert result['valid']
+/// # Load an existing agent
+/// agent = jacs.SimpleAgent.load("./jacs.config.json")
+/// result = agent.verify_self()
+/// assert result["valid"]
+/// ```
 #[pyclass]
 pub struct SimpleAgent {
     inner: jacs_core::simple::SimpleAgent,
@@ -464,7 +602,7 @@ impl SimpleAgent {
     /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
     ///
     /// Args:
-    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "ed25519"
+    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "pq2025"
     ///
     /// Returns:
     ///     Tuple of (SimpleAgent instance, dict with agent_id, name, algorithm, version)
@@ -598,6 +736,27 @@ impl SimpleAgent {
         Ok(dict.into())
     }
 
+    /// Sign a raw string and return the base64-encoded signature.
+    ///
+    /// This provides the same raw-string signing as JacsAgent.sign_string(),
+    /// using the underlying KeyManager::sign_string() via sign_raw_bytes().
+    ///
+    /// Args:
+    ///     data: The UTF-8 string to sign
+    ///
+    /// Returns:
+    ///     Base64-encoded signature string
+    fn sign_string(&self, data: &str) -> PyResult<String> {
+        use base64::Engine;
+        let raw_bytes = self.inner.sign_raw_bytes(data.as_bytes()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to sign string: {}",
+                e
+            ))
+        })?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(&raw_bytes))
+    }
+
     /// Export the current agent's identity JSON for P2P exchange.
     ///
     /// Returns:
@@ -666,8 +825,6 @@ impl SimpleAgent {
             description: description.unwrap_or("").to_string(),
             domain: domain.unwrap_or("").to_string(),
             default_storage: default_storage.unwrap_or("fs").to_string(),
-            hai_api_key: String::new(),
-            hai_endpoint: String::new(),
         };
 
         let (agent, info) =
@@ -690,7 +847,6 @@ impl SimpleAgent {
         dict.set_item("key_directory", &info.key_directory)?;
         dict.set_item("domain", &info.domain)?;
         dict.set_item("dns_record", &info.dns_record)?;
-        dict.set_item("hai_registered", info.hai_registered)?;
 
         Ok((SimpleAgent { inner: agent }, dict.into()))
     }
@@ -736,252 +892,91 @@ impl SimpleAgent {
                 ))
             })
     }
-}
 
-// =============================================================================
-// HaiClient Class - HAI.ai Integration
-// =============================================================================
-// This class wraps the HaiClient from binding-core for Python usage.
-// Async methods are executed using a blocking tokio runtime.
-// =============================================================================
+    // =========================================================================
+    // Attestation methods (feature-gated)
+    // =========================================================================
 
-/// Convert a HaiError to a PyErr.
-fn hai_err_to_py(e: HaiError) -> PyErr {
-    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
-}
-
-/// Client for interacting with HAI.ai services.
-///
-/// Example:
-///     client = jacs.HaiClient("https://api.hai.ai")
-///     client = client.with_api_key("your-key")
-///     if client.testconnection():
-///         result = client.register(agent)
-///         print(result["agent_id"])
-#[pyclass(name = "HaiClient")]
-pub struct PyHaiClient {
-    inner: HaiClient,
-}
-
-#[pymethods]
-impl PyHaiClient {
-    /// Create a new HAI client targeting the specified endpoint.
+    /// Create a signed attestation document.
     ///
     /// Args:
-    ///     endpoint: Base URL of the HAI API (e.g., "https://api.hai.ai")
-    #[new]
-    fn new(endpoint: &str) -> Self {
-        PyHaiClient {
-            inner: HaiClient::new(endpoint),
-        }
-    }
-
-    /// Set the API key for authentication.
-    ///
-    /// Args:
-    ///     api_key: Your HAI API key
+    ///     params_json: JSON string containing subject, claims, evidence, derivation, policyContext
     ///
     /// Returns:
-    ///     A new HaiClient with the API key configured
-    fn with_api_key(&self, api_key: &str) -> Self {
-        // Clone the endpoint and rebuild with API key
-        // Note: HaiClient uses builder pattern with ownership, so we reconstruct
-        let endpoint = self.inner.endpoint();
-        PyHaiClient {
-            inner: HaiClient::new(endpoint).with_api_key(api_key),
-        }
+    ///     JSON string of the signed attestation document
+    #[cfg(feature = "attestation")]
+    fn create_attestation(&self, params_json: &str) -> PyResult<String> {
+        self.inner
+            .create_attestation_from_json(params_json)
+            .map(|d| d.raw)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create attestation: {}",
+                    e
+                ))
+            })
     }
 
-    /// Test connectivity to the HAI server.
-    ///
-    /// Returns:
-    ///     True if the server is reachable and healthy
-    ///
-    /// Raises:
-    ///     RuntimeError: If the connection fails
-    fn testconnection(&self) -> PyResult<bool> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+    /// Verify an attestation (local tier: crypto + hash only).
+    #[cfg(feature = "attestation")]
+    fn verify_attestation(&self, document_key: &str) -> PyResult<String> {
+        let result = self.inner.verify_attestation(document_key).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
+                "Failed to verify attestation: {}",
                 e
             ))
         })?;
-
-        rt.block_on(self.inner.testconnection())
-            .map_err(hai_err_to_py)
-    }
-
-    /// Register a JACS agent with HAI.
-    ///
-    /// Args:
-    ///     agent: A loaded JacsAgent instance
-    ///
-    /// Returns:
-    ///     dict with agent_id, jacs_id, dns_verified, signatures
-    ///
-    /// Raises:
-    ///     RuntimeError: If registration fails or no API key is set
-    fn register(&self, py: Python, agent: &JacsAgent) -> PyResult<PyObject> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+        serde_json::to_string(&result).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
+                "Failed to serialize result: {}",
                 e
             ))
-        })?;
-
-        let result: RegistrationResult = rt
-            .block_on(self.inner.register(&agent.inner))
-            .map_err(hai_err_to_py)?;
-
-        // Convert RegistrationResult to Python dict
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("agent_id", &result.agent_id)?;
-        dict.set_item("jacs_id", &result.jacs_id)?;
-        dict.set_item("dns_verified", result.dns_verified)?;
-
-        // Convert signatures to list of dicts
-        let signatures_list = pyo3::types::PyList::empty(py);
-        for sig in &result.signatures {
-            let sig_dict = pyo3::types::PyDict::new(py);
-            sig_dict.set_item("key_id", &sig.key_id)?;
-            sig_dict.set_item("algorithm", &sig.algorithm)?;
-            sig_dict.set_item("signature", &sig.signature)?;
-            sig_dict.set_item("signed_at", &sig.signed_at)?;
-            signatures_list.append(sig_dict)?;
-        }
-        dict.set_item("signatures", signatures_list)?;
-
-        Ok(dict.into())
-    }
-
-    /// Check registration status of an agent with HAI.
-    ///
-    /// Args:
-    ///     agent: A loaded JacsAgent instance
-    ///
-    /// Returns:
-    ///     dict with registered, agent_id, registration_id, registered_at, hai_signatures
-    ///
-    /// Raises:
-    ///     RuntimeError: If status check fails or no API key is set
-    fn status(&self, py: Python, agent: &JacsAgent) -> PyResult<PyObject> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        let result: StatusResult = rt
-            .block_on(self.inner.status(&agent.inner))
-            .map_err(hai_err_to_py)?;
-
-        // Convert StatusResult to Python dict
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("registered", result.registered)?;
-        dict.set_item("agent_id", &result.agent_id)?;
-        dict.set_item("registration_id", &result.registration_id)?;
-        dict.set_item("registered_at", &result.registered_at)?;
-        dict.set_item("hai_signatures", &result.hai_signatures)?;
-
-        Ok(dict.into())
-    }
-
-    /// Run a benchmark suite for an agent.
-    ///
-    /// Args:
-    ///     agent: A loaded JacsAgent instance
-    ///     suite: The benchmark suite name (e.g., "latency", "accuracy", "safety")
-    ///
-    /// Returns:
-    ///     dict with run_id, suite, score, results, completed_at
-    ///
-    /// Raises:
-    ///     RuntimeError: If benchmark fails or no API key is set
-    fn benchmark(&self, py: Python, agent: &JacsAgent, suite: &str) -> PyResult<PyObject> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        let result: BenchmarkResult = rt
-            .block_on(self.inner.benchmark(&agent.inner, suite))
-            .map_err(hai_err_to_py)?;
-
-        // Convert BenchmarkResult to Python dict
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("run_id", &result.run_id)?;
-        dict.set_item("suite", &result.suite)?;
-        dict.set_item("score", result.score)?;
-        dict.set_item("completed_at", &result.completed_at)?;
-
-        // Convert individual test results to list of dicts
-        let results_list = pyo3::types::PyList::empty(py);
-        for test_result in &result.results {
-            let test_dict = pyo3::types::PyDict::new(py);
-            test_dict.set_item("name", &test_result.name)?;
-            test_dict.set_item("passed", test_result.passed)?;
-            test_dict.set_item("score", test_result.score)?;
-            test_dict.set_item("message", &test_result.message)?;
-            results_list.append(test_dict)?;
-        }
-        dict.set_item("results", results_list)?;
-
-        Ok(dict.into())
-    }
-
-    /// Get the current SSE connection state.
-    ///
-    /// Returns:
-    ///     str: One of "disconnected", "connecting", "connected", "reconnecting"
-    fn connection_state(&self) -> PyResult<String> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
-                e
-            ))
-        })?;
-
-        let state = rt.block_on(self.inner.connection_state());
-
-        Ok(match state {
-            ConnectionState::Disconnected => "disconnected".to_string(),
-            ConnectionState::Connecting => "connecting".to_string(),
-            ConnectionState::Connected => "connected".to_string(),
-            ConnectionState::Reconnecting => "reconnecting".to_string(),
         })
     }
 
-    /// Check if currently connected to the SSE stream.
-    ///
-    /// Returns:
-    ///     bool: True if connected or reconnecting
-    fn is_connected(&self) -> PyResult<bool> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+    /// Verify an attestation (full tier: crypto + evidence + chain).
+    #[cfg(feature = "attestation")]
+    fn verify_attestation_full(&self, document_key: &str) -> PyResult<String> {
+        let result = self
+            .inner
+            .verify_attestation_full(document_key)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to verify attestation (full): {}",
+                    e
+                ))
+            })?;
+        serde_json::to_string(&result).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
+                "Failed to serialize result: {}",
                 e
             ))
-        })?;
-
-        Ok(rt.block_on(self.inner.is_connected()))
+        })
     }
 
-    /// Disconnect from the SSE event stream.
-    ///
-    /// This is a no-op if not connected.
-    fn disconnect(&self) -> PyResult<()> {
-        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+    /// Lift a signed document into an attestation.
+    #[cfg(feature = "attestation")]
+    fn lift_to_attestation(&self, signed_doc_json: &str, claims_json: &str) -> PyResult<String> {
+        self.inner
+            .lift_to_attestation_from_json(signed_doc_json, claims_json)
+            .map(|d| d.raw)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to lift to attestation: {}",
+                    e
+                ))
+            })
+    }
+
+    /// Export an attestation as a DSSE envelope.
+    #[cfg(feature = "attestation")]
+    fn export_dsse(&self, attestation_json: &str) -> PyResult<String> {
+        self.inner.export_dsse(attestation_json).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create runtime: {}",
+                "Failed to export DSSE: {}",
                 e
             ))
-        })?;
-
-        rt.block_on(self.inner.disconnect());
-        Ok(())
+        })
     }
 }
 
@@ -1096,6 +1091,19 @@ fn trust_agent(agent_json: &str) -> PyResult<String> {
     jacs_binding_core::trust_agent(agent_json).to_py()
 }
 
+/// Add an agent to the local trust store using an explicit public key PEM.
+///
+/// Args:
+///     agent_json: The full agent JSON string
+///     public_key_pem: PEM-encoded public key used to verify self-signature
+///
+/// Returns:
+///     The agent ID if successfully trusted
+#[pyfunction]
+fn trust_agent_with_key(agent_json: &str, public_key_pem: &str) -> PyResult<String> {
+    jacs_binding_core::trust_agent_with_key(agent_json, public_key_pem).to_py()
+}
+
 /// List all trusted agent IDs.
 ///
 /// Returns:
@@ -1157,85 +1165,6 @@ fn get_trusted_agent(agent_id: &str) -> PyResult<String> {
 #[pyo3(signature = (config_path=None, recent_n=None))]
 fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<String> {
     jacs_binding_core::audit(config_path, recent_n).to_py()
-}
-
-// =============================================================================
-// Verify Link Generation
-// =============================================================================
-
-/// Build a verification URL for a signed JACS document.
-///
-/// Encodes `document` as URL-safe base64 (no padding) and returns a full URL
-/// like `https://hai.ai/jacs/verify?s=...`.
-///
-/// Args:
-///     document: The signed JACS document JSON string.
-///     base_url: Base URL for the verifier (default "https://hai.ai").
-///
-/// Returns:
-///     The full verification URL string.
-///
-/// Raises:
-///     ValueError: If the resulting URL would exceed 2048 characters.
-#[pyfunction]
-#[pyo3(signature = (document, base_url="https://hai.ai"))]
-fn generate_verify_link(document: &str, base_url: &str) -> PyResult<String> {
-    jacs_binding_core::hai::generate_verify_link(document, base_url)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
-}
-
-// =============================================================================
-// Remote Key Fetch Functions
-// =============================================================================
-
-/// Fetch a public key from HAI's key distribution service.
-///
-/// This function retrieves the public key for a specific agent and version
-/// from the HAI key distribution service. It is used to obtain trusted public
-/// keys for verifying agent signatures without requiring local key storage.
-///
-/// Args:
-///     agent_id: The unique identifier of the agent whose key to fetch.
-///     version: The version of the agent's key to fetch. Use "latest" for
-///              the most recent version. Defaults to "latest".
-///
-/// Returns:
-///     dict with:
-///         - public_key: bytes - The raw public key (DER encoded)
-///         - algorithm: str - The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
-///         - public_key_hash: str - SHA-256 hash of the public key
-///         - agent_id: str - The agent ID the key belongs to
-///         - version: str - The version of the key
-///
-/// Raises:
-///     RuntimeError: If the key is not found or network error occurs
-///
-/// Environment Variables:
-///     HAI_KEYS_BASE_URL: Base URL for the key service. Defaults to "https://keys.hai.ai".
-///     JACS_KEY_RESOLUTION: Controls key resolution order:
-///         - "hai-only": Only use HAI key service (default)
-///         - "local-first": Try local trust store, fall back to HAI
-///         - "hai-first": Try HAI first, fall back to local trust store
-///
-/// Example:
-///     key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
-///     print(f"Algorithm: {key_info['algorithm']}")
-///     print(f"Hash: {key_info['public_key_hash']}")
-#[pyfunction]
-#[pyo3(signature = (agent_id, version = "latest"))]
-fn fetch_remote_key(py: Python, agent_id: &str, version: &str) -> PyResult<PyObject> {
-    let key_info = jacs_binding_core::fetch_remote_key(agent_id, version).to_py()?;
-
-    let dict = pyo3::types::PyDict::new(py);
-    // Convert Vec<u8> to Python bytes
-    let public_key_bytes = pyo3::types::PyBytes::new(py, &key_info.public_key);
-    dict.set_item("public_key", public_key_bytes)?;
-    dict.set_item("algorithm", &key_info.algorithm)?;
-    dict.set_item("public_key_hash", &key_info.public_key_hash)?;
-    dict.set_item("agent_id", &key_info.agent_id)?;
-    dict.set_item("version", &key_info.version)?;
-
-    Ok(dict.into())
 }
 
 // =============================================================================
@@ -1614,7 +1543,6 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // =============================================================================
     m.add_class::<JacsAgent>()?;
     m.add_class::<SimpleAgent>()?;
-    m.add_class::<PyHaiClient>()?;
 
     // =============================================================================
     // Stateless Utility Functions
@@ -1629,18 +1557,13 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Trust Store Functions
     // =============================================================================
     m.add_function(wrap_pyfunction!(trust_agent, m)?)?;
+    m.add_function(wrap_pyfunction!(trust_agent_with_key, m)?)?;
     m.add_function(wrap_pyfunction!(list_trusted_agents, m)?)?;
     m.add_function(wrap_pyfunction!(untrust_agent, m)?)?;
     m.add_function(wrap_pyfunction!(is_trusted, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent, m)?)?;
     m.add_function(wrap_pyfunction!(audit, m)?)?;
-    m.add_function(wrap_pyfunction!(generate_verify_link, m)?)?;
     m.add_function(wrap_pyfunction!(verify_agent_dns, m)?)?;
-
-    // =============================================================================
-    // Remote Key Fetch Functions
-    // =============================================================================
-    m.add_function(wrap_pyfunction!(fetch_remote_key, m)?)?;
 
     // =============================================================================
     // Legacy Functions (Deprecated - for backward compatibility)

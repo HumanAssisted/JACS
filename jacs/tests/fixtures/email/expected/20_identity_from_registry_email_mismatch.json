@@ -1,0 +1,7 @@
+{
+  "fixture_id": "F20",
+  "expected_result": "fail",
+  "expected_reason": "from_header_must_match_registry_email_for_issuer",
+  "expected_error": "FromRegistryEmailMismatch",
+  "notes": "From=attacker@example.com but registry email for issuer=agent@example.com; verifier must reject"
+}

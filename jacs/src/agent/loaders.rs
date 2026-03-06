@@ -13,16 +13,54 @@ use crate::storage::jenv::get_env_var;
 use crate::time_utils;
 use crate::validation::require_relative_path_safe;
 use std::error::Error;
+use std::fs::OpenOptions;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::OnceLock;
 use tracing::{debug, error, info, warn};
 
-/// Rate limiter for HAI key service requests (2 req/s, burst of 3).
-static HAI_KEY_RATE_LIMITER: OnceLock<RateLimiter> = OnceLock::new();
+/// Rate limiter for remote key service requests (2 req/s, burst of 3).
+static REMOTE_KEY_RATE_LIMITER: OnceLock<RateLimiter> = OnceLock::new();
 
-fn hai_key_rate_limiter() -> &'static RateLimiter {
-    HAI_KEY_RATE_LIMITER.get_or_init(|| RateLimiter::new(2.0, 3))
+fn remote_key_rate_limiter() -> &'static RateLimiter {
+    REMOTE_KEY_RATE_LIMITER.get_or_init(|| RateLimiter::new(2.0, 3))
+}
+
+fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    let path_obj = Path::new(path);
+
+    if let Some(parent) = path_obj.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create key directory '{}': {}",
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+
+    #[cfg(unix)]
+    {
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(path_obj).map_err(|e| {
+        format!(
+            "Refusing to write private key at '{}': {}. \
+            Private key files must be created once with owner-only permissions (0600).",
+            path_obj.display(),
+            e
+        )
+    })?;
+
+    file.write_all(key_bytes)?;
+    file.sync_all()?;
+    Ok(())
 }
 
 /// This environment variable determine if files are saved to the filesystem at all
@@ -590,10 +628,10 @@ impl FileLoader for Agent {
             } else {
                 full_filepath.to_string()
             };
-            self.storage.save_file(&final_path, &encrypted_key)?;
+            write_private_key_securely(&final_path, &encrypted_key)?;
             Ok(final_path)
         } else {
-            self.storage.save_file(full_filepath, private_key)?;
+            write_private_key_securely(full_filepath, private_key)?;
             Ok(full_filepath.to_string())
         }
     }
@@ -683,7 +721,7 @@ impl FileLoader for Agent {
     }
 }
 
-/// Public key information retrieved from HAI key service.
+/// Public key information retrieved from a remote key service.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKeyInfo {
     /// The raw public key bytes.
@@ -694,10 +732,10 @@ pub struct PublicKeyInfo {
     pub hash: String,
 }
 
-/// Response structure from the HAI keys API.
+/// Response structure from the remote keys API.
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, serde::Deserialize)]
-struct HaiKeysApiResponse {
+struct RemoteKeysApiResponse {
     /// Public key in either PEM or Base64 format.
     public_key: String,
     /// The cryptographic algorithm used.
@@ -708,7 +746,7 @@ struct HaiKeysApiResponse {
 
 /// Decodes a public key from either PEM or Base64 format.
 ///
-/// The HAI key service may return public keys in two formats:
+/// The remote key service may return public keys in two formats:
 /// - PEM format: starts with "-----BEGIN" and contains Base64-encoded data between headers
 /// - Raw Base64: direct Base64 encoding of the key bytes
 ///
@@ -726,7 +764,7 @@ fn decode_public_key(key_data: &str) -> Result<Vec<u8>, JacsError> {
         // Assume raw Base64
         BASE64_STANDARD.decode(trimmed).map_err(|e| {
             JacsError::CryptoError(format!(
-                "Invalid base64 encoding in public key from HAI key service: {}",
+                "Invalid base64 encoding in public key from remote key service: {}",
                 e
             ))
         })
@@ -782,16 +820,16 @@ fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
 
     BASE64_STANDARD.decode(&base64_content).map_err(|e| {
         JacsError::CryptoError(format!(
-            "Invalid base64 encoding in PEM public key from HAI key service: {}",
+            "Invalid base64 encoding in PEM public key from remote key service: {}",
             e
         ))
     })
 }
 
-/// Fetches a public key from the HAI key service.
+/// Fetches a public key from a remote key service.
 ///
 /// This function retrieves the public key for a specific agent and version
-/// from the HAI key distribution service. It is used to obtain trusted public
+/// from a remote key distribution service. It is used to obtain trusted public
 /// keys for verifying agent signatures without requiring local key storage.
 ///
 /// # Arguments
@@ -812,14 +850,18 @@ fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
 ///
 /// # Environment Variables
 ///
-/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
+/// * `JACS_KEYS_BASE_URL` - Base URL for the key service. Falls back to
+///   `HAI_KEYS_BASE_URL` for backward compatibility. Defaults to `https://hai.ai`.
+/// * `JACS_KEY_FETCH_RETRIES` - Number of retry attempts for network errors.
+///   Falls back to `HAI_KEY_FETCH_RETRIES`. Defaults to 3.
+///   Set to 0 to disable retries.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use jacs::agent::loaders::{fetch_public_key_from_hai, PublicKeyInfo};
+/// use jacs::agent::loaders::{fetch_remote_public_key, PublicKeyInfo};
 ///
-/// let key_info = fetch_public_key_from_hai(
+/// let key_info = fetch_remote_public_key(
 ///     "550e8400-e29b-41d4-a716-446655440000",
 ///     "1"
 /// )?;
@@ -827,40 +869,51 @@ fn decode_pem_public_key(pem_data: &str) -> Result<Vec<u8>, JacsError> {
 /// println!("Algorithm: {}", key_info.algorithm);
 /// println!("Hash: {}", key_info.hash);
 /// ```
-///
-/// # Environment Variables
-///
-/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
-/// * `HAI_KEY_FETCH_RETRIES` - Number of retry attempts for network errors. Defaults to 3.
-///   Set to 0 to disable retries.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn fetch_public_key_from_hai(
-    agent_id: &str,
-    version: &str,
-) -> Result<PublicKeyInfo, JacsError> {
+fn resolve_keys_base_url() -> String {
+    // JACS_KEYS_BASE_URL is preferred; HAI_KEYS_BASE_URL kept for backward compat.
+    // Default uses the HAI root host where key lookup routes are served.
+    std::env::var("JACS_KEYS_BASE_URL")
+        .or_else(|_| std::env::var("HAI_KEYS_BASE_URL"))
+        .unwrap_or_else(|_| "https://hai.ai".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn build_remote_key_lookup_url(base_url: &str, agent_id: &str, version: &str) -> String {
+    format!(
+        "{}/jacs/v1/agents/{}/keys/{}",
+        base_url.trim_end_matches('/'),
+        agent_id,
+        version
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKeyInfo, JacsError> {
     // Validate agent_id and version are valid UUIDs to prevent URL path traversal
     uuid::Uuid::parse_str(agent_id).map_err(|e| {
         JacsError::ValidationError(format!(
-            "Invalid agent_id '{}' for HAI key fetch: must be a valid UUID. {}",
+            "Invalid agent_id '{}' for remote key fetch: must be a valid UUID. {}",
             agent_id, e
         ))
     })?;
     uuid::Uuid::parse_str(version).map_err(|e| {
         JacsError::ValidationError(format!(
-            "Invalid version '{}' for HAI key fetch: must be a valid UUID. {}",
+            "Invalid version '{}' for remote key fetch: must be a valid UUID. {}",
             version, e
         ))
     })?;
 
     // Get retry count from environment or use default of 3
-    let max_retries: u32 = std::env::var("HAI_KEY_FETCH_RETRIES")
+    // JACS_KEY_FETCH_RETRIES is preferred; HAI_KEY_FETCH_RETRIES kept for backward compat
+    let max_retries: u32 = std::env::var("JACS_KEY_FETCH_RETRIES")
+        .or_else(|_| std::env::var("HAI_KEY_FETCH_RETRIES"))
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(3);
 
-    // Get base URL from environment or use default
-    let base_url =
-        std::env::var("HAI_KEYS_BASE_URL").unwrap_or_else(|_| "https://keys.hai.ai".to_string());
+    // Get base URL from environment or use default.
+    let base_url = resolve_keys_base_url();
 
     // Enforce HTTPS for security (prevent MITM on key fetch)
     if !base_url.starts_with("https://")
@@ -868,16 +921,16 @@ pub fn fetch_public_key_from_hai(
         && !base_url.starts_with("http://127.0.0.1")
     {
         return Err(JacsError::ConfigError(format!(
-            "HAI_KEYS_BASE_URL must use HTTPS (got '{}'). \
+            "JACS_KEYS_BASE_URL must use HTTPS (got '{}'). \
             Only localhost URLs are allowed over HTTP for testing.",
             base_url
         )));
     }
 
-    let url = format!("{}/jacs/v1/agents/{}/keys/{}", base_url, agent_id, version);
+    let url = build_remote_key_lookup_url(&base_url, agent_id, version);
 
     info!(
-        "Fetching public key from HAI: agent_id={}, version={}",
+        "Fetching public key from remote service: agent_id={}, version={}",
         agent_id, version
     );
 
@@ -893,7 +946,7 @@ pub fn fetch_public_key_from_hai(
 
     for attempt in 1..=max_retries + 1 {
         // Rate limit outgoing requests to avoid overwhelming the key service
-        hai_key_rate_limiter().acquire();
+        remote_key_rate_limiter().acquire();
 
         match fetch_public_key_attempt(&client, &url, agent_id, version) {
             Ok(result) => return Ok(result),
@@ -945,7 +998,7 @@ fn is_retryable_error(err: &JacsError) -> bool {
     )
 }
 
-/// Single attempt to fetch a public key from the HAI key service.
+/// Single attempt to fetch a public key from the remote key service.
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_public_key_attempt(
     client: &reqwest::blocking::Client,
@@ -953,7 +1006,7 @@ fn fetch_public_key_attempt(
     agent_id: &str,
     version: &str,
 ) -> Result<PublicKeyInfo, JacsError> {
-    // Make request to HAI keys API
+    // Make request to remote keys API
     let response = client
         .get(url)
         .header("Accept", "application/json")
@@ -961,16 +1014,16 @@ fn fetch_public_key_attempt(
         .map_err(|e| {
             if e.is_timeout() {
                 JacsError::NetworkError(format!(
-                    "Request to HAI key service timed out after 30 seconds: {}",
+                    "Request to remote key service timed out after 30 seconds: {}",
                     url
                 ))
             } else if e.is_connect() {
                 JacsError::NetworkError(format!(
-                    "Failed to connect to HAI key service at {}: {}",
+                    "Failed to connect to remote key service at {}: {}",
                     url, e
                 ))
             } else {
-                JacsError::NetworkError(format!("HTTP request to HAI key service failed: {}", e))
+                JacsError::NetworkError(format!("HTTP request to remote key service failed: {}", e))
             }
         })?;
 
@@ -979,7 +1032,7 @@ fn fetch_public_key_attempt(
     if status == reqwest::StatusCode::NOT_FOUND {
         return Err(JacsError::KeyNotFound {
             path: format!(
-                "agent_id={}, version={} (not found in HAI key service)",
+                "agent_id={}, version={} (not found in remote key service)",
                 agent_id, version
             ),
         });
@@ -987,15 +1040,15 @@ fn fetch_public_key_attempt(
 
     if !status.is_success() {
         return Err(JacsError::NetworkError(format!(
-            "HAI key service returned error status {}: failed to fetch public key for agent '{}' version '{}'",
+            "Remote key service returned error status {}: failed to fetch public key for agent '{}' version '{}'",
             status, agent_id, version
         )));
     }
 
     // Parse JSON response
-    let api_response: HaiKeysApiResponse = response.json().map_err(|e| {
+    let api_response: RemoteKeysApiResponse = response.json().map_err(|e| {
         JacsError::NetworkError(format!(
-            "Failed to parse HAI key service response as JSON: {}",
+            "Failed to parse remote key service response as JSON: {}",
             e
         ))
     })?;
@@ -1004,7 +1057,7 @@ fn fetch_public_key_attempt(
     let public_key = decode_public_key(&api_response.public_key)?;
 
     info!(
-        "Successfully fetched public key from HAI: agent_id={}, version={}, algorithm={}",
+        "Successfully fetched public key from remote service: agent_id={}, version={}, algorithm={}",
         agent_id, version, api_response.algorithm
     );
 
@@ -1186,26 +1239,74 @@ CDEF
     #[cfg(not(target_arch = "wasm32"))]
     mod http_tests {
         use super::*;
+        use serial_test::serial;
 
         #[test]
+        #[serial]
+        fn test_resolve_keys_base_url_defaults_to_hai_root() {
+            // SAFETY: This test is isolated and restores environment afterwards.
+            unsafe {
+                std::env::remove_var("JACS_KEYS_BASE_URL");
+                std::env::remove_var("HAI_KEYS_BASE_URL");
+            }
+
+            let resolved = resolve_keys_base_url();
+            assert_eq!(resolved, "https://hai.ai");
+        }
+
+        #[test]
+        #[serial]
+        fn test_resolve_keys_base_url_prefers_jacs_over_hai_alias() {
+            // SAFETY: This test is isolated and restores environment afterwards.
+            unsafe {
+                std::env::set_var("HAI_KEYS_BASE_URL", "https://legacy.example");
+                std::env::set_var("JACS_KEYS_BASE_URL", "https://preferred.example");
+            }
+
+            let resolved = resolve_keys_base_url();
+
+            // SAFETY: Restore env vars for other tests.
+            unsafe {
+                std::env::remove_var("JACS_KEYS_BASE_URL");
+                std::env::remove_var("HAI_KEYS_BASE_URL");
+            }
+
+            assert_eq!(resolved, "https://preferred.example");
+        }
+
+        #[test]
+        fn test_build_remote_key_lookup_url_trims_trailing_slash() {
+            let url = build_remote_key_lookup_url(
+                "https://hai.ai/",
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001",
+            );
+            assert_eq!(
+                url,
+                "https://hai.ai/jacs/v1/agents/550e8400-e29b-41d4-a716-446655440000/keys/550e8400-e29b-41d4-a716-446655440001"
+            );
+        }
+
+        #[test]
+        #[serial]
         fn test_fetch_public_key_invalid_url() {
             // Set an invalid base URL to test error handling
             // Disable retries for faster test execution
             // SAFETY: This test is run in isolation and the env var is cleaned up after
             unsafe {
-                std::env::set_var("HAI_KEYS_BASE_URL", "http://localhost:1");
-                std::env::set_var("HAI_KEY_FETCH_RETRIES", "0");
+                std::env::set_var("JACS_KEYS_BASE_URL", "http://localhost:1");
+                std::env::set_var("JACS_KEY_FETCH_RETRIES", "0");
             }
 
-            let result = fetch_public_key_from_hai(
+            let result = fetch_remote_public_key(
                 "550e8400-e29b-41d4-a716-446655440000",
                 "550e8400-e29b-41d4-a716-446655440001",
             );
 
             // Clean up first to ensure it happens even if assertions fail
             unsafe {
-                std::env::remove_var("HAI_KEYS_BASE_URL");
-                std::env::remove_var("HAI_KEY_FETCH_RETRIES");
+                std::env::remove_var("JACS_KEYS_BASE_URL");
+                std::env::remove_var("JACS_KEY_FETCH_RETRIES");
             }
 
             // Should fail with network error (connection refused)
@@ -1224,24 +1325,26 @@ CDEF
         }
 
         #[test]
+        #[serial]
         fn test_fetch_public_key_default_url() {
             // Verify default URL is used when env var is not set
             // Disable retries for faster test execution
             // SAFETY: This test is run in isolation
             unsafe {
+                std::env::remove_var("JACS_KEYS_BASE_URL");
                 std::env::remove_var("HAI_KEYS_BASE_URL");
-                std::env::set_var("HAI_KEY_FETCH_RETRIES", "0");
+                std::env::set_var("JACS_KEY_FETCH_RETRIES", "0");
             }
 
             // This will fail (no server), but we can verify it attempted the right URL
-            let result = fetch_public_key_from_hai(
+            let result = fetch_remote_public_key(
                 "550e8400-e29b-41d4-a716-446655440000",
                 "550e8400-e29b-41d4-a716-446655440001",
             );
 
             // Clean up
             unsafe {
-                std::env::remove_var("HAI_KEY_FETCH_RETRIES");
+                std::env::remove_var("JACS_KEY_FETCH_RETRIES");
             }
 
             assert!(result.is_err());
@@ -1255,16 +1358,17 @@ CDEF
         }
 
         #[test]
+        #[serial]
         fn test_fetch_public_key_retries_env_var() {
-            // Test that HAI_KEY_FETCH_RETRIES is respected
+            // Test that JACS_KEY_FETCH_RETRIES is respected
             // SAFETY: This test is run in isolation
             unsafe {
-                std::env::set_var("HAI_KEY_FETCH_RETRIES", "1");
-                std::env::set_var("HAI_KEYS_BASE_URL", "http://localhost:1");
+                std::env::set_var("JACS_KEY_FETCH_RETRIES", "1");
+                std::env::set_var("JACS_KEYS_BASE_URL", "http://localhost:1");
             }
 
             let start = std::time::Instant::now();
-            let _ = fetch_public_key_from_hai(
+            let _ = fetch_remote_public_key(
                 "550e8400-e29b-41d4-a716-446655440000",
                 "550e8400-e29b-41d4-a716-446655440001",
             );
@@ -1272,8 +1376,8 @@ CDEF
 
             // Clean up
             unsafe {
-                std::env::remove_var("HAI_KEY_FETCH_RETRIES");
-                std::env::remove_var("HAI_KEYS_BASE_URL");
+                std::env::remove_var("JACS_KEY_FETCH_RETRIES");
+                std::env::remove_var("JACS_KEYS_BASE_URL");
             }
 
             // With 1 retry and 1s backoff, should take at least 1 second

@@ -68,13 +68,12 @@ fn test_verify_document_tampered() {
         .create_document(&content.to_string(), None, None, true, None, None)
         .expect("create_document should succeed");
 
-    // Tamper with the signed document by modifying content
+    // Tamper with the signed document by modifying the signed payload.
     let mut parsed: Value = serde_json::from_str(&signed).unwrap();
-    if let Some(doc) = parsed.get_mut("jacsDocument") {
-        if let Some(content_obj) = doc.get_mut("content") {
-            *content_obj = json!({"data": "tampered"});
-        }
-    }
+    let content_obj = parsed
+        .get_mut("content")
+        .expect("signed document should contain a top-level content field");
+    *content_obj = json!({"data": "tampered"});
     let tampered = serde_json::to_string(&parsed).unwrap();
 
     // Tampered document should fail hash verification

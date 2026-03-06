@@ -14,6 +14,38 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const PASSWORD_ENV_VAR: &str = "JACS_PRIVATE_KEY_PASSWORD";
+const CROSS_LANG_TEST_PASSWORD: &str = "CrossLangP@ssw0rd!2026";
+const IAT_SKEW_ENV_VAR: &str = "JACS_MAX_IAT_SKEW_SECONDS";
+
+struct EnvVarGuard {
+    key: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var_os(key);
+        // SAFETY: tests in this module are #[serial], so env mutation is single-threaded here.
+        unsafe {
+            std::env::set_var(key, value);
+        }
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        if let Some(prev) = &self.previous {
+            // SAFETY: restoring process env var in serial test context.
+            unsafe { std::env::set_var(self.key, prev) }
+        } else {
+            // SAFETY: removing a missing key is a no-op.
+            unsafe { std::env::remove_var(self.key) }
+        }
+    }
+}
+
 /// Root of the cross-language fixtures directory (relative to workspace root).
 fn fixtures_dir() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -43,14 +75,20 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
     // Save and restore cwd since quickstart writes relative to cwd
     let original_cwd = std::env::current_dir().expect("get cwd");
 
-    // Clear password env so quickstart generates a fresh one for this agent
-    // SAFETY: tests are serial so no concurrent env var access
-    unsafe { std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD") };
+    // quickstart now fail-hard requires a password from env/secret source.
+    // Use a deterministic strong test password and restore previous value after test.
+    let _password_guard = EnvVarGuard::set(PASSWORD_ENV_VAR, CROSS_LANG_TEST_PASSWORD);
 
     std::env::set_current_dir(&tmp).expect("cd to temp");
 
-    let (agent, _info) =
-        SimpleAgent::quickstart(Some(algorithm), None).expect("quickstart should succeed");
+    let (agent, _info) = SimpleAgent::quickstart(
+        "cross-language-agent",
+        "cross-language.example.com",
+        Some("Cross-language test agent"),
+        Some(algorithm),
+        None,
+    )
+    .expect("quickstart should succeed");
 
     // Sign a canonical test payload
     let payload = json!({
@@ -141,6 +179,10 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
 
 /// Verify a previously-generated fixture using verify_document_standalone.
 fn verify_fixture(prefix: &str) {
+    // Cross-language fixtures are committed snapshots and intentionally stable over time.
+    // Disable iat skew enforcement for this fixture-compatibility test.
+    let _iat_guard = EnvVarGuard::set(IAT_SKEW_ENV_VAR, "0");
+
     let out = fixtures_dir();
     let signed_path = out.join(format!("{}_signed.json", prefix));
     let meta_path = out.join(format!("{}_metadata.json", prefix));

@@ -7,13 +7,19 @@ use jacs::agent::loaders::FileLoader;
 use jacs::crypt::hash::hash_public_key;
 use serde_json::json;
 
-mod utils;
-use utils::{load_test_agent_one, load_test_agent_two};
+fn create_test_agent() -> jacs::agent::Agent {
+    let mut agent = jacs::agent::Agent::ephemeral("ring-Ed25519").expect("create ephemeral agent");
+    let agent_json = jacs::create_minimal_blank_agent("ai".to_string(), None, None, None)
+        .expect("create minimal agent json");
+    agent
+        .create_agent_and_load(&agent_json, true, Some("ring-Ed25519"))
+        .expect("initialize test agent");
+    agent
+}
 
 #[test]
 fn test_export_agent_to_a2a_agent_card() {
-    // Use the test agent from fixtures
-    let agent = load_test_agent_one();
+    let agent = create_test_agent();
 
     // Export to A2A Agent Card
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
@@ -50,7 +56,7 @@ fn test_export_agent_to_a2a_agent_card() {
     assert!(
         extensions
             .iter()
-            .any(|ext| ext.uri == "urn:hai.ai:jacs-provenance-v1")
+            .any(|ext| ext.uri == "urn:jacs:provenance-v1")
     );
 }
 
@@ -71,8 +77,7 @@ fn test_dual_key_generation() {
 
 #[test]
 fn test_agent_card_jws_signing() {
-    // Use the test agent from fixtures
-    let agent = load_test_agent_one();
+    let agent = create_test_agent();
 
     // Export agent card
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
@@ -96,7 +101,7 @@ fn test_agent_card_jws_signing() {
 
 #[test]
 fn test_embed_signature_in_agent_card() {
-    let agent = load_test_agent_one();
+    let agent = create_test_agent();
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
     let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa")).expect("Failed to create keys");
 
@@ -121,8 +126,7 @@ fn test_embed_signature_in_agent_card() {
 
 #[test]
 fn test_wrap_a2a_artifact_with_provenance() {
-    // Use the test agent from fixtures
-    let mut agent = load_test_agent_one();
+    let mut agent = create_test_agent();
 
     // Create a sample A2A artifact (e.g., a task)
     let a2a_task = json!({
@@ -151,8 +155,7 @@ fn test_wrap_a2a_artifact_with_provenance() {
 
 #[test]
 fn test_verify_wrapped_artifact() {
-    // Use the test agent from fixtures
-    let mut agent = load_test_agent_one();
+    let mut agent = create_test_agent();
 
     // Create and wrap an artifact
     let a2a_artifact = json!({
@@ -179,8 +182,8 @@ fn test_verify_wrapped_artifact() {
 
 #[test]
 fn test_verify_foreign_wrapped_artifact_with_local_key_resolution() {
-    let mut signer = load_test_agent_one();
-    let verifier = load_test_agent_two();
+    let mut signer = create_test_agent();
+    let verifier = create_test_agent();
 
     let a2a_artifact = json!({
         "messageId": "msg-foreign-001",
@@ -195,7 +198,7 @@ fn test_verify_foreign_wrapped_artifact_with_local_key_resolution() {
     let signer_public_key = signer.get_public_key().expect("signer public key");
     let signer_public_key_hash = hash_public_key(signer_public_key.clone());
     verifier
-        .fs_save_remote_public_key(&signer_public_key_hash, &signer_public_key, b"RSA-PSS")
+        .fs_save_remote_public_key(&signer_public_key_hash, &signer_public_key, b"ring-Ed25519")
         .expect("cache signer key in verifier trust store");
 
     let verification =
@@ -208,8 +211,8 @@ fn test_verify_foreign_wrapped_artifact_with_local_key_resolution() {
 
 #[test]
 fn test_verify_foreign_wrapped_artifact_without_key_is_unverified() {
-    let mut signer = load_test_agent_one();
-    let verifier = load_test_agent_two();
+    let mut signer = create_test_agent();
+    let verifier = create_test_agent();
 
     let wrapped = wrap_artifact_with_provenance(
         &mut signer,
@@ -242,8 +245,7 @@ fn test_verify_foreign_wrapped_artifact_without_key_is_unverified() {
 
 #[test]
 fn test_create_chain_of_custody() {
-    // Use the test agent from fixtures
-    let mut agent = load_test_agent_one();
+    let mut agent = create_test_agent();
 
     // Create multiple artifacts
     let mut artifacts: Vec<serde_json::Value> = Vec::new();
@@ -279,14 +281,13 @@ fn test_create_chain_of_custody() {
 
 #[test]
 fn test_well_known_endpoints_generation() {
-    // Use the test agent from fixtures
-    let agent = load_test_agent_one();
+    let agent = create_test_agent();
 
     // Export agent card
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
 
     // Generate dual keys (ephemeral - no env vars needed)
-    let dual_keys = create_jwk_keys(Some("dilithium"), Some("rsa")).expect("Failed to create keys");
+    let dual_keys = create_jwk_keys(Some("pq2025"), Some("rsa")).expect("Failed to create keys");
 
     // Sign agent card
     let jws_signature = sign_agent_card_jws(
@@ -328,7 +329,7 @@ fn test_create_extension_descriptor() {
     let descriptor = create_extension_descriptor("pq2025");
 
     // Verify descriptor structure
-    assert_eq!(descriptor["uri"], "urn:hai.ai:jacs-provenance-v1");
+    assert_eq!(descriptor["uri"], "urn:jacs:provenance-v1");
     assert_eq!(descriptor["name"], "JACS Document Provenance");
     assert_eq!(descriptor["a2aProtocolVersion"], "0.4.0");
     assert!(descriptor["capabilities"]["documentSigning"].is_object());
@@ -352,7 +353,6 @@ fn test_create_extension_descriptor() {
         .collect();
     assert!(alg_strings.contains(&"ring-Ed25519"));
     assert!(alg_strings.contains(&"RSA-PSS"));
-    assert!(alg_strings.contains(&"pq-dilithium"));
     assert!(alg_strings.contains(&"pq2025"));
 
     // Verify PQ algorithms are real
@@ -360,7 +360,6 @@ fn test_create_extension_descriptor() {
         .as_array()
         .expect("PQ algorithms should be an array");
     let pq_strings: Vec<&str> = pq_algs.iter().map(|v| v.as_str().unwrap()).collect();
-    assert!(pq_strings.contains(&"pq-dilithium"));
     assert!(pq_strings.contains(&"pq2025"));
     assert!(!pq_strings.contains(&"falcon"));
     assert!(!pq_strings.contains(&"sphincs+"));
@@ -368,7 +367,7 @@ fn test_create_extension_descriptor() {
 
 #[test]
 fn test_agent_card_json_shape() {
-    let agent = load_test_agent_one();
+    let agent = create_test_agent();
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
 
     // Serialize to JSON and verify the shape matches A2A v0.4.0

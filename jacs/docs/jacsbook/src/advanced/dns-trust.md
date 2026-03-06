@@ -31,7 +31,7 @@ If the digest matches the local public key hash, the agent's identity is confirm
 
 1. **Domain ownership implies identity**: The entity controlling DNS for a domain is authorized to speak for agents on that domain.
 2. **TXT records are tamper-evident with DNSSEC**: When `--require-strict-dns` is used, the full DNSSEC chain of trust (root -> TLD -> domain -> record) provides cryptographic integrity.
-3. **Embedded fingerprints are a weaker fallback**: Without DNS, JACS trusts the `jacsPublicKeyHash` field embedded in the agent document. This proves key consistency but not domain ownership.
+3. **Embedded fingerprints are a weaker fallback**: Without DNS, JACS falls back to the signature fingerprint (`jacsSignature.publicKeyHash`) in the signed artifact/agent material. This proves key consistency but not domain ownership.
 
 ## Known Attack Vectors
 

@@ -7,6 +7,7 @@
 //! to convert errors to their native format.
 
 use jacs::agent::agreement::Agreement;
+use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::{DocumentTraits, JACSDocument};
 use jacs::agent::payloads::PayloadTraits;
 use jacs::agent::{
@@ -21,9 +22,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
-
-#[cfg(feature = "hai")]
-pub mod hai;
 
 /// Error type for binding core operations.
 ///
@@ -253,6 +251,14 @@ impl AgentWrapper {
         }
     }
 
+    /// Create an agent wrapper from an existing Arc<Mutex<Agent>>.
+    ///
+    /// This is used by the Go FFI to share the agent handle's inner agent
+    /// with binding-core's attestation methods.
+    pub fn from_inner(inner: Arc<Mutex<Agent>>) -> Self {
+        Self { inner }
+    }
+
     /// Get a locked reference to the inner agent.
     fn lock(&self) -> BindingResult<MutexGuard<'_, Agent>> {
         self.inner.lock().map_err(BindingCoreError::from)
@@ -432,14 +438,22 @@ impl AgentWrapper {
             BindingCoreError::verification_failed(format!("Failed to verify document hash: {}", e))
         })?;
 
-        agent
-            .verify_external_document_signature(&document_key)
-            .map_err(|e| {
-                BindingCoreError::verification_failed(format!(
-                    "Failed to verify document signature: {}",
-                    e
-                ))
-            })?;
+        // Prefer the currently loaded agent's public key first. This keeps
+        // local self-verification fast and avoids falling through to remote key
+        // resolution for documents we just signed in the same workspace.
+        if agent
+            .verify_document_signature(&document_key, None, None, None, None)
+            .is_err()
+        {
+            agent
+                .verify_external_document_signature(&document_key)
+                .map_err(|e| {
+                    BindingCoreError::verification_failed(format!(
+                        "Failed to verify document signature: {}",
+                        e
+                    ))
+                })?;
+        }
 
         Ok(true)
     }
@@ -605,6 +619,36 @@ impl AgentWrapper {
             embed,
         )
         .map_err(|e| BindingCoreError::document_failed(format!("Failed to create document: {}", e)))
+    }
+
+    /// Persist an already-signed JACS document and return its lookup key.
+    pub fn save_signed_document(
+        &self,
+        document_string: &str,
+        outputfilename: Option<String>,
+        export_embedded: Option<bool>,
+        extract_only: Option<bool>,
+    ) -> BindingResult<String> {
+        let mut agent = self.lock()?;
+        let doc = agent.load_document(document_string).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to load signed document: {}", e))
+        })?;
+        let document_key = doc.getkey();
+        agent
+            .save_document(&document_key, outputfilename, export_embedded, extract_only)
+            .map_err(|e| {
+                BindingCoreError::document_failed(format!(
+                    "Failed to persist signed document '{}': {}",
+                    document_key, e
+                ))
+            })?;
+        Ok(document_key)
+    }
+
+    /// Return all known document lookup keys from the agent's configured storage.
+    pub fn list_document_keys(&self) -> BindingResult<Vec<String>> {
+        let mut agent = self.lock()?;
+        Ok(agent.get_document_keys())
     }
 
     /// Check an agreement on a document.
@@ -780,6 +824,51 @@ impl AgentWrapper {
         self.verify_document(&doc_str)
     }
 
+    /// Load a document by ID from the agent's configured storage.
+    ///
+    /// The document ID should be in "uuid:version" format.
+    pub fn get_document_by_id(&self, document_id: &str) -> BindingResult<String> {
+        if !document_id.contains(':') {
+            return Err(BindingCoreError::invalid_argument(format!(
+                "Document ID must be in 'uuid:version' format, got '{}'.",
+                document_id
+            )));
+        }
+
+        let agent = self.lock()?;
+        let doc = agent.get_document(document_id).map_err(|e| {
+            BindingCoreError::document_failed(format!(
+                "Failed to load document '{}' from storage: {}",
+                document_id, e
+            ))
+        })?;
+
+        serde_json::to_string(&doc.value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize document '{}': {}",
+                document_id, e
+            ))
+        })
+    }
+
+    /// Get the loaded agent's canonical JACS identifier.
+    pub fn get_agent_id(&self) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let value = agent
+            .get_value()
+            .ok_or_else(|| BindingCoreError::agent_load("Agent not loaded. Call load() first."))?;
+        value
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| {
+                BindingCoreError::agent_load(
+                    "Agent not loaded or has no jacsId. Call load() first.",
+                )
+            })
+    }
+
     /// Re-encrypt the agent's private key with a new password.
     ///
     /// Reads the encrypted private key file, decrypts with old_password,
@@ -828,10 +917,10 @@ impl AgentWrapper {
     ///
     /// Replaces the inner agent with a freshly created ephemeral agent that
     /// lives entirely in memory. Returns a JSON string with agent info
-    /// (agent_id, name, version, algorithm).
+    /// (agent_id, name, version, algorithm). Default algorithm is `pq2025`.
     pub fn ephemeral(&self, algorithm: Option<&str>) -> BindingResult<String> {
         // Map user-friendly names to internal algorithm strings
-        let algo = match algorithm.unwrap_or("ed25519") {
+        let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
             "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
@@ -920,8 +1009,7 @@ impl AgentWrapper {
         serde_json::to_string_pretty(&info).unwrap_or_default()
     }
 
-    /// Returns setup instructions for publishing DNS records, enabling DNSSEC,
-    /// and registering with HAI.ai.
+    /// Returns setup instructions for publishing DNS records and enabling DNSSEC.
     ///
     /// Requires a loaded agent (call `load()` first).
     pub fn get_setup_instructions(&self, domain: &str, ttl: u32) -> BindingResult<String> {
@@ -981,21 +1069,6 @@ impl AgentWrapper {
         });
         let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
 
-        let hai_url =
-            std::env::var("HAI_API_URL").unwrap_or_else(|_| "https://api.hai.ai".to_string());
-        let hai_registration_url = format!("{}/v1/agents", hai_url.trim_end_matches('/'));
-        let hai_payload = json!({
-            "agent_id": agent_id,
-            "public_key_hash": digest,
-            "domain": domain,
-        });
-        let hai_registration_payload =
-            serde_json::to_string_pretty(&hai_payload).unwrap_or_default();
-        let hai_registration_instructions = format!(
-            "POST the payload to {} with your HAI API key in the Authorization header.",
-            hai_registration_url
-        );
-
         let summary = format!(
             "Setup instructions for agent {agent_id} on domain {domain}:\n\
              \n\
@@ -1006,15 +1079,12 @@ impl AgentWrapper {
              \n\
              3. Domain requirement: {tld}\n\
              \n\
-             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json\n\
-             \n\
-             5. HAI registration: {hai_instr}",
+             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json",
             agent_id = agent_id,
             domain = domain,
             bind = dns_record_bind,
             dnssec = dnssec_guidance("aws"),
             tld = tld_requirement,
-            hai_instr = hai_registration_instructions,
         );
 
         let result = json!({
@@ -1025,9 +1095,6 @@ impl AgentWrapper {
             "dnssec_instructions": dnssec_instructions,
             "tld_requirement": tld_requirement,
             "well_known_json": well_known_json,
-            "hai_registration_url": hai_registration_url,
-            "hai_registration_payload": hai_registration_payload,
-            "hai_registration_instructions": hai_registration_instructions,
             "summary": summary,
         });
 
@@ -1039,91 +1106,9 @@ impl AgentWrapper {
         })
     }
 
-    /// Register this agent with HAI.ai.
-    ///
-    /// If `preview` is true, returns a preview without actually registering.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn register_with_hai(
-        &self,
-        api_key: Option<&str>,
-        hai_url: &str,
-        preview: bool,
-    ) -> BindingResult<String> {
-        if preview {
-            let result = json!({
-                "hai_registered": false,
-                "hai_error": "preview mode",
-                "dns_record": "",
-                "dns_route53": "",
-            });
-            return serde_json::to_string_pretty(&result).map_err(|e| {
-                BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
-            });
-        }
-
-        let key = match api_key {
-            Some(k) => k.to_string(),
-            None => std::env::var("HAI_API_KEY").map_err(|_| {
-                BindingCoreError::invalid_argument(
-                    "No API key provided and HAI_API_KEY environment variable not set",
-                )
-            })?,
-        };
-
-        let agent_json = self.get_agent_json()?;
-        let url = format!("{}/api/v1/agents/register", hai_url.trim_end_matches('/'));
-
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| {
-                BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e))
-            })?;
-
-        let response = client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", key))
-            .header("Content-Type", "application/json")
-            .json(&json!({ "agent_json": agent_json }))
-            .send()
-            .map_err(|e| {
-                BindingCoreError::network_failed(format!("HAI registration request failed: {}", e))
-            })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            let result = json!({
-                "hai_registered": false,
-                "hai_error": format!("HTTP {}: {}", status, body),
-                "dns_record": "",
-                "dns_route53": "",
-            });
-            return serde_json::to_string_pretty(&result).map_err(|e| {
-                BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
-            });
-        }
-
-        let body: Value = response.json().map_err(|e| {
-            BindingCoreError::network_failed(format!("Failed to parse HAI response: {}", e))
-        })?;
-
-        let result = json!({
-            "hai_registered": true,
-            "hai_error": "",
-            "dns_record": body.get("dns_record").and_then(|v| v.as_str()).unwrap_or_default(),
-            "dns_route53": body.get("dns_route53").and_then(|v| v.as_str()).unwrap_or_default(),
-        });
-
-        serde_json::to_string_pretty(&result).map_err(|e| {
-            BindingCoreError::serialization_failed(format!("Failed to serialize: {}", e))
-        })
-    }
-
     /// Get the agent's JSON representation as a string.
     ///
-    /// Returns the agent's full JSON document, suitable for registration
-    /// with external services like HAI.
+    /// Returns the agent's full JSON document.
     pub fn get_agent_json(&self) -> BindingResult<String> {
         let agent = self.lock()?;
         match agent.get_value() {
@@ -1132,6 +1117,449 @@ impl AgentWrapper {
                 "Agent not loaded. Call load() first.",
             )),
         }
+    }
+
+    // =========================================================================
+    // A2A Protocol Methods
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card (v0.4.0).
+    ///
+    /// Returns the Agent Card as a JSON string.
+    pub fn export_agent_card(&self) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
+            BindingCoreError::generic(format!("Failed to export agent card: {}", e))
+        })?;
+        serde_json::to_string_pretty(&card).map_err(|e| {
+            BindingCoreError::serialization_failed(format!("Failed to serialize agent card: {}", e))
+        })
+    }
+
+    /// Generate all .well-known documents for A2A discovery.
+    ///
+    /// Returns a JSON string containing an array of [path, document] pairs.
+    pub fn generate_well_known_documents(
+        &self,
+        a2a_algorithm: Option<&str>,
+    ) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
+            BindingCoreError::generic(format!("Failed to export agent card: {}", e))
+        })?;
+
+        let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
+        let dual_keys = jacs::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
+            BindingCoreError::generic(format!("Failed to generate A2A keys: {}", e))
+        })?;
+
+        let agent_id = agent
+            .get_id()
+            .map_err(|e| BindingCoreError::generic(format!("Failed to get agent ID: {}", e)))?;
+
+        let jws = jacs::a2a::extension::sign_agent_card_jws(
+            &card,
+            &dual_keys.a2a_private_key,
+            &dual_keys.a2a_algorithm,
+            &agent_id,
+        )
+        .map_err(|e| BindingCoreError::generic(format!("Failed to sign Agent Card: {}", e)))?;
+
+        let documents = jacs::a2a::extension::generate_well_known_documents(
+            &agent,
+            &card,
+            &dual_keys.a2a_public_key,
+            &dual_keys.a2a_algorithm,
+            &jws,
+        )
+        .map_err(|e| {
+            BindingCoreError::generic(format!("Failed to generate well-known documents: {}", e))
+        })?;
+
+        // Serialize as JSON array of [path, document] pairs
+        let pairs: Vec<Value> = documents
+            .into_iter()
+            .map(|(path, doc)| serde_json::json!({ "path": path, "document": doc }))
+            .collect();
+        serde_json::to_string_pretty(&pairs).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize well-known documents: {}",
+                e
+            ))
+        })
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    ///
+    /// Returns the signed wrapped artifact as a JSON string.
+    #[deprecated(since = "0.9.0", note = "Use sign_artifact() instead")]
+    pub fn wrap_a2a_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> BindingResult<String> {
+        if std::env::var("JACS_SHOW_DEPRECATIONS").is_ok() {
+            tracing::warn!("wrap_a2a_artifact is deprecated, use sign_artifact instead");
+        }
+
+        let artifact: Value = serde_json::from_str(artifact_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid artifact JSON: {}", e))
+        })?;
+
+        let parent_signatures: Option<Vec<Value>> = match parent_signatures_json {
+            Some(json_str) => {
+                let parsed: Vec<Value> = serde_json::from_str(json_str).map_err(|e| {
+                    BindingCoreError::invalid_argument(format!(
+                        "Invalid parent signatures JSON array: {}",
+                        e
+                    ))
+                })?;
+                Some(parsed)
+            }
+            None => None,
+        };
+
+        let mut agent = self.lock()?;
+        let wrapped = jacs::a2a::provenance::wrap_artifact_with_provenance(
+            &mut agent,
+            artifact,
+            artifact_type,
+            parent_signatures,
+        )
+        .map_err(|e| BindingCoreError::signing_failed(format!("Failed to wrap artifact: {}", e)))?;
+
+        serde_json::to_string_pretty(&wrapped).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize wrapped artifact: {}",
+                e
+            ))
+        })
+    }
+
+    /// Sign an A2A artifact with JACS provenance.
+    ///
+    /// This is the recommended primary API, replacing the deprecated
+    /// [`wrap_a2a_artifact`](Self::wrap_a2a_artifact).
+    pub fn sign_artifact(
+        &self,
+        artifact_json: &str,
+        artifact_type: &str,
+        parent_signatures_json: Option<&str>,
+    ) -> BindingResult<String> {
+        #[allow(deprecated)]
+        self.wrap_a2a_artifact(artifact_json, artifact_type, parent_signatures_json)
+    }
+
+    /// Verify a JACS-wrapped A2A artifact.
+    ///
+    /// Returns the verification result as a JSON string.
+    pub fn verify_a2a_artifact(&self, wrapped_json: &str) -> BindingResult<String> {
+        let wrapped: Value = serde_json::from_str(wrapped_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid wrapped artifact JSON: {}", e))
+        })?;
+
+        let agent = self.lock()?;
+        let result =
+            jacs::a2a::provenance::verify_wrapped_artifact(&agent, &wrapped).map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "A2A artifact verification error: {}",
+                    e
+                ))
+            })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize verification result: {}",
+                e
+            ))
+        })
+    }
+    /// Assess trust level of a remote A2A agent given its Agent Card JSON.
+    ///
+    /// Returns the trust assessment as a JSON string.
+    pub fn assess_a2a_agent(&self, agent_card_json: &str, policy: &str) -> BindingResult<String> {
+        use jacs::a2a::AgentCard;
+        use jacs::a2a::trust::{A2ATrustPolicy, assess_a2a_agent};
+
+        let card: AgentCard = serde_json::from_str(agent_card_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
+        })?;
+
+        let trust_policy = A2ATrustPolicy::from_str_loose(policy).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid trust policy '{}': {}", policy, e))
+        })?;
+
+        let agent = self.lock()?;
+        let assessment = assess_a2a_agent(&agent, &card, trust_policy);
+
+        serde_json::to_string_pretty(&assessment).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize trust assessment: {}",
+                e
+            ))
+        })
+    }
+
+    /// Verify a JACS-wrapped A2A artifact with trust policy enforcement.
+    ///
+    /// Combines cryptographic signature verification with trust policy evaluation.
+    /// The remote agent's Agent Card is assessed against the specified policy,
+    /// and the trust level is included in the verification result.
+    ///
+    /// # Arguments
+    ///
+    /// * `wrapped_json` - JSON string of the JACS-wrapped artifact
+    /// * `agent_card_json` - JSON string of the remote agent's A2A Agent Card
+    /// * `policy` - Trust policy name: "open", "verified", or "strict"
+    ///
+    /// # Returns
+    ///
+    /// JSON string containing the verification result with trust information.
+    pub fn verify_a2a_artifact_with_policy(
+        &self,
+        wrapped_json: &str,
+        agent_card_json: &str,
+        policy: &str,
+    ) -> BindingResult<String> {
+        use jacs::a2a::AgentCard;
+        use jacs::a2a::trust::A2ATrustPolicy;
+
+        let wrapped: Value = serde_json::from_str(wrapped_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid wrapped artifact JSON: {}", e))
+        })?;
+
+        let card: AgentCard = serde_json::from_str(agent_card_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid Agent Card JSON: {}", e))
+        })?;
+
+        let trust_policy = A2ATrustPolicy::from_str_loose(policy).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid trust policy '{}': {}", policy, e))
+        })?;
+
+        let agent = self.lock()?;
+        let result = jacs::a2a::provenance::verify_wrapped_artifact_with_policy(
+            &agent,
+            &wrapped,
+            &card,
+            trust_policy,
+        )
+        .map_err(|e| {
+            BindingCoreError::verification_failed(format!(
+                "A2A artifact verification with policy error: {}",
+                e
+            ))
+        })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize verification result: {}",
+                e
+            ))
+        })
+    }
+
+    // =========================================================================
+    // Attestation API (gated behind `attestation` feature)
+    // =========================================================================
+
+    /// Create a signed attestation document from JSON parameters.
+    ///
+    /// The `params_json` string must be a JSON object with:
+    /// - `subject` (required): `{ type, id, digests: { sha256, ... } }`
+    /// - `claims` (required): `[{ name, value, confidence?, assuranceLevel?, ... }]`
+    /// - `evidence` (optional): array of evidence references
+    /// - `derivation` (optional): derivation/transform receipt
+    /// - `policyContext` (optional): policy evaluation context
+    ///
+    /// Returns the signed attestation document as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn create_attestation(&self, params_json: &str) -> BindingResult<String> {
+        use jacs::attestation::AttestationTraits;
+        use jacs::attestation::types::*;
+
+        let params: Value = serde_json::from_str(params_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse attestation params JSON: {}. \
+                 Provide a valid JSON object with 'subject' and 'claims' fields.",
+                e
+            ))
+        })?;
+
+        // Parse subject (required)
+        let subject: AttestationSubject =
+            serde_json::from_value(params.get("subject").cloned().ok_or_else(|| {
+                BindingCoreError::validation(
+                    "Missing required 'subject' field in attestation params",
+                )
+            })?)
+            .map_err(|e| BindingCoreError::validation(format!("Invalid 'subject' field: {}", e)))?;
+
+        // Parse claims (required, at least 1)
+        let claims: Vec<Claim> =
+            serde_json::from_value(params.get("claims").cloned().ok_or_else(|| {
+                BindingCoreError::validation(
+                    "Missing required 'claims' field in attestation params",
+                )
+            })?)
+            .map_err(|e| BindingCoreError::validation(format!("Invalid 'claims' field: {}", e)))?;
+
+        // Parse optional evidence
+        let evidence: Vec<EvidenceRef> = if let Some(ev) = params.get("evidence") {
+            serde_json::from_value(ev.clone()).map_err(|e| {
+                BindingCoreError::validation(format!("Invalid 'evidence' field: {}", e))
+            })?
+        } else {
+            vec![]
+        };
+
+        // Parse optional derivation
+        let derivation: Option<Derivation> = if let Some(d) = params.get("derivation") {
+            Some(serde_json::from_value(d.clone()).map_err(|e| {
+                BindingCoreError::validation(format!("Invalid 'derivation' field: {}", e))
+            })?)
+        } else {
+            None
+        };
+
+        // Parse optional policyContext
+        let policy_context: Option<PolicyContext> = if let Some(p) = params.get("policyContext") {
+            Some(serde_json::from_value(p.clone()).map_err(|e| {
+                BindingCoreError::validation(format!("Invalid 'policyContext' field: {}", e))
+            })?)
+        } else {
+            None
+        };
+
+        let mut agent = self.lock()?;
+        let jacs_doc = agent
+            .create_attestation(
+                &subject,
+                &claims,
+                &evidence,
+                derivation.as_ref(),
+                policy_context.as_ref(),
+            )
+            .map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to create attestation: {}", e))
+            })?;
+
+        serde_json::to_string_pretty(&jacs_doc.value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize attestation: {}",
+                e
+            ))
+        })
+    }
+
+    /// Verify an attestation using local (crypto-only) verification.
+    ///
+    /// Takes the attestation document key in "id:version" format.
+    /// Returns the verification result as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation(&self, document_key: &str) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let result = agent
+            .verify_attestation_local_impl(document_key)
+            .map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Attestation local verification failed: {}",
+                    e
+                ))
+            })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize verification result: {}",
+                e
+            ))
+        })
+    }
+
+    /// Verify an attestation using full verification (evidence + chain).
+    ///
+    /// Takes the attestation document key in "id:version" format.
+    /// Returns the verification result as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn verify_attestation_full(&self, document_key: &str) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let result = agent
+            .verify_attestation_full_impl(document_key)
+            .map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Attestation full verification failed: {}",
+                    e
+                ))
+            })?;
+
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize verification result: {}",
+                e
+            ))
+        })
+    }
+
+    /// Lift an existing signed JACS document into an attestation.
+    ///
+    /// Takes a signed document JSON string and claims JSON string.
+    /// Returns the signed attestation document as a JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn lift_to_attestation(
+        &self,
+        signed_doc_json: &str,
+        claims_json: &str,
+    ) -> BindingResult<String> {
+        use jacs::attestation::types::Claim;
+
+        let claims: Vec<Claim> = serde_json::from_str(claims_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse claims JSON: {}. \
+                 Provide a valid JSON array of claim objects.",
+                e
+            ))
+        })?;
+
+        let mut agent = self.lock()?;
+        let jacs_doc =
+            jacs::attestation::migration::lift_to_attestation(&mut agent, signed_doc_json, &claims)
+                .map_err(|e| {
+                    BindingCoreError::document_failed(format!(
+                        "Failed to lift document to attestation: {}",
+                        e
+                    ))
+                })?;
+
+        serde_json::to_string_pretty(&jacs_doc.value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize attestation: {}",
+                e
+            ))
+        })
+    }
+
+    /// Export a signed attestation as a DSSE (Dead Simple Signing Envelope).
+    ///
+    /// Takes the attestation JSON string and returns a DSSE envelope JSON string.
+    #[cfg(feature = "attestation")]
+    pub fn export_attestation_dsse(&self, attestation_json: &str) -> BindingResult<String> {
+        let att_value: Value = serde_json::from_str(attestation_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse attestation JSON: {}",
+                e
+            ))
+        })?;
+
+        let envelope = jacs::attestation::dsse::export_dsse(&att_value).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to export DSSE envelope: {}", e))
+        })?;
+
+        serde_json::to_string_pretty(&envelope).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize DSSE envelope: {}",
+                e
+            ))
+        })
     }
 }
 
@@ -1171,7 +1599,7 @@ pub struct VerificationResult {
 /// # Arguments
 ///
 /// * `signed_document` - Full signed JACS document JSON string.
-/// * `key_resolution` - Optional key resolution order, e.g. "local" or "local,hai" (default "local").
+/// * `key_resolution` - Optional key resolution order, e.g. "local" or "local,remote" (default "local").
 /// * `data_directory` - Optional path for data/trust store (defaults to temp/cwd).
 /// * `key_directory` - Optional path for public keys (defaults to temp/cwd).
 ///
@@ -1186,13 +1614,17 @@ pub fn verify_document_standalone(
     data_directory: Option<&str>,
     key_directory: Option<&str>,
 ) -> BindingResult<VerificationResult> {
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+
     fn absolutize_dir(raw: &str) -> String {
-        let p = std::path::PathBuf::from(raw);
+        let p = PathBuf::from(raw);
         if p.is_absolute() {
             p.to_string_lossy().to_string()
         } else {
             std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .unwrap_or_else(|_| PathBuf::from("."))
                 .join(p)
                 .to_string_lossy()
                 .to_string()
@@ -1211,9 +1643,108 @@ pub fn verify_document_standalone(
             .unwrap_or_default()
     }
 
+    fn has_local_key_cache(root: &Path, key_hash: &str) -> bool {
+        if key_hash.is_empty() {
+            return false;
+        }
+        root.join("public_keys")
+            .join(format!("{}.pem", key_hash))
+            .exists()
+            && root
+                .join("public_keys")
+                .join(format!("{}.enc_type", key_hash))
+                .exists()
+    }
+
+    fn build_fixture_key_cache(cache_root: &Path, source_dirs: &[PathBuf]) -> usize {
+        let public_keys_dir = cache_root.join("public_keys");
+        if std::fs::create_dir_all(&public_keys_dir).is_err() {
+            return 0;
+        }
+
+        let mut written: HashSet<String> = HashSet::new();
+        for dir in source_dirs {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                let Some(prefix) = name.strip_suffix("_metadata.json") else {
+                    continue;
+                };
+
+                let metadata = match std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let key_hash = metadata
+                    .get("public_key_hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                let signing_algorithm = metadata
+                    .get("signing_algorithm")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim();
+                if key_hash.is_empty() || signing_algorithm.is_empty() {
+                    continue;
+                }
+                if written.contains(key_hash) {
+                    continue;
+                }
+
+                let key_path = dir.join(format!("{}_public_key.pem", prefix));
+                let key_bytes = match std::fs::read(&key_path) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                if std::fs::write(public_keys_dir.join(format!("{}.pem", key_hash)), key_bytes)
+                    .is_err()
+                {
+                    continue;
+                }
+                if std::fs::write(
+                    public_keys_dir.join(format!("{}.enc_type", key_hash)),
+                    signing_algorithm.as_bytes(),
+                )
+                .is_err()
+                {
+                    continue;
+                }
+
+                written.insert(key_hash.to_string());
+            }
+        }
+
+        written.len()
+    }
+
+    fn standalone_verify_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    let _lock = standalone_verify_lock()
+        .lock()
+        .map_err(|e| BindingCoreError::generic(format!("Failed to lock standalone verify: {e}")))?;
+
     let signer_id = sig_field(signed_document, "agentID");
     let timestamp = sig_field(signed_document, "date");
     let agent_version = sig_field(signed_document, "agentVersion");
+    let signer_public_key_hash = sig_field(signed_document, "publicKeyHash");
 
     // Always resolve caller-provided directories to absolute paths so relative
     // inputs like "../fixtures" work regardless of process CWD.
@@ -1230,16 +1761,65 @@ pub fn verify_document_standalone(
 
     // Verification loads public keys from {data_directory}/public_keys.
     // If only key_directory is supplied, use it as the storage root fallback.
-    let storage_root = if data_directory.is_some() {
+    let mut effective_storage_root = if data_directory.is_some() {
         absolute_data_dir.clone()
     } else if key_directory.is_some() {
         absolute_key_dir.clone()
     } else {
         absolute_data_dir.clone()
     };
+    let mut temp_cache_root: Option<PathBuf> = None;
 
-    // Re-root storage and keep config dirs empty so path construction remains
-    // relative to storage_root (e.g., "public_keys/<hash>.pem").
+    // Many cross-language fixture directories store keys as:
+    //   <prefix>_metadata.json + <prefix>_public_key.pem
+    // rather than public_keys/{hash}.pem.
+    // Build a deterministic temp cache when local key files are missing.
+    let local_requested = key_resolution.map_or(true, |kr| {
+        kr.split(',')
+            .any(|part| part.trim().eq_ignore_ascii_case("local"))
+    });
+    if local_requested && !signer_public_key_hash.is_empty() {
+        let current_root = PathBuf::from(&effective_storage_root);
+        if !has_local_key_cache(&current_root, &signer_public_key_hash) {
+            let mut source_dirs = Vec::new();
+            let data_path = PathBuf::from(&absolute_data_dir);
+            let key_path = PathBuf::from(&absolute_key_dir);
+            if data_path.exists() {
+                source_dirs.push(data_path);
+            }
+            if key_path.exists() && !source_dirs.iter().any(|p| p == &key_path) {
+                source_dirs.push(key_path);
+            }
+
+            if !source_dirs.is_empty() {
+                let nonce = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                let cache_root = std::env::temp_dir().join(format!(
+                    "jacs_standalone_keycache_{}_{}",
+                    std::process::id(),
+                    nonce
+                ));
+                let _ = build_fixture_key_cache(&cache_root, &source_dirs);
+                if has_local_key_cache(&cache_root, &signer_public_key_hash) {
+                    effective_storage_root = cache_root.to_string_lossy().to_string();
+                    temp_cache_root = Some(cache_root);
+                } else {
+                    let _ = std::fs::remove_dir_all(&cache_root);
+                }
+            }
+        }
+    }
+    let explicit_local_key_available = local_requested
+        && !signer_public_key_hash.is_empty()
+        && has_local_key_cache(
+            &PathBuf::from(&effective_storage_root),
+            &signer_public_key_hash,
+        );
+
+    // Re-root storage and keep config dirs empty so path construction stays
+    // relative to storage root (e.g. "public_keys/<hash>.pem").
     let data_dir = String::new();
     let key_dir = String::new();
 
@@ -1335,9 +1915,63 @@ pub fn verify_document_standalone(
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();
         wrapper.load(config_path.to_string_lossy().to_string())?;
-        // If re-rooting fails (e.g. directory doesn't exist), fall through to
-        // return valid=false from the verification step.
-        let _ = wrapper.set_storage_root(std::path::PathBuf::from(&storage_root));
+        let _ = wrapper.set_storage_root(PathBuf::from(&effective_storage_root));
+
+        if explicit_local_key_available {
+            let key_base = PathBuf::from(&effective_storage_root)
+                .join("public_keys")
+                .join(&signer_public_key_hash);
+            let public_key = std::fs::read(key_base.with_extension("pem")).map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Failed to load local public key for hash '{}': {}",
+                    signer_public_key_hash, e
+                ))
+            })?;
+            let enc_type = std::fs::read_to_string(key_base.with_extension("enc_type"))
+                .map_err(|e| {
+                    BindingCoreError::verification_failed(format!(
+                        "Failed to load local public key type for hash '{}': {}",
+                        signer_public_key_hash, e
+                    ))
+                })?
+                .trim()
+                .to_string();
+
+            let mut agent = wrapper.lock()?;
+            let doc = agent.load_document(signed_document).map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to load document: {}", e))
+            })?;
+            let document_key = doc.getkey();
+            let value = doc.getvalue();
+            agent.verify_hash(value).map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Failed to verify document hash: {}",
+                    e
+                ))
+            })?;
+            agent
+                .verify_document_signature(
+                    &document_key,
+                    None,
+                    None,
+                    Some(public_key),
+                    Some(enc_type.clone()),
+                )
+                .map_err(|e| {
+                    BindingCoreError::verification_failed(format!(
+                        "Failed to verify document signature (enc_type={}): {}",
+                        enc_type, e
+                    ))
+                })?;
+
+            return Ok(VerificationResult {
+                valid: true,
+                signer_id: signer_id.clone(),
+                timestamp: timestamp.clone(),
+                agent_version: agent_version.clone(),
+            });
+        }
+
         let valid = wrapper.verify_document(signed_document)?;
         Ok(VerificationResult {
             valid,
@@ -1349,6 +1983,9 @@ pub fn verify_document_standalone(
 
     // Clean up temp config file
     let _ = std::fs::remove_file(&config_path);
+    if let Some(cache_root) = temp_cache_root {
+        let _ = std::fs::remove_dir_all(cache_root);
+    }
 
     match result {
         Ok(r) => Ok(r),
@@ -1416,6 +2053,20 @@ pub fn create_config(
 pub fn trust_agent(agent_json: &str) -> BindingResult<String> {
     jacs::trust::trust_agent(agent_json)
         .map_err(|e| BindingCoreError::trust_failed(format!("Failed to trust agent: {}", e)))
+}
+
+/// Add an agent to the local trust store using an explicitly provided public key.
+///
+/// This is the recommended first-contact bootstrap for secure trust establishment.
+pub fn trust_agent_with_key(agent_json: &str, public_key_pem: &str) -> BindingResult<String> {
+    if public_key_pem.trim().is_empty() {
+        return Err(BindingCoreError::invalid_argument(
+            "public_key_pem cannot be empty",
+        ));
+    }
+    jacs::trust::trust_agent_with_key(agent_json, Some(public_key_pem)).map_err(|e| {
+        BindingCoreError::trust_failed(format!("Failed to trust agent with explicit key: {}", e))
+    })
 }
 
 /// List all trusted agent IDs.
@@ -1497,8 +2148,6 @@ pub fn create_agent_programmatic(
         description: description.unwrap_or("").to_string(),
         domain: domain.unwrap_or("").to_string(),
         default_storage: default_storage.unwrap_or("fs").to_string(),
-        hai_api_key: String::new(),
-        hai_endpoint: String::new(),
     };
 
     let (_agent, info) = SimpleAgent::create_with_params(params)
@@ -1519,103 +2168,6 @@ pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Bind
 pub fn handle_config_create() -> BindingResult<()> {
     jacs::cli_utils::create::handle_config_create()
         .map_err(|e| BindingCoreError::generic(e.to_string()))
-}
-
-// =============================================================================
-// Remote Key Fetch Functions
-// =============================================================================
-
-/// Information about a public key fetched from HAI key service.
-///
-/// This struct contains the public key data and metadata returned by
-/// the HAI key distribution service.
-#[derive(Debug, Clone)]
-pub struct RemotePublicKeyInfo {
-    /// The raw public key bytes (DER encoded).
-    pub public_key: Vec<u8>,
-    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
-    pub algorithm: String,
-    /// The hash of the public key (SHA-256).
-    pub public_key_hash: String,
-    /// The agent ID the key belongs to.
-    pub agent_id: String,
-    /// The version of the key.
-    pub version: String,
-}
-
-/// Fetch a public key from HAI's key distribution service.
-///
-/// This function retrieves the public key for a specific agent and version
-/// from the HAI key distribution service. It is used to obtain trusted public
-/// keys for verifying agent signatures without requiring local key storage.
-///
-/// # Arguments
-///
-/// * `agent_id` - The unique identifier of the agent whose key to fetch.
-/// * `version` - The version of the agent's key to fetch. Use "latest" for
-///   the most recent version.
-///
-/// # Returns
-///
-/// Returns `Ok(RemotePublicKeyInfo)` containing the public key, algorithm, and hash
-/// on success.
-///
-/// # Errors
-///
-/// * `ErrorKind::KeyNotFound` - The agent or key version was not found (404).
-/// * `ErrorKind::NetworkFailed` - Connection, timeout, or other HTTP errors.
-/// * `ErrorKind::Generic` - The returned key has invalid encoding.
-///
-/// # Environment Variables
-///
-/// * `HAI_KEYS_BASE_URL` - Base URL for the key service. Defaults to `https://keys.hai.ai`.
-/// * `JACS_KEY_RESOLUTION` - Controls key resolution order. Options:
-///   - "hai-only" - Only use HAI key service (default when set)
-///   - "local-first" - Try local trust store, fall back to HAI
-///   - "hai-first" - Try HAI first, fall back to local trust store
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use jacs_binding_core::fetch_remote_key;
-///
-/// let key_info = fetch_remote_key(
-///     "550e8400-e29b-41d4-a716-446655440000",
-///     "latest"
-/// )?;
-///
-/// println!("Algorithm: {}", key_info.algorithm);
-/// println!("Hash: {}", key_info.public_key_hash);
-/// ```
-#[cfg(not(target_arch = "wasm32"))]
-pub fn fetch_remote_key(agent_id: &str, version: &str) -> BindingResult<RemotePublicKeyInfo> {
-    use jacs::agent::loaders::fetch_public_key_from_hai;
-
-    let key_info = fetch_public_key_from_hai(agent_id, version).map_err(|e| {
-        // Map JacsError to appropriate BindingCoreError
-        let error_str = e.to_string();
-        if error_str.contains("not found") || error_str.contains("404") {
-            BindingCoreError::key_not_found(format!(
-                "Public key not found for agent '{}' version '{}': {}",
-                agent_id, version, e
-            ))
-        } else if error_str.contains("network")
-            || error_str.contains("connect")
-            || error_str.contains("timeout")
-        {
-            BindingCoreError::network_failed(format!("Failed to fetch public key from HAI: {}", e))
-        } else {
-            BindingCoreError::generic(format!("Failed to fetch public key: {}", e))
-        }
-    })?;
-
-    Ok(RemotePublicKeyInfo {
-        public_key: key_info.public_key,
-        algorithm: key_info.algorithm,
-        public_key_hash: key_info.hash,
-        agent_id: agent_id.to_string(),
-        version: version.to_string(),
-    })
 }
 
 // =============================================================================
@@ -1861,7 +2413,7 @@ mod tests {
             std::env::set_var("JACS_DATA_DIRECTORY", "/tmp/does-not-exist");
             std::env::set_var("JACS_KEY_DIRECTORY", "/tmp/does-not-exist");
             std::env::set_var("JACS_DEFAULT_STORAGE", "memory");
-            std::env::set_var("JACS_KEY_RESOLUTION", "hai");
+            std::env::set_var("JACS_KEY_RESOLUTION", "remote");
         }
 
         let result = verify_document_standalone(
@@ -1887,5 +2439,302 @@ mod tests {
             v.get("health_checks").is_some(),
             "audit JSON should have health_checks"
         );
+    }
+
+    // =========================================================================
+    // A2A Protocol Tests
+    // =========================================================================
+
+    /// Helper: create an ephemeral AgentWrapper for A2A tests.
+    fn ephemeral_wrapper() -> AgentWrapper {
+        let wrapper = AgentWrapper::new();
+        wrapper.ephemeral(Some("ed25519")).unwrap();
+        wrapper
+    }
+
+    #[test]
+    fn test_export_agent_card_returns_valid_json() {
+        let wrapper = ephemeral_wrapper();
+        let card_json = wrapper.export_agent_card().unwrap();
+        let card: Value = serde_json::from_str(&card_json).unwrap();
+        assert!(card.get("name").is_some());
+        assert!(card.get("protocolVersions").is_some());
+        assert_eq!(card["protocolVersions"][0], "0.4.0");
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_wrap_and_verify_a2a_artifact() {
+        let wrapper = ephemeral_wrapper();
+        let artifact = r#"{"content": "hello A2A"}"#;
+
+        let wrapped = wrapper
+            .wrap_a2a_artifact(artifact, "message", None)
+            .unwrap();
+        let wrapped_value: Value = serde_json::from_str(&wrapped).unwrap();
+        assert!(wrapped_value.get("jacsId").is_some());
+        assert_eq!(wrapped_value["jacsType"], "a2a-message");
+
+        let result_json = wrapper.verify_a2a_artifact(&wrapped).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+        assert_eq!(result["status"], "SelfSigned");
+    }
+
+    #[test]
+    fn test_sign_artifact_alias_matches_wrap() {
+        let wrapper = ephemeral_wrapper();
+        let artifact = r#"{"data": 42}"#;
+
+        let signed = wrapper.sign_artifact(artifact, "artifact", None).unwrap();
+        let value: Value = serde_json::from_str(&signed).unwrap();
+        assert_eq!(value["jacsType"], "a2a-artifact");
+
+        let result_json = wrapper.verify_a2a_artifact(&signed).unwrap();
+        let result: Value = serde_json::from_str(&result_json).unwrap();
+        assert_eq!(result["valid"], true);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_wrap_a2a_artifact_with_parent_chain() {
+        let wrapper = ephemeral_wrapper();
+
+        let first = wrapper
+            .wrap_a2a_artifact(r#"{"step": 1}"#, "task", None)
+            .unwrap();
+        let parents = format!("[{}]", first);
+        let second = wrapper
+            .wrap_a2a_artifact(r#"{"step": 2}"#, "task", Some(&parents))
+            .unwrap();
+
+        let second_value: Value = serde_json::from_str(&second).unwrap();
+        let parent_sigs = second_value["jacsParentSignatures"].as_array().unwrap();
+        assert_eq!(parent_sigs.len(), 1);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_wrap_a2a_artifact_invalid_json_error() {
+        let wrapper = ephemeral_wrapper();
+        let result = wrapper.wrap_a2a_artifact("not json", "artifact", None);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidArgument);
+    }
+
+    #[test]
+    fn test_verify_a2a_artifact_invalid_json_error() {
+        let wrapper = ephemeral_wrapper();
+        let result = wrapper.verify_a2a_artifact("not json");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidArgument);
+    }
+
+    #[test]
+    fn test_export_agent_card_unloaded_agent_error() {
+        let wrapper = AgentWrapper::new();
+        let result = wrapper.export_agent_card();
+        assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Attestation API Tests
+    // =========================================================================
+
+    #[cfg(feature = "attestation")]
+    mod attestation_tests {
+        use super::*;
+
+        fn attestation_wrapper() -> AgentWrapper {
+            let wrapper = AgentWrapper::new();
+            wrapper.ephemeral(Some("ed25519")).unwrap();
+            wrapper
+        }
+
+        fn basic_attestation_params() -> String {
+            json!({
+                "subject": {
+                    "type": "artifact",
+                    "id": "test-artifact-001",
+                    "digests": { "sha256": "abc123" }
+                },
+                "claims": [{
+                    "name": "reviewed",
+                    "value": true,
+                    "confidence": 0.95,
+                    "assuranceLevel": "verified"
+                }]
+            })
+            .to_string()
+        }
+
+        #[test]
+        fn binding_create_attestation_json() {
+            let wrapper = attestation_wrapper();
+            let result = wrapper.create_attestation(&basic_attestation_params());
+            assert!(
+                result.is_ok(),
+                "create_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let json_str = result.unwrap();
+            let doc: Value = serde_json::from_str(&json_str).unwrap();
+            assert!(
+                doc.get("attestation").is_some(),
+                "returned JSON should contain 'attestation' key"
+            );
+            assert!(
+                doc.get("jacsSignature").is_some(),
+                "returned JSON should be signed"
+            );
+        }
+
+        #[test]
+        fn binding_verify_attestation_json() {
+            let wrapper = attestation_wrapper();
+            let att_json = wrapper
+                .create_attestation(&basic_attestation_params())
+                .unwrap();
+            let doc: Value = serde_json::from_str(&att_json).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = wrapper.verify_attestation(&key);
+            assert!(
+                result.is_ok(),
+                "verify_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let result_json = result.unwrap();
+            let result_value: Value = serde_json::from_str(&result_json).unwrap();
+            assert_eq!(
+                result_value["valid"], true,
+                "attestation should verify as valid"
+            );
+        }
+
+        #[test]
+        fn binding_verify_attestation_full_json() {
+            let wrapper = attestation_wrapper();
+            let att_json = wrapper
+                .create_attestation(&basic_attestation_params())
+                .unwrap();
+            let doc: Value = serde_json::from_str(&att_json).unwrap();
+            let key = format!(
+                "{}:{}",
+                doc["jacsId"].as_str().unwrap(),
+                doc["jacsVersion"].as_str().unwrap()
+            );
+
+            let result = wrapper.verify_attestation_full(&key);
+            assert!(
+                result.is_ok(),
+                "verify_attestation_full should succeed: {:?}",
+                result.err()
+            );
+
+            let result_json = result.unwrap();
+            let result_value: Value = serde_json::from_str(&result_json).unwrap();
+            assert_eq!(
+                result_value["valid"], true,
+                "full attestation should verify as valid"
+            );
+            assert!(
+                result_value.get("evidence").is_some(),
+                "full verification result should contain 'evidence' array"
+            );
+        }
+
+        #[test]
+        fn binding_lift_to_attestation_json() {
+            let wrapper = attestation_wrapper();
+
+            // Create a proper signed JACS document
+            let doc_json = json!({"title": "Test Document", "content": "Some content"}).to_string();
+            let signed = wrapper
+                .create_document(&doc_json, None, None, true, None, None)
+                .unwrap();
+
+            let claims_json = json!([{
+                "name": "reviewed",
+                "value": true
+            }])
+            .to_string();
+
+            let result = wrapper.lift_to_attestation(&signed, &claims_json);
+            assert!(
+                result.is_ok(),
+                "lift_to_attestation should succeed: {:?}",
+                result.err()
+            );
+
+            let att_json = result.unwrap();
+            let doc: Value = serde_json::from_str(&att_json).unwrap();
+            assert!(
+                doc.get("attestation").is_some(),
+                "lifted result should contain 'attestation' key"
+            );
+            assert!(
+                doc.get("jacsSignature").is_some(),
+                "lifted result should be signed"
+            );
+        }
+
+        #[test]
+        fn binding_create_attestation_error_on_bad_json() {
+            let wrapper = attestation_wrapper();
+            let result = wrapper.create_attestation("not valid json {{{");
+            assert!(result.is_err(), "bad JSON should error");
+            assert_eq!(
+                result.unwrap_err().kind,
+                ErrorKind::SerializationFailed,
+                "should be SerializationFailed error"
+            );
+        }
+
+        #[test]
+        fn binding_create_attestation_error_on_missing_fields() {
+            let wrapper = attestation_wrapper();
+            // Valid JSON but missing required 'subject' field
+            let params = json!({
+                "claims": [{"name": "test", "value": true}]
+            })
+            .to_string();
+
+            let result = wrapper.create_attestation(&params);
+            assert!(result.is_err(), "missing subject should error");
+            assert_eq!(
+                result.unwrap_err().kind,
+                ErrorKind::Validation,
+                "should be Validation error"
+            );
+        }
+
+        #[test]
+        fn binding_export_attestation_dsse() {
+            let wrapper = attestation_wrapper();
+            let att_json = wrapper
+                .create_attestation(&basic_attestation_params())
+                .unwrap();
+
+            let result = wrapper.export_attestation_dsse(&att_json);
+            assert!(
+                result.is_ok(),
+                "export_attestation_dsse should succeed: {:?}",
+                result.err()
+            );
+
+            let dsse_json = result.unwrap();
+            let envelope: Value = serde_json::from_str(&dsse_json).unwrap();
+            assert_eq!(
+                envelope["payloadType"].as_str().unwrap(),
+                "application/vnd.in-toto+json"
+            );
+        }
     }
 }

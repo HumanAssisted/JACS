@@ -1,5 +1,7 @@
 use crate::agent::Agent;
+use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::document::DocumentTraits;
+use crate::replay;
 use chrono;
 use serde_json::Value;
 use std::error::Error;
@@ -80,7 +82,10 @@ impl PayloadTraits for Agent {
         let date = self.get_document_signature_date(&document_key)?;
         let agent_id = self.get_document_signature_agent_id(&document_key)?;
 
-        let max_replay_seconds = max_replay_time_delta_seconds.unwrap_or(1);
+        // Default payload freshness window: 5 minutes.
+        // Can be overridden per call, or globally with JACS_PAYLOAD_MAX_REPLAY_SECONDS.
+        let max_replay_seconds =
+            max_replay_time_delta_seconds.unwrap_or_else(replay::payload_replay_window_seconds);
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs();
@@ -96,6 +101,17 @@ impl PayloadTraits for Agent {
                 max_replay_seconds
             )));
         }
+
+        let jti = value
+            .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
+            .and_then(|sig| sig.get("jti"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|nonce| !nonce.is_empty())
+            .ok_or_else(|| {
+                Box::<dyn Error>::from("Missing or invalid 'jacsSignature.jti' in payload document")
+            })?;
+        replay::check_and_store_nonce(&agent_id, jti).map_err(Box::<dyn Error>::from)?;
 
         Ok((payload.clone(), agent_id))
     }

@@ -134,7 +134,7 @@ result = await executor.ainvoke({
 Returns:
 - `agent_id`: The agent's ID
 - `version`: Key version
-- `algorithm`: Cryptographic algorithm (e.g., "ed25519", "pq-dilithium")
+- `algorithm`: Cryptographic algorithm (e.g., "ed25519", "pq2025")
 - `public_key_hash`: SHA-256 hash of the public key
 - `public_key_base64`: The public key in base64 encoding
 
@@ -184,7 +184,7 @@ result = await executor.ainvoke({
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `JACS_CONFIG` | Path to jacs.config.json | `./jacs.config.json` |
-| `HAI_ENDPOINT` | HAI API endpoint | `https://api.hai.ai` |
+| `HAI_ENDPOINT` | HAI API endpoint | `https://hai.ai` |
 | `HAI_API_KEY` | Optional API key for HAI | (none) |
 
 ## Architecture
@@ -229,7 +229,7 @@ result = await executor.ainvoke({
 |  - fetch_key      |                                 v
 |  - verify_agent   |                         +------------------+
 |  - register       |                         |   HAI.ai API     |
-|  - check_status   | <---------------------->|   (keys.hai.ai)  |
+|  - check_status   | <---------------------->| (/jacs/v1/...)   |
 +-------------------+                         +------------------+
 ```
 
@@ -368,7 +368,7 @@ Higher trust levels require:
 #### Connection errors to HAI
 
 Check:
-1. Network connectivity to `https://api.hai.ai`
+1. Network connectivity to `https://hai.ai`
 2. `HAI_ENDPOINT` environment variable if using a custom endpoint
 3. `HAI_API_KEY` is set correctly (some operations require authentication)
 

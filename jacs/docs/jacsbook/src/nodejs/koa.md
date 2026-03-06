@@ -12,7 +12,10 @@ import bodyParser from 'koa-bodyparser';
 import { JacsClient } from '@hai.ai/jacs/client';
 import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
 
-const client = await JacsClient.quickstart();
+const client = await JacsClient.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
 const app = new Koa();
 
 app.use(bodyParser({ enableTypes: ['text'] }));
@@ -35,6 +38,12 @@ jacsKoaMiddleware({
   sign?: boolean;            // Auto-sign ctx.body after next() (default: false)
   verify?: boolean;          // Verify incoming POST/PUT/PATCH bodies (default: true)
   optional?: boolean;        // Allow unsigned requests through (default: false)
+  authReplay?: boolean | {   // Replay protection for auth-style endpoints (default: false)
+    enabled?: boolean;
+    maxAgeSeconds?: number;    // default: 30
+    clockSkewSeconds?: number; // default: 5
+    cacheTtlSeconds?: number;  // default: maxAge + skew
+  };
 })
 ```
 
@@ -45,6 +54,30 @@ jacsKoaMiddleware({
 **POST/PUT/PATCH with `verify: true`**: The string body is verified. On success, `ctx.state.jacsPayload` is set. On failure, 401 is returned (unless `optional: true`).
 
 **With `sign: true`**: After downstream middleware runs, if `ctx.body` is a non-Buffer object, it is signed before the response is sent.
+
+## Auth Replay Protection (Auth Endpoints)
+
+Enable replay protection when signed JACS bodies are used as authentication artifacts:
+
+```typescript
+app.use(
+  jacsKoaMiddleware({
+    client,
+    verify: true,
+    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
+  })
+);
+```
+
+When enabled, middleware enforces:
+
+- signature timestamp freshness (`maxAgeSeconds` + `clockSkewSeconds`)
+- single-use `(signerId, signature)` dedupe inside a TTL cache
+
+Notes:
+
+- Keep this mode scoped to auth-style endpoints.
+- Cache is in-memory per process; use a shared cache for multi-instance deployments.
 
 ## Auto-Sign Responses
 

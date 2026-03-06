@@ -7,10 +7,11 @@ package jacs
 
 #include <stdlib.h>
 #include <stdint.h>
-#include "jacs_cgo.h"
 
 // JacsAgent handle API - Recommended for concurrent usage
 typedef void* JacsAgentHandle;
+
+#include "jacs_cgo.h"
 JacsAgentHandle jacs_agent_new();
 void jacs_agent_free(JacsAgentHandle handle);
 int jacs_agent_load(JacsAgentHandle handle, const char* config_path);
@@ -36,6 +37,7 @@ char* jacs_hash_string(const char* data);
 int jacs_verify_string(const char* data, const char* signature_base64, const uint8_t* public_key, size_t public_key_len, const char* public_key_enc_type);
 char* jacs_sign_agent(const char* agent_string, const uint8_t* public_key, size_t public_key_len, const char* public_key_enc_type);
 char* jacs_create_config(const char* jacs_use_security, const char* jacs_data_directory, const char* jacs_key_directory, const char* jacs_agent_private_key_filename, const char* jacs_agent_public_key_filename, const char* jacs_agent_key_algorithm, const char* jacs_private_key_password, const char* jacs_agent_id_and_version, const char* jacs_default_storage);
+char* jacs_create_agent(const char* name, const char* password, const char* algorithm, const char* data_directory, const char* key_directory, const char* config_path, const char* agent_type, const char* description, const char* domain, const char* default_storage);
 int jacs_verify_agent(const char* agentfile);
 char* jacs_update_agent(const char* new_agent_string);
 int jacs_verify_document(const char* document_string);
@@ -49,7 +51,6 @@ char* jacs_verify_response(const char* document_string);
 char* jacs_verify_response_with_agent_id(const char* document_string, char** agent_id_out);
 int jacs_verify_signature(const char* document_string, const char* signature_field);
 char* jacs_verify_document_standalone(const char* signed_document, const char* key_resolution, const char* data_directory, const char* key_directory);
-char* jacs_generate_verify_link(const char* document, const char* base_url);
 */
 import "C"
 import (
@@ -440,6 +441,202 @@ func (a *JacsAgent) GetJSON() (string, error) {
 	return C.GoString(result), nil
 }
 
+// CreateAttestation creates a signed attestation document.
+// paramsJSON is a JSON string with subject, claims, and optional evidence/derivation/policyContext.
+// Returns the signed attestation document as a JSON string.
+// Requires the library to be built with the attestation feature.
+func (a *JacsAgent) CreateAttestation(paramsJSON string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cParams := C.CString(paramsJSON)
+	defer C.free(unsafe.Pointer(cParams))
+
+	result := C.jacs_agent_create_attestation(a.handle, cParams)
+	if result == nil {
+		return "", errors.New("failed to create attestation (feature may not be available)")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// VerifyAttestation verifies an attestation document.
+// documentKey is in "jacsId:jacsVersion" format.
+// If full is true, performs full-tier verification (evidence + chain checks).
+// If full is false, performs local-tier verification (signature + hash only).
+// Returns the verification result as a JSON string.
+func (a *JacsAgent) VerifyAttestation(documentKey string, full bool) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cKey := C.CString(documentKey)
+	defer C.free(unsafe.Pointer(cKey))
+
+	fullVal := C.int(0)
+	if full {
+		fullVal = 1
+	}
+
+	result := C.jacs_agent_verify_attestation(a.handle, cKey, fullVal)
+	if result == nil {
+		return "", errors.New("failed to verify attestation (feature may not be available)")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// LiftToAttestation lifts an existing signed document into an attestation with additional claims.
+// signedDocJSON is the signed JACS document JSON string.
+// claimsJSON is a JSON array of claim objects.
+// Returns the new attestation document as a JSON string.
+func (a *JacsAgent) LiftToAttestation(signedDocJSON, claimsJSON string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cDoc := C.CString(signedDocJSON)
+	defer C.free(unsafe.Pointer(cDoc))
+
+	cClaims := C.CString(claimsJSON)
+	defer C.free(unsafe.Pointer(cClaims))
+
+	result := C.jacs_agent_lift_to_attestation(a.handle, cDoc, cClaims)
+	if result == nil {
+		return "", errors.New("failed to lift to attestation (feature may not be available)")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// ExportAttestationDSSE exports an attestation as a DSSE (Dead Simple Signing Envelope)
+// for in-toto/SLSA/Sigstore compatibility.
+// attestationJSON is the attestation document JSON string.
+// Returns the DSSE envelope as a JSON string.
+func (a *JacsAgent) ExportAttestationDSSE(attestationJSON string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cAtt := C.CString(attestationJSON)
+	defer C.free(unsafe.Pointer(cAtt))
+
+	result := C.jacs_agent_export_attestation_dsse(a.handle, cAtt)
+	if result == nil {
+		return "", errors.New("failed to export attestation DSSE (feature may not be available)")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// ============================================================================
+// A2A API - Agent-to-Agent protocol operations
+// ============================================================================
+
+// ExportAgentCard exports an A2A Agent Card for this agent.
+func (a *JacsAgent) ExportAgentCard() (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	result := C.jacs_agent_export_agent_card(a.handle)
+	if result == nil {
+		return "", errors.New("failed to export agent card")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// SignA2AArtifact wraps an artifact with a JACS signature for A2A exchange.
+func (a *JacsAgent) SignA2AArtifact(artifactJSON string, artifactType string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cArtifact := C.CString(artifactJSON)
+	defer C.free(unsafe.Pointer(cArtifact))
+
+	cType := C.CString(artifactType)
+	defer C.free(unsafe.Pointer(cType))
+
+	result := C.jacs_agent_sign_a2a_artifact(a.handle, cArtifact, cType)
+	if result == nil {
+		return "", errors.New("failed to sign A2A artifact")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// VerifyA2AArtifact verifies a JACS-wrapped A2A artifact (crypto-only).
+func (a *JacsAgent) VerifyA2AArtifact(wrappedJSON string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cWrapped := C.CString(wrappedJSON)
+	defer C.free(unsafe.Pointer(cWrapped))
+
+	result := C.jacs_agent_verify_a2a_artifact(a.handle, cWrapped)
+	if result == nil {
+		return "", errors.New("failed to verify A2A artifact")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// VerifyA2AArtifactWithPolicy verifies a JACS-wrapped artifact with trust policy.
+func (a *JacsAgent) VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cWrapped := C.CString(wrappedJSON)
+	defer C.free(unsafe.Pointer(cWrapped))
+
+	cCard := C.CString(agentCardJSON)
+	defer C.free(unsafe.Pointer(cCard))
+
+	cPolicy := C.CString(policy)
+	defer C.free(unsafe.Pointer(cPolicy))
+
+	result := C.jacs_agent_verify_a2a_artifact_with_policy(a.handle, cWrapped, cCard, cPolicy)
+	if result == nil {
+		return "", errors.New("failed to verify A2A artifact with policy")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// AssessA2AAgent assesses an agent's trustworthiness against a trust policy.
+func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cCard := C.CString(agentCardJSON)
+	defer C.free(unsafe.Pointer(cCard))
+
+	cPolicy := C.CString(policy)
+	defer C.free(unsafe.Pointer(cPolicy))
+
+	result := C.jacs_agent_assess_a2a_agent(a.handle, cCard, cPolicy)
+	if result == nil {
+		return "", errors.New("failed to assess A2A agent")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
 // Helper function to get error messages for JacsAgent methods
 func getAgentErrorMessage(code int, operation string) string {
 	switch operation {
@@ -693,6 +890,69 @@ func CreateConfig(config Config) (string, error) {
 	result := C.jacs_create_config(cUseSec, cDataDir, cKeyDir, cPrivKeyFile, cPubKeyFile, cKeyAlg, cPrivKeyPass, cAgentID, cDefStorage)
 	if result == nil {
 		return "", errors.New("failed to create config")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// CreateAgent creates a JACS agent programmatically and returns its metadata as JSON.
+func CreateAgent(name, password string, algorithm, dataDirectory, keyDirectory, configPath, agentType, description, domain, defaultStorage *string) (string, error) {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+
+	cPassword := C.CString(password)
+	defer C.free(unsafe.Pointer(cPassword))
+
+	var cAlgorithm, cDataDir, cKeyDir, cConfigPath, cAgentType, cDescription, cDomain, cDefaultStorage *C.char
+
+	if algorithm != nil {
+		cAlgorithm = C.CString(*algorithm)
+		defer C.free(unsafe.Pointer(cAlgorithm))
+	}
+	if dataDirectory != nil {
+		cDataDir = C.CString(*dataDirectory)
+		defer C.free(unsafe.Pointer(cDataDir))
+	}
+	if keyDirectory != nil {
+		cKeyDir = C.CString(*keyDirectory)
+		defer C.free(unsafe.Pointer(cKeyDir))
+	}
+	if configPath != nil {
+		cConfigPath = C.CString(*configPath)
+		defer C.free(unsafe.Pointer(cConfigPath))
+	}
+	if agentType != nil {
+		cAgentType = C.CString(*agentType)
+		defer C.free(unsafe.Pointer(cAgentType))
+	}
+	if description != nil {
+		cDescription = C.CString(*description)
+		defer C.free(unsafe.Pointer(cDescription))
+	}
+	if domain != nil {
+		cDomain = C.CString(*domain)
+		defer C.free(unsafe.Pointer(cDomain))
+	}
+	if defaultStorage != nil {
+		cDefaultStorage = C.CString(*defaultStorage)
+		defer C.free(unsafe.Pointer(cDefaultStorage))
+	}
+
+	result := C.jacs_create_agent(
+		cName,
+		cPassword,
+		cAlgorithm,
+		cDataDir,
+		cKeyDir,
+		cConfigPath,
+		cAgentType,
+		cDescription,
+		cDomain,
+		cDefaultStorage,
+	)
+	if result == nil {
+		return "", errors.New("failed to create agent")
 	}
 	defer C.jacs_free_string(result)
 

@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F23",
+  "expected_result": "pass",
+  "expected_reason": "multipart_alternative_plain_and_html",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Multipart Alternative" },
+      "date": { "value": "Fri, 27 Feb 2026 12:22:00 +0000" },
+      "message_id": { "value": "<fixture-23@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": true,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "multipart/alternative with both text/plain and text/html; both bodies should be hashed"
+  }
+}

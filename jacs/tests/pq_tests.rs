@@ -4,7 +4,7 @@ use jacs::agent::boilerplate::BoilerPlate;
 use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key_secure;
 use secrecy::ExposeSecret;
-use utils::{create_pq_test_agent, read_new_agent_fixture};
+use utils::{create_pq2025_test_agent, read_new_agent_fixture};
 
 // Helper function to convert bytes to hex string for display
 fn bytes_to_hex(bytes: &[u8]) -> String {
@@ -18,7 +18,7 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 #[test]
 #[ignore]
 fn test_pq_create() {
-    let mut agent = create_pq_test_agent().expect("Failed to create pq test agent");
+    let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let _result = agent.create_agent_and_load(&json_data, false, None);
     // does this modify the agent sig?
@@ -27,13 +27,13 @@ fn test_pq_create() {
 
 #[test]
 fn test_pq_create_and_verify_signature() {
-    // Create pq-configured agent
-    let mut agent = create_pq_test_agent().expect("Failed to create pq test agent");
+    // Create pq2025-configured agent
+    let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
     println!("Agent configuration: {:#?}", agent.config);
 
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
 
-    // Use fresh pq-dilithium keys in test scratch storage.
+    // Use fresh pq2025 keys in test scratch storage.
     println!("Creating agent with new keys...");
     let create_keys = true;
     let _result = agent
@@ -95,10 +95,7 @@ fn test_pq_create_and_verify_signature() {
         Ok(_) => println!("✅ Auto-detection verification successful!"),
         Err(e) => {
             println!("❌ Auto-detection verification failed: {}", e);
-            println!("This is expected with PQ signatures due to version/length differences.");
-            println!(
-                "The key was correctly detected as PQ-Dilithium, but the signature length doesn't match."
-            );
+            println!("Auto-detection should normally work for pq2025 keys.");
 
             // Print signature details to understand the mismatch
             let signature_bytes = STANDARD
@@ -109,20 +106,16 @@ fn test_pq_create_and_verify_signature() {
         }
     }
 
-    // Test that our detection algorithm correctly identifies this as a PQ key
+    // Test that our detection algorithm correctly identifies this as pq2025
     let detected_algo = match jacs::crypt::detect_algorithm_from_public_key(&public) {
         Ok(algo) => algo.to_string(),
         Err(e) => format!("Detection failed: {}", e),
     };
 
     println!("Key algorithm detection result: {}", detected_algo);
-    // Accept any PQ algorithm variant - detection may return pq-dilithium, pq-dilithium-alt, or pq2025
-    // depending on key size and signature characteristics
     assert!(
-        detected_algo == "pq-dilithium"
-            || detected_algo == "pq-dilithium-alt"
-            || detected_algo == "pq2025",
-        "Algorithm detection should identify this as a PQ key, got: {}",
+        detected_algo == "pq2025",
+        "Algorithm detection should identify pq2025, got: {}",
         detected_algo
     );
     println!("✅ Algorithm detection test passed!");

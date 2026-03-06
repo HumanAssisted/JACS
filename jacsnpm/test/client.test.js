@@ -96,6 +96,28 @@ describe('JacsClient', function () {
   });
 
   describe('quickstart factory', () => {
+    (available ? it : it.skip)('should reject missing quickstart identity fields', async () => {
+      let missingOptionsErr = null;
+      try {
+        await clientModule.JacsClient.quickstart();
+      } catch (e) {
+        missingOptionsErr = e;
+      }
+      expect(String(missingOptionsErr)).to.match(/requires options\.name and options\.domain/);
+
+      let missingNameErr = null;
+      try {
+        await clientModule.JacsClient.quickstart({ domain: 'client-test.example.com' });
+      } catch (e) {
+        missingNameErr = e;
+      }
+      expect(String(missingNameErr)).to.match(/requires options\.name/);
+
+      expect(() =>
+        clientModule.JacsClient.quickstartSync({ name: 'client-test-agent' })
+      ).to.throw(/requires options\.domain/);
+    });
+
     (available ? it : it.skip)('should honor custom configPath when creating a persistent agent', async function () {
       this.timeout(30000);
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-quickstart-'));
@@ -106,6 +128,8 @@ describe('JacsClient', function () {
       try {
         process.chdir(tmpDir);
         const client = await clientModule.JacsClient.quickstart({
+          name: 'client-test-agent',
+          domain: 'client-test.example.com',
           algorithm: 'ring-Ed25519',
           configPath: 'custom/jacs.config.json',
         });
@@ -409,56 +433,6 @@ describe('JacsClient', function () {
   });
 
   // ---------------------------------------------------------------------------
-  // generateVerifyLink
-  // ---------------------------------------------------------------------------
-
-  describe('generateVerifyLink', () => {
-    (available ? it : it.skip)('should be exported as a module-level function', () => {
-      expect(clientModule.generateVerifyLink).to.be.a('function');
-    });
-
-    (available ? it : it.skip)('should produce a hai.ai URL with base64url-encoded document', () => {
-      const doc = '{"jacsId":"test"}';
-      const url = clientModule.generateVerifyLink(doc);
-      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-    });
-
-    (available ? it : it.skip)('should be available as instance method on JacsClient', () => {
-      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
-      const doc = '{"jacsId":"test"}';
-      const url = client.generateVerifyLink(doc);
-      expect(url).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
-    });
-
-    (available ? it : it.skip)('instance method should accept custom base URL', () => {
-      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
-      const doc = '{"test": true}';
-      const url = client.generateVerifyLink(doc, 'https://example.com');
-      expect(url).to.match(/^https:\/\/example\.com\/jacs\/verify\?s=/);
-    });
-
-    (available ? it : it.skip)('should round-trip: decode produces original document', () => {
-      const doc = '{"jacsId":"round-trip","content":"hi"}';
-      const url = clientModule.generateVerifyLink(doc);
-      const encoded = url.split('?s=')[1];
-      let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-      while (b64.length % 4 !== 0) b64 += '=';
-      const decoded = Buffer.from(b64, 'base64').toString('utf8');
-      expect(decoded).to.equal(doc);
-    });
-
-    (available ? it : it.skip)('should export MAX_VERIFY_URL_LEN and MAX_VERIFY_DOCUMENT_BYTES', () => {
-      expect(clientModule.MAX_VERIFY_URL_LEN).to.equal(2048);
-      expect(clientModule.MAX_VERIFY_DOCUMENT_BYTES).to.equal(1515);
-    });
-
-    (available ? it : it.skip)('should throw for oversized documents', () => {
-      const bigDoc = JSON.stringify({ data: 'x'.repeat(2000) });
-      expect(() => clientModule.generateVerifyLink(bigDoc)).to.throw(/max length/i);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
   // Error handling
   // ---------------------------------------------------------------------------
 
@@ -482,6 +456,30 @@ describe('JacsClient', function () {
       expect(() => client.loadSync('/nonexistent/jacs.config.json')).to.throw(
         /Config file not found/,
       );
+    });
+  });
+
+  describe('generateVerifyLink', () => {
+    (available ? it : it.skip)('should return URL with default base', () => {
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const link = client.generateVerifyLink('{"hello":"world"}');
+      expect(link).to.be.a('string');
+      expect(link).to.match(/^https:\/\/hai\.ai\/jacs\/verify\?s=/);
+    });
+
+    (available ? it : it.skip)('should use custom baseUrl', () => {
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const link = client.generateVerifyLink('test', 'https://example.com/verify');
+      expect(link).to.match(/^https:\/\/example\.com\/verify\?s=/);
+    });
+
+    (available ? it : it.skip)('should round-trip decode to original', () => {
+      const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
+      const original = '{"signed":"document","data":123}';
+      const link = client.generateVerifyLink(original);
+      const encoded = link.split('?s=')[1];
+      const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+      expect(decoded).to.equal(original);
     });
   });
 });

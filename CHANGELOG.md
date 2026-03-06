@@ -1,3 +1,39 @@
+## 0.9.0
+
+### Attestation
+
+- **Attestation module**: Feature-gated (`--features attestation`) system for creating evidence-based trust proofs on top of cryptographic signing. Attestations bind claims, evidence references, derivation chains, and policy context to signed JACS documents.
+- **Core types**: `AttestationSubject`, `Claim`, `EvidenceRef`, `Derivation`, `PolicyContext`, `DigestSet` in `jacs/src/attestation/types.rs` with full JSON Schema at `schemas/attestation/v1/attestation.schema.json`.
+- **Create attestation**: `create_attestation()` API with subject, claims, optional evidence/derivation/policy. Claims support `confidence` (0.0-1.0) and `assuranceLevel` (self-reported, verified, audited, formal).
+- **Verify attestation**: Two-tier verification -- local (signature + hash, <1ms) and full (evidence digests, freshness, derivation chain, <10ms). Structured `AttestationVerificationResult` output.
+- **Lift to attestation**: `lift_to_attestation()` upgrades existing signed documents to attestations by wrapping them as the attestation subject with additional claims.
+- **DSSE export**: `export_attestation_dsse()` wraps attestations as in-toto Statements in DSSE envelopes for SLSA/Sigstore/in-toto compatibility. Predicate type: `https://jacs.dev/attestation/v1`.
+- **Evidence adapters**: Pluggable `EvidenceAdapter` trait with built-in adapters for A2A artifacts and email evidence. Custom adapter support via `normalize()` / `verify_evidence()` contract.
+- **Derivation chains**: Track multi-step transformations with input/output digests, transform metadata, and configurable depth limits (default 10).
+- **CLI**: `jacs attest create` and `jacs attest verify` subcommands with `--full`, `--json`, `--from-document`, and output file support.
+- **Digest utilities**: Shared `compute_digest_set()` / `compute_digest_set_bytes()` using JCS canonicalization (RFC 8785). 64KB auto-embed threshold for evidence.
+
+### Attestation Bindings
+
+- **Rust SimpleAgent**: `create_attestation()`, `verify_attestation()`, `verify_attestation_full()`, `lift_to_attestation()`, `export_attestation_dsse()`.
+- **binding-core**: JSON-in/JSON-out attestation API for all language bindings.
+- **Python (jacspy)**: `JacsClient.create_attestation()`, `verify_attestation()`, `lift_to_attestation()`, `export_attestation_dsse()` with keyword arguments. Feature-gated behind `--features attestation`.
+- **Node.js (jacsnpm)**: Async attestation methods on `JacsClient` class plus sync convenience functions in `simple.ts`. Feature-gated behind `--features attestation`.
+- **MCP server (jacs-mcp)**: Three new tools -- `jacs_attest_create`, `jacs_attest_verify`, `jacs_attest_lift`. Graceful degradation when attestation feature not compiled.
+
+### Attestation Testing
+
+- **Benchmarks**: Criterion benchmarks for create (~86us), verify-local (~46us), verify-full (~73us), lift (~80us). All well under performance targets.
+- **Cross-language tests**: Rust generates attestation fixtures (Ed25519 + pq2025), Node.js verifies them. 14 cross-language attestation tests.
+- **Hello-world examples**: `examples/attestation_hello_world.{py,js,sh}` for Python, Node.js, and CLI.
+
+### Documentation
+
+- **What Is an Attestation?**: Concept page explaining signing vs attestation (`getting-started/attestation.md`).
+- **Sign vs Attest Decision Guide**: When to use each API (`guides/sign-vs-attest.md`).
+- **Attestation Tutorial**: Step-by-step from agent creation to verified attestation (`guides/attestation-tutorial.md`).
+- **Verification Results Reference**: Full error catalog for `AttestationVerificationResult` (`reference/attestation-errors.md`).
+
 ## 0.6.0
 
 ### Security audit (MVP)
@@ -44,14 +80,28 @@
 
 ### Security
 
+- **Middleware auth replay protection (Node + Python adapters)**: Added opt-in replay defenses for auth-style signed requests in Express/Koa (`authReplay`) and FastAPI (`auth_replay_protection`, `auth_max_age_seconds`, `auth_clock_skew_seconds`). Enforcement includes signature timestamp freshness checks plus single-use `(signerId, signature)` dedupe via in-memory TTL cache.
+- **Replay hardening test coverage**: Added lower-level replay tests for middleware future-timestamp rejection paths (Express, Koa, FastAPI) and explicit cache-instance isolation semantics in shared replay helpers (Node + Python), documenting current per-process cache behavior.
 - **Path traversal hardening**: Data and key directory paths built from untrusted input (e.g. `publicKeyHash`) are now validated via a single shared `require_relative_path_safe()` in `validation.rs`. Used in loaders (`make_data_directory_path`, `make_key_directory_path`) and trust store; prevents document-controlled path traversal (e.g. `../../etc/passwd`).
 - **Schema directory boundary hardening**: Filesystem schema loading now validates normalized/canonical path containment instead of string-prefix checks, preventing directory-prefix overlap bypasses (e.g. `allowed_evil` no longer matches `allowed`).
 - **Cross-platform path hardening**: `require_relative_path_safe()` now also rejects Windows drive-prefixed paths (e.g. `C:\...`, `D:/...`, `E:`) while still allowing UUID:UUID filenames used by JACS.
 - **HAI verification transport hardening**: `verify_hai_registration_sync()` now enforces HTTPS for `HAI_API_URL` (with `http://localhost` and `http://127.0.0.1` allowed for local testing), preventing insecure remote transport configuration.
+- **Verification-claim schema alignment**: Agent schema now accepts canonical `verified-registry` and keeps legacy `verified-hai.ai` alias for backward compatibility; added regression coverage to ensure both claims validate.
+- **DNS TXT version regression coverage**: DNS tests now assert canonical `v=jacs` emission while preserving legacy `v=hai.ai` parsing support with explicit regression tests.
+- **HAI key lookup endpoint default**: Remote key fetch now defaults to `https://hai.ai` (instead of `https://keys.hai.ai`) and normalizes trailing slashes before building `/jacs/v1/agents/{jacs_id}/keys/{version}` URLs; added regression tests for env precedence and URL construction.
 - **Trust-store canonical ID handling**: `trust_agent()` now accepts canonical agent documents that provide `jacsId` and `jacsVersion` as separate fields, canonicalizes to `UUID:VERSION_UUID`, and keeps strict path-safe validation.
 - **Config and keystore logging**: Removed config debug log in loaders; keystore key generation no longer prints to stderr by default (uses `tracing::debug`).
 - **Example config**: `jacs.config.example.json` no longer contains `jacs_private_key_password`; use `JACS_PRIVATE_KEY_PASSWORD` environment variable only.
 - **Password redaction in diagnostics**: `check_env_vars()` now prints `REDACTED` instead of the actual `JACS_PRIVATE_KEY_PASSWORD` value, consistent with `Config::Display`.
+
+### MCP State Access Management
+
+- **MCP state verify/load/update now JACS-document-first**: `jacs_verify_state`, `jacs_load_state`, and `jacs_update_state` now route through JACS document IDs (`jacs_id`, `uuid:version`) and JACS storage/document APIs rather than MCP-level direct filesystem reads/writes.
+- **Path-based state access disabled at MCP layer**: File-path-only calls for verify/load/update now return `FILESYSTEM_ACCESS_DISABLED` in MCP handlers, reducing exposed filesystem attack surface while preserving JACS-internal filesystem behavior.
+- **State lifecycle now persisted for MCP follow-up ops**: `jacs_sign_state` and `jacs_adopt_state` now persist signed state documents in JACS storage (instead of no-save flow) and default to embedded content for MCP document-centric lifecycle operations.
+- **binding-core support added**: New `AgentWrapper::get_document_by_id()` API loads documents by `jacs_id` via agent/storage abstractions for MCP and wrapper reuse.
+- **MCP state schema/docs updated**: `UpdateStateParams` now includes `jacs_id`; README/state tool docs updated to describe `jacs_id`-centric usage and file-path deprecation for verify/load/update.
+- **Coverage added**: MCP tests now assert rejection of file-path-only verify/load/update calls and validate new `jacs_id` update parameter schema.
 
 ### Documentation
 

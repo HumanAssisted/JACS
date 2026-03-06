@@ -10,7 +10,10 @@
  * import { JacsClient } from './client';
  * import { jacsMiddleware } from './express';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'express-agent',
+ *   domain: 'express.local',
+ * });
  * const app = express();
  * app.use(express.text({ type: 'application/json' }));
  * app.use(jacsMiddleware({ client, verify: true }));
@@ -22,6 +25,7 @@
  * ```
  */
 import type { JacsClient } from './client.js';
+import { type AuthReplayOptions } from './auth-replay.js';
 /** Minimal Express-like request shape. */
 export interface ExpressRequest {
     method: string;
@@ -51,6 +55,22 @@ export interface JacsMiddlewareOptions {
     verify?: boolean;
     /** Allow unsigned/invalid requests to pass through instead of returning 401. Default: false. */
     optional?: boolean;
+    /** Enable A2A discovery endpoints at /.well-known/*. Default: false. */
+    a2a?: boolean;
+    /** A2A skills to advertise in the agent card. */
+    a2aSkills?: Array<{
+        id: string;
+        name: string;
+        description: string;
+        tags: string[];
+    }>;
+    /** Base URL / domain for the A2A agent card. */
+    a2aUrl?: string;
+    /**
+     * Enable replay protection when using JACS documents as auth artifacts.
+     * Default: disabled (backward compatible).
+     */
+    authReplay?: boolean | AuthReplayOptions;
 }
 export interface JacsRequest extends ExpressRequest {
     /** Verified JACS payload content (set when verify succeeds). */

@@ -1,4 +1,6 @@
-.PHONY: build-jacspy build-jacspy-mac build-jacspy-linux build-wheel-mac publish-wheels build-wheel-linux test
+.PHONY: build-jacspy build-jacspy-mac build-jacspy-linux build-wheel-mac publish-wheels build-wheel-linux test test-parallel test-python test-python-parallel
+
+PYTEST_XDIST_WORKERS ?= auto
 
 # =============================================================================
 # Development Commands (using uv - recommended)
@@ -8,7 +10,7 @@
 setup:
 	@echo "Setting up development environment with uv..."
 	uv venv
-	uv pip install maturin pytest pytest-asyncio httpx httpx-sse
+	uv pip install maturin pytest pytest-asyncio pytest-xdist httpx httpx-sse
 
 # Build and install the Rust extension for development (fast iteration)
 dev:
@@ -19,7 +21,25 @@ dev:
 test: dev
 	@echo "Running tests..."
 	uv run python -m pytest tests/ -v
-	uv run python -m pytest python/jacs/ -v
+	@if find python/jacs -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit | grep -q .; then \
+		uv run python -m pytest python/jacs/ -v; \
+	else \
+		echo "No tests found under python/jacs; skipping second pytest run."; \
+	fi
+
+# Run tests in parallel where safe.
+# Cross-language fixture tests stay single-process to avoid write contention when fixtures are regenerated.
+test-parallel: dev
+	@echo "Running tests in parallel..."
+	uv run python -m pytest tests/ -v -n $(PYTEST_XDIST_WORKERS) --dist=loadfile -k "not cross_language"
+	@if [ -f tests/test_cross_language.py ]; then \
+		uv run python -m pytest tests/test_cross_language.py -v; \
+	fi
+	@if find python/jacs -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit | grep -q .; then \
+		uv run python -m pytest python/jacs/ -v -n $(PYTEST_XDIST_WORKERS) --dist=loadfile; \
+	else \
+		echo "No tests found under python/jacs; skipping second pytest run."; \
+	fi
 
 # Run Python tests only (assumes already built)
 test-py:
@@ -79,6 +99,14 @@ test-python: install-dev
 	@echo "Running Python tests with pytest..."
 	 RUST_BACKTRACE=1 pytest -v tests/ -s
 
+# Run Python tests with xdist workers for faster CI/local execution.
+test-python-parallel: install-dev
+	@echo "Running Python tests with pytest-xdist..."
+	RUST_BACKTRACE=1 pytest -v tests/ -s -n $(PYTEST_XDIST_WORKERS) --dist=loadfile -k "not cross_language"
+	@if [ -f tests/test_cross_language.py ]; then \
+		RUST_BACKTRACE=1 pytest -v tests/test_cross_language.py -s; \
+	fi
+
 test-mac-wheel: build-wheel-mac
 	@echo "Uninstalling any existing jacs package..."
 	uv pip uninstall jacs  || true  # 
@@ -103,4 +131,4 @@ test-rust:
 	export RUSTFLAGS="-L framework=$(PYTHON_PREFIX) -C link-arg=-framework -C link-arg=Python"; \
 	cargo test -- --nocapture  
 
-.PHONY: install-dev test-python clean-python test-rust
+.PHONY: install-dev test-python test-python-parallel clean-python test-rust

@@ -17,9 +17,12 @@ async function main() {
 
   // Step 1: One call creates a persistent agent with keys on disk -- no manual setup needed
   console.log('\n1. Creating persistent agent...');
-  const info = await jacs.quickstart();
+  const info = await jacs.quickstart({ name: 'example-agent', domain: 'example.local' });
   console.log(`   Agent ID: ${info.agentId}`);
   console.log(`   Algorithm: ${info.algorithm}`);
+  console.log(`   Config: ${info.configPath}`);
+  console.log(`   Public Key: ${info.publicKeyPath}`);
+  console.log(`   Private Key: ${info.privateKeyPath}`);
 
   // Step 2: Sign a message
   console.log('\n2. Signing a message...');

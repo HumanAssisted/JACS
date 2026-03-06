@@ -30,9 +30,9 @@ pub enum KeyResolutionSource {
     /// DNS TXT record verification. Requires the agent to have a domain
     /// configured and the public key hash published in DNS.
     Dns,
-    /// HAI key service (https://keys.hai.ai). Fetches public keys from
-    /// the centralized HAI key distribution service.
-    Hai,
+    /// Remote registry key service. Fetches public keys from a configured
+    /// remote key distribution service (JACS_KEYS_BASE_URL).
+    Registry,
 }
 
 impl fmt::Display for KeyResolutionSource {
@@ -40,7 +40,7 @@ impl fmt::Display for KeyResolutionSource {
         match self {
             KeyResolutionSource::Local => write!(f, "local"),
             KeyResolutionSource::Dns => write!(f, "dns"),
-            KeyResolutionSource::Hai => write!(f, "hai"),
+            KeyResolutionSource::Registry => write!(f, "registry"),
         }
     }
 }
@@ -52,9 +52,11 @@ impl FromStr for KeyResolutionSource {
         match s.trim().to_lowercase().as_str() {
             "local" => Ok(KeyResolutionSource::Local),
             "dns" => Ok(KeyResolutionSource::Dns),
-            "hai" => Ok(KeyResolutionSource::Hai),
+            "registry" => Ok(KeyResolutionSource::Registry),
+            // Backward compat: "hai" maps to Registry
+            "hai" => Ok(KeyResolutionSource::Registry),
             other => Err(format!(
-                "Unknown key resolution source '{}'. Valid options are: local, dns, hai",
+                "Unknown key resolution source '{}'. Valid options are: local, dns, registry",
                 other
             )),
         }
@@ -74,27 +76,28 @@ impl FromStr for KeyResolutionSource {
 ///
 /// - `local` - Local filesystem (keys in `public_keys/` directory)
 /// - `dns` - DNS TXT record verification
-/// - `hai` - HAI key service (https://keys.hai.ai)
+/// - `registry` - Remote registry key service (JACS_KEYS_BASE_URL)
+/// - `hai` - Backward-compatible alias for `registry`
 ///
 /// # Examples
 ///
 /// ```bash
-/// # Default: try local first, then HAI
-/// JACS_KEY_RESOLUTION=local,hai
+/// # Default: try local first, then registry
+/// JACS_KEY_RESOLUTION=local,registry
 ///
 /// # Include DNS verification
-/// JACS_KEY_RESOLUTION=local,dns,hai
+/// JACS_KEY_RESOLUTION=local,dns,registry
 ///
 /// # Air-gapped mode (local only)
 /// JACS_KEY_RESOLUTION=local
 ///
-/// # HAI only (for testing or cloud-native deployments)
-/// JACS_KEY_RESOLUTION=hai
+/// # Registry only (for testing or cloud-native deployments)
+/// JACS_KEY_RESOLUTION=registry
 /// ```
 ///
 /// # Default
 ///
-/// If the environment variable is not set or empty, returns `[Local, Hai]`.
+/// If the environment variable is not set or empty, returns `[Local, Registry]`.
 ///
 /// # Behavior
 ///
@@ -102,7 +105,7 @@ impl FromStr for KeyResolutionSource {
 /// - Duplicate sources are preserved (first occurrence is used)
 /// - If parsing results in an empty list, falls back to the default
 pub fn get_key_resolution_order() -> Vec<KeyResolutionSource> {
-    let default_order = vec![KeyResolutionSource::Local, KeyResolutionSource::Hai];
+    let default_order = vec![KeyResolutionSource::Local, KeyResolutionSource::Registry];
 
     let order_str = match get_env_var("JACS_KEY_RESOLUTION", false) {
         Ok(Some(val)) if !val.is_empty() => val,
@@ -121,7 +124,7 @@ pub fn get_key_resolution_order() -> Vec<KeyResolutionSource> {
 
     if sources.is_empty() {
         warn!(
-            "JACS_KEY_RESOLUTION resulted in empty list after parsing '{}', using default (local,hai)",
+            "JACS_KEY_RESOLUTION resulted in empty list after parsing '{}', using default (local,registry)",
             order_str
         );
         return default_order;
@@ -165,7 +168,7 @@ Environment Variables Supported:
 - JACS_DNS_VALIDATE
 - JACS_DNS_STRICT
 - JACS_DNS_REQUIRED
-- JACS_KEY_RESOLUTION (comma-separated: local,dns,hai - controls key lookup order)
+- JACS_KEY_RESOLUTION (comma-separated: local,dns,registry - controls key lookup order)
 
 Usage:
 ```rust
@@ -258,7 +261,7 @@ macro_rules! env_default {
 }
 
 env_default!(default_storage, "JACS_DEFAULT_STORAGE", "fs");
-env_default!(default_algorithm, "JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+env_default!(default_algorithm, "JACS_AGENT_KEY_ALGORITHM", "pq2025");
 /// Check `JACS_ENABLE_FILESYSTEM_QUARANTINE` (preferred) first,
 /// fall back to legacy `JACS_USE_SECURITY` with a deprecation warning.
 fn default_security() -> Option<String> {
@@ -452,7 +455,7 @@ impl ConfigBuilder {
     /// Build the Config instance.
     ///
     /// Fields not explicitly set will use sensible defaults:
-    /// - `key_algorithm`: "RSA-PSS"
+    /// - `key_algorithm`: "pq2025"
     /// - `key_directory`: "./jacs_keys"
     /// - `data_directory`: "./jacs_data"
     /// - `default_storage`: "fs"
@@ -476,7 +479,7 @@ impl ConfigBuilder {
             jacs_agent_private_key_filename: self.private_key_filename,
             jacs_agent_public_key_filename: self.public_key_filename,
             jacs_agent_key_algorithm: Some(
-                self.key_algorithm.unwrap_or_else(|| "RSA-PSS".to_string()),
+                self.key_algorithm.unwrap_or_else(|| "pq2025".to_string()),
             ),
             jacs_private_key_password: None, // Never store password in config
             jacs_agent_id_and_version: self.agent_id_and_version,
@@ -566,60 +569,109 @@ impl Config {
             .map_err(|e| Box::new(e) as Box<dyn Error>) // Map EnvError to Box<dyn Error>
     }
 
+    fn replace_if_some<T>(target: &mut Option<T>, incoming: Option<T>) {
+        if incoming.is_some() {
+            *target = incoming;
+        }
+    }
+
+    fn env_opt(key: &str) -> Option<String> {
+        match get_env_var(key, false) {
+            Ok(Some(val)) if !val.is_empty() => Some(val),
+            _ => None,
+        }
+    }
+
+    fn env_opt_bool(key: &str) -> Option<bool> {
+        match Self::env_opt(key) {
+            Some(val) => Some(val.to_lowercase() == "true" || val == "1"),
+            None => None,
+        }
+    }
+
+    fn apply_string_override(target: &mut Option<String>, key: &str) {
+        if let Some(val) = Self::env_opt(key) {
+            *target = Some(val);
+        }
+    }
+
+    fn apply_bool_override(target: &mut Option<bool>, key: &str) {
+        if let Some(val) = Self::env_opt_bool(key) {
+            *target = Some(val);
+        }
+    }
+
+    fn apply_parsed_override<T>(target: &mut Option<T>, key: &str)
+    where
+        T: std::str::FromStr,
+    {
+        if let Some(val) = Self::env_opt(key)
+            && let Ok(parsed) = val.parse::<T>()
+        {
+            *target = Some(parsed);
+        }
+    }
+
     /// Merge another config into this one.
     /// Values from `other` will override values in `self` if they are Some.
     pub fn merge(&mut self, other: Config) {
-        if other.jacs_use_security.is_some() {
-            self.jacs_use_security = other.jacs_use_security;
-        }
-        if other.jacs_data_directory.is_some() {
-            self.jacs_data_directory = other.jacs_data_directory;
-        }
-        if other.jacs_key_directory.is_some() {
-            self.jacs_key_directory = other.jacs_key_directory;
-        }
-        if other.jacs_agent_private_key_filename.is_some() {
-            self.jacs_agent_private_key_filename = other.jacs_agent_private_key_filename;
-        }
-        if other.jacs_agent_public_key_filename.is_some() {
-            self.jacs_agent_public_key_filename = other.jacs_agent_public_key_filename;
-        }
-        if other.jacs_agent_key_algorithm.is_some() {
-            self.jacs_agent_key_algorithm = other.jacs_agent_key_algorithm;
-        }
-        if other.jacs_agent_id_and_version.is_some() {
-            self.jacs_agent_id_and_version = other.jacs_agent_id_and_version;
-        }
-        if other.jacs_default_storage.is_some() {
-            self.jacs_default_storage = other.jacs_default_storage;
-        }
-        if other.jacs_agent_domain.is_some() {
-            self.jacs_agent_domain = other.jacs_agent_domain;
-        }
-        if other.jacs_dns_validate.is_some() {
-            self.jacs_dns_validate = other.jacs_dns_validate;
-        }
-        if other.jacs_dns_strict.is_some() {
-            self.jacs_dns_strict = other.jacs_dns_strict;
-        }
-        if other.jacs_dns_required.is_some() {
-            self.jacs_dns_required = other.jacs_dns_required;
-        }
-        if other.observability.is_some() {
-            self.observability = other.observability;
-        }
-        if other.jacs_database_url.is_some() {
-            self.jacs_database_url = other.jacs_database_url;
-        }
-        if other.jacs_database_max_connections.is_some() {
-            self.jacs_database_max_connections = other.jacs_database_max_connections;
-        }
-        if other.jacs_database_min_connections.is_some() {
-            self.jacs_database_min_connections = other.jacs_database_min_connections;
-        }
-        if other.jacs_database_connect_timeout_secs.is_some() {
-            self.jacs_database_connect_timeout_secs = other.jacs_database_connect_timeout_secs;
-        }
+        let Config {
+            schema: _,
+            jacs_use_security,
+            jacs_data_directory,
+            jacs_key_directory,
+            jacs_agent_private_key_filename,
+            jacs_agent_public_key_filename,
+            jacs_agent_key_algorithm,
+            jacs_private_key_password: _,
+            jacs_agent_id_and_version,
+            jacs_default_storage,
+            jacs_agent_domain,
+            jacs_dns_validate,
+            jacs_dns_strict,
+            jacs_dns_required,
+            observability,
+            jacs_database_url,
+            jacs_database_max_connections,
+            jacs_database_min_connections,
+            jacs_database_connect_timeout_secs,
+        } = other;
+
+        Self::replace_if_some(&mut self.jacs_use_security, jacs_use_security);
+        Self::replace_if_some(&mut self.jacs_data_directory, jacs_data_directory);
+        Self::replace_if_some(&mut self.jacs_key_directory, jacs_key_directory);
+        Self::replace_if_some(
+            &mut self.jacs_agent_private_key_filename,
+            jacs_agent_private_key_filename,
+        );
+        Self::replace_if_some(
+            &mut self.jacs_agent_public_key_filename,
+            jacs_agent_public_key_filename,
+        );
+        Self::replace_if_some(&mut self.jacs_agent_key_algorithm, jacs_agent_key_algorithm);
+        Self::replace_if_some(
+            &mut self.jacs_agent_id_and_version,
+            jacs_agent_id_and_version,
+        );
+        Self::replace_if_some(&mut self.jacs_default_storage, jacs_default_storage);
+        Self::replace_if_some(&mut self.jacs_agent_domain, jacs_agent_domain);
+        Self::replace_if_some(&mut self.jacs_dns_validate, jacs_dns_validate);
+        Self::replace_if_some(&mut self.jacs_dns_strict, jacs_dns_strict);
+        Self::replace_if_some(&mut self.jacs_dns_required, jacs_dns_required);
+        Self::replace_if_some(&mut self.observability, observability);
+        Self::replace_if_some(&mut self.jacs_database_url, jacs_database_url);
+        Self::replace_if_some(
+            &mut self.jacs_database_max_connections,
+            jacs_database_max_connections,
+        );
+        Self::replace_if_some(
+            &mut self.jacs_database_min_connections,
+            jacs_database_min_connections,
+        );
+        Self::replace_if_some(
+            &mut self.jacs_database_connect_timeout_secs,
+            jacs_database_connect_timeout_secs,
+        );
     }
 
     /// Apply environment variable overrides to this config.
@@ -642,83 +694,45 @@ impl Config {
     /// Note: JACS_PRIVATE_KEY_PASSWORD is intentionally NOT loaded into config.
     /// It should be read directly from environment when needed for security.
     pub fn apply_env_overrides(&mut self) {
-        // Helper to get env var as Option<String>
-        fn env_opt(key: &str) -> Option<String> {
-            match get_env_var(key, false) {
-                Ok(Some(val)) if !val.is_empty() => Some(val),
-                _ => None,
-            }
-        }
+        Self::apply_string_override(&mut self.jacs_use_security, "JACS_USE_SECURITY");
+        Self::apply_string_override(&mut self.jacs_data_directory, "JACS_DATA_DIRECTORY");
+        Self::apply_string_override(&mut self.jacs_key_directory, "JACS_KEY_DIRECTORY");
+        Self::apply_string_override(
+            &mut self.jacs_agent_private_key_filename,
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+        );
+        Self::apply_string_override(
+            &mut self.jacs_agent_public_key_filename,
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        );
+        Self::apply_string_override(
+            &mut self.jacs_agent_key_algorithm,
+            "JACS_AGENT_KEY_ALGORITHM",
+        );
+        Self::apply_string_override(
+            &mut self.jacs_agent_id_and_version,
+            "JACS_AGENT_ID_AND_VERSION",
+        );
+        Self::apply_string_override(&mut self.jacs_default_storage, "JACS_DEFAULT_STORAGE");
+        Self::apply_string_override(&mut self.jacs_agent_domain, "JACS_AGENT_DOMAIN");
 
-        // Helper to get env var as Option<bool>
-        fn env_opt_bool(key: &str) -> Option<bool> {
-            match get_env_var(key, false) {
-                Ok(Some(val)) if !val.is_empty() => {
-                    Some(val.to_lowercase() == "true" || val == "1")
-                }
-                _ => None,
-            }
-        }
+        Self::apply_bool_override(&mut self.jacs_dns_validate, "JACS_DNS_VALIDATE");
+        Self::apply_bool_override(&mut self.jacs_dns_strict, "JACS_DNS_STRICT");
+        Self::apply_bool_override(&mut self.jacs_dns_required, "JACS_DNS_REQUIRED");
 
-        // Apply string overrides
-        if let Some(val) = env_opt("JACS_USE_SECURITY") {
-            self.jacs_use_security = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_DATA_DIRECTORY") {
-            self.jacs_data_directory = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_KEY_DIRECTORY") {
-            self.jacs_key_directory = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_PRIVATE_KEY_FILENAME") {
-            self.jacs_agent_private_key_filename = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_PUBLIC_KEY_FILENAME") {
-            self.jacs_agent_public_key_filename = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_KEY_ALGORITHM") {
-            self.jacs_agent_key_algorithm = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_ID_AND_VERSION") {
-            self.jacs_agent_id_and_version = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_DEFAULT_STORAGE") {
-            self.jacs_default_storage = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_AGENT_DOMAIN") {
-            self.jacs_agent_domain = Some(val);
-        }
-
-        // Apply boolean overrides
-        if let Some(val) = env_opt_bool("JACS_DNS_VALIDATE") {
-            self.jacs_dns_validate = Some(val);
-        }
-        if let Some(val) = env_opt_bool("JACS_DNS_STRICT") {
-            self.jacs_dns_strict = Some(val);
-        }
-        if let Some(val) = env_opt_bool("JACS_DNS_REQUIRED") {
-            self.jacs_dns_required = Some(val);
-        }
-
-        // Database configuration
-        if let Some(val) = env_opt("JACS_DATABASE_URL") {
-            self.jacs_database_url = Some(val);
-        }
-        if let Some(val) = env_opt("JACS_DATABASE_MAX_CONNECTIONS") {
-            if let Ok(n) = val.parse::<u32>() {
-                self.jacs_database_max_connections = Some(n);
-            }
-        }
-        if let Some(val) = env_opt("JACS_DATABASE_MIN_CONNECTIONS") {
-            if let Ok(n) = val.parse::<u32>() {
-                self.jacs_database_min_connections = Some(n);
-            }
-        }
-        if let Some(val) = env_opt("JACS_DATABASE_CONNECT_TIMEOUT_SECS") {
-            if let Ok(n) = val.parse::<u64>() {
-                self.jacs_database_connect_timeout_secs = Some(n);
-            }
-        }
+        Self::apply_string_override(&mut self.jacs_database_url, "JACS_DATABASE_URL");
+        Self::apply_parsed_override(
+            &mut self.jacs_database_max_connections,
+            "JACS_DATABASE_MAX_CONNECTIONS",
+        );
+        Self::apply_parsed_override(
+            &mut self.jacs_database_min_connections,
+            "JACS_DATABASE_MIN_CONNECTIONS",
+        );
+        Self::apply_parsed_override(
+            &mut self.jacs_database_connect_timeout_secs,
+            "JACS_DATABASE_CONNECT_TIMEOUT_SECS",
+        );
 
         // Note: Password is intentionally NOT loaded from env into config
         // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
@@ -734,7 +748,7 @@ impl Config {
             jacs_key_directory: Some("./jacs_keys".to_string()),
             jacs_agent_private_key_filename: None,
             jacs_agent_public_key_filename: None,
-            jacs_agent_key_algorithm: Some("RSA-PSS".to_string()),
+            jacs_agent_key_algorithm: Some("pq2025".to_string()),
             jacs_private_key_password: None,
             jacs_agent_id_and_version: None,
             jacs_default_storage: Some("fs".to_string()),
@@ -948,9 +962,9 @@ pub fn split_id(input: &str) -> Option<(&str, &str)> {
 const CONFIG_FIELD_HELP: &[(&str, &str)] = &[
     (
         "jacs_agent_key_algorithm",
-        "Expected one of: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025",
+        "Expected one of: RSA-PSS, ring-Ed25519, pq2025",
     ),
-    ("jacs_default_storage", "Expected one of: fs, aws, hai"),
+    ("jacs_default_storage", "Expected one of: fs, aws"),
     (
         "jacs_use_security",
         "Expected 'true' or 'false' as a string",
@@ -1048,9 +1062,9 @@ fn format_validation_error(error: &jsonschema::ValidationError, instance: &Value
     // Special handling for enum violations
     if error_str.contains("is not one of") {
         if field_name.contains("jacs_agent_key_algorithm") {
-            msg.push_str(". Valid algorithms: RSA-PSS, ring-Ed25519, pq-dilithium, pq2025");
+            msg.push_str(". Valid algorithms: RSA-PSS, ring-Ed25519, pq2025");
         } else if field_name.contains("jacs_default_storage") {
-            msg.push_str(". Valid storage options: fs, aws, hai");
+            msg.push_str(". Valid storage options: fs, aws");
         }
     }
 
@@ -1180,7 +1194,7 @@ pub fn set_env_vars(
     let jacs_agent_private_key_filename = config
         .jacs_agent_private_key_filename
         .as_ref()
-        .unwrap_or(&"rsa_pss_private.pem".to_string())
+        .unwrap_or(&"jacs.private.pem.enc".to_string())
         .clone();
     set_env_var_override(
         "JACS_AGENT_PRIVATE_KEY_FILENAME",
@@ -1191,7 +1205,7 @@ pub fn set_env_vars(
     let jacs_agent_public_key_filename = config
         .jacs_agent_public_key_filename
         .as_ref()
-        .unwrap_or(&"rsa_pss_public.pem".to_string())
+        .unwrap_or(&"jacs.public.pem".to_string())
         .clone();
     set_env_var_override(
         "JACS_AGENT_PUBLIC_KEY_FILENAME",
@@ -1202,7 +1216,7 @@ pub fn set_env_vars(
     let jacs_agent_key_algorithm = config
         .jacs_agent_key_algorithm
         .as_ref()
-        .unwrap_or(&"RSA-PSS".to_string())
+        .unwrap_or(&"pq2025".to_string())
         .clone();
     set_env_var_override(
         "JACS_AGENT_KEY_ALGORITHM",
@@ -1515,7 +1529,7 @@ mod tests {
         assert_eq!(config.jacs_use_security, Some("false".to_string()));
         assert_eq!(config.jacs_data_directory, Some("./jacs_data".to_string()));
         assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
-        assert_eq!(config.jacs_agent_key_algorithm, Some("RSA-PSS".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("pq2025".to_string()));
         assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
         // Password should never be in config
         assert!(config.jacs_private_key_password.is_none());
@@ -1728,6 +1742,44 @@ mod tests {
     }
 
     #[test]
+    #[serial]
+    fn test_apply_env_overrides_ignores_empty_string_values() {
+        clear_jacs_env_vars();
+
+        let mut config = Config::with_defaults();
+        let original_data_dir = config.jacs_data_directory.clone();
+
+        set_env_var("JACS_DATA_DIRECTORY", "").unwrap();
+        config.apply_env_overrides();
+
+        assert_eq!(config.jacs_data_directory, original_data_dir);
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
+    #[serial]
+    fn test_apply_env_overrides_ignores_invalid_database_numbers() {
+        clear_jacs_env_vars();
+
+        let mut config = Config::with_defaults();
+        config.jacs_database_max_connections = Some(10);
+        config.jacs_database_min_connections = Some(2);
+        config.jacs_database_connect_timeout_secs = Some(30);
+
+        set_env_var("JACS_DATABASE_MAX_CONNECTIONS", "not-a-number").unwrap();
+        set_env_var("JACS_DATABASE_MIN_CONNECTIONS", "bad").unwrap();
+        set_env_var("JACS_DATABASE_CONNECT_TIMEOUT_SECS", "oops").unwrap();
+        config.apply_env_overrides();
+
+        assert_eq!(config.jacs_database_max_connections, Some(10));
+        assert_eq!(config.jacs_database_min_connections, Some(2));
+        assert_eq!(config.jacs_database_connect_timeout_secs, Some(30));
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
     fn test_config_builder_defaults() {
         // Builder with no options set should produce sensible defaults
         let config = Config::builder().build();
@@ -1735,7 +1787,7 @@ mod tests {
         assert_eq!(config.jacs_use_security, Some("false".to_string()));
         assert_eq!(config.jacs_data_directory, Some("./jacs_data".to_string()));
         assert_eq!(config.jacs_key_directory, Some("./jacs_keys".to_string()));
-        assert_eq!(config.jacs_agent_key_algorithm, Some("RSA-PSS".to_string()));
+        assert_eq!(config.jacs_agent_key_algorithm, Some("pq2025".to_string()));
         assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
         // Password should never be in config
         assert!(config.jacs_private_key_password.is_none());
@@ -2020,16 +2072,25 @@ mod tests {
             KeyResolutionSource::Dns
         );
         assert_eq!(
+            KeyResolutionSource::from_str("registry").unwrap(),
+            KeyResolutionSource::Registry
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str("REGISTRY").unwrap(),
+            KeyResolutionSource::Registry
+        );
+        assert_eq!(
+            KeyResolutionSource::from_str(" registry ").unwrap(),
+            KeyResolutionSource::Registry
+        );
+        // Backward compat: "hai" maps to Registry
+        assert_eq!(
             KeyResolutionSource::from_str("hai").unwrap(),
-            KeyResolutionSource::Hai
+            KeyResolutionSource::Registry
         );
         assert_eq!(
             KeyResolutionSource::from_str("HAI").unwrap(),
-            KeyResolutionSource::Hai
-        );
-        assert_eq!(
-            KeyResolutionSource::from_str(" hai ").unwrap(),
-            KeyResolutionSource::Hai
+            KeyResolutionSource::Registry
         );
 
         // Invalid sources
@@ -2041,7 +2102,7 @@ mod tests {
     fn test_key_resolution_source_display() {
         assert_eq!(format!("{}", KeyResolutionSource::Local), "local");
         assert_eq!(format!("{}", KeyResolutionSource::Dns), "dns");
-        assert_eq!(format!("{}", KeyResolutionSource::Hai), "hai");
+        assert_eq!(format!("{}", KeyResolutionSource::Registry), "registry");
     }
 
     #[test]
@@ -2053,7 +2114,7 @@ mod tests {
         let order = get_key_resolution_order();
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
     }
 
@@ -2071,12 +2132,24 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_get_key_resolution_order_hai_only() {
+    fn test_get_key_resolution_order_registry_only() {
+        clear_jacs_env_vars();
+        set_env_var("JACS_KEY_RESOLUTION", "registry").unwrap();
+
+        let order = get_key_resolution_order();
+        assert_eq!(order, vec![KeyResolutionSource::Registry]);
+
+        let _ = clear_env_var("JACS_KEY_RESOLUTION");
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_key_resolution_order_hai_backward_compat() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "hai").unwrap();
 
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![KeyResolutionSource::Hai]);
+        assert_eq!(order, vec![KeyResolutionSource::Registry]);
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }
@@ -2085,7 +2158,7 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_with_dns() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", "local,dns,hai").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", "local,dns,registry").unwrap();
 
         let order = get_key_resolution_order();
         assert_eq!(
@@ -2093,7 +2166,7 @@ mod tests {
             vec![
                 KeyResolutionSource::Local,
                 KeyResolutionSource::Dns,
-                KeyResolutionSource::Hai,
+                KeyResolutionSource::Registry,
             ]
         );
 
@@ -2104,7 +2177,7 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_case_insensitive() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", "LOCAL,DNS,HAI").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", "LOCAL,DNS,REGISTRY").unwrap();
 
         let order = get_key_resolution_order();
         assert_eq!(
@@ -2112,7 +2185,7 @@ mod tests {
             vec![
                 KeyResolutionSource::Local,
                 KeyResolutionSource::Dns,
-                KeyResolutionSource::Hai,
+                KeyResolutionSource::Registry,
             ]
         );
 
@@ -2123,13 +2196,13 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_skips_invalid() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", "local,invalid,hai").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", "local,invalid,registry").unwrap();
 
         let order = get_key_resolution_order();
         // Should skip "invalid" but include valid sources
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2145,7 +2218,7 @@ mod tests {
         // Should fall back to default when all sources are invalid
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2161,7 +2234,7 @@ mod tests {
         // Should fall back to default for empty string
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2171,12 +2244,12 @@ mod tests {
     #[serial]
     fn test_get_key_resolution_order_whitespace_handling() {
         clear_jacs_env_vars();
-        set_env_var("JACS_KEY_RESOLUTION", " local , hai ").unwrap();
+        set_env_var("JACS_KEY_RESOLUTION", " local , registry ").unwrap();
 
         let order = get_key_resolution_order();
         assert_eq!(
             order,
-            vec![KeyResolutionSource::Local, KeyResolutionSource::Hai]
+            vec![KeyResolutionSource::Local, KeyResolutionSource::Registry]
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");

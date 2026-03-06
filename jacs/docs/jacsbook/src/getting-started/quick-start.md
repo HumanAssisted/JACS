@@ -4,7 +4,23 @@ Get signing and verifying in under a minute. No manual setup needed.
 
 ## Zero-Config Quick Start
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. One call and you're signing.
+{{#include ../_snippets/quickstart-persistent-agent.md}}
+
+### Password bootstrap
+
+Rust CLI quickstart requires exactly one explicit password source:
+
+```bash
+# Recommended
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+# CLI convenience (file contains only the password)
+export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+```
+
+If both `JACS_PRIVATE_KEY_PASSWORD` and `JACS_PASSWORD_FILE` are set, CLI fails fast to avoid ambiguity.
+Python/Node quickstart can auto-generate a secure password if `JACS_PRIVATE_KEY_PASSWORD` is unset. Set `JACS_SAVE_PASSWORD_FILE=true` if you want the generated password persisted to `./jacs_keys/.jacs_password`. In production, set `JACS_PRIVATE_KEY_PASSWORD` explicitly.
+One call and you're signing.
 
 <div class="tabs">
 <div class="tab">
@@ -19,7 +35,8 @@ pip install jacs
 ```python
 import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
@@ -40,7 +57,11 @@ npm install @hai.ai/jacs
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
 
-await jacs.quickstart();
+const info = await jacs.quickstart({
+  name: 'my-agent',
+  domain: 'my-agent.example.com',
+});
+console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
@@ -60,13 +81,13 @@ cargo install jacs --features cli
 
 ```bash
 # Info mode -- prints agent ID and algorithm
-jacs quickstart
+jacs quickstart --name my-agent --domain my-agent.example.com
 
 # Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --sign
+echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
 
 # Sign a file
-jacs quickstart --sign --file mydata.json
+jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
 ```
 
 </div>
@@ -77,9 +98,29 @@ Pass `algorithm="ring-Ed25519"` (or `{ algorithm: 'ring-Ed25519' }` in JS, `--al
 
 > **That's it -- you're signing.** For most use cases, the quick start above is all you need. Jump to [Which integration should I use?](../getting-started/decision-tree.md) to find the right framework adapter, or read on for manual agent setup.
 
+### macOS Homebrew install (Rust CLI)
+
+```bash
+brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+```
+
+### MCP quick start (Rust CLI)
+
+```bash
+# Install platform-matched jacs-mcp binary
+jacs mcp install
+
+# Run stdio MCP server
+jacs mcp run
+
+# Optional fallback if you want cargo-based install
+jacs mcp install --from-cargo
+```
+
 ## Advanced: Explicit Agent Setup
 
-For full control over agent creation, you can set up an agent manually with a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable. This is optional since `quickstart()` already creates a persistent agent.
+For full control over agent creation, you can set up an agent manually with a config file and `JACS_PRIVATE_KEY_PASSWORD` environment variable. This is optional since `quickstart(...)` already creates a persistent agent.
 
 <div class="tabs">
 <div class="tab">
@@ -167,7 +208,7 @@ print(f"Valid: {result.valid}")
 
 ## Programmatic Agent Creation (v0.6.0+)
 
-For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use `create()`. For most cases, `quickstart()` above is simpler and also creates a persistent agent.
+For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use `create()`. For most cases, `quickstart(...)` above is simpler and also creates a persistent agent.
 
 <div class="tabs">
 <div class="tab">
@@ -476,13 +517,14 @@ Congratulations! You've successfully:
 Now that you have the basics working:
 
 1. **[Verify Signed Documents](verification.md)** - Verify any document from CLI, Python, or Node.js -- no agent required
-2. **[Framework Adapters](../python/adapters.md)** - Add auto-signing to LangChain, FastAPI, CrewAI, or Anthropic SDK in 1-3 lines
-3. **[Multi-Agent Agreements](../rust/agreements.md)** - Cross-trust-boundary verification with quorum and timeout
-4. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
-5. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
-6. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
-7. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
-8. **[Real Examples](../examples/integrations.md)** - See production patterns
+2. **[A2A Quickstart](../guides/a2a-quickstart.md)** - Make your agent discoverable by other A2A agents in minutes
+3. **[Framework Adapters](../python/adapters.md)** - Add auto-signing to LangChain, FastAPI, CrewAI, or Anthropic SDK in 1-3 lines
+4. **[Multi-Agent Agreements](../rust/agreements.md)** - Cross-trust-boundary verification with quorum and timeout
+5. **[Rust Deep Dive](../rust/library.md)** - Learn the full Rust API
+6. **[Node.js Integration](../nodejs/mcp.md)** - Add MCP support
+7. **[Python MCP](../python/mcp.md)** - Build authenticated MCP servers
+8. **[Production Security](../advanced/security.md)** - Harden runtime settings and key management
+9. **[Real Examples](../examples/integrations.md)** - See production patterns
 
 ## Troubleshooting
 
@@ -492,55 +534,3 @@ Now that you have the basics working:
 **Documents not found**: Check the data directory configuration
 
 Need help? Check the [GitHub issues](https://github.com/HumanAssisted/JACS/issues) or review the detailed implementation guides.
-
-<style>
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  max-width: 100%;
-  font-family: sans-serif;
-}
-
-.tab {
-  order: 1;
-  flex-grow: 1;
-}
-
-.tab input[type="radio"] {
-  display: none;
-}
-
-.tab label {
-  display: block;
-  padding: 1em;
-  background: #f0f0f0;
-  color: #666;
-  border: 1px solid #ddd;
-  cursor: pointer;
-  margin-bottom: -1px;
-}
-
-.tab label:hover {
-  background: #e0e0e0;
-}
-
-.tab input:checked + label {
-  background: #007acc;
-  color: white;
-}
-
-.tab .content {
-  order: 99;
-  flex-grow: 1;
-  width: 100%;
-  display: none;
-  padding: 1em;
-  background: white;
-  border: 1px solid #ddd;
-  border-top: none;
-}
-
-.tab input:checked ~ .content {
-  display: block;
-}
-</style> 

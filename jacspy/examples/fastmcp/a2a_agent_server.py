@@ -254,7 +254,7 @@ def server_info():
         "a2a": {
             "protocolVersion": "1.0",
             "agentCardUrl": "/.well-known/agent.json",
-            "extensions": ["urn:hai.ai:jacs-provenance-v1"]
+            "extensions": ["urn:jacs:provenance-v1"]
         },
         "jacs": {
             "version": jacs.__version__,

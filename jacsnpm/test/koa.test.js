@@ -163,6 +163,31 @@ describe('JACS Koa Middleware', function () {
       expect(next.calledOnce).to.be.true;
     });
 
+    (available ? it : it.skip)('should verify parsed JSON object bodies', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { from: 'parsed-body' },
+          signerId: 'agent-abc',
+          timestamp: '2025-06-01T00:00:00Z',
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = koaModule.jacsKoaMiddleware({ client, verify: true });
+
+      const parsedBody = { jacsId: 'x', jacsSignature: {}, content: { ok: true } };
+      const ctx = mockCtx({ method: 'POST', request: { body: parsedBody } });
+      const next = mockNext();
+
+      await mw(ctx, next);
+
+      expect(client.verify.calledOnce).to.be.true;
+      expect(client.verify.firstCall.args[0]).to.equal(JSON.stringify(parsedBody));
+      expect(ctx.state.jacsPayload).to.deep.equal({ from: 'parsed-body' });
+      expect(next.calledOnce).to.be.true;
+    });
+
     (available ? it : it.skip)('should verify PUT requests', async () => {
       const client = createMockClient();
       const mw = koaModule.jacsKoaMiddleware({ client });
@@ -226,6 +251,31 @@ describe('JACS Koa Middleware', function () {
       expect(ctx.status).to.equal(401);
       expect(ctx.body).to.have.property('error', 'JACS verification failed');
       expect(ctx.body.details).to.include('Signature mismatch');
+      expect(next.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should return 401 for invalid parsed object body when optional is false', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: false,
+          signerId: '',
+          timestamp: '',
+          attachments: [],
+          errors: ['Signature mismatch'],
+        },
+      });
+      const mw = koaModule.jacsKoaMiddleware({ client, optional: false });
+
+      const parsedBody = { bad: 'data' };
+      const ctx = mockCtx({ method: 'POST', request: { body: parsedBody } });
+      const next = mockNext();
+
+      await mw(ctx, next);
+
+      expect(client.verify.calledOnce).to.be.true;
+      expect(client.verify.firstCall.args[0]).to.equal(JSON.stringify(parsedBody));
+      expect(ctx.status).to.equal(401);
+      expect(ctx.body).to.have.property('error', 'JACS verification failed');
       expect(next.called).to.be.false;
     });
 
@@ -302,6 +352,159 @@ describe('JACS Koa Middleware', function () {
 
       expect(ctx.state.jacsPayload).to.deep.equal({ ok: true });
       expect(next.calledOnce).to.be.true;
+    });
+  });
+
+  // ---- Auth replay protection (opt-in) ----
+
+  describe('authReplay', () => {
+    (available ? it : it.skip)('should reject replayed signed requests when enabled', async () => {
+      const nowIso = new Date().toISOString();
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'pay', amount: 100 },
+          signerId: 'agent-replay',
+          timestamp: nowIso,
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = koaModule.jacsKoaMiddleware({
+        client,
+        authReplay: { enabled: true, maxAgeSeconds: 360000, clockSkewSeconds: 5 },
+      });
+
+      const replayBody = JSON.stringify({
+        jacsId: 'doc-replay:1',
+        jacsSignature: {
+          agentID: 'agent-replay',
+          date: nowIso,
+          signature: 'same-signature',
+        },
+        content: { action: 'pay', amount: 100 },
+      });
+
+      const ctx1 = mockCtx({ method: 'POST', request: { body: replayBody } });
+      const next1 = mockNext();
+      await mw(ctx1, next1);
+      expect(ctx1.status).to.equal(200);
+      expect(next1.calledOnce).to.be.true;
+
+      const ctx2 = mockCtx({ method: 'POST', request: { body: replayBody } });
+      const next2 = mockNext();
+      await mw(ctx2, next2);
+      expect(ctx2.status).to.equal(401);
+      expect(ctx2.body).to.have.property('error', 'JACS verification failed');
+      expect(String(ctx2.body.details?.[0] || '')).to.include('replay');
+      expect(next2.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should reject expired timestamps when enabled', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'expired' },
+          signerId: 'agent-expired',
+          timestamp: '2020-01-01T00:00:00Z',
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = koaModule.jacsKoaMiddleware({
+        client,
+        authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 0 },
+      });
+
+      const expiredBody = JSON.stringify({
+        jacsId: 'doc-expired:1',
+        jacsSignature: {
+          agentID: 'agent-expired',
+          date: '2020-01-01T00:00:00Z',
+          signature: 'expired-signature',
+        },
+        content: { action: 'expired' },
+      });
+
+      const ctx = mockCtx({ method: 'POST', request: { body: expiredBody } });
+      const next = mockNext();
+      await mw(ctx, next);
+      expect(ctx.status).to.equal(401);
+      expect(String(ctx.body?.details?.[0] || '')).to.include('expired');
+      expect(next.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should reject future timestamps beyond skew when enabled', async () => {
+      const futureIso = new Date(Date.now() + 60_000).toISOString();
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'future' },
+          signerId: 'agent-future',
+          timestamp: futureIso,
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = koaModule.jacsKoaMiddleware({
+        client,
+        authReplay: { enabled: true, maxAgeSeconds: 60, clockSkewSeconds: 0 },
+      });
+
+      const body = JSON.stringify({
+        jacsId: 'doc-future:1',
+        jacsSignature: {
+          agentID: 'agent-future',
+          date: futureIso,
+          signature: 'future-signature',
+        },
+        content: { action: 'future' },
+      });
+
+      const ctx = mockCtx({ method: 'POST', request: { body } });
+      const next = mockNext();
+      await mw(ctx, next);
+
+      expect(ctx.status).to.equal(401);
+      expect(String(ctx.body?.details?.[0] || '')).to.include('future');
+      expect(next.called).to.be.false;
+    });
+
+    (available ? it : it.skip)('should allow duplicate signed requests when disabled', async () => {
+      const client = createMockClient({
+        verifyResult: {
+          valid: true,
+          data: { action: 'duplicate-ok' },
+          signerId: 'agent-dup',
+          timestamp: '2025-06-01T00:00:00Z',
+          attachments: [],
+          errors: [],
+        },
+      });
+      const mw = koaModule.jacsKoaMiddleware({ client, authReplay: false });
+
+      const body = JSON.stringify({
+        jacsId: 'doc-dup:1',
+        jacsSignature: {
+          agentID: 'agent-dup',
+          date: '2025-06-01T00:00:00Z',
+          signature: 'dup-signature',
+        },
+        content: { action: 'duplicate-ok' },
+      });
+
+      const ctx1 = mockCtx({ method: 'POST', request: { body } });
+      const next1 = mockNext();
+      await mw(ctx1, next1);
+
+      const ctx2 = mockCtx({ method: 'POST', request: { body } });
+      const next2 = mockNext();
+      await mw(ctx2, next2);
+
+      expect(ctx1.status).to.equal(200);
+      expect(ctx2.status).to.equal(200);
+      expect(next1.calledOnce).to.be.true;
+      expect(next2.calledOnce).to.be.true;
     });
   });
 
@@ -475,16 +678,18 @@ describe('JACS Koa Middleware', function () {
   // ---- 10. Non-string body on POST ----
 
   describe('non-string body', () => {
-    (available ? it : it.skip)('should call next when POST body is an object (not string)', async () => {
+    (available ? it : it.skip)('should verify parsed object bodies on POST', async () => {
       const client = createMockClient();
       const mw = koaModule.jacsKoaMiddleware({ client, optional: false });
 
-      const ctx = mockCtx({ method: 'POST', request: { body: { parsed: true } } });
+      const parsedBody = { parsed: true };
+      const ctx = mockCtx({ method: 'POST', request: { body: parsedBody } });
       const next = mockNext();
 
       await mw(ctx, next);
 
-      expect(client.verify.called).to.be.false;
+      expect(client.verify.calledOnce).to.be.true;
+      expect(client.verify.firstCall.args[0]).to.equal(JSON.stringify(parsedBody));
       expect(next.calledOnce).to.be.true;
     });
   });

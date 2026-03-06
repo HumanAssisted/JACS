@@ -363,23 +363,6 @@ impl JacsAgent {
             .to_napi()
     }
 
-    /// Register with HAI.ai (sync, blocks event loop).
-    #[napi(js_name = "registerWithHaiSync")]
-    pub fn register_with_hai_sync(
-        &self,
-        api_key: Option<String>,
-        hai_url: Option<String>,
-        preview: Option<bool>,
-    ) -> Result<String> {
-        self.inner
-            .register_with_hai(
-                api_key.as_deref(),
-                hai_url.as_deref().unwrap_or("https://hai.ai"),
-                preview.unwrap_or(false),
-            )
-            .to_napi()
-    }
-
     /// Returns diagnostic information as a JSON string.
     /// Lightweight — no async variant needed.
     #[napi]
@@ -700,7 +683,7 @@ impl JacsAgent {
         })
     }
 
-    /// Get setup instructions for DNS records, DNSSEC, and HAI registration.
+    /// Get setup instructions for DNS records and DNSSEC.
     #[napi(js_name = "getSetupInstructions", ts_return_type = "Promise<string>")]
     pub fn get_setup_instructions_async(
         &self,
@@ -712,27 +695,6 @@ impl JacsAgent {
             agent,
             func: Some(Box::new(move |a| {
                 a.get_setup_instructions(&domain, ttl.unwrap_or(3600))
-            })),
-        })
-    }
-
-    /// Register this agent with HAI.ai.
-    #[napi(js_name = "registerWithHai", ts_return_type = "Promise<string>")]
-    pub fn register_with_hai_async(
-        &self,
-        api_key: Option<String>,
-        hai_url: Option<String>,
-        preview: Option<bool>,
-    ) -> AsyncTask<AgentStringTask> {
-        let agent = self.inner.clone();
-        AsyncTask::new(AgentStringTask {
-            agent,
-            func: Some(Box::new(move |a| {
-                a.register_with_hai(
-                    api_key.as_deref(),
-                    hai_url.as_deref().unwrap_or("https://hai.ai"),
-                    preview.unwrap_or(false),
-                )
             })),
         })
     }
@@ -759,6 +721,293 @@ impl JacsAgent {
             agent,
             func: Some(Box::new(move |a| {
                 a.reencrypt_key(&old_password, &new_password)
+            })),
+        })
+    }
+
+    // =========================================================================
+    // A2A Protocol Methods (sync)
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card (sync, blocks event loop).
+    #[napi(js_name = "exportAgentCardSync")]
+    pub fn export_agent_card_sync(&self) -> Result<String> {
+        self.inner.export_agent_card().to_napi()
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature (sync).
+    #[napi(js_name = "wrapA2aArtifactSync")]
+    #[allow(deprecated)]
+    pub fn wrap_a2a_artifact_sync(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .wrap_a2a_artifact(
+                &artifact_json,
+                &artifact_type,
+                parent_signatures_json.as_deref(),
+            )
+            .to_napi()
+    }
+
+    /// Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync.
+    #[napi(js_name = "signArtifactSync")]
+    pub fn sign_artifact_sync(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .sign_artifact(
+                &artifact_json,
+                &artifact_type,
+                parent_signatures_json.as_deref(),
+            )
+            .to_napi()
+    }
+
+    /// Verify a JACS-wrapped A2A artifact (sync).
+    #[napi(js_name = "verifyA2aArtifactSync")]
+    pub fn verify_a2a_artifact_sync(&self, wrapped_json: String) -> Result<String> {
+        self.inner.verify_a2a_artifact(&wrapped_json).to_napi()
+    }
+
+    /// Verify a JACS-wrapped A2A artifact with policy-aware trust assessment (sync).
+    #[napi(js_name = "verifyA2aArtifactWithPolicySync")]
+    pub fn verify_a2a_artifact_with_policy_sync(
+        &self,
+        wrapped_json: String,
+        agent_card_json: String,
+        policy: String,
+    ) -> Result<String> {
+        self.inner
+            .verify_a2a_artifact_with_policy(&wrapped_json, &agent_card_json, &policy)
+            .to_napi()
+    }
+
+    /// Assess a remote agent's trust level based on its Agent Card and a policy (sync).
+    #[napi(js_name = "assessA2aAgentSync")]
+    pub fn assess_a2a_agent_sync(&self, agent_card_json: String, policy: String) -> Result<String> {
+        self.inner
+            .assess_a2a_agent(&agent_card_json, &policy)
+            .to_napi()
+    }
+
+    // =========================================================================
+    // A2A Protocol Methods (async)
+    // =========================================================================
+
+    /// Export this agent as an A2A Agent Card.
+    #[napi(js_name = "exportAgentCard", ts_return_type = "Promise<string>")]
+    pub fn export_agent_card_async(&self) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.export_agent_card())),
+        })
+    }
+
+    /// Wrap an A2A artifact with JACS provenance signature.
+    #[napi(js_name = "wrapA2aArtifact", ts_return_type = "Promise<string>")]
+    pub fn wrap_a2a_artifact_async(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                #[allow(deprecated)]
+                a.wrap_a2a_artifact(
+                    &artifact_json,
+                    &artifact_type,
+                    parent_signatures_json.as_deref(),
+                )
+            })),
+        })
+    }
+
+    /// Sign an A2A artifact. Alias for wrapA2aArtifact.
+    #[napi(js_name = "signArtifact", ts_return_type = "Promise<string>")]
+    pub fn sign_artifact_async(
+        &self,
+        artifact_json: String,
+        artifact_type: String,
+        parent_signatures_json: Option<String>,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.sign_artifact(
+                    &artifact_json,
+                    &artifact_type,
+                    parent_signatures_json.as_deref(),
+                )
+            })),
+        })
+    }
+
+    /// Verify a JACS-wrapped A2A artifact.
+    #[napi(js_name = "verifyA2aArtifact", ts_return_type = "Promise<string>")]
+    pub fn verify_a2a_artifact_async(&self, wrapped_json: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.verify_a2a_artifact(&wrapped_json))),
+        })
+    }
+
+    /// Verify a JACS-wrapped A2A artifact with policy-aware trust assessment.
+    #[napi(
+        js_name = "verifyA2aArtifactWithPolicy",
+        ts_return_type = "Promise<string>"
+    )]
+    pub fn verify_a2a_artifact_with_policy_async(
+        &self,
+        wrapped_json: String,
+        agent_card_json: String,
+        policy: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.verify_a2a_artifact_with_policy(&wrapped_json, &agent_card_json, &policy)
+            })),
+        })
+    }
+
+    /// Assess a remote agent's trust level based on its Agent Card and a policy.
+    #[napi(js_name = "assessA2aAgent", ts_return_type = "Promise<string>")]
+    pub fn assess_a2a_agent_async(
+        &self,
+        agent_card_json: String,
+        policy: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.assess_a2a_agent(&agent_card_json, &policy)
+            })),
+        })
+    }
+}
+
+// =============================================================================
+// Attestation methods on JacsAgent (feature-gated, separate impl block)
+// =============================================================================
+// In a separate `impl` block so the #[napi] macro only generates registration
+// code when the attestation feature is enabled.
+
+#[cfg(feature = "attestation")]
+#[napi]
+impl JacsAgent {
+    /// Create a signed attestation document (sync).
+    #[napi(js_name = "createAttestationSync")]
+    pub fn create_attestation_sync(&self, params_json: String) -> Result<String> {
+        self.inner.create_attestation(&params_json).to_napi()
+    }
+
+    /// Verify an attestation -- local tier (sync).
+    #[napi(js_name = "verifyAttestationSync")]
+    pub fn verify_attestation_sync(&self, document_key: String) -> Result<String> {
+        self.inner.verify_attestation(&document_key).to_napi()
+    }
+
+    /// Verify an attestation -- full tier (sync).
+    #[napi(js_name = "verifyAttestationFullSync")]
+    pub fn verify_attestation_full_sync(&self, document_key: String) -> Result<String> {
+        self.inner.verify_attestation_full(&document_key).to_napi()
+    }
+
+    /// Lift a signed document to attestation (sync).
+    #[napi(js_name = "liftToAttestationSync")]
+    pub fn lift_to_attestation_sync(
+        &self,
+        signed_doc_json: String,
+        claims_json: String,
+    ) -> Result<String> {
+        self.inner
+            .lift_to_attestation(&signed_doc_json, &claims_json)
+            .to_napi()
+    }
+
+    /// Export an attestation as a DSSE envelope (sync).
+    #[napi(js_name = "exportAttestationDsseSync")]
+    pub fn export_attestation_dsse_sync(&self, attestation_json: String) -> Result<String> {
+        self.inner
+            .export_attestation_dsse(&attestation_json)
+            .to_napi()
+    }
+
+    /// Create a signed attestation document (async).
+    #[napi(js_name = "createAttestation", ts_return_type = "Promise<string>")]
+    pub fn create_attestation_async(&self, params_json: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.create_attestation(&params_json))),
+        })
+    }
+
+    /// Verify an attestation -- local tier (async).
+    #[napi(js_name = "verifyAttestation", ts_return_type = "Promise<string>")]
+    pub fn verify_attestation_async(&self, document_key: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.verify_attestation(&document_key))),
+        })
+    }
+
+    /// Verify an attestation -- full tier (async).
+    #[napi(js_name = "verifyAttestationFull", ts_return_type = "Promise<string>")]
+    pub fn verify_attestation_full_async(
+        &self,
+        document_key: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.verify_attestation_full(&document_key))),
+        })
+    }
+
+    /// Lift a signed document to attestation (async).
+    #[napi(js_name = "liftToAttestation", ts_return_type = "Promise<string>")]
+    pub fn lift_to_attestation_async(
+        &self,
+        signed_doc_json: String,
+        claims_json: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.lift_to_attestation(&signed_doc_json, &claims_json)
+            })),
+        })
+    }
+
+    /// Export an attestation as a DSSE envelope (async).
+    #[napi(js_name = "exportAttestationDsse", ts_return_type = "Promise<string>")]
+    pub fn export_attestation_dsse_async(
+        &self,
+        attestation_json: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.export_attestation_dsse(&attestation_json)
             })),
         })
     }
@@ -871,6 +1120,12 @@ pub fn create_agent_async(
 #[napi]
 pub fn trust_agent(agent_json: String) -> Result<String> {
     jacs_binding_core::trust_agent(&agent_json).to_napi()
+}
+
+/// Add an agent to the local trust store with an explicit public key.
+#[napi]
+pub fn trust_agent_with_key(agent_json: String, public_key_pem: String) -> Result<String> {
+    jacs_binding_core::trust_agent_with_key(&agent_json, &public_key_pem).to_napi()
 }
 
 /// List all trusted agent IDs.
@@ -1244,47 +1499,4 @@ pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -
     result_obj.set_named_property("agent_id", js_agent_id)?;
     result_obj.set_named_property("payload", js_payload)?;
     Ok(result_obj)
-}
-
-// ============================================================================
-// HAI Functions (using binding-core HAI module)
-// ============================================================================
-
-/// Information about a public key fetched from HAI key service.
-#[napi(object)]
-pub struct RemotePublicKeyInfo {
-    /// The raw public key bytes (DER encoded).
-    pub public_key: Buffer,
-    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
-    pub algorithm: String,
-    /// The hash of the public key (SHA-256).
-    pub public_key_hash: String,
-    /// The agent ID the key belongs to.
-    pub agent_id: String,
-    /// The version of the key.
-    pub version: String,
-}
-
-/// Fetch a public key from HAI's key distribution service.
-#[napi]
-pub fn fetch_remote_key(agent_id: String, version: Option<String>) -> Result<RemotePublicKeyInfo> {
-    let version_str = version.as_deref().unwrap_or("latest");
-
-    let key_info = jacs_binding_core::fetch_remote_key(&agent_id, version_str)
-        .map_err(|e| Error::new(Status::GenericFailure, e.message))?;
-
-    Ok(RemotePublicKeyInfo {
-        public_key: Buffer::from(key_info.public_key),
-        algorithm: key_info.algorithm,
-        public_key_hash: key_info.public_key_hash,
-        agent_id: key_info.agent_id,
-        version: key_info.version,
-    })
-}
-
-/// Build a verification URL for a signed JACS document.
-#[napi]
-pub fn generate_verify_link(document: String, base_url: String) -> Result<String> {
-    jacs_binding_core::hai::generate_verify_link(&document, &base_url)
-        .map_err(|e| Error::new(Status::GenericFailure, e.to_string()))
 }

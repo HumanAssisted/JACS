@@ -1,0 +1,6 @@
+{
+  "fixture_id": "F08",
+  "expected_result": "fail",
+  "expected_reason": "duplicate_message_id_required_fail",
+  "expected_error": "DuplicateRequiredHeader"
+}

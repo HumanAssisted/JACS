@@ -1,0 +1,14 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Re: Original Thread
+Date: Fri, 27 Feb 2026 12:25:00 +0000
+Message-ID: <fixture-26@example.com>
+In-Reply-To: <original-thread@example.com>
+References: <original-thread@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F26
+X-Expected-Result: pass
+X-Expected-Reason: threaded_reply_with_references
+Content-Type: text/plain; charset=utf-8
+
+This is a reply in a thread.

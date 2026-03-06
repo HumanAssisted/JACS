@@ -196,7 +196,7 @@ pub enum JacsError {
     AgentNotTrusted { agent_id: String },
 
     // === Registration Errors ===
-    /// Registration with a registry (e.g., HAI.ai) failed.
+    /// Registration with a remote registry failed.
     RegistrationFailed { reason: String },
 
     // === Storage Errors ===
@@ -211,8 +211,26 @@ pub enum JacsError {
     /// Agent's verification claim could not be satisfied.
     ///
     /// This occurs when an agent claims a verification level (e.g., "verified" or
-    /// "verified-hai.ai") but the required security conditions are not met.
+    /// "verified-registry") but the required security conditions are not met.
     VerificationClaimFailed { claim: String, reason: String },
+
+    // === Attestation Errors ===
+    /// Attestation creation failed.
+    ///
+    /// Use this for errors related to:
+    /// - Attestation document creation
+    /// - Attestation subject or claims validation
+    /// - Migration (lift-to-attestation) failures
+    #[cfg(feature = "attestation")]
+    AttestationFailed { message: String },
+
+    /// Attestation verification failed.
+    ///
+    /// Use this for errors related to:
+    /// - Attestation local (crypto-only) verification
+    /// - Attestation full (evidence + chain) verification
+    #[cfg(feature = "attestation")]
+    VerificationFailed { message: String },
 
     // === Agent State Errors ===
     /// No agent is currently loaded. Call quickstart(), create(), or load() first.
@@ -397,22 +415,13 @@ impl fmt::Display for JacsError {
                 )?;
                 // Provide claim-specific actionable guidance
                 match claim.as_str() {
-                    "verified" | "verified-hai.ai"
+                    "verified"
                         if reason.contains("jacsAgentDomain") || reason.contains("domain") =>
                     {
                         write!(
                             f,
                             "Add \"jacsAgentDomain\": \"your-domain.com\" to your agent,\n     \
                             or use \"jacsVerificationClaim\": \"unverified\" if DNS verification is not needed."
-                        )?;
-                    }
-                    "verified-hai.ai"
-                        if reason.contains("not registered") || reason.contains("HAI.ai") =>
-                    {
-                        write!(
-                            f,
-                            "Register your agent at https://hai.ai before using the 'verified-hai.ai' claim,\n     \
-                            or use \"jacsVerificationClaim\": \"verified\" for DNS-only verification."
                         )?;
                     }
                     _ if reason.contains("downgrade") || reason.contains("Cannot downgrade") => {
@@ -431,15 +440,25 @@ impl fmt::Display for JacsError {
                 }
                 write!(
                     f,
-                    "\n\nSee: https://hai.ai/docs/jacs/security#verification-claims"
+                    "\n\nSee: https://jacs.ai/docs/security#verification-claims"
                 )
+            }
+
+            // Attestation
+            #[cfg(feature = "attestation")]
+            JacsError::AttestationFailed { message } => {
+                write!(f, "Attestation failed: {}", message)
+            }
+            #[cfg(feature = "attestation")]
+            JacsError::VerificationFailed { message } => {
+                write!(f, "Attestation verification failed: {}", message)
             }
 
             // Agent state
             JacsError::AgentNotLoaded => {
                 write!(
                     f,
-                    "No agent loaded. Call jacs.quickstart() to create or load an agent automatically, or jacs.create() / jacs.load() for explicit control."
+                    "No agent loaded. Call jacs.quickstart(name, domain, ...) to create or load an agent automatically, or jacs.create() / jacs.load() for explicit control."
                 )
             }
 
@@ -781,25 +800,21 @@ mod tests {
             "Should mention the required field"
         );
         assert!(msg.contains("Fix:"), "Should provide fix guidance");
-        assert!(msg.contains("hai.ai/docs"), "Should include docs link");
+        assert!(msg.contains("jacs.ai/docs"), "Should include docs link");
     }
 
     #[test]
-    fn test_verification_claim_hai_registration_error_is_actionable() {
+    fn test_verification_claim_generic_error_is_actionable() {
         let err = JacsError::VerificationClaimFailed {
-            claim: "verified-hai.ai".to_string(),
-            reason: "Agent 'test-agent' is not registered with HAI.ai".to_string(),
+            claim: "custom-claim".to_string(),
+            reason: "Requirements not met".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("verified-hai.ai"), "Should state the claim");
-        assert!(
-            msg.contains("not registered") || msg.contains("HAI.ai"),
-            "Should mention registration"
-        );
+        assert!(msg.contains("custom-claim"), "Should state the claim");
         assert!(msg.contains("Fix:"), "Should provide fix guidance");
         assert!(
-            msg.contains("https://hai.ai"),
-            "Should include registration link"
+            msg.contains("security requirements"),
+            "Should mention security requirements"
         );
     }
 

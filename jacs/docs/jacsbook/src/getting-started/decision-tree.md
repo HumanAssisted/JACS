@@ -1,44 +1,31 @@
-# Which JACS Integration Should I Use?
+# Which JACS Path Should I Use?
 
-This page helps you find the right integration path in under 2 minutes.
+Choose the smallest supported integration that matches your deployment.
 
-## Step 1: Do You Need JACS?
+## Start Here
 
-**Yes, if:**
-- Your AI agents communicate with external services or other organizations' agents
-- Data leaves your control (sent to clients, partners, regulators)
-- You need cryptographic proof of who produced what (non-repudiation)
-- You operate in a regulated environment (healthcare, finance, government)
+| If you need... | Start here | Why |
+|---|---|---|
+| Signed tool outputs inside **LangChain / LangGraph** on Python | [Python Framework Adapters](../python/adapters.md) | Smallest path: sign tool results without adding MCP |
+| Signed tool outputs inside **LangChain.js / LangGraph** on Node | [Node.js LangChain.js](../nodejs/langchain.md) | Same idea for TypeScript |
+| A ready-made **local MCP server** for Claude, Codex, or another MCP client | [MCP Overview](../integrations/mcp.md) and `jacs-mcp` | Fastest full server path |
+| To secure your **existing MCP server/client code** | [Python MCP](../python/mcp.md) or [Node.js MCP](../nodejs/mcp.md) | Use wrappers or transport proxies around code you already have |
+| Cross-organization agent discovery and signed artifact exchange | [A2A Interoperability](../integrations/a2a.md) | MCP is not enough for this boundary |
+| Signed HTTP APIs without adopting MCP | [Python Framework Adapters](../python/adapters.md), [Express](../nodejs/express.md), [Koa](../nodejs/koa.md) | Sign requests or responses at the web layer |
+| Multi-party approval or quorum workflows | [Multi-Agent Agreements](multi-agent-agreement.md) | Agreements are the right primitive, not just one-off signatures |
+| Direct signing from scripts, jobs, or services | [Quick Start](quick-start.md), [Python Basic Usage](../python/basic-usage.md), [Node Basic Usage](../nodejs/basic-usage.md) | Start from sign/verify before adding framework layers |
 
-**Probably not, if:**
-- Everything runs in a single service you control
-- You trust your own logs and don't need third-party verification
-- You just need checksums (use SHA-256 instead)
+## When You Probably Do Not Need JACS
 
-## Step 2: Pick Your Framework
+- Everything stays inside one service you control and your own logs are enough
+- You only need integrity, not signer identity or third-party verification
+- A plain checksum or database audit log already satisfies the requirement
 
-| I use... | Start here | Docs |
-|----------|-----------|------|
-| Python + LangChain/LangGraph | `from jacs.adapters.langchain import signed_tool` | [LangChain Guide](../python/adapters.md) |
-| Python + CrewAI | `from jacs.adapters.crewai import jacs_guardrail` | [CrewAI Guide](../python/adapters.md) |
-| Python + FastAPI | `from jacs.adapters.fastapi import JacsMiddleware` | [FastAPI Guide](../python/adapters.md) |
-| Node.js + Express | `require('@hai.ai/jacs/express')` | [Express Guide](../nodejs/express.md) |
-| Node.js + Vercel AI SDK | `require('@hai.ai/jacs/vercel-ai')` | [Vercel AI Guide](../nodejs/vercel-ai.md) |
-| Node.js + LangChain.js | `require('@hai.ai/jacs/langchain')` | [LangChain.js Guide](../nodejs/langchain.md) |
-| MCP Server (Python) | `from jacs.mcp import JACSMCPServer` | [MCP Guide](../integrations/mcp.md) |
-| MCP Server (Node.js) | `require('@hai.ai/jacs/mcp')` | [MCP Guide](../nodejs/mcp.md) |
-| A2A Protocol | `from jacs.a2a import JACSA2AIntegration` | [A2A Guide](../integrations/a2a.md) |
-| Rust / CLI | `cargo install jacs --features cli` | [Rust Guide](../rust/installation.md) |
-| Any language (standalone) | `import jacs.simple as jacs` | [Simple API](../python/simple-api.md) |
+## Recommended Adoption Order
 
-## Step 3: Your Adoption Path
+1. **Prototype** with quickstart and simple sign/verify calls.
+2. **Attach provenance** at the boundary that already exists in your system: LangChain tool, FastAPI response, MCP call, or A2A artifact.
+3. **Add trust policy** only when other agents or organizations enter the picture.
+4. **Add agreements, DNS, or attestations** only if your deployment actually needs them.
 
-**Stage 1 -- Prototyping**: `jacs.quickstart()`. No config. Explore the API. Keys on disk, auto-managed.
-
-**Stage 2 -- Single-org production**: `jacs.load()` with persistent agent, strict mode, file-based keys. Add provenance to internal systems.
-
-**Stage 3 -- Cross-org production**: DNS trust anchoring, A2A agent cards, agreements with external agents. Operate across trust boundaries.
-
-**Stage 4 -- Regulated/enterprise**: Post-quantum algorithms (pq2025/ML-DSA-87), OpenTelemetry observability, audit trails for compliance.
-
-Each stage adds capabilities without breaking what came before. You never configure features you don't need yet.
+The mistake to avoid is starting with the broadest story. Start with the boundary you need to secure now.

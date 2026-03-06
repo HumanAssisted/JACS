@@ -1,45 +1,111 @@
-# Use cases
+# Use Cases
 
-JACS supports a wide range of workflows: proving where data came from, protecting who runs an agent, registering with a platform, enforcing provenance in your app, and proving that a specific agent sent a message. This page summarizes five common use cases; each links to the full fictional scenario and technical flow in the repository.
+This chapter stays close to current product use, not roadmap integrations.
 
-For detailed narratives (scenario, technical flow, outcome), see **[USECASES.md](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md)** in the JACS repo.
+## 1. Secure A Local MCP Tool Server
 
----
+**Use this when:** Claude Desktop, Codex, or another MCP client is calling tools that should not run on blind trust.
 
-## 1. Verifying that JSON came from a specific program
+**Recommended JACS path:**
 
-**Summary.** You have a pipeline or service that emits JSON (configs, reports, compliance data). Consumers need to trust that a given file or payload was produced by that program and not modified. With JACS, the program has one agent identity: it signs each artifact with `sign_message` or `sign_file` at emission; consumers verify with `verify()` or `verify_by_id()` (local storage), or use `verify_standalone()` for one-off verification without loading an agent. No central server is required.
+- Use `jacs-mcp` if you want a full server immediately
+- Use [Python MCP Integration](python/mcp.md) or [Node.js MCP Integration](nodejs/mcp.md) if you already have server code
 
-See [USECASES.md § 1](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#1-verifying-that-json-files-came-from-a-specific-program) for the full scenario.
+**What JACS adds:**
 
----
+- Signed JSON-RPC messages
+- Fail-closed verification by default
+- Agent identity and auditability for tool calls
 
-## 2. Protecting your agent's identity on the internet
+## 2. Add Provenance To LangChain Or LangGraph
 
-**Summary.** You run a public-facing agent and want its messages to be verifiable (signed) without exposing who operates it. JACS supports this by keeping signing internal-only and publishing only the public key (via DNS and optionally HAI). Recipients use `verify()` (core JACS) or `jacs_verify_auto` (OpenClaw/moltyjacs) to confirm origin and integrity; they never learn who runs the agent.
+**Use this when:** your model already runs inside LangChain or LangGraph and you want signed tool outputs without introducing MCP.
 
-See [USECASES.md § 2](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#2-protecting-your-agents-identity-on-the-internet) for the full scenario.
+**Recommended JACS path:**
 
----
+- [Python Framework Adapters](python/adapters.md)
+- [Node.js LangChain.js](nodejs/langchain.md)
 
-## 3. Registering and testing your agent on HAI.ai
+**What JACS adds:**
 
-**Summary.** You want to register your JACS agent with HAI.ai for attestation and discoverability, and to test verification before going live. Use the HAI registration flow: from Node `registerWithHai()` (@hai.ai/jacs), from Go `RegisterWithHai()` (jacsgo), from Python `register_with_hai` / `register_new_agent()` (jacspy), or `openclaw jacs register` (moltyjacs). Set `HAI_API_KEY`, then check attestation and run verification with `JACS_KEY_RESOLUTION=local,hai`.
+- Signed tool results
+- Optional strict mode at the adapter boundary
+- Minimal changes to existing framework code
 
-See [USECASES.md § 3](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#3-registering-and-testing-your-agent-on-haiai) for the full scenario.
+## 3. Exchange Signed Artifacts Across Organizations
 
----
+**Use this when:** one agent produces work that another organization, service, or team must verify before acting on it.
 
-## 4. A Go, Node, or Python agent with strong data provenance
+**Recommended JACS path:**
 
-**Summary.** Your agent (in Go, Node, or Python) must prove the origin and integrity of every important output for compliance. Use the simple API in jacspy, jacsnpm, or jacsgo: `load(config)`, `sign_message(payload)` for each output, and `verify(signed.raw)` (or `verify_standalone()` for one-off verification without agent setup) wherever you consume signed data. Keys stay local; use `JACS_KEY_RESOLUTION` for external signers or air-gapped use.
+- [A2A Interoperability](integrations/a2a.md)
+- [A2A Quickstart](guides/a2a-quickstart.md)
 
-See [USECASES.md § 4](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#4-a-go-node-or-python-agent-with-strong-data-provenance) for the full scenario.
+**What JACS adds:**
 
----
+- Agent Cards with JACS provenance metadata
+- Signed A2A artifacts
+- Trust policies for admission control
 
-## 5. OpenClaw (moltyjacs): proving your agent sent a message
+## 4. Sign HTTP Or API Boundaries Without MCP
 
-**Summary.** You use OpenClaw with the moltyjacs plugin and need cryptographic proof that a specific message came from your agent. The agent signs outbound messages with `jacs_sign`; the recipient verifies with `jacs_verify_auto`. The signature travels with the message; no custom PKI is required.
+**Use this when:** the boundary is an API route, not an MCP transport.
 
-See [USECASES.md § 5](https://github.com/HumanAssisted/JACS/blob/main/USECASES.md#5-openclaw-moltyjacs-proving-your-agent-actually-sent-a-message) for the full scenario.
+**Recommended JACS path:**
+
+- [Python Framework Adapters](python/adapters.md) for FastAPI
+- [Express Middleware](nodejs/express.md)
+- [Koa Middleware](nodejs/koa.md)
+
+**What JACS adds:**
+
+- Signed JSON responses
+- Verified inbound requests
+- A clean upgrade path to A2A discovery on the same app boundary
+
+## 5. Run Multi-Agent Approval Workflows
+
+**Use this when:** multiple agents must sign off on the same document, deployment, or decision.
+
+**Recommended JACS path:**
+
+- [Multi-Agent Agreements](getting-started/multi-agent-agreement.md)
+- [Rust Agreements](rust/agreements.md)
+
+**What JACS adds:**
+
+- M-of-N quorum
+- Timeout and algorithm constraints
+- Verifiable signature chain across signers
+
+## 6. Keep Signed Files Or JSON As Durable Artifacts
+
+**Use this when:** you need an artifact to stay verifiable after it leaves the process that created it.
+
+**Recommended JACS path:**
+
+- [Verifying Signed Documents](getting-started/verification.md)
+- [Working with Documents](rust/documents.md)
+- [Python Basic Usage](python/basic-usage.md)
+- [Node.js Basic Usage](nodejs/basic-usage.md)
+
+**What JACS adds:**
+
+- Self-contained signed envelopes
+- Re-verification at read time
+- Cross-language interoperability
+
+## 7. Publish Public Identity Without A Central Auth Service
+
+**Use this when:** external systems need to verify your agent identity but you do not want a shared auth server in the middle.
+
+**Recommended JACS path:**
+
+- [DNS-Based Verification](rust/dns.md)
+- [DNS Trust Anchoring](advanced/dns-trust.md)
+
+**What JACS adds:**
+
+- Public key fingerprint anchoring
+- DNS-based verification flows
+- Local private-key custody

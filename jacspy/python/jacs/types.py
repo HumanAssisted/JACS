@@ -20,9 +20,14 @@ class AgentInfo:
         name: Optional human-readable agent name
         public_key_hash: Hash of the agent's public key for verification
         created_at: ISO 8601 timestamp of agent creation
-        algorithm: Cryptographic algorithm used (e.g., "RSA", "ML-DSA")
+        algorithm: Cryptographic algorithm used (default: "pq2025")
         config_path: Path to the loaded config file
         public_key_path: Path to the public key file
+        private_key_path: Path to the encrypted private key file
+        data_directory: Data storage directory
+        key_directory: Key directory
+        domain: Agent domain when configured
+        dns_record: DNS TXT record for key verification
     """
     agent_id: str
     version: str
@@ -32,6 +37,11 @@ class AgentInfo:
     algorithm: str = "pq2025"
     config_path: Optional[str] = None
     public_key_path: Optional[str] = None
+    private_key_path: Optional[str] = None
+    data_directory: Optional[str] = None
+    key_directory: Optional[str] = None
+    domain: str = ""
+    dns_record: str = ""
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AgentInfo":
@@ -42,9 +52,14 @@ class AgentInfo:
             name=data.get("name"),
             public_key_hash=data.get("public_key_hash", ""),
             created_at=data.get("created_at", ""),
-            algorithm=data.get("algorithm", "RSA"),
+            algorithm=data.get("algorithm", "pq2025"),
             config_path=data.get("config_path"),
             public_key_path=data.get("public_key_path"),
+            private_key_path=data.get("private_key_path"),
+            data_directory=data.get("data_directory"),
+            key_directory=data.get("key_directory"),
+            domain=data.get("domain", ""),
+            dns_record=data.get("dns_record", ""),
         )
 
 
@@ -248,21 +263,21 @@ class TrustError(JacsError):
 
 
 class KeyNotFoundError(JacsError):
-    """Public key not found in HAI key service."""
+    """Public key not found for the specified agent."""
     pass
 
 
 class NetworkError(JacsError):
-    """Network error when communicating with HAI key service."""
+    """Network error when fetching remote keys."""
     pass
 
 
 @dataclass
 class PublicKeyInfo:
-    """Information about a public key fetched from HAI's key service.
+    """Information about a fetched public key.
 
     This type represents the result of fetching a public key from
-    the HAI key distribution service.
+    a remote key service or DNS.
 
     Attributes:
         public_key: Raw public key bytes (DER encoded)

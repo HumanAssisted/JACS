@@ -8,8 +8,12 @@ JACS supports multiple storage backends for persisting documents and agents. Thi
 |---------|--------------|-------------|
 | Filesystem | `fs` | Local file storage (default) |
 | AWS S3 | `aws` | Amazon S3 object storage |
-| HAI Cloud | `hai` | HAI managed storage |
+| HAI Cloud | `hai` | HTTP object store via `HAI_STORAGE_URL` |
 | PostgreSQL | `database` | PostgreSQL with JSONB queries (requires `database` feature) |
+| Rusqlite | `rusqlite` | Embedded SQLite (requires `rusqlite-storage` feature) |
+| DuckDB | `duckdb` | Embedded analytical DB (requires `duckdb-storage` feature) |
+| Redb | `redb` | Pure-Rust embedded KV (requires `redb-storage` feature) |
+| SurrealDB | `surrealdb` | Multi-model DB with SurrealQL (requires `surrealdb-storage` feature) |
 
 ## Configuration
 
@@ -190,7 +194,9 @@ doc = agent.create_document(json.dumps({
 
 ## HAI Cloud Storage (hai)
 
-Managed storage provided by HAI.
+HTTP object store pointed at `HAI_STORAGE_URL`. This backend uses `object_store::http::HttpStore` under the hood — it is a generic HTTP store, not a managed platform.
+
+For HAI platform registration, attestation, and key discovery, use the separate [haisdk](https://github.com/HumanAssisted/haisdk) package.
 
 ### Configuration
 
@@ -200,19 +206,14 @@ Managed storage provided by HAI.
 }
 ```
 
-### Features
-
-- Managed infrastructure
-- Built-in agent registry
-- Cross-organization document sharing
-- Integrated DNS verification
+```bash
+export HAI_STORAGE_URL="https://storage.hai.ai/v1"
+```
 
 ### Use Cases
 
-- Multi-agent ecosystems
-- Cross-organization collaboration
-- Managed deployments
-- Integration with HAI services
+- Remote document storage via HTTP
+- Integration with HAI storage endpoints
 
 ## PostgreSQL Database Storage (database)
 
@@ -335,6 +336,54 @@ Even when using database storage, **keys are always loaded from the filesystem o
 - Compile-time feature flag (`database`)
 - Network dependency on PostgreSQL server
 
+## Embedded Database Backends
+
+Four lightweight embedded database backends are available behind feature flags. None require an external server.
+
+### Rusqlite (`rusqlite-storage`)
+
+Embedded SQLite via rusqlite with WAL mode enabled. Pinned to rusqlite v0.31.
+
+```bash
+cargo build --features rusqlite-storage
+cargo test --features rusqlite-storage-tests
+```
+
+**When to use:** You want SQL queries on a single-file database with no external dependencies.
+
+### DuckDB (`duckdb-storage`)
+
+Embedded analytical database with JSON path queries.
+
+```bash
+cargo build --features duckdb-storage
+cargo test --features duckdb-storage-tests
+```
+
+**When to use:** You need analytical queries or columnar storage over signed documents.
+
+### Redb (`redb-storage`)
+
+Pure-Rust embedded key-value store. No C dependencies.
+
+```bash
+cargo build --features redb-storage
+cargo test --features redb-storage-tests
+```
+
+**When to use:** You want the simplest embedded backend with zero non-Rust dependencies.
+
+### SurrealDB (`surrealdb-storage`)
+
+Multi-model database with SurrealQL. Uses `kv-mem` for in-memory mode.
+
+```bash
+cargo build --features surrealdb-storage
+cargo test --features surrealdb-storage-tests
+```
+
+**When to use:** You want a multi-model query language or plan to scale to a SurrealDB cluster later.
+
 ## In-Memory Storage
 
 For testing and temporary operations, documents can be created without saving:
@@ -367,6 +416,10 @@ const doc = agent.createDocument(
 | Cloud deployment | `aws` |
 | High availability | `aws` |
 | Multi-organization | `hai` |
+| Embedded SQL queries | `rusqlite` |
+| Analytical queries | `duckdb` |
+| Zero C-dep embedded KV | `redb` |
+| Multi-model queries | `surrealdb` |
 | Testing | In-memory (no_save) |
 
 ## File Storage

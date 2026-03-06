@@ -1,8 +1,8 @@
-# Observability Guide
+# Observability & Monitoring Guide
 
 JACS emits structured events at every signing, verification, and agreement lifecycle step. This guide shows you how to capture those events and route them to your monitoring stack.
 
-For Rust-specific API details (ObservabilityConfig, LogDestination, MetricsConfig, etc.), see the [Rust Observability Reference](../rust/observability.md).
+For Rust-specific API details (ObservabilityConfig, LogDestination, MetricsConfig, etc.), see the [Observability (Rust API)](../rust/observability.md).
 
 ## Structured Event Reference
 
@@ -231,6 +231,6 @@ Post-quantum algorithms (`pq2025`, `pq-dilithium`) will show higher latency than
 
 ## Next Steps
 
-- [Rust Observability Reference](../rust/observability.md) -- Full API: ObservabilityConfig, LogDestination, MetricsConfig, TracingConfig
+- [Observability (Rust API)](../rust/observability.md) -- Full API: ObservabilityConfig, LogDestination, MetricsConfig, TracingConfig
 - [Algorithm Selection Guide](../advanced/algorithm-guide.md) -- Latency implications of algorithm choice
 - [Failure Modes](../advanced/failure-modes.md) -- What events to expect when things go wrong

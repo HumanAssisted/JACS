@@ -1,6 +1,6 @@
 [package]
 name = "jacsgo"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -8,6 +8,10 @@ resolver = "3"
 [lib]
 name = "jacsgo"
 crate-type = ["cdylib"]
+
+[features]
+default = []
+attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
 
 [dependencies]
 lazy_static = "1.5.0"

@@ -1,0 +1,23 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: =?UTF-8?Q?Fixture_03_=E2=9C=93_Subject?=
+Date: Fri, 27 Feb 2026 12:02:00 +0000
+Message-ID: <fixture-03@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F03
+X-Expected-Result: pass
+X-Expected-Reason: rfc2047_decode_then_hash
+Content-Type: multipart/mixed; boundary="f03"
+
+--f03
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+Body for RFC 2047 subject test.
+
+--f03
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-03","created_at":"2026-02-27T12:02:00Z","hash":"sha256:meta03"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:02:00Z"}}
+--f03--

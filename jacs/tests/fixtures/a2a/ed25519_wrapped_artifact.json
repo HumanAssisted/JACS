@@ -1,0 +1,42 @@
+{
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "a2aArtifact": {
+    "artifactId": "test-artifact-001",
+    "metadata": {
+      "algorithm": "ed25519",
+      "generated_by": "rust",
+      "purpose": "cross-language-a2a-interop"
+    },
+    "name": "Cross-Language Test Artifact",
+    "parts": [
+      {
+        "text": "Hello from Rust A2A"
+      }
+    ]
+  },
+  "jacsId": "694d0d85-368f-4c03-b7e8-8fefefbe737b",
+  "jacsLevel": "artifact",
+  "jacsPreviousVersion": null,
+  "jacsSha256": "b082bd29b0cd945603d7ee95158538f5e3b4693006c2474ebf87a87ffe6fa90c",
+  "jacsSignature": {
+    "agentID": "208bfeb7-fffd-4b4b-9ca8-db9be7d57adf",
+    "agentVersion": "81c74b7c-d9be-4929-b031-c66d53a7dd02",
+    "date": "2026-02-12T04:47:47.949005+00:00",
+    "fields": [
+      "$schema",
+      "a2aArtifact",
+      "jacsId",
+      "jacsLevel",
+      "jacsPreviousVersion",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate"
+    ],
+    "publicKeyHash": "0ce0be0d53d036e297da8c1650d0ddb872d2586abd2ef037eb06ab7e4ac0d2b0",
+    "signature": "MCbjglQNrmLxwz1WDiCEbOJaVunJvzBIN8XjuzoSzRkcWUunQIcRr8DIctYUseGzP24oTKjE396QpAIQUCprCw==",
+    "signingAlgorithm": "ring-Ed25519"
+  },
+  "jacsType": "a2a-artifact",
+  "jacsVersion": "ed5f864d-97d2-442d-b467-5444b531a7d7",
+  "jacsVersionDate": "2026-02-12T04:47:42.735302+00:00"
+}

@@ -3,6 +3,10 @@
 //! This module provides functions for managing trusted agents,
 //! enabling P2P key exchange and verification without a central authority.
 
+use crate::agent::{
+    AGENT_SIGNATURE_FIELDNAME, SignatureContentMode, build_signature_content,
+    extract_signature_fields,
+};
 use crate::crypt::hash::hash_public_key;
 use crate::crypt::{CryptoSigningAlgorithm, detect_algorithm_from_public_key};
 use crate::error::JacsError;
@@ -191,7 +195,7 @@ pub fn trust_agent_with_key(
     };
 
     // Verify the public key hash matches
-    let computed_hash = hash_public_key(public_key_bytes.clone());
+    let computed_hash = hash_public_key(&public_key_bytes);
     if computed_hash != public_key_hash {
         return Err(JacsError::SignatureVerificationFailed {
             reason: format!(
@@ -422,6 +426,58 @@ pub fn get_trusted_public_key_hash(agent_id: &str) -> Result<String, JacsError> 
 ///
 /// # Arguments
 ///
+/// Trust an A2A Agent Card by adding it to the local trust store.
+///
+/// Unlike `trust_agent()`, this function does NOT require the agent document
+/// to have a JACS signature. It stores the Agent Card JSON directly in the
+/// trust store, keyed by `jacsId:jacsVersion` from the card's metadata.
+///
+/// # Arguments
+///
+/// * `agent_id` - The agent's trust store key (format: "id:version")
+/// * `card_json` - The serialized Agent Card JSON
+///
+/// # Returns
+///
+/// The agent ID if successfully trusted.
+pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsError> {
+    validate_agent_id_for_path(agent_id)?;
+
+    let trust_dir = trust_store_dir();
+    fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
+        path: trust_dir.to_string_lossy().to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Save the agent card file
+    let agent_file = trust_dir.join(format!("{}.json", agent_id));
+    fs::write(&agent_file, card_json).map_err(|e| JacsError::FileWriteFailed {
+        path: agent_file.to_string_lossy().to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Save metadata for quick lookups
+    let trusted_agent = TrustedAgent {
+        agent_id: agent_id.to_string(),
+        name: None,
+        public_key_pem: String::new(),
+        public_key_hash: String::new(),
+        trusted_at: time_utils::now_rfc3339(),
+    };
+
+    let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
+    let metadata_json =
+        serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize metadata: {}", e),
+        })?;
+    fs::write(&metadata_file, metadata_json).map_err(|e| JacsError::Internal {
+        message: format!("Failed to write metadata file: {}", e),
+    })?;
+
+    info!("Trusted A2A agent {} added to trust store", agent_id);
+    Ok(agent_id.to_string())
+}
+
 /// * `agent_id` - The ID of the agent to check
 ///
 /// # Returns
@@ -520,42 +576,28 @@ fn verify_agent_self_signature(
     // Extract and validate signature timestamp
     let signature_date = agent_value.get_path_str_required(&["jacsSignature", "date"])?;
     validate_signature_timestamp(&signature_date)?;
+    let iat = agent_value
+        .get_path(&["jacsSignature", "iat"])
+        .and_then(Value::as_i64)
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: "Missing or invalid jacsSignature.iat in agent signature.".to_string(),
+        })?;
+    let jti = agent_value
+        .get_path_str(&["jacsSignature", "jti"])
+        .ok_or_else(|| JacsError::SignatureVerificationFailed {
+            reason: "Missing jacsSignature.jti in agent signature.".to_string(),
+        })?;
+    if jti.trim().is_empty() {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "Invalid jacsSignature.jti: nonce cannot be empty.".to_string(),
+        });
+    }
+    time_utils::validate_signature_iat(iat)?;
 
     // Extract signature components
     let signature_b64 = agent_value.get_path_str_required(&["jacsSignature", "signature"])?;
-    let fields = agent_value.get_path_array_required(&["jacsSignature", "fields"])?;
-
-    // Build the content that was signed, using deterministic field ordering
-    let mut field_names: Vec<&str> = Vec::new();
-    for field in fields {
-        if let Some(name) = field.as_str() {
-            field_names.push(name);
-        }
-    }
-    // Sort fields alphabetically for deterministic content reconstruction
-    field_names.sort();
-
-    let mut content_parts: Vec<String> = Vec::new();
-    for field_name in &field_names {
-        if let Some(value) = agent_value.get(*field_name) {
-            if let Some(str_val) = value.as_str() {
-                content_parts.push(str_val.to_string());
-            } else {
-                // For non-string fields, use canonical JSON serialization
-                content_parts.push(serde_json::to_string(value).unwrap_or_default());
-            }
-        }
-    }
-
-    if content_parts.is_empty() {
-        return Err(JacsError::SignatureVerificationFailed {
-            reason: "No signed fields could be extracted from the agent document. \
-                The 'fields' array in jacsSignature may reference non-existent fields."
-                .to_string(),
-        });
-    }
-
-    let signed_content = content_parts.join(" ");
+    let _fields = agent_value.get_path_array_required(&["jacsSignature", "fields"])?;
+    let signature_fields = extract_signature_fields(agent_value, AGENT_SIGNATURE_FIELDNAME);
 
     // Determine the algorithm
     let algo = match algorithm {
@@ -563,7 +605,7 @@ fn verify_agent_self_signature(
             JacsError::SignatureVerificationFailed {
                 reason: format!(
                     "Unknown signing algorithm '{}'. Supported algorithms are: \
-                'ring-Ed25519', 'RSA-PSS', 'pq-dilithium', 'pq-dilithium-alt', 'pq2025'. \
+                'ring-Ed25519', 'RSA-PSS', 'pq2025'. \
                 The agent document may have been signed with an unsupported algorithm version.",
                     a
                 ),
@@ -597,40 +639,43 @@ fn verify_agent_self_signature(
         }
     };
 
-    // Verify the signature based on algorithm
-    let verification_result = match algo {
-        CryptoSigningAlgorithm::RsaPss => crate::crypt::rsawrapper::verify_string(
-            public_key_bytes.to_vec(),
-            &signed_content,
-            &signature_b64,
-        ),
-        CryptoSigningAlgorithm::RingEd25519 => crate::crypt::ringwrapper::verify_string(
-            public_key_bytes.to_vec(),
-            &signed_content,
-            &signature_b64,
-        ),
-        CryptoSigningAlgorithm::PqDilithium | CryptoSigningAlgorithm::PqDilithiumAlt => {
-            crate::crypt::pq::verify_string(
+    let verify_with_payload = |payload: &str| -> Result<(), Box<dyn std::error::Error>> {
+        match algo {
+            CryptoSigningAlgorithm::RsaPss => crate::crypt::rsawrapper::verify_string(
                 public_key_bytes.to_vec(),
-                &signed_content,
+                payload,
                 &signature_b64,
-            )
+            ),
+            CryptoSigningAlgorithm::RingEd25519 => crate::crypt::ringwrapper::verify_string(
+                public_key_bytes.to_vec(),
+                payload,
+                &signature_b64,
+            ),
+            CryptoSigningAlgorithm::Pq2025 => crate::crypt::pq2025::verify_string(
+                public_key_bytes.to_vec(),
+                payload,
+                &signature_b64,
+            ),
         }
-        CryptoSigningAlgorithm::Pq2025 => crate::crypt::pq2025::verify_string(
-            public_key_bytes.to_vec(),
-            &signed_content,
-            &signature_b64,
-        ),
     };
 
-    verification_result.map_err(|e| JacsError::SignatureVerificationFailed {
-        reason: format!(
-            "Cryptographic signature verification failed using {} algorithm: {}. \
+    let (canonical_payload, _) = build_signature_content(
+        agent_value,
+        signature_fields.clone(),
+        AGENT_SIGNATURE_FIELDNAME,
+        SignatureContentMode::CanonicalV2,
+    )?;
+
+    verify_with_payload(&canonical_payload).map_err(|e| {
+        JacsError::SignatureVerificationFailed {
+            reason: format!(
+                "Cryptographic signature verification failed using {} algorithm: {}. \
             This typically means: (1) the agent document was modified after signing, \
             (2) the wrong public key is being used, or (3) the signature is corrupted. \
             Verify the agent document integrity and ensure the correct public key is provided.",
-            algo, e
-        ),
+                algo, e
+            ),
+        }
     })?;
 
     info!("Agent self-signature verified successfully");

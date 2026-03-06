@@ -1,0 +1,6 @@
+{
+  "fixture_id": "F07",
+  "expected_result": "fail",
+  "expected_reason": "duplicate_date_required_fail",
+  "expected_error": "DuplicateRequiredHeader"
+}

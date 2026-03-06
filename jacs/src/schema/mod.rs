@@ -235,11 +235,46 @@ pub struct Schema {
     pub agentstateschema: Validator,
     pub commitmentschema: Validator,
     pub todoschema: Validator,
+    #[cfg(feature = "attestation")]
+    pub attestationschema: Validator,
 }
 
 static EXCLUDE_FIELDS: [&str; 2] = ["$schema", "$id"];
 
 impl Schema {
+    fn validate_json_with_schema(
+        &self,
+        json: &str,
+        validator: &Validator,
+        default_schema_name: &str,
+        invalid_json_prefix: &str,
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        let instance: serde_json::Value = match serde_json::from_str(json) {
+            Ok(value) => {
+                debug!("validate json {:?}", value);
+                value
+            }
+            Err(e) => {
+                let error_message = format!("{}: {}", invalid_json_prefix, e);
+                warn!("validate error {:?}", error_message);
+                return Err(error_message.into());
+            }
+        };
+
+        match validator.validate(&instance) {
+            Ok(_) => Ok(instance),
+            Err(error) => {
+                let schema_name = instance
+                    .get("$schema")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(default_schema_name);
+                let error_message = format_schema_validation_error(&error, schema_name, &instance);
+                error!("{}", error_message);
+                Err(error_message.into())
+            }
+        }
+    }
+
     ///  we extract only fields that the schema identitifies has useful to humans
     /// logs store the complete valid file, but for databases or applications we may want
     /// only certain fields
@@ -523,6 +558,12 @@ impl Schema {
 
         let todo_path = format!("schemas/todo/{}/todo.schema.json", default_version);
 
+        #[cfg(feature = "attestation")]
+        let attestation_path = format!(
+            "schemas/attestation/{}/attestation.schema.json",
+            default_version
+        );
+
         // Helper to get schema with better error messages
         let get_schema = |path: &str| -> Result<&str, Box<dyn std::error::Error>> {
             DEFAULT_SCHEMA_STRINGS
@@ -550,6 +591,9 @@ impl Schema {
         let commitmentdata = get_schema(&commitment_path)?;
         let tododata = get_schema(&todo_path)?;
 
+        #[cfg(feature = "attestation")]
+        let attestationdata = get_schema(&attestation_path)?;
+
         let agentschema_result: Value = serde_json::from_str(agentdata)?;
         let headerchema_result: Value = serde_json::from_str(headerdata)?;
         let agreementschema_result: Value = serde_json::from_str(agreementdata)?;
@@ -570,6 +614,9 @@ impl Schema {
         let commitmentschema_result: Value = serde_json::from_str(commitmentdata)?;
         let todoschema_result: Value = serde_json::from_str(tododata)?;
 
+        #[cfg(feature = "attestation")]
+        let attestationschema_result: Value = serde_json::from_str(attestationdata)?;
+
         let agentschema = build_validator(&agentschema_result, &agentversion_path)?;
         let headerschema = build_validator(&headerchema_result, &header_path)?;
         let signatureschema = build_validator(&signatureschema_result, &signatureversion_path)?;
@@ -589,6 +636,9 @@ impl Schema {
         let agentstateschema = build_validator(&agentstateschema_result, &agentstate_path)?;
         let commitmentschema = build_validator(&commitmentschema_result, &commitment_path)?;
         let todoschema = build_validator(&todoschema_result, &todo_path)?;
+
+        #[cfg(feature = "attestation")]
+        let attestationschema = build_validator(&attestationschema_result, &attestation_path)?;
 
         Ok(Self {
             headerschema,
@@ -611,6 +661,8 @@ impl Schema {
             agentstateschema,
             commitmentschema,
             todoschema,
+            #[cfg(feature = "attestation")]
+            attestationschema,
         })
     }
 
@@ -620,63 +672,18 @@ impl Schema {
         &self,
         json: &str,
     ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
-            Ok(value) => {
-                debug!("validate json {:?}", value);
-                value
-            }
-            Err(e) => {
-                let error_message = format!("Invalid JSON: {}", e);
-                warn!("validate error {:?}", error_message);
-                return Err(error_message.into());
-            }
-        };
-
-        let validation_result = self.headerschema.validate(&instance);
-
-        match validation_result {
-            Ok(_) => Ok(instance.clone()),
-            Err(error) => {
-                let schema_name = instance
-                    .get("$schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("header.schema.json");
-                let error_message = format_schema_validation_error(&error, schema_name, &instance);
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
+        self.validate_json_with_schema(
+            json,
+            &self.headerschema,
+            "header.schema.json",
+            "Invalid JSON",
+        )
     }
 
     /// basic check this conforms to a schema
     /// validate header does not check hashes or signature
     pub fn validate_task(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
-            Ok(value) => {
-                debug!("validate json {:?}", value);
-                value
-            }
-            Err(e) => {
-                let error_message = format!("Invalid JSON: {}", e);
-                warn!("validate error {:?}", error_message);
-                return Err(error_message.into());
-            }
-        };
-
-        let validation_result = self.taskschema.validate(&instance);
-
-        match validation_result {
-            Ok(_) => Ok(instance.clone()),
-            Err(error) => {
-                let schema_name = instance
-                    .get("$schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("task.schema.json");
-                let error_message = format_schema_validation_error(&error, schema_name, &instance);
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
+        self.validate_json_with_schema(json, &self.taskschema, "task.schema.json", "Invalid JSON")
     }
 
     /// Validates a JSON string against the agentstate schema.
@@ -684,62 +691,31 @@ impl Schema {
         &self,
         json: &str,
     ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
-            Ok(value) => {
-                debug!("validate json {:?}", value);
-                value
-            }
-            Err(e) => {
-                let error_message = format!("Invalid JSON: {}", e);
-                warn!("validate error {:?}", error_message);
-                return Err(error_message.into());
-            }
-        };
-
-        let validation_result = self.agentstateschema.validate(&instance);
-
-        match validation_result {
-            Ok(_) => Ok(instance.clone()),
-            Err(error) => {
-                let schema_name = instance
-                    .get("$schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("agentstate.schema.json");
-                let error_message = format_schema_validation_error(&error, schema_name, &instance);
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
+        self.validate_json_with_schema(
+            json,
+            &self.agentstateschema,
+            "agentstate.schema.json",
+            "Invalid JSON",
+        )
     }
 
     /// Validates a JSON string against the todo schema.
     pub fn validate_todo(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
-            Ok(value) => {
-                debug!("validate json {:?}", value);
-                value
-            }
-            Err(e) => {
-                let error_message = format!("Invalid JSON: {}", e);
-                warn!("validate error {:?}", error_message);
-                return Err(error_message.into());
-            }
-        };
+        self.validate_json_with_schema(json, &self.todoschema, "todo.schema.json", "Invalid JSON")
+    }
 
-        let validation_result = self.todoschema.validate(&instance);
-
-        match validation_result {
-            Ok(_) => Ok(instance.clone()),
-            Err(error) => {
-                let schema_name = instance
-                    .get("$schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("todo.schema.json");
-                let error_message = format_schema_validation_error(&error, schema_name, &instance);
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
+    /// Validates a JSON string against the attestation schema.
+    #[cfg(feature = "attestation")]
+    pub fn validate_attestation(
+        &self,
+        json: &str,
+    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+        self.validate_json_with_schema(
+            json,
+            &self.attestationschema,
+            "attestation.schema.json",
+            "Invalid JSON",
+        )
     }
 
     /// Validates a JSON string against the commitment schema.
@@ -747,32 +723,12 @@ impl Schema {
         &self,
         json: &str,
     ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
-            Ok(value) => {
-                debug!("validate json {:?}", value);
-                value
-            }
-            Err(e) => {
-                let error_message = format!("Invalid JSON: {}", e);
-                warn!("validate error {:?}", error_message);
-                return Err(error_message.into());
-            }
-        };
-
-        let validation_result = self.commitmentschema.validate(&instance);
-
-        match validation_result {
-            Ok(_) => Ok(instance.clone()),
-            Err(error) => {
-                let schema_name = instance
-                    .get("$schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("commitment.schema.json");
-                let error_message = format_schema_validation_error(&error, schema_name, &instance);
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
+        self.validate_json_with_schema(
+            json,
+            &self.commitmentschema,
+            "commitment.schema.json",
+            "Invalid JSON",
+        )
     }
 
     /// basic check this conforms to a schema
@@ -798,32 +754,12 @@ impl Schema {
         &self,
         json: &str,
     ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
-        let instance: serde_json::Value = match serde_json::from_str(json) {
-            Ok(value) => {
-                debug!("validate json {:?}", value);
-                value
-            }
-            Err(e) => {
-                let error_message = format!("Invalid JSON for agent: {}", e);
-                warn!("validate error {:?}", error_message);
-                return Err(error_message.into());
-            }
-        };
-
-        let validation_result = self.agentschema.validate(&instance);
-
-        match validation_result {
-            Ok(_) => Ok(instance.clone()),
-            Err(error) => {
-                let schema_name = instance
-                    .get("$schema")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("agent.schema.json");
-                let error_message = format_schema_validation_error(&error, schema_name, &instance);
-                error!("{}", error_message);
-                Err(error_message.into())
-            }
-        }
+        self.validate_json_with_schema(
+            json,
+            &self.agentschema,
+            "agent.schema.json",
+            "Invalid JSON for agent",
+        )
     }
 
     // TODO get from member var  self.headerschema.to_string())
@@ -943,4 +879,37 @@ impl Schema {
 
     //     Ok()
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Schema;
+
+    fn build_schema() -> Schema {
+        Schema::new("v1", "v1", "v1").expect("schema initialization should succeed")
+    }
+
+    #[test]
+    fn validate_agent_invalid_json_has_agent_context() {
+        let schema = build_schema();
+        let err = schema
+            .validate_agent("{not-json")
+            .expect_err("invalid JSON should fail");
+        assert!(
+            err.to_string().contains("Invalid JSON for agent"),
+            "expected agent-specific parse error"
+        );
+    }
+
+    #[test]
+    fn validate_task_invalid_json_has_generic_context() {
+        let schema = build_schema();
+        let err = schema
+            .validate_task("{not-json")
+            .expect_err("invalid JSON should fail");
+        assert!(
+            err.to_string().contains("Invalid JSON:"),
+            "expected generic parse error"
+        );
+    }
 }

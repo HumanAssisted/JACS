@@ -2,7 +2,7 @@
 
 **Sign it. Prove it.**
 
-Cryptographic signatures for AI agent outputs -- so anyone can verify who said what and whether it was changed. No server. Three lines of code. Optionally register with [HAI.ai](https://hai.ai) for cross-organization key discovery.
+Cryptographic signatures for AI agent outputs -- so anyone can verify who said what and whether it was changed. No server. Three lines of code.
 
 [Which integration should I use?](https://humanassisted.github.io/JACS/getting-started/decision-tree.html) | [Full documentation](https://humanassisted.github.io/JACS/)
 
@@ -13,8 +13,6 @@ uv pip install jacs
 # Or with pip
 pip install jacs
 
-# With HAI.ai integration
-uv pip install jacs[hai]
 ```
 
 Packaging/build metadata is defined in `pyproject.toml` (maturin). `setup.py` is intentionally not used.
@@ -28,19 +26,20 @@ Zero-config -- one call to start signing:
 ```python
 import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
+`quickstart(name, domain, ...)` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated in-process (set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`). Returned `AgentInfo` includes config and key file paths. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
 
 **Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#agreements-with-timeout-and-quorum) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
 ### Advanced: Loading an existing agent
 
-If you already have an agent (e.g., created by a previous `quickstart()` call), load it explicitly:
+If you already have an agent (e.g., created by a previous `quickstart(name=..., domain=...)` call), load it explicitly:
 
 ```python
 import jacs.simple as jacs
@@ -75,7 +74,7 @@ The simplified API provides these core operations:
 
 | Operation | Description |
 |-----------|-------------|
-| `quickstart()` | Create a persistent agent with keys on disk -- zero config, no manual setup |
+| `quickstart(name, domain, ...)` | Create a persistent agent with keys on disk -- zero config, no manual setup |
 | `create()` | Create a new agent programmatically (non-interactive) |
 | `load()` | Load an existing agent from config |
 | `verify_self()` | Verify the loaded agent's integrity |
@@ -95,7 +94,6 @@ The simplified API provides these core operations:
 | `is_trusted()` | Check if an agent is trusted |
 | `get_trusted_agent()` | Get a trusted agent's JSON document |
 | `audit()` | Run a read-only security audit (returns risks, health_checks, summary) |
-| `generate_verify_link()` | Generate a shareable hai.ai verification URL for a signed document |
 
 ### Programmatic Agent Creation
 
@@ -129,13 +127,6 @@ if result.valid:
     print(f"Signed by: {result.signer_id}")
 ```
 
-Generate a shareable verification link:
-
-```python
-url = jacs.generate_verify_link(signed_doc.raw_json)
-# https://hai.ai/jacs/verify?s=<base64url-encoded-document>
-```
-
 Documents signed by Rust or Node.js agents verify identically in Python -- cross-language interop is tested on every commit with Ed25519 and pq2025 (ML-DSA-87). See the full [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) for CLI, DNS, and cross-language examples.
 
 ### Verify by Document ID
@@ -156,9 +147,9 @@ jacs.reencrypt_key("old-password-123!", "new-Str0ng-P@ss!")
 
 Passwords must be at least 8 characters and include uppercase, lowercase, a digit, and a special character.
 
-### Algorithm Deprecation Notice
+### Post-Quantum Algorithm
 
-The `pq-dilithium` algorithm is deprecated. Use `pq2025` (ML-DSA-87, FIPS-204) instead. `pq-dilithium` still works but emits deprecation warnings.
+Use `pq2025` (ML-DSA-87, FIPS-204) for post-quantum signing.
 
 ## Type Definitions
 
@@ -185,10 +176,10 @@ result = client.verify(signed.raw_json)
 print(f"Valid: {result.valid}, Agent: {client.agent_id}")
 
 # Or zero-config quickstart (creates keys on disk)
-client = JacsClient.quickstart()
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Context manager for automatic cleanup
-with JacsClient.quickstart() as client:
+with JacsClient.quickstart(name="my-agent", domain="my-agent.example.com") as client:
     signed = client.sign_message("hello")
 ```
 
@@ -235,7 +226,7 @@ See [`examples/multi_agent_agreement.py`](../examples/multi_agent_agreement.py) 
 | Method | Description |
 |--------|-------------|
 | `JacsClient(config_path)` | Load from config |
-| `JacsClient.quickstart()` | Zero-config persistent agent |
+| `JacsClient.quickstart(name, domain, ...)` | Zero-config persistent agent |
 | `JacsClient.ephemeral()` | In-memory agent (no disk, for tests) |
 | `sign_message(data)` | Sign JSON-serializable data |
 | `verify(document)` | Verify a signed document |
@@ -277,6 +268,19 @@ from jacs.adapters.fastapi import JacsMiddleware
 app.add_middleware(JacsMiddleware)
 ```
 
+For auth-style endpoints, enable replay protection:
+
+```python
+from jacs.adapters.fastapi import JacsMiddleware
+
+app.add_middleware(
+    JacsMiddleware,
+    auth_replay_protection=True,
+    auth_max_age_seconds=30,
+    auth_clock_skew_seconds=5,
+)
+```
+
 **CrewAI** -- sign task outputs via guardrail:
 ```python
 from jacs.adapters.crewai import jacs_guardrail
@@ -313,6 +317,8 @@ def test_agent_has_unique_id(jacs_agent):
 The fixture automatically resets after each test.
 
 ## MCP Integration
+
+The canonical full JACS MCP server is the Rust `jacs-mcp` binary. Python keeps FastMCP-native middleware and a partial MCP compatibility adapter for embedding JACS behavior into Python servers.
 
 For AI tool servers using the Model Context Protocol:
 
@@ -351,81 +357,67 @@ doc = agent.create_document(json_string, schema=None)
 
 ## A2A Protocol Support
 
-JACS supports Google's Agent-to-Agent (A2A) protocol:
+Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/a2aproject/A2A) protocol with cryptographic trust built in.
+For A2A security, JACS is an OAuth alternative for service-to-service agent trust (mTLS-like at the payload layer), not a replacement for OAuth/OIDC delegated user authorization.
+
+### Quick Start
+
+```python
+from jacs.client import JacsClient
+
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
+card = client.export_agent_card("http://localhost:8080")
+signed = client.sign_artifact({"action": "classify", "input": "hello"}, "task")
+```
+
+### Using JACSA2AIntegration Directly
+
+For full A2A lifecycle control (well-known documents, chain of custody, extension descriptors):
+
+```python
+from jacs.client import JacsClient
+from jacs.a2a import JACSA2AIntegration
+
+client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
+a2a = client.get_a2a(url="http://localhost:8080")
+
+# Export an A2A Agent Card
+card = a2a.export_agent_card(agent_data)
+
+# Sign an artifact with provenance
+signed = a2a.sign_artifact({"taskId": "t-1", "operation": "classify"}, "task")
+
+# Verify a received artifact
+result = a2a.verify_wrapped_artifact(signed)
+assert result["valid"]
+
+# Build chain of custody across agents
+step2 = a2a.sign_artifact(
+    {"step": 2, "data": "processed"}, "message",
+    parent_signatures=[signed],
+)
+```
+
+### One-Liner Quickstart
 
 ```python
 from jacs.a2a import JACSA2AIntegration
 
-a2a = JACSA2AIntegration("jacs.config.json")
-agent_card = a2a.export_agent_card(agent_data)
-wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
+a2a = JACSA2AIntegration.quickstart(url="http://localhost:8080")
+a2a.serve(port=8080)  # Publishes /.well-known/agent-card.json
 ```
 
-## HAI.ai Integration
+### Trust Policies
 
-HAI.ai is a platform for agent-to-agent agreements and conflict resolution, providing cryptographic attestation of agent capabilities.
+JACS trust policies control how your agent handles foreign signatures:
 
-### Quick Registration
+| Policy | Behavior |
+|--------|----------|
+| `open` | Accept all signatures without key resolution |
+| `verified` | Require key resolution before accepting (**default**) |
+| `strict` | Require the signer to be in your local trust store |
 
-```python
-from jacs.hai import HaiClient
-import jacs.simple as jacs
-
-# Load your JACS agent
-jacs.load("./jacs.config.json")
-
-# Connect to HAI.ai
-hai = HaiClient()
-
-# Test connection
-if hai.testconnection("https://hai.ai"):
-    # Register your agent
-    result = hai.register("https://hai.ai", api_key="your-api-key")
-    print(f"Registered: {result.agent_id}")
-```
-
-### Prerequisites
-
-- JACS agent created (see [Quick Start](#quick-start-simplified-api))
-- API key from HAI.ai (visit https://hai.ai/developers)
-
-### Available Methods
-
-| Method | Description |
-|--------|-------------|
-| `testconnection()` | Test HAI.ai connectivity |
-| `register()` | Register agent with HAI.ai |
-| `verify_agent()` | Verify another agent's trust level |
-| `status()` | Check registration status |
-| `benchmark()` | Run benchmark suite |
-| `connect()` | Connect to SSE event stream |
-
-### Agent Verification Levels
-
-JACS agents can be verified at three trust levels:
-
-| Level | Badge | What it proves |
-|-------|-------|----------------|
-| 1 | Basic | Agent holds a valid private key (self-signed) |
-| 2 | Domain | Agent owner controls a DNS domain |
-| 3 | Attested | HAI.ai has verified and co-signed the agent |
-
-```python
-from jacs.hai import verify_agent
-
-# Verify another agent meets your trust requirements
-result = verify_agent(sender_agent_doc, min_level=2)
-
-if result.valid:
-    print(f"Verified: {result.agent_id} (Level {result.level}: {result.level_name})")
-else:
-    print(f"Verification failed: {result.errors}")
-```
-
-### Examples
-
-- `examples/hai_quickstart.py` - 5-minute quickstart
-- `examples/register_with_hai.py` - Complete registration example
+See the [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) for well-known documents, cross-organization discovery, and chain-of-custody examples.
 
 ## Installation
 
@@ -438,13 +430,15 @@ pip install jacs[langchain]    # LangChain / LangGraph
 pip install jacs[fastapi]      # FastAPI / Starlette
 pip install jacs[crewai]       # CrewAI
 pip install jacs[anthropic]    # Anthropic / Claude SDK
-pip install jacs[all]          # All adapters + MCP + HAI
+pip install jacs[all]          # All adapters + MCP + A2A
+
+# With A2A support
+pip install jacs[a2a]          # Discovery only (httpx)
+pip install jacs[a2a-server]   # A2A server with serve() (FastAPI + uvicorn)
 
 # With MCP support
 pip install jacs[mcp]
 
-# With HAI.ai integration
-pip install jacs[hai]
 ```
 
 ## Examples
@@ -479,8 +473,7 @@ uv run python -m pytest tests/ -v
 |---------|-------------|
 | `make setup` | Install dev dependencies with uv |
 | `make dev` | Build Rust extension for development |
-| `make test` | Run all tests (Python + HAI) |
-| `make test-hai` | Run HAI integration tests only |
+| `make test` | Run all tests |
 | `make check-imports` | Verify all imports work |
 
 ## Documentation

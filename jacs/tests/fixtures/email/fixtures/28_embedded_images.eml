@@ -1,0 +1,25 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Embedded Images
+Date: Fri, 27 Feb 2026 12:27:00 +0000
+Message-ID: <fixture-28@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F28
+X-Expected-Result: pass
+X-Expected-Reason: embedded_inline_images
+Content-Type: multipart/related; boundary="f28"
+
+--f28
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Image below:</p><img src="cid:chart@example.com"></body></html>
+
+--f28
+Content-Type: image/jpeg; name="chart.jpg"
+Content-Disposition: inline; filename="chart.jpg"
+Content-ID: <chart@example.com>
+Content-Transfer-Encoding: base64
+
+/9j/4AAQSkZJRgABAQ==
+
+--f28--

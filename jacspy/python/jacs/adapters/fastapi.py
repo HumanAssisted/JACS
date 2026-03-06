@@ -10,6 +10,10 @@ Usage — middleware (all routes):
     app = FastAPI()
     app.add_middleware(JacsMiddleware, client=my_client)
 
+Usage — middleware with A2A discovery routes:
+    app.add_middleware(JacsMiddleware, client=my_client, a2a=True)
+    # Now serves /.well-known/agent-card.json and friends
+
 Usage — decorator (single route):
     from jacs.adapters.fastapi import jacs_route
 
@@ -22,7 +26,7 @@ Usage — decorator (single route):
 import json
 import logging
 from functools import wraps
-from typing import Any, Optional
+from typing import Any, List, Dict, Optional
 
 try:
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -35,6 +39,11 @@ except ImportError as _exc:
     ) from _exc
 
 from .base import BaseJacsAdapter
+from .._replay import (
+    InMemoryReplayCache,
+    build_auth_replay_options,
+    check_auth_replay,
+)
 
 logger = logging.getLogger("jacs.adapters.fastapi")
 
@@ -52,6 +61,19 @@ class JacsMiddleware(BaseHTTPMiddleware):
         sign_responses: If True (default), outgoing JSON responses are signed.
         verify_requests: If True (default), incoming POST bodies with a
             ``jacsSignature`` field are verified.
+        auth_replay_protection: If True, enforce timestamp freshness and
+            single-use signature replay protection for verified requests.
+        auth_max_age_seconds: Maximum accepted signature age in seconds
+            for auth replay protection mode.
+        auth_clock_skew_seconds: Allowed future clock skew in seconds
+            for auth replay protection mode.
+        a2a: If True, serve A2A well-known discovery documents.
+            The middleware intercepts requests to ``/.well-known/*``
+            and responds directly.  Requires a ``client`` with a loaded
+            agent.  Documents are cached at startup (not regenerated
+            per request).
+        a2a_skills: Optional list of JACS service dicts to override
+            the agent's own services in the exported Agent Card.
     """
 
     def __init__(
@@ -62,39 +84,178 @@ class JacsMiddleware(BaseHTTPMiddleware):
         strict: bool = False,
         sign_responses: bool = True,
         verify_requests: bool = True,
+        auth_replay_protection: bool = False,
+        auth_max_age_seconds: int = 30,
+        auth_clock_skew_seconds: int = 5,
+        a2a: bool = False,
+        a2a_skills: Optional[List[Dict[str, Any]]] = None,
+        attest: bool = False,
     ) -> None:
-        super().__init__(app)
         self._adapter = BaseJacsAdapter(
-            client=client, config_path=config_path, strict=strict
+            client=client, config_path=config_path, strict=strict, attest=attest
         )
         self.sign_responses = sign_responses
         self.verify_requests = verify_requests
+        self._auth_replay = build_auth_replay_options(
+            enabled=auth_replay_protection,
+            max_age_seconds=auth_max_age_seconds,
+            clock_skew_seconds=auth_clock_skew_seconds,
+        )
+        self._replay_cache = InMemoryReplayCache()
+        self._a2a_docs: Optional[Dict[str, Any]] = None
+
+        if a2a:
+            self._build_a2a_docs(a2a_skills)
+
+        super().__init__(app)
+
+    def _build_a2a_docs(
+        self,
+        skills: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """Pre-build A2A well-known documents for serving."""
+        jacs_client = self._adapter._client
+        if jacs_client is None:
+            logger.warning(
+                "a2a=True but no JacsClient available; "
+                "A2A discovery documents will not be served"
+            )
+            return
+
+        try:
+            from ..a2a import JACSA2AIntegration
+
+            integration = JACSA2AIntegration(jacs_client)
+
+            agent_json_str = jacs_client._agent.get_agent_json()
+            agent_data: Dict[str, Any] = json.loads(agent_json_str)
+
+            if skills:
+                agent_data["jacsServices"] = skills
+
+            card = integration.export_agent_card(agent_data)
+            card_dict = integration.agent_card_to_dict(card)
+            extension_dict = integration.create_extension_descriptor()
+
+            # Build the full set
+            public_key_b64 = agent_data.get("jacsPublicKey", "")
+            well_known = integration.generate_well_known_documents(
+                agent_card=card,
+                jws_signature="",
+                public_key_b64=public_key_b64 or "",
+                agent_data=agent_data,
+            )
+            # Override with our clean versions
+            well_known["/.well-known/agent-card.json"] = card_dict
+            well_known["/.well-known/jacs-extension.json"] = extension_dict
+
+            self._a2a_docs = well_known
+        except Exception as e:
+            logger.warning("Failed to build A2A documents: %s", e)
+
+    _CORS_HEADERS = {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, OPTIONS",
+        "access-control-allow-headers": "Content-Type, Authorization",
+        "cache-control": "public, max-age=3600",
+    }
 
     async def dispatch(self, request: Request, call_next):
+        # --- Serve cached A2A well-known documents ---
+        if self._a2a_docs and request.url.path.startswith("/.well-known/"):
+            doc = self._a2a_docs.get(request.url.path)
+            if doc is not None:
+                content = json.dumps(doc).encode("utf-8")
+                headers = {
+                    **self._CORS_HEADERS,
+                    "content-length": str(len(content)),
+                }
+                return Response(
+                    content=content,
+                    status_code=200,
+                    headers=headers,
+                    media_type="application/json",
+                )
+
         # --- Verify incoming request body ---
         if self.verify_requests and request.method == "POST":
             body = await request.body()
             if body:
+                raw_body = ""
+                data = None
                 try:
-                    data = json.loads(body)
+                    raw_body = body.decode("utf-8")
+                except UnicodeDecodeError:
+                    raw_body = ""
+
+                if raw_body:
+                    try:
+                        data = json.loads(raw_body)
+                    except json.JSONDecodeError:
+                        data = None
+
+                if isinstance(data, dict):
                     if "jacsSignature" in data:
-                        if self._adapter.strict:
-                            # Strict: raise on failure (will be caught below)
-                            self._adapter.verify_input(json.dumps(data))
-                        else:
-                            self._adapter.verify_input_or_passthrough(
-                                json.dumps(data)
+                        try:
+                            verify_result = self._adapter.client.verify(raw_body)
+                            is_valid = (
+                                verify_result.get("valid", False)
+                                if isinstance(verify_result, dict)
+                                else bool(getattr(verify_result, "valid", False))
                             )
-                except json.JSONDecodeError:
-                    pass
-                except Exception:
-                    if self._adapter.strict:
-                        return Response(
-                            content=json.dumps({"error": "JACS signature verification failed"}),
-                            status_code=401,
-                            media_type="application/json",
-                        )
-                    # Permissive mode: already logged by adapter, continue
+                            errors = (
+                                verify_result.get("errors", [])
+                                if isinstance(verify_result, dict)
+                                else getattr(verify_result, "errors", [])
+                            )
+
+                            if is_valid:
+                                if self._auth_replay.enabled:
+                                    replay_error = check_auth_replay(
+                                        raw_body,
+                                        verify_result,
+                                        self._replay_cache,
+                                        self._auth_replay,
+                                    )
+                                    if replay_error:
+                                        return Response(
+                                            content=json.dumps(
+                                                {
+                                                    "error": "JACS signature verification failed",
+                                                    "details": [replay_error],
+                                                }
+                                            ),
+                                            status_code=401,
+                                            media_type="application/json",
+                                        )
+                            elif self._adapter.strict:
+                                return Response(
+                                    content=json.dumps(
+                                        {
+                                            "error": "JACS signature verification failed",
+                                            "details": errors,
+                                        }
+                                    ),
+                                    status_code=401,
+                                    media_type="application/json",
+                                )
+                            else:
+                                logger.warning(
+                                    "JACS verification failed (passthrough): %s",
+                                    errors,
+                                )
+                        except Exception as exc:
+                            if self._adapter.strict:
+                                return Response(
+                                    content=json.dumps(
+                                        {"error": "JACS signature verification failed"}
+                                    ),
+                                    status_code=401,
+                                    media_type="application/json",
+                                )
+                            logger.warning(
+                                "JACS verification failed (passthrough): %s", exc
+                            )
 
         response = await call_next(request)
 
@@ -137,6 +298,7 @@ def jacs_route(
     client: Any = None,
     config_path: Optional[str] = None,
     strict: bool = False,
+    attest: bool = False,
 ):
     """Decorator that signs a single FastAPI endpoint's response.
 
@@ -147,8 +309,9 @@ def jacs_route(
         client: JacsClient instance (or None to auto-create).
         config_path: Path to jacs.config.json.
         strict: Raise on signing failure if True.
+        attest: If True, produce attestation documents.
     """
-    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict)
+    adapter = BaseJacsAdapter(client=client, config_path=config_path, strict=strict, attest=attest)
 
     def decorator(func):
         @wraps(func)

@@ -69,6 +69,11 @@ fn test_update_agent_and_verify_versions() {
                 agent.get_id().unwrap(),
                 agent.get_version().unwrap()
             );
+            assert_eq!(
+                agent.get_key_algorithm().map(|s| s.as_str()),
+                Some("RSA-PSS"),
+                "Fixture-backed load_by_id must use RSA-PSS for agent-one keys"
+            );
         }
         Err(e) => {
             eprintln!("Error loading agent: {}", e);

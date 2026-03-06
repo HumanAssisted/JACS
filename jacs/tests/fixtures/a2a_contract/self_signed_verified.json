@@ -1,0 +1,14 @@
+{
+  "status": "SelfSigned",
+  "valid": true,
+  "signerId": "agent-self-001",
+  "signerVersion": "v1-self",
+  "artifactType": "a2a-task",
+  "timestamp": "2025-06-01T00:00:00Z",
+  "parentSignaturesValid": true,
+  "parentVerificationResults": [],
+  "originalArtifact": {
+    "name": "example-task",
+    "description": "A self-signed A2A task artifact"
+  }
+}

@@ -11,7 +11,10 @@
  * import { openai } from '@ai-sdk/openai';
  * import { generateText } from 'ai';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'vercel-agent',
+ *   domain: 'vercel.local',
+ * });
  * const model = withProvenance(openai('gpt-4'), { client });
  *
  * const { text, providerMetadata } = await generateText({
@@ -40,6 +43,8 @@ export interface ProvenanceOptions {
     strict?: boolean;
     /** Additional metadata to include in provenance records. */
     metadata?: Record<string, unknown>;
+    /** Include A2A agent card in provenance metadata. Default: false. */
+    a2a?: boolean;
 }
 export interface ProvenanceRecord {
     signed: boolean;

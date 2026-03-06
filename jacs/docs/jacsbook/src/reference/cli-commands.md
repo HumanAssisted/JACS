@@ -1,6 +1,6 @@
 # CLI Command Reference
 
-This page provides a comprehensive reference for all JACS command-line interface commands.
+This page provides a comprehensive reference for all JACS command-line interface commands. For a workflow-oriented tutorial, see [CLI Tutorial](../rust/cli.md). For practical scripting examples, see [CLI Examples](../examples/cli.md).
 
 ## Global Commands
 
@@ -12,23 +12,25 @@ jacs version
 ```
 
 ### `jacs quickstart`
-Create a persistent agent with keys on disk and optionally sign data -- no manual setup needed. If `./jacs.config.json` already exists, loads it; otherwise creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. This is the fastest way to start using JACS.
+Create a persistent agent with keys on disk and optionally sign data -- no manual setup needed. If `./jacs.config.json` already exists, loads it; otherwise creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. Password is required: set `JACS_PRIVATE_KEY_PASSWORD` (recommended) or `JACS_PASSWORD_FILE` (CLI file bootstrap). Set exactly one explicit source; if both are set, CLI exits with an error. This is the fastest way to start using JACS.
 
 ```bash
 # Print agent info (ID, algorithm)
-jacs quickstart
+jacs quickstart --name my-agent --domain my-agent.example.com
 
 # Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --sign
+echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
 
 # Sign a file
-jacs quickstart --sign --file mydata.json
+jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
 
 # Use a specific algorithm
-jacs quickstart --algorithm ring-Ed25519
+jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
 ```
 
 **Options:**
+- `--name <name>` - Agent name used for first-time quickstart creation (required)
+- `--domain <domain>` - Agent domain used for DNS/public-key verification workflows (required)
 - `--algorithm <algo>` - Signing algorithm (default: `pq2025`). Also: `ring-Ed25519`, `RSA-PSS`
 - `--sign` - Sign input (from stdin or `--file`) instead of printing info
 - `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)

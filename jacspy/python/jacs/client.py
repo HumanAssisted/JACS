@@ -7,7 +7,7 @@ clients to coexist in a single process without shared global state.
 Example:
     from jacs.client import JacsClient
 
-    client = JacsClient.quickstart()
+    client = JacsClient.quickstart(name="my-agent", domain="agent.example.com")
     signed = client.sign_message({"hello": "world"})
     result = client.verify(signed.raw_json)
     assert result.valid
@@ -41,6 +41,7 @@ try:
     from . import JacsAgent as _JacsAgent
     from . import SimpleAgent as _SimpleAgent
     from .jacs import trust_agent as _trust_agent
+    from .jacs import trust_agent_with_key as _trust_agent_with_key
     from .jacs import list_trusted_agents as _list_trusted_agents
     from .jacs import untrust_agent as _untrust_agent
     from .jacs import is_trusted as _is_trusted
@@ -52,6 +53,7 @@ except ImportError:
     _JacsAgent = _jacs_module.JacsAgent  # type: ignore[misc]
     _SimpleAgent = _jacs_module.SimpleAgent  # type: ignore[misc]
     _trust_agent = _jacs_module.trust_agent
+    _trust_agent_with_key = _jacs_module.trust_agent_with_key
     _list_trusted_agents = _jacs_module.list_trusted_agents
     _untrust_agent = _jacs_module.untrust_agent
     _is_trusted = _jacs_module.is_trusted
@@ -63,6 +65,41 @@ def _resolve_strict(explicit: Optional[bool]) -> bool:
     if explicit is not None:
         return explicit
     return os.environ.get("JACS_STRICT_MODE", "").lower() in ("true", "1")
+
+
+def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
+    if os.path.isabs(candidate):
+        return candidate
+    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
+
+
+def _read_document_by_id(document_id: str, agent_info: Optional[AgentInfo]) -> Optional[dict]:
+    if agent_info is None or not agent_info.config_path:
+        return None
+    try:
+        config_path = os.path.abspath(agent_info.config_path)
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        data_dir = _resolve_config_relative_path(
+            config_path, config.get("jacs_data_directory", "./jacs_data")
+        )
+        doc_path = os.path.join(data_dir, "documents", f"{document_id}.json")
+        if not os.path.exists(doc_path):
+            return None
+        with open(doc_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
+    sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
+    return (
+        sig_info.get("agentId", sig_info.get("agentID", "")),
+        sig_info.get("publicKeyHash", ""),
+        sig_info.get("date", ""),
+    )
 
 
 def _parse_signed_document(json_str: str) -> SignedDocument:
@@ -81,11 +118,11 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
     for f in data.get("jacsFiles", []):
         attachments.append(
             Attachment(
-                filename=f.get("filename", ""),
-                mime_type=f.get("mimeType", "application/octet-stream"),
+                filename=f.get("filename", f.get("path", "")),
+                mime_type=f.get("mimeType", f.get("mimetype", "application/octet-stream")),
                 content_hash=f.get("sha256", ""),
-                content=f.get("content"),
-                size_bytes=f.get("size", 0),
+                content=f.get("content", f.get("contents")),
+                size_bytes=f.get("size", f.get("sizeBytes", 0)),
             )
         )
 
@@ -114,7 +151,7 @@ class JacsClient:
         result = client.verify(signed.raw_json)
 
     Context manager:
-        with JacsClient.quickstart() as client:
+        with JacsClient.quickstart(name="my-agent", domain="agent.example.com") as client:
             signed = client.sign_message("hi")
     """
 
@@ -138,6 +175,9 @@ class JacsClient:
     @classmethod
     def quickstart(
         cls,
+        name: str,
+        domain: str,
+        description: Optional[str] = None,
         algorithm: Optional[str] = None,
         config_path: Optional[str] = None,
         strict: Optional[bool] = None,
@@ -147,6 +187,11 @@ class JacsClient:
         If a config file exists, it is loaded; otherwise a new persistent
         agent is created on disk (keys + config).
         """
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError("JacsClient.quickstart() requires a non-empty 'name'.")
+        if not isinstance(domain, str) or not domain.strip():
+            raise ConfigError("JacsClient.quickstart() requires a non-empty 'domain'.")
+
         cfg_path = config_path or "./jacs.config.json"
         instance = cls.__new__(cls)
         instance._strict = _resolve_strict(strict)
@@ -171,22 +216,26 @@ class JacsClient:
                 + secrets.choice("!@#$%^&*()-_=+")
                 + "".join(secrets.choice(chars) for _ in range(28))
             )
-            keys_dir = "./jacs_keys"
-            os.makedirs(keys_dir, exist_ok=True)
-            pw_path = os.path.join(keys_dir, ".jacs_password")
-            with open(pw_path, "w") as f:
-                f.write(password)
-            os.chmod(pw_path, 0o600)
+            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
+            if persist_password:
+                keys_dir = "./jacs_keys"
+                os.makedirs(keys_dir, exist_ok=True)
+                pw_path = os.path.join(keys_dir, ".jacs_password")
+                with open(pw_path, "w", encoding="utf-8") as f:
+                    f.write(password)
+                os.chmod(pw_path, 0o600)
             os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
 
         algo = algorithm or "pq2025"
         _SimpleAgent.create_agent(
-            name="jacs-agent",
+            name=name,
             password=password,
             algorithm=algo,
             data_directory="./jacs_data",
             key_directory="./jacs_keys",
             config_path=cfg_path,
+            description=description or "",
+            domain=domain,
             default_storage="fs",
         )
 
@@ -225,7 +274,14 @@ class JacsClient:
             agent_id=info_dict.get("agent_id", ""),
             version=info_dict.get("version", ""),
             name=info_dict.get("name", "ephemeral"),
-            algorithm=info_dict.get("algorithm", "ed25519"),
+            algorithm=info_dict.get("algorithm", "pq2025"),
+            config_path="",
+            public_key_path="",
+            private_key_path="",
+            data_directory="",
+            key_directory="",
+            domain="",
+            dns_record="",
         )
         return instance
 
@@ -249,15 +305,32 @@ class JacsClient:
         parts = id_ver.split(":") if id_ver else ["", ""]
         agent_id = parts[0] if parts else ""
         version = parts[1] if len(parts) > 1 else ""
-        key_dir = config.get("jacs_key_directory", "./jacs_keys")
+        resolved_config_path = os.path.abspath(config_path)
+        key_dir = _resolve_config_relative_path(
+            resolved_config_path,
+            config.get("jacs_key_directory", "./jacs_keys"),
+        )
+        data_dir = _resolve_config_relative_path(
+            resolved_config_path,
+            config.get("jacs_data_directory", "./jacs_data"),
+        )
+        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
+        private_key_file = config.get(
+            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
+        )
 
         self._agent_info = AgentInfo(
             agent_id=agent_id,
             version=version,
             name=config.get("name"),
-            algorithm=config.get("jacs_agent_key_algorithm", "RSA"),
-            config_path=config_path,
-            public_key_path=os.path.join(key_dir, "jacs.public.pem"),
+            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
+            config_path=resolved_config_path,
+            public_key_path=os.path.join(key_dir, public_key_file),
+            private_key_path=os.path.join(key_dir, private_key_file),
+            data_directory=data_dir,
+            key_directory=key_dir,
+            domain=config.get("domain", ""),
+            dns_record=config.get("dns_record", ""),
         )
 
     def _require_agent(self):
@@ -372,8 +445,8 @@ class JacsClient:
                 valid=is_valid,
                 signer_id=sig_info.get("agentId", sig_info.get("agentID", "")),
                 signer_public_key_hash=sig_info.get("publicKeyHash", ""),
-                content_hash_valid=True,
-                signature_valid=True,
+                content_hash_valid=is_valid,
+                signature_valid=is_valid,
                 timestamp=sig_info.get("date", ""),
             )
         except Exception as e:
@@ -406,16 +479,27 @@ class JacsClient:
             )
         try:
             is_valid = agent.verify_document_by_id(doc_id)
+            doc_data = _read_document_by_id(doc_id, self._agent_info)
+            signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
             return VerificationResult(
                 valid=is_valid,
-                signer_id=self._agent_info.agent_id if self._agent_info else "",
+                signer_id=signer_id,
+                signer_public_key_hash=signer_public_key_hash,
                 content_hash_valid=is_valid,
                 signature_valid=is_valid,
+                timestamp=timestamp,
             )
         except Exception as e:
             if self._strict:
                 raise VerificationError(f"Verification failed (strict mode): {e}") from e
             return VerificationResult(valid=False, errors=[str(e)])
+
+    def generate_verify_link(self, doc: str, base_url: Optional[str] = None) -> str:
+        """Generate a verification URL for a signed document."""
+        import base64
+        encoded = base64.urlsafe_b64encode(doc.encode("utf-8")).decode("ascii")
+        url = base_url or "https://hai.ai/jacs/verify"
+        return f"{url}?s={encoded}"
 
     # ------------------------------------------------------------------
     # Agreements
@@ -541,6 +625,11 @@ class JacsClient:
     def trust_agent(self, agent_json: str) -> str:
         return _trust_agent(agent_json)
 
+    def trust_agent_with_key(self, agent_json: str, public_key_pem: str) -> str:
+        if not public_key_pem or not public_key_pem.strip():
+            raise JacsError("public_key_pem cannot be empty")
+        return _trust_agent_with_key(agent_json, public_key_pem)
+
     def list_trusted_agents(self) -> List[str]:
         return _list_trusted_agents()
 
@@ -590,6 +679,26 @@ class JacsClient:
         except Exception as e:
             raise JacsError(f"Failed to export agent: {e}")
 
+    def get_public_key(self) -> str:
+        """Return this agent's PEM public key."""
+        if self._agent_info is None or not self._agent_info.public_key_path:
+            raise AgentNotLoadedError("No loaded agent with public key metadata.")
+
+        key_path = self._agent_info.public_key_path
+        if not os.path.exists(key_path):
+            raise JacsError(f"Public key not found: {key_path}")
+
+        with open(key_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def share_public_key(self) -> str:
+        """Alias for get_public_key() for framework/tool integrations."""
+        return self.get_public_key()
+
+    def share_agent(self) -> str:
+        """Alias for export_agent() for framework/tool integrations."""
+        return self.export_agent()
+
     def audit(
         self,
         config_path: Optional[str] = None,
@@ -601,6 +710,221 @@ class JacsClient:
             return json.loads(json_str)
         except Exception as e:
             raise JacsError(f"Audit failed: {e}")
+
+    # ------------------------------------------------------------------
+    # A2A helpers
+    # ------------------------------------------------------------------
+
+    def get_a2a(
+        self,
+        url: Optional[str] = None,
+        skills: Optional[List[dict]] = None,
+    ) -> "JACSA2AIntegration":
+        """Return a :class:`JACSA2AIntegration` wired to this client.
+
+        Args:
+            url: Base URL for the agent's A2A endpoint.  Stored on the
+                returned integration object as ``default_url`` for
+                convenience but not required.
+            skills: Optional pre-built skill dicts to attach when
+                exporting an agent card.
+
+        Returns:
+            A :class:`JACSA2AIntegration` instance backed by this client.
+        """
+        from .a2a import JACSA2AIntegration
+
+        integration = JACSA2AIntegration(self)
+        integration.default_url = url  # type: ignore[attr-defined]
+        integration.default_skills = skills  # type: ignore[attr-defined]
+        return integration
+
+    def export_agent_card(
+        self,
+        url: Optional[str] = None,
+        skills: Optional[List[dict]] = None,
+    ) -> "A2AAgentCard":
+        """Export this client's agent as an A2A Agent Card.
+
+        This is a convenience shorthand for::
+
+            a2a = client.get_a2a()
+            card = a2a.export_agent_card(agent_data)
+
+        It builds ``agent_data`` from the client's own agent JSON and
+        delegates to :meth:`JACSA2AIntegration.export_agent_card`.
+
+        Args:
+            url: Base URL for the agent's A2A endpoint.  If provided it
+                is injected as ``jacsAgentDomain`` so the card's
+                ``supportedInterfaces`` points to a real endpoint instead
+                of the placeholder ``agent-<id>.example.com``.
+            skills: Optional list of raw JACS service dicts.  When
+                supplied they are injected as ``jacsServices`` in the
+                agent data fed to the card builder.
+
+        Returns:
+            An :class:`A2AAgentCard` dataclass.
+        """
+        from .a2a import JACSA2AIntegration
+
+        agent = self._require_agent()
+        try:
+            agent_json_str = agent.get_agent_json()
+            agent_data = json.loads(agent_json_str)
+        except Exception as e:
+            raise JacsError(f"Failed to export agent card: {e}")
+
+        if url:
+            agent_data["jacsAgentDomain"] = url
+        if skills:
+            agent_data["jacsServices"] = skills
+
+        integration = JACSA2AIntegration(self)
+        return integration.export_agent_card(agent_data)
+
+    # ------------------------------------------------------------------
+    # Attestation
+    # ------------------------------------------------------------------
+
+    def create_attestation(
+        self,
+        subject: dict,
+        claims: list,
+        evidence: Optional[list] = None,
+        derivation: Optional[dict] = None,
+        policy_context: Optional[dict] = None,
+    ) -> SignedDocument:
+        """Create a signed attestation document.
+
+        Args:
+            subject: Dict with type, id, and digests fields.
+            claims: List of claim dicts (name, value, confidence, etc.).
+            evidence: Optional list of evidence reference dicts.
+            derivation: Optional derivation (transform receipt) dict.
+            policy_context: Optional policy context dict.
+
+        Returns:
+            SignedDocument containing the signed attestation.
+        """
+        agent = self._require_agent()
+        params: dict = {"subject": subject, "claims": claims}
+        if evidence is not None:
+            params["evidence"] = evidence
+        if derivation is not None:
+            params["derivation"] = derivation
+        if policy_context is not None:
+            params["policyContext"] = policy_context
+
+        try:
+            result = agent.create_attestation(json.dumps(params))
+            return _parse_signed_document(result)
+        except Exception as e:
+            raise JacsError(f"Failed to create attestation: {e}")
+
+    def verify_attestation(
+        self,
+        attestation_json: str,
+        full: bool = False,
+    ) -> dict:
+        """Verify an attestation document.
+
+        The attestation must have been previously created (and stored) by this
+        agent. The ``attestation_json`` is parsed to extract the document key.
+
+        Args:
+            attestation_json: Raw JSON string of the attestation document.
+            full: If True, run full verification (evidence + chain).
+
+        Returns:
+            Dict with valid, crypto, evidence, chain, errors fields.
+        """
+        agent = self._require_agent()
+        data = json.loads(attestation_json)
+        doc_key = f"{data.get('jacsId', '')}:{data.get('jacsVersion', '')}"
+        try:
+            if full:
+                result_json = agent.verify_attestation_full(doc_key)
+            else:
+                result_json = agent.verify_attestation(doc_key)
+            return json.loads(result_json)
+        except Exception as e:
+            if self._strict:
+                raise VerificationError(f"Attestation verification failed: {e}") from e
+            return {"valid": False, "errors": [str(e)]}
+
+    def lift_to_attestation(
+        self,
+        signed_document: Union[str, SignedDocument],
+        claims: list,
+    ) -> SignedDocument:
+        """Lift a signed document into an attestation.
+
+        Args:
+            signed_document: The signed document (raw JSON or SignedDocument).
+            claims: List of claim dicts.
+
+        Returns:
+            SignedDocument containing the lifted attestation.
+        """
+        agent = self._require_agent()
+        if isinstance(signed_document, SignedDocument):
+            doc_str = signed_document.raw_json
+        else:
+            doc_str = signed_document
+        claims_json = json.dumps(claims)
+        try:
+            result = agent.lift_to_attestation(doc_str, claims_json)
+            return _parse_signed_document(result)
+        except Exception as e:
+            raise JacsError(f"Failed to lift to attestation: {e}")
+
+    def export_attestation_dsse(self, attestation_json: str) -> dict:
+        """Export an attestation as a DSSE envelope.
+
+        Args:
+            attestation_json: Raw JSON string of the attestation document.
+
+        Returns:
+            Dict containing the DSSE envelope (payloadType, payload, signatures).
+        """
+        agent = self._require_agent()
+        try:
+            result = agent.export_attestation_dsse(attestation_json)
+            return json.loads(result)
+        except Exception as e:
+            raise JacsError(f"Failed to export DSSE: {e}")
+
+    # ------------------------------------------------------------------
+    # A2A helpers
+    # ------------------------------------------------------------------
+
+    def sign_artifact(
+        self,
+        artifact: dict,
+        artifact_type: str,
+        parent_signatures: Optional[List[dict]] = None,
+    ) -> dict:
+        """Sign an A2A artifact with JACS provenance.
+
+        Convenience shorthand for::
+
+            a2a = client.get_a2a()
+            a2a.sign_artifact(artifact, artifact_type, parent_signatures)
+
+        Args:
+            artifact: The A2A artifact dict to wrap and sign.
+            artifact_type: Type label (e.g. ``"task"``, ``"message"``).
+            parent_signatures: Optional parent signatures for chain of
+                custody.
+
+        Returns:
+            The signed, JACS-wrapped artifact dict.
+        """
+        from .a2a import JACSA2AIntegration
+
+        integration = JACSA2AIntegration(self)
+        return integration.sign_artifact(artifact, artifact_type, parent_signatures)
 
 
 __all__ = ["JacsClient"]

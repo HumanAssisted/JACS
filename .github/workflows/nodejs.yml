@@ -2,14 +2,14 @@ name: Node.js (jacsnpm)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
       - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
@@ -60,12 +60,22 @@ jobs:
           JACS_DATA_DIRECTORY: /tmp/does-not-exist
           JACS_KEY_DIRECTORY: /tmp/does-not-exist
           JACS_DEFAULT_STORAGE: memory
-          JACS_KEY_RESOLUTION: hai
+          JACS_KEY_RESOLUTION: local
         run: npm run test:cross-language
 
-      - name: Run tests
+      - name: Run tests (parallel, excluding cross-language already covered above)
         working-directory: jacsnpm
-        run: npm test
+        run: npm run test:ci
+
+      - name: Smoke test quickstart example
+        working-directory: jacsnpm
+        env:
+          JACS_PRIVATE_KEY_PASSWORD: TestP@ss123!#
+        run: |
+          set -euo pipefail
+          TMP_EXAMPLE_DIR=$(mktemp -d)
+          cd "${TMP_EXAMPLE_DIR}"
+          node "${GITHUB_WORKSPACE}/jacsnpm/examples/quickstart.js"
 
       - name: Smoke test packed npm install
         working-directory: jacsnpm
@@ -76,4 +86,4 @@ jobs:
           cd /tmp/jacs-npm-smoke
           npm init -y >/dev/null
           npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
-          node -e "require('@hai.ai/jacs'); require('@hai.ai/jacs/simple'); require('@hai.ai/jacs/mcp'); require('@hai.ai/jacs/a2a'); console.log('smoke imports ok')"
+          node -e "require('jacs'); require('jacs/simple'); require('jacs/mcp'); require('jacs/a2a'); console.log('smoke imports ok')"

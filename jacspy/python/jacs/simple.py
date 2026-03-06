@@ -19,16 +19,12 @@ A streamlined interface for the most common JACS operations:
 - is_trusted(): Check if an agent is trusted
 - get_trusted_agent(): Get a trusted agent's JSON
 - audit(): Run a read-only security audit and health checks
-- fetch_remote_key(): Fetch a public key from HAI's key service
 
 Environment Variables:
-    HAI_KEYS_BASE_URL: Base URL for HAI's key distribution service.
-                       Defaults to "https://keys.hai.ai".
-
     JACS_KEY_RESOLUTION: Comma-separated order of key resolution when
-                         verifying signatures (e.g. "local,hai" or "local,dns,hai").
-                         Sources: local (trust store), dns (DNS TXT), hai (HAI key service).
-                         Default is "local,hai".
+                         verifying signatures (e.g. "local,dns").
+                         Sources: local (trust store), dns (DNS TXT).
+                         Default is "local".
 
 Example:
     import jacs.simple as jacs
@@ -55,9 +51,6 @@ Example:
     status = jacs.check_agreement(agreement)
     print(f"Complete: {status.complete}, Pending: {status.pending}")
 
-    # Fetch a remote public key (no agent required)
-    key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
-    print(f"Algorithm: {key_info.algorithm}")
 """
 
 import json
@@ -91,8 +84,8 @@ from .types import (
 # Import the Rust bindings
 try:
     from . import JacsAgent
-    from .jacs import fetch_remote_key as _fetch_remote_key
     from .jacs import trust_agent as _trust_agent
+    from .jacs import trust_agent_with_key as _trust_agent_with_key
     from .jacs import list_trusted_agents as _list_trusted_agents
     from .jacs import untrust_agent as _untrust_agent
     from .jacs import is_trusted as _is_trusted
@@ -104,10 +97,10 @@ except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
     JacsAgent = _jacs_module.JacsAgent
-    _fetch_remote_key = _jacs_module.fetch_remote_key
     _verify_document_standalone = _jacs_module.verify_document_standalone
     _verify_agent_dns = _jacs_module.verify_agent_dns
     _trust_agent = _jacs_module.trust_agent
+    _trust_agent_with_key = _jacs_module.trust_agent_with_key
     _list_trusted_agents = _jacs_module.list_trusted_agents
     _untrust_agent = _jacs_module.untrust_agent
     _is_trusted = _jacs_module.is_trusted
@@ -144,55 +137,52 @@ def reset():
     _strict = False
 
 
-# Verify link constants (HAI / public verification URLs)
-MAX_VERIFY_URL_LEN = 2048
-MAX_VERIFY_DOCUMENT_BYTES = 1515
-
-
-def generate_verify_link(
-    document: str,
-    base_url: str = "https://hai.ai",
-) -> str:
-    """Build a verification URL for a signed JACS document (e.g. hai.ai/jacs/verify?s=...).
-
-    Encodes `document` as URL-safe base64. Raises ValueError if the resulting URL
-    would exceed MAX_VERIFY_URL_LEN (document must be at most MAX_VERIFY_DOCUMENT_BYTES UTF-8 bytes).
-
-    Args:
-        document: The full signed JACS document string (JSON).
-        base_url: Base URL of the verifier (no trailing slash). Default "https://hai.ai".
-
-    Returns:
-        Full URL: {base_url}/jacs/verify?s={base64url(document)}
-    """
-    try:
-        from jacs._jacs import generate_verify_link as _native_generate_verify_link
-        return _native_generate_verify_link(document, base_url)
-    except ImportError:
-        pass
-
-    # Fallback: pure-Python implementation
-    import base64
-
-    base = base_url.rstrip("/")
-    encoded = base64.urlsafe_b64encode(document.encode("utf-8")).rstrip(b"=").decode("ascii")
-    path_and_query = f"/jacs/verify?s={encoded}"
-    full_url = f"{base}{path_and_query}"
-    if len(full_url) > MAX_VERIFY_URL_LEN:
-        raise ValueError(
-            f"Verify URL would exceed max length ({MAX_VERIFY_URL_LEN}). "
-            f"Document must be at most {MAX_VERIFY_DOCUMENT_BYTES} UTF-8 bytes."
-        )
-    return full_url
 
 
 def _get_agent() -> JacsAgent:
     """Get the global agent, raising an error if not loaded."""
     if _global_agent is None:
         raise AgentNotLoadedError(
-            "No agent loaded. Call jacs.quickstart() for zero-config setup, or jacs.load('path/to/config.json') for a persistent agent."
+            "No agent loaded. Call jacs.quickstart(name='my-agent', domain='agent.example.com') for zero-config setup, or jacs.load('path/to/config.json') for a persistent agent."
         )
     return _global_agent
+
+
+def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
+    if os.path.isabs(candidate):
+        return candidate
+    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
+
+
+def _read_document_by_id(document_id: str) -> Optional[dict]:
+    """Best-effort read of a stored document for metadata extraction."""
+    if _agent_info is None or not _agent_info.config_path:
+        return None
+
+    try:
+        config_path = os.path.abspath(_agent_info.config_path)
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        data_dir = _resolve_config_relative_path(
+            config_path, config.get("jacs_data_directory", "./jacs_data")
+        )
+        doc_path = os.path.join(data_dir, "documents", f"{document_id}.json")
+        if not os.path.exists(doc_path):
+            return None
+        with open(doc_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
+    sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
+    return (
+        sig_info.get("agentId", sig_info.get("agentID", "")),
+        sig_info.get("publicKeyHash", ""),
+        sig_info.get("date", ""),
+    )
 
 
 def _parse_signed_document(json_str: str) -> SignedDocument:
@@ -222,11 +212,11 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
         files_data = data.get("jacsFiles", [])
         for f in files_data:
             attachments.append(Attachment(
-                filename=f.get("filename", ""),
-                mime_type=f.get("mimeType", "application/octet-stream"),
+                filename=f.get("filename", f.get("path", "")),
+                mime_type=f.get("mimeType", f.get("mimetype", "application/octet-stream")),
                 content_hash=f.get("sha256", ""),
-                content=f.get("content"),
-                size_bytes=f.get("size", 0),
+                content=f.get("content", f.get("contents")),
+                size_bytes=f.get("size", f.get("sizeBytes", 0)),
             ))
 
         return SignedDocument(
@@ -270,14 +260,13 @@ def create(
         password: Password for encrypting the private key.
                   If not provided, falls back to JACS_PRIVATE_KEY_PASSWORD env var.
         algorithm: Signing algorithm ("pq2025", "ring-Ed25519", "RSA-PSS").
-                   Note: "pq-dilithium" is deprecated, use "pq2025" instead.
         data_directory: Directory for data storage (default: "./jacs_data")
         key_directory: Directory for keys (default: "./jacs_keys")
         config_path: Where to save the config (default: "./jacs.config.json")
         agent_type: Type of agent ("ai", "human", "hybrid")
         description: Optional description of the agent's purpose
         domain: Optional domain for DNSSEC fingerprint
-        default_storage: Storage backend ("fs", "aws", "hai")
+        default_storage: Storage backend ("fs")
 
     Returns:
         AgentInfo with the new agent's details
@@ -342,8 +331,13 @@ def create(
             public_key_hash="",
             created_at="",
             algorithm=info_dict.get("algorithm", algorithm),
-            config_path=config_path,
+            config_path=info_dict.get("config_path", config_path),
             public_key_path=info_dict.get("public_key_path", ""),
+            private_key_path=info_dict.get("private_key_path"),
+            data_directory=info_dict.get("data_directory", data_directory),
+            key_directory=info_dict.get("key_directory", key_directory),
+            domain=info_dict.get("domain", domain or ""),
+            dns_record=info_dict.get("dns_record", ""),
         )
 
         logger.info("Agent created: id=%s, name=%s", _agent_info.agent_id, name)
@@ -413,16 +407,31 @@ def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> Ag
         agent_id = parts[0] if parts else ""
         version = parts[1] if len(parts) > 1 else ""
 
-        key_dir = config.get("jacs_key_directory", "./jacs_keys")
+        config_abs = os.path.abspath(config_path)
+        key_dir = _resolve_config_relative_path(
+            config_abs, config.get("jacs_key_directory", "./jacs_keys")
+        )
+        data_dir = _resolve_config_relative_path(
+            config_abs, config.get("jacs_data_directory", "./jacs_data")
+        )
+        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
+        private_key_file = config.get(
+            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
+        )
         _agent_info = AgentInfo(
             agent_id=agent_id,
             version=version,
             name=config.get("name"),
             public_key_hash="",  # Will be populated after verification
             created_at="",
-            algorithm=config.get("jacs_agent_key_algorithm", "RSA"),
-            config_path=config_path,
-            public_key_path=os.path.join(key_dir, "jacs.public.pem"),
+            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
+            config_path=config_abs,
+            public_key_path=os.path.join(key_dir, public_key_file),
+            private_key_path=os.path.join(key_dir, private_key_file),
+            data_directory=data_dir,
+            key_directory=key_dir,
+            domain=config.get("domain", ""),
+            dns_record=config.get("dns_record", ""),
         )
 
         logger.info("Agent loaded: id=%s, name=%s", agent_id, config.get("name"))
@@ -451,6 +460,14 @@ class _EphemeralAgentAdapter:
     def __init__(self, native_agent):
         self._native = native_agent
 
+    def sign_string(self, data):
+        """Sign a raw string and return the base64-encoded signature.
+
+        Delegates to the native SimpleAgent.sign_string() method which
+        provides raw string signing (same as JacsAgent.sign_string()).
+        """
+        return self._native.sign_string(data)
+
     def verify_agent(self, agentfile=None):
         """Delegate to SimpleAgent.verify_self(); returns True or raises."""
         result = self._native.verify_self()
@@ -471,6 +488,55 @@ class _EphemeralAgentAdapter:
             data = json.loads(document_string)
             result = self._native.sign_message(data)
         return result.get("raw", "")
+
+    @staticmethod
+    def _unwrap_jacs_payload(data):
+        """Extract original request payload from JACS wrapper structures."""
+        if not isinstance(data, dict):
+            return data
+
+        if "jacs_payload" in data:
+            return data.get("jacs_payload")
+
+        jacs_document = data.get("jacsDocument")
+        if isinstance(jacs_document, dict) and "jacs_payload" in jacs_document:
+            return jacs_document.get("jacs_payload")
+
+        payload = data.get("payload")
+        if isinstance(payload, dict) and "jacs_payload" in payload:
+            return payload.get("jacs_payload")
+
+        return data
+
+    def sign_request(self, payload):
+        """JacsAgent-compatible request signing used by A2A integration."""
+        result = self._native.sign_message({"jacs_payload": payload})
+
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            raw = result.get("raw") or result.get("raw_json")
+            if isinstance(raw, str):
+                return raw
+        raise RuntimeError("Ephemeral sign_request returned an unexpected result shape")
+
+    def verify_response(self, document_string):
+        """JacsAgent-compatible response verification used by A2A integration."""
+        result = self._native.verify(document_string)
+        if not isinstance(result, dict):
+            raise RuntimeError("Ephemeral verify_response returned an unexpected result shape")
+
+        if not result.get("valid", False):
+            errors = result.get("errors")
+            if isinstance(errors, list) and errors:
+                message = "; ".join(str(e) for e in errors)
+            elif errors:
+                message = str(errors)
+            else:
+                message = "signature verification failed"
+            raise RuntimeError(message)
+
+        return self._unwrap_jacs_payload(result.get("data"))
 
     def verify_document(self, document_string):
         """Delegate to SimpleAgent.verify()."""
@@ -529,30 +595,55 @@ class _EphemeralAgentAdapter:
             "Use jacs.create() or jacs.load() for a persistent agent."
         )
 
-    def register_with_hai(self, api_key=None, hai_url="https://hai.ai",
-                          preview=False):
-        raise JacsError(
-            "register_with_hai() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
+    # ----- Attestation methods (delegate to native SimpleAgent) -----
+
+    def create_attestation(self, params_json):
+        """Delegate to SimpleAgent.create_attestation()."""
+        return self._native.create_attestation(params_json)
+
+    def verify_attestation(self, document_key):
+        """Delegate to SimpleAgent.verify_attestation()."""
+        return self._native.verify_attestation(document_key)
+
+    def verify_attestation_full(self, document_key):
+        """Delegate to SimpleAgent.verify_attestation_full()."""
+        return self._native.verify_attestation_full(document_key)
+
+    def lift_to_attestation(self, signed_doc_json, claims_json):
+        """Delegate to SimpleAgent.lift_to_attestation()."""
+        return self._native.lift_to_attestation(signed_doc_json, claims_json)
+
+    def export_attestation_dsse(self, attestation_json):
+        """Delegate to SimpleAgent.export_dsse()."""
+        return self._native.export_dsse(attestation_json)
 
 
-def quickstart(algorithm=None, strict=None, config_path=None):
+def quickstart(
+    name: str,
+    domain: str,
+    description: Optional[str] = None,
+    algorithm: Optional[str] = None,
+    strict: Optional[bool] = None,
+    config_path: Optional[str] = None,
+):
     """One-line agent creation with persistent keys on disk.
 
     If a config file already exists, loads the existing agent. Otherwise,
     creates a new agent with keys on disk and a minimal config file.
 
-    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated
-    and saved to ./jacs_keys/.jacs_password.
+    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated.
+    Set JACS_SAVE_PASSWORD_FILE=true to also persist it to ./jacs_keys/.jacs_password.
 
     Example:
         import jacs.simple as jacs
-        jacs.quickstart()
+        jacs.quickstart(name="my-agent", domain="agent.example.com")
         signed = jacs.sign_message({"hello": "world"})
 
     Args:
-        algorithm: "ed25519" (default), "rsa-pss", or "pq2025"
+        name: Agent name for first-time quickstart creation.
+        domain: Agent domain for DNS/public-key verification workflows.
+        description: Optional human-readable agent description.
+        algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
         strict: Enable strict verification mode
         config_path: Path to config file (default: "./jacs.config.json")
 
@@ -560,6 +651,11 @@ def quickstart(algorithm=None, strict=None, config_path=None):
         AgentInfo with agent_id, name, algorithm, version
     """
     global _global_agent, _agent_info, _strict
+
+    if not isinstance(name, str) or not name.strip():
+        raise ConfigError("quickstart() requires a non-empty 'name'.")
+    if not isinstance(domain, str) or not domain.strip():
+        raise ConfigError("quickstart() requires a non-empty 'domain'.")
 
     _strict = _resolve_strict(strict)
     cfg_path = config_path or "./jacs.config.json"
@@ -587,21 +683,24 @@ def quickstart(algorithm=None, strict=None, config_path=None):
                 + secrets.choice("!@#$%^&*()-_=+")
                 + ''.join(secrets.choice(chars) for _ in range(28))
             )
-            # Save password to file
-            keys_dir = "./jacs_keys"
-            os.makedirs(keys_dir, exist_ok=True)
-            pw_path = os.path.join(keys_dir, ".jacs_password")
-            with open(pw_path, "w") as f:
-                f.write(password)
-            os.chmod(pw_path, 0o600)
-            logger.info("quickstart: generated password saved to %s", pw_path)
+            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
+            if persist_password:
+                keys_dir = "./jacs_keys"
+                os.makedirs(keys_dir, exist_ok=True)
+                pw_path = os.path.join(keys_dir, ".jacs_password")
+                with open(pw_path, "w", encoding="utf-8") as f:
+                    f.write(password)
+                os.chmod(pw_path, 0o600)
+                logger.info("quickstart: generated password saved to %s", pw_path)
             os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
 
         algo = algorithm or "pq2025"
         return create(
-            name="jacs-agent",
+            name=name,
             password=password,
             algorithm=algo,
+            description=description or "",
+            domain=domain,
             config_path=cfg_path,
             strict=strict,
         )
@@ -1142,8 +1241,8 @@ def verify(document: Union[str, dict, SignedDocument]) -> VerificationResult:
             valid=is_valid,
             signer_id=signer_id,
             signer_public_key_hash=sig_info.get("publicKeyHash", ""),
-            content_hash_valid=True,
-            signature_valid=True,
+            content_hash_valid=is_valid,
+            signature_valid=is_valid,
             timestamp=sig_info.get("date", ""),
         )
 
@@ -1190,12 +1289,16 @@ def verify_by_id(document_id: str) -> VerificationResult:
 
     try:
         is_valid = agent.verify_document_by_id(document_id)
+        doc_data = _read_document_by_id(document_id)
+        signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
 
         return VerificationResult(
             valid=is_valid,
-            signer_id=_agent_info.agent_id if _agent_info else "",
+            signer_id=signer_id,
+            signer_public_key_hash=signer_public_key_hash,
             content_hash_valid=is_valid,
             signature_valid=is_valid,
+            timestamp=timestamp,
         )
     except Exception as e:
         logger.warning("verify_by_id failed: %s", e)
@@ -1256,29 +1359,27 @@ def get_public_key() -> str:
     if _agent_info is None or _global_agent is None:
         raise AgentNotLoadedError("No agent loaded")
 
-    # Try to read from default public key location
+    # Try loaded agent metadata first, then config-derived fallbacks.
     try:
-        # Read config to find key location
-        config_paths = [
-            "./jacs.config.json",
-            os.path.expanduser("~/.jacs/config.json"),
-        ]
+        key_candidates: List[str] = []
+        if _agent_info.public_key_path:
+            key_candidates.append(_agent_info.public_key_path)
+        if _agent_info.config_path and os.path.exists(_agent_info.config_path):
+            with open(_agent_info.config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            config_path = os.path.abspath(_agent_info.config_path)
+            key_dir = _resolve_config_relative_path(
+                config_path, config.get("jacs_key_directory", "./jacs_keys")
+            )
+            key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
+            key_candidates.append(os.path.join(key_dir, key_file))
 
-        for config_path in config_paths:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
+        for candidate in key_candidates:
+            if os.path.exists(candidate):
+                with open(candidate, "r", encoding="utf-8") as f:
+                    return f.read()
 
-                key_dir = config.get("jacs_key_directory", "./jacs_keys")
-                pub_key_file = config.get("jacs_agent_public_key_filename", "")
-
-                if pub_key_file:
-                    pub_key_path = os.path.join(key_dir, pub_key_file)
-                    if os.path.exists(pub_key_path):
-                        with open(pub_key_path, 'r') as f:
-                            return f.read()
-
-        raise JacsError("Could not find public key file")
+        raise JacsError(f"Could not find public key file in: {key_candidates}")
 
     except Exception as e:
         raise JacsError(f"Failed to read public key: {e}")
@@ -1311,7 +1412,7 @@ def export_agent() -> str:
 def get_dns_record(domain: str, ttl: int = 3600) -> str:
     """Return the DNS TXT record line for the loaded agent (for DNS-based discovery).
 
-    Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=hai.ai; jacs_agent_id=...; ..."
+    Format: _v1.agent.jacs.{domain}. TTL IN TXT "v=jacs; jacs_agent_id=...; ..."
 
     Args:
         domain: The domain (e.g. "example.com")
@@ -1327,7 +1428,7 @@ def get_dns_record(domain: str, ttl: int = 3600) -> str:
     public_key_hash = sig.get("publicKeyHash") or ""
     d = domain.rstrip(".")
     owner = f"_v1.agent.jacs.{d}."
-    txt = f"v=hai.ai; jacs_agent_id={jacs_id}; alg=SHA-256; enc=base64; jac_public_key_hash={public_key_hash}"
+    txt = f"v=jacs; jacs_agent_id={jacs_id}; alg=SHA-256; enc=base64; jac_public_key_hash={public_key_hash}"
     return f'{owner} {ttl} IN TXT "{txt}"'
 
 
@@ -1351,6 +1452,18 @@ def get_well_known_json() -> dict:
         "algorithm": "SHA-256",
         "agentId": jacs_id,
     }
+
+
+def generate_verify_link(doc: str, base_url: Optional[str] = None) -> str:
+    """Generate a verification URL for a signed document.
+
+    Base64url-encodes the document and returns a URL that can be used
+    to verify it via hai.ai or a custom verifier.
+    """
+    import base64
+    encoded = base64.urlsafe_b64encode(doc.encode("utf-8")).decode("ascii")
+    url = base_url or "https://hai.ai/jacs/verify"
+    return f"{url}?s={encoded}"
 
 
 def get_agent_info() -> Optional[AgentInfo]:
@@ -1409,6 +1522,24 @@ def trust_agent(agent_json: str) -> str:
         return _trust_agent(agent_json)
     except Exception as e:
         raise TrustError(f"Failed to trust agent: {e}")
+
+
+def trust_agent_with_key(agent_json: str, public_key_pem: str) -> str:
+    """Trust an agent using an explicit PEM public key for first-contact verification.
+
+    Args:
+        agent_json: The full agent JSON document string.
+        public_key_pem: PEM public key used to verify the self-signature.
+
+    Returns:
+        The trusted agent ID.
+    """
+    if not public_key_pem or not public_key_pem.strip():
+        raise TrustError("public_key_pem cannot be empty")
+    try:
+        return _trust_agent_with_key(agent_json, public_key_pem)
+    except Exception as e:
+        raise TrustError(f"Failed to trust agent with explicit key: {e}")
 
 
 def list_trusted_agents() -> List[str]:
@@ -1511,103 +1642,6 @@ def audit(
         raise JacsError(f"Audit failed: {e}") from e
 
 
-def fetch_remote_key(agent_id: str, version: str = "latest") -> PublicKeyInfo:
-    """Fetch a public key from HAI's key distribution service.
-
-    This function retrieves the public key for a specific agent and version
-    from the HAI key distribution service. It is used to obtain trusted public
-    keys for verifying agent signatures without requiring local key storage.
-
-    This is a stateless operation that does not require an agent to be loaded.
-
-    Args:
-        agent_id: The unique identifier of the agent whose key to fetch.
-        version: The version of the agent's key to fetch. Use "latest" for
-                 the most recent version. Defaults to "latest".
-
-    Returns:
-        PublicKeyInfo containing:
-            - public_key: Raw public key bytes (DER encoded)
-            - algorithm: Cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
-            - public_key_hash: SHA-256 hash of the public key
-            - agent_id: The agent ID this key belongs to
-            - version: The version of the key
-
-    Raises:
-        KeyNotFoundError: If the agent or key version was not found (404)
-        NetworkError: If there was a connection, timeout, or other HTTP error
-        JacsError: For other errors (e.g., invalid key encoding)
-
-    Environment Variables:
-        HAI_KEYS_BASE_URL: Base URL for the key service.
-                          Defaults to "https://keys.hai.ai".
-        JACS_KEY_RESOLUTION: Comma-separated order of key resolution when
-                             verifying signatures (e.g. "local,hai" or "local,dns,hai").
-                             Sources: local (trust store), dns (DNS TXT), hai (HAI key service).
-                             Default is "local,hai".
-
-    Example:
-        # Fetch the latest key for an agent
-        key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000")
-        print(f"Algorithm: {key_info.algorithm}")
-        print(f"Hash: {key_info.public_key_hash}")
-
-        # Fetch a specific version
-        key_info = jacs.fetch_remote_key("550e8400-e29b-41d4-a716-446655440000", "1")
-
-        # Use with a custom key service
-        import os
-        os.environ["HAI_KEYS_BASE_URL"] = "https://keys.example.com"
-        key_info = jacs.fetch_remote_key("my-agent-id")
-    """
-    logger.debug("fetch_remote_key() called: agent_id=%s, version=%s", agent_id, version)
-
-    try:
-        result = _fetch_remote_key(agent_id, version)
-
-        key_info = PublicKeyInfo(
-            public_key=result["public_key"],
-            algorithm=result["algorithm"],
-            public_key_hash=result["public_key_hash"],
-            agent_id=result["agent_id"],
-            version=result["version"],
-        )
-
-        logger.info(
-            "Fetched remote key: agent_id=%s, version=%s, algorithm=%s",
-            agent_id,
-            version,
-            key_info.algorithm,
-        )
-        return key_info
-
-    except RuntimeError as e:
-        error_str = str(e)
-        logger.error("Failed to fetch remote key: %s", error_str)
-
-        # Map error messages to appropriate exception types
-        if "not found" in error_str.lower() or "404" in error_str:
-            raise KeyNotFoundError(
-                f"Public key not found for agent '{agent_id}' version '{version}'"
-            ) from e
-        elif "network" in error_str.lower() or "connect" in error_str.lower() or "timeout" in error_str.lower():
-            raise NetworkError(
-                f"Network error fetching key for agent '{agent_id}': {error_str}"
-            ) from e
-        else:
-            raise JacsError(f"Failed to fetch remote key: {error_str}") from e
-    except BaseException as e:
-        # PyO3 panic exceptions are not RuntimeError subclasses. Treat fetch panics
-        # as network failures for callers to preserve a consistent SDK contract.
-        if e.__class__.__name__ == "PanicException":
-            error_str = str(e)
-            logger.error("Panic while fetching remote key: %s", error_str)
-            raise NetworkError(
-                f"Network error fetching key for agent '{agent_id}': {error_str}"
-            ) from e
-        raise
-
-
 def verify_dns(
     agent_document: Union[str, dict],
     domain: str,
@@ -1637,12 +1671,11 @@ def verify_dns(
 
 
 def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
-    """Get comprehensive setup instructions for DNS, DNSSEC, and HAI registration.
+    """Get comprehensive setup instructions for DNS and DNSSEC.
 
     Returns structured data with provider-specific commands for AWS Route53,
     Cloudflare, Azure DNS, Google Cloud DNS, and plain BIND format. Also includes
-    DNSSEC guidance, well-known JSON payload, HAI registration details, and a
-    human-readable summary.
+    DNSSEC guidance, well-known JSON payload, and a human-readable summary.
 
     Args:
         domain: The domain to publish the DNS TXT record under.
@@ -1651,47 +1684,19 @@ def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
     Returns:
         Dict with keys: dns_record_bind, dns_record_value, dns_owner,
         provider_commands, dnssec_instructions, tld_requirement, well_known_json,
-        hai_registration_url, hai_registration_payload,
-        hai_registration_instructions, summary.
+        summary.
 
     Example:
         instructions = jacs.get_setup_instructions("example.com")
         print(instructions["summary"])
         print(instructions["provider_commands"]["route53"])
     """
-    agent = _require_agent()
+    agent = _get_agent()
     try:
         json_str = agent.get_setup_instructions(domain, ttl)
         return json.loads(json_str)
     except Exception as e:
         raise JacsError(f"Failed to get setup instructions: {e}") from e
-
-
-def register_with_hai(
-    api_key: Optional[str] = None,
-    hai_url: str = "https://hai.ai",
-    preview: bool = False,
-) -> dict:
-    """Register this agent with HAI.ai.
-
-    Args:
-        api_key: HAI API key (reads HAI_API_KEY env var if None).
-        hai_url: Base URL for HAI (default: "https://hai.ai").
-        preview: If True, validate without actually registering.
-
-    Returns:
-        Dict with hai_registered, hai_error, dns_record, dns_route53.
-
-    Example:
-        result = jacs.register_with_hai(preview=True)
-        print(f"Registered: {result['hai_registered']}")
-    """
-    agent = _require_agent()
-    try:
-        json_str = agent.register_with_hai(api_key, hai_url, preview)
-        return json.loads(json_str)
-    except Exception as e:
-        raise JacsError(f"HAI registration failed: {e}") from e
 
 
 __all__ = [
@@ -1715,17 +1720,16 @@ __all__ = [
     "verify_standalone",
     "verify_dns",
     # Utility functions
-    "generate_verify_link",
-    "MAX_VERIFY_URL_LEN",
-    "MAX_VERIFY_DOCUMENT_BYTES",
     "get_public_key",
     "export_agent",
     "get_dns_record",
     "get_well_known_json",
+    "generate_verify_link",
     "get_agent_info",
     "is_loaded",
     # Trust store
     "trust_agent",
+    "trust_agent_with_key",
     "list_trusted_agents",
     "untrust_agent",
     "is_trusted",
@@ -1736,11 +1740,8 @@ __all__ = [
     "is_strict",
     # Test utilities
     "reset",
-    # Remote key fetch
-    "fetch_remote_key",
-    # Setup and registration
+    # Setup
     "get_setup_instructions",
-    "register_with_hai",
     # Types (re-exported for convenience)
     "AgentInfo",
     "Attachment",

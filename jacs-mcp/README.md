@@ -1,12 +1,14 @@
 # JACS MCP Server
 
-A Model Context Protocol (MCP) server for **data provenance and cryptographic signing** of agent state, plus optional [HAI.ai](https://hai.ai) integration for cross-organization key discovery and attestation.
+A Model Context Protocol (MCP) server for **data provenance and cryptographic signing** of agent state, messaging, agreements, and A2A interoperability.
+
+This is the canonical full JACS MCP server. The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
 
 JACS (JSON Agent Communication Standard) ensures that every file, memory, or configuration an AI agent touches can be signed, verified, and traced back to its origin -- no server required.
 
 ## What can it do?
 
-The server exposes **21 tools** in five categories:
+The server exposes **33 tools** in eight categories:
 
 ### Agent State (Data Provenance)
 
@@ -15,9 +17,9 @@ Sign, verify, and manage files that represent agent state (memories, skills, pla
 | Tool | Description |
 |------|-------------|
 | `jacs_sign_state` | Sign a file to create a cryptographically signed JACS document |
-| `jacs_verify_state` | Verify file integrity and signature authenticity (by file path or JACS document ID). For one-off verification without loading an agent, use `verify_standalone()` in the language bindings (jacspy, jacsnpm, jacsgo). |
-| `jacs_load_state` | Load a signed state document, optionally verifying before returning content |
-| `jacs_update_state` | Update a previously signed file -- re-hashes and re-signs |
+| `jacs_verify_state` | Verify state document integrity/signature by JACS document ID (`jacs_id`). Path-based verification is deprecated for MCP security. |
+| `jacs_load_state` | Load a signed state document by JACS document ID (`jacs_id`), optionally verifying first |
+| `jacs_update_state` | Update a signed state document by JACS document ID (`jacs_id`) and re-sign |
 | `jacs_list_state` | List signed agent state documents with optional filtering |
 | `jacs_adopt_state` | Adopt an external file as signed state, recording its origin |
 
@@ -70,25 +72,55 @@ Create multi-party cryptographic agreements — multiple agents formally commit 
 - Enforce that only post-quantum algorithms are used for signing
 - Set a deadline after which the agreement expires
 
-### HAI Integration (Optional)
+### A2A Discovery
 
-Register with [HAI.ai](https://hai.ai) for cross-organization trust and key distribution:
+Export Agent Cards and well-known documents for [A2A protocol](https://github.com/a2aproject/A2A) interoperability:
 
 | Tool | Description |
 |------|-------------|
-| `fetch_agent_key` | Fetch a public key from HAI's key distribution service |
-| `register_agent` | Register the local agent with HAI (disabled by default) |
-| `verify_agent` | Verify another agent's attestation level (0-3) |
-| `check_agent_status` | Check registration status with HAI |
-| `unregister_agent` | Unregister from HAI (disabled by default, not yet implemented) |
+| `jacs_export_agent_card` | Export the local agent's A2A Agent Card (includes identity, skills, JACS extension) |
+| `jacs_generate_well_known` | Generate all `.well-known` documents for A2A discovery (agent-card.json, jwks.json, jacs-agent.json, jacs-pubkey.json, jacs-extension.json) |
+| `jacs_export_agent` | Export the local agent's full JACS JSON document (identity, public key hash, signed metadata) |
+
+### A2A Artifacts
+
+Sign, verify, and assess trust for A2A artifacts with JACS provenance:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_wrap_a2a_artifact` | Wrap an A2A artifact with JACS provenance signature (supports chain-of-custody via parent signatures) |
+| `jacs_verify_a2a_artifact` | Verify a JACS-wrapped A2A artifact's signature and hash |
+| `jacs_assess_a2a_agent` | Assess the trust level of a remote A2A agent given its Agent Card |
+
+**Use A2A artifact tools to:**
+- Sign task results, messages, or any A2A payload with cryptographic provenance
+- Verify artifacts received from other agents before acting on them
+- Assess whether a remote agent meets your trust policy before exchanging data
+- Build chain-of-custody trails by referencing parent signatures
+
+### Trust Store
+
+Manage the local trust store -- which agents your agent trusts for signature verification:
+
+| Tool | Description |
+|------|-------------|
+| `jacs_trust_agent` | Add an agent to the local trust store (self-signature is verified first) |
+| `jacs_untrust_agent` | Remove an agent from the trust store (requires `JACS_MCP_ALLOW_UNTRUST=true`) |
+| `jacs_list_trusted_agents` | List all agent IDs currently in the local trust store |
+| `jacs_is_trusted` | Check whether a specific agent is in the trust store |
+| `jacs_get_trusted_agent` | Retrieve the full agent JSON document for a trusted agent |
+
+**Use the trust store to:**
+- Build a list of known collaborators before exchanging signed artifacts
+- Gate A2A interactions with `strict` trust policy (only trust-store agents accepted)
+- Inspect a remote agent's full identity document before trusting
 
 ## Quick Start
 
 ### Step 1: Install JACS CLI
 
 ```bash
-# From the JACS repository root
-cargo install --path jacs
+cargo install jacs --features cli
 ```
 
 ### Step 2: Create Agent and Keys
@@ -101,18 +133,19 @@ jacs init
 Or programmatically:
 
 ```bash
-export JACS_AGENT_PRIVATE_KEY_PASSWORD="Your-Str0ng-P@ss!"
+export JACS_PRIVATE_KEY_PASSWORD="Your-Str0ng-P@ss!"
 jacs agent create --create-keys true
 ```
 
-### Step 3: Build the MCP Server
+### Step 3: Install or Run the MCP Server
 
 ```bash
-cd jacs-mcp
-cargo build --release
-```
+# Install prebuilt jacs-mcp for your platform (default behavior)
+jacs mcp install
 
-The binary will be at `target/release/jacs-mcp`.
+# Start stdio MCP server
+jacs mcp run
+```
 
 ### Step 4: Configure Your MCP Client
 
@@ -132,23 +165,6 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 }
 ```
 
-To enable HAI integration, add `HAI_API_KEY`:
-
-```json
-{
-  "mcpServers": {
-    "jacs": {
-      "command": "/path/to/jacs-mcp",
-      "env": {
-        "JACS_CONFIG": "/path/to/jacs.config.json",
-        "JACS_PRIVATE_KEY_PASSWORD": "your-secure-password",
-        "HAI_API_KEY": "your-hai-api-key"
-      }
-    }
-  }
-}
-```
-
 ## Configuration
 
 ### Required Environment Variables
@@ -158,20 +174,17 @@ To enable HAI integration, add `HAI_API_KEY`:
 
 ### Optional Environment Variables
 
-- `HAI_ENDPOINT` - HAI API endpoint (default: `https://api.hai.ai`). Validated against an allowlist.
-- `HAI_API_KEY` - API key for HAI authentication
 - `RUST_LOG` - Logging level (default: `info,rmcp=warn`)
 
 ### Security Options
 
-- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `register_agent` (default: disabled)
-- `JACS_MCP_ALLOW_UNREGISTRATION` - Set to `true` to enable `unregister_agent` (default: disabled)
+- `JACS_MCP_ALLOW_REGISTRATION` - Set to `true` to enable `jacs_create_agent` (default: disabled)
+- `JACS_MCP_ALLOW_UNTRUST` - Set to `true` to enable `jacs_untrust_agent` (default: disabled). Prevents prompt injection attacks from removing trusted agents without user consent.
 
 ### Example jacs.config.json
 
 ```json
 {
-  "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
   "jacs_data_directory": "./jacs_data",
   "jacs_key_directory": "./jacs_keys",
   "jacs_agent_private_key_filename": "jacs.private.pem.enc",
@@ -187,6 +200,7 @@ To enable HAI integration, add `HAI_API_KEY`:
 ### jacs_sign_state
 
 Sign an agent state file to create a cryptographically signed JACS document.
+The resulting document is persisted in JACS storage for ID-based follow-up operations.
 
 **Parameters:**
 - `file_path` (required): Path to the file to sign
@@ -195,34 +209,35 @@ Sign an agent state file to create a cryptographically signed JACS document.
 - `description` (optional): Description of the state document
 - `framework` (optional): Framework identifier (e.g., `claude-code`, `openclaw`)
 - `tags` (optional): Tags for categorization
-- `embed` (optional): Whether to embed file content inline (always true for hooks)
+- `embed` (optional): Whether to embed file content inline (defaults to true in MCP; always true for hooks)
 
 ### jacs_verify_state
 
 Verify the integrity and authenticity of a signed agent state.
 
 **Parameters:**
-- `file_path` (optional): Path to the file to verify
-- `jacs_id` (optional): JACS document ID to verify
+- `jacs_id` (required in MCP usage): JACS document ID (`uuid:version`) to verify
+- `file_path` (deprecated): Path-based verification is disabled for MCP security policy
 
-At least one of `file_path` or `jacs_id` must be provided.
+Use `jacs_id` from `jacs_sign_state` or `jacs_adopt_state`.
 
 ### jacs_load_state
 
 Load a signed agent state document, optionally verifying before returning content.
 
 **Parameters:**
-- `file_path` (optional): Path to the file to load
-- `jacs_id` (optional): JACS document ID to load
+- `jacs_id` (required in MCP usage): JACS document ID (`uuid:version`) to load
+- `file_path` (deprecated): Path-based loading is disabled for MCP security policy
 - `require_verified` (optional): Whether to require verification before loading (default: true)
 
 ### jacs_update_state
 
-Update a previously signed agent state file with new content and re-sign.
+Update a previously signed agent state document with new embedded content and re-sign.
 
 **Parameters:**
-- `file_path` (required): Path to the file to update
-- `new_content` (optional): New content to write. If omitted, re-signs current content.
+- `jacs_id` (required in MCP usage): JACS document ID (`uuid:version`) to update
+- `file_path` (deprecated): Path-based updates are disabled for MCP security policy
+- `new_content` (optional): New embedded content. If omitted, re-signs current content.
 
 ### jacs_list_state
 
@@ -255,8 +270,8 @@ Create a multi-party cryptographic agreement that other agents can co-sign.
 - `context` (optional): Additional context to help signers decide
 - `timeout` (optional): ISO 8601 deadline after which the agreement expires (e.g., "2025-12-31T23:59:59Z")
 - `quorum` (optional): Minimum signatures required (M-of-N). If omitted, all agents must sign.
-- `required_algorithms` (optional): Only allow these signing algorithms: `RSA-PSS`, `ring-Ed25519`, `pq-dilithium`, `pq2025`
-- `minimum_strength` (optional): `classical` (any algorithm) or `post-quantum` (pq-dilithium/pq2025 only)
+- `required_algorithms` (optional): Only allow these signing algorithms: `RSA-PSS`, `ring-Ed25519`, `pq2025`
+- `minimum_strength` (optional): `classical` (any algorithm) or `post-quantum` (`pq2025` only)
 
 ### jacs_sign_agreement
 
@@ -295,54 +310,126 @@ Verify a signed JACS document given its full JSON string. Checks both the conten
 
 **Returns:** `success`, `valid`, `signer_id` (optional -- extracted from document if available), `message`
 
-### fetch_agent_key
+### jacs_export_agent_card
 
-Fetch a public key from HAI's key distribution service.
+Export the local agent's A2A Agent Card. The Agent Card follows the A2A v0.4.0 format and includes the JACS provenance extension.
 
-**Parameters:**
-- `agent_id` (required): The JACS agent ID (UUID format)
-- `version` (optional): Key version to fetch, or `latest`
+**Parameters:** None.
 
-### register_agent
+**Returns:** `success`, `agent_card` (JSON string of the A2A Agent Card)
 
-Register the local agent with HAI. **Requires `JACS_MCP_ALLOW_REGISTRATION=true`.**
+### jacs_generate_well_known
 
-**Parameters:**
-- `preview` (optional): If true (default), validates without actually registering
-
-### verify_agent
-
-Verify another agent's attestation level with HAI.
+Generate all `.well-known` documents for A2A discovery. Returns an array of `{path, document}` objects that can be served at each path.
 
 **Parameters:**
-- `agent_id` (required): The JACS agent ID to verify
-- `version` (optional): Agent version to verify, or `latest`
+- `a2a_algorithm` (optional): A2A signing algorithm override (default: `ring-Ed25519`)
 
-**Attestation levels:**
-- Level 0: No attestation
-- Level 1: Key registered with HAI
-- Level 2: DNS verified
-- Level 3: Full HAI signature attestation
+**Returns:** `success`, `documents` (JSON array of `{path, document}` objects), `count`
 
-### check_agent_status
+### jacs_export_agent
 
-Check registration status of an agent with HAI.
+Export the local agent's full JACS JSON document, including identity, public key hash, and signed metadata.
 
-**Parameters:**
-- `agent_id` (optional): Agent ID to check. If omitted, checks the local agent.
+**Parameters:** None.
 
-### unregister_agent
+**Returns:** `success`, `agent_json` (full agent JSON document), `agent_id`
 
-Unregister the local agent from HAI. **Requires `JACS_MCP_ALLOW_UNREGISTRATION=true`.**
+### jacs_trust_agent
+
+Add an agent to the local trust store. The agent's self-signature is cryptographically verified before it is added. If verification fails, the agent is NOT trusted.
 
 **Parameters:**
-- `preview` (optional): If true (default), validates without actually unregistering
+- `agent_json` (required): The full JACS agent JSON document to add to the trust store
+
+**Returns:** `success`, `agent_id`, `message`
+
+### jacs_untrust_agent
+
+Remove an agent from the local trust store. **Requires `JACS_MCP_ALLOW_UNTRUST=true`.** This security gate prevents prompt injection attacks from removing trusted agents without user consent.
+
+**Parameters:**
+- `agent_id` (required): The JACS agent ID (UUID) to remove from the trust store
+
+**Returns:** `success`, `agent_id`, `message`
+
+### jacs_list_trusted_agents
+
+List all agent IDs currently in the local trust store.
+
+**Parameters:** None.
+
+**Returns:** `success`, `agent_ids` (list of UUIDs), `count`, `message`
+
+### jacs_is_trusted
+
+Check whether a specific agent is in the local trust store.
+
+**Parameters:**
+- `agent_id` (required): The JACS agent ID (UUID) to check trust status for
+
+**Returns:** `success`, `agent_id`, `trusted` (boolean), `message`
+
+### jacs_get_trusted_agent
+
+Retrieve the full agent JSON document for a trusted agent from the local trust store. Fails if the agent is not trusted.
+
+**Parameters:**
+- `agent_id` (required): The JACS agent ID (UUID) to retrieve from the trust store
+
+**Returns:** `success`, `agent_id`, `agent_json` (full agent document), `message`
+
+### jacs_wrap_a2a_artifact
+
+Wrap an A2A artifact with JACS provenance signature. Supports chain-of-custody by optionally referencing parent signatures from previous steps in a multi-agent workflow.
+
+**Parameters:**
+- `artifact_json` (required): The A2A artifact JSON content to wrap with JACS provenance
+- `artifact_type` (required): Artifact type identifier (e.g., `a2a-artifact`, `message`, `task-result`)
+- `parent_signatures` (optional): JSON array of parent signatures for chain-of-custody provenance
+
+**Returns:** `success`, `wrapped_artifact` (JSON string with JACS provenance envelope), `message`
+
+### jacs_verify_a2a_artifact
+
+Verify a JACS-wrapped A2A artifact's signature and content hash. Checks that the artifact has not been tampered with and that the signature is valid.
+
+**Parameters:**
+- `wrapped_artifact` (required): The JACS-wrapped A2A artifact JSON to verify
+
+**Returns:** `success`, `valid` (boolean), `verification_details` (JSON with signer info, hash check, parent chain status), `message`
+
+### jacs_assess_a2a_agent
+
+Assess the trust level of a remote A2A agent given its Agent Card. Applies a trust policy to determine whether your agent should interact with the remote agent.
+
+**Parameters:**
+- `agent_card_json` (required): The A2A Agent Card JSON of the remote agent to assess
+- `policy` (optional): Trust policy to apply: `open` (accept all), `verified` (require JACS extension, **default**), or `strict` (require trust store entry)
+
+**Returns:** `success`, `allowed` (boolean), `trust_level` (`Untrusted`, `JacsVerified`, or `ExplicitlyTrusted`), `policy`, `reason`, `message`
+
+## A2A Workflow Example
+
+Use the A2A discovery, trust store, and artifact tools together to establish trust and exchange signed artifacts:
+
+```
+1. Agent A: jacs_generate_well_known                    -> Serve .well-known documents
+2. Agent B: jacs_export_agent_card                      -> Get Agent B's card
+3. Agent A: jacs_assess_a2a_agent(agent_b_card)         -> Check trust level before interacting
+4. Agent A: jacs_trust_agent(agent_b_json)              -> Add Agent B to trust store
+5. Agent A: jacs_wrap_a2a_artifact(task, "task")        -> Sign a task artifact for Agent B
+6. Agent B: jacs_verify_a2a_artifact(wrapped_task)      -> Verify Agent A's artifact
+7. Agent B: jacs_wrap_a2a_artifact(result, "task-result",
+              parent_signatures=[step5])                -> Sign result with chain-of-custody
+8. Agent A: jacs_verify_a2a_artifact(wrapped_result)    -> Verify result + parent chain
+```
+
+For the full A2A quickstart guide, see the [A2A Quickstart](https://humanassisted.github.io/JACS/guides/a2a-quickstart.html) in the JACS Book.
 
 ## Security
 
-- **Registration disabled by default**: `register_agent` and `unregister_agent` require explicit opt-in via environment variables, preventing prompt injection attacks.
-- **Preview mode by default**: Even when enabled, registration defaults to preview mode.
-- **Endpoint validation**: `HAI_ENDPOINT` is validated against an allowlist (`*.hai.ai`, localhost).
+- **Destructive actions disabled by default**: `jacs_create_agent` and `jacs_untrust_agent` require explicit opt-in via environment variables, preventing prompt injection attacks.
 - **Password protection**: Private keys are encrypted. Never store passwords in config files.
 - **Stdio transport**: No network exposure -- communicates over stdin/stdout.
 
@@ -365,6 +452,8 @@ cargo run
 
 - [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
 - [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
+- [A2A Quickstart](https://humanassisted.github.io/JACS/guides/a2a-quickstart.html) - A2A interoperability guide
+- [A2A Interoperability](https://humanassisted.github.io/JACS/integrations/a2a.html) - Full A2A reference
 - [Source](https://github.com/HumanAssisted/JACS) - GitHub repository
 
 ## License

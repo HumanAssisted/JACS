@@ -56,6 +56,58 @@ type Attachment struct {
 	Embedded bool `json:"embedded"`
 }
 
+// AttestationVerificationResult contains the result of verifying an attestation.
+type AttestationVerificationResult struct {
+	// Valid indicates whether the attestation is valid overall.
+	Valid bool `json:"valid"`
+	// Crypto contains cryptographic verification results.
+	Crypto AttestationCrypto `json:"crypto"`
+	// Evidence contains per-evidence-ref verification results (full tier only).
+	Evidence []AttestationEvidenceResult `json:"evidence,omitempty"`
+	// Chain contains derivation chain verification results (full tier only).
+	Chain *AttestationChainResult `json:"chain,omitempty"`
+	// Errors contains error messages for any failures.
+	Errors []string `json:"errors,omitempty"`
+}
+
+// AttestationCrypto contains cryptographic verification results.
+type AttestationCrypto struct {
+	// SignatureValid indicates the signature matches the document and public key.
+	SignatureValid bool `json:"signature_valid"`
+	// HashValid indicates the hash matches the canonicalized document content.
+	HashValid bool `json:"hash_valid"`
+}
+
+// AttestationEvidenceResult contains verification results for one evidence reference.
+type AttestationEvidenceResult struct {
+	// Kind is the evidence type (a2a, email, jwt, tlsnotary, custom).
+	Kind string `json:"kind"`
+	// DigestValid indicates the evidence digest matches.
+	DigestValid bool `json:"digest_valid"`
+	// FreshnessValid indicates the collectedAt timestamp is within bounds.
+	FreshnessValid bool `json:"freshness_valid"`
+	// Errors contains error messages for this evidence item.
+	Errors []string `json:"errors,omitempty"`
+}
+
+// AttestationChainResult contains derivation chain verification results.
+type AttestationChainResult struct {
+	// Depth is the number of links in the derivation chain.
+	Depth int `json:"depth"`
+	// AllLinksValid indicates every derivation link verified.
+	AllLinksValid bool `json:"all_links_valid"`
+	// Links contains per-link verification details.
+	Links []AttestationChainLink `json:"links,omitempty"`
+}
+
+// AttestationChainLink contains verification details for one derivation link.
+type AttestationChainLink struct {
+	// InputDigestsValid indicates input digests match.
+	InputDigestsValid bool `json:"input_digests_valid"`
+	// OutputDigestsValid indicates output digests match.
+	OutputDigestsValid bool `json:"output_digests_valid"`
+}
+
 // TrustedAgent contains information about a trusted agent.
 type TrustedAgent struct {
 	// AgentID is the agent's unique identifier.

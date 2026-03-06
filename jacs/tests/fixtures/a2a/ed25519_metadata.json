@@ -1,0 +1,14 @@
+{
+  "agent_id": "208bfeb7-fffd-4b4b-9ca8-db9be7d57adf",
+  "algorithm": "ed25519",
+  "fixtures": {
+    "agent_card": "ed25519_agent_card.json",
+    "child_artifact": "ed25519_child_artifact.json",
+    "public_key": "ed25519_public_key.pem",
+    "wrapped_artifact": "ed25519_wrapped_artifact.json"
+  },
+  "generated_by": "rust",
+  "jacs_version": "0.8.0",
+  "public_key_hash": "0ce0be0d53d036e297da8c1650d0ddb872d2586abd2ef037eb06ab7e4ac0d2b0",
+  "signing_algorithm": "ring-Ed25519"
+}

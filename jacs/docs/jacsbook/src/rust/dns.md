@@ -19,6 +19,8 @@ This provides a secure, decentralized way to verify agent identity across the in
 - **Human-Readable**: Agents can be identified by domain names
 - **Widely Supported**: Works with any DNS provider
 
+DNS verification is also a practical bridge for DID-style deployments: you can publish DID metadata for discovery while using DNS TXT + JACS signature verification as the operational trust anchor. No blockchain is required for this model.
+
 ## Publishing Agent Identity
 
 ### Generate DNS Commands

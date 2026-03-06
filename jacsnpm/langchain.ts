@@ -26,7 +26,10 @@
  * import { JacsClient } from '@hai.ai/jacs/client';
  * import { createJacsTools, signedTool } from '@hai.ai/jacs/langchain';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'langchain-agent',
+ *   domain: 'langchain.local',
+ * });
  *
  * // Full toolkit — agent can sign, verify, create agreements, etc.
  * const jacsTools = createJacsTools({ client });
@@ -402,6 +405,29 @@ export function createJacsTools(options: JacsToolOptions): any[] {
       },
     }),
 
+    // ----- Trust Agent With Explicit Key -----
+    new DynamicStructuredTool({
+      name: 'jacs_trust_agent_with_key',
+      description:
+        'Add an agent to the trust store by verifying its document with an explicit public key PEM.',
+      schema: z.object({
+        agentJson: z.string().describe('The agent JSON document to trust'),
+        publicKeyPem: z.string().describe('PEM-encoded public key for self-signature verification'),
+      }),
+      func: async ({ agentJson, publicKeyPem }: { agentJson: string; publicKeyPem: string }) => {
+        try {
+          const trustWithKey = (client as any).trustAgentWithKey;
+          if (typeof trustWithKey !== 'function') {
+            throw new Error('trustAgentWithKey is unavailable on this client');
+          }
+          const result = trustWithKey.call(client, agentJson, publicKeyPem);
+          return JSON.stringify({ success: true, result });
+        } catch (err) {
+          return handleError(err, 'trust agent with key failed');
+        }
+      },
+    }),
+
     // ----- List Trusted Agents -----
     new DynamicStructuredTool({
       name: 'jacs_list_trusted',
@@ -432,6 +458,46 @@ export function createJacsTools(options: JacsToolOptions): any[] {
           return JSON.stringify({ agentId, trusted });
         } catch (err) {
           return handleError(err, 'is trusted check failed');
+        }
+      },
+    }),
+
+    // ----- Share Public Key -----
+    new DynamicStructuredTool({
+      name: 'jacs_share_public_key',
+      description:
+        'Share this agent public key PEM for trust bootstrap and signature verification.',
+      schema: z.object({}),
+      func: async () => {
+        try {
+          const getter = (client as any).sharePublicKey ?? (client as any).getPublicKey;
+          if (typeof getter !== 'function') {
+            throw new Error('getPublicKey is unavailable on this client');
+          }
+          const publicKeyPem = getter.call(client);
+          return JSON.stringify({ success: true, publicKeyPem });
+        } catch (err) {
+          return handleError(err, 'share public key failed');
+        }
+      },
+    }),
+
+    // ----- Share Agent Document -----
+    new DynamicStructuredTool({
+      name: 'jacs_share_agent',
+      description:
+        'Share this agent self-signed JACS document for trust establishment.',
+      schema: z.object({}),
+      func: async () => {
+        try {
+          const getter = (client as any).shareAgent ?? (client as any).exportAgent;
+          if (typeof getter !== 'function') {
+            throw new Error('exportAgent is unavailable on this client');
+          }
+          const agentJson = getter.call(client);
+          return JSON.stringify({ success: true, agentJson });
+        } catch (err) {
+          return handleError(err, 'share agent failed');
         }
       },
     }),

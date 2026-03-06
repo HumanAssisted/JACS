@@ -1,0 +1,6 @@
+{
+  "fixture_id": "F10",
+  "expected_result": "fail",
+  "expected_reason": "duplicate_references_optional_fail",
+  "expected_error": "DuplicateOptionalHeader"
+}

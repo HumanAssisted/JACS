@@ -435,3 +435,85 @@ fn remove_contact_is_primary(contact: &mut Value) -> Result<(), String> {
         .remove("isPrimary");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_minimal_contact_accepts_valid_email_and_sets_fields() {
+        let contact = create_minimal_contact(
+            Some("Ada"),
+            Some("Lovelace"),
+            None,
+            Some("+1-555-0100"),
+            Some("ada@example.com"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("UK"),
+            Some(true),
+        )
+        .expect("contact should be created");
+
+        assert_eq!(contact["firstName"], json!("Ada"));
+        assert_eq!(contact["lastName"], json!("Lovelace"));
+        assert_eq!(contact["email"], json!("ada@example.com"));
+        assert_eq!(contact["isPrimary"], json!(true));
+        assert_eq!(contact["mailCountry"], json!("UK"));
+    }
+
+    #[test]
+    fn contact_helpers_update_and_remove_fields() {
+        let mut contact = create_minimal_contact(
+            Some("Ada"),
+            None,
+            None,
+            Some("+1-555-0100"),
+            Some("ada@example.com"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("contact should be created");
+
+        update_contact_first_name(&mut contact, "Grace").unwrap();
+        update_contact_email(&mut contact, "grace@example.com").unwrap();
+        update_contact_is_primary(&mut contact, true).unwrap();
+        remove_contact_phone(&mut contact).unwrap();
+        remove_contact_email(&mut contact).unwrap();
+        remove_contact_is_primary(&mut contact).unwrap();
+
+        assert_eq!(contact["firstName"], json!("Grace"));
+        assert!(contact.get("phone").is_none());
+        assert!(contact.get("email").is_none());
+        assert!(contact.get("isPrimary").is_none());
+    }
+
+    #[test]
+    fn create_minimal_contact_rejects_invalid_email() {
+        let error = create_minimal_contact(
+            Some("Ada"),
+            None,
+            None,
+            None,
+            Some("not-an-email"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect_err("invalid email should be rejected");
+
+        assert!(error.contains("Invalid email address"));
+    }
+}

@@ -47,6 +47,49 @@ pub fn create_minimal_agent(
     Ok(agent)
 }
 
+fn get_array_mut<'a>(agent: &'a mut Value, field: &str) -> Result<&'a mut Vec<Value>, String> {
+    agent[field]
+        .as_array_mut()
+        .ok_or_else(|| "Invalid agent format".to_string())
+}
+
+fn get_or_init_array_mut<'a>(
+    agent: &'a mut Value,
+    field: &str,
+) -> Result<&'a mut Vec<Value>, String> {
+    if agent.get(field).is_none() {
+        agent[field] = json!([]);
+    }
+    get_array_mut(agent, field)
+}
+
+fn update_value_in_array(
+    values: &mut [Value],
+    old_value: &Value,
+    new_value: Value,
+    not_found_message: &str,
+) -> Result<(), String> {
+    let index = values
+        .iter()
+        .position(|v| v == old_value)
+        .ok_or_else(|| not_found_message.to_string())?;
+    values[index] = new_value;
+    Ok(())
+}
+
+fn remove_value_from_array(
+    values: &mut Vec<Value>,
+    target: &Value,
+    not_found_message: &str,
+) -> Result<(), String> {
+    let index = values
+        .iter()
+        .position(|v| v == target)
+        .ok_or_else(|| not_found_message.to_string())?;
+    values.remove(index);
+    Ok(())
+}
+
 /// Adds a service to an agent.
 ///
 /// # Arguments
@@ -61,10 +104,7 @@ pub fn create_minimal_agent(
 // CRUD operations for future public API - will be exposed in upcoming releases
 #[allow(dead_code)]
 fn add_service_to_agent(agent: &mut Value, service: Value) -> Result<(), String> {
-    agent["jacsServices"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid agent format".to_string())?
-        .push(service);
+    get_array_mut(agent, "jacsServices")?.push(service);
     Ok(())
 }
 
@@ -86,17 +126,12 @@ fn update_service_in_agent(
     old_service: Value,
     new_service: Value,
 ) -> Result<(), String> {
-    let services = agent["jacsServices"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid agent format".to_string())?;
-
-    let index = services
-        .iter()
-        .position(|s| s == &old_service)
-        .ok_or_else(|| "Service not found".to_string())?;
-
-    services[index] = new_service;
-    Ok(())
+    update_value_in_array(
+        get_array_mut(agent, "jacsServices")?,
+        &old_service,
+        new_service,
+        "Service not found",
+    )
 }
 
 /// Removes a service from an agent.
@@ -112,17 +147,11 @@ fn update_service_in_agent(
 /// * `Err(String)` - If an error occurred while removing the service.
 #[allow(dead_code)]
 fn remove_service_from_agent(agent: &mut Value, service: Value) -> Result<(), String> {
-    let services = agent["jacsServices"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid agent format".to_string())?;
-
-    let index = services
-        .iter()
-        .position(|s| s == &service)
-        .ok_or_else(|| "Service not found".to_string())?;
-
-    services.remove(index);
-    Ok(())
+    remove_value_from_array(
+        get_array_mut(agent, "jacsServices")?,
+        &service,
+        "Service not found",
+    )
 }
 
 /// Adds a contact to an agent.
@@ -138,13 +167,7 @@ fn remove_service_from_agent(agent: &mut Value, service: Value) -> Result<(), St
 /// * `Err(String)` - If an error occurred while adding the contact.
 #[allow(dead_code)]
 fn add_contact_to_agent(agent: &mut Value, contact: Value) -> Result<(), String> {
-    if agent.get("jacsContacts").is_none() {
-        agent["jacsContacts"] = json!([]);
-    }
-    agent["jacsContacts"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid agent format".to_string())?
-        .push(contact);
+    get_or_init_array_mut(agent, "jacsContacts")?.push(contact);
     Ok(())
 }
 
@@ -166,17 +189,12 @@ fn update_contact_in_agent(
     old_contact: Value,
     new_contact: Value,
 ) -> Result<(), String> {
-    let contacts = agent["jacsContacts"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid agent format".to_string())?;
-
-    let index = contacts
-        .iter()
-        .position(|c| c == &old_contact)
-        .ok_or_else(|| "Contact not found".to_string())?;
-
-    contacts[index] = new_contact;
-    Ok(())
+    update_value_in_array(
+        get_array_mut(agent, "jacsContacts")?,
+        &old_contact,
+        new_contact,
+        "Contact not found",
+    )
 }
 
 /// Removes a contact from an agent.
@@ -192,15 +210,64 @@ fn update_contact_in_agent(
 /// * `Err(String)` - If an error occurred while removing the contact.
 #[allow(dead_code)]
 fn remove_contact_from_agent(agent: &mut Value, contact: Value) -> Result<(), String> {
-    let contacts = agent["jacsContacts"]
-        .as_array_mut()
-        .ok_or_else(|| "Invalid agent format".to_string())?;
+    remove_value_from_array(
+        get_array_mut(agent, "jacsContacts")?,
+        &contact,
+        "Contact not found",
+    )
+}
 
-    let index = contacts
-        .iter()
-        .position(|c| c == &contact)
-        .ok_or_else(|| "Contact not found".to_string())?;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
 
-    contacts.remove(index);
-    Ok(())
+    #[test]
+    fn add_update_remove_service_works() {
+        let mut agent = json!({
+            "jacsServices": [
+                {"name": "svc-a"},
+                {"name": "svc-b"}
+            ]
+        });
+
+        add_service_to_agent(&mut agent, json!({"name": "svc-c"})).expect("add");
+        assert_eq!(agent["jacsServices"].as_array().map(|a| a.len()), Some(3));
+
+        update_service_in_agent(
+            &mut agent,
+            json!({"name": "svc-a"}),
+            json!({"name": "svc-a2"}),
+        )
+        .expect("update");
+        assert_eq!(agent["jacsServices"][0]["name"], "svc-a2");
+
+        remove_service_from_agent(&mut agent, json!({"name": "svc-b"})).expect("remove");
+        assert_eq!(agent["jacsServices"].as_array().map(|a| a.len()), Some(2));
+    }
+
+    #[test]
+    fn contact_operations_initialize_and_edit_array() {
+        let mut agent = json!({
+            "jacsServices": [{"name": "svc"}]
+        });
+
+        add_contact_to_agent(&mut agent, json!({"email": "one@example.com"})).expect("add 1");
+        add_contact_to_agent(&mut agent, json!({"email": "two@example.com"})).expect("add 2");
+        assert_eq!(agent["jacsContacts"].as_array().map(|a| a.len()), Some(2));
+
+        update_contact_in_agent(
+            &mut agent,
+            json!({"email": "one@example.com"}),
+            json!({"email": "one+updated@example.com"}),
+        )
+        .expect("update");
+        assert_eq!(
+            agent["jacsContacts"][0]["email"],
+            json!("one+updated@example.com")
+        );
+
+        remove_contact_from_agent(&mut agent, json!({"email": "two@example.com"})).expect("remove");
+        assert_eq!(agent["jacsContacts"].as_array().map(|a| a.len()), Some(1));
+    }
 }

@@ -167,8 +167,8 @@ fn test_12factor_defaults() {
     );
     assert_eq!(
         config.jacs_agent_key_algorithm().as_deref(),
-        Some("RSA-PSS"),
-        "Default algorithm should be RSA-PSS"
+        Some("pq2025"),
+        "Default algorithm should be pq2025"
     );
 
     clear_test_env_vars();

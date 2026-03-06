@@ -30,6 +30,13 @@ export interface AgentInfo {
     name: string;
     publicKeyPath: string;
     configPath: string;
+    version?: string;
+    algorithm?: string;
+    privateKeyPath?: string;
+    dataDirectory?: string;
+    keyDirectory?: string;
+    domain?: string;
+    dnsRecord?: string;
 }
 export interface SignedDocument {
     raw: string;
@@ -53,22 +60,14 @@ export interface Attachment {
     hash: string;
     embedded: boolean;
 }
-export interface HaiRegistrationOptions {
-    apiKey?: string;
-    haiUrl?: string;
-    preview?: boolean;
-}
-export interface HaiRegistrationResult {
-    agentId: string;
-    jacsId: string;
-    dnsVerified: boolean;
-    signatures: string[];
-}
 export interface LoadOptions {
     strict?: boolean;
 }
 export declare function isStrict(): boolean;
 export interface QuickstartOptions {
+    name: string;
+    domain: string;
+    description?: string;
     algorithm?: string;
     strict?: boolean;
     configPath?: string;
@@ -78,16 +77,22 @@ export interface QuickstartInfo {
     name: string;
     version: string;
     algorithm: string;
+    configPath: string;
+    keyDirectory: string;
+    dataDirectory: string;
+    publicKeyPath: string;
+    privateKeyPath: string;
+    domain: string;
 }
 /**
- * Zero-config quickstart: loads or creates a persistent agent.
+ * Quickstart: loads or creates a persistent agent.
  * @returns Promise<QuickstartInfo>
  */
-export declare function quickstart(options?: QuickstartOptions): Promise<QuickstartInfo>;
+export declare function quickstart(options: QuickstartOptions): Promise<QuickstartInfo>;
 /**
- * Zero-config quickstart (sync variant, blocks event loop).
+ * Quickstart (sync variant, blocks event loop).
  */
-export declare function quickstartSync(options?: QuickstartOptions): QuickstartInfo;
+export declare function quickstartSync(options: QuickstartOptions): QuickstartInfo;
 export interface CreateAgentOptions {
     name: string;
     password?: string;
@@ -190,6 +195,10 @@ export declare function reencryptKey(oldPassword: string, newPassword: string): 
 export declare function reencryptKeySync(oldPassword: string, newPassword: string): void;
 export declare function getPublicKey(): string;
 export declare function exportAgent(): string;
+/** @deprecated Use getPublicKey() instead. */
+export declare function sharePublicKey(): string;
+/** @deprecated Use exportAgent() instead. */
+export declare function shareAgent(): string;
 export declare function getAgentInfo(): AgentInfo | null;
 export declare function isLoaded(): boolean;
 export declare function debugInfo(): Record<string, unknown>;
@@ -203,7 +212,6 @@ export declare function getWellKnownJson(): {
 };
 export declare function getSetupInstructions(domain: string, ttl?: number): Promise<Record<string, unknown>>;
 export declare function getSetupInstructionsSync(domain: string, ttl?: number): Record<string, unknown>;
-export declare function registerWithHai(options?: HaiRegistrationOptions): Promise<HaiRegistrationResult>;
 export interface AgreementStatus {
     complete: boolean;
     signers: Array<{
@@ -220,6 +228,7 @@ export declare function signAgreementSync(document: any, fieldName?: string): Si
 export declare function checkAgreement(document: any, fieldName?: string): Promise<AgreementStatus>;
 export declare function checkAgreementSync(document: any, fieldName?: string): AgreementStatus;
 export declare function trustAgent(agentJson: string): string;
+export declare function trustAgentWithKey(agentJson: string, publicKeyPem: string): string;
 export declare function listTrustedAgents(): string[];
 export declare function untrustAgent(agentId: string): void;
 export declare function isTrusted(agentId: string): boolean;
@@ -230,6 +239,83 @@ export interface AuditOptions {
 }
 export declare function audit(options?: AuditOptions): Promise<Record<string, unknown>>;
 export declare function auditSync(options?: AuditOptions): Record<string, unknown>;
-export declare const MAX_VERIFY_URL_LEN = 2048;
-export declare const MAX_VERIFY_DOCUMENT_BYTES = 1515;
-export declare function generateVerifyLink(document: string, baseUrl?: string): string;
+/**
+ * Create a signed attestation document (async).
+ *
+ * Requires the native module to be built with the `attestation` feature.
+ * Throws if attestation is not available or if the claims are invalid.
+ *
+ * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+ * @returns The signed attestation as a SignedDocument.
+ */
+export declare function createAttestation(params: {
+    subject: Record<string, unknown>;
+    claims: Record<string, unknown>[];
+    evidence?: Record<string, unknown>[];
+    derivation?: Record<string, unknown>;
+    policyContext?: Record<string, unknown>;
+}): Promise<SignedDocument>;
+/**
+ * Create a signed attestation document (sync).
+ *
+ * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+ * @returns The signed attestation as a SignedDocument.
+ */
+export declare function createAttestationSync(params: {
+    subject: Record<string, unknown>;
+    claims: Record<string, unknown>[];
+    evidence?: Record<string, unknown>[];
+    derivation?: Record<string, unknown>;
+    policyContext?: Record<string, unknown>;
+}): SignedDocument;
+/**
+ * Verify an attestation document -- local tier (async).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @param opts - Optional. Set full: true for full-tier verification.
+ * @returns Verification result object.
+ */
+export declare function verifyAttestation(attestationJson: string, opts?: {
+    full?: boolean;
+}): Promise<Record<string, unknown>>;
+/**
+ * Verify an attestation document -- local tier (sync).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @param opts - Optional. Set full: true for full-tier verification.
+ * @returns Verification result object.
+ */
+export declare function verifyAttestationSync(attestationJson: string, opts?: {
+    full?: boolean;
+}): Record<string, unknown>;
+/**
+ * Lift a signed document into an attestation (async).
+ *
+ * @param signedDocJson - Raw JSON string of the signed document.
+ * @param claims - Array of claim objects.
+ * @returns The lifted attestation as a SignedDocument.
+ */
+export declare function liftToAttestation(signedDocJson: string, claims: Record<string, unknown>[]): Promise<SignedDocument>;
+/**
+ * Lift a signed document into an attestation (sync).
+ *
+ * @param signedDocJson - Raw JSON string of the signed document.
+ * @param claims - Array of claim objects.
+ * @returns The lifted attestation as a SignedDocument.
+ */
+export declare function liftToAttestationSync(signedDocJson: string, claims: Record<string, unknown>[]): SignedDocument;
+/**
+ * Export an attestation as a DSSE (Dead Simple Signing Envelope) (async).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @returns The DSSE envelope as a parsed object.
+ */
+export declare function exportAttestationDsse(attestationJson: string): Promise<Record<string, unknown>>;
+/**
+ * Export an attestation as a DSSE (Dead Simple Signing Envelope) (sync).
+ *
+ * @param attestationJson - Raw JSON string of the attestation document.
+ * @returns The DSSE envelope as a parsed object.
+ */
+export declare function exportAttestationDsseSync(attestationJson: string): Record<string, unknown>;
+export declare function generateVerifyLink(doc: string, baseUrl?: string): string;

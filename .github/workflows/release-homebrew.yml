@@ -1,0 +1,137 @@
+name: Sync Homebrew Tap
+
+on:
+  push:
+    tags:
+      - 'cli/v*'
+      - 'crate/v*'
+  workflow_dispatch:
+    inputs:
+      jacs_version:
+        description: "JACS version for Formula/jacs.rb (defaults to tag or jacs/Cargo.toml)"
+        required: false
+      haisdk_version:
+        description: "HAISDK version for Formula/haisdk.rb (defaults to latest on PyPI)"
+        required: false
+      haisdk_pypi_package:
+        description: "PyPI package name for HAISDK"
+        required: false
+        default: "haisdk"
+      tap_repository:
+        description: "Homebrew tap repository (owner/repo)"
+        required: false
+        default: "HumanAssisted/homebrew-jacs"
+      tap_branch:
+        description: "Tap branch (stable branch is master)"
+        required: false
+        default: "master"
+
+permissions:
+  contents: read
+
+jobs:
+  sync-formulas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for tap token
+        env:
+          HAS_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN secret is not configured. Set it at https://github.com/HumanAssisted/JACS/settings/secrets/actions"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Resolve versions and artifact checksums
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ref_name="${GITHUB_REF_NAME:-}"
+          jacs_version_input="${{ github.event.inputs.jacs_version }}"
+          haisdk_version_input="${{ github.event.inputs.haisdk_version }}"
+          haisdk_pkg_input="${{ github.event.inputs.haisdk_pypi_package }}"
+
+          if [[ -n "${jacs_version_input}" ]]; then
+            jacs_version="${jacs_version_input}"
+          elif [[ "${ref_name}" =~ ^cli/v(.+)$ ]]; then
+            jacs_version="${BASH_REMATCH[1]}"
+          elif [[ "${ref_name}" =~ ^crate/v(.+)$ ]]; then
+            jacs_version="${BASH_REMATCH[1]}"
+          else
+            jacs_version="$(grep '^version = ' jacs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')"
+          fi
+
+          haisdk_pkg="${haisdk_pkg_input:-haisdk}"
+          if [[ -z "${haisdk_pkg}" ]]; then
+            haisdk_pkg="haisdk"
+          fi
+
+          pypi_json="$(mktemp)"
+          curl -fsSL "https://pypi.org/pypi/${haisdk_pkg}/json" -o "${pypi_json}"
+
+          if [[ -n "${haisdk_version_input}" ]]; then
+            haisdk_version="${haisdk_version_input}"
+          else
+            haisdk_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["info"]["version"])' "${pypi_json}")"
+          fi
+
+          read -r haisdk_sdist_url haisdk_sha256 < <(python3 -c 'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); version=sys.argv[2]; entry=next((f for f in data.get("releases", {}).get(version, []) if f.get("packagetype")=="sdist"), None); (entry is not None) or sys.exit(f"No sdist found for version {version}"); print(entry["url"], entry["digests"]["sha256"])' "${pypi_json}" "${haisdk_version}")
+
+          jacs_crate="$(mktemp)"
+          curl -fsSL "https://crates.io/api/v1/crates/jacs/${jacs_version}/download" -o "${jacs_crate}"
+          jacs_sha256="$(sha256sum "${jacs_crate}" | awk '{print $1}')"
+
+          echo "jacs_version=${jacs_version}" >> "${GITHUB_OUTPUT}"
+          echo "jacs_sha256=${jacs_sha256}" >> "${GITHUB_OUTPUT}"
+          echo "haisdk_version=${haisdk_version}" >> "${GITHUB_OUTPUT}"
+          echo "haisdk_sdist_url=${haisdk_sdist_url}" >> "${GITHUB_OUTPUT}"
+          echo "haisdk_sha256=${haisdk_sha256}" >> "${GITHUB_OUTPUT}"
+          echo "haisdk_pypi_package=${haisdk_pkg}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate formula files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p generated/Formula
+
+          sed \
+            -e "s|__JACS_VERSION__|${{ steps.resolve.outputs.jacs_version }}|g" \
+            -e "s|__JACS_SHA256__|${{ steps.resolve.outputs.jacs_sha256 }}|g" \
+            .github/homebrew-templates/jacs.rb.tmpl > generated/Formula/jacs.rb
+
+          sed \
+            -e "s|__HAISDK_SDIST_URL__|${{ steps.resolve.outputs.haisdk_sdist_url }}|g" \
+            -e "s|__HAISDK_SHA256__|${{ steps.resolve.outputs.haisdk_sha256 }}|g" \
+            .github/homebrew-templates/haisdk.rb.tmpl > generated/Formula/haisdk.rb
+
+      - name: Checkout Homebrew tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.tap_repository || 'HumanAssisted/homebrew-jacs' }}
+          ref: ${{ github.event.inputs.tap_branch || 'master' }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Publish updated formulas to tap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Formula
+          cp generated/Formula/jacs.rb tap/Formula/jacs.rb
+          cp generated/Formula/haisdk.rb tap/Formula/haisdk.rb
+
+          cd tap
+          if git diff --quiet -- Formula/jacs.rb Formula/haisdk.rb; then
+            echo "No Homebrew formula changes to publish."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/jacs.rb Formula/haisdk.rb
+          git commit -m "Update formulas: jacs v${{ steps.resolve.outputs.jacs_version }}, haisdk v${{ steps.resolve.outputs.haisdk_version }}"
+          git push origin HEAD:${{ github.event.inputs.tap_branch || 'master' }}

@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F22",
+  "expected_result": "pass",
+  "expected_reason": "html_only_body",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "HTML Only Email" },
+      "date": { "value": "Fri, 27 Feb 2026 12:21:00 +0000" },
+      "message_id": { "value": "<fixture-22@example.com>" }
+    },
+    "body_plain": false,
+    "body_html": true,
+    "attachment_count": 0,
+    "parent_signature_hash": null,
+    "notes": "HTML-only body with no text/plain part"
+  }
+}

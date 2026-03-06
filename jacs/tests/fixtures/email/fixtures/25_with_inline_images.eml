@@ -1,0 +1,25 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Inline Images
+Date: Fri, 27 Feb 2026 12:24:00 +0000
+Message-ID: <fixture-25@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F25
+X-Expected-Result: pass
+X-Expected-Reason: inline_image_attachment
+Content-Type: multipart/related; boundary="f25"
+
+--f25
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>See image: <img src="cid:logo@example.com"></p></body></html>
+
+--f25
+Content-Type: image/png; name="logo.png"
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo@example.com>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUg==
+
+--f25--

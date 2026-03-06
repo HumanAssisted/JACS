@@ -1,0 +1,14 @@
+{
+  "agent_id": "fccc4e21-96ca-4da6-88e6-4bd58076242a",
+  "algorithm": "pq2025",
+  "fixtures": {
+    "agent_card": "pq2025_agent_card.json",
+    "child_artifact": "pq2025_child_artifact.json",
+    "public_key": "pq2025_public_key.pem",
+    "wrapped_artifact": "pq2025_wrapped_artifact.json"
+  },
+  "generated_by": "rust",
+  "jacs_version": "0.8.0",
+  "public_key_hash": "074d1733ee7cdca39153e94ddc3ea807b941de930d2bb50246547468be85dd44",
+  "signing_algorithm": "pq2025"
+}

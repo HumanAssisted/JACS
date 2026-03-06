@@ -3,28 +3,28 @@ use crate::storage::MultiStorage;
 use jsonschema::Retrieve;
 use phf::phf_map;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use tracing::{debug, warn};
 
 /// Whether to accept invalid TLS certificates when fetching remote schemas.
 ///
-/// **Default behavior**: `true` - accepts invalid certs with a warning.
-/// This allows the application to continue working in development environments
-/// with self-signed certificates while alerting users to the security risk.
+/// **Default behavior**: strict TLS is enabled (`JACS_STRICT_TLS=true`).
+/// Invalid certificates are rejected unless `JACS_STRICT_TLS` is explicitly set to `false`.
 ///
-/// To enforce strict TLS validation (recommended for production), set:
-/// `JACS_STRICT_TLS=true`
+/// To disable certificate validation (not recommended), set:
+/// `JACS_STRICT_TLS=false`
 ///
 /// **Security Warning**: Accepting invalid certificates allows MITM attacks.
-pub const ACCEPT_INVALID_CERTS_DEFAULT: bool = false;
+pub const STRICT_TLS_DEFAULT: bool = true;
 
 /// Default allowed domains for remote schema fetching.
 ///
 /// Only URLs from these domains will be fetched when resolving remote schemas.
 /// Additional domains can be added via the `JACS_SCHEMA_ALLOWED_DOMAINS` environment variable.
-pub const DEFAULT_ALLOWED_SCHEMA_DOMAINS: &[&str] = &["hai.ai", "schema.hai.ai"];
+pub const DEFAULT_ALLOWED_SCHEMA_DOMAINS: &[&str] = &["hai.ai", "schema.hai.ai", "jacs.sh"];
 
 /// Check if a URL is allowed for schema fetching.
 ///
@@ -138,41 +138,38 @@ fn is_schema_url_allowed(url: &str) -> Result<(), JacsError> {
 
 /// Returns whether to accept invalid TLS certificates.
 ///
-/// By default, accepts invalid certs but logs a warning.
-/// Set `JACS_STRICT_TLS=true` to enforce certificate validation (recommended for production).
+/// Strict TLS is enabled by default (`JACS_STRICT_TLS=true`).
+/// Invalid certificates are accepted only when `JACS_STRICT_TLS=false`.
 #[cfg(not(target_arch = "wasm32"))]
 fn should_accept_invalid_certs() -> bool {
-    // Check for strict mode first - if enabled, always validate certs
-    if let Ok(val) = std::env::var("JACS_STRICT_TLS") {
-        if val.eq_ignore_ascii_case("true") || val == "1" {
-            return false; // Don't accept invalid certs in strict mode
-        }
-    }
+    let strict_tls = match std::env::var("JACS_STRICT_TLS") {
+        Ok(val) => match val.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" => true,
+            "false" | "0" | "no" => false,
+            other => {
+                warn!(
+                    "Invalid JACS_STRICT_TLS value '{}'; defaulting to strict TLS validation.",
+                    other
+                );
+                STRICT_TLS_DEFAULT
+            }
+        },
+        Err(_) => STRICT_TLS_DEFAULT,
+    };
 
-    // Check legacy env var for explicit override
-    if let Ok(val) = std::env::var("JACS_ACCEPT_INVALID_CERTS") {
-        let accept = val.eq_ignore_ascii_case("true") || val == "1";
-        if accept {
-            warn!(
-                "SECURITY WARNING: Accepting invalid TLS certificates due to JACS_ACCEPT_INVALID_CERTS=true"
-            );
-        }
-        return accept;
-    }
-
-    // Default: accept invalid certs but warn
-    if ACCEPT_INVALID_CERTS_DEFAULT {
+    if strict_tls {
+        false
+    } else {
         warn!(
-            "TLS certificate validation is disabled by default. \
-            For production, set JACS_STRICT_TLS=true to enforce certificate validation."
+            "SECURITY WARNING: JACS_STRICT_TLS=false. Accepting invalid TLS certificates increases MITM risk."
         );
+        true
     }
-    ACCEPT_INVALID_CERTS_DEFAULT
 }
 
 /// Check TLS strictness considering verification claim.
 ///
-/// Verified claims (`verified` or `verified-hai.ai`) ALWAYS require strict TLS.
+/// Verified claims (`verified`, `verified-registry`, or legacy `verified-hai.ai`) ALWAYS require strict TLS.
 /// This enforces the principle: "If you claim it, you must prove it."
 ///
 /// # Arguments
@@ -193,7 +190,7 @@ fn should_accept_invalid_certs() -> bool {
 ///
 /// // Verified agents always require strict TLS
 /// assert!(!should_accept_invalid_certs_for_claim(Some("verified")));
-/// assert!(!should_accept_invalid_certs_for_claim(Some("verified-hai.ai")));
+/// assert!(!should_accept_invalid_certs_for_claim(Some("verified-registry")));
 ///
 /// // Unverified agents use env-var based logic
 /// let result = should_accept_invalid_certs_for_claim(None);
@@ -203,7 +200,7 @@ fn should_accept_invalid_certs() -> bool {
 pub fn should_accept_invalid_certs_for_claim(claim: Option<&str>) -> bool {
     // Verified claims ALWAYS require strict TLS
     match claim {
-        Some("verified") | Some("verified-hai.ai") => false,
+        Some("verified") | Some("verified-registry") | Some("verified-hai.ai") => false,
         _ => should_accept_invalid_certs(), // existing env-var check
     }
 }
@@ -234,7 +231,8 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
      "schemas/agentstate/v1/agentstate.schema.json" => include_str!("../../schemas/agentstate/v1/agentstate.schema.json"),
      "schemas/commitment/v1/commitment.schema.json" => include_str!("../../schemas/commitment/v1/commitment.schema.json"),
      "schemas/todo/v1/todo.schema.json" => include_str!("../../schemas/todo/v1/todo.schema.json"),
-     "schemas/components/todoitem/v1/todoitem.schema.json" => include_str!("../../schemas/components/todoitem/v1/todoitem.schema.json")
+     "schemas/components/todoitem/v1/todoitem.schema.json" => include_str!("../../schemas/components/todoitem/v1/todoitem.schema.json"),
+     "schemas/attestation/v1/attestation.schema.json" => include_str!("../../schemas/attestation/v1/attestation.schema.json")
 };
 
 pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
@@ -257,6 +255,7 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json" => "agentstate" ,
     "https://hai.ai/schemas/commitment/v1/commitment.schema.json" => "commitment" ,
     "https://hai.ai/schemas/todo/v1/todo.schema.json" => "todo" ,
+    "https://hai.ai/schemas/attestation/v1/attestation.schema.json" => "attestation" ,
 };
 
 pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {
@@ -455,10 +454,8 @@ impl Retrieve for EmbeddedSchemaResolver {
 ///
 /// # Security
 ///
-/// By default, this function accepts invalid TLS certificates but logs a warning.
-/// This allows development environments with self-signed certs to work out of the box.
-///
-/// For production, set `JACS_STRICT_TLS=true` to enforce certificate validation.
+/// Strict TLS is enabled by default (`JACS_STRICT_TLS=true`).
+/// Set `JACS_STRICT_TLS=false` only for controlled local development.
 ///
 /// **Warning**: Accepting invalid certificates allows MITM attacks.
 ///
@@ -622,28 +619,33 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
     let path = rawpath.strip_prefix('/').unwrap_or(rawpath);
+    let cache_key = schema_cache_key(path);
 
-    // Check embedded schemas first (always allowed, no security concerns)
-    if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
-        let schema_value: Value = serde_json::from_str(schema_json)?;
-        return Ok(Arc::new(schema_value));
+    if let Some(cached) = get_cached_schema(&cache_key) {
+        return Ok(cached);
     }
 
-    if path.starts_with("http://") || path.starts_with("https://") {
+    // Check embedded schemas first (always allowed, no security concerns)
+    let resolved = if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+        let schema_value: Value = serde_json::from_str(schema_json)?;
+        Arc::new(schema_value)
+    } else if path.starts_with("http://") || path.starts_with("https://") {
         debug!("Attempting to fetch schema from URL: {}", path);
         if path.starts_with("https://hai.ai") {
             let relative_path = path.trim_start_matches("https://hai.ai/");
             if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(relative_path) {
                 let schema_value: Value = serde_json::from_str(schema_json)?;
-                return Ok(Arc::new(schema_value));
+                Arc::new(schema_value)
+            } else {
+                return Err(JacsError::SchemaError(format!(
+                    "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
+                    path, relative_path, DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
+                ))
+                .into());
             }
-            Err(JacsError::SchemaError(format!(
-                "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
-                path, relative_path, DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
-            )).into())
         } else {
             // get_remote_schema already checks the domain allowlist
-            get_remote_schema(path)
+            get_remote_schema(path)?
         }
     } else {
         // Filesystem path - check security restrictions
@@ -653,12 +655,70 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
         if storage.file_exists(path, None)? {
             let schema_json = String::from_utf8(storage.get_file(path, None)?)?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;
-            Ok(Arc::new(schema_value))
+            Arc::new(schema_value)
         } else {
-            Err(JacsError::FileNotFound {
+            return Err(JacsError::FileNotFound {
                 path: path.to_string(),
             }
-            .into())
+            .into());
         }
+    };
+
+    Ok(cache_schema(cache_key, resolved))
+}
+
+fn schema_cache_key(path: &str) -> String {
+    path.strip_prefix("https://hai.ai/")
+        .or_else(|| path.strip_prefix("http://hai.ai/"))
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn schema_cache() -> &'static RwLock<HashMap<String, Arc<Value>>> {
+    static SCHEMA_CACHE: OnceLock<RwLock<HashMap<String, Arc<Value>>>> = OnceLock::new();
+    SCHEMA_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn get_cached_schema(key: &str) -> Option<Arc<Value>> {
+    schema_cache().read().ok()?.get(key).cloned()
+}
+
+fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
+    if let Ok(mut cache) = schema_cache().write() {
+        if let Some(existing) = cache.get(&key) {
+            return existing.clone();
+        }
+        cache.insert(key, schema.clone());
+    }
+    schema
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_schema;
+    use std::sync::Arc;
+
+    #[test]
+    fn resolve_schema_embedded_path_is_cached() {
+        let first = resolve_schema("schemas/agent/v1/agent.schema.json").expect("first resolve");
+        let second = resolve_schema("schemas/agent/v1/agent.schema.json").expect("second resolve");
+
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "embedded schema should be returned from cache"
+        );
+    }
+
+    #[test]
+    fn resolve_schema_hai_url_and_relative_path_share_cache_entry() {
+        let relative = resolve_schema("schemas/header/v1/header.schema.json")
+            .expect("relative path resolve should succeed");
+        let via_url = resolve_schema("https://hai.ai/schemas/header/v1/header.schema.json")
+            .expect("hai url resolve should succeed");
+
+        assert!(
+            Arc::ptr_eq(&relative, &via_url),
+            "relative and hai URL lookups should share cached schema"
+        );
     }
 }

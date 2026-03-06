@@ -1,0 +1,912 @@
+{
+  "schema_version": 1,
+  "server": {
+    "name": "jacs-mcp",
+    "title": "JACS MCP Server",
+    "version": "0.9.0",
+    "website_url": "https://humanassisted.github.io/JACS/",
+    "instructions": "This MCP server provides data provenance and cryptographic signing for agent state files and agent-to-agent messaging. Agent state tools: jacs_sign_state (sign files), jacs_verify_state (verify integrity), jacs_load_state (load with verification), jacs_update_state (update and re-sign), jacs_list_state (list signed docs), jacs_adopt_state (adopt external files). Messaging tools: jacs_message_send (create and sign a message), jacs_message_update (update and re-sign a message), jacs_message_agree (co-sign/agree to a message), jacs_message_receive (verify and extract a received message). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Security: jacs_audit (read-only security audit and health checks)."
+  },
+  "tools": [
+    {
+      "name": "jacs_adopt_state",
+      "description": "Adopt an external file as signed agent state. Like sign_state but marks the origin as 'adopted' and optionally records the source URL.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for adopting an external agent state file.",
+        "properties": {
+          "description": {
+            "description": "Optional description of what this adopted state document contains",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_path": {
+            "description": "Path to the file to adopt and sign as agent state",
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-readable name for this adopted state document",
+            "type": "string"
+          },
+          "source_url": {
+            "description": "Optional URL where the content was originally obtained",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state_type": {
+            "description": "Type of agent state: memory, skill, plan, config, or hook",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "state_type",
+          "name"
+        ],
+        "title": "AdoptStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_assess_a2a_agent",
+      "description": "Assess the trust level of a remote A2A agent given its Agent Card. Applies a trust policy (open, verified, or strict) and returns whether the agent is allowed and at what trust level.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for assessing trust level of a remote A2A agent.",
+        "properties": {
+          "agent_card_json": {
+            "description": "The A2A Agent Card JSON of the remote agent to assess",
+            "type": "string"
+          },
+          "policy": {
+            "description": "Trust policy: 'open' (accept all), 'verified' (require JACS), or 'strict' (require trust store)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "agent_card_json"
+        ],
+        "title": "AssessA2aAgentParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_attest_create",
+      "description": "Create a signed attestation document. Provide a JSON string with: subject (type, id, digests), claims (name, value, confidence, assuranceLevel), and optional evidence, derivation, and policyContext. Requires the attestation feature.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for creating an attestation.",
+        "properties": {
+          "params_json": {
+            "description": "JSON string containing attestation parameters: { subject: { type, id, digests }, claims: [{ name, value, confidence?, assuranceLevel? }], evidence?: [...], derivation?: {...}, policyContext?: {...} }",
+            "type": "string"
+          }
+        },
+        "required": [
+          "params_json"
+        ],
+        "title": "AttestCreateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_attest_export_dsse",
+      "description": "Export an attestation as a DSSE envelope for in-toto/SLSA compatibility. Provide the signed attestation document JSON. Returns a DSSE envelope with payloadType, payload, and signatures. Requires the attestation feature.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for exporting an attestation as a DSSE envelope.",
+        "properties": {
+          "attestation_json": {
+            "description": "JSON string of the signed attestation document to export as DSSE",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attestation_json"
+        ],
+        "title": "AttestExportDsseParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_attest_lift",
+      "description": "Lift an existing signed JACS document into an attestation. Provide the signed document JSON and a JSON array of claims to attach. Requires the attestation feature.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for lifting a signed document to an attestation.",
+        "properties": {
+          "claims_json": {
+            "description": "JSON array of claim objects: [{ name, value, confidence?, assuranceLevel? }]",
+            "type": "string"
+          },
+          "signed_doc_json": {
+            "description": "JSON string of the existing signed JACS document to lift",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signed_doc_json",
+          "claims_json"
+        ],
+        "title": "AttestLiftParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_attest_verify",
+      "description": "Verify an attestation document. Provide a document_key in 'jacsId:jacsVersion' format. Set full=true for full-tier verification including evidence and derivation chain checks. Requires the attestation feature.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for verifying an attestation.",
+        "properties": {
+          "document_key": {
+            "description": "Document key in 'jacsId:jacsVersion' format",
+            "type": "string"
+          },
+          "full": {
+            "default": false,
+            "description": "Set to true for full-tier verification (evidence + chain checks)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "document_key"
+        ],
+        "title": "AttestVerifyParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_audit",
+      "description": "Run a read-only JACS security audit and health checks. Returns a JSON report with risks, health_checks, summary, and overall_status. Does not modify state. Optional: config_path, recent_n (number of recent documents to re-verify).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for the JACS security audit tool.",
+        "properties": {
+          "config_path": {
+            "description": "Optional path to jacs.config.json",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recent_n": {
+            "description": "Number of recent documents to re-verify (default from config)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "title": "JacsAuditParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_check_agreement",
+      "description": "Check the status of an agreement: how many agents have signed, whether quorum is met, whether it has expired, and which agents still need to sign. Use this to decide whether an agreement is complete and ready to act on.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for checking agreement status.\n\nUse this to see how many agents have signed, whether quorum is met,\nand whether the agreement has expired.",
+        "properties": {
+          "agreement_fieldname": {
+            "description": "Custom agreement field name (default: 'jacsAgreement')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signed_agreement": {
+            "description": "The agreement JSON to check status of",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signed_agreement"
+        ],
+        "title": "CheckAgreementParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_create_agent",
+      "description": "Create a new JACS agent with cryptographic keys. This is the programmatic equivalent of 'jacs create'. Returns agent ID and key paths. SECURITY: Requires JACS_MCP_ALLOW_REGISTRATION=true environment variable.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for creating a new JACS agent programmatically.",
+        "properties": {
+          "agent_type": {
+            "description": "Agent type (default: 'ai')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "algorithm": {
+            "description": "Cryptographic algorithm: 'pq2025' (default, post-quantum), 'ring-Ed25519', or 'RSA-PSS'",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "data_directory": {
+            "description": "Directory for data files (default: ./jacs_data)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "description": "Description of the agent",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key_directory": {
+            "description": "Directory for key files (default: ./jacs_keys)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Name for the new agent",
+            "type": "string"
+          },
+          "password": {
+            "description": "Password for encrypting the private key. Must be at least 8 characters with uppercase, lowercase, digit, and special character.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "password"
+        ],
+        "title": "CreateAgentProgrammaticParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_create_agreement",
+      "description": "Create a multi-party cryptographic agreement. Use this when multiple agents need to formally agree on something — like approving a deployment, authorizing a data transfer, or ratifying a decision. You specify which agents must sign, an optional quorum (e.g., 2-of-3), a timeout deadline, and algorithm constraints. Returns a signed agreement document to pass to other agents for co-signing.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for creating a multi-party agreement.\n\nAn agreement is a document that multiple agents must sign. Use this when agents\nneed to formally commit to a shared decision — for example, approving a deployment,\nauthorizing a data transfer, or reaching consensus on a proposal.",
+        "properties": {
+          "agent_ids": {
+            "description": "List of agent IDs (UUIDs) that are parties to this agreement",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "context": {
+            "description": "Additional context for signers",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "document": {
+            "description": "JSON document that all parties will agree to. Can be any valid JSON object.",
+            "type": "string"
+          },
+          "minimum_strength": {
+            "description": "Minimum crypto strength: 'classical' or 'post-quantum'",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "question": {
+            "description": "Question for signers, e.g. 'Do you approve deploying model v2?'",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quorum": {
+            "description": "Minimum signatures required (M-of-N). If omitted, all agents must sign.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "required_algorithms": {
+            "description": "Only allow these signing algorithms. Values: 'RSA-PSS', 'ring-Ed25519', 'pq2025'",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "timeout": {
+            "description": "ISO 8601 deadline after which the agreement expires. Example: '2025-12-31T23:59:59Z'",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "document",
+          "agent_ids"
+        ],
+        "title": "CreateAgreementParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_export_agent",
+      "description": "Export the local agent's full JACS JSON document. This includes the agent's identity, public key hash, and signed metadata.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for exporting the local agent's full JSON document (no params needed).",
+        "title": "ExportAgentParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_export_agent_card",
+      "description": "Export this agent's A2A Agent Card as JSON. The Agent Card describes the agent's capabilities, endpoints, and identity for A2A discovery.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for exporting the local agent's A2A Agent Card (no params needed).",
+        "title": "ExportAgentCardParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_generate_well_known",
+      "description": "Generate all .well-known documents for A2A discovery. Returns an array of {path, document} objects that can be served at each path for agent discovery.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for generating well-known documents.",
+        "properties": {
+          "a2a_algorithm": {
+            "description": "A2A signing algorithm override (default: ring-Ed25519)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "GenerateWellKnownParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_get_trusted_agent",
+      "description": "Retrieve the full agent JSON document for a trusted agent from the local trust store. Fails if the agent is not trusted.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for getting a trusted agent's details.",
+        "properties": {
+          "agent_id": {
+            "description": "The JACS agent ID (UUID format) to retrieve from the trust store",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "title": "GetTrustedAgentParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_is_trusted",
+      "description": "Check whether a specific agent is in the local trust store. Returns a boolean indicating trust status.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for checking if an agent is trusted.",
+        "properties": {
+          "agent_id": {
+            "description": "The JACS agent ID (UUID format) to check trust status for",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "title": "IsTrustedParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_list_state",
+      "description": "List signed agent state documents, with optional filtering by type, framework, or tags.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for listing signed agent state documents.",
+        "properties": {
+          "framework": {
+            "description": "Filter by framework identifier",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state_type": {
+            "description": "Filter by state type: memory, skill, plan, config, or hook",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "description": "Filter by tags (documents must have all specified tags)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "title": "ListStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_list_trusted_agents",
+      "description": "List all agent IDs currently in the local trust store. Returns the count and a list of trusted agent IDs.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for listing trusted agents (no parameters required).",
+        "title": "ListTrustedAgentsParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_load_state",
+      "description": "Load a signed agent state document and optionally verify it before returning the content.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for loading a signed agent state.",
+        "properties": {
+          "file_path": {
+            "description": "DEPRECATED for MCP security: direct file-path loading is disabled. Use jacs_id.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jacs_id": {
+            "description": "JACS document ID to load (uuid:version)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "require_verified": {
+            "description": "Whether to require verification before loading (default true)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "title": "LoadStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_message_agree",
+      "description": "Verify and co-sign (agree to) a received signed message. Creates an agreement document that references the original message.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for agreeing to (co-signing) a received message.",
+        "properties": {
+          "signed_message": {
+            "description": "The full signed JSON document to agree to",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signed_message"
+        ],
+        "title": "MessageAgreeParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_message_receive",
+      "description": "Verify a received signed message and extract its content, sender ID, and timestamp. Use this to validate authenticity before processing a message from another agent.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for receiving and verifying a signed message.",
+        "properties": {
+          "signed_message": {
+            "description": "The full signed JSON document received from another agent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signed_message"
+        ],
+        "title": "MessageReceiveParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_message_send",
+      "description": "Create and cryptographically sign a message for sending to another agent. Returns the signed JACS document that can be transmitted to the recipient.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for sending a signed message to another agent.",
+        "properties": {
+          "content": {
+            "description": "The message content to send",
+            "type": "string"
+          },
+          "content_type": {
+            "description": "MIME type of the content (default: 'text/plain')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recipient_agent_id": {
+            "description": "The JACS agent ID of the recipient (UUID format)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient_agent_id",
+          "content"
+        ],
+        "title": "MessageSendParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_message_update",
+      "description": "Update and re-sign an existing message document with new content.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for updating an existing signed message.",
+        "properties": {
+          "content": {
+            "description": "Updated message content",
+            "type": "string"
+          },
+          "content_type": {
+            "description": "MIME type of the content (default: 'text/plain')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jacs_id": {
+            "description": "JACS document ID of the message to update",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jacs_id",
+          "content"
+        ],
+        "title": "MessageUpdateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_reencrypt_key",
+      "description": "Re-encrypt the agent's private key with a new password. Use this to rotate the password protecting the private key without changing the key itself.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for re-encrypting the agent's private key.",
+        "properties": {
+          "new_password": {
+            "description": "New password. Must be at least 8 characters with uppercase, lowercase, digit, and special character.",
+            "type": "string"
+          },
+          "old_password": {
+            "description": "Current password for the private key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "old_password",
+          "new_password"
+        ],
+        "title": "ReencryptKeyParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_sign_agreement",
+      "description": "Co-sign an existing agreement. Use this after receiving an agreement document from another agent. Your cryptographic signature is added to the agreement. The updated document can then be passed to the next signer or checked for completion.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for signing an existing agreement.\n\nUse this after receiving an agreement document from another agent.\nYour agent will cryptographically co-sign it, adding your signature\nto the agreement's signature list.",
+        "properties": {
+          "agreement_fieldname": {
+            "description": "Custom agreement field name (default: 'jacsAgreement')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signed_agreement": {
+            "description": "The full agreement JSON to sign. Obtained from jacs_create_agreement or from another agent.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signed_agreement"
+        ],
+        "title": "SignAgreementParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_sign_document",
+      "description": "Sign arbitrary JSON content to create a cryptographically signed JACS document. Use this for attestation -- when you want to prove that content was signed by this agent. Returns the signed envelope with hash and document ID.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for signing arbitrary content as a JACS document.",
+        "properties": {
+          "content": {
+            "description": "The JSON content to sign as a JACS document",
+            "type": "string"
+          },
+          "content_type": {
+            "description": "MIME type of the content (default: 'application/json')",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "SignDocumentParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_sign_state",
+      "description": "Sign an agent state file (memory, skill, plan, config, or hook) to create a cryptographically signed JACS document. This establishes provenance and integrity for the file's contents.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for signing an agent state file.",
+        "properties": {
+          "description": {
+            "description": "Optional description of what this state document contains",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embed": {
+            "description": "Whether to embed file content inline (default false, always true for hooks)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "file_path": {
+            "description": "Path to the file to sign as agent state",
+            "type": "string"
+          },
+          "framework": {
+            "description": "Optional framework identifier (e.g., 'claude-code', 'openclaw')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Human-readable name for this state document",
+            "type": "string"
+          },
+          "state_type": {
+            "description": "Type of agent state: memory, skill, plan, config, or hook",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Optional tags for categorization",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_path",
+          "state_type",
+          "name"
+        ],
+        "title": "SignStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_trust_agent",
+      "description": "Add an agent to the local trust store. The agent's self-signature is cryptographically verified before it is trusted. Pass the full agent JSON document. Returns the trusted agent ID on success.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for adding an agent to the local trust store.",
+        "properties": {
+          "agent_json": {
+            "description": "The full JACS agent JSON document to add to the trust store",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_json"
+        ],
+        "title": "TrustAgentParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_untrust_agent",
+      "description": "Remove an agent from the local trust store. SECURITY: Requires JACS_MCP_ALLOW_UNTRUST=true environment variable to prevent prompt injection attacks from removing trusted agents without user consent.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for removing an agent from the trust store.",
+        "properties": {
+          "agent_id": {
+            "description": "The JACS agent ID (UUID format) to remove from the trust store",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "title": "UntrustAgentParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_update_state",
+      "description": "Update a previously signed agent state file. Writes new content (if provided), recomputes the SHA-256 hash, and creates a new signed version.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for updating a signed agent state.",
+        "properties": {
+          "file_path": {
+            "description": "DEPRECATED for MCP security: direct file-path updates are disabled. Use jacs_id.",
+            "type": "string"
+          },
+          "jacs_id": {
+            "description": "JACS document ID to update (uuid:version)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "new_content": {
+            "description": "New embedded content for the JACS state document. If omitted, re-signs current embedded content.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "UpdateStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_verify_a2a_artifact",
+      "description": "Verify a JACS-wrapped A2A artifact. Checks the cryptographic signature and hash to confirm the artifact was signed by the claimed agent and has not been tampered with.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for verifying a JACS-wrapped A2A artifact.",
+        "properties": {
+          "wrapped_artifact": {
+            "description": "The JACS-wrapped A2A artifact JSON to verify",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wrapped_artifact"
+        ],
+        "title": "VerifyA2aArtifactParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_verify_document",
+      "description": "Verify a signed JACS document given its full JSON string. Checks both the content hash and cryptographic signature. Use this when you have a signed document in memory (e.g. from an approval context or message payload) and need to confirm its integrity and authenticity.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for verifying a raw signed JACS document string.",
+        "properties": {
+          "document": {
+            "description": "The full signed JACS document JSON string to verify",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "VerifyDocumentParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_verify_state",
+      "description": "Verify the integrity and authenticity of a signed agent state. Checks both the file hash and the cryptographic signature.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for verifying an agent state file or document.",
+        "properties": {
+          "file_path": {
+            "description": "DEPRECATED for MCP security: direct file-path verification is disabled. Use jacs_id.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jacs_id": {
+            "description": "JACS document ID to verify (uuid:version)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "VerifyStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_wrap_a2a_artifact",
+      "description": "Wrap an A2A artifact with JACS provenance. Signs the artifact JSON, binding this agent's identity to the content. Optionally include parent signatures for chain-of-custody provenance.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for wrapping an A2A artifact with JACS provenance.",
+        "properties": {
+          "artifact_json": {
+            "description": "The A2A artifact JSON content to wrap with JACS provenance",
+            "type": "string"
+          },
+          "artifact_type": {
+            "description": "Artifact type identifier (e.g., 'a2a-artifact', 'message', 'task-result')",
+            "type": "string"
+          },
+          "parent_signatures": {
+            "description": "Optional JSON array of parent signatures for chain-of-custody provenance",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "artifact_json",
+          "artifact_type"
+        ],
+        "title": "WrapA2aArtifactParams",
+        "type": "object"
+      }
+    }
+  ]
+}

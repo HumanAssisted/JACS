@@ -10,7 +10,10 @@
  * import { JacsClient } from './client';
  * import { jacsMiddleware } from './express';
  *
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'express-agent',
+ *   domain: 'express.local',
+ * });
  * const app = express();
  * app.use(express.text({ type: 'application/json' }));
  * app.use(jacsMiddleware({ client, verify: true }));
@@ -23,6 +26,12 @@
  */
 
 import type { JacsClient } from './client.js';
+import {
+  checkAuthReplay,
+  InMemoryReplayCache,
+  normalizeAuthReplayOptions,
+  type AuthReplayOptions,
+} from './auth-replay.js';
 
 // =============================================================================
 // Express-compatible types (avoids requiring @types/express as a dependency)
@@ -64,6 +73,17 @@ export interface JacsMiddlewareOptions {
   verify?: boolean;
   /** Allow unsigned/invalid requests to pass through instead of returning 401. Default: false. */
   optional?: boolean;
+  /** Enable A2A discovery endpoints at /.well-known/*. Default: false. */
+  a2a?: boolean;
+  /** A2A skills to advertise in the agent card. */
+  a2aSkills?: Array<{ id: string; name: string; description: string; tags: string[] }>;
+  /** Base URL / domain for the A2A agent card. */
+  a2aUrl?: string;
+  /**
+   * Enable replay protection when using JACS documents as auth artifacts.
+   * Default: disabled (backward compatible).
+   */
+  authReplay?: boolean | AuthReplayOptions;
 }
 
 export interface JacsRequest extends ExpressRequest {
@@ -94,7 +114,11 @@ async function resolveClient(options: JacsMiddlewareOptions): Promise<JacsClient
     return client;
   }
 
-  return ClientCtor.quickstart();
+  return ClientCtor.quickstart({
+    name: 'jacs-express',
+    domain: 'localhost',
+    description: 'JACS Express middleware agent',
+  });
 }
 
 // =============================================================================
@@ -113,6 +137,9 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
   const shouldVerify = options.verify !== false;
   const shouldSign = options.sign === true;
   const isOptional = options.optional === true;
+  const enableA2A = options.a2a === true;
+  const authReplay = normalizeAuthReplayOptions(options.authReplay);
+  const replayCache = new InMemoryReplayCache();
 
   // Client is resolved once (lazy, on first request) then cached.
   let clientPromise: Promise<JacsClient> | null = null;
@@ -127,6 +154,26 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
   // Pre-resolve immediately if a client is already provided (avoids first-request latency).
   if (options.client) {
     clientPromise = Promise.resolve(options.client);
+  }
+
+  // A2A well-known documents are built once and cached.
+  let a2aDocuments: Record<string, any> | null = null;
+  const A2A_CORS: Record<string, string> = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Accept',
+    'Access-Control-Max-Age': '86400',
+  };
+
+  function getA2ADocuments(client: JacsClient): Record<string, any> {
+    if (!a2aDocuments) {
+      const { buildWellKnownDocuments } = require('./src/a2a-server');
+      a2aDocuments = buildWellKnownDocuments(client, {
+        skills: options.a2aSkills,
+        url: options.a2aUrl,
+      });
+    }
+    return a2aDocuments!;
   }
 
   return async function jacsExpressMiddleware(
@@ -145,15 +192,59 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
     // Always expose the client on the request for manual use in route handlers.
     req.jacsClient = client;
 
+    // ----- A2A well-known endpoints -----
+    if (enableA2A && req.path && req.path.startsWith('/.well-known/')) {
+      const documents = getA2ADocuments(client);
+
+      if (req.method === 'OPTIONS' && documents[req.path]) {
+        for (const [key, value] of Object.entries(A2A_CORS)) {
+          res.set(key, value);
+        }
+        res.status(204).send('');
+        return;
+      }
+
+      if (req.method === 'GET' && documents[req.path]) {
+        for (const [key, value] of Object.entries(A2A_CORS)) {
+          res.set(key, value);
+        }
+        res.json(documents[req.path]);
+        return;
+      }
+    }
+
     // ----- Verify incoming body -----
     if (shouldVerify && BODY_METHODS.has(req.method)) {
-      const rawBody = typeof req.body === 'string' ? req.body : null;
+      const rawBody =
+        typeof req.body === 'string'
+          ? req.body
+          : Buffer.isBuffer(req.body)
+            ? req.body.toString('utf8')
+            : req.body && typeof req.body === 'object'
+              ? (() => {
+                  try {
+                    return JSON.stringify(req.body);
+                  } catch {
+                    return null;
+                  }
+                })()
+              : null;
 
       if (rawBody) {
         try {
           const result = await client.verify(rawBody);
           if (result.valid) {
             req.jacsPayload = result.data;
+            if (authReplay.enabled) {
+              const replayError = checkAuthReplay(rawBody, result, replayCache, authReplay);
+              if (replayError) {
+                res.status(401).json({
+                  error: 'JACS verification failed',
+                  details: [replayError],
+                });
+                return;
+              }
+            }
           } else if (!isOptional) {
             res.status(401).json({ error: 'JACS verification failed', details: result.errors });
             return;
@@ -165,9 +256,12 @@ export function jacsMiddleware(options: JacsMiddlewareOptions = {}) {
             return;
           }
         }
-      } else if (!isOptional && req.body !== undefined) {
-        // Body exists but is not a string — cannot verify.
-        // Only reject if body is present; missing body on POST may be handled by route.
+      } else if (!isOptional && req.body !== undefined && req.body !== null) {
+        res.status(401).json({
+          error: 'JACS verification failed',
+          details: ['Request body could not be serialized for verification'],
+        });
+        return;
       }
     }
 

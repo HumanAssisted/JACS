@@ -9,13 +9,15 @@ Zero-config -- one call to start signing:
 ```python
 import jacs.simple as jacs
 
-jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
+print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
-`quickstart()` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Pass `algorithm="ring-Ed25519"` to override the default (`pq2025`).
+{{#include ../_snippets/quickstart-persistent-agent.md}}
+Pass `algorithm="ring-Ed25519"` to override the default (`pq2025`).
 
 To load an existing agent explicitly, use `load()` instead:
 
@@ -37,28 +39,39 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 
 ## API Reference
 
-### quickstart(algorithm=None)
+### quickstart(name, domain, description=None, algorithm=None, config_path=None)
 
-Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated and saved to `./jacs_keys/.jacs_password`. Call this once before `sign_message()` or `verify()`.
+Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is unset, Python quickstart auto-generates a secure password in-process (`JACS_SAVE_PASSWORD_FILE=true` persists it to `./jacs_keys/.jacs_password`). Call this once before `sign_message()` or `verify()`.
 
 **Parameters:**
+- `name` (str, required): Agent name used for first-time creation.
+- `domain` (str, required): Agent domain used for DNS/public-key verification workflows.
+- `description` (str, optional): Human-readable description.
 - `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. Also: `"ring-Ed25519"`, `"RSA-PSS"`.
+- `config_path` (str, optional): Config path (default: `"./jacs.config.json"`).
 
 **Returns:** `AgentInfo` dataclass
 
 ```python
-info = jacs.quickstart()
+info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
 print(f"Agent ID: {info.agent_id}")
+print(f"Config path: {info.config_path}")
+print(f"Public key: {info.public_key_path}")
+print(f"Private key: {info.private_key_path}")
 
 # Or with a specific algorithm
-info = jacs.quickstart(algorithm="ring-Ed25519")
+info = jacs.quickstart(
+    name="my-agent",
+    domain="my-agent.example.com",
+    algorithm="ring-Ed25519",
+)
 ```
 
 ---
 
 ### load(config_path=None)
 
-Load a persistent agent from a configuration file. Use this instead of `quickstart()` when you want to load a specific config file explicitly.
+Load a persistent agent from a configuration file. Use this instead of `quickstart(name=..., domain=..., ...)` when you want to load a specific config file explicitly.
 
 **Parameters:**
 - `config_path` (str, optional): Path to jacs.config.json (default: "./jacs.config.json")

@@ -1,0 +1,19 @@
+{
+  "fixture_id": "F16",
+  "expected_result": "pass",
+  "expected_reason": "attachment_base64_decode_then_hash",
+  "expected_payload": {
+    "headers": {
+      "from": { "value": "agent@example.com" },
+      "to": { "value": "recipient@example.com" },
+      "subject": { "value": "Fixture 16 Attachment Base64" },
+      "date": { "value": "Fri, 27 Feb 2026 12:15:00 +0000" },
+      "message_id": { "value": "<fixture-16@example.com>" }
+    },
+    "body_plain": true,
+    "body_html": false,
+    "attachment_count": 1,
+    "parent_signature_hash": null,
+    "notes": "Attachment is base64 encoded; verifier must decode before hashing. F16 and F17 must produce identical attachment hash."
+  }
+}

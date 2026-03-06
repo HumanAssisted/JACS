@@ -2,9 +2,9 @@ name: Python (jacs)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
   workflow_dispatch: # Allows manual triggering
 
 env:
@@ -39,9 +39,9 @@ jobs:
               cd /workspace/jacspy && \
               /opt/python/cp311-cp311/bin/python3.11 -m venv .venv && \
               source .venv/bin/activate && \
-              pip install maturin pytest pytest-asyncio && \
+              pip install maturin pytest pytest-asyncio pytest-xdist && \
               pip install fastmcp mcp starlette && \
-              make test-python"
+              PYTEST_XDIST_WORKERS=4 make test-python-parallel"
 
       - name: Verify sdist build on PR/push
         working-directory: jacspy
@@ -91,7 +91,6 @@ jobs:
           /tmp/jacs-wheel-smoke/bin/python - <<'PY'
           import jacs
           import jacs.simple
-          import jacs.hai
           print("wheel smoke imports ok")
           PY
 

@@ -12,6 +12,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 
 const VERSION = require('../package.json').version;
@@ -65,6 +66,50 @@ async function download(url, dest) {
   });
 }
 
+function sha256File(filePath) {
+  const hasher = crypto.createHash('sha256');
+  hasher.update(fs.readFileSync(filePath));
+  return hasher.digest('hex');
+}
+
+function readExpectedSha256(checksumPath, assetName) {
+  const checksumText = fs.readFileSync(checksumPath, 'utf8').trim();
+  if (!checksumText) {
+    throw new Error(`Checksum file was empty: ${checksumPath}`);
+  }
+
+  const lines = checksumText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    // Format: "<sha256>  <filename>" (or optional "*" marker)
+    let match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
+    if (match) {
+      const digest = match[1].toLowerCase();
+      const fileName = path.basename(match[2].trim());
+      if (fileName === assetName) {
+        return digest;
+      }
+    }
+
+    // Format: "SHA256(<filename>)=<sha256>"
+    match = line.match(/^SHA256\s*\((.+)\)\s*=\s*([a-fA-F0-9]{64})$/i);
+    if (match) {
+      const fileName = path.basename(match[1].trim());
+      const digest = match[2].toLowerCase();
+      if (fileName === assetName) {
+        return digest;
+      }
+    }
+
+    // Format: "<sha256>" (single-line digest file)
+    match = line.match(/^([a-fA-F0-9]{64})$/);
+    if (match && lines.length === 1) {
+      return match[1].toLowerCase();
+    }
+  }
+
+  throw new Error(`Checksum for ${assetName} not found in ${checksumPath}`);
+}
+
 async function main() {
   const key = getPlatformKey();
   if (!key) {
@@ -76,6 +121,7 @@ async function main() {
   const ext = isWindows ? 'zip' : 'tar.gz';
   const assetName = `jacs-cli-${VERSION}-${key}.${ext}`;
   const url = `https://github.com/${REPO}/releases/download/cli/v${VERSION}/${assetName}`;
+  const checksumUrl = `${url}.sha256`;
 
   const binDir = getBinDir();
   const binPath = path.join(binDir, getBinName());
@@ -90,9 +136,19 @@ async function main() {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-cli-'));
   const archivePath = path.join(tmpDir, assetName);
+  const checksumPath = path.join(tmpDir, `${assetName}.sha256`);
 
   try {
+    console.log(`[jacs] Downloading checksum for pinned version ${VERSION} from ${checksumUrl}`);
+    await download(checksumUrl, checksumPath);
     await download(url, archivePath);
+    const expectedSha256 = readExpectedSha256(checksumPath, assetName);
+    const actualSha256 = sha256File(archivePath);
+    if (expectedSha256 !== actualSha256) {
+      throw new Error(
+        `Checksum mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}`
+      );
+    }
 
     fs.mkdirSync(binDir, { recursive: true });
 
@@ -116,7 +172,7 @@ async function main() {
     console.log(`[jacs]   cargo install jacs --features cli`);
     console.log(`[jacs]   OR download from https://github.com/${REPO}/releases`);
     // Clean up partial install
-    try { fs.rmSync(binDir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(binPath, { force: true }); } catch (_) {}
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
   }

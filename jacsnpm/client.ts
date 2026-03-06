@@ -8,7 +8,11 @@
  * ```typescript
  * import { JacsClient } from '@hai.ai/jacs/client';
  *
- * const client = await JacsClient.quickstart({ algorithm: 'ring-Ed25519' });
+ * const client = await JacsClient.quickstart({
+ *   name: 'my-agent',
+ *   domain: 'agent.example.com',
+ *   algorithm: 'pq2025',
+ * });
  * const signed = await client.signMessage({ action: 'approve' });
  * const result = await client.verify(signed.raw);
  * console.log(`Valid: ${result.valid}`);
@@ -22,6 +26,7 @@ import {
   createAgentSync as nativeCreateAgentSync,
   createAgent as nativeCreateAgent,
   trustAgent as nativeTrustAgent,
+  trustAgentWithKey as nativeTrustAgentWithKey,
   listTrustedAgents as nativeListTrustedAgents,
   untrustAgent as nativeUntrustAgent,
   isTrusted as nativeIsTrusted,
@@ -31,12 +36,7 @@ import {
 } from './index';
 import * as fs from 'fs';
 import * as path from 'path';
-
-import {
-  generateVerifyLink,
-  MAX_VERIFY_URL_LEN,
-  MAX_VERIFY_DOCUMENT_BYTES,
-} from './simple';
+import { warnDeprecated } from './deprecation';
 
 import type {
   AgentInfo,
@@ -64,7 +64,7 @@ export type {
   LoadOptions,
 };
 
-export { hashString, createConfig, generateVerifyLink, MAX_VERIFY_URL_LEN, MAX_VERIFY_DOCUMENT_BYTES };
+export { hashString, createConfig };
 
 // =============================================================================
 // Agreement Options
@@ -88,6 +88,24 @@ export interface JacsClientOptions {
   configPath?: string;
   algorithm?: string;
   strict?: boolean;
+}
+
+export interface ClientArtifactVerificationResult {
+  valid: boolean;
+  /**
+   * Extracted payload returned by native verifyResponse() when available.
+   */
+  verifiedPayload?: Record<string, unknown>;
+  /**
+   * Backward-compatibility field for one release: raw native verifyResponse() output.
+   */
+  verificationResult?: boolean | Record<string, unknown>;
+  signerId: string;
+  signerVersion: string;
+  artifactType: string;
+  timestamp: string;
+  originalArtifact: Record<string, unknown>;
+  error?: string;
 }
 
 // =============================================================================
@@ -124,19 +142,88 @@ function normalizeDocumentInput(document: any): string {
   return JSON.stringify(document);
 }
 
+function normalizeA2AVerificationResult(
+  rawVerificationResult: unknown,
+): {
+  valid: boolean;
+  verifiedPayload?: Record<string, unknown>;
+  verificationResult: boolean | Record<string, unknown>;
+} {
+  if (typeof rawVerificationResult === 'boolean') {
+    return {
+      valid: rawVerificationResult,
+      verificationResult: rawVerificationResult,
+    };
+  }
+
+  if (rawVerificationResult && typeof rawVerificationResult === 'object') {
+    const rawObj = rawVerificationResult as Record<string, unknown>;
+    const payload = rawObj.payload;
+    return {
+      valid: true,
+      verifiedPayload: payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : undefined,
+      verificationResult: rawObj,
+    };
+  }
+
+  return {
+    valid: false,
+    verificationResult: false,
+  };
+}
+
 function extractAgentInfo(resolvedConfigPath: string): AgentInfo {
   const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
   const agentIdVersion = config.jacs_agent_id_and_version || '';
-  const [agentId] = agentIdVersion.split(':');
+  const [agentId, version] = agentIdVersion.split(':');
+  const dataDir = resolveConfigRelativePath(
+    resolvedConfigPath,
+    config.jacs_data_directory || './jacs_data',
+  );
   const keyDir = resolveConfigRelativePath(
     resolvedConfigPath,
     config.jacs_key_directory || './jacs_keys',
   );
+  const publicKeyFilename = config.jacs_agent_public_key_filename || 'jacs.public.pem';
+  const privateKeyFilename = config.jacs_agent_private_key_filename || 'jacs.private.pem.enc';
   return {
     agentId: agentId || '',
     name: config.name || '',
-    publicKeyPath: path.join(keyDir, 'jacs.public.pem'),
+    publicKeyPath: path.join(keyDir, publicKeyFilename),
     configPath: resolvedConfigPath,
+    version: version || '',
+    algorithm: config.jacs_agent_key_algorithm || 'pq2025',
+    privateKeyPath: path.join(keyDir, privateKeyFilename),
+    dataDirectory: dataDir,
+    keyDirectory: keyDir,
+    domain: config.domain || '',
+    dnsRecord: config.dns_record || '',
+  };
+}
+
+function requireQuickstartIdentity(options: QuickstartOptions | undefined): {
+  name: string;
+  domain: string;
+  description: string;
+} {
+  if (!options || typeof options !== 'object') {
+    throw new Error('JacsClient.quickstart() requires options.name and options.domain.');
+  }
+
+  const name = typeof options.name === 'string' ? options.name.trim() : '';
+  const domain = typeof options.domain === 'string' ? options.domain.trim() : '';
+  if (!name) {
+    throw new Error('JacsClient.quickstart() requires options.name.');
+  }
+  if (!domain) {
+    throw new Error('JacsClient.quickstart() requires options.domain.');
+  }
+  return {
+    name,
+    domain,
+    description: options.description?.trim() || '',
   };
 }
 
@@ -148,6 +235,16 @@ function parseSignedResult(result: string): SignedDocument {
     agentId: doc.jacsSignature?.agentID || '',
     timestamp: doc.jacsSignature?.date || '',
   };
+}
+
+function extractAttachmentsFromDocument(doc: any): Attachment[] {
+  return (doc.jacsFiles || []).map((f: any) => ({
+    filename: f.path || f.filename || '',
+    mimeType: f.mimetype || f.mimeType || 'application/octet-stream',
+    hash: f.sha256 || '',
+    embedded: f.embed || false,
+    content: (f.contents || f.content) ? Buffer.from(f.contents || f.content, 'base64') : undefined,
+  }));
 }
 
 function ensurePassword(): string {
@@ -167,10 +264,15 @@ function ensurePassword(): string {
     for (let i = 4; i < 32; i++) {
       password += all[crypto.randomInt(all.length)];
     }
-    const keysDir = './jacs_keys';
-    fs.mkdirSync(keysDir, { recursive: true });
-    const pwPath = path.join(keysDir, '.jacs_password');
-    fs.writeFileSync(pwPath, password, { mode: 0o600 });
+    const persistPassword =
+      process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
+      process.env.JACS_SAVE_PASSWORD_FILE === 'true';
+    if (persistPassword) {
+      const keysDir = './jacs_keys';
+      fs.mkdirSync(keysDir, { recursive: true });
+      const pwPath = path.join(keysDir, '.jacs_password');
+      fs.writeFileSync(pwPath, password, { mode: 0o600 });
+    }
     process.env.JACS_PRIVATE_KEY_PASSWORD = password;
   }
   return password;
@@ -194,11 +296,12 @@ export class JacsClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Zero-config factory: loads or creates a persistent agent.
+   * Factory: loads or creates a persistent agent.
    */
-  static async quickstart(options?: QuickstartOptions): Promise<JacsClient> {
+  static async quickstart(options: QuickstartOptions): Promise<JacsClient> {
+    const { name, domain, description } = requireQuickstartIdentity(options);
     const client = new JacsClient({ strict: options?.strict });
-    const configPath = (options as any)?.configPath || './jacs.config.json';
+    const configPath = options?.configPath || './jacs.config.json';
 
     if (fs.existsSync(configPath)) {
       await client.load(configPath);
@@ -207,16 +310,17 @@ export class JacsClient {
 
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    await client.create({ name: 'jacs-agent', password, algorithm: algo, configPath });
+    await client.create({ name, password, algorithm: algo, configPath, domain, description });
     return client;
   }
 
   /**
-   * Zero-config factory (sync variant).
+   * Factory (sync variant).
    */
-  static quickstartSync(options?: QuickstartOptions): JacsClient {
+  static quickstartSync(options: QuickstartOptions): JacsClient {
+    const { name, domain, description } = requireQuickstartIdentity(options);
     const client = new JacsClient({ strict: options?.strict });
-    const configPath = (options as any)?.configPath || './jacs.config.json';
+    const configPath = options?.configPath || './jacs.config.json';
 
     if (fs.existsSync(configPath)) {
       client.loadSync(configPath);
@@ -225,7 +329,7 @@ export class JacsClient {
 
     const password = ensurePassword();
     const algo = options?.algorithm || 'pq2025';
-    client.createSync({ name: 'jacs-agent', password, algorithm: algo, configPath });
+    client.createSync({ name, password, algorithm: algo, configPath, domain, description });
     return client;
   }
 
@@ -243,6 +347,13 @@ export class JacsClient {
       name: result.name || 'ephemeral',
       publicKeyPath: '',
       configPath: '',
+      version: result.version || '',
+      algorithm: result.algorithm || 'pq2025',
+      privateKeyPath: '',
+      dataDirectory: '',
+      keyDirectory: '',
+      domain: '',
+      dnsRecord: '',
     };
     return client;
   }
@@ -261,6 +372,13 @@ export class JacsClient {
       name: result.name || 'ephemeral',
       publicKeyPath: '',
       configPath: '',
+      version: result.version || '',
+      algorithm: result.algorithm || 'pq2025',
+      privateKeyPath: '',
+      dataDirectory: '',
+      keyDirectory: '',
+      domain: '',
+      dnsRecord: '',
     };
     return client;
   }
@@ -311,11 +429,22 @@ export class JacsClient {
     );
     const result = JSON.parse(resultJson);
     const cfgPath = result.config_path || options.configPath || './jacs.config.json';
+    const dataDirectory = result.data_directory || options.dataDirectory || './jacs_data';
+    const keyDirectory = result.key_directory || options.keyDirectory || './jacs_keys';
+    const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
+    const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     this.info = {
       agentId: result.agent_id || '',
       name: result.name || options.name,
-      publicKeyPath: result.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+      publicKeyPath,
       configPath: cfgPath,
+      version: result.version || '',
+      algorithm: result.algorithm || options.algorithm || 'pq2025',
+      privateKeyPath,
+      dataDirectory,
+      keyDirectory,
+      domain: result.domain || options.domain || '',
+      dnsRecord: result.dns_record || '',
     };
     this.agent = new JacsAgent();
     await this.agent.load(path.resolve(cfgPath));
@@ -334,11 +463,22 @@ export class JacsClient {
     );
     const result = JSON.parse(resultJson);
     const cfgPath = result.config_path || options.configPath || './jacs.config.json';
+    const dataDirectory = result.data_directory || options.dataDirectory || './jacs_data';
+    const keyDirectory = result.key_directory || options.keyDirectory || './jacs_keys';
+    const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
+    const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     this.info = {
       agentId: result.agent_id || '',
       name: result.name || options.name,
-      publicKeyPath: result.public_key_path || `${options.keyDirectory || './jacs_keys'}/jacs.public.pem`,
+      publicKeyPath,
       configPath: cfgPath,
+      version: result.version || '',
+      algorithm: result.algorithm || options.algorithm || 'pq2025',
+      privateKeyPath,
+      dataDirectory,
+      keyDirectory,
+      domain: result.domain || options.domain || '',
+      dnsRecord: result.dns_record || '',
     };
     this.agent = new JacsAgent();
     this.agent.loadSync(path.resolve(cfgPath));
@@ -375,13 +515,42 @@ export class JacsClient {
     return this._strict;
   }
 
+  private readStoredDocumentById(documentId: string): any | null {
+    if (!this.info) {
+      return null;
+    }
+    try {
+      const configPath = path.resolve(this.info.configPath);
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const dataDir = resolveConfigRelativePath(
+        configPath,
+        config.jacs_data_directory || './jacs_data',
+      );
+      const docPath = path.join(dataDir, 'documents', `${documentId}.json`);
+      if (!fs.existsSync(docPath)) {
+        return null;
+      }
+      return JSON.parse(fs.readFileSync(docPath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Internal access to the native JacsAgent for A2A and other low-level integrations.
+   * @internal
+   */
+  get _agent(): JacsAgent {
+    return this.requireAgent();
+  }
+
   // ---------------------------------------------------------------------------
   // Signing & Verification
   // ---------------------------------------------------------------------------
 
   private requireAgent(): JacsAgent {
     if (!this.agent) {
-      throw new Error('No agent loaded. Call quickstart(), ephemeral(), load(), or create() first.');
+      throw new Error('No agent loaded. Call quickstart({ name, domain }), ephemeral(), load(), or create() first.');
     }
     return this.agent;
   }
@@ -412,11 +581,7 @@ export class JacsClient {
     }
     try {
       await agent.verifyDocument(signedDocument);
-      const attachments: Attachment[] = (doc.jacsFiles || []).map((f: any) => ({
-        filename: f.path || '', mimeType: f.mimetype || 'application/octet-stream',
-        hash: f.sha256 || '', embedded: f.embed || false,
-        content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
-      }));
+      const attachments: Attachment[] = extractAttachmentsFromDocument(doc);
       return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
     } catch (e) {
       if (this._strict) throw new Error(`Verification failed (strict mode): ${e}`);
@@ -436,11 +601,7 @@ export class JacsClient {
     }
     try {
       agent.verifyDocumentSync(signedDocument);
-      const attachments: Attachment[] = (doc.jacsFiles || []).map((f: any) => ({
-        filename: f.path || '', mimeType: f.mimetype || 'application/octet-stream',
-        hash: f.sha256 || '', embedded: f.embed || false,
-        content: f.contents ? Buffer.from(f.contents, 'base64') : undefined,
-      }));
+      const attachments: Attachment[] = extractAttachmentsFromDocument(doc);
       return { valid: true, data: doc.content, signerId: doc.jacsSignature?.agentID || '', timestamp: doc.jacsSignature?.date || '', attachments, errors: [] };
     } catch (e) {
       if (this._strict) throw new Error(`Verification failed (strict mode): ${e}`);
@@ -477,7 +638,14 @@ export class JacsClient {
     }
     try {
       await agent.verifyDocumentById(documentId);
-      return { valid: true, signerId: '', timestamp: '', attachments: [], errors: [] };
+      const stored = this.readStoredDocumentById(documentId);
+      return {
+        valid: true,
+        signerId: stored?.jacsSignature?.agentID || '',
+        timestamp: stored?.jacsSignature?.date || '',
+        attachments: extractAttachmentsFromDocument(stored || {}),
+        errors: [],
+      };
     } catch (e) {
       if (this._strict) throw new Error(`Verification failed (strict mode): ${e}`);
       return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
@@ -491,7 +659,14 @@ export class JacsClient {
     }
     try {
       agent.verifyDocumentByIdSync(documentId);
-      return { valid: true, signerId: '', timestamp: '', attachments: [], errors: [] };
+      const stored = this.readStoredDocumentById(documentId);
+      return {
+        valid: true,
+        signerId: stored?.jacsSignature?.agentID || '',
+        timestamp: stored?.jacsSignature?.date || '',
+        attachments: extractAttachmentsFromDocument(stored || {}),
+        errors: [],
+      };
     } catch (e) {
       if (this._strict) throw new Error(`Verification failed (strict mode): ${e}`);
       return { valid: false, signerId: '', timestamp: '', attachments: [], errors: [String(e)] };
@@ -623,10 +798,66 @@ export class JacsClient {
   // ---------------------------------------------------------------------------
 
   trustAgent(agentJson: string): string { return nativeTrustAgent(agentJson); }
+  trustAgentWithKey(agentJson: string, publicKeyPem: string): string {
+    if (!publicKeyPem || !publicKeyPem.trim()) {
+      throw new Error('publicKeyPem cannot be empty');
+    }
+    return nativeTrustAgentWithKey(agentJson, publicKeyPem);
+  }
   listTrustedAgents(): string[] { return nativeListTrustedAgents(); }
   untrustAgent(agentId: string): void { nativeUntrustAgent(agentId); }
   isTrusted(agentId: string): boolean { return nativeIsTrusted(agentId); }
   getTrustedAgent(agentId: string): string { return nativeGetTrustedAgent(agentId); }
+
+  getPublicKey(): string {
+    if (!this.info) {
+      throw new Error('No agent loaded. Call quickstart({ name, domain }), ephemeral(), load(), or create() first.');
+    }
+    const keyPath = this.info.publicKeyPath;
+    if (!keyPath || !fs.existsSync(keyPath)) {
+      throw new Error(`Public key not found: ${keyPath}`);
+    }
+    return fs.readFileSync(keyPath, 'utf8');
+  }
+
+  exportAgent(): string {
+    if (!this.info) {
+      throw new Error('No agent loaded. Call quickstart({ name, domain }), ephemeral(), load(), or create() first.');
+    }
+    const configPath = path.resolve(this.info.configPath);
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const dataDir = resolveConfigRelativePath(
+      configPath,
+      config.jacs_data_directory || './jacs_data',
+    );
+    const agentIdVersion = config.jacs_agent_id_and_version || '';
+    const agentPath = path.join(dataDir, 'agent', `${agentIdVersion}.json`);
+    if (!fs.existsSync(agentPath)) {
+      throw new Error(`Agent file not found: ${agentPath}`);
+    }
+    return fs.readFileSync(agentPath, 'utf8');
+  }
+
+  /** @deprecated Use getPublicKey() instead. */
+  sharePublicKey(): string {
+    warnDeprecated('sharePublicKey', 'getPublicKey');
+    return this.getPublicKey();
+  }
+
+  /** @deprecated Use exportAgent() instead. */
+  shareAgent(): string {
+    warnDeprecated('shareAgent', 'exportAgent');
+    return this.exportAgent();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Verification Link
+  // ---------------------------------------------------------------------------
+
+  generateVerifyLink(doc: string, baseUrl?: string): string {
+    const encoded = Buffer.from(doc).toString('base64url');
+    return `${baseUrl || 'https://hai.ai/jacs/verify'}?s=${encoded}`;
+  }
 
   // ---------------------------------------------------------------------------
   // Audit
@@ -643,10 +874,204 @@ export class JacsClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Verify Link
+  // Attestation
   // ---------------------------------------------------------------------------
 
-  generateVerifyLink(document: string, baseUrl?: string): string {
-    return generateVerifyLink(document, baseUrl);
+  /**
+   * Create a signed attestation document.
+   *
+   * @param params - Object with subject, claims, and optional evidence/derivation/policyContext.
+   * @returns The signed attestation document as a SignedDocument.
+   */
+  async createAttestation(params: {
+    subject: Record<string, unknown>;
+    claims: Record<string, unknown>[];
+    evidence?: Record<string, unknown>[];
+    derivation?: Record<string, unknown>;
+    policyContext?: Record<string, unknown>;
+  }): Promise<SignedDocument> {
+    const agent = this.requireAgent();
+    const paramsJson = JSON.stringify(params);
+    const raw: string = await agent.createAttestation(paramsJson);
+    return parseSignedResult(raw);
+  }
+
+  /**
+   * Verify an attestation document.
+   *
+   * @param attestationJson - Raw JSON string of the attestation document.
+   * @param opts - Optional. Set full: true for full-tier verification.
+   * @returns Verification result with valid, crypto, evidence, chain, errors.
+   */
+  async verifyAttestation(
+    attestationJson: string,
+    opts?: { full?: boolean },
+  ): Promise<Record<string, unknown>> {
+    const agent = this.requireAgent();
+    const doc = JSON.parse(attestationJson);
+    const docKey = `${doc.jacsId}:${doc.jacsVersion}`;
+    let resultJson: string;
+    if (opts?.full) {
+      resultJson = await agent.verifyAttestationFull(docKey);
+    } else {
+      resultJson = await agent.verifyAttestation(docKey);
+    }
+    return JSON.parse(resultJson);
+  }
+
+  /**
+   * Lift a signed document into an attestation.
+   *
+   * @param signedDocJson - Raw JSON string of the signed document.
+   * @param claims - Array of claim objects.
+   * @returns The lifted attestation as a SignedDocument.
+   */
+  async liftToAttestation(
+    signedDocJson: string,
+    claims: Record<string, unknown>[],
+  ): Promise<SignedDocument> {
+    const agent = this.requireAgent();
+    const claimsJson = JSON.stringify(claims);
+    const raw: string = await agent.liftToAttestation(signedDocJson, claimsJson);
+    return parseSignedResult(raw);
+  }
+
+  /**
+   * Export an attestation as a DSSE (Dead Simple Signing Envelope).
+   *
+   * @param attestationJson - Raw JSON string of the attestation document.
+   * @returns The DSSE envelope as a parsed object.
+   */
+  async exportAttestationDsse(
+    attestationJson: string,
+  ): Promise<Record<string, unknown>> {
+    const agent = this.requireAgent();
+    const raw: string = await agent.exportAttestationDsse(attestationJson);
+    return JSON.parse(raw);
+  }
+
+  // ---------------------------------------------------------------------------
+  // A2A (Agent-to-Agent)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Get a configured JACSA2AIntegration instance bound to this client.
+   *
+   * @example
+   * ```typescript
+   * const a2a = client.getA2A();
+   * const card = a2a.exportAgentCard({ jacsId: client.agentId, ... });
+   * const signed = await a2a.signArtifact(artifact, 'task');
+   * ```
+   */
+  getA2A(): any {
+    const { JACSA2AIntegration } = require('./a2a');
+    return new JACSA2AIntegration(this);
+  }
+
+  /**
+   * Export this agent as an A2A Agent Card.
+   *
+   * @param agentData - JACS agent data (jacsId, jacsName, jacsServices, etc.).
+   *   If not provided, a minimal card is built from the client's own info.
+   */
+  exportAgentCard(agentData?: Record<string, unknown>): any {
+    const a2a = this.getA2A();
+    const data = agentData || {
+      jacsId: this.agentId,
+      jacsName: this.name,
+      jacsDescription: `JACS agent ${this.name || this.agentId}`,
+    };
+    return a2a.exportAgentCard(data);
+  }
+
+  /**
+   * Sign an A2A artifact with this agent's JACS provenance.
+   *
+   * @param artifact - The artifact payload to sign.
+   * @param artifactType - Type label (e.g., "task", "message", "result").
+   * @param parentSignatures - Optional parent signatures for chain of custody.
+   */
+  async signArtifact(
+    artifact: Record<string, unknown>,
+    artifactType: string,
+    parentSignatures?: Record<string, unknown>[] | null,
+  ): Promise<Record<string, unknown>> {
+    const a2a = this.getA2A();
+    return a2a.signArtifact(artifact, artifactType, parentSignatures ?? null);
+  }
+
+  /**
+   * Verify a JACS-signed A2A artifact.
+   *
+   * Accepts the raw JSON string from signArtifact() or a parsed object.
+   * When a string is given it is passed directly to verifyResponse to
+   * preserve the original serialization and hash.
+   *
+   * @param wrappedArtifact - The signed artifact (string or object).
+   */
+  async verifyArtifact(
+    wrappedArtifact: string | Record<string, unknown>,
+  ): Promise<ClientArtifactVerificationResult> {
+    const agent = this.requireAgent();
+    const docString = typeof wrappedArtifact === 'string'
+      ? wrappedArtifact
+      : JSON.stringify(wrappedArtifact);
+    const doc = typeof wrappedArtifact === 'string'
+      ? JSON.parse(wrappedArtifact)
+      : wrappedArtifact;
+    const payload = doc.jacs_payload && typeof doc.jacs_payload === 'object'
+      ? doc.jacs_payload as Record<string, unknown>
+      : null;
+
+    try {
+      const rawVerificationResult = agent.verifyResponse(docString);
+      const normalized = normalizeA2AVerificationResult(rawVerificationResult);
+      const sig = doc.jacsSignature || {};
+      const result: ClientArtifactVerificationResult = {
+        valid: normalized.valid,
+        verificationResult: normalized.verificationResult,
+        signerId: sig.agentID || 'unknown',
+        signerVersion: sig.agentVersion || 'unknown',
+        artifactType: doc.jacsType || 'unknown',
+        timestamp: doc.jacsVersionDate || '',
+        originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
+      };
+      if (normalized.verifiedPayload) {
+        result.verifiedPayload = normalized.verifiedPayload;
+      }
+      return result;
+    } catch (e) {
+      if (this._strict) throw new Error(`Artifact verification failed (strict mode): ${e}`);
+      const sig = doc.jacsSignature || {};
+      return {
+        valid: false,
+        verificationResult: false,
+        signerId: sig.agentID || 'unknown',
+        signerVersion: sig.agentVersion || 'unknown',
+        artifactType: doc.jacsType || 'unknown',
+        timestamp: doc.jacsVersionDate || '',
+        originalArtifact: doc.a2aArtifact || payload?.a2aArtifact || {},
+        error: String(e),
+      };
+    }
+  }
+
+  /**
+   * Generate .well-known documents for A2A discovery.
+   *
+   * @param agentCard - The A2A Agent Card (from exportAgentCard).
+   * @param jwsSignature - JWS signature of the Agent Card.
+   * @param publicKeyB64 - Base64-encoded public key.
+   * @param agentData - JACS agent data for metadata.
+   */
+  generateWellKnownDocuments(
+    agentCard: any,
+    jwsSignature: string,
+    publicKeyB64: string,
+    agentData: Record<string, unknown>,
+  ): Record<string, Record<string, unknown>> {
+    const a2a = this.getA2A();
+    return a2a.generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData);
   }
 }

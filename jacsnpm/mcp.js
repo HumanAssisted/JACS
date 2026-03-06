@@ -14,9 +14,111 @@ const isStdioTransport = (transport) => {
     return transport.constructor.name === 'StdioServerTransport' ||
         transport.constructor.name === 'StdioClientTransport';
 };
+const DEFAULT_KEYS_BASE_URL = 'https://hai.ai';
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+function parseBooleanEnv(value) {
+    if (!value)
+        return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === '1' || normalized === 'true' || normalized === 'yes')
+        return true;
+    if (normalized === '0' || normalized === 'false' || normalized === 'no')
+        return false;
+    return undefined;
+}
+function resolveLocalOnly(override) {
+    const envValue = parseBooleanEnv(process.env.JACS_MCP_LOCAL_ONLY);
+    if (override === false || envValue === false) {
+        throw new Error('JACS MCP local mode only: disabling local-only mode is not allowed.');
+    }
+    return true;
+}
+function resolveAllowUnsignedFallback(override) {
+    if (typeof override === 'boolean')
+        return override;
+    return parseBooleanEnv(process.env.JACS_MCP_ALLOW_UNSIGNED_FALLBACK) ?? false;
+}
+function isUntrustAllowed() {
+    return parseBooleanEnv(process.env.JACS_MCP_ALLOW_UNTRUST) === true;
+}
+function isLoopbackHost(hostname) {
+    const normalized = hostname.trim().replace(/^\[|\]$/g, '').toLowerCase();
+    return LOOPBACK_HOSTS.has(normalized);
+}
+function isLocalHttpUrl(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+        return isLoopbackHost(parsed.hostname);
+    }
+    catch {
+        return false;
+    }
+}
+function extractTransportUrl(transport) {
+    const candidates = ['url', 'endpoint', 'uri', 'serverUrl'];
+    for (const key of candidates) {
+        const value = transport?.[key];
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+    return null;
+}
+function assertLocalTransport(transport) {
+    if (isStdioTransport(transport)) {
+        return;
+    }
+    const transportUrl = extractTransportUrl(transport);
+    if (transportUrl && isLocalHttpUrl(transportUrl)) {
+        return;
+    }
+    throw new Error('JACS MCP local mode only: transport must use stdio or a loopback URL ' +
+        '(localhost/127.0.0.1/::1).');
+}
 function debugLog(proxyId, enabled, ...args) {
     if (enabled)
         console.error(`[${proxyId}]`, ...args);
+}
+function normalizeBaseUrl(baseUrl) {
+    return baseUrl.trim().replace(/\/+$/, '');
+}
+function resolveKeysBaseUrl(override) {
+    if (typeof override === 'string' && override.trim()) {
+        return normalizeBaseUrl(override);
+    }
+    if (process.env.JACS_KEYS_BASE_URL && process.env.JACS_KEYS_BASE_URL.trim()) {
+        return normalizeBaseUrl(process.env.JACS_KEYS_BASE_URL);
+    }
+    if (process.env.HAI_KEYS_BASE_URL && process.env.HAI_KEYS_BASE_URL.trim()) {
+        return normalizeBaseUrl(process.env.HAI_KEYS_BASE_URL);
+    }
+    return DEFAULT_KEYS_BASE_URL;
+}
+function normalizePublicKeyHash(publicKeyHash) {
+    const trimmed = publicKeyHash.trim();
+    if (!trimmed) {
+        throw new Error('public_key_hash cannot be empty');
+    }
+    return trimmed.startsWith('sha256:') ? trimmed : `sha256:${trimmed}`;
+}
+async function fetchJson(url) {
+    if (typeof fetch !== 'function') {
+        throw new Error('Global fetch() is unavailable in this runtime');
+    }
+    const response = await fetch(url, { headers: { accept: 'application/json' } });
+    const body = await response.text();
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status} from key lookup endpoint: ${body || response.statusText}`);
+    }
+    try {
+        return JSON.parse(body);
+    }
+    catch {
+        throw new Error(`Key lookup endpoint returned non-JSON response: ${url}`);
+    }
 }
 /**
  * Extract the native JacsAgent from either a JacsAgent or JacsClient instance.
@@ -29,7 +131,7 @@ function extractNativeAgent(clientOrAgent) {
     // JacsClient - access the private native agent at runtime
     const native = clientOrAgent.agent;
     if (!native) {
-        throw new Error('JacsClient has no loaded agent. Call quickstart(), ephemeral(), load(), or create() before wrapping with JACSTransportProxy.');
+        throw new Error('JacsClient has no loaded agent. Call quickstart({ name, domain }), ephemeral(), load(), or create() before wrapping with JACSTransportProxy.');
     }
     return native;
 }
@@ -40,14 +142,27 @@ function extractNativeAgent(clientOrAgent) {
  * JACS Transport Proxy - Wraps any MCP transport with JACS signing/verification.
  *
  * Outgoing messages are signed with `signRequest()`.
- * Incoming messages are verified with `verifyResponse()`, falling back to
- * plain JSON if verification fails (the message was not JACS-signed).
+ * Incoming messages are verified with `verifyResponse()`.
+ *
+ * Security defaults:
+ * - local-only transport enforcement (`stdio` or loopback URL)
+ * - fail-closed on signing/verification errors
+ *
+ * Local-only mode is mandatory and cannot be disabled.
+ *
+ * Optional fallback behavior:
+ * - `allowUnsignedFallback: true` (or `JACS_MCP_ALLOW_UNSIGNED_FALLBACK=true`)
  */
 class JACSTransportProxy {
-    constructor(transport, clientOrAgent, role = "server") {
+    constructor(transport, clientOrAgent, role = "server", options = {}) {
         this.transport = transport;
         this.nativeAgent = extractNativeAgent(clientOrAgent);
         this.proxyId = `JACS_${role.toUpperCase()}_PROXY`;
+        const localOnly = resolveLocalOnly(options.localOnly);
+        this.allowUnsignedFallback = resolveAllowUnsignedFallback(options.allowUnsignedFallback);
+        if (localOnly) {
+            assertLocalTransport(transport);
+        }
         const suppressDebugForStdio = isStdioTransport(transport);
         this.debug = process.env.JACS_MCP_DEBUG === 'true' && !suppressDebugForStdio;
         // Intercept incoming messages from the wrapped transport
@@ -92,8 +207,13 @@ class JACSTransportProxy {
             await this.transport.send(signed);
         }
         catch (signError) {
-            console.error(`[${this.proxyId}] Signing failed, sending plain message:`, signError);
-            await this.transport.send(message);
+            if (this.allowUnsignedFallback) {
+                console.error(`[${this.proxyId}] Signing failed, sending plain message:`, signError);
+                await this.transport.send(message);
+                return;
+            }
+            const error = signError instanceof Error ? signError : new Error(String(signError));
+            throw new Error(`[${this.proxyId}] JACS signing failed and unsigned fallback is disabled: ${error.message}`);
         }
     }
     get sessionId() {
@@ -114,9 +234,13 @@ class JACSTransportProxy {
                         ? result.payload
                         : result;
                 }
-                catch {
-                    // Not a JACS artifact, parse as plain JSON
-                    debugLog(this.proxyId, this.debug, 'INCOMING: not a JACS artifact, parsing as plain JSON');
+                catch (verifyError) {
+                    if (!this.allowUnsignedFallback) {
+                        const error = verifyError instanceof Error ? verifyError : new Error(String(verifyError));
+                        throw new Error(`JACS verification failed and unsigned fallback is disabled: ${error.message}`);
+                    }
+                    // Not a JACS artifact (or verification failure), parse as plain JSON
+                    debugLog(this.proxyId, this.debug, 'INCOMING: verification failed, parsing as plain JSON');
                     messageForSDK = JSON.parse(incomingData);
                 }
             }
@@ -163,41 +287,43 @@ class JACSTransportProxy {
     }
 }
 exports.JACSTransportProxy = JACSTransportProxy;
-// ---------------------------------------------------------------------------
-// Factory functions
-// ---------------------------------------------------------------------------
+/**
+ * Local/security policy options for MCP transport proxy behavior.
+ */
+JACSTransportProxy.DEFAULT_LOCAL_ONLY = true;
 /**
  * Create a transport proxy from a pre-loaded JacsClient or JacsAgent.
  */
-function createJACSTransportProxy(transport, clientOrAgent, role = "server") {
-    return new JACSTransportProxy(transport, clientOrAgent, role);
+function createJACSTransportProxy(transport, clientOrAgent, role = "server", options = {}) {
+    return new JACSTransportProxy(transport, clientOrAgent, role, options);
 }
 /**
  * Create a transport proxy by loading a JACS agent from a config file.
  * Awaits agent loading before returning, so the proxy is immediately usable.
  */
-async function createJACSTransportProxyAsync(transport, configPath, role = "server") {
+async function createJACSTransportProxyAsync(transport, configPath, role = "server", options = {}) {
     const agent = new index_js_1.JacsAgent();
     await agent.load(configPath);
-    return new JACSTransportProxy(transport, agent, role);
+    return new JACSTransportProxy(transport, agent, role, options);
 }
 /**
- * Returns the full list of JACS MCP tool definitions.
+ * Returns the Node.js MCP compatibility tool definitions.
  *
- * Use this with `server.setRequestHandler(ListToolsRequestSchema, ...)` to
- * advertise JACS tools from a Node.js MCP server.
+ * The canonical full MCP contract lives in the Rust `jacs-mcp` crate. This
+ * helper exposes the subset and compatibility aliases supported by jacsnpm.
  */
 function getJacsMcpToolDefinitions() {
     return [
         {
             name: 'jacs_sign_document',
-            description: 'Sign arbitrary JSON data with JACS cryptographic provenance.',
+            description: 'Sign arbitrary JSON content with JACS cryptographic provenance.',
             inputSchema: {
                 type: 'object',
                 properties: {
-                    data: { type: 'string', description: 'JSON string of data to sign' },
+                    content: { type: 'string', description: 'JSON string of content to sign' },
+                    content_type: { type: 'string', description: 'Optional MIME type (default application/json)' },
                 },
-                required: ['data'],
+                required: ['content'],
             },
         },
         {
@@ -231,8 +357,15 @@ function getJacsMcpToolDefinitions() {
                     document: { type: 'string', description: 'JSON string of document to agree on' },
                     agent_ids: { type: 'array', items: { type: 'string' }, description: 'Agent IDs who must sign' },
                     question: { type: 'string', description: 'Question or prompt for signers' },
+                    context: { type: 'string', description: 'Additional context for signers' },
                     timeout: { type: 'string', description: 'ISO 8601 deadline' },
                     quorum: { type: 'number', description: 'Minimum signatures required (M-of-N)' },
+                    required_algorithms: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Only allow these signing algorithms',
+                    },
+                    minimum_strength: { type: 'string', description: 'Minimum crypto strength requirement' },
                 },
                 required: ['document', 'agent_ids'],
             },
@@ -243,9 +376,10 @@ function getJacsMcpToolDefinitions() {
             inputSchema: {
                 type: 'object',
                 properties: {
-                    document: { type: 'string', description: 'The agreement document to sign' },
+                    signed_agreement: { type: 'string', description: 'The agreement document to sign' },
+                    agreement_fieldname: { type: 'string', description: 'Optional custom agreement field name' },
                 },
-                required: ['document'],
+                required: ['signed_agreement'],
             },
         },
         {
@@ -254,9 +388,10 @@ function getJacsMcpToolDefinitions() {
             inputSchema: {
                 type: 'object',
                 properties: {
-                    document: { type: 'string', description: 'The agreement document to check' },
+                    signed_agreement: { type: 'string', description: 'The agreement document to check' },
+                    agreement_fieldname: { type: 'string', description: 'Optional custom agreement field name' },
                 },
-                required: ['document'],
+                required: ['signed_agreement'],
             },
         },
         {
@@ -265,6 +400,7 @@ function getJacsMcpToolDefinitions() {
             inputSchema: {
                 type: 'object',
                 properties: {
+                    config_path: { type: 'string', description: 'Optional path to jacs.config.json' },
                     recent_n: { type: 'number', description: 'Number of recent documents to audit' },
                 },
             },
@@ -292,25 +428,86 @@ function getJacsMcpToolDefinitions() {
             inputSchema: { type: 'object', properties: {} },
         },
         {
-            name: 'fetch_agent_key',
-            description: "Fetch an agent's public key from HAI's key distribution service.",
+            name: 'jacs_share_public_key',
+            description: 'Share this agent public key PEM for trust bootstrap and signature verification.',
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'jacs_share_agent',
+            description: 'Legacy compatibility alias for jacs_export_agent.',
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'jacs_export_agent',
+            description: 'Export this agent self-signed JACS document for trust establishment.',
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'jacs_export_agent_card',
+            description: "Export this agent's A2A Agent Card for discovery.",
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'jacs_wrap_a2a_artifact',
+            description: 'Wrap an A2A artifact with JACS provenance signature.',
             inputSchema: {
                 type: 'object',
                 properties: {
-                    agent_id: { type: 'string', description: 'Agent ID (UUID format)' },
-                    version: { type: 'string', description: "Key version or 'latest'" },
+                    artifact_json: { type: 'string', description: 'JSON string of the A2A artifact payload' },
+                    artifact_type: { type: 'string', description: 'Artifact type label' },
+                    parent_signatures: {
+                        type: 'string',
+                        description: 'Optional JSON array of parent signatures for chain of custody',
+                    },
                 },
-                required: ['agent_id'],
+                required: ['artifact_json', 'artifact_type'],
+            },
+        },
+        {
+            name: 'jacs_verify_a2a_artifact',
+            description: 'Verify a JACS-wrapped A2A artifact.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    wrapped_artifact: { type: 'string', description: 'The wrapped artifact JSON string' },
+                },
+                required: ['wrapped_artifact'],
+            },
+        },
+        {
+            name: 'jacs_assess_a2a_agent',
+            description: 'Assess a remote A2A agent card under the requested trust policy.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agent_card_json: { type: 'string', description: 'Remote A2A Agent Card JSON' },
+                    policy: { type: 'string', description: "Trust policy: 'open', 'verified', or 'strict'" },
+                },
+                required: ['agent_card_json'],
+            },
+        },
+        {
+            name: 'fetch_agent_key',
+            description: 'Fetch an agent public key from the registry when it is not available locally.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    jacs_id: { type: 'string', description: 'Agent JACS ID (UUID) for /agents/{id}/keys/{version} lookups' },
+                    version: { type: 'string', description: 'Key version (default: latest)' },
+                    public_key_hash: { type: 'string', description: 'Optional sha256:<hex> hash for /keys/by-hash lookups' },
+                    base_url: { type: 'string', description: 'Optional registry base URL (default: https://hai.ai)' },
+                },
             },
         },
         {
             name: 'jacs_register',
-            description: 'Register this agent with HAI.ai for cross-organization key discovery.',
+            description: 'Register the local agent with a remote registry (reserved for compatibility).',
             inputSchema: {
                 type: 'object',
                 properties: {
-                    api_key: { type: 'string', description: 'HAI API key (optional, uses env if not set)' },
-                    preview: { type: 'boolean', description: 'Preview mode (default true)' },
+                    preview: { type: 'boolean', description: 'Validate registration payload without committing changes' },
+                    base_url: { type: 'string', description: 'Optional registry base URL' },
+                    api_key: { type: 'string', description: 'Optional API key (if required by registry)' },
                 },
             },
         },
@@ -337,9 +534,48 @@ function getJacsMcpToolDefinitions() {
             },
         },
         {
+            name: 'jacs_trust_agent_with_key',
+            description: 'Add an agent to the trust store by verifying the agent document with an explicit public key PEM.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agent_json: { type: 'string', description: 'Agent JSON document to trust' },
+                    public_key_pem: { type: 'string', description: 'PEM-encoded public key for self-signature verification' },
+                },
+                required: ['agent_json', 'public_key_pem'],
+            },
+        },
+        {
             name: 'jacs_list_trusted',
+            description: 'Legacy compatibility alias for jacs_list_trusted_agents.',
+            inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'jacs_list_trusted_agents',
             description: 'List all agent IDs in the local trust store.',
             inputSchema: { type: 'object', properties: {} },
+        },
+        {
+            name: 'jacs_get_trusted_agent',
+            description: 'Get a trusted agent document by agent ID.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agent_id: { type: 'string', description: 'Agent ID to load from the local trust store' },
+                },
+                required: ['agent_id'],
+            },
+        },
+        {
+            name: 'jacs_untrust_agent',
+            description: 'Remove an agent from the local trust store. Requires JACS_MCP_ALLOW_UNTRUST=true.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    agent_id: { type: 'string', description: 'Agent ID to remove from the local trust store' },
+                },
+                required: ['agent_id'],
+            },
         },
         {
             name: 'jacs_is_trusted',
@@ -376,7 +612,8 @@ async function handleJacsMcpToolCall(client, toolName, args) {
     try {
         switch (toolName) {
             case 'jacs_sign_document': {
-                const data = JSON.parse(args.data);
+                const rawContent = typeof args.content === 'string' ? args.content : args.data;
+                const data = JSON.parse(rawContent);
                 const signed = await client.signMessage(data);
                 return text(JSON.stringify({
                     success: true, documentId: signed.documentId,
@@ -404,10 +641,16 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 const opts = {};
                 if (args.question)
                     opts.question = args.question;
+                if (args.context)
+                    opts.context = args.context;
                 if (args.timeout)
                     opts.timeout = args.timeout;
                 if (args.quorum !== undefined)
                     opts.quorum = args.quorum;
+                if (args.required_algorithms)
+                    opts.requiredAlgorithms = args.required_algorithms;
+                if (args.minimum_strength)
+                    opts.minimumStrength = args.minimum_strength;
                 const signed = await client.createAgreement(doc, args.agent_ids, opts);
                 return text(JSON.stringify({
                     success: true, documentId: signed.documentId,
@@ -415,18 +658,23 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 }));
             }
             case 'jacs_sign_agreement': {
-                const signed = await client.signAgreement(args.document);
+                const signed = await client.signAgreement(args.signed_agreement ?? args.document, args.agreement_fieldname);
                 return text(JSON.stringify({
                     success: true, documentId: signed.documentId,
                     agentId: signed.agentId, raw: signed.raw,
                 }));
             }
             case 'jacs_check_agreement': {
-                const status = await client.checkAgreement(args.document);
+                const status = await client.checkAgreement(args.signed_agreement ?? args.document, args.agreement_fieldname);
                 return text(JSON.stringify({ success: true, ...status }));
             }
             case 'jacs_audit': {
-                const result = await client.audit(args.recent_n !== undefined ? { recentN: args.recent_n } : undefined);
+                const result = await client.audit(args.config_path !== undefined || args.recent_n !== undefined
+                    ? {
+                        configPath: args.config_path,
+                        recentN: args.recent_n,
+                    }
+                    : undefined);
                 return text(JSON.stringify({ success: true, ...result }));
             }
             case 'jacs_sign_file': {
@@ -452,21 +700,86 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 catch { /* ok */ }
                 return text(JSON.stringify({
                     agentId: client.agentId, name: client.name,
-                    strict: client.strict, diagnostics,
+                    strict: client.strict,
+                    diagnostics,
+                }));
+            }
+            case 'jacs_share_public_key': {
+                const publicKey = client.sharePublicKey
+                    ? client.sharePublicKey()
+                    : client.getPublicKey();
+                return text(JSON.stringify({ success: true, publicKeyPem: publicKey }));
+            }
+            case 'jacs_share_agent':
+            case 'jacs_export_agent': {
+                const agentJson = client.shareAgent
+                    ? client.shareAgent()
+                    : client.exportAgent();
+                return text(JSON.stringify({ success: true, agentJson }));
+            }
+            case 'jacs_export_agent_card': {
+                const agentCard = client.exportAgentCard();
+                return text(JSON.stringify({ success: true, agentCard }));
+            }
+            case 'jacs_wrap_a2a_artifact': {
+                const artifact = JSON.parse(args.artifact_json);
+                const parentSignatures = typeof args.parent_signatures === 'string' && args.parent_signatures.trim()
+                    ? JSON.parse(args.parent_signatures)
+                    : null;
+                const wrappedArtifact = await client.signArtifact(artifact, args.artifact_type, parentSignatures);
+                return text(JSON.stringify({ success: true, wrappedArtifact }));
+            }
+            case 'jacs_verify_a2a_artifact': {
+                const verification = await client.verifyArtifact(args.wrapped_artifact);
+                return text(JSON.stringify({ success: true, ...verification }));
+            }
+            case 'jacs_assess_a2a_agent': {
+                const { JACSA2AIntegration } = require('./a2a');
+                const a2a = new JACSA2AIntegration(client, args.policy);
+                const assessment = a2a.assessRemoteAgent(args.agent_card_json);
+                return text(JSON.stringify({
+                    success: true,
+                    allowed: assessment.allowed,
+                    trustLevel: assessment.trustLevel,
+                    jacsRegistered: assessment.jacsRegistered,
+                    inTrustStore: assessment.inTrustStore,
+                    reason: assessment.reason,
                 }));
             }
             case 'fetch_agent_key': {
-                const keyInfo = (0, index_js_1.fetchRemoteKey)(args.agent_id, args.version || null);
+                const baseUrl = resolveKeysBaseUrl(args.base_url);
+                const byHash = typeof args.public_key_hash === 'string' ? args.public_key_hash.trim() : '';
+                let lookupUrl;
+                if (byHash) {
+                    const normalizedHash = normalizePublicKeyHash(byHash);
+                    lookupUrl = `${baseUrl}/jacs/v1/keys/by-hash/${encodeURIComponent(normalizedHash)}`;
+                }
+                else {
+                    const jacsId = typeof args.jacs_id === 'string' ? args.jacs_id.trim() : '';
+                    if (!jacsId) {
+                        throw new Error('fetch_agent_key requires jacs_id or public_key_hash');
+                    }
+                    const version = typeof args.version === 'string' && args.version.trim()
+                        ? args.version.trim()
+                        : 'latest';
+                    lookupUrl = `${baseUrl}/jacs/v1/agents/${encodeURIComponent(jacsId)}/keys/${encodeURIComponent(version)}`;
+                }
+                const lookup = await fetchJson(lookupUrl);
                 return text(JSON.stringify({
-                    success: true, agentId: keyInfo.agentId,
-                    version: keyInfo.version, algorithm: keyInfo.algorithm,
-                    publicKeyHash: keyInfo.publicKeyHash,
+                    success: true,
+                    ...lookup,
                 }));
             }
             case 'jacs_register': {
-                const nativeAgent = extractNativeAgent(client);
-                const result = await nativeAgent.registerWithHai(args.api_key || null, null, args.preview !== false);
-                return text(result);
+                const dynamicRegister = client.register;
+                if (typeof dynamicRegister === 'function') {
+                    const result = await dynamicRegister.call(client, args);
+                    return text(typeof result === 'string' ? result : JSON.stringify({ success: true, result }));
+                }
+                return text(JSON.stringify({
+                    success: false,
+                    error: 'jacs_register is not implemented in jacsnpm. Use the JACS SDK for registration workflows.',
+                }));
             }
             case 'jacs_setup_instructions': {
                 const nativeAgent = extractNativeAgent(client);
@@ -477,9 +790,31 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 const result = client.trustAgent(args.agent_json);
                 return text(JSON.stringify({ success: true, result }));
             }
-            case 'jacs_list_trusted': {
+            case 'jacs_trust_agent_with_key': {
+                const result = client.trustAgentWithKey(args.agent_json, args.public_key_pem);
+                return text(JSON.stringify({ success: true, result }));
+            }
+            case 'jacs_list_trusted':
+            case 'jacs_list_trusted_agents': {
                 const agents = client.listTrustedAgents();
                 return text(JSON.stringify({ success: true, trustedAgents: agents }));
+            }
+            case 'jacs_get_trusted_agent': {
+                const agentJson = client.getTrustedAgent(args.agent_id);
+                return text(JSON.stringify({ success: true, agentId: args.agent_id, agentJson }));
+            }
+            case 'jacs_untrust_agent': {
+                if (!isUntrustAllowed()) {
+                    return text(JSON.stringify({
+                        success: false,
+                        agentId: args.agent_id,
+                        error: 'UNTRUST_DISABLED',
+                        message: 'Untrusting is disabled for security. To enable, set ' +
+                            'JACS_MCP_ALLOW_UNTRUST=true when starting the MCP server.',
+                    }));
+                }
+                client.untrustAgent(args.agent_id);
+                return text(JSON.stringify({ success: true, agentId: args.agent_id }));
             }
             case 'jacs_is_trusted': {
                 const trusted = client.isTrusted(args.agent_id);
@@ -502,7 +837,7 @@ async function handleJacsMcpToolCall(client, toolName, args) {
  * Register all JACS tools on an MCP Server instance.
  *
  * Call this once during server setup to add JACS signing, verification,
- * agreements, trust, audit, and HAI integration tools.
+ * agreements, trust, audit, and registry integration tools.
  *
  * @example
  * ```typescript
@@ -514,7 +849,10 @@ async function handleJacsMcpToolCall(client, toolName, args) {
  *   { name: 'my-server', version: '1.0.0' },
  *   { capabilities: { tools: {} } },
  * );
- * const client = await JacsClient.quickstart();
+ * const client = await JacsClient.quickstart({
+ *   name: 'mcp-agent',
+ *   domain: 'mcp.local',
+ * });
  * registerJacsTools(server, client);
  * ```
  */

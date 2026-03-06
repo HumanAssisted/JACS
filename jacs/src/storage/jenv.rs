@@ -40,7 +40,7 @@ impl std::fmt::Display for EnvError {
             EnvError::NotFound(key) => {
                 let hint = match key.as_str() {
                     "JACS_PRIVATE_KEY_PASSWORD" => {
-                        " Set this to the password used to encrypt your private key."
+                        " Set this to the password used to encrypt your private key. For CLI quickstart, you can also set JACS_PASSWORD_FILE to a file path containing the password."
                     }
                     "JACS_KEY_DIRECTORY" => {
                         " Set this to the directory containing your key files (e.g., './keys')."
@@ -55,7 +55,7 @@ impl std::fmt::Display for EnvError {
                         " Set this to your public key filename (e.g., 'agent.public.pem')."
                     }
                     "JACS_AGENT_KEY_ALGORITHM" => {
-                        " Set this to your key algorithm (e.g., 'ring-Ed25519', 'RSA-PSS', 'pq-dilithium')."
+                        " Set this to your key algorithm (e.g., 'ring-Ed25519', 'RSA-PSS', 'pq2025')."
                     }
                     _ => "",
                 };

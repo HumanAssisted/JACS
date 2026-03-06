@@ -1,0 +1,23 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Fixture 09 Missing Optional Header
+Date: Fri, 27 Feb 2026 12:08:00 +0000
+Message-ID: <fixture-09@example.com>
+References: <thread-root@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F09
+X-Expected-Result: pass
+X-Expected-Reason: missing_optional_in_reply_to_is_null
+Content-Type: multipart/mixed; boundary="f09"
+
+--f09
+Content-Type: text/plain; charset=utf-8
+
+Missing In-Reply-To is valid when optional.
+
+--f09
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-09","created_at":"2026-02-27T12:08:00Z","hash":"sha256:meta09"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:08:00Z"}}
+--f09--

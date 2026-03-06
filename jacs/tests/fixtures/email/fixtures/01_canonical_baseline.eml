@@ -1,0 +1,24 @@
+From: Agent@example.com
+To: recipient@example.com
+Subject: Fixture 01 Baseline
+Date: Fri, 27 Feb 2026 12:00:00 +0000
+Message-ID: <fixture-01@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F01
+X-Expected-Result: pass
+X-Expected-Reason: canonical_baseline
+Content-Type: multipart/mixed; boundary="f01"
+
+--f01
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+Baseline plain body.
+
+--f01
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+Content-Transfer-Encoding: 7bit
+
+{"version":"1.0","document_type":"email_signature","payload":{"headers":{"from":{"value":"agent@example.com","hash":"sha256:from01"},"to":{"value":"recipient@example.com","hash":"sha256:to01"},"subject":{"value":"Fixture 01 Baseline","hash":"sha256:sub01"},"date":{"value":"Fri, 27 Feb 2026 12:00:00 +0000","hash":"sha256:date01"},"message_id":{"value":"<fixture-01@example.com>","hash":"sha256:mid01"}},"body_hash_plain":"sha256:body01","body_hash_html":null,"attachment_hashes":[],"parent_signature_hash":null},"metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-01","created_at":"2026-02-27T12:00:00Z","hash":"sha256:meta01"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:00:00Z"}}
+--f01--

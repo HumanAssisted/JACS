@@ -1,0 +1,24 @@
+From: agent@example.com
+To: recipient@example.com
+Subject: Fixture 10 Duplicate References
+Date: Fri, 27 Feb 2026 12:09:00 +0000
+Message-ID: <fixture-10@example.com>
+References: <thread-root@example.com>
+References: <thread-root@example.com> <thread-node@example.com>
+MIME-Version: 1.0
+X-Fixture-ID: F10
+X-Expected-Result: fail
+X-Expected-Reason: duplicate_optional_singleton_header
+Content-Type: multipart/mixed; boundary="f10"
+
+--f10
+Content-Type: text/plain; charset=utf-8
+
+Duplicate References should fail strict singleton interpretation.
+
+--f10
+Content-Type: application/json; name="jacs-signature.json"
+Content-Disposition: attachment; filename="jacs-signature.json"
+
+{"version":"1.0","document_type":"email_signature","metadata":{"issuer":"11111111-1111-1111-1111-111111111111","document_id":"fixture-10","created_at":"2026-02-27T12:09:00Z","hash":"sha256:meta10"},"signature":{"key_id":"fixture-key","algorithm":"ed25519","signature":"VEVTVA==","signed_at":"2026-02-27T12:09:00Z"}}
+--f10--
