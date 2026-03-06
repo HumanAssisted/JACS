@@ -1,4 +1,4 @@
-// JACS MCP — Transport proxy + full tool suite for Node.js MCP servers
+// JACS MCP — Transport proxy + partial compatibility layer for Node.js MCP servers
 //
 // Two integration patterns:
 //
@@ -46,6 +46,10 @@ function resolveLocalOnly(override?: boolean): boolean {
 function resolveAllowUnsignedFallback(override?: boolean): boolean {
   if (typeof override === 'boolean') return override;
   return parseBooleanEnv(process.env.JACS_MCP_ALLOW_UNSIGNED_FALLBACK) ?? false;
+}
+
+function isUntrustAllowed(): boolean {
+  return parseBooleanEnv(process.env.JACS_MCP_ALLOW_UNTRUST) === true;
 }
 
 function isLoopbackHost(hostname: string): boolean {
@@ -383,7 +387,7 @@ export async function createJACSTransportProxyAsync(
 }
 
 // ---------------------------------------------------------------------------
-// MCP Tool Definitions — mirrors the Rust jacs-mcp tool suite
+// MCP Tool Definitions — partial compatibility layer over the canonical Rust contract
 // ---------------------------------------------------------------------------
 
 /** MCP tool definition shape (matches @modelcontextprotocol/sdk Tool type). */
@@ -398,10 +402,10 @@ export interface JacsMcpToolDef {
 }
 
 /**
- * Returns the full list of JACS MCP tool definitions.
+ * Returns the Node.js MCP compatibility tool definitions.
  *
- * Use this with `server.setRequestHandler(ListToolsRequestSchema, ...)` to
- * advertise JACS tools from a Node.js MCP server.
+ * The canonical full MCP contract lives in the Rust `jacs-mcp` crate. This
+ * helper exposes the subset and compatibility aliases supported by jacsnpm.
  */
 export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
   return [

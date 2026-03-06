@@ -1,8 +1,8 @@
-"""JACS MCP adapter — expose JACS operations as MCP tools.
+"""JACS MCP adapter — expose partial JACS operations as FastMCP tools.
 
-Registers signing, verification, agreement, audit, A2A, and trust
-tools with a FastMCP server so an LLM can call them directly.
-Mirrors the Rust ``jacs-mcp`` tool surface.
+The canonical full JACS MCP server is the Rust ``jacs-mcp`` crate and binary.
+This module keeps Python-native middleware and adapter ergonomics, plus a
+partial MCP compatibility layer for FastMCP servers.
 
 Usage as tools (LLM-callable):
     from fastmcp import FastMCP
@@ -393,19 +393,23 @@ def _make_share_public_key(mcp, cl):
 
 def _make_share_agent(mcp, cl):
     @mcp.tool(
-        name="jacs_share_agent",
-        description="Share this agent self-signed JACS document for trust establishment.",
+        name="jacs_export_agent",
+        description="Export this agent's self-signed JACS document.",
     )
-    def jacs_share_agent() -> str:
+    @mcp.tool(
+        name="jacs_share_agent",
+        description="Legacy compatibility alias for jacs_export_agent.",
+    )
+    def jacs_export_agent() -> str:
         try:
             agent_json = cl.share_agent() if hasattr(cl, "share_agent") else cl.export_agent()
             parsed = json.loads(agent_json)
             return json.dumps({"success": True, "agent_json": parsed})
         except Exception as e:
-            logger.warning("jacs_share_agent failed: %s", e)
+            logger.warning("jacs_export_agent failed: %s", e)
             return _err(str(e))
 
-    return jacs_share_agent
+    return jacs_export_agent
 
 
 # ---------------------------------------------------------------------------
@@ -440,10 +444,14 @@ def register_a2a_tools(
     cl = adapter.client
 
     @mcp_server.tool(
-        name="jacs_get_agent_card",
+        name="jacs_export_agent_card",
         description="Export this agent's A2A Agent Card for discovery.",
     )
-    def jacs_get_agent_card(url: str = "", skills_json: str = "[]") -> str:
+    @mcp_server.tool(
+        name="jacs_get_agent_card",
+        description="Legacy compatibility alias for jacs_export_agent_card.",
+    )
+    def jacs_export_agent_card(url: str = "", skills_json: str = "[]") -> str:
         """Export Agent Card. Optional url and skills_json (JSON array of service dicts)."""
         try:
             skills = json.loads(skills_json) if skills_json and skills_json != "[]" else None
@@ -453,21 +461,27 @@ def register_a2a_tools(
             )
             return json.dumps({"success": True, "agent_card": card})
         except Exception as e:
-            logger.warning("jacs_get_agent_card failed: %s", e)
+            logger.warning("jacs_export_agent_card failed: %s", e)
             return _err(str(e))
 
     @mcp_server.tool(
-        name="jacs_sign_artifact",
+        name="jacs_wrap_a2a_artifact",
         description="Wrap an A2A artifact with JACS provenance signature.",
     )
-    def jacs_sign_artifact(artifact_json: str, artifact_type: str = "message") -> str:
+    @mcp_server.tool(
+        name="jacs_sign_artifact",
+        description="Legacy compatibility alias for jacs_wrap_a2a_artifact.",
+    )
+    def jacs_wrap_a2a_artifact(
+        artifact_json: str, artifact_type: str = "message"
+    ) -> str:
         """Sign an A2A artifact. artifact_json is a JSON string."""
         try:
             artifact = json.loads(artifact_json)
             signed = cl.sign_artifact(artifact, artifact_type)
             return json.dumps({"success": True, "signed_artifact": signed})
         except Exception as e:
-            logger.warning("jacs_sign_artifact failed: %s", e)
+            logger.warning("jacs_wrap_a2a_artifact failed: %s", e)
             return _err(str(e))
 
     @mcp_server.tool(
@@ -488,14 +502,22 @@ def register_a2a_tools(
             return _err(str(e))
 
     @mcp_server.tool(
-        name="jacs_assess_remote_agent",
+        name="jacs_assess_a2a_agent",
         description=(
             "Assess trust for a remote A2A agent card. "
             "Policies: 'open' (accept all), 'verified' (require JACS extension), "
             "'strict' (require trust store entry)."
         ),
     )
-    def jacs_assess_remote_agent(agent_card_json: str, policy: str = "verified") -> str:
+    @mcp_server.tool(
+        name="jacs_assess_remote_agent",
+        description=(
+            "Legacy compatibility alias for jacs_assess_a2a_agent. "
+            "Policies: 'open' (accept all), 'verified' (require JACS extension), "
+            "'strict' (require trust store entry)."
+        ),
+    )
+    def jacs_assess_a2a_agent(agent_card_json: str, policy: str = "verified") -> str:
         """Assess trust for a remote agent card JSON string."""
         try:
             result = adapter.assess_trust(agent_card_json, policy=policy)
@@ -506,7 +528,7 @@ def register_a2a_tools(
                 "allowed": result["allowed"],
             })
         except Exception as e:
-            logger.warning("jacs_assess_remote_agent failed: %s", e)
+            logger.warning("jacs_assess_a2a_agent failed: %s", e)
             return _err(str(e))
 
     return mcp_server
@@ -599,16 +621,34 @@ def register_trust_tools(
             return _err(str(e))
 
     @mcp_server.tool(
-        name="jacs_list_trusted",
+        name="jacs_list_trusted_agents",
         description="List all agent IDs in the local trust store.",
     )
-    def jacs_list_trusted() -> str:
+    @mcp_server.tool(
+        name="jacs_list_trusted",
+        description="Legacy compatibility alias for jacs_list_trusted_agents.",
+    )
+    def jacs_list_trusted_agents() -> str:
         """List trusted agents."""
         try:
             agents = cl.list_trusted_agents()
             return json.dumps({"success": True, "trusted_agents": agents})
         except Exception as e:
-            logger.warning("jacs_list_trusted failed: %s", e)
+            logger.warning("jacs_list_trusted_agents failed: %s", e)
+            return _err(str(e))
+
+    @mcp_server.tool(
+        name="jacs_get_trusted_agent",
+        description="Retrieve a trusted agent document by agent ID.",
+    )
+    def jacs_get_trusted_agent(agent_id: str) -> str:
+        """Get a trusted agent document."""
+        try:
+            agent_json = cl.get_trusted_agent(agent_id)
+            parsed = json.loads(agent_json)
+            return json.dumps({"success": True, "agent_id": agent_id, "agent_json": parsed})
+        except Exception as e:
+            logger.warning("jacs_get_trusted_agent failed: %s", e)
             return _err(str(e))
 
     @mcp_server.tool(
