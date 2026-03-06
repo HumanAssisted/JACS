@@ -109,6 +109,16 @@ fn parse_tool_result(
     Ok(serde_json::from_str(&text).unwrap_or_else(|_| serde_json::json!({ "_raw": text })))
 }
 
+fn parse_json_string_field(
+    value: &serde_json::Value,
+    field: &str,
+) -> anyhow::Result<serde_json::Value> {
+    let raw = value[field]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("expected '{}' string field in {}", field, value))?;
+    Ok(serde_json::from_str(raw)?)
+}
+
 impl Drop for RmcpSession {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.base);
@@ -420,6 +430,329 @@ async fn mcp_message_and_attestation_round_trip_over_stdio() -> anyhow::Result<(
         verified["valid"], true,
         "attestation verify failed: {}",
         verified
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[]).await?;
+
+    let wrapped = session
+        .call_tool(
+            "jacs_wrap_a2a_artifact",
+            serde_json::json!({
+                "artifact_json": serde_json::json!({
+                    "content": "hello from a2a mcp",
+                    "kind": "note"
+                })
+                .to_string(),
+                "artifact_type": "message"
+            }),
+        )
+        .await?;
+    assert_eq!(
+        wrapped["success"], true,
+        "wrap_a2a_artifact failed: {}",
+        wrapped
+    );
+    let wrapped_artifact = wrapped["wrapped_artifact"]
+        .as_str()
+        .expect("wrapped_artifact payload");
+    let wrapped_value: serde_json::Value =
+        serde_json::from_str(wrapped_artifact).expect("parse wrapped artifact");
+    assert_eq!(wrapped_value["jacsType"], "a2a-message");
+
+    let verified = session
+        .call_tool(
+            "jacs_verify_a2a_artifact",
+            serde_json::json!({ "wrapped_artifact": wrapped_artifact }),
+        )
+        .await?;
+    assert_eq!(
+        verified["success"], true,
+        "verify_a2a_artifact failed: {}",
+        verified
+    );
+    assert_eq!(verified["valid"], true, "wrapped artifact invalid: {}", verified);
+    let verification_details = parse_json_string_field(&verified, "verification_details")?;
+    assert_eq!(verification_details["status"], "SelfSigned");
+    assert_eq!(verification_details["parentSignaturesValid"], true);
+    assert_eq!(verification_details["originalArtifact"]["content"], "hello from a2a mcp");
+
+    let card = session
+        .call_tool("jacs_export_agent_card", serde_json::json!({}))
+        .await?;
+    assert_eq!(
+        card["success"], true,
+        "export_agent_card failed: {}",
+        card
+    );
+    let agent_card_json = card["agent_card"].as_str().expect("agent_card payload");
+
+    let assessment = session
+        .call_tool(
+            "jacs_assess_a2a_agent",
+            serde_json::json!({
+                "agent_card_json": agent_card_json,
+                "policy": "open"
+            }),
+        )
+        .await?;
+    assert_eq!(
+        assessment["success"], true,
+        "assess_a2a_agent failed: {}",
+        assessment
+    );
+    assert_eq!(assessment["allowed"], true, "assessment rejected: {}", assessment);
+    assert_eq!(
+        assessment["policy"]
+            .as_str()
+            .unwrap_or_default()
+            .to_ascii_lowercase(),
+        "open"
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[]).await?;
+
+    let parent = session
+        .call_tool(
+            "jacs_wrap_a2a_artifact",
+            serde_json::json!({
+                "artifact_json": serde_json::json!({ "step": 1 }).to_string(),
+                "artifact_type": "task"
+            }),
+        )
+        .await?;
+    let parent_artifact = parent["wrapped_artifact"]
+        .as_str()
+        .expect("parent wrapped artifact");
+
+    let valid_child = session
+        .call_tool(
+            "jacs_wrap_a2a_artifact",
+            serde_json::json!({
+                "artifact_json": serde_json::json!({ "step": 2 }).to_string(),
+                "artifact_type": "task",
+                "parent_signatures": format!("[{}]", parent_artifact),
+            }),
+        )
+        .await?;
+    let valid_child_artifact = valid_child["wrapped_artifact"]
+        .as_str()
+        .expect("valid child wrapped artifact");
+    let valid_child_value: serde_json::Value =
+        serde_json::from_str(valid_child_artifact).expect("parse valid child");
+    assert_eq!(
+        valid_child_value["jacsParentSignatures"]
+            .as_array()
+            .expect("valid child parents")
+            .len(),
+        1
+    );
+
+    let valid_chain = session
+        .call_tool(
+            "jacs_verify_a2a_artifact",
+            serde_json::json!({ "wrapped_artifact": valid_child_artifact }),
+        )
+        .await?;
+    assert_eq!(valid_chain["success"], true, "valid chain failed: {}", valid_chain);
+    assert_eq!(valid_chain["valid"], true, "child artifact invalid: {}", valid_chain);
+    let valid_chain_details = parse_json_string_field(&valid_chain, "verification_details")?;
+    assert_eq!(valid_chain_details["parentSignaturesValid"], true);
+    assert_eq!(
+        valid_chain_details["parentVerificationResults"]
+            .as_array()
+            .expect("parent verification results")
+            .len(),
+        1
+    );
+
+    let mut tampered_parent_value: serde_json::Value =
+        serde_json::from_str(parent_artifact).expect("parse parent artifact");
+    tampered_parent_value["a2aArtifact"]["step"] = serde_json::json!(999);
+
+    let invalid_parent_child = session
+        .call_tool(
+            "jacs_wrap_a2a_artifact",
+            serde_json::json!({
+                "artifact_json": serde_json::json!({ "step": 3 }).to_string(),
+                "artifact_type": "task",
+                "parent_signatures": serde_json::json!([tampered_parent_value]).to_string(),
+            }),
+        )
+        .await?;
+    let invalid_parent_child_artifact = invalid_parent_child["wrapped_artifact"]
+        .as_str()
+        .expect("invalid parent child wrapped artifact");
+
+    let invalid_parent_verified = session
+        .call_tool(
+            "jacs_verify_a2a_artifact",
+            serde_json::json!({ "wrapped_artifact": invalid_parent_child_artifact }),
+        )
+        .await?;
+    assert_eq!(
+        invalid_parent_verified["success"], true,
+        "verification should return details even with invalid parent: {}",
+        invalid_parent_verified
+    );
+    assert_eq!(
+        invalid_parent_verified["valid"], true,
+        "child artifact should still be cryptographically valid: {}",
+        invalid_parent_verified
+    );
+    let invalid_parent_details =
+        parse_json_string_field(&invalid_parent_verified, "verification_details")?;
+    assert_eq!(invalid_parent_details["parentSignaturesValid"], false);
+    let parent_results = invalid_parent_details["parentVerificationResults"]
+        .as_array()
+        .expect("invalid parent verification results");
+    assert_eq!(parent_results.len(), 1);
+    assert_eq!(parent_results[0]["verified"], false);
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_attestation_negative_paths_and_dsse_over_stdio() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[]).await?;
+
+    let signed_doc = session
+        .call_tool(
+            "jacs_sign_document",
+            serde_json::json!({ "content": "{\"artifact\":\"for-attestation\"}" }),
+        )
+        .await?;
+    let signed_doc_json = signed_doc["signed_document"]
+        .as_str()
+        .expect("signed_document payload");
+    let signed_doc_id = signed_doc["jacs_document_id"]
+        .as_str()
+        .expect("signed_document id");
+
+    let attestation = session
+        .call_tool(
+            "jacs_attest_create",
+            serde_json::json!({
+                "params_json": serde_json::json!({
+                    "subject": {
+                        "type": "artifact",
+                        "id": signed_doc_id,
+                        "digests": { "sha256": "abc123" }
+                    },
+                    "claims": [{
+                        "name": "reviewed_by",
+                        "value": "mcp-test",
+                        "confidence": 0.99,
+                        "assuranceLevel": "verified"
+                    }]
+                })
+                .to_string()
+            }),
+        )
+        .await?;
+    assert!(
+        attestation.get("jacsId").and_then(|v| v.as_str()).is_some(),
+        "attestation create failed: {}",
+        attestation
+    );
+
+    let dsse = session
+        .call_tool(
+            "jacs_attest_export_dsse",
+            serde_json::json!({
+                "attestation_json": attestation.to_string()
+            }),
+        )
+        .await?;
+    assert_eq!(dsse["payloadType"], "application/vnd.in-toto+json");
+    assert!(
+        dsse["payload"].as_str().is_some_and(|payload| !payload.is_empty()),
+        "dsse payload missing: {}",
+        dsse
+    );
+    let signatures = dsse["signatures"].as_array().expect("dsse signatures");
+    assert_eq!(signatures.len(), 1);
+    assert_eq!(
+        signatures[0]["keyid"],
+        attestation["jacsSignature"]["publicKeyHash"]
+    );
+    assert_eq!(signatures[0]["sig"], attestation["jacsSignature"]["signature"]);
+
+    let missing_subject = session
+        .call_tool(
+            "jacs_attest_create",
+            serde_json::json!({
+                "params_json": serde_json::json!({
+                    "claims": [{
+                        "name": "reviewed_by",
+                        "value": "mcp-test"
+                    }]
+                })
+                .to_string()
+            }),
+        )
+        .await?;
+    assert_eq!(missing_subject["error"], true);
+    assert!(
+        missing_subject["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Failed to create attestation"),
+        "expected attestation create failure: {}",
+        missing_subject
+    );
+
+    let missing_doc = session
+        .call_tool(
+            "jacs_attest_verify",
+            serde_json::json!({
+                "document_key": "nonexistent-id:v1",
+                "full": false
+            }),
+        )
+        .await?;
+    assert_eq!(missing_doc["valid"], false);
+    assert_eq!(missing_doc["error"], true);
+    assert!(
+        missing_doc["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Failed to verify attestation"),
+        "expected verify failure: {}",
+        missing_doc
+    );
+
+    let dsse_from_non_attestation = session
+        .call_tool(
+            "jacs_attest_export_dsse",
+            serde_json::json!({
+                "attestation_json": signed_doc_json
+            }),
+        )
+        .await?;
+    assert_eq!(dsse_from_non_attestation["error"], true);
+    assert!(
+        dsse_from_non_attestation["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("missing 'attestation' field"),
+        "expected export_dsse semantic failure: {}",
+        dsse_from_non_attestation
     );
 
     session.client.cancellation_token().cancel();
