@@ -411,13 +411,14 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
   return [
     {
       name: 'jacs_sign_document',
-      description: 'Sign arbitrary JSON data with JACS cryptographic provenance.',
+      description: 'Sign arbitrary JSON content with JACS cryptographic provenance.',
       inputSchema: {
         type: 'object',
         properties: {
-          data: { type: 'string', description: 'JSON string of data to sign' },
+          content: { type: 'string', description: 'JSON string of content to sign' },
+          content_type: { type: 'string', description: 'Optional MIME type (default application/json)' },
         },
-        required: ['data'],
+        required: ['content'],
       },
     },
     {
@@ -451,8 +452,15 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
           document: { type: 'string', description: 'JSON string of document to agree on' },
           agent_ids: { type: 'array', items: { type: 'string' }, description: 'Agent IDs who must sign' },
           question: { type: 'string', description: 'Question or prompt for signers' },
+          context: { type: 'string', description: 'Additional context for signers' },
           timeout: { type: 'string', description: 'ISO 8601 deadline' },
           quorum: { type: 'number', description: 'Minimum signatures required (M-of-N)' },
+          required_algorithms: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Only allow these signing algorithms',
+          },
+          minimum_strength: { type: 'string', description: 'Minimum crypto strength requirement' },
         },
         required: ['document', 'agent_ids'],
       },
@@ -463,9 +471,10 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
       inputSchema: {
         type: 'object',
         properties: {
-          document: { type: 'string', description: 'The agreement document to sign' },
+          signed_agreement: { type: 'string', description: 'The agreement document to sign' },
+          agreement_fieldname: { type: 'string', description: 'Optional custom agreement field name' },
         },
-        required: ['document'],
+        required: ['signed_agreement'],
       },
     },
     {
@@ -474,9 +483,10 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
       inputSchema: {
         type: 'object',
         properties: {
-          document: { type: 'string', description: 'The agreement document to check' },
+          signed_agreement: { type: 'string', description: 'The agreement document to check' },
+          agreement_fieldname: { type: 'string', description: 'Optional custom agreement field name' },
         },
-        required: ['document'],
+        required: ['signed_agreement'],
       },
     },
     {
@@ -485,6 +495,7 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
       inputSchema: {
         type: 'object',
         properties: {
+          config_path: { type: 'string', description: 'Optional path to jacs.config.json' },
           recent_n: { type: 'number', description: 'Number of recent documents to audit' },
         },
       },
@@ -518,8 +529,57 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
     },
     {
       name: 'jacs_share_agent',
-      description: 'Share this agent self-signed JACS document for trust establishment.',
+      description: 'Legacy compatibility alias for jacs_export_agent.',
       inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'jacs_export_agent',
+      description: 'Export this agent self-signed JACS document for trust establishment.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'jacs_export_agent_card',
+      description: "Export this agent's A2A Agent Card for discovery.",
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'jacs_wrap_a2a_artifact',
+      description: 'Wrap an A2A artifact with JACS provenance signature.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          artifact_json: { type: 'string', description: 'JSON string of the A2A artifact payload' },
+          artifact_type: { type: 'string', description: 'Artifact type label' },
+          parent_signatures: {
+            type: 'string',
+            description: 'Optional JSON array of parent signatures for chain of custody',
+          },
+        },
+        required: ['artifact_json', 'artifact_type'],
+      },
+    },
+    {
+      name: 'jacs_verify_a2a_artifact',
+      description: 'Verify a JACS-wrapped A2A artifact.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          wrapped_artifact: { type: 'string', description: 'The wrapped artifact JSON string' },
+        },
+        required: ['wrapped_artifact'],
+      },
+    },
+    {
+      name: 'jacs_assess_a2a_agent',
+      description: 'Assess a remote A2A agent card under the requested trust policy.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_card_json: { type: 'string', description: 'Remote A2A Agent Card JSON' },
+          policy: { type: 'string', description: "Trust policy: 'open', 'verified', or 'strict'" },
+        },
+        required: ['agent_card_json'],
+      },
     },
     {
       name: 'fetch_agent_key',
@@ -582,8 +642,35 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
     },
     {
       name: 'jacs_list_trusted',
+      description: 'Legacy compatibility alias for jacs_list_trusted_agents.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'jacs_list_trusted_agents',
       description: 'List all agent IDs in the local trust store.',
       inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'jacs_get_trusted_agent',
+      description: 'Get a trusted agent document by agent ID.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_id: { type: 'string', description: 'Agent ID to load from the local trust store' },
+        },
+        required: ['agent_id'],
+      },
+    },
+    {
+      name: 'jacs_untrust_agent',
+      description: 'Remove an agent from the local trust store. Requires JACS_MCP_ALLOW_UNTRUST=true.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_id: { type: 'string', description: 'Agent ID to remove from the local trust store' },
+        },
+        required: ['agent_id'],
+      },
     },
     {
       name: 'jacs_is_trusted',
@@ -626,7 +713,8 @@ export async function handleJacsMcpToolCall(
   try {
     switch (toolName) {
       case 'jacs_sign_document': {
-        const data = JSON.parse(args.data);
+        const rawContent = typeof args.content === 'string' ? args.content : args.data;
+        const data = JSON.parse(rawContent);
         const signed = await client.signMessage(data);
         return text(JSON.stringify({
           success: true, documentId: signed.documentId,
@@ -656,8 +744,11 @@ export async function handleJacsMcpToolCall(
         const doc = JSON.parse(args.document);
         const opts: any = {};
         if (args.question) opts.question = args.question;
+        if (args.context) opts.context = args.context;
         if (args.timeout) opts.timeout = args.timeout;
         if (args.quorum !== undefined) opts.quorum = args.quorum;
+        if (args.required_algorithms) opts.requiredAlgorithms = args.required_algorithms;
+        if (args.minimum_strength) opts.minimumStrength = args.minimum_strength;
         const signed = await client.createAgreement(doc, args.agent_ids, opts);
         return text(JSON.stringify({
           success: true, documentId: signed.documentId,
@@ -666,7 +757,10 @@ export async function handleJacsMcpToolCall(
       }
 
       case 'jacs_sign_agreement': {
-        const signed = await client.signAgreement(args.document);
+        const signed = await client.signAgreement(
+          args.signed_agreement ?? args.document,
+          args.agreement_fieldname,
+        );
         return text(JSON.stringify({
           success: true, documentId: signed.documentId,
           agentId: signed.agentId, raw: signed.raw,
@@ -674,13 +768,21 @@ export async function handleJacsMcpToolCall(
       }
 
       case 'jacs_check_agreement': {
-        const status = await client.checkAgreement(args.document);
+        const status = await client.checkAgreement(
+          args.signed_agreement ?? args.document,
+          args.agreement_fieldname,
+        );
         return text(JSON.stringify({ success: true, ...status }));
       }
 
       case 'jacs_audit': {
         const result = await client.audit(
-          args.recent_n !== undefined ? { recentN: args.recent_n } : undefined,
+          args.config_path !== undefined || args.recent_n !== undefined
+            ? {
+                configPath: args.config_path,
+                recentN: args.recent_n,
+              }
+            : undefined,
         );
         return text(JSON.stringify({ success: true, ...result }));
       }
@@ -720,10 +822,49 @@ export async function handleJacsMcpToolCall(
       }
 
       case 'jacs_share_agent': {
+      case 'jacs_export_agent': {
         const agentJson = (client as any).shareAgent
           ? (client as any).shareAgent()
           : (client as any).exportAgent();
         return text(JSON.stringify({ success: true, agentJson }));
+      }
+
+      case 'jacs_export_agent_card': {
+        const agentCard = (client as any).exportAgentCard();
+        return text(JSON.stringify({ success: true, agentCard }));
+      }
+
+      case 'jacs_wrap_a2a_artifact': {
+        const artifact = JSON.parse(args.artifact_json);
+        const parentSignatures =
+          typeof args.parent_signatures === 'string' && args.parent_signatures.trim()
+            ? JSON.parse(args.parent_signatures)
+            : null;
+        const wrappedArtifact = await (client as any).signArtifact(
+          artifact,
+          args.artifact_type,
+          parentSignatures,
+        );
+        return text(JSON.stringify({ success: true, wrappedArtifact }));
+      }
+
+      case 'jacs_verify_a2a_artifact': {
+        const verification = await (client as any).verifyArtifact(args.wrapped_artifact);
+        return text(JSON.stringify({ success: true, ...verification }));
+      }
+
+      case 'jacs_assess_a2a_agent': {
+        const { JACSA2AIntegration } = require('./a2a');
+        const a2a = new JACSA2AIntegration(client, args.policy);
+        const assessment = a2a.assessRemoteAgent(args.agent_card_json);
+        return text(JSON.stringify({
+          success: true,
+          allowed: assessment.allowed,
+          trustLevel: assessment.trustLevel,
+          jacsRegistered: assessment.jacsRegistered,
+          inTrustStore: assessment.inTrustStore,
+          reason: assessment.reason,
+        }));
       }
 
       case 'fetch_agent_key': {
@@ -785,8 +926,29 @@ export async function handleJacsMcpToolCall(
       }
 
       case 'jacs_list_trusted': {
+      case 'jacs_list_trusted_agents': {
         const agents = client.listTrustedAgents();
         return text(JSON.stringify({ success: true, trustedAgents: agents }));
+      }
+
+      case 'jacs_get_trusted_agent': {
+        const agentJson = (client as any).getTrustedAgent(args.agent_id);
+        return text(JSON.stringify({ success: true, agentId: args.agent_id, agentJson }));
+      }
+
+      case 'jacs_untrust_agent': {
+        if (!isUntrustAllowed()) {
+          return text(JSON.stringify({
+            success: false,
+            agentId: args.agent_id,
+            error: 'UNTRUST_DISABLED',
+            message:
+              'Untrusting is disabled for security. To enable, set ' +
+              'JACS_MCP_ALLOW_UNTRUST=true when starting the MCP server.',
+          }));
+        }
+        (client as any).untrustAgent(args.agent_id);
+        return text(JSON.stringify({ success: true, agentId: args.agent_id }));
       }
 
       case 'jacs_is_trusted': {
