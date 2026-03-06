@@ -8,7 +8,7 @@ class Jacs < Formula
   depends_on "rust" => :build
 
   def install
-    system "cargo", "install", *std_cargo_args(path: "."), "--features", "cli", "--locked"
+    system "cargo", "install", *std_cargo_args(path: "."), "--features", "cli"
   end
 
   test do
