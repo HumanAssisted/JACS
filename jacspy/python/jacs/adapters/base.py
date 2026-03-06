@@ -322,8 +322,28 @@ class BaseJacsAdapter:
         from ..a2a_discovery import _evaluate_trust_policy, _validate_trust_policy
 
         effective_policy = _validate_trust_policy(policy)
-
         card = json.loads(agent_card_json)
+
+        # Prefer binding-core delegation when available
+        if hasattr(self._client, "_agent"):
+            try:
+                canonical_json = self._client._agent.assess_a2a_agent(
+                    agent_card_json, effective_policy
+                )
+                trust = json.loads(canonical_json)
+                return {
+                    "card": card,
+                    "jacs_registered": trust.get("jacsRegistered", False),
+                    "trust_level": trust.get("trustLevel", "untrusted"),
+                    "allowed": trust.get("allowed", False),
+                }
+            except (ImportError, AttributeError):
+                logger.warning(
+                    "Falling back to local trust policy evaluation "
+                    "— binding-core assess_a2a_agent unavailable"
+                )
+
+        # Fallback: deprecated local logic
         trust = _evaluate_trust_policy(
             card,
             policy=effective_policy,

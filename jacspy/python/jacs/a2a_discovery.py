@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import warnings
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
 try:
@@ -182,8 +184,11 @@ async def discover_and_assess(
                 "trust_level": trust.get("trustLevel", "untrusted"),
                 "allowed": trust.get("allowed", False),
             }
-        except Exception:
-            logger.debug("binding-core assess_a2a_agent failed, falling back to local logic")
+        except (ImportError, AttributeError):
+            logger.warning(
+                "Falling back to local trust policy evaluation "
+                "— binding-core assess_a2a_agent unavailable"
+            )
 
     # Fallback: deprecated local logic when no client is available
     is_trusted = getattr(client, "is_trusted", None) if client is not None else None
@@ -308,6 +313,15 @@ def _evaluate_trust_policy(
             "allowed": bool,
         }
     """
+    if os.environ.get("JACS_SHOW_DEPRECATIONS"):
+        warnings.warn(
+            "_evaluate_trust_policy() is deprecated. "
+            "Use binding-core's assess_a2a_agent() via "
+            "JACSA2AIntegration.assess_remote_agent() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     effective_policy = _validate_trust_policy(policy)
 
     jacs_registered = _has_jacs_extension(card)
