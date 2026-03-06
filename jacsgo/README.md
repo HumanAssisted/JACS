@@ -4,7 +4,7 @@
 
 Cryptographic signatures for AI agent outputs -- so anyone can verify who said what and whether it was changed. No server. Three lines of code.
 
-**Note:** Go bindings are community-maintained and may not include all features available in the Python and Node.js bindings. For the most complete experience, use the Python or Node.js libraries.
+**Note:** Go bindings are community-maintained and may not include all features available in the Python and Node.js bindings. The Go MCP code in this repo is demo/example code, not a full canonical JACS MCP server. For the full MCP surface, use the Rust `jacs-mcp` server.
 
 [Which integration should I use?](https://humanassisted.github.io/JACS/getting-started/decision-tree.html) | [Full documentation](https://humanassisted.github.io/JACS/)
 

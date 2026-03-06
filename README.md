@@ -123,11 +123,23 @@ Find the right path in under 2 minutes. [Full decision tree](https://humanassist
 | Node.js + Express | `require('@hai.ai/jacs/express')` | [Express Guide](https://humanassisted.github.io/JACS/nodejs/express.html) |
 | Node.js + Vercel AI SDK | `require('@hai.ai/jacs/vercel-ai')` | [Vercel AI Guide](https://humanassisted.github.io/JACS/nodejs/vercel-ai.html) |
 | Node.js + LangChain.js | `require('@hai.ai/jacs/langchain')` | [LangChain.js Guide](https://humanassisted.github.io/JACS/nodejs/langchain.html) |
-| MCP Server (Python) | `from jacs.mcp import create_jacs_mcp_server` | [Python MCP Guide](https://humanassisted.github.io/JACS/python/mcp.html) |
-| MCP Server (Node.js) | `require('@hai.ai/jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
+| MCP Adapter (Python, partial) | `from jacs.mcp import create_jacs_mcp_server` | [Python MCP Guide](https://humanassisted.github.io/JACS/python/mcp.html) |
+| MCP Adapter (Node.js, partial) | `require('@hai.ai/jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
 | A2A Protocol | `client.get_a2a()` / `client.getA2A()` | [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) |
-| Rust / CLI | `cargo install jacs --features cli` | [Rust Guide](https://humanassisted.github.io/JACS/rust/installation.html) |
+| Rust / CLI (canonical MCP server) | `cargo install jacs --features cli` | [Rust Guide](https://humanassisted.github.io/JACS/rust/installation.html) |
 | Any language (standalone) | `import jacs.simple as jacs` | [Simple API](https://humanassisted.github.io/JACS/python/simple-api.html) |
+
+## MCP Support Matrix
+
+| MCP surface | Rust `jacs-mcp` | Node `jacs/mcp` | Python `jacs.adapters.mcp` | Go |
+|-------------|-----------------|-----------------|-----------------------------|----|
+| Canonical full `jacs_*` server | Yes | No | No | No |
+| Transport proxy / protocol glue | N/A | Yes | Yes | Demo only |
+| Middleware / framework adapter | N/A | Yes | Yes | No |
+| Language-native tool registration | Canonical | Partial compatibility layer | Partial compatibility layer | No |
+| Demo / example only | No | No | No | Yes |
+
+The canonical full MCP contract is exported from Rust at [`jacs-mcp/contract/jacs-mcp-contract.json`](jacs-mcp/contract/jacs-mcp-contract.json). Node and Python adapters are tested against that snapshot so contract drift is explicit.
 
 ## Who Is JACS For?
 

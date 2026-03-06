@@ -361,7 +361,8 @@ const node = jacsToolNode([tool1, tool2], { client });
 
 ### MCP (`jacs/mcp`)
 
-Two integration patterns — transport proxy or full tool registration:
+Two integration patterns — transport proxy or partial tool compatibility registration.
+The canonical full MCP server remains the Rust `jacs-mcp` binary launched via `jacs mcp run`.
 
 **Transport proxy** — wrap any MCP transport with signing/verification:
 
@@ -375,7 +376,7 @@ const baseTransport = new StdioServerTransport();
 const secureTransport = createJACSTransportProxy(baseTransport, client, 'server');
 ```
 
-**MCP tool registration** — add all JACS tools to your MCP server (mirrors the Rust `jacs-mcp` server):
+**MCP tool registration** — add the jacsnpm compatibility tool set to your MCP server:
 
 ```typescript
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -387,7 +388,7 @@ const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.ex
 registerJacsTools(server, client);
 ```
 
-Registers tools for signing, verification, agreements, trust store, audit, file signing, and more. Use `getJacsMcpToolDefinitions()` and `handleJacsMcpToolCall()` for custom integration.
+Registers a partial compatibility layer for signing, verification, agreements, trust, A2A, audit, and selected legacy helpers. Use `getJacsMcpToolDefinitions()` and `handleJacsMcpToolCall()` for custom integration. If you need the full canonical `jacs_*` MCP surface, use the Rust server.
 
 **Peer dep**: `npm install @modelcontextprotocol/sdk`
 

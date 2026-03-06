@@ -710,8 +710,7 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                     : client.getPublicKey();
                 return text(JSON.stringify({ success: true, publicKeyPem: publicKey }));
             }
-            case 'jacs_share_agent': {
-            }
+            case 'jacs_share_agent':
             case 'jacs_export_agent': {
                 const agentJson = client.shareAgent
                     ? client.shareAgent()
@@ -795,8 +794,7 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 const result = client.trustAgentWithKey(args.agent_json, args.public_key_pem);
                 return text(JSON.stringify({ success: true, result }));
             }
-            case 'jacs_list_trusted': {
-            }
+            case 'jacs_list_trusted':
             case 'jacs_list_trusted_agents': {
                 const agents = client.listTrustedAgents();
                 return text(JSON.stringify({ success: true, trustedAgents: agents }));

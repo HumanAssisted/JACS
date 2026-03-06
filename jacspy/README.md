@@ -318,6 +318,8 @@ The fixture automatically resets after each test.
 
 ## MCP Integration
 
+The canonical full JACS MCP server is the Rust `jacs-mcp` binary. Python keeps FastMCP-native middleware and a partial MCP compatibility adapter for embedding JACS behavior into Python servers.
+
 For AI tool servers using the Model Context Protocol:
 
 ```python
