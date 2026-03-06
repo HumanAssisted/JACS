@@ -31,9 +31,17 @@ permissions:
 
 jobs:
   sync-formulas:
-    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Check for tap token
+        env:
+          HAS_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN secret is not configured. Set it at https://github.com/HumanAssisted/JACS/settings/secrets/actions"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Resolve versions and artifact checksums
