@@ -13,7 +13,7 @@ keywords = ["mcp", "jacs", "ai", "agents", "signing", "provenance"]
 categories = ["cryptography", "development-tools"]
 
 [features]
-default = ["mcp"]
+default = ["mcp", "attestation"]
 mcp = ["dep:rmcp", "dep:tokio", "jacs/mcp-server"]
 http = []
 attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
@@ -22,8 +22,8 @@ attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-rmcp = { version = "0.12", features = ["server", "transport-io", "macros"], optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+rmcp = { version = "0.12", features = ["client", "server", "transport-io", "transport-child-process", "macros"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"], optional = true }
 jacs = { path = "../jacs", default-features = true }
 jacs-binding-core = { path = "../binding-core" }
 serde = { version = "1", features = ["derive"] }

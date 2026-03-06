@@ -102,6 +102,18 @@ function expectAuditReport(result) {
   }
 }
 
+function seedPublicKeyCache(agentDir, agentJson, publicKeyPem) {
+  const agent = JSON.parse(agentJson);
+  const signature = agent.jacsSignature || {};
+  const keyHash = signature.publicKeyHash;
+  const signingAlgorithm = signature.signingAlgorithm || 'RSA-PSS';
+  const publicKeysDir = path.join(agentDir, 'jacs_data', 'public_keys');
+
+  fs.mkdirSync(publicKeysDir, { recursive: true });
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), publicKeyPem);
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.enc_type`), signingAlgorithm);
+}
+
 function buildStandaloneKeyCacheFromSigned(signedRaw) {
   const doc = JSON.parse(signedRaw);
   const sig = doc.jacsSignature || {};
@@ -535,7 +547,7 @@ describe('JACS Simple API', function() {
         simpleA.createSync({
           name: 'mocha-agent-a',
           password,
-          algorithm: 'ring-Ed25519',
+          algorithm: 'RSA-PSS',
           dataDirectory: 'jacs_data',
           keyDirectory: 'keys',
           configPath: 'jacs.config.json',
@@ -545,7 +557,7 @@ describe('JACS Simple API', function() {
         simpleB.createSync({
           name: 'mocha-agent-b',
           password,
-          algorithm: 'ring-Ed25519',
+          algorithm: 'RSA-PSS',
           dataDirectory: 'jacs_data',
           keyDirectory: 'keys',
           configPath: 'jacs.config.json',
@@ -553,8 +565,12 @@ describe('JACS Simple API', function() {
 
         process.chdir(agent1Dir);
         simpleA.loadSync('jacs.config.json');
+        const agentAJson = simpleA.exportAgent();
+        const agentAPublicKey = simpleA.getPublicKey();
         process.chdir(agent2Dir);
         simpleB.loadSync('jacs.config.json');
+        simpleB.trustAgentWithKey(agentAJson, agentAPublicKey);
+        seedPublicKeyCache(agent2Dir, agentAJson, agentAPublicKey);
 
         const infoA = simpleA.getAgentInfo();
         const infoB = simpleB.getAgentInfo();

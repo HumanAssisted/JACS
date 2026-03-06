@@ -438,14 +438,22 @@ impl AgentWrapper {
             BindingCoreError::verification_failed(format!("Failed to verify document hash: {}", e))
         })?;
 
-        agent
-            .verify_external_document_signature(&document_key)
-            .map_err(|e| {
-                BindingCoreError::verification_failed(format!(
-                    "Failed to verify document signature: {}",
-                    e
-                ))
-            })?;
+        // Prefer the currently loaded agent's public key first. This keeps
+        // local self-verification fast and avoids falling through to remote key
+        // resolution for documents we just signed in the same workspace.
+        if agent
+            .verify_document_signature(&document_key, None, None, None, None)
+            .is_err()
+        {
+            agent
+                .verify_external_document_signature(&document_key)
+                .map_err(|e| {
+                    BindingCoreError::verification_failed(format!(
+                        "Failed to verify document signature: {}",
+                        e
+                    ))
+                })?;
+        }
 
         Ok(true)
     }
@@ -846,9 +854,9 @@ impl AgentWrapper {
     /// Get the loaded agent's canonical JACS identifier.
     pub fn get_agent_id(&self) -> BindingResult<String> {
         let agent = self.lock()?;
-        let value = agent.get_value().ok_or_else(|| {
-            BindingCoreError::agent_load("Agent not loaded. Call load() first.")
-        })?;
+        let value = agent
+            .get_value()
+            .ok_or_else(|| BindingCoreError::agent_load("Agent not loaded. Call load() first."))?;
         value
             .get("jacsId")
             .and_then(|v| v.as_str())
@@ -1367,8 +1375,8 @@ impl AgentWrapper {
     /// Returns the signed attestation document as a JSON string.
     #[cfg(feature = "attestation")]
     pub fn create_attestation(&self, params_json: &str) -> BindingResult<String> {
-        use jacs::attestation::types::*;
         use jacs::attestation::AttestationTraits;
+        use jacs::attestation::types::*;
 
         let params: Value = serde_json::from_str(params_json).map_err(|e| {
             BindingCoreError::serialization_failed(format!(
@@ -1379,30 +1387,22 @@ impl AgentWrapper {
         })?;
 
         // Parse subject (required)
-        let subject: AttestationSubject = serde_json::from_value(
-            params
-                .get("subject")
-                .cloned()
-                .ok_or_else(|| {
-                    BindingCoreError::validation("Missing required 'subject' field in attestation params")
-                })?,
-        )
-        .map_err(|e| {
-            BindingCoreError::validation(format!("Invalid 'subject' field: {}", e))
-        })?;
+        let subject: AttestationSubject =
+            serde_json::from_value(params.get("subject").cloned().ok_or_else(|| {
+                BindingCoreError::validation(
+                    "Missing required 'subject' field in attestation params",
+                )
+            })?)
+            .map_err(|e| BindingCoreError::validation(format!("Invalid 'subject' field: {}", e)))?;
 
         // Parse claims (required, at least 1)
-        let claims: Vec<Claim> = serde_json::from_value(
-            params
-                .get("claims")
-                .cloned()
-                .ok_or_else(|| {
-                    BindingCoreError::validation("Missing required 'claims' field in attestation params")
-                })?,
-        )
-        .map_err(|e| {
-            BindingCoreError::validation(format!("Invalid 'claims' field: {}", e))
-        })?;
+        let claims: Vec<Claim> =
+            serde_json::from_value(params.get("claims").cloned().ok_or_else(|| {
+                BindingCoreError::validation(
+                    "Missing required 'claims' field in attestation params",
+                )
+            })?)
+            .map_err(|e| BindingCoreError::validation(format!("Invalid 'claims' field: {}", e)))?;
 
         // Parse optional evidence
         let evidence: Vec<EvidenceRef> = if let Some(ev) = params.get("evidence") {
@@ -1423,14 +1423,13 @@ impl AgentWrapper {
         };
 
         // Parse optional policyContext
-        let policy_context: Option<PolicyContext> =
-            if let Some(p) = params.get("policyContext") {
-                Some(serde_json::from_value(p.clone()).map_err(|e| {
-                    BindingCoreError::validation(format!("Invalid 'policyContext' field: {}", e))
-                })?)
-            } else {
-                None
-            };
+        let policy_context: Option<PolicyContext> = if let Some(p) = params.get("policyContext") {
+            Some(serde_json::from_value(p.clone()).map_err(|e| {
+                BindingCoreError::validation(format!("Invalid 'policyContext' field: {}", e))
+            })?)
+        } else {
+            None
+        };
 
         let mut agent = self.lock()?;
         let jacs_doc = agent

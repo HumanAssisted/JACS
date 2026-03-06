@@ -6,7 +6,7 @@ JACS (JSON Agent Communication Standard) ensures that every file, memory, or con
 
 ## What can it do?
 
-The server exposes **29 tools** in eight categories:
+The server exposes **33 tools** in eight categories:
 
 ### Agent State (Data Provenance)
 

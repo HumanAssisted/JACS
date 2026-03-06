@@ -64,6 +64,18 @@ def assert_audit_result(result: dict) -> None:
         assert first_risk["message"]
 
 
+def seed_public_key_cache(agent_root: Path, agent_json: str, public_key_pem: str) -> None:
+    agent_data = json.loads(agent_json)
+    signature = agent_data.get("jacsSignature", {})
+    key_hash = signature["publicKeyHash"]
+    signing_algorithm = signature.get("signingAlgorithm", "RSA-PSS")
+
+    public_keys_dir = agent_root / "jacs_data" / "public_keys"
+    public_keys_dir.mkdir(parents=True, exist_ok=True)
+    (public_keys_dir / f"{key_hash}.pem").write_text(public_key_pem, encoding="utf-8")
+    (public_keys_dir / f"{key_hash}.enc_type").write_text(signing_algorithm, encoding="utf-8")
+
+
 # Fixtures
 
 
@@ -807,17 +819,19 @@ class TestAgreementWorkflow:
             a1 = simple.create(
                 name="pytest-agent-1",
                 password=password,
-                algorithm="ring-Ed25519",
+                algorithm="RSA-PSS",
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",
             )
+            agent1_json = simple.export_agent()
+            agent1_public_key = simple.get_public_key()
 
             os.chdir(a2_root)
             a2 = simple.create(
                 name="pytest-agent-2",
                 password=password,
-                algorithm="ring-Ed25519",
+                algorithm="RSA-PSS",
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",
@@ -844,6 +858,8 @@ class TestAgreementWorkflow:
             # Agent 2 signs and completion succeeds.
             os.chdir(a2_root)
             simple.load("jacs.config.json")
+            simple.trust_agent_with_key(agent1_json, agent1_public_key)
+            seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
             signed_by_both = simple.sign_agreement(signed_by_a1)
             status = simple.check_agreement(signed_by_both)
             assert status.complete is True

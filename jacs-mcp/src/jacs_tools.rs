@@ -2015,9 +2015,9 @@ impl JacsMcpServer {
                     }
                 };
 
-                if let Err(e) = self
-                    .agent
-                    .save_signed_document(&signed_doc_string, None, None, None)
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
                 {
                     return serde_json::to_string_pretty(&SignStateResult {
                         success: false,
@@ -2389,10 +2389,7 @@ impl JacsMcpServer {
         name = "jacs_list_state",
         description = "List signed agent state documents, with optional filtering."
     )]
-    pub async fn jacs_list_state(
-        &self,
-        Parameters(params): Parameters<ListStateParams>,
-    ) -> String {
+    pub async fn jacs_list_state(&self, Parameters(params): Parameters<ListStateParams>) -> String {
         let keys = match self.agent.list_document_keys() {
             Ok(keys) => keys,
             Err(e) => {
@@ -2440,7 +2437,10 @@ impl JacsMcpServer {
             let tags = value_string_vec(&doc, "jacsAgentStateTags");
             if let Some(filter_tags) = params.tags.as_ref() {
                 let doc_tags = tags.clone().unwrap_or_default();
-                if !filter_tags.iter().all(|tag| doc_tags.iter().any(|item| item == tag)) {
+                if !filter_tags
+                    .iter()
+                    .all(|tag| doc_tags.iter().any(|item| item == tag))
+                {
                     continue;
                 }
             }
@@ -2572,9 +2572,9 @@ impl JacsMcpServer {
                     }
                 };
 
-                if let Err(e) = self
-                    .agent
-                    .save_signed_document(&signed_doc_string, None, None, None)
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
                 {
                     return serde_json::to_string_pretty(&AdoptStateResult {
                         success: false,
@@ -2754,13 +2754,18 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        // Get the sender's agent ID from the loaded agent
-        let sender_id = match self.agent.get_agent_json() {
-            Ok(json_str) => serde_json::from_str::<serde_json::Value>(&json_str)
-                .ok()
-                .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
-                .unwrap_or_else(|| "unknown".to_string()),
-            Err(_) => "unknown".to_string(),
+        let sender_id = match self.agent.get_agent_id() {
+            Ok(agent_id) => agent_id,
+            Err(e) => {
+                let result = MessageSendResult {
+                    success: false,
+                    jacs_document_id: None,
+                    signed_message: None,
+                    error: Some(format!("Failed to determine sender agent ID: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
         };
 
         let content_type = params
@@ -2771,6 +2776,8 @@ impl JacsMcpServer {
 
         // Build the message document
         let message_doc = serde_json::json!({
+            "jacsType": "message",
+            "jacsLevel": "artifact",
             "jacsMessageId": message_id,
             "jacsMessageSenderId": sender_id,
             "jacsMessageRecipientId": params.recipient_agent_id,
@@ -2791,10 +2798,31 @@ impl JacsMcpServer {
             None, // embed
         ) {
             Ok(signed_doc_string) => {
-                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
-                    .ok()
-                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
-                    .unwrap_or_else(|| "unknown".to_string());
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&MessageSendResult {
+                            success: false,
+                            jacs_document_id: None,
+                            signed_message: Some(signed_doc_string),
+                            error: Some("Failed to determine the signed message ID".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&MessageSendResult {
+                        success: false,
+                        jacs_document_id: Some(doc_id),
+                        signed_message: Some(signed_doc_string),
+                        error: Some(format!("Failed to persist signed message: {}", e)),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
 
                 MessageSendResult {
                     success: true,
@@ -2826,57 +2854,81 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MessageUpdateParams>,
     ) -> String {
-        // Load the existing document by ID
-        let existing_doc_string: Option<String> =
-            match self.agent.verify_document_by_id(&params.jacs_id) {
-                Ok(true) => {
-                    // Document verified, now retrieve it. We need the stored document.
-                    // Use get_agent_json to get agent context, then load via ID.
-                    // The verify_document_by_id already loaded it; we need to get it from storage.
-                    // Fall through to attempt update_document with the new content.
-                    None
-                }
-                Ok(false) => {
-                    let result = MessageUpdateResult {
-                        success: false,
-                        jacs_document_id: None,
-                        signed_message: None,
-                        error: Some(format!(
-                            "Existing document '{}' failed signature verification",
-                            params.jacs_id
-                        )),
-                    };
-                    return serde_json::to_string_pretty(&result)
-                        .unwrap_or_else(|e| format!("Error: {}", e));
-                }
-                Err(e) => {
-                    let result = MessageUpdateResult {
-                        success: false,
-                        jacs_document_id: None,
-                        signed_message: None,
-                        error: Some(format!(
-                            "Failed to load document '{}': {}",
-                            params.jacs_id, e
-                        )),
-                    };
-                    return serde_json::to_string_pretty(&result)
-                        .unwrap_or_else(|e| format!("Error: {}", e));
-                }
-            };
+        match self.agent.verify_document_by_id(&params.jacs_id) {
+            Ok(true) => {}
+            Ok(false) => {
+                let result = MessageUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    signed_message: None,
+                    error: Some(format!(
+                        "Existing document '{}' failed signature verification",
+                        params.jacs_id
+                    )),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+            Err(e) => {
+                let result = MessageUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    signed_message: None,
+                    error: Some(format!(
+                        "Failed to load document '{}': {}",
+                        params.jacs_id, e
+                    )),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let existing_doc_string = match self.agent.get_document_by_id(&params.jacs_id) {
+            Ok(s) => s,
+            Err(e) => {
+                let result = MessageUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    signed_message: None,
+                    error: Some(format!(
+                        "Failed to load document '{}' for update: {}",
+                        params.jacs_id, e
+                    )),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut updated_doc = match serde_json::from_str::<serde_json::Value>(&existing_doc_string)
+        {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = MessageUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    signed_message: None,
+                    error: Some(format!(
+                        "Stored document '{}' is not valid JSON: {}",
+                        params.jacs_id, e
+                    )),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
 
         let content_type = params
             .content_type
             .unwrap_or_else(|| "text/plain".to_string());
         let timestamp = format_iso8601(std::time::SystemTime::now());
 
-        // Build the updated message content
-        let updated_doc = serde_json::json!({
-            "jacsMessageContent": params.content,
-            "jacsMessageContentType": content_type,
-            "jacsMessageTimestamp": timestamp,
-        });
-
-        let _ = existing_doc_string; // consumed above
+        updated_doc["jacsType"] = serde_json::json!("message");
+        updated_doc["jacsLevel"] = serde_json::json!("artifact");
+        updated_doc["jacsMessageContent"] = serde_json::json!(params.content);
+        updated_doc["jacsMessageContentType"] = serde_json::json!(content_type);
+        updated_doc["jacsMessageTimestamp"] = serde_json::json!(timestamp);
 
         let doc_string = updated_doc.to_string();
         let result = match self
@@ -2884,9 +2936,7 @@ impl JacsMcpServer {
             .update_document(&params.jacs_id, &doc_string, None, None)
         {
             Ok(updated_doc_string) => {
-                let doc_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
-                    .ok()
-                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                let doc_id = extract_document_lookup_key_from_str(&updated_doc_string)
                     .unwrap_or_else(|| params.jacs_id.clone());
 
                 MessageUpdateResult {
@@ -2947,19 +2997,13 @@ impl JacsMcpServer {
         }
 
         // Extract the original document ID
-        let original_doc_id = serde_json::from_str::<serde_json::Value>(&params.signed_message)
-            .ok()
-            .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+        let original_doc_id = extract_document_lookup_key_from_str(&params.signed_message)
             .unwrap_or_else(|| "unknown".to_string());
 
-        // Get our agent ID
-        let our_agent_id = match self.agent.get_agent_json() {
-            Ok(json_str) => serde_json::from_str::<serde_json::Value>(&json_str)
-                .ok()
-                .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
-                .unwrap_or_else(|| "unknown".to_string()),
-            Err(_) => "unknown".to_string(),
-        };
+        let our_agent_id = self
+            .agent
+            .get_agent_id()
+            .unwrap_or_else(|_| "unknown".to_string());
 
         let timestamp = format_iso8601(std::time::SystemTime::now());
 
@@ -2983,11 +3027,8 @@ impl JacsMcpServer {
             None, // embed
         ) {
             Ok(signed_agreement_string) => {
-                let agreement_id =
-                    serde_json::from_str::<serde_json::Value>(&signed_agreement_string)
-                        .ok()
-                        .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
-                        .unwrap_or_else(|| "unknown".to_string());
+                let agreement_id = extract_document_lookup_key_from_str(&signed_agreement_string)
+                    .unwrap_or_else(|| "unknown".to_string());
 
                 MessageAgreeResult {
                     success: true,
@@ -3159,9 +3200,7 @@ impl JacsMcpServer {
             params.minimum_strength,
         ) {
             Ok(agreement_string) => {
-                let agreement_id = serde_json::from_str::<serde_json::Value>(&agreement_string)
-                    .ok()
-                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from))
+                let agreement_id = extract_document_lookup_key_from_str(&agreement_string)
                     .unwrap_or_else(|| "unknown".to_string());
 
                 CreateAgreementResult {
@@ -3412,9 +3451,7 @@ impl JacsMcpServer {
         {
             Ok(signed_doc_string) => {
                 // Extract document ID and compute content hash
-                let doc_id = serde_json::from_str::<serde_json::Value>(&signed_doc_string)
-                    .ok()
-                    .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(String::from));
+                let doc_id = extract_document_lookup_key_from_str(&signed_doc_string);
 
                 let hash = {
                     let mut hasher = Sha256::new();
@@ -4041,8 +4078,7 @@ impl JacsMcpServer {
                         "error": true,
                         "message": format!("Failed to create attestation: {}", e),
                     });
-                    serde_json::to_string_pretty(&error)
-                        .unwrap_or_else(|e| format!("Error: {}", e))
+                    serde_json::to_string_pretty(&error).unwrap_or_else(|e| format!("Error: {}", e))
                 }
             }
         }
@@ -4052,7 +4088,8 @@ impl JacsMcpServer {
             serde_json::json!({
                 "error": true,
                 "message": "Attestation feature not available. Rebuild with --features attestation."
-            }).to_string()
+            })
+            .to_string()
         }
     }
 
@@ -4084,8 +4121,7 @@ impl JacsMcpServer {
                         "valid": false,
                         "message": format!("Failed to verify attestation: {}", e),
                     });
-                    serde_json::to_string_pretty(&error)
-                        .unwrap_or_else(|e| format!("Error: {}", e))
+                    serde_json::to_string_pretty(&error).unwrap_or_else(|e| format!("Error: {}", e))
                 }
             }
         }
@@ -4096,7 +4132,8 @@ impl JacsMcpServer {
                 "error": true,
                 "valid": false,
                 "message": "Attestation feature not available. Rebuild with --features attestation."
-            }).to_string()
+            })
+            .to_string()
         }
     }
 
@@ -4124,8 +4161,7 @@ impl JacsMcpServer {
                         "error": true,
                         "message": format!("Failed to lift to attestation: {}", e),
                     });
-                    serde_json::to_string_pretty(&error)
-                        .unwrap_or_else(|e| format!("Error: {}", e))
+                    serde_json::to_string_pretty(&error).unwrap_or_else(|e| format!("Error: {}", e))
                 }
             }
         }
@@ -4135,7 +4171,8 @@ impl JacsMcpServer {
             serde_json::json!({
                 "error": true,
                 "message": "Attestation feature not available. Rebuild with --features attestation."
-            }).to_string()
+            })
+            .to_string()
         }
     }
     /// Export a signed attestation as a DSSE (Dead Simple Signing Envelope) for
@@ -4157,8 +4194,7 @@ impl JacsMcpServer {
                         "error": true,
                         "message": format!("Failed to export DSSE envelope: {}", e),
                     });
-                    serde_json::to_string_pretty(&error)
-                        .unwrap_or_else(|e| format!("Error: {}", e))
+                    serde_json::to_string_pretty(&error).unwrap_or_else(|e| format!("Error: {}", e))
                 }
             }
         }
@@ -4168,7 +4204,8 @@ impl JacsMcpServer {
             serde_json::json!({
                 "error": true,
                 "message": "Attestation feature not available. Rebuild with --features attestation."
-            }).to_string()
+            })
+            .to_string()
         }
     }
 }
@@ -4242,7 +4279,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = JacsMcpServer::tools();
-        assert_eq!(tools.len(), 32, "JacsMcpServer should expose 32 tools");
+        assert_eq!(tools.len(), 33, "JacsMcpServer should expose 33 tools");
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"jacs_sign_state"));
