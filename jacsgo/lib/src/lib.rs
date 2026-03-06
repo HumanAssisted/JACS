@@ -1223,6 +1223,53 @@ pub extern "C" fn jacs_create_config(
     }
 }
 
+/// Create a JACS agent programmatically.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_create_agent(
+    name: *const c_char,
+    password: *const c_char,
+    algorithm: *const c_char,
+    data_directory: *const c_char,
+    key_directory: *const c_char,
+    config_path: *const c_char,
+    agent_type: *const c_char,
+    description: *const c_char,
+    domain: *const c_char,
+    default_storage: *const c_char,
+) -> *mut c_char {
+    if name.is_null() || password.is_null() {
+        return ptr::null_mut();
+    }
+
+    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let password_str = match unsafe { CStr::from_ptr(password) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    match jacs_binding_core::create_agent_programmatic(
+        name_str,
+        password_str,
+        c_string_to_option(algorithm).as_deref(),
+        c_string_to_option(data_directory).as_deref(),
+        c_string_to_option(key_directory).as_deref(),
+        c_string_to_option(config_path).as_deref(),
+        c_string_to_option(agent_type).as_deref(),
+        c_string_to_option(description).as_deref(),
+        c_string_to_option(domain).as_deref(),
+        c_string_to_option(default_storage).as_deref(),
+    ) {
+        Ok(serialized) => match CString::new(serialized) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
 /// Verify an agent
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_agent(agentfile: *const c_char) -> c_int {

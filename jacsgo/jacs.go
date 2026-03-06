@@ -37,6 +37,7 @@ char* jacs_hash_string(const char* data);
 int jacs_verify_string(const char* data, const char* signature_base64, const uint8_t* public_key, size_t public_key_len, const char* public_key_enc_type);
 char* jacs_sign_agent(const char* agent_string, const uint8_t* public_key, size_t public_key_len, const char* public_key_enc_type);
 char* jacs_create_config(const char* jacs_use_security, const char* jacs_data_directory, const char* jacs_key_directory, const char* jacs_agent_private_key_filename, const char* jacs_agent_public_key_filename, const char* jacs_agent_key_algorithm, const char* jacs_private_key_password, const char* jacs_agent_id_and_version, const char* jacs_default_storage);
+char* jacs_create_agent(const char* name, const char* password, const char* algorithm, const char* data_directory, const char* key_directory, const char* config_path, const char* agent_type, const char* description, const char* domain, const char* default_storage);
 int jacs_verify_agent(const char* agentfile);
 char* jacs_update_agent(const char* new_agent_string);
 int jacs_verify_document(const char* document_string);
@@ -889,6 +890,69 @@ func CreateConfig(config Config) (string, error) {
 	result := C.jacs_create_config(cUseSec, cDataDir, cKeyDir, cPrivKeyFile, cPubKeyFile, cKeyAlg, cPrivKeyPass, cAgentID, cDefStorage)
 	if result == nil {
 		return "", errors.New("failed to create config")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// CreateAgent creates a JACS agent programmatically and returns its metadata as JSON.
+func CreateAgent(name, password string, algorithm, dataDirectory, keyDirectory, configPath, agentType, description, domain, defaultStorage *string) (string, error) {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+
+	cPassword := C.CString(password)
+	defer C.free(unsafe.Pointer(cPassword))
+
+	var cAlgorithm, cDataDir, cKeyDir, cConfigPath, cAgentType, cDescription, cDomain, cDefaultStorage *C.char
+
+	if algorithm != nil {
+		cAlgorithm = C.CString(*algorithm)
+		defer C.free(unsafe.Pointer(cAlgorithm))
+	}
+	if dataDirectory != nil {
+		cDataDir = C.CString(*dataDirectory)
+		defer C.free(unsafe.Pointer(cDataDir))
+	}
+	if keyDirectory != nil {
+		cKeyDir = C.CString(*keyDirectory)
+		defer C.free(unsafe.Pointer(cKeyDir))
+	}
+	if configPath != nil {
+		cConfigPath = C.CString(*configPath)
+		defer C.free(unsafe.Pointer(cConfigPath))
+	}
+	if agentType != nil {
+		cAgentType = C.CString(*agentType)
+		defer C.free(unsafe.Pointer(cAgentType))
+	}
+	if description != nil {
+		cDescription = C.CString(*description)
+		defer C.free(unsafe.Pointer(cDescription))
+	}
+	if domain != nil {
+		cDomain = C.CString(*domain)
+		defer C.free(unsafe.Pointer(cDomain))
+	}
+	if defaultStorage != nil {
+		cDefaultStorage = C.CString(*defaultStorage)
+		defer C.free(unsafe.Pointer(cDefaultStorage))
+	}
+
+	result := C.jacs_create_agent(
+		cName,
+		cPassword,
+		cAlgorithm,
+		cDataDir,
+		cKeyDir,
+		cConfigPath,
+		cAgentType,
+		cDescription,
+		cDomain,
+		cDefaultStorage,
+	)
+	if result == nil {
+		return "", errors.New("failed to create agent")
 	}
 	defer C.jacs_free_string(result)
 

@@ -84,14 +84,23 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 	if defaultStorage == "" {
 		defaultStorage = "fs"
 	}
+	agentType := opts.AgentType
+	if agentType == "" {
+		agentType = "ai"
+	}
 
-	_, err := CreateConfig(Config{
-		DataDirectory:      &dataDir,
-		KeyDirectory:       &keyDir,
-		AgentKeyAlgorithm:  &algorithm,
-		PrivateKeyPassword: &password,
-		DefaultStorage:     &defaultStorage,
-	})
+	resultJSON, err := CreateAgent(
+		name,
+		password,
+		&algorithm,
+		&dataDir,
+		&keyDir,
+		&configPath,
+		&agentType,
+		&opts.Description,
+		&opts.Domain,
+		&defaultStorage,
+	)
 	if err != nil {
 		return nil, NewSimpleError("create", err)
 	}
@@ -101,22 +110,23 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 		return nil, NewSimpleError("create", err)
 	}
 
-	// Read the config file to extract the agent ID
-	agentID := ""
-	if cfgData, err := os.ReadFile(configPath); err == nil {
-		var cfg map[string]interface{}
-		if err := json.Unmarshal(cfgData, &cfg); err == nil {
-			if idStr, ok := cfg["jacs_agent_id_and_version"].(string); ok {
-				agentID = idStr
-			}
-		}
-	}
-
 	info := &AgentInfo{
-		AgentID:       agentID,
 		Name:          name,
 		PublicKeyPath: keyDir + "/jacs.public.pem",
 		ConfigPath:    configPath,
+	}
+
+	if err := json.Unmarshal([]byte(resultJSON), info); err != nil {
+		return nil, NewSimpleError("create", fmt.Errorf("parse create agent result: %w", err))
+	}
+	if info.Name == "" {
+		info.Name = name
+	}
+	if info.PublicKeyPath == "" {
+		info.PublicKeyPath = keyDir + "/jacs.public.pem"
+	}
+	if info.ConfigPath == "" {
+		info.ConfigPath = configPath
 	}
 
 	agentInfo = info
@@ -209,10 +219,12 @@ func SignMessage(data interface{}) (*SignedDocument, error) {
 	// Convert data to JSON if needed
 	var jsonData string
 	switch v := data.(type) {
-	case string:
-		jsonData = v
 	case []byte:
-		jsonData = string(v)
+		jsonBytes, err := json.Marshal(string(v))
+		if err != nil {
+			return nil, NewSimpleError("sign_message", err)
+		}
+		jsonData = string(jsonBytes)
 	default:
 		jsonBytes, err := json.Marshal(data)
 		if err != nil {

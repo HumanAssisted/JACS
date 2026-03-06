@@ -2,6 +2,7 @@
 #define JACS_CGO_H
 
 char* jacs_audit(const char* config_path, int recent_n);
+char* jacs_create_agent(const char* name, const char* password, const char* algorithm, const char* data_directory, const char* key_directory, const char* config_path, const char* agent_type, const char* description, const char* domain, const char* default_storage);
 
 // A2A API
 char* jacs_agent_export_agent_card(JacsAgentHandle handle);
