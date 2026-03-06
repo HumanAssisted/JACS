@@ -1,7 +1,7 @@
 .PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         publish-jacs publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-cli release-all release-everything release-delete-tags \
-        retry-jacspy retry-jacsnpm \
+        retry-jacspy retry-jacsnpm retry-cli \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
         install-githooks regen-cross-lang-fixtures \
         help
@@ -298,6 +298,15 @@ retry-jacsnpm:
 	git push origin npm/v$(JACSNPM_VERSION)
 	@echo "✓ Re-tagged npm/v$(JACSNPM_VERSION) - GitHub CI will retry npm publish"
 
+# Retry a failed CLI release: delete old tags (local+remote), retag, push
+retry-cli:
+	@echo "Retrying CLI release for v$(JACS_VERSION)..."
+	-git tag -d cli/v$(JACS_VERSION)
+	-git push origin --delete cli/v$(JACS_VERSION)
+	git tag cli/v$(JACS_VERSION)
+	git push origin cli/v$(JACS_VERSION)
+	@echo "✓ Re-tagged cli/v$(JACS_VERSION) - GitHub CI will retry CLI binary release"
+
 # ============================================================================
 # HELP
 # ============================================================================
@@ -346,6 +355,7 @@ help:
 	@echo "  make release-delete-tags  Delete release tags (for fixing failed releases)"
 	@echo "  make retry-jacspy    Retry failed PyPI release (delete tags, retag, push)"
 	@echo "  make retry-jacsnpm   Retry failed npm release (delete tags, retag, push)"
+	@echo "  make retry-cli       Retry failed CLI release (delete tags, retag, push)"
 	@echo ""
 	@echo "Required GitHub Secrets:"
 	@echo "  CRATES_IO_TOKEN  - for crate/v* tags"
