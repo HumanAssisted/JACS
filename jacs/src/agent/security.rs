@@ -87,7 +87,7 @@ impl SecurityTraits for Agent {
         // On Windows, files are executable based on extension, not permissions.
         // We could use Windows ACL APIs via the `windows` crate, but for now
         // we rely on quarantine and log a warning.
-        warn!(
+        tracing::warn!(
             "Windows: Cannot modify execute permissions for {:?}. File has been quarantined.",
             path
         );

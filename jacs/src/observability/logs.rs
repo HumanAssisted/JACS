@@ -149,7 +149,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<()>, Box<dyn std::error::E
             .try_init()?;
     } else {
         // Subscriber already exists, just add our layer to it
-        warn!("Subscriber already initialized, skipping logs initialization");
+        tracing::warn!("Subscriber already initialized, skipping logs initialization");
     }
 
     match &config.destination {
@@ -160,7 +160,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<()>, Box<dyn std::error::E
                 .try_init()?;
         }
         LogDestination::Http { endpoint } => {
-            warn!(
+            tracing::warn!(
                 "Warning: HTTP logging for WASM configured for {} but using Console fallback.",
                 endpoint
             );
