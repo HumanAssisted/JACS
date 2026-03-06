@@ -25,6 +25,17 @@ try {
 // Path to test fixtures (use shared fixtures from jacs/tests/scratch)
 const FIXTURES_DIR = path.resolve(__dirname, '../../jacs/tests/scratch');
 const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
+const HEALTH_STATUSES = ['Healthy', 'Degraded', 'Unhealthy', 'Unavailable'];
+const RISK_SEVERITIES = ['low', 'medium', 'high'];
+const RISK_CATEGORIES = [
+  'config',
+  'secrets',
+  'trust',
+  'storage',
+  'verification',
+  'quarantine',
+  'directories',
+];
 
 // Helper to get a fresh simple module and load it in the fixtures directory (sync)
 function loadSimpleInFixtures() {
@@ -51,6 +62,42 @@ function runInFixturesDir(fn) {
     return fn();
   } finally {
     process.chdir(originalCwd);
+  }
+}
+
+async function runInFixturesDirAsync(fn) {
+  const originalCwd = process.cwd();
+  process.chdir(FIXTURES_DIR);
+  try {
+    return await fn();
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
+function expectAuditReport(result) {
+  expect(result).to.be.an('object');
+  expect(result.overall_status).to.be.a('string');
+  expect(HEALTH_STATUSES).to.include(result.overall_status);
+  expect(result.summary).to.be.a('string').and.not.empty;
+  expect(result.summary).to.include('risks:');
+  expect(result.checked_at).to.be.a('number');
+
+  expect(result.risks).to.be.an('array');
+  expect(result.health_checks).to.be.an('array').and.not.empty;
+
+  const firstHealth = result.health_checks[0];
+  expect(firstHealth).to.include.all.keys('name', 'status', 'message');
+  expect(firstHealth.name).to.be.a('string').and.not.empty;
+  expect(HEALTH_STATUSES).to.include(firstHealth.status);
+  expect(firstHealth.message).to.be.a('string').and.not.empty;
+
+  if (result.risks.length > 0) {
+    const firstRisk = result.risks[0];
+    expect(firstRisk).to.include.all.keys('category', 'severity', 'message');
+    expect(RISK_CATEGORIES).to.include(firstRisk.category);
+    expect(RISK_SEVERITIES).to.include(firstRisk.severity);
+    expect(firstRisk.message).to.be.a('string').and.not.empty;
   }
 }
 
@@ -842,29 +889,22 @@ describe('JACS Simple API', function() {
   });
 
   describe('auditSync', () => {
-    (simpleExists ? it : it.skip)('should return object with risks and health_checks', () => {
-      const result = simple.auditSync();
-      expect(result).to.have.property('risks');
-      expect(result).to.have.property('health_checks');
-      expect(result.risks).to.be.an('array');
-      expect(result.health_checks).to.be.an('array');
+    (simpleExists && fixturesExist ? it : it.skip)('should return a structured audit report for a valid config', () => {
+      const result = runInFixturesDir(() => simple.auditSync({ configPath: TEST_CONFIG, recentN: 1 }));
+      expectAuditReport(result);
     });
 
-    (simpleExists ? it : it.skip)('should return summary and overall_status', () => {
-      const result = simple.auditSync();
-      expect(result).to.have.property('summary');
-      expect(result).to.have.property('overall_status');
-      expect(result.summary).to.be.a('string');
+    (simpleExists && fixturesExist ? it : it.skip)('should summarize component health in the report body', () => {
+      const result = runInFixturesDir(() => simple.auditSync({ configPath: TEST_CONFIG, recentN: 1 }));
+      expectAuditReport(result);
+      expect(result.summary).to.include(`${result.health_checks[0].name}:`);
     });
   });
 
   describe('audit (async)', () => {
-    (simpleExists ? it : it.skip)('should return object with risks and health_checks (async)', async () => {
-      const result = await simple.audit();
-      expect(result).to.have.property('risks');
-      expect(result).to.have.property('health_checks');
-      expect(result.risks).to.be.an('array');
-      expect(result.health_checks).to.be.an('array');
+    (simpleExists && fixturesExist ? it : it.skip)('should return a structured audit report (async)', async () => {
+      const result = await runInFixturesDirAsync(() => simple.audit({ configPath: TEST_CONFIG, recentN: 1 }));
+      expectAuditReport(result);
     });
   });
 

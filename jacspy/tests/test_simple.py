@@ -25,6 +25,44 @@ from jacs.types import (
     AgentNotLoadedError,
 )
 
+HEALTH_STATUSES = {"Healthy", "Degraded", "Unhealthy", "Unavailable"}
+RISK_SEVERITIES = {"low", "medium", "high"}
+RISK_CATEGORIES = {
+    "config",
+    "secrets",
+    "trust",
+    "storage",
+    "verification",
+    "quarantine",
+    "directories",
+}
+
+
+def assert_audit_result(result: dict) -> None:
+    assert isinstance(result, dict)
+    assert result["overall_status"] in HEALTH_STATUSES
+    assert isinstance(result["summary"], str)
+    assert result["summary"].strip()
+    assert "risks:" in result["summary"]
+    assert isinstance(result["checked_at"], int)
+
+    assert isinstance(result["risks"], list)
+    assert isinstance(result["health_checks"], list)
+    assert result["health_checks"]
+
+    first_health = result["health_checks"][0]
+    assert isinstance(first_health, dict)
+    assert first_health["name"]
+    assert first_health["status"] in HEALTH_STATUSES
+    assert first_health["message"]
+
+    if result["risks"]:
+        first_risk = result["risks"][0]
+        assert isinstance(first_risk, dict)
+        assert first_risk["category"] in RISK_CATEGORIES
+        assert first_risk["severity"] in RISK_SEVERITIES
+        assert first_risk["message"]
+
 
 # Fixtures
 
@@ -818,20 +856,18 @@ class TestAgreementWorkflow:
 class TestAudit:
     """Tests for audit() security audit and health checks."""
 
-    def test_audit_returns_dict_with_risks_and_health_checks(self):
-        """audit() returns a dict with 'risks' and 'health_checks'."""
-        result = simple.audit()
-        assert "risks" in result
-        assert "health_checks" in result
-        assert isinstance(result["risks"], list)
-        assert isinstance(result["health_checks"], list)
+    def test_audit_returns_structured_report(self, in_fixtures_dir, shared_config_path):
+        """audit() returns the stable audit contract for a valid config."""
+        result = simple.audit(config_path=shared_config_path, recent_n=1)
+        assert_audit_result(result)
 
-    def test_audit_returns_summary_and_overall_status(self):
-        """audit() includes summary and overall_status."""
-        result = simple.audit()
-        assert "summary" in result
-        assert "overall_status" in result
-        assert result["summary"]
+    def test_audit_summary_mentions_component_health(self, in_fixtures_dir, shared_config_path):
+        """audit() summary should include the component lines from health_checks."""
+        result = simple.audit(config_path=shared_config_path, recent_n=1)
+        assert_audit_result(result)
+
+        first_health = result["health_checks"][0]
+        assert f"{first_health['name']}:" in result["summary"]
 
 
 class TestGenerateVerifyLink:
