@@ -70,3 +70,35 @@ fn remove_tool_from_action(action: &mut Value, tool: Value) -> Result<(), String
 }
 
 // Similar functions for adding, updating, and removing units.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_minimal_action_keeps_optional_collections_when_present() {
+        let action = create_minimal_action(
+            "summarize",
+            "Summarize the document",
+            Some(vec![json!({"function": {"name": "summarize"}})]),
+            Some(vec![json!({"unit": "paragraph"})]),
+        );
+
+        assert_eq!(action["description"], json!("Summarize the document"));
+        assert_eq!(action["tools"][0]["function"]["name"], json!("summarize"));
+        assert_eq!(action["units"][0]["unit"], json!("paragraph"));
+    }
+
+    #[test]
+    fn action_tool_helpers_add_update_and_remove_tools() {
+        let mut action = create_minimal_action("summarize", "Summarize the document", None, None);
+        let original_tool = json!({"function": {"name": "summarize"}});
+        let replacement_tool = json!({"function": {"name": "classify"}});
+
+        add_tool_to_action(&mut action, original_tool.clone()).unwrap();
+        update_tool_in_action(&mut action, original_tool.clone(), replacement_tool.clone()).unwrap();
+        remove_tool_from_action(&mut action, replacement_tool).unwrap();
+
+        assert_eq!(action["tools"], json!([]));
+    }
+}
