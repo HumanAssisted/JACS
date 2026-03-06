@@ -79,10 +79,10 @@ export interface JacsMcpToolDef {
     };
 }
 /**
- * Returns the full list of JACS MCP tool definitions.
+ * Returns the Node.js MCP compatibility tool definitions.
  *
- * Use this with `server.setRequestHandler(ListToolsRequestSchema, ...)` to
- * advertise JACS tools from a Node.js MCP server.
+ * The canonical full MCP contract lives in the Rust `jacs-mcp` crate. This
+ * helper exposes the subset and compatibility aliases supported by jacsnpm.
  */
 export declare function getJacsMcpToolDefinitions(): JacsMcpToolDef[];
 /**
