@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
 use rmcp::{
@@ -20,6 +20,7 @@ use support::{
 
 static STDIO_TEST_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
+static CWD_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(30);
 const MCP_LIST_TIMEOUT: Duration = Duration::from_secs(30);
 const MCP_CALL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -121,6 +122,20 @@ fn parse_json_string_field(
 
 impl Drop for RmcpSession {
     fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.base);
+    }
+}
+
+struct LoadedAgentWorkspace {
+    _guard: MutexGuard<'static, ()>,
+    agent: jacs_binding_core::AgentWrapper,
+    base: PathBuf,
+    orig: PathBuf,
+}
+
+impl Drop for LoadedAgentWorkspace {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.orig);
         let _ = fs::remove_dir_all(&self.base);
     }
 }
@@ -854,17 +869,10 @@ fn trust_tools_compiled_in_server() {
 /// Test that export_agent_card returns valid JSON via binding-core.
 #[test]
 fn agent_card_export_via_binding_core() {
-    let (config, base) = prepare_temp_workspace();
-    // Load agent in the binding-core wrapper
-    let agent = jacs_binding_core::AgentWrapper::new();
-    let _orig = std::env::current_dir().unwrap();
-    std::env::set_current_dir(&base).expect("chdir to workspace");
-    unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD) };
-    agent
-        .load(config.to_string_lossy().to_string())
-        .expect("load agent");
+    let ctx = load_agent_in_workspace();
 
-    let card_json = agent
+    let card_json = ctx
+        .agent
         .export_agent_card()
         .expect("export_agent_card should succeed");
     let card: serde_json::Value =
@@ -877,24 +885,15 @@ fn agent_card_export_via_binding_core() {
         card.get("url").is_some() || card.get("capabilities").is_some(),
         "Agent Card should have standard A2A fields"
     );
-
-    std::env::set_current_dir(&_orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }
 
 /// Test that generate_well_known_documents returns a non-empty document set.
 #[test]
 fn well_known_documents_generated() {
-    let (config, base) = prepare_temp_workspace();
-    let agent = jacs_binding_core::AgentWrapper::new();
-    let _orig = std::env::current_dir().unwrap();
-    std::env::set_current_dir(&base).expect("chdir to workspace");
-    unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD) };
-    agent
-        .load(config.to_string_lossy().to_string())
-        .expect("load agent");
+    let ctx = load_agent_in_workspace();
 
-    let docs_json = agent
+    let docs_json = ctx
+        .agent
         .generate_well_known_documents(None)
         .expect("generate_well_known_documents should succeed");
     let docs: Vec<serde_json::Value> =
@@ -924,24 +923,15 @@ fn well_known_documents_generated() {
         "First document should be agent-card, got: {}",
         first_path
     );
-
-    std::env::set_current_dir(&_orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }
 
 /// Test that get_agent_json returns the agent's full document.
 #[test]
 fn export_agent_json_valid() {
-    let (config, base) = prepare_temp_workspace();
-    let agent = jacs_binding_core::AgentWrapper::new();
-    let _orig = std::env::current_dir().unwrap();
-    std::env::set_current_dir(&base).expect("chdir to workspace");
-    unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD) };
-    agent
-        .load(config.to_string_lossy().to_string())
-        .expect("load agent");
+    let ctx = load_agent_in_workspace();
 
-    let agent_json = agent
+    let agent_json = ctx
+        .agent
         .get_agent_json()
         .expect("get_agent_json should succeed");
     let value: serde_json::Value =
@@ -954,17 +944,15 @@ fn export_agent_json_valid() {
         value.get("jacsSignature").is_some(),
         "Agent JSON should contain jacsSignature"
     );
-
-    std::env::set_current_dir(&_orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }
 
 // =============================================================================
 // A2A Artifact Wrapping / Verification Tool Integration Tests
 // =============================================================================
 
-/// Helper: load an AgentWrapper inside a temp workspace. Returns (wrapper, orig_dir, base_dir).
-fn load_agent_in_workspace() -> (jacs_binding_core::AgentWrapper, PathBuf, PathBuf) {
+/// Helper: load an AgentWrapper inside a temp workspace while serializing cwd changes.
+fn load_agent_in_workspace() -> LoadedAgentWorkspace {
+    let guard = CWD_TEST_LOCK.lock().expect("lock cwd test mutex");
     let (config, base) = prepare_temp_workspace();
     let agent = jacs_binding_core::AgentWrapper::new();
     let orig = std::env::current_dir().unwrap();
@@ -973,20 +961,26 @@ fn load_agent_in_workspace() -> (jacs_binding_core::AgentWrapper, PathBuf, PathB
     agent
         .load(config.to_string_lossy().to_string())
         .expect("load agent");
-    (agent, orig, base)
+    LoadedAgentWorkspace {
+        _guard: guard,
+        agent,
+        base,
+        orig,
+    }
 }
 
 /// Test wrapping an A2A artifact and getting back valid signed JSON.
 #[test]
 #[allow(deprecated)]
 fn a2a_wrap_artifact_produces_signed_output() {
-    let (agent, orig, base) = load_agent_in_workspace();
+    let ctx = load_agent_in_workspace();
 
     let artifact = serde_json::json!({
         "type": "text",
         "text": "Hello from integration test"
     });
-    let wrapped_json = agent
+    let wrapped_json = ctx
+        .agent
         .wrap_a2a_artifact(&artifact.to_string(), "a2a-artifact", None)
         .expect("wrap_a2a_artifact should succeed");
 
@@ -1001,26 +995,25 @@ fn a2a_wrap_artifact_produces_signed_output() {
         "Wrapped artifact should contain provenance/signature fields: {}",
         wrapped_json.chars().take(500).collect::<String>()
     );
-
-    std::env::set_current_dir(&orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }
 
 /// Test full round-trip: wrap an artifact, then verify it.
 #[test]
 #[allow(deprecated)]
 fn a2a_wrap_then_verify_round_trip() {
-    let (agent, orig, base) = load_agent_in_workspace();
+    let ctx = load_agent_in_workspace();
 
     let artifact = serde_json::json!({
         "type": "text",
         "text": "Round-trip verification test"
     });
-    let wrapped_json = agent
+    let wrapped_json = ctx
+        .agent
         .wrap_a2a_artifact(&artifact.to_string(), "message", None)
         .expect("wrap should succeed");
 
-    let result_json = agent
+    let result_json = ctx
+        .agent
         .verify_a2a_artifact(&wrapped_json)
         .expect("verify should succeed on freshly wrapped artifact");
     let result: serde_json::Value =
@@ -1036,37 +1029,33 @@ fn a2a_wrap_then_verify_round_trip() {
         "Freshly wrapped artifact should verify successfully: {}",
         result_json
     );
-
-    std::env::set_current_dir(&orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }
 
 /// Test that verify_a2a_artifact rejects invalid JSON.
 #[test]
 fn a2a_verify_rejects_invalid_json() {
-    let (agent, orig, base) = load_agent_in_workspace();
+    let ctx = load_agent_in_workspace();
 
-    let result = agent.verify_a2a_artifact("not valid json");
+    let result = ctx.agent.verify_a2a_artifact("not valid json");
     assert!(
         result.is_err(),
         "verify_a2a_artifact should reject invalid JSON"
     );
-
-    std::env::set_current_dir(&orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }
 
 /// Test that assess_a2a_agent returns an assessment for a minimal Agent Card.
 #[test]
 fn a2a_assess_agent_with_card() {
-    let (agent, orig, base) = load_agent_in_workspace();
+    let ctx = load_agent_in_workspace();
 
     // Get this agent's own card to use as input
-    let card_json = agent
+    let card_json = ctx
+        .agent
         .export_agent_card()
         .expect("export_agent_card should succeed");
 
-    let assessment_json = agent
+    let assessment_json = ctx
+        .agent
         .assess_a2a_agent(&card_json, "open")
         .expect("assess_a2a_agent should succeed with open policy");
     let assessment: serde_json::Value =
@@ -1081,22 +1070,16 @@ fn a2a_assess_agent_with_card() {
         "Agent should be allowed under open policy: {}",
         assessment_json
     );
-
-    std::env::set_current_dir(&orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }
 
 /// Test that assess_a2a_agent rejects invalid Agent Card JSON.
 #[test]
 fn a2a_assess_agent_rejects_invalid_card() {
-    let (agent, orig, base) = load_agent_in_workspace();
+    let ctx = load_agent_in_workspace();
 
-    let result = agent.assess_a2a_agent("not json", "open");
+    let result = ctx.agent.assess_a2a_agent("not json", "open");
     assert!(
         result.is_err(),
         "assess_a2a_agent should reject invalid JSON"
     );
-
-    std::env::set_current_dir(&orig).ok();
-    let _ = fs::remove_dir_all(&base);
 }

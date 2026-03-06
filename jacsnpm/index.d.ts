@@ -181,18 +181,26 @@ export declare class JacsAgent {
   exportAgentCardSync(): string
   /** Wrap an A2A artifact with JACS provenance signature (sync). */
   wrapA2aArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
-  /** @deprecated Use wrapA2aArtifactSync() instead. Alias for wrapA2aArtifactSync. */
+  /** Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync. */
   signArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
   /** Verify a JACS-wrapped A2A artifact (sync). */
   verifyA2aArtifactSync(wrappedJson: string): string
+  /** Verify a JACS-wrapped A2A artifact with policy-aware trust assessment (sync). */
+  verifyA2aArtifactWithPolicySync(wrappedJson: string, agentCardJson: string, policy: string): string
+  /** Assess a remote agent's trust level based on its Agent Card and a policy (sync). */
+  assessA2aAgentSync(agentCardJson: string, policy: string): string
   /** Export this agent as an A2A Agent Card. */
   exportAgentCard(): Promise<string>
   /** Wrap an A2A artifact with JACS provenance signature. */
   wrapA2aArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
-  /** @deprecated Use wrapA2aArtifact() instead. Alias for wrapA2aArtifact. */
+  /** Sign an A2A artifact. Alias for wrapA2aArtifact. */
   signArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
   /** Verify a JACS-wrapped A2A artifact. */
   verifyA2aArtifact(wrappedJson: string): Promise<string>
+  /** Verify a JACS-wrapped A2A artifact with policy-aware trust assessment. */
+  verifyA2aArtifactWithPolicy(wrappedJson: string, agentCardJson: string, policy: string): Promise<string>
+  /** Assess a remote agent's trust level based on its Agent Card and a policy. */
+  assessA2aAgent(agentCardJson: string, policy: string): Promise<string>
   /** Create a signed attestation document (sync). */
   createAttestationSync(paramsJson: string): string
   /** Verify an attestation -- local tier (sync). */
