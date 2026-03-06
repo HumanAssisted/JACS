@@ -14,16 +14,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up local Homebrew tap
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/humanassisted/homebrew-jacs"
+          mkdir -p "$tap_dir/Formula"
+          cp ./Formula/jacs.rb "$tap_dir/Formula/"
+          cp ./Formula/haisdk.rb "$tap_dir/Formula/"
+
       - name: Install JACS formula
-        run: brew install --formula ./Formula/jacs.rb
+        run: brew install humanassisted/jacs/jacs
 
       - name: Smoke test JACS CLI + MCP helpers
         run: |
           jacs version
           jacs mcp --help
 
-      - name: Install HAISDK formula
-        run: brew install --formula --HEAD ./Formula/haisdk.rb
+      - name: Install HAISDK formula (HEAD)
+        run: brew install --HEAD humanassisted/jacs/haisdk
 
       - name: Smoke test HAISDK CLI
         run: |

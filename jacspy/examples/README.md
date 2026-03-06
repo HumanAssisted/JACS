@@ -1,92 +1,46 @@
 # JACS Examples
 
-Minimal, copy-paste ready examples demonstrating JACS functionality.
+Runnable examples for the Python bindings.
 
 ## Quickstart
 
-Start with the basics in under 5 minutes:
+Create an agent and sign a document:
 
 ```bash
-# Create an agent (one time only)
-python quickstart.py --create
-
-# Run the quickstart example
 python quickstart.py
 ```
 
-## HAI.ai Integration
+## Single-File Examples
 
-Register your JACS agent with [HAI.ai](https://hai.ai):
+- `quickstart.py` - minimal create/sign/verify flow
+- `sign_file.py` - sign a local file
+- `p2p_exchange.py` - exchange signed artifacts between agents
+- `mcp_server.py` - expose JACS tools through a Python MCP server
 
-```bash
-# Test connection first
-python hai_quickstart.py --test
+## Example Directories
 
-# Register your agent
-export HAI_API_KEY=your-api-key-from-hai-dashboard
-python hai_quickstart.py
-```
-
-### Files
-
-- **`hai_quickstart.py`** - Minimal 5-minute example showing connection and registration
-- **`register_with_hai.py`** - Full-featured example with error handling and detailed output
-
-## Signing Documents
-
-Sign files and messages with your agent's private key:
-
-```bash
-python sign_file.py
-```
-
-## Running Benchmarks
-
-Benchmark your agent's performance on HAI.ai:
-
-```bash
-python run_benchmark.py
-```
-
-## Streaming Events
-
-Connect to HAI.ai event stream with Server-Sent Events:
-
-```bash
-python sse_client.py
-```
-
-## Advanced Examples
-
-- **`mcp_server.py`** - Model Context Protocol server implementation
-- **`p2p_exchange.py`** - Peer-to-peer agent exchange
-- **`http/`** - HTTP server examples
-- **`jacs-mcp/`** - JACS MCP integration
-- **`langchain/`** - LangChain integration
-- **`mcp/`** - MCP server examples
-- **`fastmcp/`** - FastMCP framework examples
+- `http/` - HTTP client/server examples with JACS material on disk
+- `jacs-mcp/` - Python package example for a JACS-backed MCP app
+- `langchain/` - LangChain integration examples
+- `mcp/` - MCP client/server examples
+- `fastmcp/` - FastMCP-oriented integration examples
 
 ## Prerequisites
 
-Install core dependencies:
+Install the core package first:
 
 ```bash
-pip install httpx httpx-sse
+pip install jacs
 ```
 
-For advanced examples, see individual subdirectory READMEs.
-
-## Environment Variables
-
-- `HAI_API_KEY` - Your HAI.ai API key (get from https://hai.ai/dashboard)
-- `JACS_HOME` - JACS working directory (optional, defaults to `~/.jacs`)
+Some examples need extra dependencies. Check the `requirements.txt`, `pyproject.toml`, or local README in each example directory before running them.
 
 ## Getting Help
 
-Each example includes usage instructions in its docstring:
+Most top-level scripts expose CLI help:
 
 ```bash
-python hai_quickstart.py --help
 python quickstart.py --help
-python register_with_hai.py --help
+python sign_file.py --help
+python mcp_server.py --help
 ```
