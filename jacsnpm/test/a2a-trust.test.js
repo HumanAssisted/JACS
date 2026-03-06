@@ -259,7 +259,7 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
       expect(result.trustAssessment).to.exist;
       expect(result.trustAssessment.allowed).to.be.true;
       expect(result.trustAssessment.jacsRegistered).to.be.true;
-      expect(result.trustAssessment.trustLevel).to.equal('jacs_registered');
+      expect(result.trustAssessment.trustLevel).to.equal('JacsVerified');
     });
 
     it('should reject untrusted signer under strict policy', async () => {
@@ -281,7 +281,7 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
 
       const result = await integration.verifyWrappedArtifact(artifact);
 
-      expect(result.valid).to.be.true; // signature is valid
+      expect(result.valid).to.be.false;
       expect(result.trustAssessment).to.exist;
       expect(result.trustAssessment.allowed).to.be.false;
       expect(result.trustAssessment.inTrustStore).to.be.false;
@@ -311,7 +311,7 @@ describe('A2A Trust Policy API - [2.2.4]', () => {
       expect(result.trustAssessment).to.exist;
       expect(result.trustAssessment.allowed).to.be.true;
       expect(result.trustAssessment.inTrustStore).to.be.true;
-      expect(result.trustAssessment.trustLevel).to.equal('trusted');
+      expect(result.trustAssessment.trustLevel).to.equal('ExplicitlyTrusted');
     });
   });
 

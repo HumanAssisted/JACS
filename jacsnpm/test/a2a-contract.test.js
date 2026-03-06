@@ -38,13 +38,90 @@ function loadSchema() {
 }
 
 /**
- * Create a mock JacsClient whose _agent.verifyResponse returns `valid`.
+ * Create a mock JacsClient whose native A2A verification methods return
+ * canonical contract-shaped JSON.
  */
 function createMockClient(valid = true) {
+  const buildParentResults = (parentSignatures = []) => parentSignatures.map((parent, index) => ({
+    index,
+    artifactId: parent.jacsId || '',
+    signerId: parent.jacsSignature?.agentID || '',
+    status: parent.jacsSignature?.agentID === 'agent-self-001' ? 'SelfSigned' : 'Verified',
+    verified: true,
+  }));
+
+  const buildGenericResult = (wrappedArtifact, policy = null) => {
+    const signerId = wrappedArtifact.jacsSignature?.agentID || '';
+    const result = {
+      status: valid
+        ? (signerId === 'agent-self-001' ? 'SelfSigned' : 'Verified')
+        : { Invalid: { reason: 'signature mismatch' } },
+      valid,
+      signerId,
+      signerVersion: wrappedArtifact.jacsSignature?.agentVersion || '',
+      artifactType: wrappedArtifact.jacsType || '',
+      timestamp: wrappedArtifact.jacsVersionDate || '',
+      parentSignaturesValid: buildParentResults(wrappedArtifact.jacsParentSignatures).every((parent) => parent.verified),
+      parentVerificationResults: buildParentResults(wrappedArtifact.jacsParentSignatures),
+      originalArtifact: wrappedArtifact.a2aArtifact || {},
+    };
+    if (policy) {
+      const trustLevel = String(wrappedArtifact.jacsType || '').startsWith('a2a-')
+        ? 'JacsVerified'
+        : 'Untrusted';
+      result.trustLevel = trustLevel;
+      result.trustAssessment = {
+        allowed: policy === 'open' || trustLevel === 'JacsVerified',
+        trustLevel,
+        reason: policy === 'open'
+          ? 'Open policy: all agents are allowed'
+          : trustLevel === 'JacsVerified'
+            ? 'Verified policy: agent has JACS provenance extension'
+            : 'Verified policy: agent does not declare JACS provenance extension',
+        jacsRegistered: trustLevel === 'JacsVerified',
+        agentId: signerId,
+        policy: policy[0].toUpperCase() + policy.slice(1),
+      };
+    }
+    return result;
+  };
+
+  const verifyA2aArtifactSync = sinon.stub().callsFake((wrappedJson) => {
+    const wrappedArtifact = JSON.parse(wrappedJson);
+    const signerId = wrappedArtifact.jacsSignature?.agentID;
+    const fixtureName = {
+      'agent-self-001': 'self_signed_verified',
+      'agent-foreign-002': 'foreign_verified',
+      'agent-foreign-003': 'foreign_unverified',
+      'agent-invalid-004': 'invalid_signature',
+    }[signerId];
+    return JSON.stringify(fixtureName ? loadFixture(fixtureName) : buildGenericResult(wrappedArtifact));
+  });
+
+  const verifyA2aArtifactWithPolicySync = sinon.stub().callsFake((wrappedJson, _cardJson, policy) => {
+    const wrappedArtifact = JSON.parse(wrappedJson);
+    const signerId = wrappedArtifact.jacsSignature?.agentID;
+    if (signerId === 'agent-blocked-005' && policy === 'strict') {
+      return JSON.stringify(loadFixture('trust_blocked'));
+    }
+    if (signerId === 'agent-foreign-002') {
+      return JSON.stringify(loadFixture('foreign_verified'));
+    }
+    if (signerId === 'agent-foreign-003') {
+      return JSON.stringify(loadFixture('foreign_unverified'));
+    }
+    if (signerId === 'agent-invalid-004') {
+      return JSON.stringify(loadFixture('invalid_signature'));
+    }
+    return JSON.stringify(buildGenericResult(wrappedArtifact, policy));
+  });
+
   return {
     _agent: {
       signRequest: sinon.stub().callsFake((json) => json),
       verifyResponse: sinon.stub().returns(valid),
+      verifyA2aArtifactSync,
+      verifyA2aArtifactWithPolicySync,
     },
     agentId: 'mock-agent-id',
     name: 'mock-agent',

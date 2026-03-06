@@ -12,7 +12,7 @@ exports.JACSA2AIntegration = exports.A2AAgentCard = exports.A2AAgentCardSignatur
 exports.sha256 = sha256;
 const uuid_1 = require("uuid");
 const crypto_1 = require("crypto");
-const deprecation_1 = require("./deprecation");
+const deprecation_js_1 = require("./deprecation.js");
 // =============================================================================
 // Constants
 // =============================================================================
@@ -124,6 +124,85 @@ class A2AAgentCard {
     }
 }
 exports.A2AAgentCard = A2AAgentCard;
+/** Map binding-core's canonical trustAssessment to the wrapper's trust block. */
+function buildTrustBlock(trustAssessment) {
+    return {
+        policy: trustAssessment.policy ?? null,
+        status: trustAssessment.allowed ? 'allowed' : 'blocked',
+        reason: trustAssessment.reason ?? '',
+    };
+}
+function canonicalPolicyName(policy) {
+    if (!policy)
+        return undefined;
+    switch (policy.toLowerCase()) {
+        case 'open':
+            return 'Open';
+        case 'verified':
+            return 'Verified';
+        case 'strict':
+            return 'Strict';
+        default:
+            return policy;
+    }
+}
+function canonicalTrustLevel(level) {
+    switch (String(level)) {
+        case 'ExplicitlyTrusted':
+        case 'explicitly_trusted':
+        case 'trusted':
+            return 'ExplicitlyTrusted';
+        case 'JacsVerified':
+        case 'jacs_verified':
+        case 'jacs_registered':
+            return 'JacsVerified';
+        default:
+            return 'Untrusted';
+    }
+}
+function legacyTrustLevel(level) {
+    switch (canonicalTrustLevel(level)) {
+        case 'ExplicitlyTrusted':
+            return 'trusted';
+        case 'JacsVerified':
+            return 'jacs_registered';
+        default:
+            return 'untrusted';
+    }
+}
+function normalizeVerificationStatus(status, valid, reason = '') {
+    if (status === 'Verified' || status === 'SelfSigned') {
+        return status;
+    }
+    if (status && typeof status === 'object') {
+        const statusObj = status;
+        const unverified = statusObj.Unverified;
+        if (unverified && typeof unverified === 'object') {
+            return { Unverified: { reason: String(unverified.reason ?? reason) } };
+        }
+        const invalid = statusObj.Invalid;
+        if (invalid && typeof invalid === 'object') {
+            return { Invalid: { reason: String(invalid.reason ?? reason) } };
+        }
+    }
+    if (status === 'Unverified') {
+        return { Unverified: { reason: reason || 'verification could not be completed' } };
+    }
+    if (status === 'Invalid') {
+        return { Invalid: { reason: reason || 'signature verification failed' } };
+    }
+    return valid
+        ? 'Verified'
+        : { Invalid: { reason: reason || 'signature verification failed' } };
+}
+function defineHiddenProperty(target, key, value) {
+    Object.defineProperty(target, key, {
+        configurable: true,
+        enumerable: false,
+        writable: true,
+        value,
+    });
+}
 // =============================================================================
 // JACS A2A Integration
 // =============================================================================
@@ -291,41 +370,23 @@ class JACSA2AIntegration {
      * - strict: requires the agent to be in the local JACS trust store
      */
     assessRemoteAgent(agentCardJson) {
-        const card = typeof agentCardJson === 'string'
-            ? JSON.parse(agentCardJson)
-            : agentCardJson;
-        const jacsRegistered = this._hasJacsExtension(card);
-        const agentId = (card.metadata && card.metadata.jacsId);
-        let inTrustStore = false;
-        if (agentId) {
-            try {
-                inTrustStore = this.client.isTrusted(agentId);
-            }
-            catch {
-                inTrustStore = false;
-            }
+        const cardJson = typeof agentCardJson === 'string'
+            ? agentCardJson
+            : JSON.stringify(agentCardJson);
+        const card = JSON.parse(cardJson);
+        const nativeAssess = this.client._agent?.assessA2aAgentSync;
+        if (typeof nativeAssess === 'function') {
+            const canonicalJson = nativeAssess.call(this.client._agent, cardJson, this.trustPolicy);
+            const canonical = JSON.parse(canonicalJson);
+            return {
+                allowed: canonical.allowed !== false,
+                trustLevel: legacyTrustLevel(canonical.trustLevel),
+                jacsRegistered: canonical.jacsRegistered === true,
+                inTrustStore: canonicalTrustLevel(canonical.trustLevel) === 'ExplicitlyTrusted',
+                reason: String(canonical.reason ?? ''),
+            };
         }
-        const trustLevel = inTrustStore
-            ? 'trusted'
-            : jacsRegistered
-                ? 'jacs_registered'
-                : 'untrusted';
-        switch (this.trustPolicy) {
-            case 'open':
-                return { allowed: true, trustLevel, jacsRegistered, inTrustStore, reason: 'Open policy: all agents accepted' };
-            case 'verified':
-                if (jacsRegistered) {
-                    return { allowed: true, trustLevel, jacsRegistered, inTrustStore, reason: 'Agent declares JACS extension' };
-                }
-                return { allowed: false, trustLevel, jacsRegistered, inTrustStore, reason: 'Verified policy: agent does not declare JACS extension' };
-            case 'strict':
-                if (inTrustStore) {
-                    return { allowed: true, trustLevel, jacsRegistered, inTrustStore, reason: 'Agent is in local trust store' };
-                }
-                return { allowed: false, trustLevel, jacsRegistered, inTrustStore, reason: 'Strict policy: agent not in local trust store' };
-            default:
-                return { allowed: false, trustLevel, jacsRegistered, inTrustStore, reason: `Unknown trust policy: ${this.trustPolicy}` };
-        }
+        return this._legacyAssessRemoteAgent(card, this.trustPolicy);
     }
     /**
      * Convenience method to add an A2A agent to the JACS trust store.
@@ -354,36 +415,15 @@ class JACSA2AIntegration {
     }
     /** @deprecated Use signArtifact() instead. */
     async wrapArtifactWithProvenance(artifact, artifactType, parentSignatures = null) {
-        (0, deprecation_1.warnDeprecated)('wrapArtifactWithProvenance', 'signArtifact');
+        (0, deprecation_js_1.warnDeprecated)('wrapArtifactWithProvenance', 'signArtifact');
         return this.signArtifact(artifact, artifactType, parentSignatures);
     }
-    async verifyWrappedArtifact(wrappedArtifact) {
-        const result = this._verifyWrappedArtifactInternal(wrappedArtifact, new Set());
-        // Attach trust assessment based on the signer's identity
-        const signerId = result.signerId;
-        if (signerId && signerId !== 'unknown') {
-            let inTrustStore = false;
-            try {
-                inTrustStore = this.client.isTrusted(signerId);
-            }
-            catch {
-                inTrustStore = false;
-            }
-            const trustLevel = inTrustStore ? 'trusted' : 'jacs_registered';
-            const allowed = this.trustPolicy === 'open'
-                || this.trustPolicy === 'verified'
-                || (this.trustPolicy === 'strict' && inTrustStore);
-            result.trustAssessment = {
-                allowed,
-                trustLevel,
-                jacsRegistered: true, // has a valid JACS signature
-                inTrustStore,
-                reason: allowed
-                    ? (inTrustStore ? 'Signer is in local trust store' : `Signer has valid JACS signature (${this.trustPolicy} policy)`)
-                    : `Strict policy: signer ${signerId} not in local trust store`,
-            };
-        }
-        return result;
+    async verifyWrappedArtifact(wrappedArtifact, agentCard) {
+        const options = {
+            policy: this.trustPolicy,
+            agentCard: agentCard ?? this._buildSyntheticAgentCard(wrappedArtifact),
+        };
+        return this._verifyWrappedArtifactInternal(wrappedArtifact, new Set(), options);
     }
     createChainOfCustody(artifacts) {
         const chain = [];
@@ -473,7 +513,157 @@ class JACSA2AIntegration {
             verificationResult: false,
         };
     }
-    _verifyWrappedArtifactInternal(wrappedArtifact, visited) {
+    _legacyAssessRemoteAgent(card, policy) {
+        const metadata = card.metadata;
+        const agentId = typeof metadata?.jacsId === 'string' ? metadata.jacsId : null;
+        const jacsRegistered = this._hasJacsExtension(card);
+        let inTrustStore = false;
+        const isTrusted = this.client.isTrusted;
+        if (typeof isTrusted === 'function' && agentId) {
+            try {
+                inTrustStore = Boolean(isTrusted.call(this.client, agentId));
+            }
+            catch {
+                inTrustStore = false;
+            }
+        }
+        const trustLevel = inTrustStore
+            ? 'trusted'
+            : jacsRegistered
+                ? 'jacs_registered'
+                : 'untrusted';
+        let allowed;
+        let reason;
+        switch (policy) {
+            case exports.TRUST_POLICIES.OPEN:
+                allowed = true;
+                reason = 'Open policy: all agents are allowed';
+                break;
+            case exports.TRUST_POLICIES.STRICT:
+                allowed = inTrustStore;
+                reason = allowed
+                    ? `Strict policy: agent '${agentId}' is in the local trust store.`
+                    : agentId
+                        ? `Strict policy: agent '${agentId}' is not in the local trust store.`
+                        : 'Strict policy: remote agent is missing a jacsId.';
+                break;
+            case exports.TRUST_POLICIES.VERIFIED:
+            default:
+                allowed = jacsRegistered;
+                reason = jacsRegistered
+                    ? 'Verified policy: agent has JACS extension'
+                    : 'Verified policy: agent does not declare JACS extension';
+                break;
+        }
+        return {
+            allowed,
+            trustLevel,
+            jacsRegistered,
+            inTrustStore,
+            reason,
+        };
+    }
+    _buildSyntheticAgentCard(wrappedArtifact) {
+        const signature = wrappedArtifact.jacsSignature;
+        const signerId = typeof signature?.agentID === 'string' ? signature.agentID : null;
+        const card = {
+            name: signerId || 'unknown',
+            capabilities: {},
+            metadata: { jacsId: signerId },
+        };
+        if (String(wrappedArtifact.jacsType || '').startsWith('a2a-')) {
+            card.capabilities.extensions = [{ uri: exports.JACS_EXTENSION_URI }];
+        }
+        return card;
+    }
+    _buildCanonicalTrustAssessment(agentCard, policy) {
+        const legacy = this._legacyAssessRemoteAgent(agentCard, policy);
+        const trustAssessment = {
+            allowed: legacy.allowed,
+            trustLevel: canonicalTrustLevel(legacy.trustLevel),
+            jacsRegistered: legacy.jacsRegistered,
+            reason: legacy.reason,
+            policy: canonicalPolicyName(policy),
+            agentId: legacy.agentId ?? null,
+        };
+        defineHiddenProperty(trustAssessment, 'inTrustStore', trustAssessment.trustLevel === 'ExplicitlyTrusted');
+        return trustAssessment;
+    }
+    _normalizeTrustAssessment(trustAssessment, fallbackPolicy) {
+        const normalized = {
+            allowed: trustAssessment.allowed !== false,
+            trustLevel: canonicalTrustLevel(trustAssessment.trustLevel),
+            jacsRegistered: trustAssessment.jacsRegistered === true,
+            reason: String(trustAssessment.reason ?? ''),
+            policy: canonicalPolicyName(String(trustAssessment.policy ?? fallbackPolicy)),
+            agentId: typeof trustAssessment.agentId === 'string' || trustAssessment.agentId === null
+                ? trustAssessment.agentId
+                : null,
+        };
+        defineHiddenProperty(normalized, 'inTrustStore', normalized.trustLevel === 'ExplicitlyTrusted');
+        return normalized;
+    }
+    _normalizeParentVerificationResult(parentResult, index) {
+        const verified = parentResult.verified !== undefined
+            ? parentResult.verified !== false
+            : parentResult.valid !== false;
+        const normalized = {
+            index: Number.isInteger(parentResult.index) ? parentResult.index : index,
+            artifactId: String(parentResult.artifactId ?? ''),
+            signerId: String(parentResult.signerId ?? ''),
+            status: normalizeVerificationStatus(parentResult.status, verified),
+            verified,
+        };
+        defineHiddenProperty(normalized, 'valid', normalized.verified);
+        return normalized;
+    }
+    _canonicalResultFromWrappedArtifact(wrappedArtifact, canonical, fallbackPolicy) {
+        const signature = wrappedArtifact.jacsSignature;
+        const payload = wrappedArtifact.jacs_payload;
+        const parentResults = Array.isArray(canonical.parentVerificationResults)
+            ? canonical.parentVerificationResults.map((parent, index) => this._normalizeParentVerificationResult(parent, index))
+            : [];
+        const result = {
+            valid: canonical.valid !== false,
+            status: normalizeVerificationStatus(canonical.status, canonical.valid !== false),
+            signerId: String(canonical.signerId ?? signature?.agentID ?? 'unknown'),
+            signerVersion: String(canonical.signerVersion ?? signature?.agentVersion ?? 'unknown'),
+            artifactType: String(canonical.artifactType ?? wrappedArtifact.jacsType ?? payload?.jacsType ?? 'unknown'),
+            timestamp: String(canonical.timestamp ?? wrappedArtifact.jacsVersionDate ?? ''),
+            originalArtifact: (canonical.originalArtifact
+                ?? wrappedArtifact.a2aArtifact
+                ?? payload?.a2aArtifact
+                ?? {}),
+            parentSignaturesValid: parentResults.every((parent) => parent.verified),
+            parentVerificationResults: parentResults,
+        };
+        if (canonical.parentSignaturesValid !== undefined) {
+            result.parentSignaturesValid = canonical.parentSignaturesValid !== false;
+        }
+        if (canonical.trustAssessment && typeof canonical.trustAssessment === 'object') {
+            result.trustAssessment = this._normalizeTrustAssessment(canonical.trustAssessment, fallbackPolicy);
+            result.trustLevel = canonicalTrustLevel(result.trustAssessment.trustLevel);
+            if (!result.trustAssessment.allowed) {
+                result.valid = false;
+                result.status = { Invalid: { reason: result.trustAssessment.reason } };
+            }
+        }
+        return result;
+    }
+    _attachCompatibilityAliases(result, options = {}) {
+        defineHiddenProperty(result, 'parentSignaturesCount', result.parentVerificationResults.length);
+        if (options.rawVerificationResult !== undefined) {
+            defineHiddenProperty(result, 'verificationResult', options.rawVerificationResult);
+        }
+        if (options.verifiedPayload) {
+            defineHiddenProperty(result, 'verifiedPayload', options.verifiedPayload);
+        }
+        if (result.trustAssessment) {
+            defineHiddenProperty(result, 'trust', buildTrustBlock(result.trustAssessment));
+        }
+        return result;
+    }
+    _verifyWrappedArtifactInternal(wrappedArtifact, visited, options) {
         const artifactId = wrappedArtifact.jacsId;
         if (artifactId && visited.has(artifactId)) {
             throw new Error(`Cycle detected in parent signature chain at artifact ${artifactId}`);
@@ -482,53 +672,73 @@ class JACSA2AIntegration {
             visited.add(artifactId);
         }
         try {
-            const rawVerificationResult = this.client._agent.verifyResponse(JSON.stringify(wrappedArtifact));
-            const normalized = this._normalizeVerifyResponse(rawVerificationResult);
-            const signatureInfo = (wrappedArtifact.jacsSignature || {});
-            const payload = wrappedArtifact.jacs_payload && typeof wrappedArtifact.jacs_payload === 'object'
-                ? wrappedArtifact.jacs_payload
-                : null;
-            const result = {
-                valid: normalized.valid,
-                verificationResult: normalized.verificationResult,
-                signerId: signatureInfo.agentID || 'unknown',
-                signerVersion: signatureInfo.agentVersion || 'unknown',
-                artifactType: wrappedArtifact.jacsType || 'unknown',
-                timestamp: wrappedArtifact.jacsVersionDate || '',
-                originalArtifact: (wrappedArtifact.a2aArtifact
-                    || payload?.a2aArtifact
-                    || {}),
-            };
-            if (normalized.verifiedPayload) {
-                result.verifiedPayload = normalized.verifiedPayload;
+            const wrappedJson = JSON.stringify(wrappedArtifact);
+            const nativeAgent = this.client._agent;
+            const verifyWithPolicy = nativeAgent?.verifyA2aArtifactWithPolicySync;
+            const verifyCanonical = nativeAgent?.verifyA2aArtifactSync;
+            const verifyLegacy = nativeAgent?.verifyResponse;
+            let rawVerificationResult;
+            let verifiedPayload;
+            let canonical;
+            if (options?.policy && options.agentCard && typeof verifyWithPolicy === 'function') {
+                const canonicalJson = verifyWithPolicy.call(nativeAgent, wrappedJson, JSON.stringify(options.agentCard), options.policy);
+                canonical = JSON.parse(canonicalJson);
             }
-            const parents = wrappedArtifact.jacsParentSignatures;
-            if (Array.isArray(parents) && parents.length > 0) {
-                const parentResults = parents.map((parent, index) => {
-                    try {
-                        const parentResult = this._verifyWrappedArtifactInternal(parent, visited);
+            else if (typeof verifyCanonical === 'function') {
+                const canonicalJson = verifyCanonical.call(nativeAgent, wrappedJson);
+                canonical = JSON.parse(canonicalJson);
+            }
+            else if (typeof verifyLegacy === 'function') {
+                const normalized = this._normalizeVerifyResponse(verifyLegacy.call(nativeAgent, wrappedJson));
+                rawVerificationResult = normalized.verificationResult;
+                verifiedPayload = normalized.verifiedPayload;
+                const signature = wrappedArtifact.jacsSignature;
+                const signerId = typeof signature?.agentID === 'string' ? signature.agentID : undefined;
+                const parentResults = Array.isArray(wrappedArtifact.jacsParentSignatures)
+                    ? wrappedArtifact.jacsParentSignatures.map((parent, index) => {
+                        const nested = this._verifyWrappedArtifactInternal(parent, visited);
                         return {
                             index,
-                            artifactId: parent.jacsId || 'unknown',
-                            valid: !!parentResult.valid,
-                            parentSignaturesValid: parentResult.parentSignaturesValid !== false,
+                            artifactId: String(parent.jacsId ?? ''),
+                            signerId: nested.signerId,
+                            status: nested.status,
+                            verified: nested.valid,
                         };
-                    }
-                    catch (error) {
-                        return {
-                            index,
-                            artifactId: parent && parent.jacsId ? parent.jacsId : 'unknown',
-                            valid: false,
-                            parentSignaturesValid: false,
-                            error: error instanceof Error ? error.message : String(error),
-                        };
-                    }
-                });
-                result.parentSignaturesCount = parentResults.length;
-                result.parentVerificationResults = parentResults;
-                result.parentSignaturesValid = parentResults.every((entry) => entry.valid && entry.parentSignaturesValid);
+                    })
+                    : [];
+                canonical = {
+                    valid: normalized.valid,
+                    status: normalized.valid
+                        ? signerId && signerId === this.client.agentId
+                            ? 'SelfSigned'
+                            : 'Verified'
+                        : 'Invalid',
+                    signerId,
+                    signerVersion: signature?.agentVersion,
+                    artifactType: wrappedArtifact.jacsType,
+                    timestamp: wrappedArtifact.jacsVersionDate,
+                    originalArtifact: wrappedArtifact.a2aArtifact,
+                    parentVerificationResults: parentResults,
+                    parentSignaturesValid: parentResults.every((parent) => parent.verified !== false),
+                };
             }
-            return result;
+            else {
+                throw new Error('A2A verification requires verifyA2aArtifactWithPolicySync(), '
+                    + 'verifyA2aArtifactSync(), or verifyResponse() on client._agent.');
+            }
+            if (options?.policy && options.agentCard && !canonical.trustAssessment) {
+                const trustAssessment = this._buildCanonicalTrustAssessment(options.agentCard, options.policy);
+                canonical = {
+                    ...canonical,
+                    trustLevel: canonicalTrustLevel(trustAssessment.trustLevel),
+                    trustAssessment,
+                };
+            }
+            const result = this._canonicalResultFromWrappedArtifact(wrappedArtifact, canonical, options?.policy ?? this.trustPolicy);
+            return this._attachCompatibilityAliases(result, {
+                rawVerificationResult: rawVerificationResult ?? canonical,
+                verifiedPayload,
+            });
         }
         finally {
             if (artifactId) {

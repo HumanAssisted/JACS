@@ -259,9 +259,9 @@ describe('A2A Ecosystem Interop - [2.5.2]', function () {
       expect(result.valid).to.be.true;
       expect(result.signerId).to.equal('agent-alpha');
       expect(result.artifactType).to.equal('a2a-task');
-      // Trust assessment: agent-alpha has a JACS signature -> jacs_registered
+      // Trust assessment: agent-alpha has a JACS signature -> JacsVerified
       expect(result.trustAssessment).to.exist;
-      expect(result.trustAssessment.trustLevel).to.equal('jacs_registered');
+      expect(result.trustAssessment.trustLevel).to.equal('JacsVerified');
       expect(result.trustAssessment.allowed).to.be.true;
     });
 

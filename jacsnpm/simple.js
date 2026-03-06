@@ -1046,3 +1046,4 @@ function generateVerifyLink(doc, baseUrl) {
     const encoded = Buffer.from(doc).toString('base64url');
     return `${baseUrl || 'https://hai.ai/jacs/verify'}?s=${encoded}`;
 }
+//# sourceMappingURL=simple.js.map

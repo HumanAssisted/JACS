@@ -57,22 +57,125 @@ def _make_mock_client() -> MagicMock:
     """Return a mock JacsClient with a mock _agent."""
     client = MagicMock()
     client._agent = MagicMock()
+    client.agent_id = "agent-self-001"
+    client.is_trusted.return_value = False
     return client
+
+
+def _build_parent_results(parent_signatures: list | None) -> list[dict[str, Any]]:
+    results = []
+    for index, parent in enumerate(parent_signatures or []):
+        signature = parent.get("jacsSignature", {})
+        signer_id = signature.get("agentID", "")
+        results.append(
+            {
+                "index": index,
+                "artifactId": parent.get("jacsId", ""),
+                "signerId": signer_id,
+                "status": "SelfSigned" if signer_id == "agent-self-001" else "Verified",
+                "verified": True,
+            }
+        )
+    return results
+
+
+def _build_generic_result(
+    wrapped_artifact: Dict[str, Any],
+    *,
+    verify_succeeds: bool,
+    policy: str | None = None,
+) -> Dict[str, Any]:
+    signature = wrapped_artifact.get("jacsSignature", {})
+    signer_id = signature.get("agentID", "")
+    status: Any
+    if verify_succeeds:
+        status = "SelfSigned" if signer_id == "agent-self-001" else "Verified"
+    else:
+        status = {"Invalid": {"reason": "signature mismatch"}}
+
+    parent_results = _build_parent_results(wrapped_artifact.get("jacsParentSignatures"))
+    result: Dict[str, Any] = {
+        "status": status,
+        "valid": verify_succeeds,
+        "signerId": signer_id,
+        "signerVersion": signature.get("agentVersion", ""),
+        "artifactType": wrapped_artifact.get("jacsType", ""),
+        "timestamp": wrapped_artifact.get("jacsVersionDate", ""),
+        "parentSignaturesValid": all(parent["verified"] for parent in parent_results),
+        "parentVerificationResults": parent_results,
+        "originalArtifact": wrapped_artifact.get("a2aArtifact", {}),
+    }
+    if policy:
+        trust_level = "JacsVerified" if str(wrapped_artifact.get("jacsType", "")).startswith("a2a-") else "Untrusted"
+        policy_name = policy.capitalize()
+        allowed = policy == "open" or trust_level == "JacsVerified"
+        result["trustLevel"] = trust_level
+        result["trustAssessment"] = {
+            "allowed": allowed,
+            "trustLevel": trust_level,
+            "reason": (
+                "Open policy: all agents are allowed"
+                if policy == "open"
+                else "Verified policy: agent has JACS provenance extension"
+                if allowed
+                else "Verified policy: agent does not declare JACS provenance extension"
+            ),
+            "jacsRegistered": trust_level == "JacsVerified",
+            "agentId": signer_id,
+            "policy": policy_name,
+        }
+    return result
 
 
 def _make_integration(*, verify_succeeds: bool = True) -> JACSA2AIntegration:
     """Create a JACSA2AIntegration with a mock client.
 
     Args:
-        verify_succeeds: If True, the mock verify_response returns
-            successfully.  If False, it raises RuntimeError to simulate
-            a failed verification.
+        verify_succeeds: If True, the mock native A2A verification returns
+            a canonical verified result. If False, it returns a canonical
+            failure result.
     """
     client = _make_mock_client()
-    if verify_succeeds:
-        client._agent.verify_response.return_value = {"data": "mock"}
-    else:
-        client._agent.verify_response.side_effect = RuntimeError("signature mismatch")
+
+    def verify_a2a_artifact(wrapped_json: str) -> str:
+        wrapped_artifact = json.loads(wrapped_json)
+        signer_id = wrapped_artifact.get("jacsSignature", {}).get("agentID")
+        fixture_name = {
+            "agent-self-001": "self_signed_verified",
+            "agent-foreign-002": "foreign_verified",
+            "agent-foreign-003": "foreign_unverified",
+            "agent-invalid-004": "invalid_signature",
+        }.get(signer_id)
+        if fixture_name:
+            return json.dumps(_load_fixture(fixture_name))
+        return json.dumps(
+            _build_generic_result(
+                wrapped_artifact,
+                verify_succeeds=verify_succeeds,
+            )
+        )
+
+    def verify_a2a_artifact_with_policy(
+        wrapped_json: str,
+        _agent_card_json: str,
+        policy: str,
+    ) -> str:
+        wrapped_artifact = json.loads(wrapped_json)
+        signer_id = wrapped_artifact.get("jacsSignature", {}).get("agentID")
+        if signer_id == "agent-blocked-005" and policy == "strict":
+            return json.dumps(_load_fixture("trust_blocked"))
+        if signer_id == "agent-foreign-002":
+            return json.dumps(_load_fixture("foreign_verified"))
+        return json.dumps(
+            _build_generic_result(
+                wrapped_artifact,
+                verify_succeeds=verify_succeeds,
+                policy=policy,
+            )
+        )
+
+    client._agent.verify_a2a_artifact.side_effect = verify_a2a_artifact
+    client._agent.verify_a2a_artifact_with_policy.side_effect = verify_a2a_artifact_with_policy
     return JACSA2AIntegration(client)
 
 
@@ -134,7 +237,7 @@ class TestVerifyResultShape:
         integration = _make_integration(verify_succeeds=True)
         wrapped = _make_wrapped_artifact()
 
-        result = integration.verify_wrapped_artifact(wrapped)
+        result = integration.verify_wrapped_artifact(wrapped, assess_trust=True)
 
         assert "status" in result, (
             "verify_wrapped_artifact() output must contain a 'status' field. "
@@ -156,7 +259,11 @@ class TestVerifyResultShape:
         integration = _make_integration(verify_succeeds=True)
         wrapped = _make_wrapped_artifact()
 
-        result = integration.verify_wrapped_artifact(wrapped)
+        result = integration.verify_wrapped_artifact(
+            wrapped,
+            assess_trust=True,
+            trust_policy="strict",
+        )
 
         status = result.get("status")
         valid_statuses = {"Verified", "SelfSigned"}
@@ -176,7 +283,7 @@ class TestVerifyResultShape:
         integration = _make_integration(verify_succeeds=False)
         wrapped = _make_wrapped_artifact()
 
-        result = integration.verify_wrapped_artifact(wrapped)
+        result = integration.verify_wrapped_artifact(wrapped, assess_trust=True)
 
         status = result.get("status")
         if isinstance(status, str):
@@ -275,7 +382,11 @@ class TestVerifyResultShape:
         integration = _make_integration(verify_succeeds=True)
         wrapped = _make_wrapped_artifact()
 
-        result = integration.verify_wrapped_artifact(wrapped)
+        result = integration.verify_wrapped_artifact(
+            wrapped,
+            assess_trust=True,
+            trust_policy="strict",
+        )
 
         assert "valid" in result, (
             "Output must contain 'valid' boolean field for backward compat"
@@ -300,7 +411,11 @@ class TestVerifyResultShape:
         integration = _make_integration(verify_succeeds=True)
         wrapped = _make_wrapped_artifact()
 
-        result = integration.verify_wrapped_artifact(wrapped)
+        result = integration.verify_wrapped_artifact(
+            wrapped,
+            assess_trust=True,
+            trust_policy="strict",
+        )
 
         # These are the camelCase field names required by the schema
         required_camel_case_fields = {
@@ -382,7 +497,11 @@ class TestContractFixtures:
             artifact=expected["originalArtifact"],
         )
 
-        result = integration.verify_wrapped_artifact(wrapped)
+        result = integration.verify_wrapped_artifact(
+            wrapped,
+            assess_trust=True,
+            trust_policy="strict",
+        )
 
         # Validate against the JSON schema first
         try:
@@ -607,7 +726,11 @@ class TestContractFixtures:
             artifact=expected["originalArtifact"],
         )
 
-        result = integration.verify_wrapped_artifact(wrapped)
+        result = integration.verify_wrapped_artifact(
+            wrapped,
+            assess_trust=True,
+            trust_policy="strict",
+        )
 
         # Schema validation
         try:

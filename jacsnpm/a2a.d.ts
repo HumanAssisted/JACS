@@ -107,14 +107,38 @@ export declare class A2AAgentCard {
     metadata?: Record<string, unknown>;
     constructor({ name, description, version, protocolVersions, supportedInterfaces, defaultInputModes, defaultOutputModes, capabilities, skills, provider, documentationUrl, iconUrl, securitySchemes, security, signatures, metadata, }: A2AAgentCardOptions);
 }
+export interface TrustBlock {
+    policy: string | null;
+    status: 'allowed' | 'blocked' | 'not_assessed';
+    reason: string;
+}
+export type VerificationStatus = 'Verified' | 'SelfSigned' | {
+    Unverified: {
+        reason: string;
+    };
+} | {
+    Invalid: {
+        reason: string;
+    };
+};
+export interface ParentVerificationResult {
+    index: number;
+    artifactId: string;
+    signerId: string;
+    status: VerificationStatus;
+    verified: boolean;
+    /** Backward-compatibility alias exposed as a non-enumerable property at runtime. */
+    valid?: boolean;
+}
 export interface ArtifactVerificationResult {
     valid: boolean;
+    status: VerificationStatus;
     /**
      * Extracted payload returned by native verifyResponse() when available.
      */
     verifiedPayload?: Record<string, unknown>;
     /**
-     * Backward-compatibility field for one release: raw native verifyResponse() output.
+     * Backward-compatibility field: raw verification output.
      */
     verificationResult?: boolean | Record<string, unknown>;
     signerId: string;
@@ -122,23 +146,22 @@ export interface ArtifactVerificationResult {
     artifactType: string;
     timestamp: string;
     originalArtifact: Record<string, unknown>;
+    trustLevel?: 'Untrusted' | 'JacsVerified' | 'ExplicitlyTrusted';
+    parentSignaturesValid: boolean;
+    parentVerificationResults: ParentVerificationResult[];
     parentSignaturesCount?: number;
-    parentVerificationResults?: Array<{
-        index: number;
-        artifactId: string;
-        valid: boolean;
-        parentSignaturesValid: boolean;
-        error?: string;
-    }>;
-    parentSignaturesValid?: boolean;
+    /** Trust assessment block, present when policy-aware verify is used. */
+    trust?: TrustBlock;
     trustAssessment?: TrustAssessment;
 }
 export interface TrustAssessment {
     allowed: boolean;
-    trustLevel: 'trusted' | 'jacs_registered' | 'untrusted';
+    trustLevel: 'ExplicitlyTrusted' | 'JacsVerified' | 'Untrusted' | 'trusted' | 'jacs_registered' | 'untrusted';
     jacsRegistered: boolean;
     inTrustStore: boolean;
     reason: string;
+    policy?: string;
+    agentId?: string | null;
 }
 export interface A2AQuickstartOptions {
     url?: string;
@@ -215,11 +238,18 @@ export declare class JACSA2AIntegration {
     signArtifact(artifact: Record<string, unknown>, artifactType: string, parentSignatures?: Record<string, unknown>[] | null): Promise<Record<string, unknown>>;
     /** @deprecated Use signArtifact() instead. */
     wrapArtifactWithProvenance(artifact: Record<string, unknown>, artifactType: string, parentSignatures?: Record<string, unknown>[] | null): Promise<Record<string, unknown>>;
-    verifyWrappedArtifact(wrappedArtifact: Record<string, unknown>): Promise<ArtifactVerificationResult>;
+    verifyWrappedArtifact(wrappedArtifact: Record<string, unknown>, agentCard?: Record<string, unknown>): Promise<ArtifactVerificationResult>;
     createChainOfCustody(artifacts: Record<string, unknown>[]): Record<string, unknown>;
     generateWellKnownDocuments(agentCard: A2AAgentCard, jwsSignature: string, publicKeyB64: string, agentData: AgentData): Record<string, Record<string, unknown>>;
     private _hasJacsExtension;
     private _normalizeVerifyResponse;
+    private _legacyAssessRemoteAgent;
+    private _buildSyntheticAgentCard;
+    private _buildCanonicalTrustAssessment;
+    private _normalizeTrustAssessment;
+    private _normalizeParentVerificationResult;
+    private _canonicalResultFromWrappedArtifact;
+    private _attachCompatibilityAliases;
     private _verifyWrappedArtifactInternal;
     private _buildJwks;
     private _inferJwsAlg;

@@ -87,7 +87,7 @@ describe('A2A Trust Demo Integration - [2.5.3]', function () {
       expect(verifyAtB.valid).to.be.true;
       expect(verifyAtB.signerId).to.equal('agent-alpha');
       expect(verifyAtB.trustAssessment).to.exist;
-      expect(verifyAtB.trustAssessment.trustLevel).to.equal('jacs_registered');
+      expect(verifyAtB.trustAssessment.trustLevel).to.equal('JacsVerified');
       expect(verifyAtB.trustAssessment.allowed).to.be.true;
 
       // Agent B countersigns with chain of custody

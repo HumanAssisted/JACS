@@ -26,3 +26,4 @@ function warnDeprecated(oldName, newName) {
         console.warn(`[JACS] ${oldName}() is deprecated, use ${newName}() instead`);
     }
 }
+//# sourceMappingURL=deprecation.js.map
