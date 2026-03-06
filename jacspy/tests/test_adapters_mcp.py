@@ -64,6 +64,7 @@ class TestRegisterJacsTools:
             "jacs_audit",
             "jacs_agent_info",
             "jacs_share_public_key",
+            "jacs_export_agent",
             "jacs_share_agent",
         }
         assert set(mcp.tools.keys()) == expected
@@ -180,6 +181,15 @@ class TestAgentInfoTool:
         assert result["agent_id"] == client.agent_id
         assert "config_path" not in result
         assert "public_key_path" not in result
+
+    def test_export_agent_alias_returns_agent_info(self, client):
+        mcp = FakeMCP()
+        register_jacs_tools(mcp, client=client)
+        fn = mcp.tools["jacs_export_agent"]["fn"]
+
+        result = json.loads(fn())
+        assert result["success"] is True
+        assert "agent_json" in result
 
 
 # ---------------------------------------------------------------------------
@@ -315,12 +325,24 @@ class TestRegisterA2ATools:
         mcp = FakeMCP()
         register_a2a_tools(mcp, client=client)
         expected = {
+            "jacs_export_agent_card",
             "jacs_get_agent_card",
+            "jacs_wrap_a2a_artifact",
             "jacs_sign_artifact",
             "jacs_verify_a2a_artifact",
+            "jacs_assess_a2a_agent",
             "jacs_assess_remote_agent",
         }
         assert set(mcp.tools.keys()) == expected
+
+    def test_export_agent_card_alias_returns_card(self, client):
+        mcp = FakeMCP()
+        register_a2a_tools(mcp, client=client)
+        fn = mcp.tools["jacs_export_agent_card"]["fn"]
+
+        result = json.loads(fn())
+        assert result["success"] is True
+        assert "agent_card" in result
 
     def test_get_agent_card_returns_card(self, client):
         mcp = FakeMCP()
@@ -386,7 +408,9 @@ class TestRegisterTrustTools:
             "jacs_trust_agent",
             "jacs_trust_agent_with_key",
             "jacs_untrust_agent",
+            "jacs_list_trusted_agents",
             "jacs_list_trusted",
+            "jacs_get_trusted_agent",
             "jacs_is_trusted",
         }
         assert set(mcp.tools.keys()) == expected

@@ -1,8 +1,8 @@
 .PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         publish-jacs publish-jacspy publish-jacsnpm \
-        release-jacs release-jacspy release-jacsnpm release-all \
+        release-jacs release-jacspy release-jacsnpm release-cli release-all release-everything release-delete-tags \
         retry-jacspy retry-jacsnpm \
-        version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm \
+        version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
         install-githooks regen-cross-lang-fixtures \
         help
 
@@ -14,11 +14,26 @@
 # Rust core library version (from jacs/Cargo.toml)
 JACS_VERSION := $(shell grep '^version' jacs/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
+# Rust MCP server version (from jacs-mcp/Cargo.toml)
+JACS_MCP_VERSION := $(shell grep '^version' jacs-mcp/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+# Shared Rust binding core version (from binding-core/Cargo.toml)
+BINDING_CORE_VERSION := $(shell grep '^version' binding-core/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
 # Python bindings version (from jacspy/pyproject.toml)
 JACSPY_VERSION := $(shell grep '^version' jacspy/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
+# Python Rust extension crate version (from jacspy/Cargo.toml)
+JACSPY_RUST_VERSION := $(shell grep '^version' jacspy/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
 # Node.js bindings version (from jacsnpm/package.json)
 JACSNPM_VERSION := $(shell grep '"version"' jacsnpm/package.json | head -1 | sed 's/.*: *"\(.*\)".*/\1/')
+
+# Node.js Rust extension crate version (from jacsnpm/Cargo.toml)
+JACSNPM_RUST_VERSION := $(shell grep '^version' jacsnpm/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+# Go FFI Rust library version (from jacsgo/lib/Cargo.toml)
+JACSGO_VERSION := $(shell grep '^version' jacsgo/lib/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
 # ============================================================================
 # BUILD
@@ -92,11 +107,22 @@ install-githooks:
 versions:
 	@echo "Detected versions from source files:"
 	@echo "  jacs (Cargo.toml):        $(JACS_VERSION)"
+	@echo "  jacs-mcp (Cargo.toml):    $(JACS_MCP_VERSION)"
+	@echo "  binding-core (Cargo.toml):$(BINDING_CORE_VERSION)"
 	@echo "  jacspy (pyproject.toml):  $(JACSPY_VERSION)"
+	@echo "  jacspy (Cargo.toml):      $(JACSPY_RUST_VERSION)"
 	@echo "  jacsnpm (package.json):   $(JACSNPM_VERSION)"
+	@echo "  jacsnpm (Cargo.toml):     $(JACSNPM_RUST_VERSION)"
+	@echo "  jacsgo/lib (Cargo.toml):  $(JACSGO_VERSION)"
 	@echo ""
-	@if [ "$(JACS_VERSION)" = "$(JACSPY_VERSION)" ] && [ "$(JACS_VERSION)" = "$(JACSNPM_VERSION)" ]; then \
-		echo "✓ All versions match: $(JACS_VERSION)"; \
+	@if [ "$(JACS_VERSION)" = "$(JACS_MCP_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(BINDING_CORE_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACSPY_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACSPY_RUST_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACSNPM_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACSNPM_RUST_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACSGO_VERSION)" ]; then \
+		echo "✓ All release versions match: $(JACS_VERSION)"; \
 	else \
 		echo "⚠ WARNING: Versions do not match!"; \
 	fi
@@ -105,15 +131,35 @@ version: versions
 
 # Check that all versions match (fails if they don't)
 check-versions:
+	@if [ "$(JACS_VERSION)" != "$(JACS_MCP_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-mcp ($(JACS_MCP_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(BINDING_CORE_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != binding-core ($(BINDING_CORE_VERSION))"; \
+		exit 1; \
+	fi
 	@if [ "$(JACS_VERSION)" != "$(JACSPY_VERSION)" ]; then \
 		echo "ERROR: jacs ($(JACS_VERSION)) != jacspy ($(JACSPY_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(JACSPY_RUST_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacspy Cargo.toml ($(JACSPY_RUST_VERSION))"; \
 		exit 1; \
 	fi
 	@if [ "$(JACS_VERSION)" != "$(JACSNPM_VERSION)" ]; then \
 		echo "ERROR: jacs ($(JACS_VERSION)) != jacsnpm ($(JACSNPM_VERSION))"; \
 		exit 1; \
 	fi
-	@echo "✓ All versions match: $(JACS_VERSION)"
+	@if [ "$(JACS_VERSION)" != "$(JACSNPM_RUST_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacsnpm Cargo.toml ($(JACSNPM_RUST_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(JACSGO_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacsgo/lib ($(JACSGO_VERSION))"; \
+		exit 1; \
+	fi
+	@echo "✓ All release versions match: $(JACS_VERSION)"
 
 # ============================================================================
 # DIRECT PUBLISH (requires local credentials)
@@ -182,6 +228,19 @@ check-version-jacsnpm:
 	fi
 	@echo "✓ Tag npm/v$(JACSNPM_VERSION) is available"
 
+# Verify version and tag for CLI binary release
+check-version-cli:
+	@echo "cli version: $(JACS_VERSION)"
+	@if [ "$(JACS_VERSION)" != "$(JACS_MCP_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-mcp ($(JACS_MCP_VERSION))"; \
+		exit 1; \
+	fi
+	@if git tag -l | grep -q "^cli/v$(JACS_VERSION)$$"; then \
+		echo "ERROR: Tag cli/v$(JACS_VERSION) already exists"; \
+		exit 1; \
+	fi
+	@echo "✓ Tag cli/v$(JACS_VERSION) is available"
+
 # Tag and push to trigger crates.io release via GitHub CI
 release-jacs: check-version-jacs
 	git tag crate/v$(JACS_VERSION)
@@ -200,15 +259,25 @@ release-jacsnpm: check-version-jacsnpm
 	git push origin npm/v$(JACSNPM_VERSION)
 	@echo "Tagged npm/v$(JACSNPM_VERSION) - GitHub CI will publish to npm"
 
+# Tag and push to trigger CLI binary release via GitHub CI
+release-cli: check-version-cli
+	git tag cli/v$(JACS_VERSION)
+	git push origin cli/v$(JACS_VERSION)
+	@echo "Tagged cli/v$(JACS_VERSION) - GitHub CI will publish GitHub release binaries"
+
 # Release all packages via GitHub CI (verifies all versions match first)
 release-all: check-versions release-jacs release-jacspy release-jacsnpm
 	@echo "All release tags pushed for v$(JACS_VERSION). GitHub CI will handle publishing."
 
+# Release all packages plus CLI binaries via GitHub CI
+release-everything: release-all release-cli
+	@echo "All release tags, including CLI binaries, pushed for v$(JACS_VERSION)."
+
 # Delete release tags for current versions (use with caution - for fixing failed releases)
 release-delete-tags:
 	@echo "Deleting tags for version $(JACS_VERSION)..."
-	-git tag -d crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION)
-	-git push origin --delete crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION)
+	-git tag -d crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION) cli/v$(JACS_VERSION)
+	-git push origin --delete crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION) cli/v$(JACS_VERSION)
 	@echo "Deleted release tags"
 
 # Retry a failed PyPI release: delete old tags (local+remote), retag, push
@@ -271,7 +340,9 @@ help:
 	@echo "  make release-jacs    Tag crate/v<version> -> triggers crates.io release"
 	@echo "  make release-jacspy  Tag pypi/v<version> -> triggers PyPI release"
 	@echo "  make release-jacsnpm Tag npm/v<version> -> triggers npm release"
-	@echo "  make release-all     Verify versions match, then release all packages"
+	@echo "  make release-cli     Tag cli/v<version> -> triggers CLI binary release"
+	@echo "  make release-all     Verify versions match, then release crates/PyPI/npm"
+	@echo "  make release-everything  Verify versions match, then release crates/PyPI/npm/CLI"
 	@echo "  make release-delete-tags  Delete release tags (for fixing failed releases)"
 	@echo "  make retry-jacspy    Retry failed PyPI release (delete tags, retag, push)"
 	@echo "  make retry-jacsnpm   Retry failed npm release (delete tags, retag, push)"

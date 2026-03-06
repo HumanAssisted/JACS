@@ -7,6 +7,7 @@ If the download fails, prints fallback instructions (cargo install).
 
 import os
 import platform
+import re
 import stat
 import subprocess
 import sys
@@ -18,6 +19,18 @@ from pathlib import Path
 REPO = "HumanAssisted/JACS"
 
 
+def _read_repo_version():
+    """Best-effort fallback for source checkouts without installed metadata."""
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    try:
+        contents = pyproject_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    match = re.search(r'^version\s*=\s*"([^"]+)"\s*$', contents, re.MULTILINE)
+    return match.group(1) if match else None
+
+
 def _get_version():
     """Read version from the installed package metadata."""
     try:
@@ -25,7 +38,8 @@ def _get_version():
 
         return version("jacs")
     except Exception:
-        return "0.9.0"
+        repo_version = _read_repo_version()
+        return repo_version or "unknown"
 
 
 def _platform_key():
@@ -86,6 +100,9 @@ def ensure_cli():
         return str(bin_path)
 
     ver = _get_version()
+    if ver == "unknown":
+        print("[jacs] Could not determine package version for CLI download.", file=sys.stderr)
+        return None
     key = _platform_key()
     if not key:
         return None

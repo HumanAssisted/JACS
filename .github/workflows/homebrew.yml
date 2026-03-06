@@ -2,7 +2,7 @@ name: Homebrew Install Smoke Tests
 
 on:
   push:
-    branches: ["master"]
+    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
@@ -14,11 +14,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build local JACS formula from current checkout
+        run: |
+          set -euo pipefail
+          version="$(grep '^version = ' jacs/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')"
+          archive="$RUNNER_TEMP/jacs-homebrew-src.tar.gz"
+          formula="$RUNNER_TEMP/jacs.rb"
+          git archive --format=tar.gz --output "$archive" HEAD
+          sha256="$(shasum -a 256 "$archive" | awk '{print $1}')"
+          cat > "$formula" <<EOF
+          class Jacs < Formula
+            desc "JSON Agent Communication Standard command-line interface"
+            homepage "https://github.com/HumanAssisted/JACS"
+            url "file://$archive"
+            version "$version"
+            sha256 "$sha256"
+            license "Apache-2.0"
+
+            depends_on "rust" => :build
+
+            def install
+              system "cargo", "install", *std_cargo_args(path: "jacs"), "--features", "cli"
+            end
+
+            test do
+              assert_match "jacs version: #{version}", shell_output("#{bin}/jacs version")
+              assert_match "Usage: jacs [COMMAND]", shell_output("#{bin}/jacs --help")
+            end
+          end
+          EOF
+
       - name: Set up local Homebrew tap
         run: |
           tap_dir="$(brew --repository)/Library/Taps/humanassisted/homebrew-jacs"
           mkdir -p "$tap_dir/Formula"
-          cp ./Formula/jacs.rb "$tap_dir/Formula/"
+          cp "$RUNNER_TEMP/jacs.rb" "$tap_dir/Formula/jacs.rb"
           cp ./Formula/haisdk.rb "$tap_dir/Formula/"
 
       - name: Install JACS formula

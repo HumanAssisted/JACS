@@ -2,7 +2,7 @@ name: Workspace Components (jacs-mcp, jacsgo)
 
 on:
   push:
-    branches: ["master"]
+    branches: ["main"]
     paths:
       - "jacs-mcp/**"
       - "jacsgo/**"
@@ -12,7 +12,7 @@ on:
       - "Cargo.lock"
       - ".github/workflows/components.yml"
   pull_request:
-    branches: ["master"]
+    branches: ["main"]
     paths:
       - "jacs-mcp/**"
       - "jacsgo/**"
