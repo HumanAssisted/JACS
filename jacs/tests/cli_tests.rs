@@ -1067,12 +1067,18 @@ fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
         .arg(card_file.to_string_lossy().as_ref())
         .arg("--json");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("\"allowed\": true"))
-        .stdout(predicate::str::contains(
-            "\"trust_level\": \"JacsVerified\"",
-        ));
+    let output = cmd.output()?;
+    assert!(
+        output.status.success(),
+        "a2a assess --json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let assessment: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(assessment["allowed"], true);
+    assert_eq!(assessment["trustLevel"], "jacs_verified");
+    assert_eq!(assessment["policy"], "Verified");
+    assert_eq!(assessment["agentId"], "json-agent");
 
     let _ = fs::remove_dir_all(&tmp_dir);
     Ok(())
