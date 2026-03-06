@@ -21,12 +21,17 @@ jobs:
             /Cargo.lock
             /README.md
             /LICENSE
-            /binding-core/**
-            /jacs/**
-            /jacs-mcp/**
-            /jacsnpm/**
-            /jacspy/**
-            /jacsgo/lib/**
+            /binding-core/Cargo.toml
+            /binding-core/src/**
+            /jacs/Cargo.toml
+            /jacs/build.rs
+            /jacs/src/**
+            /jacs/schemas/**
+            /jacs-mcp/Cargo.toml
+            /jacs-mcp/src/**
+            /jacsnpm/Cargo.toml
+            /jacspy/Cargo.toml
+            /jacsgo/lib/Cargo.toml
           sparse-checkout-cone-mode: false
 
       - name: Extract version from tag
@@ -91,12 +96,17 @@ jobs:
             /Cargo.lock
             /README.md
             /LICENSE
-            /binding-core/**
-            /jacs/**
-            /jacs-mcp/**
-            /jacsnpm/**
-            /jacspy/**
-            /jacsgo/lib/**
+            /binding-core/Cargo.toml
+            /binding-core/src/**
+            /jacs/Cargo.toml
+            /jacs/build.rs
+            /jacs/src/**
+            /jacs/schemas/**
+            /jacs-mcp/Cargo.toml
+            /jacs-mcp/src/**
+            /jacsnpm/Cargo.toml
+            /jacspy/Cargo.toml
+            /jacsgo/lib/Cargo.toml
           sparse-checkout-cone-mode: false
 
       - uses: dtolnay/rust-toolchain@stable
