@@ -9,7 +9,7 @@ license-file = "../LICENSE"
 homepage = "https://humanassisted.github.io/JACS"
 repository = "https://github.com/HumanAssisted/JACS"
 authors = ["JACS Contributors"]
-keywords = ["mcp", "jacs", "ai", "agents", "signing", "provenance"]
+keywords = ["mcp", "jacs", "ai", "agents", "signing"]
 categories = ["cryptography", "development-tools"]
 
 [features]

@@ -45,9 +45,16 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      # Helper: check if a crate version is already on crates.io
+      # Usage: is_published <crate-name> <version>
       - name: Publish jacs to crates.io
-        working-directory: jacs
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          if [ "$LATEST" = "$VERSION" ]; then
+            echo "jacs $VERSION already published, skipping"
+          else
+            cd jacs && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+          fi
 
       - name: Wait for jacs to appear on crates.io
         run: |
@@ -65,8 +72,13 @@ jobs:
           exit 1
 
       - name: Publish jacs-binding-core to crates.io
-        working-directory: binding-core
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          if [ "$LATEST" = "$VERSION" ]; then
+            echo "jacs-binding-core $VERSION already published, skipping"
+          else
+            cd binding-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+          fi
 
       - name: Wait for jacs-binding-core to appear on crates.io
         run: |
@@ -84,8 +96,13 @@ jobs:
           exit 1
 
       - name: Publish jacs-mcp to crates.io
-        working-directory: jacs-mcp
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          if [ "$LATEST" = "$VERSION" ]; then
+            echo "jacs-mcp $VERSION already published, skipping"
+          else
+            cd jacs-mcp && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+          fi
 
       - name: Wait for jacs-mcp to appear on crates.io
         run: |
@@ -103,5 +120,10 @@ jobs:
           exit 1
 
       - name: Publish jacs-cli to crates.io
-        working-directory: jacs-cli
-        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-cli | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          if [ "$LATEST" = "$VERSION" ]; then
+            echo "jacs-cli $VERSION already published, skipping"
+          else
+            cd jacs-cli && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+          fi
