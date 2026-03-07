@@ -53,11 +53,12 @@ jobs:
         run: |
           echo "Waiting for jacs $VERSION on crates.io..."
           for i in $(seq 1 30); do
-            if cargo search jacs --limit 1 | grep -q "^jacs = \"$VERSION\""; then
+            LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs $VERSION is available on crates.io"
               exit 0
             fi
-            echo "  attempt $i/30 — not yet, waiting 10s..."
+            echo "  attempt $i/30 — got '$LATEST', waiting 10s..."
             sleep 10
           done
           echo "::error::Timed out waiting for jacs $VERSION on crates.io"
@@ -71,11 +72,12 @@ jobs:
         run: |
           echo "Waiting for jacs-binding-core $VERSION on crates.io..."
           for i in $(seq 1 30); do
-            if cargo search jacs-binding-core --limit 1 | grep -q "^jacs-binding-core = \"$VERSION\""; then
+            LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs-binding-core $VERSION is available on crates.io"
               exit 0
             fi
-            echo "  attempt $i/30 — not yet, waiting 10s..."
+            echo "  attempt $i/30 — got '$LATEST', waiting 10s..."
             sleep 10
           done
           echo "::error::Timed out waiting for jacs-binding-core $VERSION on crates.io"
@@ -89,11 +91,12 @@ jobs:
         run: |
           echo "Waiting for jacs-mcp $VERSION on crates.io..."
           for i in $(seq 1 30); do
-            if cargo search jacs-mcp --limit 1 | grep -q "^jacs-mcp = \"$VERSION\""; then
+            LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs-mcp $VERSION is available on crates.io"
               exit 0
             fi
-            echo "  attempt $i/30 — not yet, waiting 10s..."
+            echo "  attempt $i/30 — got '$LATEST', waiting 10s..."
             sleep 10
           done
           echo "::error::Timed out waiting for jacs-mcp $VERSION on crates.io"

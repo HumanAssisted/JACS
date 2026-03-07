@@ -58,7 +58,7 @@ We propose JACS as a technology partner for the NCCoE demonstration project, wit
 - JACS provides an A2A integration module that wraps agent cards with JACS signatures
 - A2A messages carry cryptographic provenance (who sent it, was it modified)
 - JACS's A2A evidence adapter normalizes A2A protocol exchanges into attestation evidence
-- The Model Context Protocol (MCP) server provides 13+ JACS tools accessible to any MCP client
+- The Model Context Protocol (MCP) server provides 33 JACS tools accessible to any MCP client
 
 ---
 
@@ -102,7 +102,7 @@ Agent systems are polyglot by nature. Security controls must work consistently a
 
 ### 3.1 Model Context Protocol (MCP)
 
-**Relationship:** JACS provides an MCP server with 13+ tools for signing, verification, trust management, and attestation operations. Any MCP-compatible client can use JACS as a native tool.
+**Relationship:** JACS provides an MCP server with 33 tools for signing, verification, trust management, A2A artifact operations, and attestation operations. Any MCP-compatible client can use JACS as a native tool.
 
 **Integration value for NCCoE:** The MCP server demonstrates how cryptographic identity and signing can be added to existing AI agent workflows without code changes -- the agent calls JACS tools through the standard MCP interface.
 
@@ -185,10 +185,10 @@ Agent systems are polyglot by nature. Security controls must work consistently a
 
 | Component | Technology |
 |-----------|-----------|
-| Agent identity | JACS (Rust core, v0.9.0) |
+| Agent identity | JACS (Rust core, v0.9.2) |
 | Agent communication | MCP server + A2A protocol |
 | Session auth | OAuth 2.0 (complementary) |
-| Signing algorithms | Ed25519 (primary), ML-DSA-87 (post-quantum) |
+| Signing algorithms | ML-DSA-87 (default, post-quantum), Ed25519, ECDSA P-256/P-384 |
 | Key distribution | DNS TXT records (DNSSEC) |
 | Attestation format | JACS attestation schema + DSSE export |
 | Storage | SQLite (default) or DuckDB/SurrealDB |
@@ -210,9 +210,9 @@ Agent systems are polyglot by nature. Security controls must work consistently a
 
 JACS (JSON Agent Communication Standard) is an open-source project maintained by HAI.AI. Key facts:
 
-- **Version:** 0.9.0 (attestation release)
+- **Version:** 0.9.2
 - **Language:** Rust core with Python, Node.js, and Go bindings
-- **License:** Open source (MIT)
+- **License:** Apache 2.0 with Common Clause
 - **Tests:** 500+ across 5 language targets
 - **Algorithms:** Ed25519, ECDSA P-256/P-384, ML-DSA-87
 - **Standards alignment:** JCS (RFC 8785), DSSE, in-toto predicate types

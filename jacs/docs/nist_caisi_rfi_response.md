@@ -11,11 +11,25 @@
 
 ## 1. Respondent Identification
 
-HAI.AI develops and maintains JACS (JSON Agent Communication Standard), an open-source cryptographic framework for AI agent identity, signed communication, and verifiable attestation. JACS is implemented in Rust with production bindings for Python, Node.js, and Go. The project is currently at version 0.9.0 with over 500 tests across 5 language targets.
+HAI.AI develops and maintains JACS (JSON Agent Communication Standard), an open-source cryptographic framework for AI agent identity, signed communication, and verifiable attestation. JACS is implemented in Rust with production bindings for Python, Node.js, and Go. The project is currently at version 0.9.2 with over 1,000 tests across 5 language targets.
 
 JACS addresses the core challenge NIST identifies in this RFI: the need for security controls that are native to AI agent systems rather than bolted on from traditional software security. Our framework provides cryptographic agent identity, non-repudiable action signing, multi-agent agreement protocols with quorum-based authorization, and a structured attestation system for evidence-backed trust decisions.
 
 This response draws on practical experience building and deploying these capabilities across the HAI.AI platform, where registered agents receive cryptographically verified identities and participate in evaluated conversations and benchmarks.
+
+### What Makes JACS Different
+
+Most AI agent security proposals describe architectures. JACS ships working code. Key differentiators:
+
+1. **Decentralized-first:** No certificate authority, no registration server, no central identity provider required. Agents create key pairs and start signing immediately. Trust is additive — organizations can layer DNS-based verification, trust stores, and attestation policies on top of the decentralized foundation without changing the core protocol.
+
+2. **Verification works offline:** Every JACS operation — agent creation, signing, verification, multi-agent agreement, attestation — works without network connectivity. This is a hard requirement for air-gapped environments, edge deployments, and scenarios where the verifying party has no relationship with the signing party's infrastructure.
+
+3. **Developer experience as a security multiplier:** Security controls that are hard to adopt don't get adopted. JACS provides a `quickstart()` one-liner in Python, Node.js, and Rust CLI that creates a persistent agent with keys in under 100ms. Framework adapters for LangChain, FastAPI, CrewAI, and the Anthropic SDK allow developers to add cryptographic signing to existing agent code with 1-3 lines of change. The MCP server exposes all 33 JACS tools to any MCP client, meaning AI assistants can use JACS without any code integration at all.
+
+4. **Post-quantum from day one:** ML-DSA-87 (NIST FIPS 204) is not a roadmap item — it ships today alongside Ed25519 and ECDSA. Agreement protocols can enforce minimum algorithm strength, ensuring that sensitive multi-agent authorizations use post-quantum signatures even if individual agents support classical algorithms.
+
+5. **A2A protocol integration:** JACS extends Google's Agent-to-Agent protocol with cryptographic provenance. Agent Cards carry JACS extensions, artifacts are signed with chain-of-custody tracking, and trust assessment is built into the discovery flow. This bridges the gap between A2A's transport-level protocol and the cryptographic identity layer that multi-agent systems need.
 
 ---
 
@@ -184,11 +198,13 @@ This structured output enables automated security evaluation: monitoring systems
 ### 4.2 Cross-Language Test Suites
 
 JACS validates interoperability through cross-language test suites:
-- **Rust core:** 450+ tests (lib + integration + attestation + storage backends)
-- **Python bindings:** 265 tests
-- **Node.js bindings:** 283 tests
-- **Go bindings:** 111 tests
-- **Cross-language:** 35 dedicated tests that sign in one language and verify in another
+- **Rust core:** 570+ tests (lib + integration + attestation + 4 storage backends)
+- **Python bindings:** 265+ tests
+- **Node.js bindings:** 283+ tests
+- **Go bindings:** 111+ tests
+- **Cross-language:** 35+ dedicated tests that sign in one language and verify in another
+
+Total: over 1,200 tests across all targets.
 
 These test suites serve as both quality assurance and specification-by-example. Any organization implementing the JACS protocol can use these tests to verify conformance.
 
@@ -239,7 +255,7 @@ Multi-agent authorization via quorum provides a deployment-level control for con
 
 ### 5.4 MCP Integration
 
-JACS provides a Model Context Protocol (MCP) server with 13+ tools for signing, verification, trust management, and attestation. This allows any MCP-compatible client (including AI assistants and development tools) to use JACS signing and verification as native tool calls, without requiring direct library integration.
+JACS provides a Model Context Protocol (MCP) server with 33 tools for signing, verification, trust management, A2A artifact operations, and attestation (including DSSE export). This allows any MCP-compatible client (including AI assistants and development tools) to use JACS signing and verification as native tool calls, without requiring direct library integration.
 
 ### 5.5 Cross-Platform Support
 
