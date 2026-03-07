@@ -6,6 +6,7 @@
 //! by any language binding. Each binding implements the `BindingError` trait
 //! to convert errors to their native format.
 
+use base64::Engine as _;
 use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::{DocumentTraits, JACSDocument};
@@ -1561,6 +1562,139 @@ impl AgentWrapper {
             ))
         })
     }
+
+    // =========================================================================
+    // Protocol helpers (delegates to jacs::protocol)
+    // =========================================================================
+
+    /// Build the JACS `Authorization` header value.
+    ///
+    /// Format: `"JACS {jacs_id}:{unix_timestamp}:{base64_signature}"`.
+    /// Requires a loaded agent with keys.
+    pub fn build_auth_header(&self) -> BindingResult<String> {
+        let mut agent = self.lock()?;
+        jacs::protocol::build_auth_header(&mut agent).map_err(|e| {
+            BindingCoreError::signing_failed(format!("Failed to build auth header: {}", e))
+        })
+    }
+
+    /// Deterministically serialize a JSON string per RFC 8785 (JCS).
+    ///
+    /// Accepts a JSON string, parses it, and returns the canonicalized form.
+    pub fn canonicalize_json(&self, json_string: &str) -> BindingResult<String> {
+        let value: Value = serde_json::from_str(json_string).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse JSON for canonicalization: {}",
+                e
+            ))
+        })?;
+        Ok(jacs::protocol::canonicalize_json(&value))
+    }
+
+    /// Build and sign a JACS response envelope.
+    ///
+    /// Accepts a JSON payload string, returns a signed envelope JSON string
+    /// containing `version`, `document_type`, `data`, `metadata`, and
+    /// `jacsSignature`.
+    pub fn sign_response(&self, payload_json: &str) -> BindingResult<String> {
+        let mut agent = self.lock()?;
+        let payload: Value = serde_json::from_str(payload_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse payload JSON for sign_response: {}",
+                e
+            ))
+        })?;
+        let result = jacs::protocol::sign_response(&mut agent, &payload).map_err(|e| {
+            BindingCoreError::signing_failed(format!("Failed to sign response: {}", e))
+        })?;
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize signed response: {}",
+                e
+            ))
+        })
+    }
+
+    /// Encode a document as URL-safe base64 (no padding) for verification.
+    ///
+    /// SDK clients use this to build verification URLs. JACS does not impose
+    /// any URL structure — that is the SDK's responsibility.
+    pub fn encode_verify_payload(&self, document: &str) -> BindingResult<String> {
+        Ok(jacs::protocol::encode_verify_payload(document))
+    }
+
+    /// Decode a URL-safe base64 verification payload back to the original
+    /// document string.
+    pub fn decode_verify_payload(&self, encoded: &str) -> BindingResult<String> {
+        jacs::protocol::decode_verify_payload(encoded).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to decode verify payload: {}",
+                e
+            ))
+        })
+    }
+
+    /// Extract the document ID from a JACS-signed document.
+    ///
+    /// Checks `jacsDocumentId`, `document_id`, `id` in priority order.
+    /// SDK clients use this to build hosted verification URLs.
+    pub fn extract_document_id(&self, document: &str) -> BindingResult<String> {
+        jacs::protocol::extract_document_id(document).map_err(|e| {
+            BindingCoreError::generic(format!("Failed to extract document ID: {}", e))
+        })
+    }
+
+    /// Unwrap a JACS-signed event, verifying the signature when the signer's
+    /// public key is known.
+    ///
+    /// `event_json` is the signed event as a JSON string.
+    /// `server_keys_json` is a JSON object mapping agent IDs to base64-encoded
+    /// public key bytes: `{"agent_id": "base64_key", ...}`.
+    ///
+    /// Returns a JSON string: `{"data": <unwrapped>, "verified": <bool>}`.
+    pub fn unwrap_signed_event(
+        &self,
+        event_json: &str,
+        server_keys_json: &str,
+    ) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let event: Value = serde_json::from_str(event_json).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to parse event JSON for unwrap_signed_event: {}",
+                e
+            ))
+        })?;
+        let keys_map: HashMap<String, String> =
+            serde_json::from_str(server_keys_json).map_err(|e| {
+                BindingCoreError::serialization_failed(format!(
+                    "Failed to parse server keys JSON for unwrap_signed_event: {}",
+                    e
+                ))
+            })?;
+        let keys: HashMap<String, Vec<u8>> = keys_map
+            .into_iter()
+            .map(|(k, v)| {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(&v)
+                    .unwrap_or_else(|_| v.into_bytes());
+                (k, bytes)
+            })
+            .collect();
+        let (data, verified) =
+            jacs::protocol::unwrap_signed_event(&agent, &event, &keys).map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Failed to unwrap signed event: {}",
+                    e
+                ))
+            })?;
+        let result = json!({"data": data, "verified": verified});
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize unwrap_signed_event result: {}",
+                e
+            ))
+        })
+    }
 }
 
 // =============================================================================
@@ -2546,6 +2680,154 @@ mod tests {
         let wrapper = AgentWrapper::new();
         let result = wrapper.export_agent_card();
         assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Protocol Wrapper Tests
+    // =========================================================================
+
+    /// Helper: create an ephemeral AgentWrapper for protocol tests.
+    fn protocol_wrapper() -> AgentWrapper {
+        let wrapper = AgentWrapper::new();
+        wrapper.ephemeral(Some("ed25519")).unwrap();
+        wrapper
+    }
+
+    #[test]
+    fn protocol_build_auth_header_starts_with_jacs() {
+        let wrapper = protocol_wrapper();
+        let header = wrapper.build_auth_header().expect("build_auth_header failed");
+        assert!(
+            header.starts_with("JACS "),
+            "Header must start with 'JACS ', got: {header}"
+        );
+    }
+
+    #[test]
+    fn protocol_canonicalize_json_sorts_keys() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper
+            .canonicalize_json(r#"{"b":1,"a":2}"#)
+            .expect("canonicalize_json failed");
+        assert_eq!(result, r#"{"a":2,"b":1}"#);
+    }
+
+    #[test]
+    fn protocol_canonicalize_json_invalid_input() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper.canonicalize_json("not json");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, ErrorKind::SerializationFailed);
+    }
+
+    #[test]
+    fn protocol_sign_response_has_required_fields() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper
+            .sign_response(r#"{"answer": 42}"#)
+            .expect("sign_response failed");
+        let envelope: Value = serde_json::from_str(&result).expect("should be valid JSON");
+        assert!(envelope.get("version").is_some(), "missing 'version'");
+        assert!(
+            envelope.get("jacsSignature").is_some(),
+            "missing 'jacsSignature'"
+        );
+        assert_eq!(envelope["version"], "1.0.0");
+    }
+
+    #[test]
+    fn protocol_sign_response_invalid_payload() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper.sign_response("not json");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, ErrorKind::SerializationFailed);
+    }
+
+    #[test]
+    fn protocol_encode_verify_payload_round_trips() {
+        let wrapper = protocol_wrapper();
+        let original = r#"{"test":true}"#;
+        let encoded = wrapper
+            .encode_verify_payload(original)
+            .expect("encode_verify_payload failed");
+        assert!(!encoded.contains('+'), "URL-safe base64 must not contain +");
+        assert!(!encoded.contains('/'), "URL-safe base64 must not contain /");
+        assert!(!encoded.contains('='), "URL-safe base64 must not have padding");
+        let decoded = wrapper
+            .decode_verify_payload(&encoded)
+            .expect("decode_verify_payload failed");
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn protocol_extract_document_id_extracts_id() {
+        let wrapper = protocol_wrapper();
+        let id = wrapper
+            .extract_document_id(r#"{"jacsDocumentId":"abc-123"}"#)
+            .expect("extract_document_id failed");
+        assert_eq!(id, "abc-123");
+    }
+
+    #[test]
+    fn protocol_extract_document_id_no_id_errors() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper.extract_document_id(r#"{"name":"no-id"}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn protocol_unwrap_signed_event_unknown_agent_unverified() {
+        let wrapper = protocol_wrapper();
+        let event = r#"{"data":{"result":"hello"},"jacsSignature":{"agentID":"unknown:v1","date":"2026-01-01T00:00:00Z","signature":"fakesig"}}"#;
+        let keys = r#"{}"#;
+        let result = wrapper
+            .unwrap_signed_event(event, keys)
+            .expect("unwrap_signed_event failed");
+        let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
+        assert_eq!(parsed["verified"], false);
+        assert_eq!(parsed["data"]["result"], "hello");
+    }
+
+    #[test]
+    fn protocol_unwrap_signed_event_legacy_payload() {
+        let wrapper = protocol_wrapper();
+        let event = r#"{"payload":{"status":"ok"}}"#;
+        let keys = r#"{}"#;
+        let result = wrapper
+            .unwrap_signed_event(event, keys)
+            .expect("unwrap_signed_event failed");
+        let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
+        assert_eq!(parsed["verified"], false);
+        assert_eq!(parsed["data"]["status"], "ok");
+    }
+
+    #[test]
+    fn protocol_unwrap_signed_event_plain_event() {
+        let wrapper = protocol_wrapper();
+        let event = r#"{"type":"heartbeat","ts":12345}"#;
+        let keys = r#"{}"#;
+        let result = wrapper
+            .unwrap_signed_event(event, keys)
+            .expect("unwrap_signed_event failed");
+        let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
+        assert_eq!(parsed["verified"], false);
+        assert_eq!(parsed["data"]["type"], "heartbeat");
+    }
+
+    #[test]
+    fn protocol_unwrap_signed_event_invalid_event_json() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper.unwrap_signed_event("not json", "{}");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, ErrorKind::SerializationFailed);
+    }
+
+    #[test]
+    fn protocol_unwrap_signed_event_invalid_keys_json() {
+        let wrapper = protocol_wrapper();
+        let result = wrapper.unwrap_signed_event(r#"{"type":"test"}"#, "not json");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, ErrorKind::SerializationFailed);
     }
 
     // =========================================================================

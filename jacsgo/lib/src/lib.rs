@@ -973,6 +973,208 @@ pub extern "C" fn jacs_agent_assess_a2a_agent(
 }
 
 // ============================================================================
+// Protocol API - build_auth_header, canonicalize_json, sign_response,
+// generate_verify_link, unwrap_signed_event
+// ============================================================================
+
+/// Build an Authorization header value for the current agent.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_build_auth_header(handle: *mut JacsAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.build_auth_header() {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Canonicalize a JSON string using RFC 8785 (JCS).
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_canonicalize_json(
+    handle: *mut JacsAgentHandle,
+    json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || json.is_null() {
+        return ptr::null_mut();
+    }
+
+    let json_str = match unsafe { CStr::from_ptr(json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.canonicalize_json(json_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Sign a response payload (wraps in a JACS document via the protocol layer).
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_sign_response(
+    handle: *mut JacsAgentHandle,
+    payload_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || payload_json.is_null() {
+        return ptr::null_mut();
+    }
+
+    let payload_str = match unsafe { CStr::from_ptr(payload_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.sign_response(payload_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Encode a document as URL-safe base64 (no padding) for verification.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_encode_verify_payload(
+    handle: *mut JacsAgentHandle,
+    document: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || document.is_null() {
+        return ptr::null_mut();
+    }
+
+    let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.encode_verify_payload(doc_str) {
+        Ok(encoded) => match CString::new(encoded) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Decode a URL-safe base64 verification payload back to the original document.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_decode_verify_payload(
+    handle: *mut JacsAgentHandle,
+    encoded: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || encoded.is_null() {
+        return ptr::null_mut();
+    }
+
+    let encoded_str = match unsafe { CStr::from_ptr(encoded) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.decode_verify_payload(encoded_str) {
+        Ok(decoded) => match CString::new(decoded) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Extract the document ID from a JACS-signed document.
+/// Checks jacsDocumentId, document_id, id in priority order.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_extract_document_id(
+    handle: *mut JacsAgentHandle,
+    document: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || document.is_null() {
+        return ptr::null_mut();
+    }
+
+    let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.extract_document_id(doc_str) {
+        Ok(id) => match CString::new(id) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Unwrap and verify a signed event using the agent and server keys.
+/// `event_json` is the signed event JSON string.
+/// `server_keys_json` is the server public keys JSON string.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_unwrap_signed_event(
+    handle: *mut JacsAgentHandle,
+    event_json: *const c_char,
+    server_keys_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || event_json.is_null() || server_keys_json.is_null() {
+        return ptr::null_mut();
+    }
+
+    let event_str = match unsafe { CStr::from_ptr(event_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let keys_str = match unsafe { CStr::from_ptr(server_keys_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.unwrap_signed_event(event_str, keys_str) {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+// ============================================================================
 // Legacy Global Singleton API - Deprecated, use JacsAgent handle API instead
 // ============================================================================
 // The following functions use a global singleton for backwards compatibility.

@@ -637,6 +637,145 @@ func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error)
 	return C.GoString(result), nil
 }
 
+// ============================================================================
+// Protocol API - auth headers, canonicalization, signing, verification links
+// ============================================================================
+
+// BuildAuthHeader builds an Authorization header value for this agent.
+// Returns the header value string (e.g. for use in HTTP Authorization headers).
+func (a *JacsAgent) BuildAuthHeader() (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	result := C.jacs_agent_build_auth_header(a.handle)
+	if result == nil {
+		return "", errors.New("failed to build auth header")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// CanonicalizeJson canonicalizes a JSON string using RFC 8785 (JCS).
+// Returns the canonicalized JSON string.
+func (a *JacsAgent) CanonicalizeJson(jsonStr string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cJSON := C.CString(jsonStr)
+	defer C.free(unsafe.Pointer(cJSON))
+
+	result := C.jacs_agent_canonicalize_json(a.handle, cJSON)
+	if result == nil {
+		return "", errors.New("failed to canonicalize JSON")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// SignResponse signs a response payload (wraps in a JACS document via the protocol layer).
+// payloadJson is the JSON string of the payload to sign.
+// Returns the signed response as a JSON string.
+func (a *JacsAgent) SignResponse(payloadJson string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cPayload := C.CString(payloadJson)
+	defer C.free(unsafe.Pointer(cPayload))
+
+	result := C.jacs_agent_sign_response(a.handle, cPayload)
+	if result == nil {
+		return "", errors.New("failed to sign response")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// GenerateVerifyLink generates a verification link for a signed document.
+// EncodeVerifyPayload encodes a document as URL-safe base64 (no padding) for verification.
+func (a *JacsAgent) EncodeVerifyPayload(document string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cDoc := C.CString(document)
+	defer C.free(unsafe.Pointer(cDoc))
+
+	result := C.jacs_agent_encode_verify_payload(a.handle, cDoc)
+	if result == nil {
+		return "", errors.New("failed to encode verify payload")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// DecodeVerifyPayload decodes a URL-safe base64 verification payload back to the original document.
+func (a *JacsAgent) DecodeVerifyPayload(encoded string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cEncoded := C.CString(encoded)
+	defer C.free(unsafe.Pointer(cEncoded))
+
+	result := C.jacs_agent_decode_verify_payload(a.handle, cEncoded)
+	if result == nil {
+		return "", errors.New("failed to decode verify payload")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// ExtractDocumentId extracts the document ID from a JACS-signed document.
+// Checks jacsDocumentId, document_id, id in priority order.
+func (a *JacsAgent) ExtractDocumentId(document string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cDoc := C.CString(document)
+	defer C.free(unsafe.Pointer(cDoc))
+
+	result := C.jacs_agent_extract_document_id(a.handle, cDoc)
+	if result == nil {
+		return "", errors.New("failed to extract document ID")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// UnwrapSignedEvent unwraps and verifies a signed event using the agent and server keys.
+// eventJson is the signed event JSON string.
+// serverKeysJson is the server public keys JSON string.
+// Returns the unwrapped event payload as a JSON string.
+func (a *JacsAgent) UnwrapSignedEvent(eventJson, serverKeysJson string) (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	cEvent := C.CString(eventJson)
+	defer C.free(unsafe.Pointer(cEvent))
+
+	cKeys := C.CString(serverKeysJson)
+	defer C.free(unsafe.Pointer(cKeys))
+
+	result := C.jacs_agent_unwrap_signed_event(a.handle, cEvent, cKeys)
+	if result == nil {
+		return "", errors.New("failed to unwrap signed event")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
 // Helper function to get error messages for JacsAgent methods
 func getAgentErrorMessage(code int, operation string) string {
 	switch operation {

@@ -26,6 +26,7 @@ pub mod keystore;
 pub mod mime;
 pub mod observability;
 pub mod paths;
+pub mod protocol;
 pub mod rate_limit;
 pub mod replay;
 pub mod schema;
