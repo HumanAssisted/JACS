@@ -19,7 +19,7 @@ use jacs::{load_agent, load_agent_with_dns_policy};
 use rpassword::read_password;
 use std::env;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 
 const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
@@ -693,7 +693,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         )
         .subcommand(
             Command::new("mcp")
-                .about("Start the built-in JACS MCP server (stdio transport)"),
+                .about("Start the built-in JACS MCP server (stdio transport)")
+                .subcommand(
+                    Command::new("install")
+                        .about("Deprecated: MCP is now built into the jacs binary")
+                        .hide(true)
+                )
+                .subcommand(
+                    Command::new("run")
+                        .about("Deprecated: use `jacs mcp` directly")
+                        .hide(true)
+                ),
         )
         .subcommand(
             Command::new("a2a")
@@ -1260,7 +1270,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = create_matches.get_one::<String>("filename");
                 let outputfilename = create_matches.get_one::<String>("output");
                 let directory = create_matches.get_one::<String>("directory");
-                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
@@ -1271,8 +1281,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
 
-                let attachment_links = agent.parse_attachement_arg(attachments);
-                create_documents(
+                let _attachment_links = agent.parse_attachement_arg(attachments);
+                let _ = create_documents(
                     &mut agent,
                     filename,
                     directory,
@@ -1289,7 +1299,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let new_filename = create_matches.get_one::<String>("new").unwrap();
                 let original_filename = create_matches.get_one::<String>("filename").unwrap();
                 let outputfilename = create_matches.get_one::<String>("output");
-                let verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
@@ -1319,7 +1329,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
-                let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
+                let _no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
                 // Use updated set_file_list with storage
                 sign_documents(&mut agent, schema, filename, directory)?;
@@ -1332,7 +1342,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let schema = create_matches.get_one::<String>("schema");
 
                 // Use updated set_file_list with storage
-                let files: Vec<String> = default_set_file_list(filename, directory, None)
+                let _files: Vec<String> = default_set_file_list(filename, directory, None)
                     .expect("Failed to determine file list");
                 check_agreement(&mut agent, schema, filename, directory)?;
             }
@@ -1352,13 +1362,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 // Use updated set_file_list with storage
-                create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
+                let _ = create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
             }
 
             Some(("verify", verify_matches)) => {
                 let filename = verify_matches.get_one::<String>("filename");
                 let directory = verify_matches.get_one::<String>("directory");
-                let verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = verify_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
@@ -1369,12 +1379,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             Some(("extract", extract_matches)) => {
                 let filename = extract_matches.get_one::<String>("filename");
                 let directory = extract_matches.get_one::<String>("directory");
-                let verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
+                let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = extract_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
-                let files: Vec<String> = default_set_file_list(filename, directory, None)
+                let _files: Vec<String> = default_set_file_list(filename, directory, None)
                     .expect("Failed to determine file list");
                 // extract the contents but do not save
                 extract_documents(&mut agent, schema, filename, directory)?;
@@ -1448,11 +1458,25 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => println!("please enter subcommand see jacs key --help"),
         },
         #[cfg(feature = "mcp")]
-        Some(("mcp", _mcp_matches)) => {
-            let agent = jacs_mcp::load_agent_from_config_env()?;
-            let server = jacs_mcp::JacsMcpServer::new(agent);
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(jacs_mcp::serve_stdio(server))?;
+        Some(("mcp", mcp_matches)) => {
+            match mcp_matches.subcommand() {
+                Some(("install", _)) => {
+                    eprintln!("`jacs mcp install` is no longer needed.");
+                    eprintln!("MCP is built into the jacs binary. Use `jacs mcp` to serve.");
+                    process::exit(0);
+                }
+                Some(("run", _)) => {
+                    eprintln!("`jacs mcp run` is no longer needed.");
+                    eprintln!("Use `jacs mcp` directly to start the MCP server.");
+                    process::exit(0);
+                }
+                _ => {
+                    let agent = jacs_mcp::load_agent_from_config_env()?;
+                    let server = jacs_mcp::JacsMcpServer::new(agent);
+                    let rt = tokio::runtime::Runtime::new()?;
+                    rt.block_on(jacs_mcp::serve_stdio(server))?;
+                }
+            }
         }
         #[cfg(not(feature = "mcp"))]
         Some(("mcp", _)) => {

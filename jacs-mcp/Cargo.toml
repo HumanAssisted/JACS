@@ -15,7 +15,6 @@ categories = ["cryptography", "development-tools"]
 [features]
 default = ["mcp", "attestation"]
 mcp = ["dep:rmcp", "dep:tokio", "jacs/mcp-server"]
-http = []
 attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
 
 [dependencies]

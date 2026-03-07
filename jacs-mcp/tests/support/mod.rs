@@ -121,12 +121,30 @@ pub fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
     (cfg_path, base)
 }
 
+/// Resolve the `jacs` binary from jacs-cli in the workspace target directory.
+/// Requires `cargo build -p jacs-cli` to have been run first.
+pub fn jacs_cli_bin() -> PathBuf {
+    let current_exe = std::env::current_exe().expect("current_exe");
+    let target_dir = current_exe
+        .parent()
+        .and_then(Path::parent)
+        .expect("target dir for integration test binary");
+    let bin = target_dir.join(format!("jacs{}", std::env::consts::EXE_SUFFIX));
+    assert!(
+        bin.exists(),
+        "jacs binary not found at {}. Run `cargo build -p jacs-cli` first.",
+        bin.display()
+    );
+    bin
+}
+
 pub fn run_server_with_fixture(extra_env: &[(&str, &str)]) -> (std::process::Output, PathBuf) {
     let (config, base) = prepare_temp_workspace();
 
-    let bin_path = assert_cmd::cargo::cargo_bin!("jacs-mcp");
+    let bin_path = jacs_cli_bin();
     let mut command = std::process::Command::new(&bin_path);
     command
+        .arg("mcp")
         .current_dir(&base)
         .env("JACS_CONFIG", &config)
         .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
@@ -138,7 +156,7 @@ pub fn run_server_with_fixture(extra_env: &[(&str, &str)]) -> (std::process::Out
         command.env(k, v);
     }
 
-    let output = command.output().expect("failed to run jacs-mcp");
+    let output = command.output().expect("failed to run jacs mcp");
     (output, base)
 }
 

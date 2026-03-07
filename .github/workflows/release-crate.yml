@@ -22,10 +22,10 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/crate/v}"
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Check Cargo.toml version matches tag (jacs + jacs-mcp)
+      - name: Check Cargo.toml version matches tag (jacs + jacs-mcp + jacs-cli)
         run: |
           TAG_VERSION="${{ steps.extract.outputs.version }}"
-          for dir in jacs jacs-mcp; do
+          for dir in jacs jacs-mcp jacs-cli; do
             CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
             echo "$dir Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
             if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
@@ -33,7 +33,7 @@ jobs:
               exit 1
             fi
           done
-          echo "Version match confirmed for jacs and jacs-mcp"
+          echo "Version match confirmed for jacs, jacs-mcp, and jacs-cli"
 
   publish:
     needs: verify-version
@@ -49,5 +49,10 @@ jobs:
 
       - name: Publish jacs-mcp to crates.io
         working-directory: jacs-mcp
+        continue-on-error: true
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Publish jacs-cli to crates.io
+        working-directory: jacs-cli
         continue-on-error: true
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}

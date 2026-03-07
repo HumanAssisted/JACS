@@ -6,6 +6,8 @@ on:
     tags: ["v*"]
     paths:
       - "jacs/**"
+      - "jacs-cli/**"
+      - "jacs-mcp/**"
       - "binding-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -14,6 +16,8 @@ on:
     branches: ["main"]
     paths:
       - "jacs/**"
+      - "jacs-cli/**"
+      - "jacs-mcp/**"
       - "binding-core/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -56,11 +60,13 @@ jobs:
 
       - name: Run quick Rust test suite
         run: |
-          cargo test -p jacs --verbose --lib --features cli
+          cargo test -p jacs --verbose --lib
           cargo test -p jacs --verbose --test pq2025_tests
           cargo test -p jacs --verbose --test cross_language_tests
           cargo test -p jacs --verbose --test structured_logging_tests
           cargo test -p jacs-binding-core --verbose
+          cargo build -p jacs-cli
+          cargo test -p jacs-mcp --verbose
 
   full-jacs-release:
     name: Full jacs suite (${{ matrix.os }})
@@ -90,8 +96,11 @@ jobs:
 
       - name: Run full jacs tests
         run: |
-          cargo test -p jacs --verbose --features cli
+          cargo test -p jacs --verbose
           cargo test -p jacs-binding-core --verbose
+          cargo build -p jacs-cli
+          cargo test -p jacs-mcp --verbose
+          cargo test -p jacs-cli --verbose
 
   full-jacs-nightly:
     name: Full jacs suite (nightly ubuntu)
@@ -114,5 +123,8 @@ jobs:
 
       - name: Run nightly full Rust tests
         run: |
-          cargo test -p jacs --verbose --features cli
+          cargo test -p jacs --verbose
           cargo test -p jacs-binding-core --verbose
+          cargo build -p jacs-cli
+          cargo test -p jacs-mcp --verbose
+          cargo test -p jacs-cli --verbose

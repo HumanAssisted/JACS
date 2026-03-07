@@ -17,8 +17,9 @@ name = "jacs"
 path = "src/main.rs"
 
 [features]
-default = ["mcp"]
+default = ["mcp", "attestation"]
 mcp = ["dep:jacs-mcp"]
+attestation = ["jacs/attestation"]
 
 [dependencies]
 jacs = { path = "../jacs" }

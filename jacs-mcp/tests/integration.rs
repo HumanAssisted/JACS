@@ -35,9 +35,10 @@ struct RmcpSession {
 impl RmcpSession {
     async fn spawn(extra_env: &[(&str, &str)]) -> anyhow::Result<Self> {
         let (config, base) = prepare_temp_workspace();
-        let bin_path = assert_cmd::cargo::cargo_bin!("jacs-mcp");
+        let bin_path = support::jacs_cli_bin();
         let command = tokio::process::Command::new(&bin_path).configure(|cmd| {
-            cmd.current_dir(&base)
+            cmd.arg("mcp")
+                .current_dir(&base)
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
                 .env("JACS_MAX_IAT_SKEW_SECONDS", "0")
