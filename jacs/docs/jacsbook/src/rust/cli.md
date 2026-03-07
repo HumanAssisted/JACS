@@ -26,7 +26,7 @@ jacs task --help
 | `jacs agent` | Manage agents |
 | `jacs document` | Manage documents |
 | `jacs task` | Manage tasks |
-| `jacs mcp` | Install and run the Rust MCP server |
+| `jacs mcp` | Start the built-in MCP server (stdio transport) |
 
 ## Initialization
 
@@ -41,21 +41,13 @@ This command:
 2. Generates cryptographic keys
 3. Creates an initial agent document
 
-## MCP Commands
+## MCP Server
 
-### Install MCP Server
+The MCP server is built into the `jacs` binary. No separate install step needed.
+
 ```bash
-# Install jacs-mcp from prebuilt platform assets (defaults to matching CLI version)
-jacs mcp install
-```
-
-### Run MCP Server
-```bash
-# Start stdio MCP server
-jacs mcp run
-
-# Run a custom binary path
-jacs mcp run --bin /path/to/jacs-mcp
+# Start the MCP server (stdio transport)
+jacs mcp
 ```
 
 ## Configuration Commands

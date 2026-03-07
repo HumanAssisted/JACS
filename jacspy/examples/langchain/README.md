@@ -372,13 +372,11 @@ Check:
 2. `HAI_ENDPOINT` environment variable if using a custom endpoint
 3. `HAI_API_KEY` is set correctly (some operations require authentication)
 
-#### jacs-mcp not found
+#### jacs MCP server not found
 
-Install the jacs-mcp binary:
+Install the jacs CLI (includes the MCP server):
 ```bash
-# From the JACS repository
-cd jacs-mcp
-cargo install --path .
+cargo install jacs-cli
 ```
 
 Or use the Python-based server (without HAI tools):

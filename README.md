@@ -4,7 +4,7 @@
 
 Cryptographic signatures for AI agent outputs so anyone can verify who said what, whether it was changed, and hold agents accountable. No server. No account. Three lines of code.
 
-`pip install jacs` | `npm install @hai.ai/jacs` | `cargo install jacs`
+`pip install jacs` | `npm install @hai.ai/jacs` | `cargo install jacs-cli`
 
 ## Quick Start
 
@@ -59,8 +59,8 @@ main().catch(console.error);
 ### Rust / CLI
 
 ```bash
-# Install from source (requires Rust toolchain)
-cargo install jacs --features cli
+# Install (requires Rust toolchain)
+cargo install jacs-cli
 
 # Or download a prebuilt binary from GitHub Releases
 # https://github.com/HumanAssisted/JACS/releases
@@ -68,15 +68,11 @@ cargo install jacs --features cli
 jacs quickstart --name payments-agent --domain payments.example.com
 jacs document create -f mydata.json
 
-# Install and run the Rust MCP server from the CLI
-jacs mcp install
-jacs mcp run
-
-# Optional fallback: install MCP via cargo instead of prebuilt assets
-jacs mcp install --from-cargo
+# Start the built-in MCP server (stdio transport)
+jacs mcp
 ```
 
-`jacs mcp run` is local stdio-only transport. Runtime transport override args are intentionally not accepted.
+`jacs mcp` is local stdio-only transport. No separate install step needed.
 
 ### Homebrew (macOS)
 
@@ -126,7 +122,7 @@ Find the right path in under 2 minutes. [Full decision tree](https://humanassist
 | MCP Adapter (Python, partial) | `from jacs.mcp import create_jacs_mcp_server` | [Python MCP Guide](https://humanassisted.github.io/JACS/python/mcp.html) |
 | MCP Adapter (Node.js, partial) | `require('@hai.ai/jacs/mcp')` | [Node.js MCP Guide](https://humanassisted.github.io/JACS/nodejs/mcp.html) |
 | A2A Protocol | `client.get_a2a()` / `client.getA2A()` | [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) |
-| Rust / CLI (canonical MCP server) | `cargo install jacs --features cli` | [Rust Guide](https://humanassisted.github.io/JACS/rust/installation.html) |
+| Rust / CLI (canonical MCP server) | `cargo install jacs-cli` | [Rust Guide](https://humanassisted.github.io/JACS/rust/installation.html) |
 | Any language (standalone) | `import jacs.simple as jacs` | [Simple API](https://humanassisted.github.io/JACS/python/simple-api.html) |
 
 ## MCP Support Matrix
@@ -233,4 +229,4 @@ Cross-language interoperability is tested on every commit with both Ed25519 and 
 
 ---
 
-v0.9.0 | [Apache 2.0 with Common Clause](./LICENSE)
+v0.9.1 | [Apache 2.0 with Common Clause](./LICENSE)

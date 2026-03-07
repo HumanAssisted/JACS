@@ -76,7 +76,7 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 <div class="content">
 
 ```bash
-cargo install jacs --features cli
+cargo install jacs-cli
 ```
 
 ```bash
@@ -105,17 +105,13 @@ brew tap HumanAssisted/homebrew-jacs
 brew install jacs
 ```
 
-### MCP quick start (Rust CLI)
+### MCP server (Rust CLI)
+
+The MCP server is built into the `jacs` binary. No separate install step needed.
 
 ```bash
-# Install platform-matched jacs-mcp binary
-jacs mcp install
-
-# Run stdio MCP server
-jacs mcp run
-
-# Optional fallback if you want cargo-based install
-jacs mcp install --from-cargo
+# Start the MCP server (stdio transport)
+jacs mcp
 ```
 
 ## Advanced: Explicit Agent Setup
@@ -130,7 +126,7 @@ For full control over agent creation, you can set up an agent manually with a co
 
 ### Install
 ```bash
-cargo install jacs --features cli
+cargo install jacs-cli
 ```
 
 ### Initialize

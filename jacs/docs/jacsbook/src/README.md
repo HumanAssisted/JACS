@@ -41,7 +41,7 @@ If you are choosing where to start:
 
 - Deepest feature surface
 - CLI plus library APIs
-- Best fit when you want a ready-made MCP server via `jacs-mcp`
+- Best fit when you want a ready-made MCP server via `jacs mcp`
 
 ### Python (`jacs`)
 
@@ -62,7 +62,7 @@ If you are choosing where to start:
 ### Rust CLI
 
 ```bash
-cargo install jacs --features cli
+cargo install jacs-cli
 jacs quickstart --name my-agent --domain my-agent.example.com
 ```
 

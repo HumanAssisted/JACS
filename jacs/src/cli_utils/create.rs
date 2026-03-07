@@ -330,6 +330,24 @@ pub fn handle_agent_create(
     filename: Option<&String>,
     create_keys: bool,
 ) -> Result<(), Box<dyn Error>> {
+    handle_agent_create_inner(filename, create_keys, false)
+}
+
+/// Like `handle_agent_create` but when `auto_update_config` is true, automatically
+/// sets the new agent ID in `jacs.config.json` without prompting.
+pub fn handle_agent_create_auto(
+    filename: Option<&String>,
+    create_keys: bool,
+    auto_update_config: bool,
+) -> Result<(), Box<dyn Error>> {
+    handle_agent_create_inner(filename, create_keys, auto_update_config)
+}
+
+fn handle_agent_create_inner(
+    filename: Option<&String>,
+    create_keys: bool,
+    auto_update_config: bool,
+) -> Result<(), Box<dyn Error>> {
     let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
     // Initialize storage using MultiStorage::new - Note: storage is passed in now
 
@@ -495,16 +513,20 @@ pub fn handle_agent_create(
 
     agent.save()?;
 
-    // -- Ask user if they want to update the config using request_string --
-    let prompt_message = format!(
-        "Do you want to set {} as the default agent in jacs.config.json and environment variable? (yes/no)",
-        agent_id_version
-    );
-    let update_confirmation = request_string(&prompt_message, "no"); // Default to no
+    // -- Determine whether to update the config --
+    let should_update = if auto_update_config {
+        true
+    } else {
+        let prompt_message = format!(
+            "Do you want to set {} as the default agent in jacs.config.json and environment variable? (yes/no)",
+            agent_id_version
+        );
+        let update_confirmation = request_string(&prompt_message, "no");
+        update_confirmation.trim().to_lowercase() == "yes"
+            || update_confirmation.trim().to_lowercase() == "y"
+    };
 
-    if update_confirmation.trim().to_lowercase() == "yes"
-        || update_confirmation.trim().to_lowercase() == "y"
-    {
+    if should_update {
         println!("Updating configuration...");
         let config_path_str = "jacs.config.json";
         let config_path = Path::new(config_path_str);

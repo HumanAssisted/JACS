@@ -18,7 +18,7 @@ JACS extends the A2A (Agent-to-Agent) protocol with cryptographic document prove
 pip install jacs                    # Python
 pip install jacs[a2a-server]        # Python + discovery server (FastAPI + uvicorn)
 npm install @hai.ai/jacs            # Node.js
-cargo install jacs --features cli   # Rust CLI
+cargo install jacs-cli               # Rust CLI
 ```
 
 ## The 10-Line Journey

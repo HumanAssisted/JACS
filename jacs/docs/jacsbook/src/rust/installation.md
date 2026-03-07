@@ -22,7 +22,7 @@ rustup update stable
 
 ### From crates.io (Recommended)
 ```bash
-cargo install jacs --features cli
+cargo install jacs-cli
 ```
 
 ### From Homebrew (macOS)
@@ -34,8 +34,8 @@ brew install jacs
 ### From Source
 ```bash
 git clone https://github.com/HumanAssisted/JACS
-cd JACS/jacs
-cargo install --path . --features cli
+cd JACS
+cargo install --path jacs-cli
 ```
 
 ### Verify Installation
@@ -43,13 +43,13 @@ cargo install --path . --features cli
 jacs --help
 ```
 
-### Install/Run MCP Server via CLI
-```bash
-# Install jacs-mcp from platform prebuilt release assets (default)
-jacs mcp install
+### MCP Server
 
-# Run stdio MCP server
-jacs mcp run
+The MCP server is built into the `jacs` binary. No separate install step needed.
+
+```bash
+# Start the MCP server (stdio transport)
+jacs mcp
 ```
 
 ## Using as a Library
@@ -87,7 +87,7 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 
 | Feature | Description |
 |---------|-------------|
-| `cli` | Enables CLI binary build with clap and ratatui |
+| `cli` | _(Deprecated -- use `cargo install jacs-cli` instead)_ |
 | `otlp-logs` | OpenTelemetry Protocol logging backend |
 | `otlp-metrics` | OpenTelemetry Protocol metrics backend |
 | `otlp-tracing` | OpenTelemetry Protocol distributed tracing |

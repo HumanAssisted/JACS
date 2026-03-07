@@ -40,7 +40,7 @@ JACSGO_VERSION := $(shell grep '^version' jacsgo/lib/Cargo.toml | head -1 | sed 
 # ============================================================================
 
 build-jacs:
-	cd jacs && cargo install --path . --force --features cli
+	cargo install --path jacs-cli --force
 	~/.cargo/bin/jacs --help
 	~/.cargo/bin/jacs version
 

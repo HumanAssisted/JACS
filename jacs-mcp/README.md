@@ -120,7 +120,7 @@ Manage the local trust store -- which agents your agent trusts for signature ver
 ### Step 1: Install JACS CLI
 
 ```bash
-cargo install jacs --features cli
+cargo install jacs-cli
 ```
 
 ### Step 2: Create Agent and Keys
@@ -137,14 +137,12 @@ export JACS_PRIVATE_KEY_PASSWORD="Your-Str0ng-P@ss!"
 jacs agent create --create-keys true
 ```
 
-### Step 3: Install or Run the MCP Server
+### Step 3: Start the MCP Server
+
+The MCP server is built into the `jacs` binary. No separate install step needed.
 
 ```bash
-# Install prebuilt jacs-mcp for your platform (default behavior)
-jacs mcp install
-
-# Start stdio MCP server
-jacs mcp run
+jacs mcp
 ```
 
 ### Step 4: Configure Your MCP Client
@@ -155,7 +153,8 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 {
   "mcpServers": {
     "jacs": {
-      "command": "/path/to/jacs-mcp",
+      "command": "jacs",
+      "args": ["mcp"],
       "env": {
         "JACS_CONFIG": "/path/to/jacs.config.json",
         "JACS_PRIVATE_KEY_PASSWORD": "your-secure-password"

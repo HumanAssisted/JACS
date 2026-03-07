@@ -362,7 +362,7 @@ const node = jacsToolNode([tool1, tool2], { client });
 ### MCP (`jacs/mcp`)
 
 Two integration patterns — transport proxy or partial tool compatibility registration.
-The canonical full MCP server remains the Rust `jacs-mcp` binary launched via `jacs mcp run`.
+The canonical full MCP server is built into the `jacs` binary, launched via `jacs mcp`.
 
 **Transport proxy** — wrap any MCP transport with signing/verification:
 

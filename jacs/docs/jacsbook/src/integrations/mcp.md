@@ -6,7 +6,7 @@ Use MCP when the boundary is model-to-tool inside an application or local workst
 
 There are three supported ways to use JACS with MCP today:
 
-1. **Run `jacs-mcp`** when you want a ready-made MCP server with the broadest tool surface.
+1. **Run `jacs mcp`** when you want a ready-made MCP server with the broadest tool surface.
 2. **Wrap an existing MCP transport** when you already have an MCP server or client and want signed JSON-RPC.
 3. **Register JACS as MCP tools** when you want the model to call signing, verification, agreement, A2A, or trust operations directly.
 
@@ -24,16 +24,16 @@ There are three supported ways to use JACS with MCP today:
 - **Unsigned fallback is off by default.** Both Python and Node fail closed unless you explicitly allow unsigned fallback.
 - **Node has two factories.** `createJACSTransportProxy()` takes a loaded `JacsClient` or `JacsAgent`; `createJACSTransportProxyAsync()` is the config-path variant.
 
-## 1. Ready-Made Server: `jacs-mcp`
+## 1. Ready-Made Server: `jacs mcp`
 
-If you do not already have a custom MCP server, this is the shortest route:
+Install the unified binary and start the MCP server:
 
 ```bash
-jacs mcp install
-jacs mcp run
+cargo install jacs-cli
+jacs mcp
 ```
 
-`jacs-mcp` is the most complete MCP surface in the repo. It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See `jacs-mcp/README.md` in the repo for the full tool list and client configuration examples.
+The MCP server is built into the `jacs` binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See `jacs-mcp/README.md` in the repo for the full tool list and client configuration examples.
 
 ## 2. Transport Security Around Your Existing MCP Code
 
@@ -138,7 +138,7 @@ const client = await JacsClient.quickstart({
 registerJacsTools(server, client);
 ```
 
-The Node tool set is intentionally smaller than `jacs-mcp`. Use `jacs-mcp` when you need the largest supported MCP surface.
+The Node tool set is intentionally smaller than the Rust MCP server. Use `jacs mcp` when you need the largest supported MCP surface.
 
 ## Example Paths In This Repo
 
