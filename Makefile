@@ -1,5 +1,5 @@
 .PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
-        publish-jacs publish-jacspy publish-jacsnpm \
+        publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-cli release-all release-everything release-delete-tags \
         retry-jacspy retry-jacsnpm retry-cli \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
@@ -165,8 +165,8 @@ check-versions:
 # DIRECT PUBLISH (requires local credentials)
 # ============================================================================
 
-# Publish to crates.io (requires ~/.cargo/credentials or CARGO_REGISTRY_TOKEN)
-# Publishes jacs, jacs-mcp, and jacs-cli in order with delays for crates.io indexing.
+# Publish all Rust crates to crates.io in dependency order with delays.
+# Requires ~/.cargo/credentials or CARGO_REGISTRY_TOKEN.
 publish-jacs:
 	cd jacs && cargo publish
 	@echo "Waiting 30s for crates.io to index jacs..."
@@ -177,6 +177,19 @@ publish-jacs:
 	cd jacs-mcp && cargo publish
 	@echo "Waiting 30s for crates.io to index jacs-mcp..."
 	sleep 30
+	cd jacs-cli && cargo publish
+
+# Individual crate publish targets (use when resuming a partial publish)
+publish-jacs-core:
+	cd jacs && cargo publish
+
+publish-jacs-binding-core:
+	cd binding-core && cargo publish
+
+publish-jacs-mcp:
+	cd jacs-mcp && cargo publish
+
+publish-jacs-cli:
 	cd jacs-cli && cargo publish
 
 # Dry run for crates.io publish
@@ -351,8 +364,12 @@ help:
 	@echo "  make install-githooks  Configure core.hooksPath=.githooks"
 	@echo ""
 	@echo "DIRECT PUBLISH (local credentials required):"
-	@echo "  make publish-jacs        Publish to crates.io"
-	@echo "  make publish-jacs-dry    Dry run crates.io publish"
+	@echo "  make publish-jacs              Publish all Rust crates in dependency order"
+	@echo "  make publish-jacs-core         Publish jacs core only"
+	@echo "  make publish-jacs-binding-core Publish jacs-binding-core only"
+	@echo "  make publish-jacs-mcp          Publish jacs-mcp only"
+	@echo "  make publish-jacs-cli          Publish jacs-cli only"
+	@echo "  make publish-jacs-dry          Dry run crates.io publish"
 	@echo "  make publish-jacspy      Publish to PyPI"
 	@echo "  make publish-jacspy-dry  Dry run PyPI publish"
 	@echo "  make publish-jacsnpm     Publish to npm"
