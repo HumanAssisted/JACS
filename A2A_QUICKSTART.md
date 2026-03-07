@@ -31,8 +31,8 @@ from jacs.client import JacsClient
 client = JacsClient.quickstart()                                          # 1. Create agent
 card = client.export_agent_card(url="https://myagent.example.com")        # 2. Export Agent Card
 signed = client.sign_artifact({"action": "classify"}, "task")             # 3. Sign an artifact
-result = client.verify_artifact(signed)                                   # 4. Verify it
-print(f"Valid: {result['valid']}, Signer: {result['signer_id']}")
+result = client.verify(signed)                                            # 4. Verify it
+print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 
 a2a = client.get_a2a(url="http://localhost:8080")                         # 5. Get A2A integration
 a2a.serve(port=8080)                                                      # 6. Serve discovery endpoints

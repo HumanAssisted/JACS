@@ -23,12 +23,12 @@ We propose JACS as a technology partner for the NCCoE demonstration project, wit
 **Scenario:** A financial institution uses three AI agents in sequence for trade approval: Risk Analysis (Agent A), Compliance Check (Agent B), and Final Approval (Agent C). Each agent must prove its identity, sign its output, and the final approval requires at least 2-of-3 agent signatures.
 
 **How JACS addresses this:**
-- Each agent is created with a unique cryptographic key pair (Ed25519, ECDSA, or post-quantum ML-DSA-87)
+- Each agent is created with a unique cryptographic key pair (ML-DSA-87 post-quantum by default, with Ed25519 and ECDSA also supported)
 - Each agent's signed output includes a content-integrity hash (SHA-256 over JSON Canonicalization Scheme / RFC 8785)
 - The approval step uses JACS's multi-agent agreement protocol with configurable quorum (M-of-N), timeout, and algorithm strength requirements
 - The complete chain from input to approval is cryptographically linked and auditable
 
-**Concrete capability:** JACS's `AgreementOptions` supports `quorum: {required: 2, total: 3}`, `timeout: "PT5M"` (5-minute window), and `required_algorithms: ["ring-Ed25519"]`. Partial signing (1-of-3) does not produce a valid authorization.
+**Concrete capability:** JACS's `AgreementOptions` supports `quorum: {required: 2, total: 3}`, `timeout: "PT5M"` (5-minute window), and `required_algorithms: ["pq2025"]`. Partial signing (1-of-3) does not produce a valid authorization.
 
 ### 1.2 Cross-Organization Agent Trust Without Centralized Authority
 
@@ -94,7 +94,7 @@ When multiple agents collaborate on a decision, the authorization model must sup
 
 Agent systems are polyglot by nature. Security controls must work consistently across implementation languages.
 
-**JACS solution:** Core implementation in Rust with first-class bindings for Python (PyO3), Node.js (NAPI-RS), and Go (CGo). Cross-language interoperability validated by 35+ dedicated tests that sign in one language and verify in another. Total test count across all targets: 500+.
+**JACS solution:** Core implementation in Rust with first-class bindings for Python (PyO3), Node.js (NAPI-RS), and Go (CGo). Cross-language interoperability validated by 35+ dedicated tests that sign in one language and verify in another. Total test count across all targets: 1,200+.
 
 ---
 
@@ -132,7 +132,7 @@ Agent systems are polyglot by nature. Security controls must work consistently a
 
 | NIST SP 800-63-4 Level | JACS Equivalent |
 |------------------------|----------------|
-| AAL1 (single factor) | Single key pair (Ed25519) |
+| AAL1 (single factor) | Single key pair (ML-DSA-87 or Ed25519) |
 | AAL2 (multi-factor) | Key pair + password-encrypted private key |
 | AAL3 (hardware) | Key pair + hardware-backed key storage |
 
@@ -213,8 +213,8 @@ JACS (JSON Agent Communication Standard) is an open-source project maintained by
 - **Version:** 0.9.2
 - **Language:** Rust core with Python, Node.js, and Go bindings
 - **License:** Apache 2.0 with Common Clause
-- **Tests:** 500+ across 5 language targets
-- **Algorithms:** Ed25519, ECDSA P-256/P-384, ML-DSA-87
+- **Tests:** 1,200+ across 5 language targets
+- **Algorithms:** ML-DSA-87 (default), Ed25519, ECDSA P-256/P-384
 - **Standards alignment:** JCS (RFC 8785), DSSE, in-toto predicate types
 - **Repository:** https://github.com/HumanAssisted/JACS
 

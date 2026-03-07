@@ -44,7 +44,7 @@ Several IETF Internet-Drafts from late 2025 and early 2026 directly relate to JA
 - Target: Informational RFC initially, potentially Standards Track if WG interest is strong
 
 **Timeline:**
-- April-May 2026: Draft I-D text based on JACS v0.9.0 attestation spec
+- April-May 2026: Draft I-D text based on JACS v0.9.2 attestation spec
 - June 2026: Submit to RATS WG mailing list for discussion
 - July 2026: Present at IETF 121 (if accepted for agenda)
 
