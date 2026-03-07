@@ -47,10 +47,16 @@ jobs:
         working-directory: jacs
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
+      - name: Wait for crates.io to index jacs
+        run: sleep 30
+
       - name: Publish jacs-mcp to crates.io
         working-directory: jacs-mcp
         continue-on-error: true
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+
+      - name: Wait for crates.io to index jacs-mcp
+        run: sleep 30
 
       - name: Publish jacs-cli to crates.io
         working-directory: jacs-cli

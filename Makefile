@@ -166,12 +166,21 @@ check-versions:
 # ============================================================================
 
 # Publish to crates.io (requires ~/.cargo/credentials or CARGO_REGISTRY_TOKEN)
+# Publishes jacs, jacs-mcp, and jacs-cli in order with delays for crates.io indexing.
 publish-jacs:
-	cd jacs && cargo publish --features cli
+	cd jacs && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs..."
+	sleep 30
+	cd jacs-mcp && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs-mcp..."
+	sleep 30
+	cd jacs-cli && cargo publish
 
 # Dry run for crates.io publish
 publish-jacs-dry:
-	cd jacs && cargo publish --features cli --dry-run
+	cd jacs && cargo publish --dry-run
+	cd jacs-mcp && cargo publish --dry-run
+	cd jacs-cli && cargo publish --dry-run
 
 # Publish to PyPI (requires MATURIN_PYPI_TOKEN or ~/.pypirc)
 publish-jacspy:
