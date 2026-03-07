@@ -7,7 +7,7 @@ resolver = "3"
 description = "Shared core logic for JACS language bindings (Python, Node.js, etc.)"
 readme = "../README.md"
 authors = ["JACS Contributors"]
-license-file = "../LICENSE"
+license = "Apache-2.0 OR MIT"
 repository = "https://github.com/HumanAssisted/JACS"
 homepage = "https://humanassisted.github.io/JACS"
 
