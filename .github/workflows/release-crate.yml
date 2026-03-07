@@ -38,6 +38,8 @@ jobs:
   publish:
     needs: verify-version
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.verify-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -47,26 +49,56 @@ jobs:
         working-directory: jacs
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
-      - name: Wait for crates.io to index jacs
-        run: sleep 30
+      - name: Wait for jacs to appear on crates.io
+        run: |
+          echo "Waiting for jacs $VERSION on crates.io..."
+          for i in $(seq 1 30); do
+            if cargo search jacs --limit 1 | grep -q "^jacs = \"$VERSION\""; then
+              echo "jacs $VERSION is available on crates.io"
+              exit 0
+            fi
+            echo "  attempt $i/30 — not yet, waiting 10s..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for jacs $VERSION on crates.io"
+          exit 1
 
       - name: Publish jacs-binding-core to crates.io
         working-directory: binding-core
-        continue-on-error: true
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
-      - name: Wait for crates.io to index jacs-binding-core
-        run: sleep 30
+      - name: Wait for jacs-binding-core to appear on crates.io
+        run: |
+          echo "Waiting for jacs-binding-core $VERSION on crates.io..."
+          for i in $(seq 1 30); do
+            if cargo search jacs-binding-core --limit 1 | grep -q "^jacs-binding-core = \"$VERSION\""; then
+              echo "jacs-binding-core $VERSION is available on crates.io"
+              exit 0
+            fi
+            echo "  attempt $i/30 — not yet, waiting 10s..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for jacs-binding-core $VERSION on crates.io"
+          exit 1
 
       - name: Publish jacs-mcp to crates.io
         working-directory: jacs-mcp
-        continue-on-error: true
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
-      - name: Wait for crates.io to index jacs-mcp
-        run: sleep 30
+      - name: Wait for jacs-mcp to appear on crates.io
+        run: |
+          echo "Waiting for jacs-mcp $VERSION on crates.io..."
+          for i in $(seq 1 30); do
+            if cargo search jacs-mcp --limit 1 | grep -q "^jacs-mcp = \"$VERSION\""; then
+              echo "jacs-mcp $VERSION is available on crates.io"
+              exit 0
+            fi
+            echo "  attempt $i/30 — not yet, waiting 10s..."
+            sleep 10
+          done
+          echo "::error::Timed out waiting for jacs-mcp $VERSION on crates.io"
+          exit 1
 
       - name: Publish jacs-cli to crates.io
         working-directory: jacs-cli
-        continue-on-error: true
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
