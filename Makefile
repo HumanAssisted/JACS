@@ -171,6 +171,9 @@ publish-jacs:
 	cd jacs && cargo publish
 	@echo "Waiting 30s for crates.io to index jacs..."
 	sleep 30
+	cd binding-core && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs-binding-core..."
+	sleep 30
 	cd jacs-mcp && cargo publish
 	@echo "Waiting 30s for crates.io to index jacs-mcp..."
 	sleep 30
@@ -179,6 +182,7 @@ publish-jacs:
 # Dry run for crates.io publish
 publish-jacs-dry:
 	cd jacs && cargo publish --dry-run
+	cd binding-core && cargo publish --dry-run
 	cd jacs-mcp && cargo publish --dry-run
 	cd jacs-cli && cargo publish --dry-run
 

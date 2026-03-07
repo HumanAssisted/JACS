@@ -8,13 +8,15 @@ description = "Shared core logic for JACS language bindings (Python, Node.js, et
 readme = "../README.md"
 authors = ["JACS Contributors"]
 license-file = "../LICENSE"
+repository = "https://github.com/HumanAssisted/JACS"
+homepage = "https://humanassisted.github.io/JACS"
 
 [features]
 default = []
 attestation = ["jacs/attestation"]
 
 [dependencies]
-jacs = { path = "../jacs" }
+jacs = { version = "0.9.1", path = "../jacs" }
 serde_json = "1.0"
 base64 = "0.22.1"
 serde = { version = "1.0", features = ["derive"] }

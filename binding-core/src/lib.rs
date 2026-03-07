@@ -2164,6 +2164,17 @@ pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Bind
         .map_err(|e| BindingCoreError::generic(e.to_string()))
 }
 
+/// Like `handle_agent_create` but auto-updates config with the agent ID when
+/// `auto_update_config` is true, skipping the interactive prompt.
+pub fn handle_agent_create_auto(
+    filename: Option<&String>,
+    create_keys: bool,
+    auto_update_config: bool,
+) -> BindingResult<()> {
+    jacs::cli_utils::create::handle_agent_create_auto(filename, create_keys, auto_update_config)
+        .map_err(|e| BindingCoreError::generic(e.to_string()))
+}
+
 /// Create a jacs.config.json file interactively.
 pub fn handle_config_create() -> BindingResult<()> {
     jacs::cli_utils::create::handle_config_create()

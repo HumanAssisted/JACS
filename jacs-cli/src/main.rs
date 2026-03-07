@@ -3,8 +3,7 @@ use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::cli_utils::create::handle_agent_create;
-use jacs::cli_utils::create::handle_config_create;
+use jacs::cli_utils::create::{handle_agent_create, handle_agent_create_auto, handle_config_create};
 use jacs::cli_utils::default_set_file_list;
 use jacs::cli_utils::document::{
     check_agreement, create_agreement, create_documents, extract_documents, sign_documents,
@@ -875,6 +874,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         .subcommand(
             Command::new("init")
                 .about("Initialize JACS by creating both config and agent (with keys)")
+                .arg(
+                    Arg::new("yes")
+                        .long("yes")
+                        .short('y')
+                        .action(ArgAction::SetTrue)
+                        .help("Automatically set the new agent ID in jacs.config.json without prompting"),
+                )
         )
         .subcommand(
             Command::new("attest")
@@ -2349,12 +2355,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        Some(("init", _init_matches)) => {
+        Some(("init", init_matches)) => {
+            let auto_yes = *init_matches.get_one::<bool>("yes").unwrap_or(&false);
             println!("--- Running Config Creation ---");
             handle_config_create()?;
             println!("\n--- Running Agent Creation (with keys) ---");
-            // Call agent create handler with None for filename and true for create_keys
-            handle_agent_create(None, true)?;
+            handle_agent_create_auto(None, true, auto_yes)?;
             println!("\n--- JACS Initialization Complete ---");
         }
         _ => {
