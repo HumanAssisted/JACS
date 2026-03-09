@@ -2,6 +2,42 @@ pub mod create;
 pub mod document;
 use crate::storage::MultiStorage;
 use std::error::Error;
+use std::path::Path;
+
+/// Read a password from a file, checking that the file has secure permissions.
+///
+/// On Unix, rejects files that are group-readable or world-readable (mode must
+/// be 0600 or 0400). On non-Unix platforms, reads without permission checks.
+///
+/// Returns the password string (with trailing newlines stripped).
+pub fn read_password_file_checked(path: &Path) -> Result<String, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let metadata = std::fs::metadata(path)
+            .map_err(|e| format!("Failed to read password file '{}': {}", path.display(), e))?;
+        let mode = metadata.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "Password file '{}' has insecure permissions (mode {:04o}). \
+                File must not be group-readable or world-readable. \
+                Fix with: chmod 600 '{}'",
+                path.display(),
+                mode,
+                path.display(),
+            ));
+        }
+    }
+
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read password file '{}': {}", path.display(), e))?;
+    let password = raw.trim_end_matches(|c| c == '\n' || c == '\r');
+    if password.is_empty() {
+        return Err(format!("Password file '{}' is empty.", path.display()));
+    }
+    Ok(password.to_string())
+}
 
 pub fn default_set_file_list(
     filename: Option<&String>,

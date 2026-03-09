@@ -10,7 +10,7 @@
 //! use jacs::email::{sign_email, verify_email, verify_email_content, JacsSigner};
 //! use jacs::simple::SimpleAgent;
 //!
-//! // Sign: pass any JacsSigner — both SimpleAgent and Agent work
+//! // Sign: pass any JacsSigner — SimpleAgent implements it out of the box
 //! let signed_eml = sign_email(&raw_eml, &my_agent)?;
 //!
 //! // Verify: crypto + content hash comparison
@@ -22,7 +22,7 @@
 //! ## Key design points
 //!
 //! - [`JacsSigner`] trait decouples email functions from concrete agent types.
-//!   Both `SimpleAgent` and any custom wrapper can implement it.
+//!   `SimpleAgent` and any custom wrapper can implement it.
 //! - Signing uses [`JacsSigner::sign_message()`] to create a real JACS document.
 //!   No manual crypto in the email module.
 //! - Verification uses [`JacsSigner::verify_with_key()`] for cryptographic

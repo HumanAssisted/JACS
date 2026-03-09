@@ -617,23 +617,28 @@ impl FileLoader for Agent {
         full_filepath: &str,
         private_key: &[u8],
     ) -> Result<String, Box<dyn Error>> {
+        // SECURITY: Require encryption password. Never write private keys unencrypted.
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
             .unwrap_or(None)
             .unwrap_or_default();
 
-        if !password.is_empty() {
-            let encrypted_key = encrypt_private_key(private_key)?;
-            let final_path = if !full_filepath.ends_with(".enc") {
-                format!("{}.enc", full_filepath)
-            } else {
-                full_filepath.to_string()
-            };
-            write_private_key_securely(&final_path, &encrypted_key)?;
-            Ok(final_path)
-        } else {
-            write_private_key_securely(full_filepath, private_key)?;
-            Ok(full_filepath.to_string())
+        if password.trim().is_empty() {
+            return Err(
+                "SECURITY: Refusing to save private key without encryption. \
+                Set JACS_PRIVATE_KEY_PASSWORD environment variable to a strong password \
+                before saving keys to disk."
+                    .into(),
+            );
         }
+
+        let encrypted_key = encrypt_private_key(private_key)?;
+        let final_path = if !full_filepath.ends_with(".enc") {
+            format!("{}.enc", full_filepath)
+        } else {
+            full_filepath.to_string()
+        };
+        write_private_key_securely(&final_path, &encrypted_key)?;
+        Ok(final_path)
     }
     /// private Helper function to create a backup file name based on the current timestamp
     #[cfg(not(target_arch = "wasm32"))]
