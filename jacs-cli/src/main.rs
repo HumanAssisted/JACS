@@ -37,6 +37,34 @@ If neither is set, CLI will try legacy ./jacs_keys/.jacs_password when present."
 }
 
 fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, String> {
+    // SECURITY: Check file permissions before reading (Unix only)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let metadata = std::fs::metadata(path).map_err(|e| {
+            format!(
+                "Failed to read {} '{}': {}",
+                source_name,
+                path.display(),
+                e
+            )
+        })?;
+        let mode = metadata.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "{} '{}' has insecure permissions (mode {:04o}). \
+                File must not be group-readable or world-readable. \
+                Fix with: chmod 600 '{}'\n\n{}",
+                source_name,
+                path.display(),
+                mode,
+                path.display(),
+                quickstart_password_bootstrap_help()
+            ));
+        }
+    }
+
     let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
     // Preserve intentional leading/trailing spaces in passphrases; strip only line endings.

@@ -109,6 +109,24 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
     }
 }
 
+/// Check that `JACS_PRIVATE_KEY_PASSWORD` is set and non-empty.
+///
+/// Returns `Ok(())` if the password is available, or an error describing what
+/// the user needs to do. This is the single policy-enforcement point used by
+/// `save_private_key` to ensure keys are never written unencrypted.
+pub fn require_encryption_password() -> Result<(), Box<dyn Error>> {
+    let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default();
+    if password.trim().is_empty() {
+        return Err(
+            "SECURITY: JACS_PRIVATE_KEY_PASSWORD is not set or is empty. \
+            Private keys must be encrypted before writing to disk. \
+            Set this environment variable to a strong password."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 // Default filesystem-encrypted backend placeholder.
 // Current code paths in Agent/crypt already implement FS behavior; this scaffold
 // exists for future refactors. For now these functions are unimplemented.
@@ -326,16 +344,25 @@ impl KeyStore for FsEncryptedStore {
                 );
             }
         };
-        let data = std::str::from_utf8(message).unwrap_or("").to_string();
+        // SECURITY: Reject non-UTF8 messages instead of silently signing empty string
+        let data = std::str::from_utf8(message).map_err(|e| {
+            format!(
+                "Message contains invalid UTF-8 at byte offset {}: {}. \
+                Cannot sign non-UTF8 data as string — this would silently \
+                change the signed content.",
+                e.valid_up_to(),
+                e
+            )
+        })?;
         let sig_b64 = match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                crypt::rsawrapper::sign_string(private_key.to_vec(), &data)?
+                crypt::rsawrapper::sign_string(private_key.to_vec(), data)?
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                crypt::ringwrapper::sign_string(private_key.to_vec(), &data)?
+                crypt::ringwrapper::sign_string(private_key.to_vec(), &data.to_string())?
             }
             CryptoSigningAlgorithm::Pq2025 => {
-                crypt::pq2025::sign_string(private_key.to_vec(), &data)?
+                crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
         Ok(STANDARD.decode(sig_b64)?)
@@ -522,16 +549,25 @@ impl KeyStore for InMemoryKeyStore {
                 );
             }
         };
-        let data = std::str::from_utf8(message).unwrap_or("").to_string();
+        // SECURITY: Reject non-UTF8 messages instead of silently signing empty string
+        let data = std::str::from_utf8(message).map_err(|e| {
+            format!(
+                "Message contains invalid UTF-8 at byte offset {}: {}. \
+                Cannot sign non-UTF8 data as string — this would silently \
+                change the signed content.",
+                e.valid_up_to(),
+                e
+            )
+        })?;
         let sig_b64 = match algo {
             CryptoSigningAlgorithm::RsaPss => {
-                crypt::rsawrapper::sign_string(private_key.to_vec(), &data)?
+                crypt::rsawrapper::sign_string(private_key.to_vec(), data)?
             }
             CryptoSigningAlgorithm::RingEd25519 => {
-                crypt::ringwrapper::sign_string(private_key.to_vec(), &data)?
+                crypt::ringwrapper::sign_string(private_key.to_vec(), &data.to_string())?
             }
             CryptoSigningAlgorithm::Pq2025 => {
-                crypt::pq2025::sign_string(private_key.to_vec(), &data)?
+                crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
         Ok(STANDARD.decode(sig_b64)?)

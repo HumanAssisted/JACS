@@ -510,6 +510,101 @@ impl JacsAgent {
     fn export_attestation_dsse(&self, attestation_json: &str) -> PyResult<String> {
         self.inner.export_attestation_dsse(attestation_json).to_py()
     }
+
+    // =========================================================================
+    // HAI SDK Protocol Methods
+    // =========================================================================
+
+    /// Build an Authorization header value for this agent.
+    ///
+    /// Returns:
+    ///     The header value string (e.g. "JACS ...")
+    #[pyo3(name = "build_auth_header")]
+    fn py_build_auth_header(&self) -> PyResult<String> {
+        self.inner.build_auth_header().to_py()
+    }
+
+    /// Canonicalize a JSON string using RFC 8785 (JCS).
+    ///
+    /// Args:
+    ///     json_string: Any valid JSON string
+    ///
+    /// Returns:
+    ///     The canonicalized JSON string
+    #[pyo3(name = "canonicalize_json")]
+    fn py_canonicalize_json(&self, json_string: &str) -> PyResult<String> {
+        self.inner.canonicalize_json(json_string).to_py()
+    }
+
+    /// Sign a response payload and return a signed JACS document string.
+    ///
+    /// Args:
+    ///     payload_json: JSON string of the payload to sign
+    ///
+    /// Returns:
+    ///     JSON string of the signed document
+    #[pyo3(name = "sign_response")]
+    fn py_sign_response(&self, payload_json: &str) -> PyResult<String> {
+        self.inner.sign_response(payload_json).to_py()
+    }
+
+    /// Generate a verification link for a document.
+    ///
+    /// Args:
+    ///     document: JSON string of the signed document
+    ///     document: The document string to encode
+    ///
+    /// Returns:
+    ///     URL-safe base64 encoded string (no padding)
+    #[pyo3(name = "encode_verify_payload")]
+    fn py_encode_verify_payload(&self, document: &str) -> PyResult<String> {
+        self.inner.encode_verify_payload(document).to_py()
+    }
+
+    /// Decode a URL-safe base64 verification payload back to the original document.
+    ///
+    /// Args:
+    ///     encoded: The base64url-encoded string
+    ///
+    /// Returns:
+    ///     The original document string
+    #[pyo3(name = "decode_verify_payload")]
+    fn py_decode_verify_payload(&self, encoded: &str) -> PyResult<String> {
+        self.inner.decode_verify_payload(encoded).to_py()
+    }
+
+    /// Extract the document ID from a JACS-signed document.
+    ///
+    /// Checks jacsDocumentId, document_id, id in priority order.
+    ///
+    /// Args:
+    ///     document: JSON string of the signed document
+    ///
+    /// Returns:
+    ///     The document ID string
+    #[pyo3(name = "extract_document_id")]
+    fn py_extract_document_id(&self, document: &str) -> PyResult<String> {
+        self.inner.extract_document_id(document).to_py()
+    }
+
+    /// Unwrap and verify a signed event against server public keys.
+    ///
+    /// Args:
+    ///     event_json: JSON string of the signed event
+    ///     server_keys_json: JSON string of the server's public keys
+    ///
+    /// Returns:
+    ///     JSON string with "data" and "verified" fields
+    #[pyo3(name = "unwrap_signed_event")]
+    fn py_unwrap_signed_event(
+        &self,
+        event_json: &str,
+        server_keys_json: &str,
+    ) -> PyResult<String> {
+        self.inner
+            .unwrap_signed_event(event_json, server_keys_json)
+            .to_py()
+    }
 }
 
 // =============================================================================

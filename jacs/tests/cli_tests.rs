@@ -990,7 +990,7 @@ fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
         .success()
         .stdout(predicate::str::contains("JACS Test Agent"))
         .stdout(predicate::str::contains("Allowed:     YES"))
-        .stdout(predicate::str::contains("jacs_verified"));
+        .stdout(predicate::str::contains("JacsVerified"));
 
     let _ = fs::remove_dir_all(&tmp_dir);
     Ok(())
@@ -1028,7 +1028,7 @@ fn test_a2a_assess_non_jacs_agent_rejected() -> Result<(), Box<dyn Error>> {
     cmd.assert()
         .failure()
         .stdout(predicate::str::contains("Allowed:     NO"))
-        .stdout(predicate::str::contains("untrusted"));
+        .stdout(predicate::str::contains("Untrusted"));
 
     let _ = fs::remove_dir_all(&tmp_dir);
     Ok(())
@@ -1076,7 +1076,7 @@ fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
 
     let assessment: serde_json::Value = serde_json::from_slice(&output.stdout)?;
     assert_eq!(assessment["allowed"], true);
-    assert_eq!(assessment["trustLevel"], "jacs_verified");
+    assert_eq!(assessment["trustLevel"], "JacsVerified");
     assert_eq!(assessment["policy"], "Verified");
     assert_eq!(assessment["agentId"], "json-agent");
 

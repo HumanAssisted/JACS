@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>NIST CAISI RFI Response</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">NIST CAISI RFI Response</h1>
+</header>
+<h1
+id="response-to-nist-caisi-request-for-information-security-considerations-for-artificial-intelligence-agents">Response
+to NIST CAISI Request for Information: Security Considerations for
+Artificial Intelligence Agents</h1>
+<p><strong>Docket Number:</strong> NIST-2025-0035 <strong>Federal
+Register Document:</strong> 2026-00206 <strong>Submitted by:</strong>
+HAI.AI / JACS Project <strong>Date:</strong> March 2026
+<strong>Contact:</strong> Jonathan Hendler, jonathan@hai.io, HAI.AI
+<strong>Website:</strong> https://github.com/HumanAssisted/JACS</p>
+<hr />
+<h2 id="respondent-identification">1. Respondent Identification</h2>
+<p>HAI.AI develops and maintains JACS (JSON Agent Communication
+Standard), an open-source cryptographic framework for AI agent identity,
+signed communication, and verifiable attestation. JACS is implemented in
+Rust with production bindings for Python, Node.js, and Go. The project
+is currently at version 0.9.2 with over 1,000 tests across 5 language
+targets.</p>
+<p>JACS addresses the core challenge NIST identifies in this RFI: the
+need for security controls that are native to AI agent systems rather
+than bolted on from traditional software security. Our framework
+provides cryptographic agent identity, non-repudiable action signing,
+multi-agent agreement protocols with quorum-based authorization, and a
+structured attestation system for evidence-backed trust decisions.</p>
+<p>This response draws on practical experience building and deploying
+these capabilities across the HAI.AI platform, where registered agents
+receive cryptographically verified identities and participate in
+evaluated conversations and benchmarks.</p>
+<h3 id="what-makes-jacs-different">What Makes JACS Different</h3>
+<p>Most AI agent security proposals describe architectures. JACS ships
+working code. Key differentiators:</p>
+<ol type="1">
+<li><p><strong>Decentralized-first:</strong> No certificate authority,
+no registration server, no central identity provider required. Agents
+create key pairs and start signing immediately. Trust is additive —
+organizations can layer DNS-based verification, trust stores, and
+attestation policies on top of the decentralized foundation without
+changing the core protocol.</p></li>
+<li><p><strong>Verification works offline:</strong> Every JACS operation
+— agent creation, signing, verification, multi-agent agreement,
+attestation — works without network connectivity. This is a hard
+requirement for air-gapped environments, edge deployments, and scenarios
+where the verifying party has no relationship with the signing party’s
+infrastructure.</p></li>
+<li><p><strong>Developer experience as a security multiplier:</strong>
+Security controls that are hard to adopt don’t get adopted. JACS
+provides a <code>quickstart()</code> one-liner in Python, Node.js, and
+Rust CLI that creates a persistent agent with keys in under 100ms.
+Framework adapters for LangChain, FastAPI, CrewAI, and the Anthropic SDK
+allow developers to add cryptographic signing to existing agent code
+with 1-3 lines of change. The MCP server exposes all 33 JACS tools to
+any MCP client, meaning AI assistants can use JACS without any code
+integration at all.</p></li>
+<li><p><strong>Post-quantum from day one:</strong> ML-DSA-87 (NIST FIPS
+204) is not a roadmap item — it ships today alongside Ed25519 and ECDSA.
+Agreement protocols can enforce minimum algorithm strength, ensuring
+that sensitive multi-agent authorizations use post-quantum signatures
+even if individual agents support classical algorithms.</p></li>
+<li><p><strong>A2A protocol integration:</strong> JACS extends Google’s
+Agent-to-Agent protocol with cryptographic provenance. Agent Cards carry
+JACS extensions, artifacts are signed with chain-of-custody tracking,
+and trust assessment is built into the discovery flow. This bridges the
+gap between A2A’s transport-level protocol and the cryptographic
+identity layer that multi-agent systems need.</p></li>
+</ol>
+<hr />
+<h2 id="topic-1-security-threats-risks-and-vulnerabilities">2. Topic 1:
+Security Threats, Risks, and Vulnerabilities</h2>
+<h3 id="agent-identity-spoofing-and-impersonation">2.1 Agent Identity
+Spoofing and Impersonation</h3>
+<p>The most fundamental threat to multi-agent systems is the inability
+to reliably distinguish one agent from another. Without cryptographic
+identity, any component can claim to be any agent, and downstream
+consumers have no mechanism to verify the claim.</p>
+<p><strong>JACS’s approach:</strong> Every JACS agent generates a
+cryptographic key pair (Ed25519, ECDSA P-256/P-384, or post-quantum
+ML-DSA-87) at creation time. The public key becomes part of the agent’s
+verifiable identity document. All actions produce signed artifacts that
+can be verified by any party holding the public key, without requiring a
+centralized authority or online verification service.</p>
+<p><strong>Concrete example:</strong> In a multi-agent financial
+approval workflow, Agent A signs a recommendation, Agent B signs a
+review, and Agent C signs the final approval. Each signature binds the
+action to a specific agent identity. If an attacker substitutes a forged
+Agent B review, the signature verification fails immediately – the
+downstream agent (or any auditor) detects the forgery without contacting
+a central server.</p>
+<h3 id="data-integrity-tampering-in-multi-agent-workflows">2.2 Data
+Integrity Tampering in Multi-Agent Workflows</h3>
+<p>When agents pass data between each other, any intermediate component
+can modify the payload. Without integrity guarantees, a compromised
+relay can alter agent outputs, inject false data, or selectively drop
+information.</p>
+<p><strong>JACS’s approach:</strong> Every JACS-signed document includes
+a SHA-256 content hash computed over the JSON Canonicalization Scheme
+(RFC 8785) representation of the document. The hash is included in the
+signed envelope, binding the content to the signature. Any modification
+to the document body invalidates both the hash and the signature.</p>
+<h3 id="replay-attacks">2.3 Replay Attacks</h3>
+<p>An attacker who captures a legitimate signed message can replay it in
+a different context – for example, re-submitting an approved transaction
+or replaying a stale authorization.</p>
+<p><strong>JACS’s approach:</strong> JACS documents include unique
+identifiers (<code>jacsId</code>) and version counters
+(<code>jacsVersion</code>), along with timestamps. The combination of
+unique ID, version, and temporal context makes replay attacks
+detectable. The agreement protocol additionally uses nonce-based
+challenge-response to prevent replay of multi-party authorization
+flows.</p>
+<h3 id="trust-boundary-violations">2.4 Trust Boundary Violations</h3>
+<p>In systems with multiple agents of varying trustworthiness, an
+untrusted agent may attempt actions that should require higher trust
+levels. Without explicit trust boundaries, privilege escalation occurs
+silently.</p>
+<p><strong>JACS’s approach:</strong> JACS implements a three-tier
+progressive trust model: - <strong>Open:</strong> Accept any signed
+document (verify signature only) - <strong>Verified:</strong> Require
+the signer’s public key to be in a local trust store and optionally
+DNS-anchored - <strong>Strict:</strong> Require verified identity plus
+policy compliance (attestation-level trust)</p>
+<p>These trust levels are enforced at verification time, not just at the
+API boundary, meaning that every document carries its trust requirements
+with it.</p>
+<h3 id="lack-of-provenance-in-agent-outputs">2.5 Lack of Provenance in
+Agent Outputs</h3>
+<p>When an AI agent produces an output, downstream consumers currently
+cannot determine: what inputs the agent used, what transformation it
+applied, whether a human reviewed the result, or what evidence supports
+the output’s trustworthiness.</p>
+<p><strong>JACS’s approach:</strong> JACS attestations extend signed
+documents with structured claims, evidence references, and derivation
+chains. An attestation answers not just “WHO signed this?” but “WHO
+signed this and WHY should it be trusted?” Evidence can reference A2A
+protocol exchanges, email verifications, JWT tokens, or custom evidence
+sources, each with content-addressable digests and freshness
+timestamps.</p>
+<hr />
+<h2 id="topic-2-security-practices-and-controls">3. Topic 2: Security
+Practices and Controls</h2>
+<p>This is where JACS has the most direct contribution. JACS implements
+multiple security practices that directly address the controls NIST is
+exploring.</p>
+<h3 id="cryptographic-agent-identity">3.1 Cryptographic Agent
+Identity</h3>
+<p><strong>What it is:</strong> Each JACS agent is created with a
+cryptographic key pair. The agent document – a signed JSON file
+containing the agent’s identity, capabilities, and public key – serves
+as a verifiable credential.</p>
+<p><strong>Implementation details:</strong> -
+<strong>Algorithms:</strong> Ed25519 (via ring), ECDSA P-256/P-384 (via
+ring), and ML-DSA-87 post-quantum signatures (via the
+<code>pqcrypto</code> crate, NIST FIPS 204) - <strong>Key
+management:</strong> Private keys are encrypted at rest using
+AES-256-GCM with PBKDF2 key derivation (600,000 iterations per OWASP
+2024 recommendations) - <strong>Key rotation:</strong> Agents can rotate
+keys while maintaining identity continuity through signed rotation
+records - <strong>Decentralized:</strong> No certificate authority, no
+PKI infrastructure, no central identity registry required. Agents can
+verify each other directly.</p>
+<p><strong>Why this matters for NIST’s standardization effort:</strong>
+Cryptographic agent identity should be a foundational requirement, not
+an optional feature. Without it, all higher-level security controls
+(authorization, audit, non-repudiation) rest on unverifiable claims.</p>
+<h3 id="non-repudiable-action-signing">3.2 Non-Repudiable Action
+Signing</h3>
+<p><strong>What it is:</strong> Every agent action (document creation,
+message signing, agreement participation) produces a cryptographically
+signed artifact. The signature binds the action to the agent’s identity
+and the specific content.</p>
+<p><strong>Implementation details:</strong> - Documents are signed using
+the agent’s private key over a canonical JSON representation (JCS, RFC
+8785) - Each signed document includes: agent signature, content hash
+(SHA-256), unique document ID, version, timestamp, and schema reference
+- Signatures can be verified offline without any network connectivity -
+Cross-language interoperability: documents signed in Rust can be
+verified in Python, Node.js, or Go (validated by 35+ cross-language
+tests)</p>
+<p><strong>Performance:</strong> Signing and verification complete in
+under 1ms for Ed25519 (benchmarked). ML-DSA-87 (the default algorithm)
+adds approximately 2-3ms for signing — fast enough for real-time agent
+workflows.</p>
+<h3 id="multi-agent-agreement-with-quorum-authorization">3.3 Multi-Agent
+Agreement with Quorum Authorization</h3>
+<p><strong>What it is:</strong> JACS provides a protocol for multi-agent
+authorization where M-of-N agents must sign before an action is
+authorized. This implements least-privilege and separation-of-duty
+controls natively in the agent system.</p>
+<p><strong>Implementation details:</strong> -
+<code>AgreementOptions</code> struct supports: timeout (ISO 8601
+duration), quorum (M-of-N), required algorithms, and minimum
+cryptographic strength - Quorum failure is a hard error – partial
+signing does not produce a valid agreement - Each party’s signature is
+independently verifiable - Tampered signatures or bodies are detected by
+any verifying party</p>
+<p><strong>Concrete example:</strong> A 3-agent approval chain where
+2-of-3 must sign before a financial transaction proceeds. If Agent 2’s
+signature is tampered with after signing, verification fails. If only
+1-of-3 signs before the timeout, the agreement fails with a clear
+quorum-not-met error.</p>
+<h3 id="signed-attestation-for-verifiable-trust-decisions">3.4 Signed
+Attestation for Verifiable Trust Decisions</h3>
+<p><strong>What it is:</strong> JACS attestations extend the signing
+model with structured claims, evidence references, and derivation
+chains. An attestation answers: who attested, what they attested to,
+what evidence supports the attestation, and how the attested output was
+derived.</p>
+<p><strong>Key concepts:</strong> - <strong>Claims:</strong> Named
+assertions with values, confidence scores (0.0-1.0), and categorical
+assurance levels (self-asserted, verified, independently-attested) -
+<strong>Evidence references:</strong> Content-addressable references to
+external proofs (A2A exchanges, email verifications, JWT tokens, custom
+evidence) with freshness timestamps - <strong>Derivation
+chains:</strong> Transform receipts that prove what inputs an agent
+consumed, what function it applied, and what output it produced – with
+depth-limited chain verification (default: 10) - <strong>Two-tier
+verification:</strong> Local tier (crypto + hash, &lt;1ms) for hot-path
+validation; Full tier (crypto + evidence + derivation chain) for
+audit</p>
+<p><strong>Schema:</strong> Single JSON schema
+(<code>attestation.schema.json</code>) validated against all attestation
+documents. Uses <code>jacsType</code> field to distinguish profiles
+(attestation, attestation-transform-receipt,
+attestation-policy-decision).</p>
+<h3 id="auditing-and-immutable-document-history">3.5 Auditing and
+Immutable Document History</h3>
+<p><strong>What it is:</strong> JACS documents are versioned and signed.
+Each version references the prior version, creating an append-only
+history that any auditor can traverse.</p>
+<p><strong>Implementation details:</strong> - Documents have
+<code>jacsId</code> (stable identity) and <code>jacsVersion</code>
+(monotonic version counter) - Editable documents
+(<code>jacsLevel: "editable"</code>) produce new signed versions; raw
+documents (<code>jacsLevel: "raw"</code>) are immutable after creation -
+Storage backends support SQLite (default), DuckDB, Redb, SurrealDB, and
+Rusqlite – all maintaining the same versioned document semantics - The
+complete history is cryptographically linked: each version’s hash
+includes the prior version reference</p>
+<h3 id="trust-store-and-dns-based-key-distribution">3.6 Trust Store and
+DNS-Based Key Distribution</h3>
+<p><strong>What it is:</strong> Agents maintain a local trust store of
+public keys they have explicitly chosen to trust. Keys can also be
+published and retrieved via DNS TXT records, enabling decentralized key
+distribution without a central authority.</p>
+<p><strong>Implementation details:</strong> - Trust/untrust operations
+are explicit agent actions - DNS-based key lookup uses DNSSEC-validated
+TXT records - No trust-on-first-use (TOFU) by default in verified/strict
+modes - Trust decisions are auditable (logged as structured tracing
+events)</p>
+<h3 id="post-quantum-cryptographic-readiness">3.7 Post-Quantum
+Cryptographic Readiness</h3>
+<p><strong>What it is:</strong> JACS supports ML-DSA-87 (NIST FIPS 204)
+for post-quantum digital signatures alongside classical Ed25519 and
+ECDSA algorithms.</p>
+<p><strong>Why this matters now:</strong> Agent identities may be
+long-lived. Documents signed today may need to be verified years from
+now. Harvest-now-decrypt-later attacks mean that quantum-vulnerable
+signatures on agent identity documents are a present-day risk, not a
+future concern.</p>
+<p><strong>Implementation:</strong> The <code>pq2025</code> algorithm in
+JACS uses ML-DSA-87, the strongest parameter set in NIST’s finalized
+ML-DSA standard. It is the <strong>default algorithm</strong> for all
+new agents — post-quantum is opt-out, not opt-in. Key generation,
+signing, and verification all use this algorithm. Post-quantum keys are
+managed with the same PBKDF2/AES-256-GCM protection as classical
+keys.</p>
+<h3 id="feature-flagged-incremental-adoption">3.8 Feature-Flagged
+Incremental Adoption</h3>
+<p><strong>What it is:</strong> JACS uses Cargo feature flags to allow
+incremental adoption. Organizations can start with basic signing
+(<code>default</code> features), add attestation
+(<code>attestation</code> feature), add specific storage backends
+(<code>duckdb-storage</code>, <code>redb-storage</code>, etc.), and add
+specific evidence adapters – all without requiring a monolithic
+deployment.</p>
+<p>This approach aligns with NIST’s emphasis on practical, deployable
+security controls that can be adopted incrementally.</p>
+<h3 id="developer-experience-as-a-security-practice">3.9 Developer
+Experience as a Security Practice</h3>
+<p><strong>What it is:</strong> Security controls that are difficult to
+adopt do not get adopted. JACS treats developer experience as a
+first-class security concern — the fastest path for a developer should
+also be the secure path.</p>
+<p><strong>Implementation details:</strong> - <strong>One-line
+quickstart:</strong> <code>JacsClient.quickstart()</code>
+(Python/Node.js) or <code>jacs quickstart</code> (CLI) creates a
+persistent agent with post-quantum keys, encrypted private key, and a
+signed agent document — in under 100ms, with zero configuration -
+<strong>Framework adapters:</strong> Drop-in integrations for LangChain,
+FastAPI, CrewAI, and the Anthropic SDK add cryptographic signing to
+existing agent code with 1-3 lines of change. A LangChain tool call
+becomes a signed tool call by adding a single decorator. - <strong>MCP
+server:</strong> All 33 JACS tools are available through the Model
+Context Protocol. An AI assistant can sign documents, verify artifacts,
+manage trust stores, and create attestations through standard MCP tool
+calls — no library integration required. - <strong>A2A
+integration:</strong> Every JACS agent is automatically an A2A agent.
+<code>client.export_agent_card()</code> produces a standards-compliant
+Agent Card with JACS provenance extensions. Discovery, trust assessment,
+and signed artifact exchange are built into the A2A module. -
+<strong>Instance-based multi-agent API:</strong> <code>JacsClient</code>
+supports multiple concurrent agent instances in the same process. Each
+instance manages its own keys, trust store, and signing context. This
+enables realistic multi-agent testing and development without separate
+processes or containers.</p>
+<p><strong>Why this matters for NIST’s standardization effort:</strong>
+The gap between “specified” and “deployed” is almost always a developer
+experience gap. Standards that require complex setup, configuration
+ceremonies, or specialized infrastructure face slow adoption. JACS
+demonstrates that strong cryptographic controls can be made accessible
+without sacrificing security properties.</p>
+<h3 id="a2a-protocol-integration-with-cryptographic-provenance">3.10 A2A
+Protocol Integration with Cryptographic Provenance</h3>
+<p><strong>What it is:</strong> JACS extends Google’s Agent-to-Agent
+(A2A) protocol with cryptographic document provenance, bridging A2A’s
+transport-level protocol with the identity and integrity guarantees that
+multi-agent systems require.</p>
+<p><strong>Implementation details:</strong> - <strong>Agent Card
+extensions:</strong> JACS agents declare the
+<code>urn:jacs:provenance-v1</code> extension in their Agent Card,
+enabling JACS-aware agents to discover each other through standard A2A
+discovery - <strong>Well-known endpoints:</strong> JACS serves 5
+endpoints for A2A discovery: agent card, JWK set, JACS agent descriptor,
+public key, and extension descriptor - <strong>Artifact signing with
+chain of custody:</strong> A2A artifacts (tasks, messages) are signed
+with JACS provenance. Parent signatures enable chain-of-custody tracking
+across multi-agent workflows. - <strong>Trust assessment:</strong> JACS
+provides three trust policies for A2A interactions — open (any agent),
+verified (JACS extension required), and strict (trust store required) —
+enabling progressive trust enforcement - <strong>Evidence
+adapter:</strong> A2A protocol exchanges are normalized into JACS
+attestation evidence, enabling cryptographic proof chains that span A2A
+interactions</p>
+<hr />
+<h2 id="topic-3-evaluation-and-assessment">4. Topic 3: Evaluation and
+Assessment</h2>
+<h3 id="structured-verification-apis">4.1 Structured Verification
+APIs</h3>
+<p>JACS verification returns structured results, not just boolean
+pass/fail. The <code>AttestationVerificationResult</code> includes:</p>
+<pre><code>{
+  &quot;valid&quot;: boolean,           // Overall result
+  &quot;crypto&quot;: {
+    &quot;signature_valid&quot;: boolean,  // Signature matches content
+    &quot;hash_valid&quot;: boolean,       // Hash matches content
+    &quot;signer_id&quot;: string,         // Who signed
+    &quot;algorithm&quot;: string          // What algorithm was used
+  },
+  &quot;evidence&quot;: [{               // Per-evidence verification (full tier)
+    &quot;kind&quot;: string,
+    &quot;digest_valid&quot;: boolean,
+    &quot;freshness_valid&quot;: boolean,
+    &quot;detail&quot;: string
+  }],
+  &quot;chain&quot;: {                   // Derivation chain (full tier)
+    &quot;valid&quot;: boolean,
+    &quot;depth&quot;: number,
+    &quot;max_depth&quot;: number,
+    &quot;links&quot;: [...]
+  },
+  &quot;errors&quot;: [string]           // Human-readable error messages
+}</code></pre>
+<p>This structured output enables automated security evaluation:
+monitoring systems can watch for <code>signature_valid: false</code>
+events, compliance systems can enforce minimum
+<code>assurance_level</code> requirements, and audit systems can
+traverse <code>chain</code> links to reconstruct the full provenance of
+an agent output.</p>
+<h3 id="cross-language-test-suites">4.2 Cross-Language Test Suites</h3>
+<p>JACS validates interoperability through cross-language test suites: -
+<strong>Rust core:</strong> 570+ tests (lib + integration + attestation
++ 4 storage backends) - <strong>Python bindings:</strong> 265+ tests -
+<strong>Node.js bindings:</strong> 283+ tests - <strong>Go
+bindings:</strong> 111+ tests - <strong>Cross-language:</strong> 35+
+dedicated tests that sign in one language and verify in another</p>
+<p>Total: over 1,200 tests across all targets.</p>
+<p>These test suites serve as both quality assurance and
+specification-by-example. Any organization implementing the JACS
+protocol can use these tests to verify conformance.</p>
+<h3 id="observability-and-structured-logging">4.3 Observability and
+Structured Logging</h3>
+<p>JACS emits structured <code>tracing</code> events for all
+security-relevant operations (sign, verify, agreement lifecycle,
+attestation create/verify). These events include
+OpenTelemetry-compatible span attributes, enabling integration with
+existing observability infrastructure.</p>
+<p><strong>Example structured event:</strong></p>
+<pre><code>jacs::attestation::create event=attestation_created jacs_id=... jacs_type=attestation subject_type=Agent claims_count=3 evidence_count=1 has_derivation=false</code></pre>
+<h3 id="benchmarking">4.4 Benchmarking</h3>
+<p>JACS includes benchmarks for: - Sign/verify performance across all
+algorithms (Ed25519, ECDSA, ML-DSA-87) - N-party agreement signing (2,
+5, 10, 25 parties) - Concurrent signing (10, 50, 100 concurrent
+operations)</p>
+<p>These benchmarks provide concrete performance data for deployment
+planning and security assessment.</p>
+<hr />
+<h2 id="topic-4-deployment-environment-constraints">5. Topic 4:
+Deployment Environment Constraints</h2>
+<h3 id="offline-verification">5.1 Offline Verification</h3>
+<p>JACS is designed for fully offline operation. No centralized
+infrastructure is required for: - Agent creation and key generation -
+Document signing - Document verification (given the signer’s public key)
+- Multi-agent agreement execution - Attestation creation and local-tier
+verification</p>
+<p>This is critical for air-gapped environments, edge deployments, and
+scenarios where network connectivity is unreliable or untrusted.</p>
+<h3 id="feature-flagged-capabilities">5.2 Feature-Flagged
+Capabilities</h3>
+<p>JACS capabilities are modular through Cargo feature flags: -
+<code>default</code>: Basic signing and verification -
+<code>attestation</code>: Attestation creation and verification -
+<code>duckdb-storage</code>, <code>redb-storage</code>,
+<code>surrealdb-storage</code>, <code>rusqlite-storage</code>: Storage
+backend choices - No feature requires all other features – organizations
+deploy only what they need</p>
+<h3 id="agreement-protocols-with-quorum">5.3 Agreement Protocols with
+Quorum</h3>
+<p>Multi-agent authorization via quorum provides a deployment-level
+control for constraining agent actions. An organization can require that
+sensitive operations need M-of-N agent approval, with configurable
+timeouts and algorithm requirements. This directly addresses NIST’s
+interest in “constraining and monitoring an agent’s access in its
+deployment environment.”</p>
+<h3 id="mcp-integration">5.4 MCP Integration</h3>
+<p>JACS provides a Model Context Protocol (MCP) server with 33 tools for
+signing, verification, trust management, A2A artifact operations, and
+attestation (including DSSE export). This allows any MCP-compatible
+client (including AI assistants and development tools) to use JACS
+signing and verification as native tool calls, without requiring direct
+library integration.</p>
+<h3 id="cross-platform-support">5.5 Cross-Platform Support</h3>
+<p>JACS builds and runs on: - macOS (arm64, x86_64) - Linux (x86_64,
+arm64) - Windows (x86_64)</p>
+<p>Prebuilt CLI binaries are available for all platforms via GitHub
+releases.</p>
+<hr />
+<h2 id="recommendations-for-nist">6. Recommendations for NIST</h2>
+<p>Based on our experience building and deploying cryptographic security
+controls for AI agent systems, we recommend the following priorities for
+NIST standardization:</p>
+<h3 id="cryptographic-identity-should-be-mandatory">6.1 Cryptographic
+Identity Should Be Mandatory</h3>
+<p>Any standard for AI agent security should require cryptographic
+identity for agents that take consequential actions. Without it, all
+other security controls (authorization, audit, non-repudiation) are
+built on unverifiable claims. The identity mechanism should: - Support
+multiple cryptographic algorithms (classical and post-quantum) - Not
+require centralized infrastructure - Enable offline verification -
+Support key rotation without identity loss</p>
+<h3 id="agent-actions-should-produce-non-repudiable-records">6.2 Agent
+Actions Should Produce Non-Repudiable Records</h3>
+<p>Every consequential agent action should produce a signed artifact
+that: - Binds the action to a specific agent identity - Includes a
+content integrity hash - Is verifiable without contacting the signing
+agent or any central authority - Can be audited at any point in the
+future</p>
+<h3 id="multi-agent-authorization-should-support-quorum">6.3 Multi-Agent
+Authorization Should Support Quorum</h3>
+<p>When multiple agents collaborate on a decision, the standard should
+support M-of-N quorum-based authorization with: - Configurable quorum
+thresholds - Timeout mechanisms - Algorithm and strength requirements -
+Clear failure semantics (partial signing is not authorization)</p>
+<h3
+id="standards-should-support-offline-and-decentralized-verification">6.4
+Standards Should Support Offline and Decentralized Verification</h3>
+<p>Requiring online verification services creates single points of
+failure and trust. Security standards should ensure that: - Verification
+can occur without network connectivity - No centralized notary or
+transparency service is required for basic verification - Centralized
+services (when used) are additive, not required</p>
+<h3 id="post-quantum-readiness-should-be-addressed-now">6.5 Post-Quantum
+Readiness Should Be Addressed Now</h3>
+<p>Agent identity documents and signed artifacts may be long-lived.
+Standards should: - Require support for NIST-standardized post-quantum
+algorithms (ML-DSA, ML-KEM) - Encourage algorithm agility (support for
+multiple algorithms simultaneously) - Address the transition period
+where both classical and post-quantum signatures may be needed</p>
+<h3 id="attestation-should-be-structured-and-machine-readable">6.6
+Attestation Should Be Structured and Machine-Readable</h3>
+<p>Trust decisions should be based on structured, machine-readable
+evidence rather than opaque assertions. Standards should define: - A
+schema for attestation claims (what the agent claims about its output) -
+A mechanism for evidence references (what supports the claims) - A
+derivation chain format (how the output was produced from inputs) -
+Two-tier verification (fast local check for hot paths, thorough check
+for audits)</p>
+<h3 id="standards-should-prioritize-developer-adoption">6.7 Standards
+Should Prioritize Developer Adoption</h3>
+<p>Security standards that are difficult to implement face slow adoption
+regardless of their technical merit. Standards for AI agent security
+should: - Define a “fast path” that provides strong defaults with
+minimal configuration (JACS demonstrates this: post-quantum signing is
+the default, not an opt-in) - Specify integration points with existing
+frameworks (MCP, A2A, LangChain, FastAPI) rather than requiring bespoke
+infrastructure - Support incremental adoption — organizations should be
+able to start with basic signing and add attestation, quorum
+authorization, and trust store management as their requirements mature -
+Provide cross-language interoperability guarantees, since agent systems
+are inherently polyglot</p>
+<h3
+id="a2a-protocol-interoperability-should-be-a-first-class-concern">6.8
+A2A Protocol Interoperability Should Be a First-Class Concern</h3>
+<p>As agent-to-agent communication protocols mature (Google A2A,
+Anthropic MCP), security standards should ensure that cryptographic
+identity and signing work natively within these protocols, not as an
+afterthought. Standards should define: - How agent identity credentials
+are expressed in Agent Cards and discovery protocols - How signed
+artifacts flow through A2A message exchanges with chain-of-custody
+tracking - Progressive trust policies that allow agents to enforce
+different security levels based on the sensitivity of the
+interaction</p>
+<hr />
+<h2 id="references">7. References</h2>
+<ol type="1">
+<li><strong>JACS Open Source Repository:</strong>
+https://github.com/HumanAssisted/JACS</li>
+<li><strong>JACS Documentation:</strong> https://docs.hai.ai
+(jacsbook)</li>
+<li><strong>HAI.AI Platform:</strong> https://hai.ai</li>
+<li><strong>NIST FIPS 204 (ML-DSA):</strong>
+https://csrc.nist.gov/pubs/fips/204/final</li>
+<li><strong>RFC 8785 (JSON Canonicalization Scheme):</strong>
+https://tools.ietf.org/html/rfc8785</li>
+<li><strong>in-toto Specification:</strong> https://in-toto.io</li>
+<li><strong>DSSE (Dead Simple Signing Envelope):</strong>
+https://github.com/secure-systems-lab/dsse</li>
+<li><strong>SLSA (Supply-chain Levels for Software Artifacts):</strong>
+https://slsa.dev</li>
+<li><strong>IETF RATS (Remote ATtestation procedureS):</strong>
+https://datatracker.ietf.org/wg/rats/about/</li>
+<li><strong>OWASP PBKDF2 Recommendations (2024):</strong>
+https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html</li>
+</ol>
+<hr />
+<p><em>This response represents the views of the HAI.AI / JACS project
+team and is based on practical experience developing and deploying
+cryptographic security controls for AI agent systems. All capabilities
+described are implemented and tested in the JACS codebase (v0.9.2,
+Apache 2.0 OR MIT license, 1,200+ tests across 5 language
+targets).</em></p>
+</body>
+</html>

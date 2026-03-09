@@ -78,7 +78,6 @@ impl A2ATrustPolicy {
 
 /// The assessed trust level of a remote agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum TrustLevel {
     /// No JACS provenance, or signature could not be verified.
     Untrusted,
@@ -92,9 +91,9 @@ pub enum TrustLevel {
 impl fmt::Display for TrustLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TrustLevel::Untrusted => write!(f, "untrusted"),
-            TrustLevel::JacsVerified => write!(f, "jacs_verified"),
-            TrustLevel::ExplicitlyTrusted => write!(f, "explicitly_trusted"),
+            TrustLevel::Untrusted => write!(f, "Untrusted"),
+            TrustLevel::JacsVerified => write!(f, "JacsVerified"),
+            TrustLevel::ExplicitlyTrusted => write!(f, "ExplicitlyTrusted"),
         }
     }
 }
@@ -529,11 +528,11 @@ mod tests {
 
     #[test]
     fn test_trust_level_display() {
-        assert_eq!(TrustLevel::Untrusted.to_string(), "untrusted");
-        assert_eq!(TrustLevel::JacsVerified.to_string(), "jacs_verified");
+        assert_eq!(TrustLevel::Untrusted.to_string(), "Untrusted");
+        assert_eq!(TrustLevel::JacsVerified.to_string(), "JacsVerified");
         assert_eq!(
             TrustLevel::ExplicitlyTrusted.to_string(),
-            "explicitly_trusted"
+            "ExplicitlyTrusted"
         );
     }
 
@@ -588,7 +587,7 @@ mod tests {
         let actual: serde_json::Value = serde_json::to_value(&assessment).unwrap();
         let expected = json!({
             "allowed": true,
-            "trustLevel": "jacs_verified",
+            "trustLevel": "JacsVerified",
             "reason": "Verified policy: agent has JACS provenance extension",
             "jacsRegistered": true,
             "agentId": "agent-golden-trust",
@@ -601,7 +600,7 @@ mod tests {
         let assessment_none = TrustAssessment {
             allowed: true,
             trust_level: TrustLevel::Untrusted,
-            reason: "Open policy: agent accepted (trust level: untrusted)".to_string(),
+            reason: "Open policy: agent accepted (trust level: Untrusted)".to_string(),
             jacs_registered: false,
             agent_id: None,
             policy: A2ATrustPolicy::Open,
@@ -610,8 +609,8 @@ mod tests {
         let actual_none: serde_json::Value = serde_json::to_value(&assessment_none).unwrap();
         let expected_none = json!({
             "allowed": true,
-            "trustLevel": "untrusted",
-            "reason": "Open policy: agent accepted (trust level: untrusted)",
+            "trustLevel": "Untrusted",
+            "reason": "Open policy: agent accepted (trust level: Untrusted)",
             "jacsRegistered": false,
             "agentId": null,
             "policy": "Open"
@@ -635,7 +634,7 @@ mod tests {
         let actual_strict: serde_json::Value = serde_json::to_value(&assessment_strict).unwrap();
         let expected_strict = json!({
             "allowed": true,
-            "trustLevel": "explicitly_trusted",
+            "trustLevel": "ExplicitlyTrusted",
             "reason": "Strict policy: agent is in local trust store",
             "jacsRegistered": true,
             "agentId": "trusted-agent-xyz",

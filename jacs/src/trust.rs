@@ -443,6 +443,18 @@ pub fn get_trusted_public_key_hash(agent_id: &str) -> Result<String, JacsError> 
 pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsError> {
     validate_agent_id_for_path(agent_id)?;
 
+    // SECURITY WARNING: A2A Agent Cards are NOT cryptographically verified
+    // by this function. Unlike trust_agent() / trust_agent_with_key(), which
+    // verify the agent's self-signature before trusting, this function stores
+    // the card as-is. Callers MUST NOT treat trust_a2a_card entries as
+    // identity-verified — they are unverified bookmarks only.
+    warn!(
+        agent_id = %agent_id,
+        "SECURITY: Trusting A2A card WITHOUT cryptographic verification. \
+        This card has not been signature-checked. Do not treat this entry \
+        as identity-verified. Use trust_agent_with_key() for verified trust."
+    );
+
     let trust_dir = trust_store_dir();
     fs::create_dir_all(&trust_dir).map_err(|e| JacsError::DirectoryCreateFailed {
         path: trust_dir.to_string_lossy().to_string(),

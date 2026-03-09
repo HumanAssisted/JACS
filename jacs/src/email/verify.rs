@@ -40,7 +40,7 @@ pub fn normalize_algorithm(algorithm: &str) -> String {
 
 /// Extract and verify the JACS email signature document from a raw email.
 ///
-/// Uses `SimpleAgent::verify_with_key()` to validate the JACS document
+/// Uses [`JacsSigner::verify_with_key()`] to validate the JACS document
 /// signature against the supplied `public_key`, then extracts the email
 /// payload and parsed email parts.
 ///
@@ -53,11 +53,11 @@ pub fn normalize_algorithm(algorithm: &str) -> String {
 ///
 /// # Arguments
 /// * `raw_email` - The raw RFC 5322 email bytes (with JACS attachment)
-/// * `agent` - A JACS SimpleAgent (provides verification infrastructure)
+/// * `verifier` - Any type implementing [`JacsSigner`] (e.g. `SimpleAgent`)
 /// * `public_key` - The signer's public key bytes (from registry, trust store, etc.)
 pub fn verify_email_document(
     raw_email: &[u8],
-    agent: &crate::simple::SimpleAgent,
+    verifier: &impl super::JacsSigner,
     public_key: &[u8],
 ) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
     check_email_size(raw_email)?;
@@ -70,7 +70,7 @@ pub fn verify_email_document(
     })?;
 
     // Verify the JACS document using the provided public key
-    let result = agent
+    let result = verifier
         .verify_with_key(jacs_str, public_key.to_vec())
         .map_err(|e| {
             EmailError::SignatureVerificationFailed(format!(
@@ -165,7 +165,7 @@ pub fn verify_email_document(
 ///
 /// # Arguments
 /// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
-/// * `agent` - A JACS SimpleAgent (provides verification infrastructure)
+/// * `verifier` - Any type implementing [`JacsSigner`] (e.g. `SimpleAgent`)
 /// * `public_key` - The signer's public key bytes (from registry, trust store, etc.)
 ///
 /// # Returns
@@ -173,10 +173,10 @@ pub fn verify_email_document(
 /// overall pass/fail.
 pub fn verify_email(
     raw_eml: &[u8],
-    agent: &crate::simple::SimpleAgent,
+    verifier: &impl super::JacsSigner,
     public_key: &[u8],
 ) -> Result<ContentVerificationResult, EmailError> {
-    let (doc, parts) = verify_email_document(raw_eml, agent, public_key)?;
+    let (doc, parts) = verify_email_document(raw_eml, verifier, public_key)?;
     Ok(verify_email_content(&doc, &parts))
 }
 

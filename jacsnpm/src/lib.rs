@@ -899,6 +899,138 @@ impl JacsAgent {
             })),
         })
     }
+
+    // =========================================================================
+    // HAI SDK Methods (sync)
+    // =========================================================================
+
+    /// Build a JACS auth header for HTTP requests (sync, blocks event loop).
+    #[napi(js_name = "buildAuthHeaderSync")]
+    pub fn build_auth_header_sync(&self) -> Result<String> {
+        self.inner.build_auth_header().to_napi()
+    }
+
+    /// Deterministically serialize JSON per RFC 8785 / JCS (sync, blocks event loop).
+    #[napi(js_name = "canonicalizeJsonSync")]
+    pub fn canonicalize_json_sync(&self, json_string: String) -> Result<String> {
+        self.inner.canonicalize_json(&json_string).to_napi()
+    }
+
+    /// Sign a response payload, returning a signed envelope JSON (sync, blocks event loop).
+    #[napi(js_name = "signResponseSync")]
+    pub fn sign_response_sync(&self, payload_json: String) -> Result<String> {
+        self.inner.sign_response(&payload_json).to_napi()
+    }
+
+    /// Encode a document as URL-safe base64 for verification (sync).
+    #[napi(js_name = "encodeVerifyPayloadSync")]
+    pub fn encode_verify_payload_sync(&self, document: String) -> Result<String> {
+        self.inner.encode_verify_payload(&document).to_napi()
+    }
+
+    /// Decode a URL-safe base64 verification payload (sync).
+    #[napi(js_name = "decodeVerifyPayloadSync")]
+    pub fn decode_verify_payload_sync(&self, encoded: String) -> Result<String> {
+        self.inner.decode_verify_payload(&encoded).to_napi()
+    }
+
+    /// Extract the document ID from a JACS-signed document (sync).
+    #[napi(js_name = "extractDocumentIdSync")]
+    pub fn extract_document_id_sync(&self, document: String) -> Result<String> {
+        self.inner.extract_document_id(&document).to_napi()
+    }
+
+    /// Unwrap and verify a signed event against known server public keys (sync, blocks event loop).
+    #[napi(js_name = "unwrapSignedEventSync")]
+    pub fn unwrap_signed_event_sync(
+        &self,
+        event_json: String,
+        server_keys_json: String,
+    ) -> Result<String> {
+        self.inner
+            .unwrap_signed_event(&event_json, &server_keys_json)
+            .to_napi()
+    }
+
+    // =========================================================================
+    // HAI SDK Methods (async)
+    // =========================================================================
+
+    /// Build a JACS auth header for HTTP requests.
+    #[napi(js_name = "buildAuthHeader", ts_return_type = "Promise<string>")]
+    pub fn build_auth_header_async(&self) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.build_auth_header())),
+        })
+    }
+
+    /// Deterministically serialize JSON per RFC 8785 / JCS.
+    #[napi(js_name = "canonicalizeJson", ts_return_type = "Promise<string>")]
+    pub fn canonicalize_json_async(&self, json_string: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.canonicalize_json(&json_string))),
+        })
+    }
+
+    /// Sign a response payload, returning a signed envelope JSON.
+    #[napi(js_name = "signResponse", ts_return_type = "Promise<string>")]
+    pub fn sign_response_async(&self, payload_json: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.sign_response(&payload_json))),
+        })
+    }
+
+    /// Encode a document as URL-safe base64 for verification.
+    #[napi(js_name = "encodeVerifyPayload", ts_return_type = "Promise<string>")]
+    pub fn encode_verify_payload_async(&self, document: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.encode_verify_payload(&document))),
+        })
+    }
+
+    /// Decode a URL-safe base64 verification payload.
+    #[napi(js_name = "decodeVerifyPayload", ts_return_type = "Promise<string>")]
+    pub fn decode_verify_payload_async(&self, encoded: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.decode_verify_payload(&encoded))),
+        })
+    }
+
+    /// Extract the document ID from a JACS-signed document.
+    #[napi(js_name = "extractDocumentId", ts_return_type = "Promise<string>")]
+    pub fn extract_document_id_async(&self, document: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.extract_document_id(&document))),
+        })
+    }
+
+    /// Unwrap and verify a signed event against known server public keys.
+    #[napi(js_name = "unwrapSignedEvent", ts_return_type = "Promise<string>")]
+    pub fn unwrap_signed_event_async(
+        &self,
+        event_json: String,
+        server_keys_json: String,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.unwrap_signed_event(&event_json, &server_keys_json)
+            })),
+        })
+    }
 }
 
 // =============================================================================

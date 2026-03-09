@@ -1,12 +1,12 @@
 [package]
 name = "jacs-cli"
-version = "0.9.2"
+version = "0.9.3"
 edition = "2024"
 rust-version = "1.93"
 description = "JACS CLI: command-line interface for JSON AI Communication Standard"
 readme = "README.md"
 authors = ["HAI.AI <engineering@hai.io>"]
-license-file = "../LICENSE"
+license = "Apache-2.0 OR MIT"
 homepage = "https://humanassisted.github.io/JACS"
 repository = "https://github.com/HumanAssisted/JACS"
 keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
@@ -22,8 +22,8 @@ mcp = ["dep:jacs-mcp"]
 attestation = ["jacs/attestation"]
 
 [dependencies]
-jacs = { version = "0.9.2", path = "../jacs" }
-jacs-mcp = { version = "0.9.2", path = "../jacs-mcp", features = ["mcp"], optional = true }
+jacs = { version = "0.9.3", path = "../jacs" }
+jacs-mcp = { version = "0.9.3", path = "../jacs-mcp", features = ["mcp"], optional = true }
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
 rpassword = "7.3.1"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
