@@ -542,6 +542,23 @@ pub struct RotationResult {
     pub signed_agent_json: String,
 }
 
+/// Result of a legacy agent migration operation.
+///
+/// Returned by [`SimpleAgent::migrate_agent()`] after successfully patching
+/// a pre-schema-change agent document to include required `iat` and `jti`
+/// fields in `jacsSignature`, then re-signing it as a new version.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrateResult {
+    /// The agent's stable identity (unchanged across migrations).
+    pub jacs_id: String,
+    /// The version string of the agent before migration.
+    pub old_version: String,
+    /// The new version string assigned during migration (after re-signing).
+    pub new_version: String,
+    /// Fields that were patched in the raw JSON before loading (e.g. `["iat", "jti"]`).
+    pub patched_fields: Vec<String>,
+}
+
 // =============================================================================
 // SimpleAgent - Instance-based API (Recommended)
 // =============================================================================
@@ -3120,6 +3137,260 @@ impl SimpleAgent {
     }
 
     // =========================================================================
+    // Migration API
+    // =========================================================================
+
+    /// Migrates a legacy agent document that predates a schema change.
+    ///
+    /// Agents created before the `iat` (issued-at timestamp) and `jti` (unique
+    /// nonce) fields were added to the `jacsSignature` schema will fail
+    /// validation on load. This method works around that by:
+    ///
+    /// 1. Reading the raw agent JSON from disk (bypassing schema validation)
+    /// 2. Patching in temporary `iat` and `jti` values if they are missing
+    /// 3. Writing the patched JSON back to disk
+    /// 4. Loading the agent normally (now passes schema validation)
+    /// 5. Calling `update_agent()` to produce a properly re-signed new version
+    /// 6. Saving the new version and updating the config file
+    ///
+    /// This is a static method because the agent cannot be loaded yet (that is
+    /// the whole point of migration).
+    ///
+    /// # Arguments
+    ///
+    /// * `config_path` - Path to the JACS config file (default: `./jacs.config.json`)
+    ///
+    /// # Returns
+    ///
+    /// A [`MigrateResult`] describing what was patched and the new version.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::simple::SimpleAgent;
+    ///
+    /// let result = SimpleAgent::migrate_agent(None)?;
+    /// println!("Migrated {} -> {}", result.old_version, result.new_version);
+    /// println!("Patched fields: {:?}", result.patched_fields);
+    /// ```
+    pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsError> {
+        let path = config_path.unwrap_or("./jacs.config.json");
+
+        info!("Starting agent migration from config: {}", path);
+
+        if !Path::new(path).exists() {
+            return Err(JacsError::ConfigNotFound {
+                path: path.to_string(),
+            });
+        }
+
+        // Step 1: Load config to find the agent file
+        let config =
+            crate::config::load_config_12factor(Some(path)).map_err(|e| JacsError::ConfigInvalid {
+                field: "config".to_string(),
+                reason: format!("Could not load configuration from '{}': {}", path, e),
+            })?;
+
+        let id_and_version = config
+            .jacs_agent_id_and_version()
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
+        if id_and_version.is_empty() {
+            return Err(JacsError::ConfigInvalid {
+                field: "jacs_agent_id_and_version".to_string(),
+                reason: "Agent ID and version not set in config".to_string(),
+            });
+        }
+
+        let data_dir = config
+            .jacs_data_directory()
+            .as_deref()
+            .unwrap_or("jacs_data")
+            .to_string();
+
+        // Step 2: Construct the agent file path (same logic as fs_agent_load)
+        // The path is relative to the config file's parent directory.
+        let config_dir = Path::new(path)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+
+        let agent_file = if Path::new(&data_dir).is_absolute() {
+            Path::new(&data_dir)
+                .join("agent")
+                .join(format!("{}.json", id_and_version))
+        } else {
+            config_dir
+                .join(&data_dir)
+                .join("agent")
+                .join(format!("{}.json", id_and_version))
+        };
+
+        info!("Migration: reading agent file at {:?}", agent_file);
+
+        if !agent_file.exists() {
+            return Err(JacsError::Internal {
+                message: format!(
+                    "Agent file not found at '{}'. Check jacs_data_directory and jacs_agent_id_and_version in config.",
+                    agent_file.display()
+                ),
+            });
+        }
+
+        // Step 3: Read and parse the raw JSON
+        let raw_json = fs::read_to_string(&agent_file).map_err(|e| JacsError::Internal {
+            message: format!("Failed to read agent file '{}': {}", agent_file.display(), e),
+        })?;
+
+        let mut agent_value: Value =
+            serde_json::from_str(&raw_json).map_err(|e| JacsError::Internal {
+                message: format!(
+                    "Failed to parse agent JSON from '{}': {}",
+                    agent_file.display(),
+                    e
+                ),
+            })?;
+
+        // Capture pre-migration version info
+        let jacs_id = agent_value["jacsId"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let old_version = agent_value["jacsVersion"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        if jacs_id.is_empty() || old_version.is_empty() {
+            return Err(JacsError::Internal {
+                message: "Agent document is missing jacsId or jacsVersion".to_string(),
+            });
+        }
+
+        // Step 4: Patch jacsSignature if iat/jti are missing
+        let mut patched_fields: Vec<String> = Vec::new();
+
+        if let Some(sig) = agent_value.get_mut("jacsSignature") {
+            if sig.get("iat").is_none() {
+                let iat = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                sig["iat"] = json!(iat);
+                patched_fields.push("iat".to_string());
+                info!("Migration: patched missing 'iat' field with {}", iat);
+            }
+
+            if sig.get("jti").is_none() {
+                let jti = uuid::Uuid::now_v7().to_string();
+                sig["jti"] = json!(jti);
+                patched_fields.push("jti".to_string());
+                info!("Migration: patched missing 'jti' field with {}", jti);
+            }
+        } else {
+            return Err(JacsError::Internal {
+                message: "Agent document is missing jacsSignature object".to_string(),
+            });
+        }
+
+        // Step 5: Write patched JSON back to disk (only if changes were made)
+        if !patched_fields.is_empty() {
+            let patched_json =
+                serde_json::to_string_pretty(&agent_value).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to serialize patched agent: {}", e),
+                })?;
+            fs::write(&agent_file, &patched_json).map_err(|e| JacsError::Internal {
+                message: format!(
+                    "Failed to write patched agent to '{}': {}",
+                    agent_file.display(),
+                    e
+                ),
+            })?;
+            info!(
+                "Migration: wrote patched agent to {} (fields: {:?})",
+                agent_file.display(),
+                patched_fields
+            );
+        } else {
+            info!("Migration: no fields needed patching, agent already has iat and jti");
+        }
+
+        // Step 6: Load the agent normally (should now pass schema validation)
+        let simple_agent = Self::load(Some(path), None)?;
+
+        // Step 7: Export current agent doc, then call update_agent to re-sign
+        let agent_doc = simple_agent.export_agent()?;
+        let updated_json = simple_agent.update_agent(&agent_doc)?;
+
+        // Step 8: Parse new version from the updated document
+        let updated_value: Value =
+            serde_json::from_str(&updated_json).map_err(|e| JacsError::Internal {
+                message: format!("Failed to parse updated agent JSON: {}", e),
+            })?;
+        let new_version = updated_value["jacsVersion"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        // Step 9: Save the updated agent to disk
+        {
+            let agent = simple_agent.agent.lock().map_err(|e| JacsError::Internal {
+                message: format!("Failed to acquire agent lock: {}", e),
+            })?;
+            agent.save().map_err(|e| JacsError::Internal {
+                message: format!("Failed to save migrated agent: {}", e),
+            })?;
+        }
+
+        // Step 10: Update config file with the new version (same pattern as rotate())
+        let config_path_p = Path::new(path);
+        if config_path_p.exists() {
+            let config_str =
+                fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to read config for migration update: {}", e),
+                })?;
+            let mut config_value: Value =
+                serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to parse config: {}", e),
+                })?;
+
+            let new_lookup = format!("{}:{}", jacs_id, new_version);
+            if let Some(obj) = config_value.as_object_mut() {
+                obj.insert(
+                    "jacs_agent_id_and_version".to_string(),
+                    json!(new_lookup),
+                );
+            }
+
+            let updated_str =
+                serde_json::to_string_pretty(&config_value).map_err(|e| JacsError::Internal {
+                    message: format!("Failed to serialize updated config: {}", e),
+                })?;
+            fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
+                message: format!("Failed to write updated config: {}", e),
+            })?;
+
+            info!(
+                "Migration: config updated with new version {}:{}",
+                jacs_id, new_version
+            );
+        }
+
+        info!(
+            "Agent migration complete: {} -> {} (id={}), patched: {:?}",
+            old_version, new_version, jacs_id, patched_fields
+        );
+
+        Ok(MigrateResult {
+            jacs_id,
+            old_version,
+            new_version,
+            patched_fields,
+        })
+    }
+
+    // =========================================================================
     // Attestation API (gated behind `attestation` feature)
     // =========================================================================
 
@@ -3464,6 +3735,15 @@ pub fn verify_self() -> Result<VerificationResult, JacsError> {
 #[deprecated(since = "0.3.0", note = "Use SimpleAgent::update_agent() instead")]
 pub fn update_agent(new_agent_data: &str) -> Result<String, JacsError> {
     with_thread_agent(|agent| agent.update_agent(new_agent_data))
+}
+
+/// Migrates a legacy agent that predates a schema change.
+///
+/// Convenience wrapper around [`SimpleAgent::migrate_agent()`].
+/// This is a standalone function (no thread-local state needed) because
+/// the agent cannot be loaded before migration.
+pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsError> {
+    SimpleAgent::migrate_agent(config_path)
 }
 
 /// Updates an existing document with new data and re-signs it.
