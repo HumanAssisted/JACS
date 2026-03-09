@@ -943,7 +943,7 @@ mod tests {
         let json_str = serde_json::to_string(&result).expect("should serialize");
         assert!(json_str.contains("trustLevel"));
         assert!(json_str.contains("trustAssessment"));
-        assert!(json_str.contains("jacs_verified"));
+        assert!(json_str.contains("JacsVerified"));
 
         // Deserialize back
         let deserialized: VerificationResult =
@@ -1379,10 +1379,10 @@ mod tests {
             "parentSignaturesValid": true,
             "parentVerificationResults": [],
             "originalArtifact": {"payload": "trusted"},
-            "trustLevel": "jacs_verified",
+            "trustLevel": "JacsVerified",
             "trustAssessment": {
                 "allowed": true,
-                "trustLevel": "jacs_verified",
+                "trustLevel": "JacsVerified",
                 "reason": "Verified policy: agent has JACS provenance extension",
                 "jacsRegistered": true,
                 "agentId": "trusted-agent-abc",

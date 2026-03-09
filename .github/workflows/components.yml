@@ -40,6 +40,9 @@ jobs:
         with:
           toolchain: "1.93"
 
+      - name: Build jacs-cli (required by jacs-mcp integration tests)
+        run: cargo build -p jacs-cli
+
       - name: Run jacs-mcp tests
         run: cargo test -p jacs-mcp --verbose
 
