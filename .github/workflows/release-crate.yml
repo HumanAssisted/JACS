@@ -47,7 +47,7 @@ jobs:
 
       - name: Publish jacs to crates.io
         run: |
-          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs $VERSION already published, skipping"
           else
@@ -65,7 +65,7 @@ jobs:
         run: |
           echo "Waiting for jacs $VERSION on crates.io..."
           for i in $(seq 1 60); do
-            LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
             if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs $VERSION is available on crates.io"
               exit 0
@@ -78,7 +78,7 @@ jobs:
 
       - name: Publish jacs-binding-core to crates.io
         run: |
-          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-binding-core $VERSION already published, skipping"
           else
@@ -96,7 +96,7 @@ jobs:
         run: |
           echo "Waiting for jacs-binding-core $VERSION on crates.io..."
           for i in $(seq 1 60); do
-            LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
             if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs-binding-core $VERSION is available on crates.io"
               exit 0
@@ -109,7 +109,7 @@ jobs:
 
       - name: Publish jacs-mcp to crates.io
         run: |
-          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-mcp $VERSION already published, skipping"
           else
@@ -127,7 +127,7 @@ jobs:
         run: |
           echo "Waiting for jacs-mcp $VERSION on crates.io..."
           for i in $(seq 1 60); do
-            LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
             if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs-mcp $VERSION is available on crates.io"
               exit 0
@@ -140,7 +140,7 @@ jobs:
 
       - name: Publish jacs-cli to crates.io
         run: |
-          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-cli | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-cli | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-cli $VERSION already published, skipping"
           else
