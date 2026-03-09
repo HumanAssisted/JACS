@@ -2,15 +2,15 @@
 //!
 //! Provides functions for signing emails with JACS detached signatures and
 //! verifying those signatures. All cryptographic operations are handled by
-//! the JACS agent via `SimpleAgent`.
+//! types implementing [`JacsSigner`].
 //!
 //! ## Quick start
 //!
 //! ```ignore
-//! use jacs::email::{sign_email, verify_email, verify_email_content};
+//! use jacs::email::{sign_email, verify_email, verify_email_content, JacsSigner};
 //! use jacs::simple::SimpleAgent;
 //!
-//! // Sign: pass a SimpleAgent — all crypto is handled by JACS
+//! // Sign: pass any JacsSigner — both SimpleAgent and Agent work
 //! let signed_eml = sign_email(&raw_eml, &my_agent)?;
 //!
 //! // Verify: crypto + content hash comparison
@@ -21,14 +21,19 @@
 //!
 //! ## Key design points
 //!
-//! - Signing uses `SimpleAgent::sign_message()` to create a real JACS document.
+//! - [`JacsSigner`] trait decouples email functions from concrete agent types.
+//!   Both `SimpleAgent` and any custom wrapper can implement it.
+//! - Signing uses [`JacsSigner::sign_message()`] to create a real JACS document.
 //!   No manual crypto in the email module.
-//! - Verification uses `SimpleAgent::verify_with_key()` for cryptographic
+//! - Verification uses [`JacsSigner::verify_with_key()`] for cryptographic
 //!   verification against an arbitrary sender's public key.
 //! - Forwarding is built-in: if the email already has a `jacs-signature.json`,
 //!   [`sign_email`] renames it and links via `parent_signature_hash`.
 //!
 //! See the full guide: `docs/jacsbook/src/guides/email-signing.md`
+
+use crate::error::JacsError;
+use crate::simple::{SignedDocument, VerificationResult};
 
 pub(crate) mod attachment;
 pub(crate) mod canonicalize;
@@ -59,6 +64,47 @@ pub use attachment::{add_jacs_attachment, get_jacs_attachment, remove_jacs_attac
 
 // Canonicalization utilities (needed by fixture conformance tests).
 pub use canonicalize::{canonicalize_header, extract_email_parts};
+
+/// Trait for types that can sign and verify JACS documents.
+///
+/// This decouples email signing/verification from the concrete `SimpleAgent`
+/// type, allowing any wrapper or alternative agent implementation to be used
+/// with `sign_email()`, `verify_email_document()`, and `verify_email()`.
+///
+/// `SimpleAgent` implements this trait by delegating to its existing methods.
+pub trait JacsSigner {
+    /// Create a signed JACS document from the given content.
+    ///
+    /// Wraps `data` in a JACS document structure and signs it with the
+    /// agent's private key.
+    fn sign_message(&self, data: &serde_json::Value) -> Result<SignedDocument, JacsError>;
+
+    /// Verify a signed JACS document using the provided public key.
+    ///
+    /// Validates the cryptographic signature and hash integrity of a
+    /// previously signed JACS document.
+    fn verify_with_key(
+        &self,
+        signed_document: &str,
+        public_key: Vec<u8>,
+    ) -> Result<VerificationResult, JacsError>;
+}
+
+impl JacsSigner for crate::simple::SimpleAgent {
+    fn sign_message(&self, data: &serde_json::Value) -> Result<SignedDocument, JacsError> {
+        // Delegate to the existing SimpleAgent method.
+        crate::simple::SimpleAgent::sign_message(self, data)
+    }
+
+    fn verify_with_key(
+        &self,
+        signed_document: &str,
+        public_key: Vec<u8>,
+    ) -> Result<VerificationResult, JacsError> {
+        // Delegate to the existing SimpleAgent method.
+        crate::simple::SimpleAgent::verify_with_key(self, signed_document, public_key)
+    }
+}
 
 /// Shared mutex for email tests that involve signing/verification.
 ///

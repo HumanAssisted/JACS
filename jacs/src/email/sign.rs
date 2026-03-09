@@ -1,11 +1,11 @@
 //! Email signing implementation for the JACS email system.
 //!
-//! Provides `sign_email()` which takes raw RFC 5322 email bytes and a
-//! JACS `SimpleAgent`, and returns the email with a `jacs-signature.json`
-//! MIME attachment containing a real JACS document.
+//! Provides `sign_email()` which takes raw RFC 5322 email bytes and any
+//! [`JacsSigner`] implementor, and returns the email with a
+//! `jacs-signature.json` MIME attachment containing a real JACS document.
 //!
-//! All cryptographic operations are delegated to the JACS agent via
-//! `SimpleAgent::sign_message()`. The email module only handles hash
+//! All cryptographic operations are delegated to the [`JacsSigner`] via
+//! [`JacsSigner::sign_message()`]. The email module only handles hash
 //! computation and MIME operations.
 
 use sha2::{Digest, Sha256};
@@ -23,21 +23,23 @@ use super::types::{
     AttachmentEntry, BodyPartEntry, EmailSignatureHeaders, EmailSignaturePayload, SignedHeaderEntry,
 };
 
-use crate::simple::SimpleAgent;
+use super::JacsSigner;
 
 /// Sign a raw RFC 5322 email and attach a `jacs-signature.json` document.
 ///
 /// This is the primary sender-side function. It:
 /// 1. Parses and canonicalizes the email
 /// 2. Computes hashes for headers, body parts, and attachments
-/// 3. Creates a real JACS document containing the hash payload via the agent
+/// 3. Creates a real JACS document containing the hash payload via the signer
 /// 4. Attaches the signed JACS document as a MIME part
 ///
-/// All cryptographic operations are handled by the JACS agent — no manual
+/// All cryptographic operations are handled by the [`JacsSigner`] — no manual
 /// signing, hashing, or key management in this module.
 ///
+/// Accepts any type implementing [`JacsSigner`], including `SimpleAgent`.
+///
 /// Returns the modified email bytes with the JACS attachment.
-pub fn sign_email(raw_email: &[u8], agent: &SimpleAgent) -> Result<Vec<u8>, EmailError> {
+pub fn sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>, EmailError> {
     // Step 0: Size check
     check_email_size(raw_email)?;
 
@@ -122,7 +124,7 @@ pub fn sign_email(raw_email: &[u8], agent: &SimpleAgent) -> Result<Vec<u8>, Emai
     };
 
     // Step 6: Create a real JACS document containing the email hash payload
-    let jacs_doc_json = build_jacs_email_document(&payload, agent)?;
+    let jacs_doc_json = build_jacs_email_document(&payload, signer)?;
 
     // Step 7: Attach via add_jacs_attachment (to the wrapped email)
     add_jacs_attachment(&wrapped_email, jacs_doc_json.as_bytes())
@@ -340,25 +342,25 @@ fn build_header_entry(name: &str, value: &str) -> Result<SignedHeaderEntry, Emai
 
 /// Build a real JACS document containing the email signature payload.
 ///
-/// Uses `SimpleAgent::sign_message()` to create a proper JACS document
+/// Uses [`JacsSigner::sign_message()`] to create a proper JACS document
 /// with standard JACS signing, hashing, and identity binding. The email
 /// hash payload becomes the `content` field of the JACS document.
 ///
 /// Returns the raw JSON string of the signed JACS document.
 pub(crate) fn build_jacs_email_document(
     payload: &EmailSignaturePayload,
-    agent: &SimpleAgent,
+    signer: &impl JacsSigner,
 ) -> Result<String, EmailError> {
     // Convert the payload to a serde_json::Value for sign_message
     let payload_value = serde_json::to_value(payload)
         .map_err(|e| EmailError::InvalidJacsDocument(format!("payload serialization: {e}")))?;
 
-    // Use the JACS agent to create and sign a real JACS document.
+    // Use the JacsSigner to create and sign a real JACS document.
     // sign_message() wraps the data as:
     //   { "jacsType": "message", "jacsLevel": "raw", "content": <payload> }
     // then calls create_document_and_load() which handles schema validation,
     // canonical hashing, and cryptographic signing through the agent's identity.
-    let signed_doc = agent.sign_message(&payload_value).map_err(|e| {
+    let signed_doc = signer.sign_message(&payload_value).map_err(|e| {
         EmailError::SignatureVerificationFailed(format!("JACS document signing failed: {e}"))
     })?;
 
