@@ -58,6 +58,11 @@ jobs:
           cargo install cargo-audit --locked --version 0.22.1
           cargo audit --ignore RUSTSEC-2023-0071
 
+      - name: License check (cargo-deny)
+        run: |
+          cargo install cargo-deny --locked
+          cargo deny check licenses
+
       - name: Run quick Rust test suite
         run: |
           cargo test -p jacs --verbose --lib

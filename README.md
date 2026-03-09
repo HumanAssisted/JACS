@@ -120,4 +120,4 @@ Framework adapters are available but considered experimental:
 
 ---
 
-v0.9.3 | [Apache-2.0 OR MIT](./LICENSE-APACHE)
+v0.9.3 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
