@@ -45,85 +45,111 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      # Helper: check if a crate version is already on crates.io
-      # Usage: is_published <crate-name> <version>
       - name: Publish jacs to crates.io
         run: |
-          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs $VERSION already published, skipping"
           else
-            cd jacs && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+            cd jacs && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 101 ]; then
+                echo "::warning::jacs $VERSION already exists on crates.io (exit 101), continuing"
+              else
+                exit $EXIT_CODE
+              fi
+            }
           fi
 
       - name: Wait for jacs to appear on crates.io
         run: |
           echo "Waiting for jacs $VERSION on crates.io..."
-          for i in $(seq 1 30); do
-            LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          for i in $(seq 1 60); do
+            LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
             if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs $VERSION is available on crates.io"
               exit 0
             fi
-            echo "  attempt $i/30 — got '$LATEST', waiting 10s..."
-            sleep 10
+            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
+            sleep 15
           done
           echo "::error::Timed out waiting for jacs $VERSION on crates.io"
           exit 1
 
       - name: Publish jacs-binding-core to crates.io
         run: |
-          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-binding-core $VERSION already published, skipping"
           else
-            cd binding-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+            cd binding-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 101 ]; then
+                echo "::warning::jacs-binding-core $VERSION already exists on crates.io (exit 101), continuing"
+              else
+                exit $EXIT_CODE
+              fi
+            }
           fi
 
       - name: Wait for jacs-binding-core to appear on crates.io
         run: |
           echo "Waiting for jacs-binding-core $VERSION on crates.io..."
-          for i in $(seq 1 30); do
-            LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          for i in $(seq 1 60); do
+            LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-binding-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
             if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs-binding-core $VERSION is available on crates.io"
               exit 0
             fi
-            echo "  attempt $i/30 — got '$LATEST', waiting 10s..."
-            sleep 10
+            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
+            sleep 15
           done
           echo "::error::Timed out waiting for jacs-binding-core $VERSION on crates.io"
           exit 1
 
       - name: Publish jacs-mcp to crates.io
         run: |
-          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-mcp $VERSION already published, skipping"
           else
-            cd jacs-mcp && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+            cd jacs-mcp && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 101 ]; then
+                echo "::warning::jacs-mcp $VERSION already exists on crates.io (exit 101), continuing"
+              else
+                exit $EXIT_CODE
+              fi
+            }
           fi
 
       - name: Wait for jacs-mcp to appear on crates.io
         run: |
           echo "Waiting for jacs-mcp $VERSION on crates.io..."
-          for i in $(seq 1 30); do
-            LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          for i in $(seq 1 60); do
+            LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-mcp | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
             if [ "$LATEST" = "$VERSION" ]; then
               echo "jacs-mcp $VERSION is available on crates.io"
               exit 0
             fi
-            echo "  attempt $i/30 — got '$LATEST', waiting 10s..."
-            sleep 10
+            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
+            sleep 15
           done
           echo "::error::Timed out waiting for jacs-mcp $VERSION on crates.io"
           exit 1
 
       - name: Publish jacs-cli to crates.io
         run: |
-          LATEST=$(curl -sf https://crates.io/api/v1/crates/jacs-cli | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          LATEST=$(curl -s --retry 3 --retry-delay 5 https://crates.io/api/v1/crates/jacs-cli | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
           if [ "$LATEST" = "$VERSION" ]; then
             echo "jacs-cli $VERSION already published, skipping"
           else
-            cd jacs-cli && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+            cd jacs-cli && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 101 ]; then
+                echo "::warning::jacs-cli $VERSION already exists on crates.io (exit 101), continuing"
+              else
+                exit $EXIT_CODE
+              fi
+            }
           fi
