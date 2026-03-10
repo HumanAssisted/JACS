@@ -2071,14 +2071,51 @@ impl SimpleAgent {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
 
-        // Load the document
-        let jacs_doc =
-            agent
-                .load_document(signed_document)
-                .map_err(|e| JacsError::DocumentMalformed {
+        let mut errors = Vec::new();
+
+        // Load the document. In non-strict mode, if load_document fails (e.g.
+        // hash mismatch on a tampered doc), we still want to report the failure
+        // as a verification result rather than a hard error.
+        let jacs_doc = match agent.load_document(signed_document) {
+            Ok(doc) => doc,
+            Err(e) if !self.strict => {
+                // Fall back to parsing the JSON directly so we can still
+                // extract signer info and report the error softly.
+                let value: Value = serde_json::from_str(signed_document)
+                    .map_err(|parse_err| JacsError::DocumentMalformed {
+                        field: "json".to_string(),
+                        reason: parse_err.to_string(),
+                    })?;
+                errors.push(format!("Document load failed: {}", e));
+
+                let signer_id =
+                    value.get_path_str_or(&["jacsSignature", "agentID"], "");
+                let timestamp =
+                    value.get_path_str_or(&["jacsSignature", "date"], "");
+                let data = if let Some(content) = value.get("content") {
+                    content.clone()
+                } else {
+                    value.clone()
+                };
+                let attachments = extract_attachments(&value);
+
+                return Ok(VerificationResult {
+                    valid: false,
+                    data,
+                    signer_id,
+                    signer_name: None,
+                    timestamp,
+                    attachments,
+                    errors,
+                });
+            }
+            Err(e) => {
+                return Err(JacsError::DocumentMalformed {
                     field: "document".to_string(),
                     reason: e.to_string(),
-                })?;
+                });
+            }
+        };
 
         let document_key = jacs_doc.getkey();
 
@@ -2086,7 +2123,6 @@ impl SimpleAgent {
         let verification_result =
             agent.verify_document_signature(&document_key, None, None, Some(public_key), None);
 
-        let mut errors = Vec::new();
         if let Err(e) = verification_result {
             errors.push(e.to_string());
         }
