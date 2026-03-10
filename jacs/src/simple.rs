@@ -56,11 +56,14 @@
 //! - **Signing Gravity**: Documentation emphasizes the sacred nature of signing
 
 use crate::agent::Agent;
+use crate::agent::SHA256_FIELDNAME;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::create_minimal_blank_agent;
+use crate::crypt::hash::hash_string;
 use crate::error::JacsError;
 use crate::mime::mime_from_extension;
+use crate::protocol::canonicalize_json;
 use crate::schema::utils::{ValueExt, check_document_size};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -2081,17 +2084,16 @@ impl SimpleAgent {
             Err(e) if !self.strict => {
                 // Fall back to parsing the JSON directly so we can still
                 // extract signer info and report the error softly.
-                let value: Value = serde_json::from_str(signed_document)
-                    .map_err(|parse_err| JacsError::DocumentMalformed {
+                let value: Value = serde_json::from_str(signed_document).map_err(|parse_err| {
+                    JacsError::DocumentMalformed {
                         field: "json".to_string(),
                         reason: parse_err.to_string(),
-                    })?;
+                    }
+                })?;
                 errors.push(format!("Document load failed: {}", e));
 
-                let signer_id =
-                    value.get_path_str_or(&["jacsSignature", "agentID"], "");
-                let timestamp =
-                    value.get_path_str_or(&["jacsSignature", "date"], "");
+                let signer_id = value.get_path_str_or(&["jacsSignature", "agentID"], "");
+                let timestamp = value.get_path_str_or(&["jacsSignature", "date"], "");
                 let data = if let Some(content) = value.get("content") {
                     content.clone()
                 } else {
@@ -3221,11 +3223,12 @@ impl SimpleAgent {
         }
 
         // Step 1: Load config to find the agent file
-        let config =
-            crate::config::load_config_12factor(Some(path)).map_err(|e| JacsError::ConfigInvalid {
+        let config = crate::config::load_config_12factor(Some(path)).map_err(|e| {
+            JacsError::ConfigInvalid {
                 field: "config".to_string(),
                 reason: format!("Could not load configuration from '{}': {}", path, e),
-            })?;
+            }
+        })?;
 
         let id_and_version = config
             .jacs_agent_id_and_version()
@@ -3276,7 +3279,11 @@ impl SimpleAgent {
 
         // Step 3: Read and parse the raw JSON
         let raw_json = fs::read_to_string(&agent_file).map_err(|e| JacsError::Internal {
-            message: format!("Failed to read agent file '{}': {}", agent_file.display(), e),
+            message: format!(
+                "Failed to read agent file '{}': {}",
+                agent_file.display(),
+                e
+            ),
         })?;
 
         let mut agent_value: Value =
@@ -3289,10 +3296,7 @@ impl SimpleAgent {
             })?;
 
         // Capture pre-migration version info
-        let jacs_id = agent_value["jacsId"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let jacs_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
         let old_version = agent_value["jacsVersion"]
             .as_str()
             .unwrap_or("")
@@ -3330,8 +3334,20 @@ impl SimpleAgent {
             });
         }
 
-        // Step 5: Write patched JSON back to disk (only if changes were made)
+        // Step 5: Recompute hash and write patched JSON back to disk (only if changes were made)
         if !patched_fields.is_empty() {
+            // Recompute jacsSha256: clone doc, remove the hash field, canonicalize, SHA-256.
+            // This mirrors Agent::hash_doc() so the hash gate passes during load.
+            let mut hash_copy = agent_value.clone();
+            if let Some(obj) = hash_copy.as_object_mut() {
+                obj.remove(SHA256_FIELDNAME);
+            }
+            let canonical = canonicalize_json(&hash_copy);
+            let new_hash = hash_string(&canonical);
+            agent_value[SHA256_FIELDNAME] = json!(new_hash);
+            patched_fields.push(SHA256_FIELDNAME.to_string());
+            info!("Migration: recomputed {} after patching", SHA256_FIELDNAME);
+
             let patched_json =
                 serde_json::to_string_pretty(&agent_value).map_err(|e| JacsError::Internal {
                     message: format!("Failed to serialize patched agent: {}", e),
@@ -3393,10 +3409,7 @@ impl SimpleAgent {
 
             let new_lookup = format!("{}:{}", jacs_id, new_version);
             if let Some(obj) = config_value.as_object_mut() {
-                obj.insert(
-                    "jacs_agent_id_and_version".to_string(),
-                    json!(new_lookup),
-                );
+                obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
             }
 
             let updated_str =
@@ -5163,8 +5176,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let (agent, info, _tmp, _guard) =
-            create_persistent_test_agent("lifecycle-rotate-test");
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("lifecycle-rotate-test");
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
@@ -5212,8 +5224,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let (agent, info, _tmp, _guard) =
-            create_persistent_test_agent("lifecycle-metadata-test");
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("lifecycle-metadata-test");
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
@@ -5231,8 +5242,7 @@ mod tests {
             .expect("metadata update should succeed");
 
         // Parse the updated doc
-        let updated_doc: Value =
-            serde_json::from_str(&updated_json).expect("parse updated agent");
+        let updated_doc: Value = serde_json::from_str(&updated_json).expect("parse updated agent");
 
         // jacsId MUST NOT change
         assert_eq!(
@@ -5282,15 +5292,17 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let (agent, info, _tmp, _guard) =
-            create_persistent_test_agent("lifecycle-full-test");
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("lifecycle-full-test");
         let original_id = info.agent_id.clone();
         let v1 = info.version.clone();
 
         // Step 2: rotate keys
         let rot = agent.rotate().expect("key rotation should succeed");
         let v2 = rot.new_version.clone();
-        assert_eq!(rot.jacs_id, original_id, "jacsId MUST NOT change after rotation");
+        assert_eq!(
+            rot.jacs_id, original_id,
+            "jacsId MUST NOT change after rotation"
+        );
         assert_ne!(v2, v1, "version must change after rotation");
 
         // Verify agent is valid after rotation
@@ -5298,7 +5310,11 @@ mod tests {
             .sign_message(&json!({"phase": "after-rotation"}))
             .expect("signing after rotation should succeed");
         let check_rotate = agent.verify(&signed_after_rotate.raw).expect("verify");
-        assert!(check_rotate.valid, "valid after rotation: {:?}", check_rotate.errors);
+        assert!(
+            check_rotate.valid,
+            "valid after rotation: {:?}",
+            check_rotate.errors
+        );
 
         // Step 3: update metadata
         let exported = agent.export_agent().expect("export after rotation");
@@ -5312,8 +5328,7 @@ mod tests {
         let updated_json = agent
             .update_agent(&doc.to_string())
             .expect("metadata update after rotation should succeed");
-        let updated_doc: Value =
-            serde_json::from_str(&updated_json).expect("parse updated");
+        let updated_doc: Value = serde_json::from_str(&updated_json).expect("parse updated");
         let v3 = updated_doc["jacsVersion"].as_str().unwrap().to_string();
 
         // jacsId still the same
@@ -5331,7 +5346,11 @@ mod tests {
             .sign_message(&json!({"phase": "after-metadata-update"}))
             .expect("signing after metadata update should succeed");
         let check_meta = agent.verify(&signed_after_meta.raw).expect("verify");
-        assert!(check_meta.valid, "valid after metadata update: {:?}", check_meta.errors);
+        assert!(
+            check_meta.valid,
+            "valid after metadata update: {:?}",
+            check_meta.errors
+        );
 
         // Metadata persisted
         assert_eq!(
@@ -5350,8 +5369,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let (agent, _info, _tmp, _guard) =
-            create_persistent_test_agent("lifecycle-id-guard-test");
+        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("lifecycle-id-guard-test");
 
         let exported = agent.export_agent().expect("export");
         let mut doc: Value = serde_json::from_str(&exported).expect("parse");
@@ -5403,6 +5421,93 @@ mod tests {
 
         let result = SimpleAgent::migrate_agent(Some("/nonexistent/path/jacs.config.json"));
         assert!(result.is_err(), "migrating with missing config should fail");
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_legacy_agent_missing_iat_jti() {
+        // Simulate a truly legacy agent by creating an agent then stripping iat/jti
+        // from the on-disk jacsSignature. Migration should recompute the hash,
+        // re-sign, and produce a valid new version.
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (_agent, info, _tmp, _guard) = create_persistent_test_agent("migrate-legacy-test");
+        let config_path = "./jacs.config.json";
+
+        // Read config to find the agent file
+        let config_str = std::fs::read_to_string(config_path).expect("read config");
+        let config_val: Value = serde_json::from_str(&config_str).expect("parse config");
+        let id_and_version = config_val["jacs_agent_id_and_version"]
+            .as_str()
+            .expect("id_and_version in config");
+        let data_dir = config_val["jacs_data_directory"]
+            .as_str()
+            .unwrap_or("jacs_data");
+        let agent_file = std::path::PathBuf::from(data_dir)
+            .join("agent")
+            .join(format!("{}.json", id_and_version));
+
+        // Strip iat and jti from jacsSignature to simulate a legacy agent
+        let raw = std::fs::read_to_string(&agent_file).expect("read agent file");
+        let mut agent_val: Value = serde_json::from_str(&raw).expect("parse agent");
+        let sig = agent_val
+            .get_mut("jacsSignature")
+            .expect("jacsSignature exists")
+            .as_object_mut()
+            .expect("jacsSignature is object");
+        assert!(sig.remove("iat").is_some(), "iat should have existed");
+        assert!(sig.remove("jti").is_some(), "jti should have existed");
+        let stripped = serde_json::to_string_pretty(&agent_val).expect("serialize");
+        std::fs::write(&agent_file, &stripped).expect("write stripped agent");
+
+        // Verify that loading normally would fail (hash mismatch)
+        let load_result = SimpleAgent::load(Some(config_path), None);
+        assert!(
+            load_result.is_err(),
+            "loading a stripped legacy agent without migration should fail"
+        );
+
+        // Now migrate — should patch iat/jti, recompute hash, re-sign
+        let result = SimpleAgent::migrate_agent(Some(config_path))
+            .expect("migration of legacy agent should succeed");
+
+        assert_eq!(result.jacs_id, info.agent_id, "jacsId must not change");
+        assert_ne!(
+            result.new_version, info.version,
+            "migration must produce a new version"
+        );
+        assert!(
+            result.patched_fields.contains(&"iat".to_string()),
+            "iat should be patched: {:?}",
+            result.patched_fields
+        );
+        assert!(
+            result.patched_fields.contains(&"jti".to_string()),
+            "jti should be patched: {:?}",
+            result.patched_fields
+        );
+        assert!(
+            result.patched_fields.contains(&"jacsSha256".to_string()),
+            "jacsSha256 should be recomputed: {:?}",
+            result.patched_fields
+        );
+
+        // Verify the migrated agent can be loaded and used
+        let migrated =
+            SimpleAgent::load(Some(config_path), None).expect("migrated agent should load");
+        let signed = migrated
+            .sign_message(&json!({"test": "post-migration"}))
+            .expect("signing after migration should work");
+        let verified = migrated
+            .verify(&signed.raw)
+            .expect("verification after migration should work");
+        assert!(
+            verified.valid,
+            "migrated agent should produce valid signatures: {:?}",
+            verified.errors
+        );
     }
 
     // =========================================================================

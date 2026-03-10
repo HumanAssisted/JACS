@@ -20,11 +20,19 @@
 //!   but is not in the local trust store.
 //! - **ExplicitlyTrusted**: In the local trust store with a verified signature.
 
+use crate::a2a::extension::verify_agent_card_jws;
+use crate::a2a::keys::Jwk;
 use crate::a2a::{AgentCard, JACS_EXTENSION_URI};
 use crate::agent::Agent;
 use crate::trust;
+#[cfg(not(target_arch = "wasm32"))]
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
+use url::Url;
 
 /// Trust policy controlling which remote agents are allowed to interact.
 ///
@@ -158,6 +166,159 @@ fn build_trust_store_key(card: &AgentCard) -> Option<String> {
     }
 }
 
+fn agent_card_signature_key_id(card: &AgentCard) -> Option<&str> {
+    card.signatures
+        .as_ref()
+        .and_then(|signatures| signatures.first())
+        .and_then(|signature| signature.key_id.as_deref())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn agent_card_origin(card: &AgentCard) -> Result<String, String> {
+    let interface_url = card
+        .supported_interfaces
+        .first()
+        .map(|interface| interface.url.as_str())
+        .ok_or_else(|| "Agent Card does not declare a supported interface URL".to_string())?;
+
+    let parsed = Url::parse(interface_url).map_err(|e| {
+        format!(
+            "Invalid Agent Card interface URL '{}': {}",
+            interface_url, e
+        )
+    })?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "Agent Card interface URL does not include a host".to_string())?;
+
+    let mut origin = format!("{}://{}", parsed.scheme(), host);
+    if let Some(port) = parsed.port() {
+        origin.push(':');
+        origin.push_str(&port.to_string());
+    }
+
+    Ok(origin)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_jwks(card: &AgentCard) -> Result<Vec<Jwk>, String> {
+    let jwks_url = format!("{}/.well-known/jwks.json", agent_card_origin(card)?);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("Failed to build JWKS client: {}", e))?;
+
+    let response = client
+        .get(&jwks_url)
+        .send()
+        .map_err(|e| format!("Failed to fetch JWKS from '{}': {}", jwks_url, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "JWKS endpoint '{}' returned HTTP {}",
+            jwks_url,
+            response.status()
+        ));
+    }
+
+    let value = response
+        .json::<serde_json::Value>()
+        .map_err(|e| format!("Failed to parse JWKS JSON from '{}': {}", jwks_url, e))?;
+
+    let keys_value = value
+        .get("keys")
+        .ok_or_else(|| format!("JWKS endpoint '{}' did not return a 'keys' array", jwks_url))?
+        .clone();
+
+    serde_json::from_value::<Vec<Jwk>>(keys_value)
+        .map_err(|e| format!("Failed to decode JWKS keys from '{}': {}", jwks_url, e))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn select_jwk<'a>(card: &AgentCard, jwks: &'a [Jwk]) -> Result<&'a Jwk, String> {
+    let signature_key_id = agent_card_signature_key_id(card);
+    if let Some(key_id) = signature_key_id {
+        jwks.iter()
+            .find(|jwk| jwk.kid == key_id)
+            .ok_or_else(|| format!("JWKS does not contain key '{}'", key_id))
+    } else if jwks.len() == 1 {
+        Ok(&jwks[0])
+    } else {
+        Err("Agent Card signature does not declare key_id and JWKS has multiple keys".to_string())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn jwk_to_verifier(jwk: &Jwk) -> Result<(Vec<u8>, &'static str), String> {
+    match jwk.kty.as_str() {
+        "OKP" if jwk.crv.as_deref() == Some("Ed25519") => {
+            let x = jwk
+                .x
+                .as_deref()
+                .ok_or_else(|| "Ed25519 JWK is missing 'x'".to_string())?;
+            let public_key = URL_SAFE_NO_PAD
+                .decode(x)
+                .map_err(|e| format!("Failed to decode Ed25519 JWK x coordinate: {}", e))?;
+            Ok((public_key, "ring-Ed25519"))
+        }
+        "RSA" => {
+            use rsa::pkcs8::{EncodePublicKey, LineEnding};
+            use rsa::{BigUint, RsaPublicKey};
+
+            let modulus = jwk
+                .n
+                .as_deref()
+                .ok_or_else(|| "RSA JWK is missing 'n'".to_string())?;
+            let exponent = jwk
+                .e
+                .as_deref()
+                .ok_or_else(|| "RSA JWK is missing 'e'".to_string())?;
+
+            let n = BigUint::from_bytes_be(
+                &URL_SAFE_NO_PAD
+                    .decode(modulus)
+                    .map_err(|e| format!("Failed to decode RSA modulus: {}", e))?,
+            );
+            let e = BigUint::from_bytes_be(
+                &URL_SAFE_NO_PAD
+                    .decode(exponent)
+                    .map_err(|e| format!("Failed to decode RSA exponent: {}", e))?,
+            );
+
+            let public_key = RsaPublicKey::new(n, e)
+                .map_err(|e| format!("Invalid RSA public key in JWKS: {}", e))?;
+            let pem = public_key
+                .to_public_key_pem(LineEnding::CRLF)
+                .map_err(|e| format!("Failed to encode RSA key from JWKS: {}", e))?;
+            Ok((pem.into_bytes(), "rsa"))
+        }
+        other => Err(format!("Unsupported JWKS key type '{}'", other)),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_agent_card_signature(card: &AgentCard) -> Result<bool, String> {
+    if card
+        .signatures
+        .as_ref()
+        .is_none_or(|signatures| signatures.is_empty())
+    {
+        return Err("Agent Card has no embedded signatures".to_string());
+    }
+
+    let jwks = fetch_jwks(card)?;
+    let jwk = select_jwk(card, &jwks)?;
+    let (public_key, algorithm) = jwk_to_verifier(jwk)?;
+
+    verify_agent_card_jws(card, &public_key, algorithm)
+        .map_err(|e| format!("Agent Card signature verification failed: {}", e))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn verify_agent_card_signature(_card: &AgentCard) -> Result<bool, String> {
+    Err("Agent Card JWKS verification is not supported on wasm32".to_string())
+}
+
 /// Assess whether a remote A2A agent should be allowed to interact.
 ///
 /// This function evaluates the remote agent's Agent Card against the specified
@@ -181,28 +342,62 @@ pub fn assess_a2a_agent(
     let jacs_registered = has_jacs_extension(remote_card);
     let agent_id = extract_agent_id(remote_card);
     let trust_store_key = build_trust_store_key(remote_card);
+    let signature_verification = if jacs_registered {
+        verify_agent_card_signature(remote_card)
+    } else {
+        Ok(false)
+    };
+    let card_signature_verified = signature_verification.as_ref().copied().unwrap_or(false);
 
     // Determine if the agent is in the local trust store
     let in_trust_store = trust_store_key
         .as_ref()
-        .map(|key| trust::is_trusted(key))
+        .map(|key| trust::is_verified_trusted(key))
         .unwrap_or(false);
 
     // Determine trust level
     let trust_level = if in_trust_store {
         TrustLevel::ExplicitlyTrusted
-    } else if jacs_registered {
+    } else if card_signature_verified {
         TrustLevel::JacsVerified
     } else {
         TrustLevel::Untrusted
     };
 
+    let unverified_reason = if jacs_registered {
+        let mut reason = format!(
+            "agent '{}' declares JACS provenance but its Agent Card could not be cryptographically verified",
+            agent_id.as_deref().unwrap_or("unknown")
+        );
+        if let Err(err) = signature_verification {
+            reason.push_str(": ");
+            reason.push_str(&err);
+        }
+        reason
+    } else {
+        format!(
+            "agent '{}' does not declare JACS provenance extension ({})",
+            agent_id.as_deref().unwrap_or("unknown"),
+            JACS_EXTENSION_URI
+        )
+    };
+
     // Apply policy
     let (allowed, reason) = match policy {
-        A2ATrustPolicy::Open => (
-            true,
-            format!("Open policy: agent accepted (trust level: {})", trust_level),
-        ),
+        A2ATrustPolicy::Open => {
+            let reason = match trust_level {
+                TrustLevel::ExplicitlyTrusted => {
+                    "Open policy: agent accepted and explicitly trusted".to_string()
+                }
+                TrustLevel::JacsVerified => {
+                    "Open policy: agent accepted and Agent Card signature verified".to_string()
+                }
+                TrustLevel::Untrusted => {
+                    format!("Open policy: agent accepted, but {}", unverified_reason)
+                }
+            };
+            (true, reason)
+        }
         A2ATrustPolicy::Verified => match trust_level {
             TrustLevel::ExplicitlyTrusted => (
                 true,
@@ -210,16 +405,10 @@ pub fn assess_a2a_agent(
             ),
             TrustLevel::JacsVerified => (
                 true,
-                "Verified policy: agent has JACS provenance extension".to_string(),
+                "Verified policy: Agent Card signature verified against advertised JWKS"
+                    .to_string(),
             ),
-            TrustLevel::Untrusted => (
-                false,
-                format!(
-                    "Verified policy: agent '{}' does not declare JACS provenance extension ({})",
-                    agent_id.as_deref().unwrap_or("unknown"),
-                    JACS_EXTENSION_URI
-                ),
-            ),
+            TrustLevel::Untrusted => (false, format!("Verified policy: {}", unverified_reason)),
         },
         A2ATrustPolicy::Strict => match trust_level {
             TrustLevel::ExplicitlyTrusted => (
@@ -250,10 +439,15 @@ pub fn assess_a2a_agent(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::a2a::extension::{embed_signature_in_agent_card, sign_agent_card_jws};
+    use crate::a2a::keys::{create_jwk_set, export_as_jwk};
     use crate::a2a::{
         A2A_PROTOCOL_VERSION, AgentCapabilities, AgentCard, AgentExtension, AgentInterface,
     };
     use serde_json::json;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
 
     /// Create a minimal Agent Card for testing.
     fn make_card(
@@ -419,13 +613,25 @@ mod tests {
     }
 
     #[test]
-    fn test_open_policy_accepts_jacs_agent() {
+    fn test_open_policy_treats_unsigned_jacs_card_as_untrusted() {
         let agent = test_agent();
-        let card = make_card("jacs-agent", true, Some("agent-123"), Some("v1"));
+        let card = make_card(
+            "unsigned-jacs-agent",
+            true,
+            Some("550e8400-e29b-41d4-a716-446655440010"),
+            Some("550e8400-e29b-41d4-a716-446655440011"),
+        );
         let result = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Open);
         assert!(result.allowed);
-        assert_eq!(result.trust_level, TrustLevel::JacsVerified);
+        assert_eq!(result.trust_level, TrustLevel::Untrusted);
         assert!(result.jacs_registered);
+        assert!(
+            result
+                .reason
+                .contains("could not be cryptographically verified"),
+            "unexpected reason: {}",
+            result.reason
+        );
     }
 
     // =========================================================================
@@ -433,13 +639,25 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_verified_policy_accepts_jacs_agent() {
+    fn test_verified_policy_rejects_unsigned_jacs_agent() {
         let agent = test_agent();
-        let card = make_card("jacs-agent", true, Some("agent-456"), Some("v2"));
+        let card = make_card(
+            "unsigned-jacs-agent",
+            true,
+            Some("550e8400-e29b-41d4-a716-446655440020"),
+            Some("550e8400-e29b-41d4-a716-446655440021"),
+        );
         let result = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
-        assert!(result.allowed);
-        assert_eq!(result.trust_level, TrustLevel::JacsVerified);
+        assert!(!result.allowed);
+        assert_eq!(result.trust_level, TrustLevel::Untrusted);
         assert!(result.jacs_registered);
+        assert!(
+            result
+                .reason
+                .contains("could not be cryptographically verified"),
+            "unexpected reason: {}",
+            result.reason
+        );
     }
 
     #[test]
@@ -483,8 +701,7 @@ mod tests {
         );
         let result = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Strict);
         assert!(!result.allowed);
-        // JacsVerified because it has the extension, but strict rejects it
-        assert_eq!(result.trust_level, TrustLevel::JacsVerified);
+        assert_eq!(result.trust_level, TrustLevel::Untrusted);
         assert!(result.reason.contains("not in the local trust store"));
     }
 
@@ -568,6 +785,94 @@ mod tests {
         assert_eq!(assessment.agent_id, None);
     }
 
+    fn serve_jwks_once(body: String) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind localhost listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let mut buf = [0_u8; 4096];
+            let read = stream.read(&mut buf).expect("read request");
+            let request = String::from_utf8_lossy(&buf[..read]);
+            let (status, payload) = if request.starts_with("GET /.well-known/jwks.json ") {
+                ("200 OK", body)
+            } else {
+                ("404 Not Found", "{\"error\":\"not found\"}".to_string())
+            };
+            let response = format!(
+                "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                status,
+                payload.len(),
+                payload
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        });
+        (format!("http://{}", addr), handle)
+    }
+
+    fn make_signed_card_with_local_jwks() -> (AgentCard, thread::JoinHandle<()>) {
+        let agent_id = "550e8400-e29b-41d4-a716-446655440030";
+        let version = "550e8400-e29b-41d4-a716-446655440031";
+        let mut card = make_card("signed-jacs-agent", true, Some(agent_id), Some(version));
+        let (private_key, public_key) =
+            crate::crypt::ringwrapper::generate_keys().expect("generate ed25519 keys");
+        let jwk = export_as_jwk(&public_key, "ring-Ed25519", agent_id).expect("export jwk");
+        let jwks = create_jwk_set(vec![jwk]).to_string();
+        let (origin, handle) = serve_jwks_once(jwks);
+        card.supported_interfaces[0].url = format!("{}/agent/{}", origin, agent_id);
+        let jws =
+            sign_agent_card_jws(&card, &private_key, "ring-Ed25519", agent_id).expect("sign card");
+        let signed_card = embed_signature_in_agent_card(&card, &jws, Some(agent_id));
+        (signed_card, handle)
+    }
+
+    #[test]
+    fn test_verified_policy_accepts_signed_jacs_agent() {
+        let agent = test_agent();
+        let (card, server_handle) = make_signed_card_with_local_jwks();
+        let result = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
+        server_handle.join().expect("join jwks server");
+
+        assert!(
+            result.allowed,
+            "assessment should allow signed card: {:?}",
+            result
+        );
+        assert_eq!(result.trust_level, TrustLevel::JacsVerified);
+        assert!(result.jacs_registered);
+        assert!(
+            result.reason.contains("Agent Card signature verified"),
+            "unexpected reason: {}",
+            result.reason
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_strict_policy_rejects_unverified_a2a_card_bookmark() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", temp_dir.path());
+        }
+
+        let agent_id = "550e8400-e29b-41d4-a716-446655440040";
+        let version = "550e8400-e29b-41d4-a716-446655440041";
+        let key = format!("{}:{}", agent_id, version);
+        let card = make_card("bookmarked-card", true, Some(agent_id), Some(version));
+        crate::trust::trust_a2a_card(&key, &serde_json::to_string(&card).unwrap())
+            .expect("store unverified a2a card");
+
+        let result = assess_a2a_agent(&test_agent(), &card, A2ATrustPolicy::Strict);
+        assert!(!result.allowed, "strict policy must reject bookmarks");
+        assert_eq!(result.trust_level, TrustLevel::Untrusted);
+        assert!(result.reason.contains("not in the local trust store"));
+
+        unsafe {
+            std::env::remove_var("JACS_TRUST_STORE_DIR");
+        }
+    }
+
     // =========================================================================
     // Golden serialization tests (Task 006)
     // =========================================================================
@@ -578,7 +883,8 @@ mod tests {
         let assessment = TrustAssessment {
             allowed: true,
             trust_level: TrustLevel::JacsVerified,
-            reason: "Verified policy: agent has JACS provenance extension".to_string(),
+            reason: "Verified policy: Agent Card signature verified against advertised JWKS"
+                .to_string(),
             jacs_registered: true,
             agent_id: Some("agent-golden-trust".to_string()),
             policy: A2ATrustPolicy::Verified,
@@ -588,7 +894,7 @@ mod tests {
         let expected = json!({
             "allowed": true,
             "trustLevel": "JacsVerified",
-            "reason": "Verified policy: agent has JACS provenance extension",
+            "reason": "Verified policy: Agent Card signature verified against advertised JWKS",
             "jacsRegistered": true,
             "agentId": "agent-golden-trust",
             "policy": "Verified"

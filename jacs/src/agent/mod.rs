@@ -1282,7 +1282,7 @@ impl Agent {
         let document_hash = self.hash_doc(&new_self)?;
         new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         //replace ones self
-        self.version = Some(new_self["jacsVersion"].to_string());
+        self.version = new_self.get_str("jacsVersion");
         self.value = Some(new_self.clone());
         self.validate_agent(&self.to_string())?;
         self.verify_self_signature()?;

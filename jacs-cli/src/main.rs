@@ -3,7 +3,9 @@ use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::cli_utils::create::{handle_agent_create, handle_agent_create_auto, handle_config_create};
+use jacs::cli_utils::create::{
+    handle_agent_create, handle_agent_create_auto, handle_config_create,
+};
 use jacs::cli_utils::default_set_file_list;
 use jacs::cli_utils::document::{
     check_agreement, create_agreement, create_documents, extract_documents, sign_documents,
@@ -42,14 +44,8 @@ fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, Str
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let metadata = std::fs::metadata(path).map_err(|e| {
-            format!(
-                "Failed to read {} '{}': {}",
-                source_name,
-                path.display(),
-                e
-            )
-        })?;
+        let metadata = std::fs::metadata(path)
+            .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
         let mode = metadata.permissions().mode() & 0o777;
         if mode & 0o077 != 0 {
             return Err(format!(
@@ -1396,7 +1392,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 // Use updated set_file_list with storage
-                let _ = create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
+                let _ =
+                    create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
             }
 
             Some(("verify", verify_matches)) => {
@@ -1492,29 +1489,29 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => println!("please enter subcommand see jacs key --help"),
         },
         #[cfg(feature = "mcp")]
-        Some(("mcp", mcp_matches)) => {
-            match mcp_matches.subcommand() {
-                Some(("install", _)) => {
-                    eprintln!("`jacs mcp install` is no longer needed.");
-                    eprintln!("MCP is built into the jacs binary. Use `jacs mcp` to serve.");
-                    process::exit(0);
-                }
-                Some(("run", _)) => {
-                    eprintln!("`jacs mcp run` is no longer needed.");
-                    eprintln!("Use `jacs mcp` directly to start the MCP server.");
-                    process::exit(0);
-                }
-                _ => {
-                    let agent = jacs_mcp::load_agent_from_config_env()?;
-                    let server = jacs_mcp::JacsMcpServer::new(agent);
-                    let rt = tokio::runtime::Runtime::new()?;
-                    rt.block_on(jacs_mcp::serve_stdio(server))?;
-                }
+        Some(("mcp", mcp_matches)) => match mcp_matches.subcommand() {
+            Some(("install", _)) => {
+                eprintln!("`jacs mcp install` is no longer needed.");
+                eprintln!("MCP is built into the jacs binary. Use `jacs mcp` to serve.");
+                process::exit(0);
             }
-        }
+            Some(("run", _)) => {
+                eprintln!("`jacs mcp run` is no longer needed.");
+                eprintln!("Use `jacs mcp` directly to start the MCP server.");
+                process::exit(0);
+            }
+            _ => {
+                let agent = jacs_mcp::load_agent_from_config_env()?;
+                let server = jacs_mcp::JacsMcpServer::new(agent);
+                let rt = tokio::runtime::Runtime::new()?;
+                rt.block_on(jacs_mcp::serve_stdio(server))?;
+            }
+        },
         #[cfg(not(feature = "mcp"))]
         Some(("mcp", _)) => {
-            eprintln!("MCP support not compiled. Install with default features: cargo install jacs-cli");
+            eprintln!(
+                "MCP support not compiled. Install with default features: cargo install jacs-cli"
+            );
             process::exit(1);
         }
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
@@ -1628,9 +1625,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 //  well-known endpoints or DNS in practice)
                 trust::trust_a2a_card(&key, &card_json)?;
 
-                println!("Trusted agent '{}' ({})", card.name, agent_id);
+                println!(
+                    "Saved unverified A2A Agent Card bookmark '{}' ({})",
+                    card.name, agent_id
+                );
                 println!("  Version: {}", agent_version);
-                println!("  Added to local trust store with key: {}", key);
+                println!("  Bookmark key: {}", key);
+                println!(
+                    "  This entry is not cryptographically trusted until verified JACS identity material is added."
+                );
             }
             Some(("discover", discover_matches)) => {
                 use jacs::a2a::AgentCard;

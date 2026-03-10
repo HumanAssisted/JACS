@@ -22,6 +22,10 @@ use std::path::Path;
 use std::str::FromStr;
 use tracing::{info, warn};
 
+fn default_trust_verified() -> bool {
+    true
+}
+
 /// Validates an agent ID is safe for use in filesystem paths.
 ///
 /// This checks that the agent ID:
@@ -84,6 +88,9 @@ pub struct TrustedAgent {
     pub public_key_hash: String,
     /// When this agent was trusted.
     pub trusted_at: String,
+    /// Whether this entry was cryptographically verified before being trusted.
+    #[serde(default = "default_trust_verified")]
+    pub verified: bool,
 }
 
 /// Adds an agent to the local trust store.
@@ -249,6 +256,7 @@ pub fn trust_agent_with_key(
         public_key_pem: public_key_pem_string,
         public_key_hash,
         trusted_at: time_utils::now_rfc3339(),
+        verified: true,
     };
 
     let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
@@ -307,7 +315,9 @@ pub fn list_trusted_agents() -> Result<Vec<String>, JacsError> {
                 .is_some_and(|n| n.ends_with(".meta.json"))
             && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
         {
-            agents.push(stem.to_string());
+            if is_trusted(stem) {
+                agents.push(stem.to_string());
+            }
         }
     }
 
@@ -389,6 +399,23 @@ pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
             agent_id,
             agent_file.to_string_lossy()
         )));
+    }
+
+    match read_trusted_agent_metadata(agent_id)? {
+        Some(metadata) if metadata.verified => {}
+        Some(_) => {
+            return Err(JacsError::TrustError(format!(
+                "Agent '{}' is stored only as an unverified A2A bookmark, not a trusted agent. \
+                 Use a cryptographically verified trust flow before treating it as trusted.",
+                agent_id
+            )));
+        }
+        None => {
+            return Err(JacsError::TrustError(format!(
+                "Agent '{}' is missing trust metadata and cannot be treated as trusted.",
+                agent_id
+            )));
+        }
     }
 
     fs::read_to_string(&agent_file).map_err(|e| JacsError::FileReadFailed {
@@ -475,6 +502,7 @@ pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsErr
         public_key_pem: String::new(),
         public_key_hash: String::new(),
         trusted_at: time_utils::now_rfc3339(),
+        verified: false,
     };
 
     let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
@@ -502,7 +530,47 @@ pub fn is_trusted(agent_id: &str) -> bool {
     }
     let trust_dir = trust_store_dir();
     let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    agent_file.exists()
+    if !agent_file.exists() {
+        return false;
+    }
+    read_trusted_agent_metadata(agent_id)
+        .ok()
+        .flatten()
+        .map(|metadata| metadata.verified)
+        .unwrap_or(false)
+}
+
+/// Checks whether an agent has a verified trust entry.
+pub fn is_verified_trusted(agent_id: &str) -> bool {
+    is_trusted(agent_id)
+}
+
+fn read_trusted_agent_metadata(agent_id: &str) -> Result<Option<TrustedAgent>, JacsError> {
+    let trust_dir = trust_store_dir();
+    let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
+
+    validate_path_within_trust_dir(&metadata_file, &trust_dir)?;
+
+    if !metadata_file.exists() {
+        return Ok(None);
+    }
+
+    let metadata_json =
+        fs::read_to_string(&metadata_file).map_err(|e| JacsError::FileReadFailed {
+            path: metadata_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+
+    let metadata =
+        serde_json::from_str::<TrustedAgent>(&metadata_json).map_err(|e| JacsError::Internal {
+            message: format!(
+                "Failed to parse trust metadata '{}': {}",
+                metadata_file.display(),
+                e
+            ),
+        })?;
+
+    Ok(Some(metadata))
 }
 
 // =============================================================================

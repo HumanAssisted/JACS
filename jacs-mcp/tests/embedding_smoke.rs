@@ -17,8 +17,16 @@ fn embedders_can_construct_server_in_process() -> anyhow::Result<()> {
     let tools = jacs_mcp::JacsMcpServer::tools();
 
     assert_eq!(info.server_info.name, "jacs-mcp");
-    assert!(tools.iter().any(|tool| tool.name.as_ref() == "jacs_list_state"));
-    assert!(tools.iter().any(|tool| tool.name.as_ref() == "jacs_attest_create"));
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "jacs_list_state")
+    );
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "jacs_attest_create")
+    );
 
     cleanup_workspace(&workspace);
     Ok(())

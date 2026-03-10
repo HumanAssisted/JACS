@@ -19,6 +19,12 @@ use std::path::PathBuf;
 ///
 /// Falls back to `~/.jacs/trusted_agents/` if platform detection fails.
 pub fn trust_store_dir() -> PathBuf {
+    if let Ok(override_dir) = std::env::var("JACS_TRUST_STORE_DIR")
+        && !override_dir.trim().is_empty()
+    {
+        return PathBuf::from(override_dir);
+    }
+
     #[cfg(target_os = "macos")]
     {
         if let Some(home) = dirs::home_dir() {

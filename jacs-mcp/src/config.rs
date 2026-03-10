@@ -11,7 +11,8 @@ const MISSING_JACS_CONFIG_MESSAGE: &str = "JACS_CONFIG environment variable is n
              See the README for a Quick Start guide on creating an agent.";
 
 pub fn load_agent_from_config_env() -> anyhow::Result<AgentWrapper> {
-    let cfg_path = std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
+    let cfg_path =
+        std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
     load_agent_from_config_path(cfg_path)
 }
 
@@ -46,13 +47,8 @@ pub fn load_agent_from_config_path(path: impl AsRef<Path>) -> anyhow::Result<Age
     let resolved_cfg_str = resolve_relative_config_paths(&cfg_str, &config_path)?;
 
     #[allow(deprecated)]
-    let _ = jacs::config::set_env_vars(true, Some(&resolved_cfg_str), false).map_err(|e| {
-        anyhow!(
-            "Invalid config file '{}': {}",
-            config_path.display(),
-            e
-        )
-    })?;
+    let _ = jacs::config::set_env_vars(true, Some(&resolved_cfg_str), false)
+        .map_err(|e| anyhow!("Invalid config file '{}': {}", config_path.display(), e))?;
 
     let agent_wrapper = AgentWrapper::new();
     tracing::info!(config_path = %config_path.display(), "Loading agent from config file");

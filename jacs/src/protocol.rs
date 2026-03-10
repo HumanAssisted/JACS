@@ -11,8 +11,8 @@
 //!   encoding/decoding for verification payloads.
 //! * [`extract_document_id`] -- extract document ID for hosted verification.
 
-use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::Agent;
+use crate::agent::boilerplate::BoilerPlate;
 use crate::crypt::KeyManager;
 use crate::time_utils::now_rfc3339;
 use base64::Engine;
@@ -146,9 +146,10 @@ pub fn extract_document_id(document: &str) -> Result<String, Box<dyn Error>> {
         .or_else(|| value.get("document_id").and_then(Value::as_str))
         .or_else(|| value.get("id").and_then(Value::as_str));
 
-    doc_id
-        .map(String::from)
-        .ok_or_else(|| "extract_document_id: no ID field found (expected jacsDocumentId, document_id, or id)".into())
+    doc_id.map(String::from).ok_or_else(|| {
+        "extract_document_id: no ID field found (expected jacsDocumentId, document_id, or id)"
+            .into()
+    })
 }
 
 /// Unwrap a JACS-signed event, verifying the signature when the signer's
@@ -208,17 +209,14 @@ pub fn unwrap_signed_event(
 
             let canonical = canonicalize_json(data);
 
-            agent.verify_string(
-                &canonical,
-                signature,
-                public_key.clone(),
-                signing_algorithm,
-            ).map_err(|e| {
-                format!(
-                    "JACS signature verification failed for agentID=\"{}\": {}",
-                    agent_id, e
-                )
-            })?;
+            agent
+                .verify_string(&canonical, signature, public_key.clone(), signing_algorithm)
+                .map_err(|e| {
+                    format!(
+                        "JACS signature verification failed for agentID=\"{}\": {}",
+                        agent_id, e
+                    )
+                })?;
 
             return Ok((data.clone(), true));
         }
@@ -287,16 +285,10 @@ mod tests {
 
     /// Helper: create an ephemeral agent with keys for testing.
     fn make_test_agent() -> Agent {
-        let mut agent =
-            Agent::ephemeral("ring-Ed25519").expect("Failed to create ephemeral agent");
+        let mut agent = Agent::ephemeral("ring-Ed25519").expect("Failed to create ephemeral agent");
 
-        let agent_string = crate::create_minimal_blank_agent(
-            "ai".to_string(),
-            None,
-            None,
-            None,
-        )
-        .expect("Failed to create minimal agent JSON");
+        let agent_string = crate::create_minimal_blank_agent("ai".to_string(), None, None, None)
+            .expect("Failed to create minimal agent JSON");
 
         agent
             .create_agent_and_load(&agent_string, true, Some("ring-Ed25519"))
@@ -380,7 +372,13 @@ mod tests {
         let payload = json!({"answer": 42});
         let envelope = sign_response(&mut agent, &payload).expect("sign_response failed");
 
-        for key in &["version", "document_type", "data", "metadata", "jacsSignature"] {
+        for key in &[
+            "version",
+            "document_type",
+            "data",
+            "metadata",
+            "jacsSignature",
+        ] {
             assert!(
                 envelope.get(key).is_some(),
                 "Envelope missing required key: {key}"
@@ -435,7 +433,9 @@ mod tests {
             );
         }
 
-        let signature = sig["signature"].as_str().expect("signature should be string");
+        let signature = sig["signature"]
+            .as_str()
+            .expect("signature should be string");
         assert!(!signature.is_empty(), "signature must not be empty");
     }
 
@@ -446,7 +446,10 @@ mod tests {
         let encoded = encode_verify_payload(r#"{"k":">>>>"}"#);
         assert!(!encoded.contains('+'), "URL-safe base64 must not contain +");
         assert!(!encoded.contains('/'), "URL-safe base64 must not contain /");
-        assert!(!encoded.contains('='), "URL-safe base64 must not contain = (no padding)");
+        assert!(
+            !encoded.contains('='),
+            "URL-safe base64 must not contain = (no padding)"
+        );
     }
 
     #[test]
@@ -564,8 +567,7 @@ mod tests {
         let payload = json!({"answer": 42});
 
         // Use sign_response to create a properly signed envelope
-        let envelope =
-            sign_response(&mut agent, &payload).expect("sign_response failed");
+        let envelope = sign_response(&mut agent, &payload).expect("sign_response failed");
 
         // Extract the agentID from the signed envelope
         let agent_id = envelope["jacsSignature"]["agentID"]
@@ -586,7 +588,10 @@ mod tests {
 
         // The data should be the canonicalized payload
         assert_eq!(result_data["answer"], 42);
-        assert!(verified, "Known key with valid signature should return verified=true");
+        assert!(
+            verified,
+            "Known key with valid signature should return verified=true"
+        );
     }
 
     #[test]

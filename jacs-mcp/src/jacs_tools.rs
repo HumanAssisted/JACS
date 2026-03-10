@@ -13,6 +13,7 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -56,6 +57,84 @@ fn is_untrust_allowed() -> bool {
     std::env::var("JACS_MCP_ALLOW_UNTRUST")
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or(false)
+}
+
+fn inline_secrets_allowed() -> bool {
+    std::env::var("JACS_MCP_ALLOW_INLINE_SECRETS")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+fn arbitrary_state_files_allowed() -> bool {
+    std::env::var("JACS_MCP_ALLOW_ARBITRARY_STATE_FILES")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+fn configured_state_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(root) = std::env::var("JACS_DATA_DIRECTORY")
+        && !root.trim().is_empty()
+    {
+        roots.push(PathBuf::from(root));
+    }
+
+    roots.push(PathBuf::from("jacs_data"));
+    roots
+}
+
+fn absolute_from_cwd(path: &Path, cwd: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    }
+}
+
+fn validate_state_file_root(file_path: &str) -> Result<(), String> {
+    if arbitrary_state_files_allowed() {
+        return Ok(());
+    }
+
+    let cwd = std::env::current_dir()
+        .map_err(|e| format!("Failed to determine working directory: {}", e))?;
+    let requested = absolute_from_cwd(Path::new(file_path), &cwd);
+    let allowed_roots = configured_state_roots();
+
+    let lexically_allowed = allowed_roots.iter().any(|root| {
+        let root_abs = absolute_from_cwd(root, &cwd);
+        requested.starts_with(&root_abs)
+    });
+
+    if !lexically_allowed {
+        return Err("STATE_FILE_ACCESS_BLOCKED".to_string());
+    }
+
+    if requested.exists() {
+        let canonical_requested = requested
+            .canonicalize()
+            .map_err(|_| "STATE_FILE_ACCESS_BLOCKED".to_string())?;
+        let canonically_allowed = allowed_roots.iter().any(|root| {
+            let root_abs = absolute_from_cwd(root, &cwd);
+            let canonical_root = root_abs.canonicalize().unwrap_or(root_abs);
+            canonical_requested.starts_with(&canonical_root)
+        });
+
+        if !canonically_allowed {
+            return Err("STATE_FILE_ACCESS_BLOCKED".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_optional_relative_path(label: &str, path: Option<&String>) -> Result<(), String> {
+    if let Some(path) = path {
+        require_relative_path_safe(path)
+            .map_err(|e| format!("{} path validation failed: {}", label, e))?;
+    }
+    Ok(())
 }
 
 /// Build a stable storage lookup key (`jacsId:jacsVersion`) from a signed document.
@@ -1923,6 +2002,19 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
+        if let Err(error_code) = validate_state_file_root(&params.file_path) {
+            let result = SignStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "State file access is restricted to approved JACS data roots.".to_string(),
+                error: Some(error_code),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         // Always embed state content for MCP-originated state documents so follow-up
         // reads/updates can operate purely on JACS documents without direct file I/O.
         let embed = params.embed.unwrap_or(true);
@@ -2501,6 +2593,19 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
+        if let Err(error_code) = validate_state_file_root(&params.file_path) {
+            let result = AdoptStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "State file access is restricted to approved JACS data roots.".to_string(),
+                error: Some(error_code),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         // Create the agent state document with file reference
         let mut doc = match agentstate_crud::create_agentstate_with_file(
             &params.state_type,
@@ -2645,6 +2750,48 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
+        if !inline_secrets_allowed() {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Inline passwords are disabled for MCP. Use an operator-provided \
+                          secret channel or set JACS_MCP_ALLOW_INLINE_SECRETS=true to opt in."
+                    .to_string(),
+                error: Some("INLINE_SECRET_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if let Err(e) =
+            validate_optional_relative_path("data_directory", params.data_directory.as_ref())
+        {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Agent creation directory validation failed".to_string(),
+                error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if let Err(e) =
+            validate_optional_relative_path("key_directory", params.key_directory.as_ref())
+        {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Agent creation directory validation failed".to_string(),
+                error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         let result = match jacs_binding_core::create_agent_programmatic(
             &params.name,
             &params.password,
@@ -2695,6 +2842,18 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<ReencryptKeyParams>,
     ) -> String {
+        if !inline_secrets_allowed() {
+            let result = ReencryptKeyResult {
+                success: false,
+                message: "Inline passwords are disabled for MCP. Use an operator-provided \
+                          secret channel or set JACS_MCP_ALLOW_INLINE_SECRETS=true to opt in."
+                    .to_string(),
+                error: Some("INLINE_SECRET_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         let result = match self
             .agent
             .reencrypt_key(&params.old_password, &params.new_password)
@@ -3126,6 +3285,23 @@ impl JacsMcpServer {
             .and_then(|v| v.as_str())
             .map(String::from);
 
+        if !signature_valid {
+            let result = MessageReceiveResult {
+                success: false,
+                sender_agent_id: None,
+                content: None,
+                content_type: None,
+                timestamp: None,
+                signature_valid: false,
+                error: Some(
+                    "Message signature is INVALID — content may have been tampered with"
+                        .to_string(),
+                ),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         let result = MessageReceiveResult {
             success: true,
             sender_agent_id,
@@ -3133,14 +3309,7 @@ impl JacsMcpServer {
             content_type,
             timestamp,
             signature_valid,
-            error: if !signature_valid {
-                Some(
-                    "Message signature is INVALID — content may have been tampered with"
-                        .to_string(),
-                )
-            } else {
-                None
-            },
+            error: None,
         };
 
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
@@ -3282,7 +3451,32 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<CheckAgreementParams>,
     ) -> String {
-        // Parse the agreement to extract status without full verification
+        let fieldname = params
+            .agreement_fieldname
+            .unwrap_or_else(|| "jacsAgreement".to_string());
+
+        if let Err(e) = self
+            .agent
+            .check_agreement(&params.signed_agreement, Some(fieldname.clone()))
+        {
+            let result = CheckAgreementResult {
+                success: false,
+                complete: false,
+                total_agents: 0,
+                signatures_collected: 0,
+                signatures_required: 0,
+                quorum_met: false,
+                expired: false,
+                signed_by: None,
+                unsigned: None,
+                timeout: None,
+                error: Some(format!("Failed to check agreement: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Parse the verified agreement to extract status details.
         let doc: serde_json::Value = match serde_json::from_str(&params.signed_agreement) {
             Ok(v) => v,
             Err(e) => {
@@ -3303,10 +3497,6 @@ impl JacsMcpServer {
                     .unwrap_or_else(|e| format!("Error: {}", e));
             }
         };
-
-        let fieldname = params
-            .agreement_fieldname
-            .unwrap_or_else(|| "jacsAgreement".to_string());
 
         let agreement = match doc.get(&fieldname) {
             Some(a) => a,
@@ -4691,7 +4881,7 @@ mod tests {
         // This should NOT be blocked by path validation (it will fail later
         // because the file doesn't exist, but NOT with PATH_TRAVERSAL_BLOCKED)
         let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
-            file_path: "data/my-state.json".to_string(),
+            file_path: "jacs_data/my-state.json".to_string(),
             state_type: "memory".to_string(),
             name: "safe-path-test".to_string(),
             description: None,
@@ -4702,6 +4892,44 @@ mod tests {
         assert!(
             !response.contains("PATH_TRAVERSAL_BLOCKED"),
             "Safe relative path should not be blocked: {}",
+            response
+        );
+    }
+
+    #[test]
+    fn test_sign_state_rejects_path_outside_default_state_roots() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
+            file_path: "notes/secret.txt".to_string(),
+            state_type: "memory".to_string(),
+            name: "blocked-root-test".to_string(),
+            description: None,
+            framework: None,
+            tags: None,
+            embed: None,
+        })));
+        assert!(
+            response.contains("STATE_FILE_ACCESS_BLOCKED"),
+            "Expected STATE_FILE_ACCESS_BLOCKED in: {}",
+            response
+        );
+    }
+
+    #[test]
+    fn test_adopt_state_rejects_path_outside_default_state_roots() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_adopt_state(Parameters(AdoptStateParams {
+            file_path: "notes/secret.txt".to_string(),
+            state_type: "skill".to_string(),
+            name: "blocked-root-test".to_string(),
+            source_url: Some("https://example.com/secret.txt".to_string()),
+            description: None,
+        })));
+        assert!(
+            response.contains("STATE_FILE_ACCESS_BLOCKED"),
+            "Expected STATE_FILE_ACCESS_BLOCKED in: {}",
             response
         );
     }

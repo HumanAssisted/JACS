@@ -596,11 +596,7 @@ impl JacsAgent {
     /// Returns:
     ///     JSON string with "data" and "verified" fields
     #[pyo3(name = "unwrap_signed_event")]
-    fn py_unwrap_signed_event(
-        &self,
-        event_json: &str,
-        server_keys_json: &str,
-    ) -> PyResult<String> {
+    fn py_unwrap_signed_event(&self, event_json: &str, server_keys_json: &str) -> PyResult<String> {
         self.inner
             .unwrap_signed_event(event_json, server_keys_json)
             .to_py()

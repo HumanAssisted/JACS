@@ -1639,9 +1639,8 @@ impl AgentWrapper {
     /// Checks `jacsDocumentId`, `document_id`, `id` in priority order.
     /// SDK clients use this to build hosted verification URLs.
     pub fn extract_document_id(&self, document: &str) -> BindingResult<String> {
-        jacs::protocol::extract_document_id(document).map_err(|e| {
-            BindingCoreError::generic(format!("Failed to extract document ID: {}", e))
-        })
+        jacs::protocol::extract_document_id(document)
+            .map_err(|e| BindingCoreError::generic(format!("Failed to extract document ID: {}", e)))
     }
 
     /// Unwrap a JACS-signed event, verifying the signature when the signer's
@@ -2696,7 +2695,9 @@ mod tests {
     #[test]
     fn protocol_build_auth_header_starts_with_jacs() {
         let wrapper = protocol_wrapper();
-        let header = wrapper.build_auth_header().expect("build_auth_header failed");
+        let header = wrapper
+            .build_auth_header()
+            .expect("build_auth_header failed");
         assert!(
             header.starts_with("JACS "),
             "Header must start with 'JACS ', got: {header}"
@@ -2752,7 +2753,10 @@ mod tests {
             .expect("encode_verify_payload failed");
         assert!(!encoded.contains('+'), "URL-safe base64 must not contain +");
         assert!(!encoded.contains('/'), "URL-safe base64 must not contain /");
-        assert!(!encoded.contains('='), "URL-safe base64 must not have padding");
+        assert!(
+            !encoded.contains('='),
+            "URL-safe base64 must not have padding"
+        );
         let decoded = wrapper
             .decode_verify_payload(&encoded)
             .expect("decode_verify_payload failed");

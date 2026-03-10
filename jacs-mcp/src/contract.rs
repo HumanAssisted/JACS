@@ -45,7 +45,10 @@ pub fn canonical_contract_snapshot() -> JacsMcpContractSnapshot {
         .map(|tool| JacsMcpToolContract {
             name: tool.name.to_string(),
             title: tool.title.clone(),
-            description: tool.description.as_ref().map(|description| description.to_string()),
+            description: tool
+                .description
+                .as_ref()
+                .map(|description| description.to_string()),
             input_schema: tool.schema_as_json_value(),
             output_schema: tool
                 .output_schema
