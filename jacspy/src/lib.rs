@@ -310,6 +310,17 @@ impl JacsAgent {
         self.inner.verify_document_by_id(document_id).to_py()
     }
 
+    /// Load a document by its ID from the configured storage backend.
+    ///
+    /// Args:
+    ///     document_id: Document ID in "uuid:version" format
+    ///
+    /// Returns:
+    ///     The raw JSON document string
+    fn get_document_by_id(&self, document_id: &str) -> PyResult<String> {
+        self.inner.get_document_by_id(document_id).to_py()
+    }
+
     /// Re-encrypt the agent's private key with a new password.
     ///
     /// Args:

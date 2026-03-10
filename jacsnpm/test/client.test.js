@@ -29,6 +29,12 @@ try {
 const FIXTURES_DIR = path.resolve(__dirname, '../../jacs/tests/scratch');
 const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
 
+function resolveConfigRelativePath(configPath, candidate) {
+  return path.isAbsolute(candidate)
+    ? candidate
+    : path.resolve(path.dirname(configPath), candidate);
+}
+
 // Check if fixtures are loadable (password may not match)
 let fixturesLoadable = false;
 if (clientModule && fs.existsSync(TEST_CONFIG)) {
@@ -123,7 +129,7 @@ describe('JacsClient', function () {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-quickstart-'));
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
-      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
 
       try {
         process.chdir(tmpDir);
@@ -135,10 +141,72 @@ describe('JacsClient', function () {
         });
 
         expect(client.agentId).to.be.a('string').and.not.empty;
-        expect(fs.existsSync(path.join(tmpDir, 'custom', 'jacs.config.json'))).to.equal(true);
+        const configPath = path.join(tmpDir, 'custom', 'jacs.config.json');
+        expect(fs.existsSync(configPath)).to.equal(true);
+        expect(process.env.JACS_PRIVATE_KEY_PASSWORD).to.equal(undefined);
+
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory);
+        const keyDir = resolveConfigRelativePath(configPath, config.jacs_key_directory);
+        expect(fs.existsSync(dataDir)).to.equal(true);
+        expect(fs.existsSync(keyDir)).to.equal(true);
 
         const signed = await client.signMessage({ quickstart: true });
         expect(signed.documentId).to.be.a('string').and.not.empty;
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('verifyById', () => {
+    (available ? it : it.skip)('should use native document lookup for metadata instead of JS filesystem reads', async function () {
+      this.timeout(30000);
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-verify-by-id-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        const client = await clientModule.JacsClient.quickstart({
+          name: 'verify-by-id-agent',
+          domain: 'verify-by-id.example.com',
+          algorithm: 'ring-Ed25519',
+        });
+        const storedRaw = await client._agent.createDocument(
+          JSON.stringify({ jacsType: 'message', jacsLevel: 'raw', content: { verifyById: true } }),
+          null,
+          null,
+          false,
+          null,
+          null,
+        );
+        const documentId = String(storedRaw).replace(/^saved\s+/, '');
+
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          const target = String(filePath);
+          if (target.endsWith('jacs.config.json') || target.includes(`${path.sep}documents${path.sep}`)) {
+            throw new Error('verifyById should not depend on JS filesystem reads');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const result = await client.verifyById(documentId);
+          expect(result.valid).to.equal(true);
+          expect(result.signerId).to.equal(client.agentId);
+          expect(result.timestamp).to.be.a('string').and.not.empty;
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+        }
       } finally {
         process.chdir(originalCwd);
         if (previousPassword === undefined) {

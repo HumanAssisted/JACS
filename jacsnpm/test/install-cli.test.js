@@ -3,6 +3,7 @@
  */
 
 const { expect } = require('chai');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -15,6 +16,22 @@ function runNodeInline(jsCode) {
     cwd: ROOT,
     encoding: 'utf8',
   });
+}
+
+function loadInstallerHelpers() {
+  const previousAutorun = process.env.JACS_INSTALL_CLI_AUTORUN;
+  const modulePath = path.join(ROOT, 'scripts', 'install-cli.js');
+  delete require.cache[require.resolve(modulePath)];
+  process.env.JACS_INSTALL_CLI_AUTORUN = '0';
+  try {
+    return require(modulePath);
+  } finally {
+    if (previousAutorun === undefined) {
+      delete process.env.JACS_INSTALL_CLI_AUTORUN;
+    } else {
+      process.env.JACS_INSTALL_CLI_AUTORUN = previousAutorun;
+    }
+  }
 }
 
 describe('CLI installer scripts', function () {
@@ -36,6 +53,39 @@ describe('CLI installer scripts', function () {
 
     expect(result.status).to.equal(0);
     expect(result.stdout).to.include('Could not install CLI binary: simulated-download-failure');
+  });
+
+  it('install-cli helper rejects checksum mismatch', () => {
+    const installer = loadInstallerHelpers();
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-install-cli-checksum-'));
+    const assetName = 'jacs-cli-0.9.3-darwin-arm64.tar.gz';
+    const archivePath = path.join(tmpDir, assetName);
+    const checksumPath = path.join(tmpDir, `${assetName}.sha256`);
+
+    try {
+      fs.writeFileSync(archivePath, 'archive-bytes');
+      const wrongDigest = crypto.createHash('sha256').update('different-bytes').digest('hex');
+      fs.writeFileSync(checksumPath, `${wrongDigest}  ${assetName}\n`);
+
+      expect(() => installer.verifyArchiveChecksum(archivePath, checksumPath, assetName))
+        .to.throw(/Checksum mismatch/);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('install-cli helper rejects unsafe archive members', () => {
+    const installer = loadInstallerHelpers();
+    expect(() => installer.selectArchiveEntry(['../escape', 'nested/jacs-cli'], 'jacs-cli'))
+      .to.throw(/Unsafe archive entry/);
+    expect(() => installer.selectArchiveEntry(['/absolute/jacs-cli'], 'jacs-cli'))
+      .to.throw(/Unsafe archive entry/);
+  });
+
+  it('install-cli helper selects the packaged binary entry', () => {
+    const installer = loadInstallerHelpers();
+    expect(installer.selectArchiveEntry(['release/jacs-cli'], 'jacs-cli'))
+      .to.equal('release/jacs-cli');
   });
 
   it('bin shim forwards arguments to a local binary when present', () => {

@@ -376,6 +376,12 @@ impl JacsAgent {
         self.inner.verify_document_by_id(&document_id).to_napi()
     }
 
+    /// Load a document by ID from storage (sync, blocks event loop).
+    #[napi(js_name = "getDocumentByIdSync")]
+    pub fn get_document_by_id_sync(&self, document_id: String) -> Result<String> {
+        self.inner.get_document_by_id(&document_id).to_napi()
+    }
+
     /// Re-encrypt the agent's private key (sync, blocks event loop).
     #[napi(js_name = "reencryptKeySync")]
     pub fn reencrypt_key_sync(&self, old_password: String, new_password: String) -> Result<()> {
@@ -706,6 +712,16 @@ impl JacsAgent {
         AsyncTask::new(AgentBoolTask {
             agent,
             func: Some(Box::new(move |a| a.verify_document_by_id(&document_id))),
+        })
+    }
+
+    /// Load a document by ID from storage.
+    #[napi(js_name = "getDocumentById", ts_return_type = "Promise<string>")]
+    pub fn get_document_by_id_async(&self, document_id: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.get_document_by_id(&document_id))),
         })
     }
 

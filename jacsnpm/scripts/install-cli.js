@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const VERSION = require('../package.json').version;
 const REPO = 'HumanAssisted/JACS';
@@ -110,6 +110,78 @@ function readExpectedSha256(checksumPath, assetName) {
   throw new Error(`Checksum for ${assetName} not found in ${checksumPath}`);
 }
 
+function verifyArchiveChecksum(archivePath, checksumPath, assetName) {
+  const expectedSha256 = readExpectedSha256(checksumPath, assetName);
+  const actualSha256 = sha256File(archivePath);
+  if (expectedSha256 !== actualSha256) {
+    throw new Error(
+      `Checksum mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}`
+    );
+  }
+}
+
+function validateArchiveEntry(entryName) {
+  if (!entryName || !entryName.trim()) {
+    return;
+  }
+  const normalized = entryName.replace(/\\/g, '/');
+  if (normalized.startsWith('/')) {
+    throw new Error(`Unsafe archive entry: ${entryName}`);
+  }
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.includes('..')) {
+    throw new Error(`Unsafe archive entry: ${entryName}`);
+  }
+}
+
+function selectArchiveEntry(entries, binaryName) {
+  for (const entry of entries) {
+    validateArchiveEntry(entry);
+  }
+
+  const candidate = entries.find((entry) => path.posix.basename(entry) === binaryName);
+  if (!candidate) {
+    throw new Error(`Binary ${binaryName} not found in archive.`);
+  }
+  return candidate;
+}
+
+function extractTarBinary(archivePath, destPath, binaryName) {
+  const listing = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8' });
+  const entries = listing.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const entry = selectArchiveEntry(entries, binaryName);
+  const bytes = execFileSync('tar', ['-xzf', archivePath, '-O', entry], { encoding: 'buffer' });
+  fs.writeFileSync(destPath, bytes);
+}
+
+function extractZipBinary(archivePath, destPath, binaryName) {
+  const ps = (value) => String(value).replace(/'/g, "''");
+  const script = [
+    'Add-Type -AssemblyName System.IO.Compression.FileSystem',
+    `$zip=[System.IO.Compression.ZipFile]::OpenRead('${ps(archivePath)}')`,
+    'try {',
+    '  foreach ($entry in $zip.Entries) {',
+    '    $full = $entry.FullName',
+    '    if ([string]::IsNullOrWhiteSpace($full)) { continue }',
+    "    if ([System.IO.Path]::IsPathRooted($full) -or $full.Contains('../') -or $full.Contains('..\\\\')) {",
+    '      throw \"Unsafe archive entry: $full\"',
+    '    }',
+    '  }',
+    `  $entry = $zip.Entries | Where-Object { [System.IO.Path]::GetFileName($_.FullName) -eq '${ps(binaryName)}' } | Select-Object -First 1`,
+    `  if ($null -eq $entry) { throw 'Binary ${ps(binaryName)} not found in archive.' }`,
+    `  $out=[System.IO.File]::Open('${ps(destPath)}',[System.IO.FileMode]::Create,[System.IO.FileAccess]::Write)`,
+    '  try {',
+    '    $in=$entry.Open()',
+    '    try { $in.CopyTo($out) } finally { $in.Dispose() }',
+    '  } finally { $out.Dispose() }',
+    '} finally {',
+    '  $zip.Dispose()',
+    '}',
+  ].join('\n');
+
+  execFileSync('powershell', ['-NoProfile', '-Command', script], { stdio: 'pipe' });
+}
+
 async function main() {
   const key = getPlatformKey();
   if (!key) {
@@ -142,26 +214,14 @@ async function main() {
     console.log(`[jacs] Downloading checksum for pinned version ${VERSION} from ${checksumUrl}`);
     await download(checksumUrl, checksumPath);
     await download(url, archivePath);
-    const expectedSha256 = readExpectedSha256(checksumPath, assetName);
-    const actualSha256 = sha256File(archivePath);
-    if (expectedSha256 !== actualSha256) {
-      throw new Error(
-        `Checksum mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}`
-      );
-    }
+    verifyArchiveChecksum(archivePath, checksumPath, assetName);
 
     fs.mkdirSync(binDir, { recursive: true });
 
     if (isWindows) {
-      // Use PowerShell to extract zip
-      execSync(
-        `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}'"`,
-        { stdio: 'pipe' }
-      );
-      fs.copyFileSync(path.join(tmpDir, 'jacs-cli.exe'), binPath);
+      extractZipBinary(archivePath, binPath, 'jacs-cli.exe');
     } else {
-      execSync(`tar xzf "${archivePath}" -C "${tmpDir}"`, { stdio: 'pipe' });
-      fs.copyFileSync(path.join(tmpDir, 'jacs-cli'), binPath);
+      extractTarBinary(archivePath, binPath, 'jacs-cli');
       fs.chmodSync(binPath, 0o755);
     }
 
@@ -169,7 +229,7 @@ async function main() {
   } catch (err) {
     console.log(`[jacs] Could not install CLI binary: ${err.message}`);
     console.log('[jacs] The library works without the CLI. To install the CLI manually:');
-    console.log(`[jacs]   cargo install jacs --features cli`);
+    console.log(`[jacs]   cargo install jacs-cli`);
     console.log(`[jacs]   OR download from https://github.com/${REPO}/releases`);
     // Clean up partial install
     try { fs.rmSync(binPath, { force: true }); } catch (_) {}
@@ -178,4 +238,20 @@ async function main() {
   }
 }
 
-main();
+module.exports = {
+  download,
+  follow,
+  getBinDir,
+  getBinName,
+  getPlatformKey,
+  main,
+  readExpectedSha256,
+  selectArchiveEntry,
+  sha256File,
+  validateArchiveEntry,
+  verifyArchiveChecksum,
+};
+
+if (process.env.JACS_INSTALL_CLI_AUTORUN !== '0') {
+  main();
+}

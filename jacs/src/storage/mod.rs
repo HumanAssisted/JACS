@@ -201,6 +201,8 @@ pub struct MultiStorage {
     #[cfg(target_arch = "wasm32")]
     web_local: Option<Arc<WebLocalStorage>>,
     default_storage: StorageType,
+    #[cfg(not(target_arch = "wasm32"))]
+    filesystem_base_dir: Option<PathBuf>,
     storages: Vec<Arc<dyn ObjectStore>>,
 }
 
@@ -239,8 +241,7 @@ pub enum StorageType {
 
 impl MultiStorage {
     pub fn clean_path(path: &str) -> String {
-        // Remove any leading slashes to ensure consistent path format
-        // and convert absolute paths to relative
+        // Non-filesystem backends use object-store paths, which are always relative.
         let cleaned = path.trim_start_matches('/');
 
         // If path is empty after cleaning, return "." to indicate current directory
@@ -304,10 +305,13 @@ impl MultiStorage {
             _http = None;
         }
 
+        let is_fs = default_storage == StorageType::FS;
+
         // Check filesystem storage
-        if default_storage == StorageType::FS {
-            // get the curent local absolute path
-            let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
+        if is_fs {
+            // Use the filesystem root so callers can mix relative paths (resolved below
+            // against the startup CWD) and true absolute paths from config files.
+            let local: LocalFileSystem = LocalFileSystem::new();
             let tmplocal = Arc::new(local);
             _local = Some(tmplocal.clone());
             storages.push(tmplocal);
@@ -354,13 +358,42 @@ impl MultiStorage {
             #[cfg(target_arch = "wasm32")]
             web_local,
             default_storage,
+            #[cfg(not(target_arch = "wasm32"))]
+            filesystem_base_dir: is_fs.then_some(absolute_path),
             storages,
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn object_path(&self, path: &str) -> Result<ObjectPath, ObjectStoreError> {
+        if self.default_storage == StorageType::FS {
+            let raw = PathBuf::from(path);
+            let absolute = if raw.is_absolute() {
+                raw
+            } else {
+                self.filesystem_base_dir
+                    .as_ref()
+                    .map(|base| base.join(raw))
+                    .ok_or_else(|| ObjectStoreError::Generic {
+                        store: "MultiStorage",
+                        source: Box::new(std::io::Error::other(
+                            "filesystem base directory missing for fs storage",
+                        )),
+                    })?
+            };
+            return ObjectPath::from_absolute_path(absolute).map_err(ObjectStoreError::from);
+        }
+
+        ObjectPath::parse(Self::clean_path(path)).map_err(ObjectStoreError::from)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn object_path(&self, path: &str) -> Result<ObjectPath, ObjectStoreError> {
+        ObjectPath::parse(Self::clean_path(path)).map_err(ObjectStoreError::from)
+    }
+
     pub fn save_file(&self, path: &str, contents: &[u8]) -> Result<(), ObjectStoreError> {
-        let clean = Self::clean_path(path);
-        let object_path = ObjectPath::parse(&clean)?;
+        let object_path = self.object_path(path)?;
         let mut errors = Vec::new();
         let contents_vec = contents.to_vec();
         let contents_payload = PutPayload::from(contents_vec);
@@ -389,8 +422,7 @@ impl MultiStorage {
         path: &str,
         preference: Option<StorageType>,
     ) -> Result<Vec<u8>, ObjectStoreError> {
-        let clean = Self::clean_path(path);
-        let object_path = ObjectPath::parse(&clean)?;
+        let object_path = self.object_path(path)?;
         let storage = self.get_read_storage(preference);
         let get_result = block_on(storage.get(&object_path))?;
         let bytes = block_on(get_result.bytes())?;
@@ -402,16 +434,15 @@ impl MultiStorage {
         path: &str,
         preference: Option<StorageType>,
     ) -> Result<bool, ObjectStoreError> {
-        let clean = Self::clean_path(path);
-        let object_path = ObjectPath::parse(&clean)?;
+        let object_path = self.object_path(path)?;
         let storage = self.get_read_storage(preference);
 
         // --- Debugging Start ---
         let current_process_cwd =
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("unknown_cwd"));
         debug!(
-            "[MultiStorage::file_exists DEBUG]\n  - Input Path: '{}'\n  - Clean Path: '{}'\n  - Object Path: '{}'\n  - Process CWD: {:?}\n  - Attempting storage.head...",
-            path, clean, object_path, current_process_cwd
+            "[MultiStorage::file_exists DEBUG]\n  - Input Path: '{}'\n  - Object Path: '{}'\n  - Process CWD: {:?}\n  - Attempting storage.head...",
+            path, object_path, current_process_cwd
         );
         // --- Debugging End ---
 
@@ -438,8 +469,7 @@ impl MultiStorage {
     ) -> Result<Vec<String>, ObjectStoreError> {
         let mut file_list = Vec::new();
         let object_store = self.get_read_storage(preference);
-        let clean = Self::clean_path(prefix);
-        let prefix_path = ObjectPath::parse(&clean)?;
+        let prefix_path = self.object_path(prefix)?;
         let mut list_stream = object_store.list(Some(&prefix_path));
 
         while let Some(meta) = block_on(list_stream.next()) {
@@ -452,8 +482,8 @@ impl MultiStorage {
     }
 
     pub fn rename_file(&self, from: &str, to: &str) -> Result<(), ObjectStoreError> {
-        let from_path = ObjectPath::parse(Self::clean_path(from))?;
-        let to_path = ObjectPath::parse(Self::clean_path(to))?;
+        let from_path = self.object_path(from)?;
+        let to_path = self.object_path(to)?;
         let mut errors = Vec::new();
 
         for storage in &self.storages {
@@ -893,6 +923,24 @@ mod tests {
     use super::StorageDocumentTraits;
     use crate::agent::document::JACSDocument;
     use serde_json::json;
+    use serial_test::serial;
+    use std::path::PathBuf;
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.original).expect("restore cwd");
+        }
+    }
+
+    fn chdir_guard(target: &std::path::Path) -> CwdGuard {
+        let original = std::env::current_dir().expect("current cwd");
+        std::env::set_current_dir(target).expect("set cwd");
+        CwdGuard { original }
+    }
 
     #[test]
     fn rename_file_moves_content_and_removes_source() {
@@ -938,6 +986,54 @@ mod tests {
         let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
         let result = storage.rename_file("missing/source.txt", "dest/path.txt");
         assert!(result.is_err(), "renaming a missing source should fail");
+    }
+
+    #[test]
+    #[serial]
+    fn fs_storage_supports_absolute_paths() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _cwd = chdir_guard(temp.path());
+        let storage = MultiStorage::new("fs".to_string()).expect("fs storage");
+        let absolute_path = temp.path().join("nested").join("absolute.txt");
+
+        storage
+            .save_file(absolute_path.to_string_lossy().as_ref(), b"absolute")
+            .expect("save absolute path");
+
+        assert_eq!(
+            std::fs::read(&absolute_path).expect("read saved absolute file"),
+            b"absolute"
+        );
+        assert_eq!(
+            storage
+                .get_file(absolute_path.to_string_lossy().as_ref(), None)
+                .expect("load absolute path"),
+            b"absolute"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn fs_storage_resolves_relative_paths_against_creation_cwd() {
+        let home = tempfile::tempdir().expect("home tempdir");
+        let elsewhere = tempfile::tempdir().expect("elsewhere tempdir");
+        let _cwd = chdir_guard(home.path());
+        let storage = MultiStorage::new("fs".to_string()).expect("fs storage");
+
+        std::env::set_current_dir(elsewhere.path()).expect("move cwd after storage creation");
+        storage
+            .save_file("relative/path.txt", b"stable")
+            .expect("save relative path");
+
+        assert_eq!(
+            std::fs::read(home.path().join("relative").join("path.txt"))
+                .expect("read file under original cwd"),
+            b"stable"
+        );
+        assert!(
+            !elsewhere.path().join("relative").join("path.txt").exists(),
+            "relative writes must stay rooted to the storage creation cwd"
+        );
     }
 
     #[test]

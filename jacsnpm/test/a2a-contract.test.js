@@ -2,9 +2,6 @@
  * A2A Contract Tests — validates Node wrapper verification output against
  * the shared canonical schema (a2a-verification-result.schema.json).
  *
- * These tests are expected to FAIL until TASK_009/TASK_010/TASK_012 align the
- * wrapper output to the canonical schema. This is the Red phase of TDD.
- *
  * Run selectively: npx mocha test/a2a-contract.test.js
  */
 
@@ -154,7 +151,7 @@ function makeWrappedArtifact({
 describe('A2A Contract Tests', function () {
   this.timeout(10000);
 
-  describe('Verify Result Shape (expected to fail until TASK_009)', () => {
+  describe('Verify Result Shape', () => {
     let integration;
 
     beforeEach(() => {
@@ -163,7 +160,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should include status field in verification result', async () => {
-      // Expected to fail: current output does not include `status`.
       const wrapped = makeWrappedArtifact();
       const result = await integration.verifyWrappedArtifact(wrapped);
 
@@ -173,7 +169,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should use canonical status enum values for verified artifact', async () => {
-      // Expected to fail: status field does not exist yet.
       const client = createMockClient(true);
       const int = new JACSA2AIntegration(client);
       const wrapped = makeWrappedArtifact();
@@ -186,7 +181,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should use canonical status enum values for invalid artifact', async () => {
-      // Expected to fail: status field does not exist yet.
       const client = createMockClient(false);
       const int = new JACSA2AIntegration(client);
       const wrapped = makeWrappedArtifact();
@@ -206,7 +200,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should include trust block when policy assessment requested', async () => {
-      // Expected to fail: trustAssessment not included without policy.
       const client = createMockClient(true);
       const int = new JACSA2AIntegration(client, 'verified');
       const wrapped = makeWrappedArtifact();
@@ -217,7 +210,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should include trust.status as allowed|blocked|not_assessed via trustAssessment', async () => {
-      // Expected to fail: trustAssessment shape does not match schema yet.
       const client = createMockClient(true);
       const int = new JACSA2AIntegration(client, 'verified');
       const wrapped = makeWrappedArtifact();
@@ -233,7 +225,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should preserve valid boolean for backward compatibility', async () => {
-      // This should pass NOW — valid field already exists.
       const wrapped = makeWrappedArtifact();
       const result = await integration.verifyWrappedArtifact(wrapped);
 
@@ -246,7 +237,7 @@ describe('A2A Contract Tests', function () {
   // Integration Tests — Fixture Conformance
   // ---------------------------------------------------------------------------
 
-  describe('Fixture Conformance (expected to fail until TASK_009/TASK_012)', () => {
+  describe('Fixture Conformance', () => {
     let schema;
     let ajv;
     let validate;
@@ -258,7 +249,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should match self_signed_verified fixture schema', async () => {
-      // Expected to fail: current output lacks `status`, `parentSignaturesValid`, etc.
       const expected = loadFixture('self_signed_verified');
       const client = createMockClient(true);
       const int = new JACSA2AIntegration(client);
@@ -282,7 +272,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should match foreign_verified fixture schema', async () => {
-      // Expected to fail: same reasons as above.
       const expected = loadFixture('foreign_verified');
       const client = createMockClient(true);
       const int = new JACSA2AIntegration(client);
@@ -306,7 +295,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should distinguish Unverified from Invalid in status field', async () => {
-      // Expected to fail: current output uses only valid boolean, no status enum.
       const unverifiedExpected = loadFixture('foreign_unverified');
       const invalidExpected = loadFixture('invalid_signature');
 
@@ -354,7 +342,6 @@ describe('A2A Contract Tests', function () {
     });
 
     it('should match trust_blocked fixture schema', async () => {
-      // Expected to fail: trustAssessment not populated yet.
       const expected = loadFixture('trust_blocked');
       const client = createMockClient(false);
       const int = new JACSA2AIntegration(client, 'strict');
@@ -381,7 +368,7 @@ describe('A2A Contract Tests', function () {
     });
 
     it('all fixture files themselves should conform to schema (meta-test)', () => {
-      // This test validates the test data, not the wrapper. Should pass immediately.
+      // This test validates the test data, not the wrapper implementation.
       const fixtures = [
         'self_signed_verified',
         'foreign_verified',
