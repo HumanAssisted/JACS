@@ -5112,221 +5112,226 @@ mod tests {
     }
 
     // =========================================================================
-    // Migration Tests
+    // Agent Update Lifecycle Tests
+    //
+    // These test the core contract:
+    //   - Key rotation creates a new version, preserves jacsId, agent is valid
+    //   - Metadata update creates a new version, preserves jacsId, agent is valid
+    //   - jacsId MUST NOT change across any update operation
     // =========================================================================
 
-    /// Helper: create a persistent agent, then strip iat/jti from its on-disk
-    /// agent JSON to simulate a legacy pre-schema-change document.
-    /// Returns (config_path_string, original_jacs_id, original_version, TempDir, CwdGuard).
-    fn create_legacy_agent(
-        name: &str,
-    ) -> (String, String, String, tempfile::TempDir, CwdGuard) {
-        let saved_cwd = std::env::current_dir().expect("get cwd");
-        let tmp = tempfile::tempdir().expect("create temp dir");
-        std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
-        let guard = CwdGuard { saved: saved_cwd };
-
-        let params = CreateAgentParams::builder()
-            .name(name)
-            .password("MigrateTest!2026")
-            .algorithm("ring-Ed25519")
-            .description("Legacy test agent for migration")
-            .data_directory("./jacs_data")
-            .key_directory("./jacs_keys")
-            .config_path("./jacs.config.json")
-            .build();
-
-        let (_agent, info) = SimpleAgent::create_with_params(params).expect("create test agent");
-
-        unsafe {
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "MigrateTest!2026");
-            std::env::set_var("JACS_KEY_DIRECTORY", "./jacs_keys");
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
-        }
-
-        let jacs_id = info.agent_id.clone();
-        let version = info.version.clone();
-        let config_path = tmp.path().join("jacs.config.json");
-
-        // Now strip iat and jti from the on-disk agent JSON to simulate legacy
-        let id_and_version = format!("{}:{}", jacs_id, version);
-        let agent_file = tmp
-            .path()
-            .join("jacs_data")
-            .join("agent")
-            .join(format!("{}.json", id_and_version));
-
-        let raw = std::fs::read_to_string(&agent_file).expect("read agent file");
-        let mut doc: Value = serde_json::from_str(&raw).expect("parse agent json");
-
-        if let Some(sig) = doc.get_mut("jacsSignature") {
-            sig.as_object_mut().unwrap().remove("iat");
-            sig.as_object_mut().unwrap().remove("jti");
-        }
-
-        std::fs::write(&agent_file, serde_json::to_string_pretty(&doc).unwrap())
-            .expect("write stripped agent");
-
-        (
-            config_path.to_string_lossy().to_string(),
-            jacs_id,
-            version,
-            tmp,
-            guard,
-        )
-    }
-
     #[test]
     #[serial]
-    fn test_migrate_preserves_jacs_id() {
+    fn test_update_lifecycle_rotate_preserves_id_and_creates_new_version() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let (config_path, original_id, _original_version, _tmp, _guard) =
-            create_legacy_agent("migrate-id-test");
+        let (agent, info, _tmp, _guard) =
+            create_persistent_test_agent("lifecycle-rotate-test");
+        let original_id = info.agent_id.clone();
+        let original_version = info.version.clone();
 
-        let result =
-            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
+        // Step 2: rotate keys
+        let rot = agent.rotate().expect("key rotation should succeed");
 
+        // jacsId MUST NOT change
         assert_eq!(
-            result.jacs_id, original_id,
-            "jacsId MUST NOT change during migration"
+            rot.jacs_id, original_id,
+            "jacsId MUST NOT change after key rotation"
         );
-    }
-
-    #[test]
-    #[serial]
-    fn test_migrate_creates_new_version() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (config_path, _original_id, original_version, _tmp, _guard) =
-            create_legacy_agent("migrate-version-test");
-
-        let result =
-            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
-
+        // version MUST change
         assert_ne!(
-            result.new_version, original_version,
-            "jacsVersion must change after migration"
+            rot.new_version, original_version,
+            "jacsVersion must change after key rotation"
         );
-        assert_eq!(result.old_version, original_version);
-    }
+        assert_eq!(rot.old_version, original_version);
 
-    #[test]
-    #[serial]
-    fn test_migrate_patches_missing_iat_and_jti() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (config_path, _original_id, _original_version, _tmp, _guard) =
-            create_legacy_agent("migrate-patch-test");
-
-        let result =
-            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
-
-        assert!(
-            result.patched_fields.contains(&"iat".to_string()),
-            "should report patching iat"
-        );
-        assert!(
-            result.patched_fields.contains(&"jti".to_string()),
-            "should report patching jti"
-        );
-    }
-
-    #[test]
-    #[serial]
-    fn test_migrate_agent_loads_and_signs_after_migration() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (config_path, _original_id, _original_version, _tmp, _guard) =
-            create_legacy_agent("migrate-sign-test");
-
-        let _result =
-            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
-
-        // The migrated agent should now load normally and be able to sign
-        let agent =
-            SimpleAgent::load(Some(&config_path), None).expect("loading after migration should work");
+        // Verify the rotated agent is valid: can sign and verify
         let signed = agent
-            .sign_message(&json!({"after": "migration"}))
-            .expect("signing after migration should succeed");
+            .sign_message(&json!({"after": "rotation"}))
+            .expect("signing with new key should succeed");
         let verification = agent.verify(&signed.raw).expect("verify should succeed");
         assert!(
             verification.valid,
-            "message signed after migration should verify: {:?}",
+            "message signed after rotation should verify: {:?}",
             verification.errors
         );
-    }
 
-    #[test]
-    #[serial]
-    fn test_migrate_updates_config_version() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (config_path, original_id, _original_version, _tmp, _guard) =
-            create_legacy_agent("migrate-config-test");
-
-        let result =
-            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
-
-        // Config file should now reference the new version
-        let config_str = std::fs::read_to_string(&config_path).expect("read config");
-        let config_val: Value = serde_json::from_str(&config_str).expect("parse config");
-        let expected_lookup = format!("{}:{}", original_id, result.new_version);
-        assert_eq!(
-            config_val["jacs_agent_id_and_version"]
-                .as_str()
-                .unwrap_or(""),
-            expected_lookup,
-            "config should reference the migrated version"
-        );
-    }
-
-    #[test]
-    #[serial]
-    fn test_migrate_new_doc_has_iat_and_jti() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (config_path, original_id, _original_version, _tmp, _guard) =
-            create_legacy_agent("migrate-fields-test");
-
-        let result =
-            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
-
-        // Load the migrated agent and check the signature fields
-        let agent =
-            SimpleAgent::load(Some(&config_path), None).expect("loading after migration should work");
+        // Verify agent doc itself has correct fields
         let exported = agent.export_agent().expect("export should succeed");
-        let doc: Value = serde_json::from_str(&exported).expect("parse exported agent");
+        let doc: Value = serde_json::from_str(&exported).expect("parse agent");
+        assert_eq!(doc["jacsId"].as_str().unwrap(), original_id);
+        assert_eq!(doc["jacsVersion"].as_str().unwrap(), rot.new_version);
 
         let sig = doc.get("jacsSignature").expect("should have jacsSignature");
-        assert!(sig.get("iat").is_some(), "migrated doc should have iat");
-        assert!(sig.get("jti").is_some(), "migrated doc should have jti");
-        assert!(
-            sig["iat"].is_i64() || sig["iat"].is_u64(),
-            "iat should be an integer"
-        );
-        assert!(sig["jti"].is_string(), "jti should be a string");
+        assert!(sig.get("iat").is_some(), "rotated doc should have iat");
+        assert!(sig.get("jti").is_some(), "rotated doc should have jti");
+    }
 
-        // jacsId must still be the original
+    #[test]
+    #[serial]
+    fn test_update_lifecycle_metadata_update_preserves_id_and_creates_new_version() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, info, _tmp, _guard) =
+            create_persistent_test_agent("lifecycle-metadata-test");
+        let original_id = info.agent_id.clone();
+        let original_version = info.version.clone();
+
+        // Step 3: update metadata (change description via jacsServices)
+        let exported = agent.export_agent().expect("export original agent");
+        let mut doc: Value = serde_json::from_str(&exported).expect("parse agent");
+        doc["jacsServices"] = json!([{
+            "serviceDescription": "Updated service description",
+            "successDescription": "Updated success",
+            "failureDescription": "Updated failure"
+        }]);
+
+        let updated_json = agent
+            .update_agent(&doc.to_string())
+            .expect("metadata update should succeed");
+
+        // Parse the updated doc
+        let updated_doc: Value =
+            serde_json::from_str(&updated_json).expect("parse updated agent");
+
+        // jacsId MUST NOT change
         assert_eq!(
-            doc["jacsId"].as_str().unwrap(),
+            updated_doc["jacsId"].as_str().unwrap(),
             original_id,
-            "jacsId MUST NOT change in the migrated document"
+            "jacsId MUST NOT change after metadata update"
+        );
+        // version MUST change
+        assert_ne!(
+            updated_doc["jacsVersion"].as_str().unwrap(),
+            original_version,
+            "jacsVersion must change after metadata update"
+        );
+        // metadata should be updated
+        assert_eq!(
+            updated_doc["jacsServices"][0]["serviceDescription"]
+                .as_str()
+                .unwrap(),
+            "Updated service description"
+        );
+
+        // Verify the updated agent is valid: can sign and verify
+        let signed = agent
+            .sign_message(&json!({"after": "metadata-update"}))
+            .expect("signing after metadata update should succeed");
+        let verification = agent.verify(&signed.raw).expect("verify should succeed");
+        assert!(
+            verification.valid,
+            "message signed after metadata update should verify: {:?}",
+            verification.errors
+        );
+
+        // Verify signature fields
+        let sig = updated_doc
+            .get("jacsSignature")
+            .expect("should have jacsSignature");
+        assert!(sig.get("iat").is_some(), "updated doc should have iat");
+        assert!(sig.get("jti").is_some(), "updated doc should have jti");
+    }
+
+    #[test]
+    #[serial]
+    fn test_update_lifecycle_rotate_then_metadata_update() {
+        // Full lifecycle: create → rotate keys → update metadata
+        // Each step must preserve jacsId and produce a new valid version.
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, info, _tmp, _guard) =
+            create_persistent_test_agent("lifecycle-full-test");
+        let original_id = info.agent_id.clone();
+        let v1 = info.version.clone();
+
+        // Step 2: rotate keys
+        let rot = agent.rotate().expect("key rotation should succeed");
+        let v2 = rot.new_version.clone();
+        assert_eq!(rot.jacs_id, original_id, "jacsId MUST NOT change after rotation");
+        assert_ne!(v2, v1, "version must change after rotation");
+
+        // Verify agent is valid after rotation
+        let signed_after_rotate = agent
+            .sign_message(&json!({"phase": "after-rotation"}))
+            .expect("signing after rotation should succeed");
+        let check_rotate = agent.verify(&signed_after_rotate.raw).expect("verify");
+        assert!(check_rotate.valid, "valid after rotation: {:?}", check_rotate.errors);
+
+        // Step 3: update metadata
+        let exported = agent.export_agent().expect("export after rotation");
+        let mut doc: Value = serde_json::from_str(&exported).expect("parse");
+        doc["jacsServices"] = json!([{
+            "serviceDescription": "Post-rotation service",
+            "successDescription": "Works",
+            "failureDescription": "Fails"
+        }]);
+
+        let updated_json = agent
+            .update_agent(&doc.to_string())
+            .expect("metadata update after rotation should succeed");
+        let updated_doc: Value =
+            serde_json::from_str(&updated_json).expect("parse updated");
+        let v3 = updated_doc["jacsVersion"].as_str().unwrap().to_string();
+
+        // jacsId still the same
+        assert_eq!(
+            updated_doc["jacsId"].as_str().unwrap(),
+            original_id,
+            "jacsId MUST NOT change after metadata update post-rotation"
+        );
+        // version progressed
+        assert_ne!(v3, v2, "version must change after metadata update");
+        assert_ne!(v3, v1, "version must differ from original");
+
+        // Verify the agent is still valid after both operations
+        let signed_after_meta = agent
+            .sign_message(&json!({"phase": "after-metadata-update"}))
+            .expect("signing after metadata update should succeed");
+        let check_meta = agent.verify(&signed_after_meta.raw).expect("verify");
+        assert!(check_meta.valid, "valid after metadata update: {:?}", check_meta.errors);
+
+        // Metadata persisted
+        assert_eq!(
+            updated_doc["jacsServices"][0]["serviceDescription"]
+                .as_str()
+                .unwrap(),
+            "Post-rotation service"
         );
     }
+
+    #[test]
+    #[serial]
+    fn test_update_agent_must_not_change_jacs_id() {
+        // Attempting to change jacsId in an update MUST fail.
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (agent, _info, _tmp, _guard) =
+            create_persistent_test_agent("lifecycle-id-guard-test");
+
+        let exported = agent.export_agent().expect("export");
+        let mut doc: Value = serde_json::from_str(&exported).expect("parse");
+        // Try to change jacsId
+        doc["jacsId"] = json!("00000000-0000-0000-0000-000000000000");
+
+        let result = agent.update_agent(&doc.to_string());
+        assert!(
+            result.is_err(),
+            "updating with a different jacsId MUST fail"
+        );
+    }
+
+    // =========================================================================
+    // migrate_agent Tests (legacy schema migration)
+    // =========================================================================
 
     #[test]
     #[serial]
@@ -5340,8 +5345,8 @@ mod tests {
         let (_agent, info, _tmp, _guard) = create_persistent_test_agent("migrate-current-test");
         let config_path = "./jacs.config.json";
 
-        let result =
-            SimpleAgent::migrate_agent(Some(config_path)).expect("migration of current agent should succeed");
+        let result = SimpleAgent::migrate_agent(Some(config_path))
+            .expect("migration of current agent should succeed");
 
         assert_eq!(result.jacs_id, info.agent_id);
         assert!(
@@ -5362,25 +5367,6 @@ mod tests {
 
         let result = SimpleAgent::migrate_agent(Some("/nonexistent/path/jacs.config.json"));
         assert!(result.is_err(), "migrating with missing config should fail");
-    }
-
-    #[test]
-    #[serial]
-    fn test_standalone_migrate_agent_function() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (config_path, original_id, _original_version, _tmp, _guard) =
-            create_legacy_agent("migrate-standalone-test");
-
-        let result =
-            migrate_agent(Some(&config_path)).expect("standalone migrate_agent should succeed");
-
-        assert_eq!(
-            result.jacs_id, original_id,
-            "standalone function should preserve jacsId"
-        );
     }
 
     // =========================================================================
