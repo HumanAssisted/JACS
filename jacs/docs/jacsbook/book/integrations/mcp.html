@@ -179,7 +179,7 @@
 <h2 id="choose-the-mcp-path"><a class="header" href="#choose-the-mcp-path">Choose The MCP Path</a></h2>
 <p>There are three supported ways to use JACS with MCP today:</p>
 <ol>
-<li><strong>Run <code>jacs-mcp</code></strong> when you want a ready-made MCP server with the broadest tool surface.</li>
+<li><strong>Run <code>jacs mcp</code></strong> when you want a ready-made MCP server with the broadest tool surface.</li>
 <li><strong>Wrap an existing MCP transport</strong> when you already have an MCP server or client and want signed JSON-RPC.</li>
 <li><strong>Register JACS as MCP tools</strong> when you want the model to call signing, verification, agreement, A2A, or trust operations directly.</li>
 </ol>
@@ -196,12 +196,12 @@
 <li><strong>Unsigned fallback is off by default.</strong> Both Python and Node fail closed unless you explicitly allow unsigned fallback.</li>
 <li><strong>Node has two factories.</strong> <code>createJACSTransportProxy()</code> takes a loaded <code>JacsClient</code> or <code>JacsAgent</code>; <code>createJACSTransportProxyAsync()</code> is the config-path variant.</li>
 </ul>
-<h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs-mcp</code></a></h2>
-<p>If you do not already have a custom MCP server, this is the shortest route:</p>
-<pre><code class="language-bash">jacs mcp install
-jacs mcp run
+<h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs mcp</code></a></h2>
+<p>Install the unified binary and start the MCP server:</p>
+<pre><code class="language-bash">cargo install jacs-cli
+jacs mcp
 </code></pre>
-<p><code>jacs-mcp</code> is the most complete MCP surface in the repo. It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
+<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
@@ -280,7 +280,7 @@ const client = await JacsClient.quickstart({
 
 registerJacsTools(server, client);
 </code></pre>
-<p>The Node tool set is intentionally smaller than <code>jacs-mcp</code>. Use <code>jacs-mcp</code> when you need the largest supported MCP surface.</p>
+<p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
 <h2 id="example-paths-in-this-repo"><a class="header" href="#example-paths-in-this-repo">Example Paths In This Repo</a></h2>
 <ul>
 <li><code>jacs-mcp/README.md</code></li>

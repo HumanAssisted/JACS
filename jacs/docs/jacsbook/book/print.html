@@ -212,7 +212,7 @@
 <ul>
 <li>Deepest feature surface</li>
 <li>CLI plus library APIs</li>
-<li>Best fit when you want a ready-made MCP server via <code>jacs-mcp</code></li>
+<li>Best fit when you want a ready-made MCP server via <code>jacs mcp</code></li>
 </ul>
 <h3 id="python-jacs"><a class="header" href="#python-jacs">Python (<code>jacs</code>)</a></h3>
 <ul>
@@ -230,7 +230,7 @@
 </ul>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <h3 id="rust-cli"><a class="header" href="#rust-cli">Rust CLI</a></h3>
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 jacs quickstart --name my-agent --domain my-agent.example.com
 </code></pre>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
@@ -412,7 +412,7 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 <tr><td>Cross-organization agent discovery and signed artifact exchange</td><td><a href="getting-started/../integrations/a2a.html">A2A Interoperability</a></td><td>MCP is not enough for this boundary</td></tr>
 <tr><td>Signed HTTP APIs without adopting MCP</td><td><a href="getting-started/../python/adapters.html">Python Framework Adapters</a>, <a href="getting-started/../nodejs/express.html">Express</a>, <a href="getting-started/../nodejs/koa.html">Koa</a></td><td>Sign requests or responses at the web layer</td></tr>
 <tr><td>Multi-party approval or quorum workflows</td><td><a href="getting-started/multi-agent-agreement.html">Multi-Agent Agreements</a></td><td>Agreements are the right primitive, not just one-off signatures</td></tr>
-<tr><td>Direct signing from scripts, jobs, or services</td><td><a href="getting-started/quick-start.html">Quick Start</a>, <a href="getting-started/../python/basic-usage.html">Python Basic Usage</a>, <a href="getting-started/../nodejs/basic-usage.html">Node Basic Usage</a></td><td>Start from sign/verify before adding framework layers</td></tr>
+<tr><td>Direct signing from scripts, jobs, or services</td><td><a href="getting-started/quick-start.html">Quick Start</a>, <a href="getting-started/../python/basic-usage.html">Python Basic Usage</a>, <a href="getting-started/../nodejs/basic-usage.html">Node Basic Usage</a>, <a href="getting-started/../go/installation.html">Go Installation</a></td><td>Start from sign/verify before adding framework layers</td></tr>
 </tbody></table>
 </div>
 <h2 id="when-you-probably-do-not-need-jacs"><a class="header" href="#when-you-probably-do-not-need-jacs">When You Probably Do Not Need JACS</a></h2>
@@ -857,7 +857,7 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 <input type="radio" id="tab-rust" name="tab-group">
 <label for="tab-rust">Rust CLI</label>
 <div class="content">
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <pre><code class="language-bash"># Info mode -- prints agent ID and algorithm
 jacs quickstart --name my-agent --domain my-agent.example.com
@@ -879,15 +879,10 @@ jacs quickstart --name my-agent --domain my-agent.example.com --sign --file myda
 <pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
 brew install jacs
 </code></pre>
-<h3 id="mcp-quick-start-rust-cli"><a class="header" href="#mcp-quick-start-rust-cli">MCP quick start (Rust CLI)</a></h3>
-<pre><code class="language-bash"># Install platform-matched jacs-mcp binary
-jacs mcp install
-
-# Run stdio MCP server
-jacs mcp run
-
-# Optional fallback if you want cargo-based install
-jacs mcp install --from-cargo
+<h3 id="mcp-server-rust-cli"><a class="header" href="#mcp-server-rust-cli">MCP server (Rust CLI)</a></h3>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
 <p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart(...)</code> already creates a persistent agent.</p>
@@ -897,7 +892,7 @@ jacs mcp install --from-cargo
 <label for="adv-rust">Rust CLI</label>
 <div class="content">
 <h3 id="install"><a class="header" href="#install">Install</a></h3>
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <h3 id="initialize"><a class="header" href="#initialize">Initialize</a></h3>
 <pre><code class="language-bash"># Create configuration and agent in one step
@@ -1731,7 +1726,7 @@ cd jacsnpm &amp;&amp; npm run build
 </code></pre>
 <h2 id="installing-the-cli"><a class="header" href="#installing-the-cli">Installing the CLI</a></h2>
 <h3 id="from-cratesio-recommended"><a class="header" href="#from-cratesio-recommended">From crates.io (Recommended)</a></h3>
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <h3 id="from-homebrew-macos"><a class="header" href="#from-homebrew-macos">From Homebrew (macOS)</a></h3>
 <pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
@@ -1739,18 +1734,16 @@ brew install jacs
 </code></pre>
 <h3 id="from-source"><a class="header" href="#from-source">From Source</a></h3>
 <pre><code class="language-bash">git clone https://github.com/HumanAssisted/JACS
-cd JACS/jacs
-cargo install --path . --features cli
+cd JACS
+cargo install --path jacs-cli
 </code></pre>
 <h3 id="verify-installation"><a class="header" href="#verify-installation">Verify Installation</a></h3>
 <pre><code class="language-bash">jacs --help
 </code></pre>
-<h3 id="installrun-mcp-server-via-cli"><a class="header" href="#installrun-mcp-server-via-cli">Install/Run MCP Server via CLI</a></h3>
-<pre><code class="language-bash"># Install jacs-mcp from platform prebuilt release assets (default)
-jacs mcp install
-
-# Run stdio MCP server
-jacs mcp run
+<h3 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h3>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="using-as-a-library"><a class="header" href="#using-as-a-library">Using as a Library</a></h2>
 <p>Add JACS to your <code>Cargo.toml</code>:</p>
@@ -1777,7 +1770,7 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 </code></pre>
 <h3 id="available-features"><a class="header" href="#available-features">Available Features</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>cli</code></td><td>Enables CLI binary build with clap and ratatui</td></tr>
+<tr><td><code>cli</code></td><td><em>(Deprecated -- use <code>cargo install jacs-cli</code> instead)</em></td></tr>
 <tr><td><code>otlp-logs</code></td><td>OpenTelemetry Protocol logging backend</td></tr>
 <tr><td><code>otlp-metrics</code></td><td>OpenTelemetry Protocol metrics backend</td></tr>
 <tr><td><code>otlp-tracing</code></td><td>OpenTelemetry Protocol distributed tracing</td></tr>
@@ -1880,7 +1873,7 @@ jacs task --help
 <tr><td><code>jacs agent</code></td><td>Manage agents</td></tr>
 <tr><td><code>jacs document</code></td><td>Manage documents</td></tr>
 <tr><td><code>jacs task</code></td><td>Manage tasks</td></tr>
-<tr><td><code>jacs mcp</code></td><td>Install and run the Rust MCP server</td></tr>
+<tr><td><code>jacs mcp</code></td><td>Start the built-in MCP server (stdio transport)</td></tr>
 </tbody></table>
 </div>
 <h2 id="initialization"><a class="header" href="#initialization">Initialization</a></h2>
@@ -1894,17 +1887,10 @@ jacs init
 <li>Generates cryptographic keys</li>
 <li>Creates an initial agent document</li>
 </ol>
-<h2 id="mcp-commands"><a class="header" href="#mcp-commands">MCP Commands</a></h2>
-<h3 id="install-mcp-server"><a class="header" href="#install-mcp-server">Install MCP Server</a></h3>
-<pre><code class="language-bash"># Install jacs-mcp from prebuilt platform assets (defaults to matching CLI version)
-jacs mcp install
-</code></pre>
-<h3 id="run-mcp-server"><a class="header" href="#run-mcp-server">Run MCP Server</a></h3>
-<pre><code class="language-bash"># Start stdio MCP server
-jacs mcp run
-
-# Run a custom binary path
-jacs mcp run --bin /path/to/jacs-mcp
+<h2 id="mcp-server-1"><a class="header" href="#mcp-server-1">MCP Server</a></h2>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="configuration-commands"><a class="header" href="#configuration-commands">Configuration Commands</a></h2>
 <h3 id="create-configuration"><a class="header" href="#create-configuration">Create Configuration</a></h3>
@@ -4088,10 +4074,10 @@ import { JacsAgent } from '@hai.ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
 
-// Test basic functionality
+// Test basic functionality (async API)
 try {
   const agent = new JacsAgent();
-  agent.load('./jacs.config.json');
+  await agent.load('./jacs.config.json');
   console.log('Agent loaded successfully!');
 } catch (error) {
   console.error('Error loading agent:', error);
@@ -4101,26 +4087,21 @@ try {
 <pre><code class="language-bash">node test.js
 </code></pre>
 <h2 id="package-structure"><a class="header" href="#package-structure">Package Structure</a></h2>
-<p>The <code>@hai.ai/jacs</code> package includes several modules:</p>
-<h3 id="core-module-haiaijacs"><a class="header" href="#core-module-haiaijacs">Core Module (<code>@hai.ai/jacs</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsAgent,
-  JacsConfig,
-  JacsDocument,
-  JacsError
-} from '@hai.ai/jacs';
+<p>The <code>@hai.ai/jacs</code> package exposes these entry points:</p>
+<h3 id="core-and-simple-api"><a class="header" href="#core-and-simple-api">Core and simple API</a></h3>
+<pre><code class="language-javascript">import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
+import * as jacs from '@hai.ai/jacs/simple';  // quickstart, load, signMessage, verify, etc.
 </code></pre>
-<h3 id="mcp-integration-haiaijacsmcp"><a class="header" href="#mcp-integration-haiaijacsmcp">MCP Integration (<code>@hai.ai/jacs/mcp</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsMcpServer,
-  createJacsMiddleware 
-} from '@hai.ai/jacs/mcp';
+<h3 id="instance-based-client-recommended-for-new-code"><a class="header" href="#instance-based-client-recommended-for-new-code">Instance-based client (recommended for new code)</a></h3>
+<pre><code class="language-javascript">import { JacsClient } from '@hai.ai/jacs/client';
 </code></pre>
-<h3 id="http-server-haiaijacshttp"><a class="header" href="#http-server-haiaijacshttp">HTTP Server (<code>@hai.ai/jacs/http</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsHttpServer,
-  createJacsRouter 
-} from '@hai.ai/jacs/http';
+<h3 id="mcp-haiaijacsmcp"><a class="header" href="#mcp-haiaijacsmcp">MCP (<code>@hai.ai/jacs/mcp</code>)</a></h3>
+<pre><code class="language-javascript">import { createJACSTransportProxy, createJACSTransportProxyAsync, registerJacsTools } from '@hai.ai/jacs/mcp';
+</code></pre>
+<h3 id="http--framework-adapters"><a class="header" href="#http--framework-adapters">HTTP / framework adapters</a></h3>
+<pre><code class="language-javascript">import { jacsMiddleware } from '@hai.ai/jacs/express';
+import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
+import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai.ai/jacs/http';  // legacy
 </code></pre>
 <h2 id="typescript-support"><a class="header" href="#typescript-support">TypeScript Support</a></h2>
 <p>The package includes full TypeScript definitions:</p>
@@ -4129,8 +4110,8 @@ try {
 // Create an agent instance
 const agent: JacsAgent = new JacsAgent();
 
-// Load configuration from file
-agent.load('./jacs.config.json');
+// Load configuration from file (async)
+await agent.load('./jacs.config.json');
 
 // Use utility functions
 const hash: string = hashString('some data');
@@ -4272,24 +4253,23 @@ export JACS_DEFAULT_STORAGE="fs"
 <pre><code class="language-javascript">// src/app.js
 import { JacsAgent } from '@hai.ai/jacs';
 
-// Create and load agent
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
+async function main() {
+  const agent = new JacsAgent();
+  await agent.load('./jacs.config.json');
 
-// Create a document
-const documentJson = JSON.stringify({
-  title: "My First Document",
-  content: "Hello from Node.js!"
-});
+  const documentJson = JSON.stringify({
+    title: "My First Document",
+    content: "Hello from Node.js!"
+  });
 
-const signedDoc = agent.createDocument(documentJson);
-console.log('Document created:', signedDoc);
+  const signedDoc = await agent.createDocument(documentJson);
+  console.log('Document created:', signedDoc);
 
-// Verify the document
-const isValid = agent.verifyDocument(signedDoc);
-console.log('Document valid:', isValid);
-
-console.log('JACS agent ready!');
+  const isValid = await agent.verifyDocument(signedDoc);
+  console.log('Document valid:', isValid);
+  console.log('JACS agent ready!');
+}
+main().catch(console.error);
 </code></pre>
 <h2 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h2>
 <h3 id="module-not-found"><a class="header" href="#module-not-found">Module Not Found</a></h3>
@@ -5207,7 +5187,7 @@ const client = await JacsClient.quickstart({
 const jacsTools = createJacsTools({ client });
 const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 </code></pre>
-<p>The tool set includes:</p>
+<p>The tool set includes 14 tools:</p>
 <ul>
 <li><code>jacs_sign</code></li>
 <li><code>jacs_verify</code></li>
@@ -5216,8 +5196,11 @@ const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 <li><code>jacs_check_agreement</code></li>
 <li><code>jacs_verify_self</code></li>
 <li><code>jacs_trust_agent</code></li>
+<li><code>jacs_trust_agent_with_key</code></li>
 <li><code>jacs_list_trusted</code></li>
 <li><code>jacs_is_trusted</code></li>
+<li><code>jacs_share_public_key</code></li>
+<li><code>jacs_share_agent</code></li>
 <li><code>jacs_audit</code></li>
 <li><code>jacs_agent_info</code></li>
 </ul>
@@ -6507,6 +6490,7 @@ const doc = agent.createDocumentSync(JSON.stringify({ data: 'test' }));
 <h3 id="using-pip"><a class="header" href="#using-pip">Using pip</a></h3>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
+<p>For framework adapters (LangChain, FastAPI, CrewAI, Anthropic, etc.) use optional extras, e.g. <code>pip install jacs[langchain]</code>, <code>jacs[fastapi]</code>, or <code>jacs[all]</code>. Optional: <code>jacs[langgraph]</code>, <code>jacs[ws]</code>. See <a href="python/adapters.html">Framework Adapters</a> and the package <code>pyproject.toml</code>.</p>
 <h3 id="using-conda"><a class="header" href="#using-conda">Using conda</a></h3>
 <pre><code class="language-bash">conda install -c conda-forge jacs
 </code></pre>
@@ -6529,16 +6513,20 @@ pip install -e .
 <p>Create a simple test to verify everything is working:</p>
 <pre><code class="language-python"># test.py
 import jacs
-
 print('JACS Python bindings loaded successfully!')
 
-# Test basic functionality
-try:
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-    print('Agent loaded successfully!')
-except Exception as error:
-    print(f'Error loading agent: {error}')
+# Quick check (no config file; in-memory agent)
+from jacs.client import JacsClient
+client = JacsClient.ephemeral()
+signed = client.sign_message({"hello": "jacs"})
+result = client.verify(signed.raw_json)
+print('Sign &amp; verify OK:', result.valid)
+</code></pre>
+<p>Or with an existing config file:</p>
+<pre><code class="language-python">import jacs
+agent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
+print('Agent loaded successfully!')
 </code></pre>
 <p>Run the test:</p>
 <pre><code class="language-bash">python test.py
@@ -6680,7 +6668,7 @@ export JACS_DEFAULT_STORAGE="fs"
     └── test_jacs.py
 </code></pre>
 <h3 id="requirementstxt-setup"><a class="header" href="#requirementstxt-setup">Requirements.txt Setup</a></h3>
-<pre><code>jacs&gt;=0.1.0
+<pre><code>jacs&gt;=0.9.0
 fastapi&gt;=0.100.0  # For FastMCP integration
 uvicorn&gt;=0.23.0   # For ASGI server
 pydantic&gt;=2.0.0   # For data validation
@@ -6928,11 +6916,12 @@ info = jacs.quickstart(
 )
 </code></pre>
 <hr />
-<h3 id="loadconfig_pathnone"><a class="header" href="#loadconfig_pathnone">load(config_path=None)</a></h3>
+<h3 id="loadconfig_pathnone-strictnone"><a class="header" href="#loadconfig_pathnone-strictnone">load(config_path=None, strict=None)</a></h3>
 <p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart(name=..., domain=..., ...)</code> when you want to load a specific config file explicitly.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>config_path</code> (str, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
+<li><code>strict</code> (bool, optional): If True, verification failures raise; if None, uses <code>JACS_STRICT_MODE</code> env var</li>
 </ul>
 <p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
 <p><strong>Raises:</strong> <code>JacsError</code> if config not found or invalid</p>
@@ -7008,7 +6997,7 @@ embedded = jacs.sign_file("contract.pdf", embed=True)
 <p>Verify a signed document and extract its content.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
-<li><code>signed_document</code> (str): The JSON string of the signed document</li>
+<li><code>signed_document</code> (str|dict|SignedDocument): The signed document as JSON string, dict, or SignedDocument</li>
 </ul>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
 <p><strong>Raises:</strong> <code>AgentNotLoadedError</code> if no agent is loaded</p>
@@ -7025,6 +7014,16 @@ else:
 <p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API).</p>
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
+<h3 id="verify_by_iddocument_id"><a class="header" href="#verify_by_iddocument_id">verify_by_id(document_id)</a></h3>
+<p>Verify a document by its storage ID (<code>uuid:version</code>) without passing the full JSON. Requires the document to be stored locally (e.g. in the agent's data directory).</p>
+<p><strong>Parameters:</strong> <code>document_id</code> (str): Document ID in format <code>"uuid:version"</code></p>
+<p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
+<h3 id="reencrypt_keyold_password-new_password"><a class="header" href="#reencrypt_keyold_password-new_password">reencrypt_key(old_password, new_password)</a></h3>
+<p>Re-encrypt the loaded agent's private key with a new password.</p>
+<p><strong>Parameters:</strong> <code>old_password</code> (str), <code>new_password</code> (str)</p>
+<p><strong>Raises:</strong> <code>AgentNotLoadedError</code> if no agent loaded; <code>JacsError</code> if password is wrong</p>
 <hr />
 <h3 id="auditconfig_pathnone-recent_nnone"><a class="header" href="#auditconfig_pathnone-recent_nnone">audit(config_path=None, recent_n=None)</a></h3>
 <p>Run a read-only security audit and health checks. Returns a dict with <code>risks</code>, <code>health_checks</code>, <code>summary</code>, and <code>overall_status</code>. Does not require a loaded agent; does not modify state.</p>
@@ -7150,9 +7149,9 @@ class VerificationResult:
 class Attachment:
     filename: str       # Original filename
     mime_type: str      # MIME type
-    hash: str           # SHA-256 hash
-    embedded: bool      # True if content is embedded
-    content: Optional[bytes] = None  # Embedded content (if available)
+    content_hash: str   # SHA-256 hash of file content
+    content: Optional[str] = None  # Base64-encoded content (if embedded)
+    size_bytes: int = 0 # Size of the original file
 </code></pre>
 <h3 id="exceptions"><a class="header" href="#exceptions">Exceptions</a></h3>
 <pre><code class="language-python">class JacsError(Exception):
@@ -7283,7 +7282,7 @@ if not result.valid:
 <li><a href="python/mcp.html">MCP Integration</a> - Model Context Protocol</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h1>
-<p>This chapter covers fundamental JACS operations in Python, including agent initialization, document creation, signing, and verification.</p>
+<p>This chapter covers fundamental JACS operations in Python. For quick signing and verification, start with the <strong><a href="python/simple-api.html">Simplified API</a></strong> (<code>jacs.simple</code>) or <strong>JacsClient</strong>; the sections below use the <code>JacsAgent</code> class directly for fine-grained control.</p>
 <h2 id="initializing-an-agent-1"><a class="header" href="#initializing-an-agent-1">Initializing an Agent</a></h2>
 <h3 id="create-and-load-agent-1"><a class="header" href="#create-and-load-agent-1">Create and Load Agent</a></h3>
 <pre><code class="language-python">import jacs
@@ -7746,6 +7745,7 @@ pip install jacs[fastapi]
 pip install jacs[crewai]
 pip install jacs[anthropic]
 </code></pre>
+<p>Optional: <code>jacs[langgraph]</code> (LangGraph ToolNode), <code>jacs[ws]</code> (WebSockets). See <code>pyproject.toml</code> for the full list.</p>
 <h2 id="langchain--langgraph"><a class="header" href="#langchain--langgraph">LangChain / LangGraph</a></h2>
 <p>This is the smallest JACS path if your model already lives in LangChain.</p>
 <h3 id="langchain-middleware"><a class="header" href="#langchain-middleware">LangChain middleware</a></h3>
@@ -7835,6 +7835,7 @@ def get_weather(location: str) -&gt; str:
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="api-reference-4"><a class="header" href="#api-reference-4">API Reference</a></h1>
 <p>Complete API documentation for the <code>jacs</code> Python package.</p>
+<p>For most use cases, the <strong><a href="python/simple-api.html">Simplified API</a></strong> (<code>jacs.simple</code>) and <strong><a href="python/simple-api.html">JacsClient</a></strong> (instance-based, multiple agents) are recommended. This page documents the lower-level <code>JacsAgent</code> class and module-level functions.</p>
 <h2 id="installation-5"><a class="header" href="#installation-5">Installation</a></h2>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
@@ -8294,12 +8295,13 @@ for t in threads:
 <div style="break-before: page; page-break-before: always;"></div><h1 id="go-jacsgo-installation-and-quick-start"><a class="header" href="#go-jacsgo-installation-and-quick-start">Go (<code>jacsgo</code>) Installation and Quick Start</a></h1>
 <p><code>jacsgo</code> provides Go bindings for signing and verifying JACS documents in services, APIs, and agent runtimes.</p>
 <blockquote>
-<p>Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage.</p>
+<p>Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For full MCP surface use the Rust <code>jacs-mcp</code> server; the Go MCP examples in the repo are demo code.</p>
 </blockquote>
 <h2 id="install-5"><a class="header" href="#install-5">Install</a></h2>
 <pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
 </code></pre>
 <h2 id="minimal-sign--verify"><a class="header" href="#minimal-sign--verify">Minimal Sign + Verify</a></h2>
+<p>Create an agent first (CLI: <code>jacs create --name my-agent</code>, or programmatically with <code>jacs.Create()</code> and <code>JACS_PRIVATE_KEY_PASSWORD</code>). Then:</p>
 <pre><code class="language-go">package main
 
 import (
@@ -8310,9 +8312,9 @@ import (
 )
 
 func main() {
-	configPath := "./jacs.config.json"
-	if err := jacs.Load(&amp;configPath); err != nil {
-		log.Fatal("initialize an agent first (for example with `jacs init`)")
+	// Load agent: nil = default ./jacs.config.json
+	if err := jacs.Load(nil); err != nil {
+		log.Fatal("create an agent first: jacs create --name my-agent")
 	}
 
 	signed, err := jacs.SignMessage(map[string]interface{}{
@@ -8331,6 +8333,10 @@ func main() {
 	fmt.Printf("Valid: %t signer=%s\n", result.Valid, result.SignerID)
 }
 </code></pre>
+<h2 id="programmatic-agent-creation"><a class="header" href="#programmatic-agent-creation">Programmatic agent creation</a></h2>
+<p>Use <code>jacs.Create(name, &amp;jacs.CreateAgentOptions{...})</code>. Password must be set in options or via <code>JACS_PRIVATE_KEY_PASSWORD</code>. See the <a href="https://github.com/HumanAssisted/JACS/tree/main/jacsgo">jacsgo README</a> for the full API table and options.</p>
+<h2 id="concurrent-use"><a class="header" href="#concurrent-use">Concurrent use</a></h2>
+<p>For multiple agents in one process, use <code>NewJacsAgent()</code>, then <code>agent.Load(path)</code> and agent methods; call <code>agent.Close()</code> when done. Attestation, A2A (agent cards, trust policy), and protocol helpers are available on <code>JacsAgent</code> and as package-level wrappers (see godoc or the jacsgo README).</p>
 <h2 id="common-go-use-cases"><a class="header" href="#common-go-use-cases">Common Go Use Cases</a></h2>
 <ul>
 <li>Sign outbound API/MCP payloads before crossing trust boundaries</li>
@@ -13463,7 +13469,7 @@ def test_large_document():
 <h2 id="choose-the-mcp-path"><a class="header" href="#choose-the-mcp-path">Choose The MCP Path</a></h2>
 <p>There are three supported ways to use JACS with MCP today:</p>
 <ol>
-<li><strong>Run <code>jacs-mcp</code></strong> when you want a ready-made MCP server with the broadest tool surface.</li>
+<li><strong>Run <code>jacs mcp</code></strong> when you want a ready-made MCP server with the broadest tool surface.</li>
 <li><strong>Wrap an existing MCP transport</strong> when you already have an MCP server or client and want signed JSON-RPC.</li>
 <li><strong>Register JACS as MCP tools</strong> when you want the model to call signing, verification, agreement, A2A, or trust operations directly.</li>
 </ol>
@@ -13480,12 +13486,12 @@ def test_large_document():
 <li><strong>Unsigned fallback is off by default.</strong> Both Python and Node fail closed unless you explicitly allow unsigned fallback.</li>
 <li><strong>Node has two factories.</strong> <code>createJACSTransportProxy()</code> takes a loaded <code>JacsClient</code> or <code>JacsAgent</code>; <code>createJACSTransportProxyAsync()</code> is the config-path variant.</li>
 </ul>
-<h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs-mcp</code></a></h2>
-<p>If you do not already have a custom MCP server, this is the shortest route:</p>
-<pre><code class="language-bash">jacs mcp install
-jacs mcp run
+<h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs mcp</code></a></h2>
+<p>Install the unified binary and start the MCP server:</p>
+<pre><code class="language-bash">cargo install jacs-cli
+jacs mcp
 </code></pre>
-<p><code>jacs-mcp</code> is the most complete MCP surface in the repo. It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
+<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
 <h3 id="python-5"><a class="header" href="#python-5">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
@@ -13564,7 +13570,7 @@ const client = await JacsClient.quickstart({
 
 registerJacsTools(server, client);
 </code></pre>
-<p>The Node tool set is intentionally smaller than <code>jacs-mcp</code>. Use <code>jacs-mcp</code> when you need the largest supported MCP surface.</p>
+<p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
 <h2 id="example-paths-in-this-repo-2"><a class="header" href="#example-paths-in-this-repo-2">Example Paths In This Repo</a></h2>
 <ul>
 <li><code>jacs-mcp/README.md</code></li>
@@ -16057,26 +16063,28 @@ async function main() {
 main().catch(console.error);
 </code></pre>
 <h2 id="mcp-integration-2"><a class="header" href="#mcp-integration-2">MCP Integration</a></h2>
-<h3 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h3>
+<h3 id="mcp-server-2"><a class="header" href="#mcp-server-2">MCP Server</a></h3>
 <pre><code class="language-javascript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
-
-const JACS_CONFIG = "./jacs.server.config.json";
 
 async function main() {
   console.error("JACS MCP Server starting...");
 
-  // Create transport with JACS encryption
+  const client = await JacsClient.quickstart({
+    name: 'jacs-demo-server',
+    domain: 'mcp.local',
+  });
+
   const baseTransport = new StdioServerTransport();
   const secureTransport = createJACSTransportProxy(
     baseTransport,
-    JACS_CONFIG,
+    client,
     "server"
   );
 
-  // Create MCP server
   const server = new McpServer({
     name: "jacs-demo-server",
     version: "1.0.0"
@@ -16135,14 +16143,17 @@ main().catch(err =&gt; {
 <h3 id="mcp-client"><a class="header" href="#mcp-client">MCP Client</a></h3>
 <pre><code class="language-javascript">import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
-
-const JACS_CONFIG = "./jacs.client.config.json";
 
 async function main() {
   console.log("JACS MCP Client starting...");
 
-  // Connect to server
+  const client = await JacsClient.quickstart({
+    name: 'jacs-demo-client',
+    domain: 'mcp.local',
+  });
+
   const baseTransport = new StdioClientTransport({
     command: 'node',
     args: ['mcp-server.js']
@@ -16150,39 +16161,39 @@ async function main() {
 
   const secureTransport = createJACSTransportProxy(
     baseTransport,
-    JACS_CONFIG,
+    client,
     "client"
   );
 
-  const client = new Client({
+  const mcpClient = new Client({
     name: "jacs-demo-client",
     version: "1.0.0"
   }, {
     capabilities: { tools: {} }
   });
 
-  await client.connect(secureTransport);
+  await mcpClient.connect(secureTransport);
   console.log("Connected to JACS MCP Server");
 
   // List tools
-  const tools = await client.listTools();
+  const tools = await mcpClient.listTools();
   console.log("Available tools:", tools.tools.map(t =&gt; t.name));
 
   // Call echo
-  const echoResult = await client.callTool({
+  const echoResult = await mcpClient.callTool({
     name: "echo",
     arguments: { message: "Hello, JACS!" }
   });
   console.log("Echo:", echoResult.content[0].text);
 
   // Call calculate
-  const calcResult = await client.callTool({
+  const calcResult = await mcpClient.callTool({
     name: "calculate",
     arguments: { operation: "multiply", a: 6, b: 7 }
   });
   console.log("Calculate:", calcResult.content[0].text);
 
-  await client.close();
+  await mcpClient.close();
   console.log("Done!");
 }
 

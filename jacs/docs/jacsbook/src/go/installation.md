@@ -2,7 +2,7 @@
 
 `jacsgo` provides Go bindings for signing and verifying JACS documents in services, APIs, and agent runtimes.
 
-> Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage.
+> Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For full MCP surface use the Rust `jacs-mcp` server; the Go MCP examples in the repo are demo code.
 
 ## Install
 
@@ -11,6 +11,8 @@ go get github.com/HumanAssisted/JACS/jacsgo
 ```
 
 ## Minimal Sign + Verify
+
+Create an agent first (CLI: `jacs create --name my-agent`, or programmatically with `jacs.Create()` and `JACS_PRIVATE_KEY_PASSWORD`). Then:
 
 ```go
 package main
@@ -23,9 +25,9 @@ import (
 )
 
 func main() {
-	configPath := "./jacs.config.json"
-	if err := jacs.Load(&configPath); err != nil {
-		log.Fatal("initialize an agent first (for example with `jacs init`)")
+	// Load agent: nil = default ./jacs.config.json
+	if err := jacs.Load(nil); err != nil {
+		log.Fatal("create an agent first: jacs create --name my-agent")
 	}
 
 	signed, err := jacs.SignMessage(map[string]interface{}{
@@ -44,6 +46,14 @@ func main() {
 	fmt.Printf("Valid: %t signer=%s\n", result.Valid, result.SignerID)
 }
 ```
+
+## Programmatic agent creation
+
+Use `jacs.Create(name, &jacs.CreateAgentOptions{...})`. Password must be set in options or via `JACS_PRIVATE_KEY_PASSWORD`. See the [jacsgo README](https://github.com/HumanAssisted/JACS/tree/main/jacsgo) for the full API table and options.
+
+## Concurrent use
+
+For multiple agents in one process, use `NewJacsAgent()`, then `agent.Load(path)` and agent methods; call `agent.Close()` when done. Attestation, A2A (agent cards, trust policy), and protocol helpers are available on `JacsAgent` and as package-level wrappers (see godoc or the jacsgo README).
 
 ## Common Go Use Cases
 

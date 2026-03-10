@@ -2,6 +2,8 @@
 
 Complete API documentation for the `jacs` Python package.
 
+For most use cases, the **[Simplified API](simple-api.md)** (`jacs.simple`) and **[JacsClient](simple-api.md)** (instance-based, multiple agents) are recommended. This page documents the lower-level `JacsAgent` class and module-level functions.
+
 ## Installation
 
 ```bash

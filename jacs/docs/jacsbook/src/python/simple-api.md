@@ -69,12 +69,13 @@ info = jacs.quickstart(
 
 ---
 
-### load(config_path=None)
+### load(config_path=None, strict=None)
 
 Load a persistent agent from a configuration file. Use this instead of `quickstart(name=..., domain=..., ...)` when you want to load a specific config file explicitly.
 
 **Parameters:**
 - `config_path` (str, optional): Path to jacs.config.json (default: "./jacs.config.json")
+- `strict` (bool, optional): If True, verification failures raise; if None, uses `JACS_STRICT_MODE` env var
 
 **Returns:** `AgentInfo` dataclass
 
@@ -187,7 +188,7 @@ embedded = jacs.sign_file("contract.pdf", embed=True)
 Verify a signed document and extract its content.
 
 **Parameters:**
-- `signed_document` (str): The JSON string of the signed document
+- `signed_document` (str|dict|SignedDocument): The signed document as JSON string, dict, or SignedDocument
 
 **Returns:** `VerificationResult`
 
@@ -212,6 +213,26 @@ Verify a signed document **without** loading an agent. Use when you only need to
 **Parameters:** `document` (str|dict), `key_resolution` (str), `data_directory` (str, optional), `key_directory` (str, optional)
 
 **Returns:** `VerificationResult`
+
+---
+
+### verify_by_id(document_id)
+
+Verify a document by its storage ID (`uuid:version`) without passing the full JSON. Requires the document to be stored locally (e.g. in the agent's data directory).
+
+**Parameters:** `document_id` (str): Document ID in format `"uuid:version"`
+
+**Returns:** `VerificationResult`
+
+---
+
+### reencrypt_key(old_password, new_password)
+
+Re-encrypt the loaded agent's private key with a new password.
+
+**Parameters:** `old_password` (str), `new_password` (str)
+
+**Raises:** `AgentNotLoadedError` if no agent loaded; `JacsError` if password is wrong
 
 ---
 
@@ -395,9 +416,9 @@ class VerificationResult:
 class Attachment:
     filename: str       # Original filename
     mime_type: str      # MIME type
-    hash: str           # SHA-256 hash
-    embedded: bool      # True if content is embedded
-    content: Optional[bytes] = None  # Embedded content (if available)
+    content_hash: str   # SHA-256 hash of file content
+    content: Optional[str] = None  # Base64-encoded content (if embedded)
+    size_bytes: int = 0 # Size of the original file
 ```
 
 ### Exceptions

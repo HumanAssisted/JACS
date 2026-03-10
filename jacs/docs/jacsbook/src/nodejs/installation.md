@@ -35,10 +35,10 @@ import { JacsAgent } from '@hai.ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
 
-// Test basic functionality
+// Test basic functionality (async API)
 try {
   const agent = new JacsAgent();
-  agent.load('./jacs.config.json');
+  await agent.load('./jacs.config.json');
   console.log('Agent loaded successfully!');
 } catch (error) {
   console.error('Error loading agent:', error);
@@ -52,32 +52,29 @@ node test.js
 
 ## Package Structure
 
-The `@hai.ai/jacs` package includes several modules:
+The `@hai.ai/jacs` package exposes these entry points:
 
-### Core Module (`@hai.ai/jacs`)
+### Core and simple API
 ```javascript
-import { 
-  JacsAgent,
-  JacsConfig,
-  JacsDocument,
-  JacsError
-} from '@hai.ai/jacs';
+import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
+import * as jacs from '@hai.ai/jacs/simple';  // quickstart, load, signMessage, verify, etc.
 ```
 
-### MCP Integration (`@hai.ai/jacs/mcp`)
+### Instance-based client (recommended for new code)
 ```javascript
-import { 
-  JacsMcpServer,
-  createJacsMiddleware 
-} from '@hai.ai/jacs/mcp';
+import { JacsClient } from '@hai.ai/jacs/client';
 ```
 
-### HTTP Server (`@hai.ai/jacs/http`)
+### MCP (`@hai.ai/jacs/mcp`)
 ```javascript
-import { 
-  JacsHttpServer,
-  createJacsRouter 
-} from '@hai.ai/jacs/http';
+import { createJACSTransportProxy, createJACSTransportProxyAsync, registerJacsTools } from '@hai.ai/jacs/mcp';
+```
+
+### HTTP / framework adapters
+```javascript
+import { jacsMiddleware } from '@hai.ai/jacs/express';
+import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
+import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai.ai/jacs/http';  // legacy
 ```
 
 ## TypeScript Support
@@ -90,8 +87,8 @@ import { JacsAgent, createConfig, hashString } from '@hai.ai/jacs';
 // Create an agent instance
 const agent: JacsAgent = new JacsAgent();
 
-// Load configuration from file
-agent.load('./jacs.config.json');
+// Load configuration from file (async)
+await agent.load('./jacs.config.json');
 
 // Use utility functions
 const hash: string = hashString('some data');
@@ -275,24 +272,23 @@ my-jacs-project/
 // src/app.js
 import { JacsAgent } from '@hai.ai/jacs';
 
-// Create and load agent
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
+async function main() {
+  const agent = new JacsAgent();
+  await agent.load('./jacs.config.json');
 
-// Create a document
-const documentJson = JSON.stringify({
-  title: "My First Document",
-  content: "Hello from Node.js!"
-});
+  const documentJson = JSON.stringify({
+    title: "My First Document",
+    content: "Hello from Node.js!"
+  });
 
-const signedDoc = agent.createDocument(documentJson);
-console.log('Document created:', signedDoc);
+  const signedDoc = await agent.createDocument(documentJson);
+  console.log('Document created:', signedDoc);
 
-// Verify the document
-const isValid = agent.verifyDocument(signedDoc);
-console.log('Document valid:', isValid);
-
-console.log('JACS agent ready!');
+  const isValid = await agent.verifyDocument(signedDoc);
+  console.log('Document valid:', isValid);
+  console.log('JACS agent ready!');
+}
+main().catch(console.error);
 ```
 
 ## Common Issues

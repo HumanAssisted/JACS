@@ -227,11 +227,12 @@ info = jacs.quickstart(
 )
 </code></pre>
 <hr />
-<h3 id="loadconfig_pathnone"><a class="header" href="#loadconfig_pathnone">load(config_path=None)</a></h3>
+<h3 id="loadconfig_pathnone-strictnone"><a class="header" href="#loadconfig_pathnone-strictnone">load(config_path=None, strict=None)</a></h3>
 <p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart(name=..., domain=..., ...)</code> when you want to load a specific config file explicitly.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>config_path</code> (str, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
+<li><code>strict</code> (bool, optional): If True, verification failures raise; if None, uses <code>JACS_STRICT_MODE</code> env var</li>
 </ul>
 <p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
 <p><strong>Raises:</strong> <code>JacsError</code> if config not found or invalid</p>
@@ -307,7 +308,7 @@ embedded = jacs.sign_file("contract.pdf", embed=True)
 <p>Verify a signed document and extract its content.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
-<li><code>signed_document</code> (str): The JSON string of the signed document</li>
+<li><code>signed_document</code> (str|dict|SignedDocument): The signed document as JSON string, dict, or SignedDocument</li>
 </ul>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
 <p><strong>Raises:</strong> <code>AgentNotLoadedError</code> if no agent is loaded</p>
@@ -324,6 +325,16 @@ else:
 <p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API).</p>
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
+<h3 id="verify_by_iddocument_id"><a class="header" href="#verify_by_iddocument_id">verify_by_id(document_id)</a></h3>
+<p>Verify a document by its storage ID (<code>uuid:version</code>) without passing the full JSON. Requires the document to be stored locally (e.g. in the agent's data directory).</p>
+<p><strong>Parameters:</strong> <code>document_id</code> (str): Document ID in format <code>"uuid:version"</code></p>
+<p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
+<h3 id="reencrypt_keyold_password-new_password"><a class="header" href="#reencrypt_keyold_password-new_password">reencrypt_key(old_password, new_password)</a></h3>
+<p>Re-encrypt the loaded agent's private key with a new password.</p>
+<p><strong>Parameters:</strong> <code>old_password</code> (str), <code>new_password</code> (str)</p>
+<p><strong>Raises:</strong> <code>AgentNotLoadedError</code> if no agent loaded; <code>JacsError</code> if password is wrong</p>
 <hr />
 <h3 id="auditconfig_pathnone-recent_nnone"><a class="header" href="#auditconfig_pathnone-recent_nnone">audit(config_path=None, recent_n=None)</a></h3>
 <p>Run a read-only security audit and health checks. Returns a dict with <code>risks</code>, <code>health_checks</code>, <code>summary</code>, and <code>overall_status</code>. Does not require a loaded agent; does not modify state.</p>
@@ -449,9 +460,9 @@ class VerificationResult:
 class Attachment:
     filename: str       # Original filename
     mime_type: str      # MIME type
-    hash: str           # SHA-256 hash
-    embedded: bool      # True if content is embedded
-    content: Optional[bytes] = None  # Embedded content (if available)
+    content_hash: str   # SHA-256 hash of file content
+    content: Optional[str] = None  # Base64-encoded content (if embedded)
+    size_bytes: int = 0 # Size of the original file
 </code></pre>
 <h3 id="exceptions"><a class="header" href="#exceptions">Exceptions</a></h3>
 <pre><code class="language-python">class JacsError(Exception):

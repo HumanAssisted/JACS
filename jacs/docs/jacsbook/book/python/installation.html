@@ -187,6 +187,7 @@
 <h3 id="using-pip"><a class="header" href="#using-pip">Using pip</a></h3>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
+<p>For framework adapters (LangChain, FastAPI, CrewAI, Anthropic, etc.) use optional extras, e.g. <code>pip install jacs[langchain]</code>, <code>jacs[fastapi]</code>, or <code>jacs[all]</code>. Optional: <code>jacs[langgraph]</code>, <code>jacs[ws]</code>. See <a href="adapters.html">Framework Adapters</a> and the package <code>pyproject.toml</code>.</p>
 <h3 id="using-conda"><a class="header" href="#using-conda">Using conda</a></h3>
 <pre><code class="language-bash">conda install -c conda-forge jacs
 </code></pre>
@@ -209,16 +210,20 @@ pip install -e .
 <p>Create a simple test to verify everything is working:</p>
 <pre><code class="language-python"># test.py
 import jacs
-
 print('JACS Python bindings loaded successfully!')
 
-# Test basic functionality
-try:
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-    print('Agent loaded successfully!')
-except Exception as error:
-    print(f'Error loading agent: {error}')
+# Quick check (no config file; in-memory agent)
+from jacs.client import JacsClient
+client = JacsClient.ephemeral()
+signed = client.sign_message({"hello": "jacs"})
+result = client.verify(signed.raw_json)
+print('Sign &amp; verify OK:', result.valid)
+</code></pre>
+<p>Or with an existing config file:</p>
+<pre><code class="language-python">import jacs
+agent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
+print('Agent loaded successfully!')
 </code></pre>
 <p>Run the test:</p>
 <pre><code class="language-bash">python test.py
@@ -360,7 +365,7 @@ export JACS_DEFAULT_STORAGE="fs"
     └── test_jacs.py
 </code></pre>
 <h3 id="requirementstxt-setup"><a class="header" href="#requirementstxt-setup">Requirements.txt Setup</a></h3>
-<pre><code>jacs&gt;=0.1.0
+<pre><code>jacs&gt;=0.9.0
 fastapi&gt;=0.100.0  # For FastMCP integration
 uvicorn&gt;=0.23.0   # For ASGI server
 pydantic&gt;=2.0.0   # For data validation
