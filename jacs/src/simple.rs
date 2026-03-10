@@ -5112,6 +5112,278 @@ mod tests {
     }
 
     // =========================================================================
+    // Migration Tests
+    // =========================================================================
+
+    /// Helper: create a persistent agent, then strip iat/jti from its on-disk
+    /// agent JSON to simulate a legacy pre-schema-change document.
+    /// Returns (config_path_string, original_jacs_id, original_version, TempDir, CwdGuard).
+    fn create_legacy_agent(
+        name: &str,
+    ) -> (String, String, String, tempfile::TempDir, CwdGuard) {
+        let saved_cwd = std::env::current_dir().expect("get cwd");
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
+        let guard = CwdGuard { saved: saved_cwd };
+
+        let params = CreateAgentParams::builder()
+            .name(name)
+            .password("MigrateTest!2026")
+            .algorithm("ring-Ed25519")
+            .description("Legacy test agent for migration")
+            .data_directory("./jacs_data")
+            .key_directory("./jacs_keys")
+            .config_path("./jacs.config.json")
+            .build();
+
+        let (_agent, info) = SimpleAgent::create_with_params(params).expect("create test agent");
+
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "MigrateTest!2026");
+            std::env::set_var("JACS_KEY_DIRECTORY", "./jacs_keys");
+            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
+            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
+        }
+
+        let jacs_id = info.agent_id.clone();
+        let version = info.version.clone();
+        let config_path = tmp.path().join("jacs.config.json");
+
+        // Now strip iat and jti from the on-disk agent JSON to simulate legacy
+        let id_and_version = format!("{}:{}", jacs_id, version);
+        let agent_file = tmp
+            .path()
+            .join("jacs_data")
+            .join("agent")
+            .join(format!("{}.json", id_and_version));
+
+        let raw = std::fs::read_to_string(&agent_file).expect("read agent file");
+        let mut doc: Value = serde_json::from_str(&raw).expect("parse agent json");
+
+        if let Some(sig) = doc.get_mut("jacsSignature") {
+            sig.as_object_mut().unwrap().remove("iat");
+            sig.as_object_mut().unwrap().remove("jti");
+        }
+
+        std::fs::write(&agent_file, serde_json::to_string_pretty(&doc).unwrap())
+            .expect("write stripped agent");
+
+        (
+            config_path.to_string_lossy().to_string(),
+            jacs_id,
+            version,
+            tmp,
+            guard,
+        )
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_preserves_jacs_id() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (config_path, original_id, _original_version, _tmp, _guard) =
+            create_legacy_agent("migrate-id-test");
+
+        let result =
+            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
+
+        assert_eq!(
+            result.jacs_id, original_id,
+            "jacsId MUST NOT change during migration"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_creates_new_version() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (config_path, _original_id, original_version, _tmp, _guard) =
+            create_legacy_agent("migrate-version-test");
+
+        let result =
+            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
+
+        assert_ne!(
+            result.new_version, original_version,
+            "jacsVersion must change after migration"
+        );
+        assert_eq!(result.old_version, original_version);
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_patches_missing_iat_and_jti() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (config_path, _original_id, _original_version, _tmp, _guard) =
+            create_legacy_agent("migrate-patch-test");
+
+        let result =
+            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
+
+        assert!(
+            result.patched_fields.contains(&"iat".to_string()),
+            "should report patching iat"
+        );
+        assert!(
+            result.patched_fields.contains(&"jti".to_string()),
+            "should report patching jti"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_agent_loads_and_signs_after_migration() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (config_path, _original_id, _original_version, _tmp, _guard) =
+            create_legacy_agent("migrate-sign-test");
+
+        let _result =
+            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
+
+        // The migrated agent should now load normally and be able to sign
+        let agent =
+            SimpleAgent::load(Some(&config_path), None).expect("loading after migration should work");
+        let signed = agent
+            .sign_message(&json!({"after": "migration"}))
+            .expect("signing after migration should succeed");
+        let verification = agent.verify(&signed.raw).expect("verify should succeed");
+        assert!(
+            verification.valid,
+            "message signed after migration should verify: {:?}",
+            verification.errors
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_updates_config_version() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (config_path, original_id, _original_version, _tmp, _guard) =
+            create_legacy_agent("migrate-config-test");
+
+        let result =
+            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
+
+        // Config file should now reference the new version
+        let config_str = std::fs::read_to_string(&config_path).expect("read config");
+        let config_val: Value = serde_json::from_str(&config_str).expect("parse config");
+        let expected_lookup = format!("{}:{}", original_id, result.new_version);
+        assert_eq!(
+            config_val["jacs_agent_id_and_version"]
+                .as_str()
+                .unwrap_or(""),
+            expected_lookup,
+            "config should reference the migrated version"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_new_doc_has_iat_and_jti() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (config_path, original_id, _original_version, _tmp, _guard) =
+            create_legacy_agent("migrate-fields-test");
+
+        let result =
+            SimpleAgent::migrate_agent(Some(&config_path)).expect("migration should succeed");
+
+        // Load the migrated agent and check the signature fields
+        let agent =
+            SimpleAgent::load(Some(&config_path), None).expect("loading after migration should work");
+        let exported = agent.export_agent().expect("export should succeed");
+        let doc: Value = serde_json::from_str(&exported).expect("parse exported agent");
+
+        let sig = doc.get("jacsSignature").expect("should have jacsSignature");
+        assert!(sig.get("iat").is_some(), "migrated doc should have iat");
+        assert!(sig.get("jti").is_some(), "migrated doc should have jti");
+        assert!(
+            sig["iat"].is_i64() || sig["iat"].is_u64(),
+            "iat should be an integer"
+        );
+        assert!(sig["jti"].is_string(), "jti should be a string");
+
+        // jacsId must still be the original
+        assert_eq!(
+            doc["jacsId"].as_str().unwrap(),
+            original_id,
+            "jacsId MUST NOT change in the migrated document"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_already_current_agent_still_works() {
+        // An agent that already has iat/jti should still migrate (no-op patch,
+        // but still creates a new version).
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (_agent, info, _tmp, _guard) = create_persistent_test_agent("migrate-current-test");
+        let config_path = "./jacs.config.json";
+
+        let result =
+            SimpleAgent::migrate_agent(Some(config_path)).expect("migration of current agent should succeed");
+
+        assert_eq!(result.jacs_id, info.agent_id);
+        assert!(
+            result.patched_fields.is_empty(),
+            "current agent should need no patches, got: {:?}",
+            result.patched_fields
+        );
+        // Still creates a new version (re-signed)
+        assert_ne!(result.new_version, info.version);
+    }
+
+    #[test]
+    #[serial]
+    fn test_migrate_missing_config_returns_error() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let result = SimpleAgent::migrate_agent(Some("/nonexistent/path/jacs.config.json"));
+        assert!(result.is_err(), "migrating with missing config should fail");
+    }
+
+    #[test]
+    #[serial]
+    fn test_standalone_migrate_agent_function() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        let (config_path, original_id, _original_version, _tmp, _guard) =
+            create_legacy_agent("migrate-standalone-test");
+
+        let result =
+            migrate_agent(Some(&config_path)).expect("standalone migrate_agent should succeed");
+
+        assert_eq!(
+            result.jacs_id, original_id,
+            "standalone function should preserve jacsId"
+        );
+    }
+
+    // =========================================================================
     // Attestation API Tests (gated behind `attestation` feature)
     // =========================================================================
 
