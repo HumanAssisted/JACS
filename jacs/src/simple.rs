@@ -2341,38 +2341,10 @@ impl SimpleAgent {
         let agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
-        let (key_dir, key_file) = if let Some(config) = &agent.config {
-            (
-                config
-                    .jacs_key_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_keys"),
-                config
-                    .jacs_agent_public_key_filename()
-                    .as_deref()
-                    .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME),
-            )
-        } else {
-            ("./jacs_keys", DEFAULT_PUBLIC_KEY_FILENAME)
-        };
-        let key_path = Path::new(key_dir).join(key_file);
-        let key_path_string = key_path.to_string_lossy().to_string();
-
-        fs::read_to_string(&key_path).map_err(|e| {
-            let reason = match e.kind() {
-                std::io::ErrorKind::NotFound => {
-                    "file does not exist. Run agent creation to generate keys first.".to_string()
-                }
-                std::io::ErrorKind::PermissionDenied => {
-                    "permission denied. Check that the key file is readable.".to_string()
-                }
-                _ => e.to_string(),
-            };
-            JacsError::FileReadFailed {
-                path: key_path_string,
-                reason,
-            }
-        })
+        let public_key = agent.get_public_key().map_err(|e| JacsError::Internal {
+            message: format!("Failed to get public key: {}", e),
+        })?;
+        Ok(crate::crypt::normalize_public_key_pem(&public_key))
     }
 
     /// Returns diagnostic information including loaded agent details.
@@ -3144,13 +3116,7 @@ impl SimpleAgent {
         // 5. Build the PEM string for the new public key
         // We always encode from the raw bytes since the on-disk public key may
         // be raw bytes (ring Ed25519) rather than actual PEM text.
-        let new_public_key_pem = {
-            use base64::{Engine as _, engine::general_purpose::STANDARD};
-            format!(
-                "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----",
-                STANDARD.encode(&new_public_key)
-            )
-        };
+        let new_public_key_pem = crate::crypt::normalize_public_key_pem(&new_public_key);
         drop(agent); // Release lock — no longer needed
 
         let new_public_key_hash = hash_public_key(&new_public_key);
@@ -4212,6 +4178,54 @@ mod tests {
         // This should fail because no agent is loaded
         let result = get_public_key_pem();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_simple_agent_get_public_key_pem_wraps_raw_bytes() {
+        let mut agent = crate::get_empty_agent();
+        agent.set_keys_raw(
+            vec![1, 2, 3],
+            vec![0x34, 0x9e, 0x74, 0xd9, 0xd1, 0x60],
+            "pq2025",
+        );
+        let simple = SimpleAgent {
+            agent: Mutex::new(agent),
+            config_path: None,
+            strict: false,
+        };
+
+        let pem = simple
+            .get_public_key_pem()
+            .expect("raw public key bytes should export as PEM");
+        assert!(pem.starts_with("-----BEGIN PUBLIC KEY-----\n"));
+        assert!(pem.ends_with("-----END PUBLIC KEY-----\n"));
+    }
+
+    fn assert_public_key_pem_for_algorithm(requested_algorithm: &str, expected_algorithm: &str) {
+        let (agent, info) =
+            SimpleAgent::ephemeral(Some(requested_algorithm)).expect("create ephemeral agent");
+        assert_eq!(info.algorithm, expected_algorithm);
+
+        let pem = agent
+            .get_public_key_pem()
+            .expect("public key should export as canonical PEM");
+        assert!(pem.starts_with("-----BEGIN PUBLIC KEY-----\n"));
+        assert!(pem.ends_with("-----END PUBLIC KEY-----\n"));
+    }
+
+    #[test]
+    fn test_simple_agent_get_public_key_pem_for_pq2025() {
+        assert_public_key_pem_for_algorithm("pq2025", "pq2025");
+    }
+
+    #[test]
+    fn test_simple_agent_get_public_key_pem_for_ed25519() {
+        assert_public_key_pem_for_algorithm("ed25519", "ring-Ed25519");
+    }
+
+    #[test]
+    fn test_simple_agent_get_public_key_pem_for_rsa_pss() {
+        assert_public_key_pem_for_algorithm("rsa-pss", "RSA-PSS");
     }
 
     #[test]

@@ -8,13 +8,14 @@ use crate::agent::{
     extract_signature_fields,
 };
 use crate::crypt::hash::hash_public_key;
-use crate::crypt::{CryptoSigningAlgorithm, detect_algorithm_from_public_key};
+use crate::crypt::{
+    CryptoSigningAlgorithm, detect_algorithm_from_public_key, normalize_public_key_pem,
+};
 use crate::error::JacsError;
 use crate::paths::trust_store_dir;
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
 use crate::validation::{require_relative_path_safe, validate_agent_id};
-use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -245,15 +246,11 @@ pub fn trust_agent_with_key(
         signing_algorithm.as_deref(),
     )?;
 
-    // Convert public key bytes to PEM string for metadata
-    let public_key_pem_string = String::from_utf8(public_key_bytes.clone())
-        .unwrap_or_else(|_| B64.encode(&public_key_bytes));
-
     // Also save a metadata file for quick lookups
     let trusted_agent = TrustedAgent {
         agent_id: agent_id.clone(),
         name,
-        public_key_pem: public_key_pem_string,
+        public_key_pem: normalize_public_key_pem(&public_key_bytes),
         public_key_hash,
         trusted_at: time_utils::now_rfc3339(),
         verified: true,
