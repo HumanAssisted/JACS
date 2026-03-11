@@ -1,3 +1,53 @@
+## 0.9.4
+
+### API and core
+
+- **`update_agent()`**: New API to update in-place agent data and re-sign as a new version (Rust `SimpleAgent` and free function).
+- **`migrate_agent()`**: New API to patch legacy agent documents (e.g. add `iat`/`jti` in `jacsSignature`) and re-sign; returns `MigrateResult` with `jacs_id`, `old_version`, `new_version`, `patched_fields`.
+- **`get_public_key()` / `get_public_key_pem()`**: Public key is read via agent/config abstraction; PEM output normalized via new `normalize_public_key_pem()` in `jacs::crypt` (handles raw bytes and existing PEM).
+- **Non-strict `verify()`**: When document load fails (e.g. hash mismatch), non-strict mode returns a `VerificationResult` with `valid: false` and errors instead of a hard error.
+
+### Storage and config
+
+- **Filesystem storage**: Paths are resolved against a stored base directory; relative paths are joined to the base, absolute paths used as-is.
+- **jacspy / jacsnpm**: Nested `config_path` / `configPath` and storage path resolution fixed; create() no longer leaves generated password in process env; installer integrity checks (checksums, safe archive members); `verify_by_id`/`verifyById` use native storage lookup.
+
+### MCP and CLI
+
+- **MCP state file access**: State file operations restricted to configured roots (`JACS_DATA_DIRECTORY`, `jacs_data`); optional env `JACS_MCP_ALLOW_ARBITRARY_STATE_FILES` and `JACS_MCP_ALLOW_INLINE_SECRETS`.
+- **A2A trust**: `TrustLevel` display strings now PascalCase (`JacsVerified`, `ExplicitlyTrusted`); optional agent-card origin and JWS verification for trust assessment.
+
+### Documentation
+
+- **jacsbook**: Installation and setup updated for Node, Python, Go, Rust, and MCP; decision-tree, quick-start, and examples refreshed.
+- **W3C**: New `jacs/docs/W3C_AI_AGENT_PROTOCOL_NOTES.md` with public position on W3C AI Agent Protocol alignment and interoperability.
+- **Security**: `docs/security/jacspy-jacsnpm-hardening-tasks.md` added; READMEs (jacsnpm, jacspy, jacsgo) and attestation/A2A contract test expectations updated.
+
+---
+
+## 0.9.3 (2026-03-08)
+
+- **crates.io**: User-Agent header on API calls; release workflow uses curl retries and tolerates exit 101.
+- **Dependencies**: Bumps for ajv, minimatch, hono, @hono/node-server (jacsnpm), authlib (jacspy). Release v0.9.3 (#49).
+
+---
+
+## 0.9.2 (2026-03-06)
+
+- **Release**: Version bump 0.9.2; release configs and CLI release workflow updates; paper update; cargo workspace alignment.
+
+---
+
+## 0.9.1 (2026-03-06)
+
+- **Unified CLI**: Single `jacs` binary provides CLI and MCP (`jacs mcp`). Install via `cargo install jacs-cli`. Deprecated shims: `jacs mcp install`, `jacs mcp run`.
+- **CI**: rust.yml tests jacs-cli and jacs-mcp; release-cli.yml builds jacs-cli; release-crate.yml includes jacs-cli in version check and publish. setup.sh and .mcp.json updated for unified jacs mcp.
+- **jacs-mcp**: Spawns `jacs mcp` via jacs-cli; removed empty `http = []` stub. Contract snapshot 0.9.0 → 0.9.1.
+- **Dependencies**: Bumps for ajv, minimatch, hono, @hono/node-server (jacsnpm), authlib (jacspy).
+- **Build**: Windows build fix; CLI retry behavior; compiler warnings fixed (including attestation feature). Publish components and CLI docs.
+
+---
+
 ## 0.9.0
 
 ### Attestation
