@@ -7,8 +7,10 @@ use tracing::warn;
 
 #[cfg(feature = "observability-convenience")]
 pub mod convenience;
+pub mod init;
 pub mod logs;
 pub mod metrics;
+pub mod spans;
 
 // Re-export config types so existing imports still work
 pub use crate::config::{

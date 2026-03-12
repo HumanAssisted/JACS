@@ -63,6 +63,9 @@ jobs:
           cargo install cargo-deny --locked
           cargo deny check licenses
 
+      - name: Validate schema $id fields match file paths
+        run: ./scripts/validate-schemas.sh
+
       - name: Run quick Rust test suite
         run: |
           cargo test -p jacs --verbose --lib
