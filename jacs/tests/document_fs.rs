@@ -191,7 +191,7 @@ fn update_creates_a_new_version_linked_to_prior() {
 
 #[test]
 #[serial]
-fn remove_marks_document_as_removed_get_still_works_for_tombstone() {
+fn remove_archives_document_and_get_returns_error() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let doc = svc
@@ -256,22 +256,35 @@ fn versions_returns_version_history() {
         )
         .expect("create v1");
 
-    svc.update(
-        &v1.id,
-        r#"{"content": "v2"}"#,
-        UpdateOptions::default(),
-    )
-    .expect("update to v2");
+    let v2 = svc
+        .update(
+            &v1.id,
+            r#"{"content": "v2"}"#,
+            UpdateOptions::default(),
+        )
+        .expect("update to v2");
 
-    // Note: update creates a new document ID, not same ID with new version.
-    // The filesystem backend uses separate keys. `versions()` looks for all
-    // keys with the same document ID prefix.
     let versions = svc.versions(&v1.id).expect("versions should succeed");
 
-    // v1 should be in the versions list
+    // After create + update we should have at least 2 versions for this document ID.
+    // The filesystem backend stores versions as separate keys keyed by document ID prefix.
     assert!(
-        !versions.is_empty(),
-        "should have at least 1 version for the original ID"
+        versions.len() >= 2,
+        "should have at least 2 versions after create + update, got {}",
+        versions.len()
+    );
+
+    // v1 should appear in the list
+    assert!(
+        versions.iter().any(|v| v.version == v1.version),
+        "versions should contain v1 (version {})",
+        v1.version
+    );
+    // v2 should appear in the list
+    assert!(
+        versions.iter().any(|v| v.version == v2.version),
+        "versions should contain v2 (version {})",
+        v2.version
     );
 }
 
@@ -334,6 +347,62 @@ fn search_empty_query_returns_all_documents() {
         results.results.len() >= 2,
         "empty query should return all documents, got {}",
         results.results.len()
+    );
+}
+
+#[test]
+#[serial]
+fn search_pagination_returns_subset_with_correct_total_count() {
+    let (svc, _tmp, _agent) = create_test_service();
+
+    // Create 5 documents
+    for i in 0..5 {
+        svc.create(
+            &format!(r#"{{"content": "pagination doc {}"}}"#, i),
+            CreateOptions::default(),
+        )
+        .expect(&format!("create doc {}", i));
+    }
+
+    // Search with limit=2, offset=0
+    let results = svc
+        .search(SearchQuery {
+            query: String::new(),
+            limit: 2,
+            offset: 0,
+            ..SearchQuery::default()
+        })
+        .expect("search should succeed");
+
+    assert_eq!(
+        results.results.len(),
+        2,
+        "should return exactly 2 results when limit=2"
+    );
+    assert!(
+        results.total_count >= 5,
+        "total_count should reflect all matching documents (>= 5), got {}",
+        results.total_count
+    );
+    assert_ne!(
+        results.total_count,
+        results.results.len(),
+        "total_count should differ from results.len() when paginating"
+    );
+
+    // Search with offset=3 to verify offset works
+    let page2 = svc
+        .search(SearchQuery {
+            query: String::new(),
+            limit: 2,
+            offset: 3,
+            ..SearchQuery::default()
+        })
+        .expect("search page 2 should succeed");
+
+    assert!(
+        page2.results.len() <= 2,
+        "offset=3 with limit=2 should return at most 2 results"
     );
 }
 
@@ -423,6 +492,7 @@ fn create_batch_creates_multiple_documents() {
 fn diff_shows_changes_between_versions() {
     let (svc, _tmp, _agent) = create_test_service();
 
+    // Create v1, then update to v2 — diffs two versions of the *same* document.
     let v1 = svc
         .create(
             r#"{"content": "original content"}"#,
@@ -431,11 +501,12 @@ fn diff_shows_changes_between_versions() {
         .expect("create v1");
 
     let v2 = svc
-        .create(
+        .update(
+            &v1.id,
             r#"{"content": "modified content"}"#,
-            CreateOptions::default(),
+            UpdateOptions::default(),
         )
-        .expect("create v2");
+        .expect("update to v2");
 
     let diff = svc
         .diff(&v1.getkey(), &v2.getkey())
@@ -443,10 +514,16 @@ fn diff_shows_changes_between_versions() {
 
     assert_eq!(diff.key_a, v1.getkey());
     assert_eq!(diff.key_b, v2.getkey());
-    // The diff should show some changes (at minimum different IDs/versions/signatures)
+    // The diff should show changes between the two versions of the same document.
+    // "original content" -> "modified content" must produce additions or deletions.
     assert!(
         diff.additions > 0 || diff.deletions > 0,
-        "diff should detect changes between documents"
+        "diff should detect changes between v1 and v2 of the same document"
+    );
+    // The diff text should contain the actual content that changed
+    assert!(
+        diff.diff_text.contains("original") || diff.diff_text.contains("modified"),
+        "diff text should reference the changed content"
     );
 }
 

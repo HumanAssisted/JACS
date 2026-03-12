@@ -19,6 +19,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use tracing::warn;
+
 use crate::agent::Agent;
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::document::types::{
@@ -26,7 +28,7 @@ use crate::document::types::{
 };
 use crate::document::DocumentService;
 use crate::error::JacsError;
-use crate::search::{SearchHit, SearchMethod, SearchQuery, SearchResults};
+use crate::search::{SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery, SearchResults};
 use crate::storage::{MultiStorage, StorageDocumentTraits};
 
 /// Filesystem-backed [`DocumentService`] implementation.
@@ -58,10 +60,8 @@ pub struct FilesystemDocumentService {
     base_dir: PathBuf,
 }
 
-// SAFETY: MultiStorage is Send+Sync (all fields are Arc or primitives).
-// Agent is behind a Mutex which provides Sync.
-unsafe impl Send for FilesystemDocumentService {}
-unsafe impl Sync for FilesystemDocumentService {}
+// Send+Sync are derived automatically: Arc<MultiStorage>, Arc<Mutex<Agent>>,
+// and PathBuf are all Send+Sync. No manual unsafe impl needed.
 
 impl FilesystemDocumentService {
     /// Create a new filesystem document service.
@@ -457,6 +457,10 @@ impl DocumentService for FilesystemDocumentService {
     }
 
     fn search(&self, query: SearchQuery) -> Result<SearchResults, JacsError> {
+        // NOTE: `query.min_score` is intentionally ignored by this backend.
+        // The filesystem backend assigns `score: 1.0` to all matches (FieldMatch),
+        // so filtering by min_score would never exclude results. Backends with
+        // ranked scoring (FullText, Vector, Hybrid) should respect min_score.
         let all_keys = self.list_document_keys()?;
 
         let mut hits = Vec::new();
@@ -551,16 +555,40 @@ impl DocumentService for FilesystemDocumentService {
         let mut created = Vec::new();
         let mut errors = Vec::new();
 
-        for json in documents {
+        for (idx, json) in documents.iter().enumerate() {
             match self.create(json, options.clone()) {
                 Ok(doc) => created.push(doc),
-                Err(e) => errors.push(e),
+                Err(e) => {
+                    warn!(
+                        "create_batch: document at index {} failed: {}. \
+                         {} document(s) already created and stored on disk.",
+                        idx,
+                        e,
+                        created.len()
+                    );
+                    errors.push(e);
+                }
             }
         }
 
         if errors.is_empty() {
             Ok(created)
         } else {
+            // NOTE: This is NOT atomic. On partial failure, `created.len()` documents
+            // have already been persisted to disk but their handles are not returned
+            // to the caller. The successfully created document IDs are logged above
+            // at WARN level for recovery. The trait signature
+            // `Result<Vec<JACSDocument>, Vec<JacsError>>` cannot represent partial
+            // success — a `BatchResult { created, errors }` return type would be
+            // needed for that (tracked as a future improvement).
+            warn!(
+                "create_batch: returning {} error(s); {} document(s) were successfully \
+                 created and persisted but their handles are being dropped. \
+                 Created IDs: {:?}",
+                errors.len(),
+                created.len(),
+                created.iter().map(|d| d.getkey()).collect::<Vec<_>>()
+            );
             Err(errors)
         }
     }
@@ -604,5 +632,27 @@ impl DocumentService for FilesystemDocumentService {
         )?;
 
         Ok(())
+    }
+}
+
+// =============================================================================
+// SearchProvider implementation
+// =============================================================================
+
+impl SearchProvider for FilesystemDocumentService {
+    /// Delegates to [`DocumentService::search()`] — the filesystem backend
+    /// uses the same field-match scan for both traits.
+    fn search(&self, query: SearchQuery) -> Result<SearchResults, JacsError> {
+        DocumentService::search(self, query)
+    }
+
+    /// Reports filesystem search capabilities: only field-level filtering.
+    fn capabilities(&self) -> SearchCapabilities {
+        SearchCapabilities {
+            fulltext: false,
+            vector: false,
+            hybrid: false,
+            field_filter: true,
+        }
     }
 }

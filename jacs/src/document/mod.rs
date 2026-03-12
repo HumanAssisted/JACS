@@ -105,6 +105,12 @@ pub trait DocumentService: Send + Sync {
     ///
     /// Returns either all successfully created documents or a list of
     /// errors for each failed creation.
+    ///
+    /// **Note:** This operation is NOT atomic. On partial failure, some
+    /// documents may have been successfully persisted to storage before
+    /// the error occurred. Those documents exist on disk but their handles
+    /// are not returned. Implementations should log which documents
+    /// succeeded to aid recovery.
     fn create_batch(
         &self,
         documents: &[&str],

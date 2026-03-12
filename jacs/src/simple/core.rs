@@ -207,96 +207,20 @@ impl SimpleAgent {
         purpose: Option<&str>,
         key_algorithm: Option<&str>,
     ) -> Result<(Self, AgentInfo), JacsError> {
-        let algorithm = key_algorithm.unwrap_or("pq2025");
+        // Delegate to create_with_params() to avoid duplicated initialization logic.
+        // Uses default paths (./jacs_data, ./jacs_keys, ./jacs.config.json) and
+        // falls back to JACS_PRIVATE_KEY_PASSWORD env var for the password.
+        let mut builder = CreateAgentParams::builder().name(name);
 
-        info!(
-            "Creating new agent '{}' with algorithm '{}'",
-            name, algorithm
-        );
+        if let Some(desc) = purpose {
+            builder = builder.description(desc);
+        }
 
-        // Create directories if they don't exist
-        let keys_dir = Path::new("./jacs_keys");
-        let data_dir = Path::new("./jacs_data");
+        if let Some(algo) = key_algorithm {
+            builder = builder.algorithm(algo);
+        }
 
-        fs::create_dir_all(keys_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-            path: keys_dir.to_string_lossy().to_string(),
-            reason: e.to_string(),
-        })?;
-        fs::create_dir_all(data_dir).map_err(|e| JacsError::DirectoryCreateFailed {
-            path: data_dir.to_string_lossy().to_string(),
-            reason: e.to_string(),
-        })?;
-
-        // Create a minimal agent JSON
-        let agent_type = "ai";
-        let description = purpose.unwrap_or("JACS agent");
-
-        let agent_json = build_agent_document(agent_type, name, description)?;
-
-        // Create the agent
-        let mut agent = crate::get_empty_agent();
-
-        // Create agent with keys
-        let instance = agent
-            .create_agent_and_load(&agent_json.to_string(), true, Some(algorithm))
-            .map_err(|e| JacsError::Internal {
-                message: format!("Failed to create agent: {}", e),
-            })?;
-
-        // Extract agent info
-        let agent_id = instance["jacsId"].as_str().unwrap_or("unknown").to_string();
-        let version = instance["jacsVersion"]
-            .as_str()
-            .unwrap_or("unknown")
-            .to_string();
-
-        // Save the agent
-        let lookup_id = format!("{}:{}", agent_id, version);
-        agent.save().map_err(|e| JacsError::Internal {
-            message: format!("Failed to save agent: {}", e),
-        })?;
-
-        // Create minimal config file (only required fields; defaults handle the rest)
-        let config_json = json!({
-            "$schema": "https://hai.ai/schemas/jacs.config.schema.json",
-            "jacs_agent_id_and_version": lookup_id,
-            "jacs_agent_key_algorithm": algorithm
-        });
-
-        let config_path = "./jacs.config.json";
-        let config_str =
-            serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
-                message: format!("Failed to serialize config: {}", e),
-            })?;
-        fs::write(config_path, config_str).map_err(|e| JacsError::Internal {
-            message: format!("Failed to write config: {}", e),
-        })?;
-
-        info!("Agent '{}' created successfully with ID {}", name, agent_id);
-
-        let info = AgentInfo {
-            agent_id,
-            name: name.to_string(),
-            public_key_path: format!("./jacs_keys/{}", DEFAULT_PUBLIC_KEY_FILENAME),
-            config_path: config_path.to_string(),
-            version,
-            algorithm: algorithm.to_string(),
-            private_key_path: format!("./jacs_keys/{}", DEFAULT_PRIVATE_KEY_FILENAME),
-            data_directory: "./jacs_data".to_string(),
-            key_directory: "./jacs_keys".to_string(),
-            domain: String::new(),
-            dns_record: String::new(),
-        };
-
-        Ok((
-            Self {
-                agent: Mutex::new(agent),
-                config_path: Some(config_path.to_string()),
-
-                strict: resolve_strict(None),
-            },
-            info,
-        ))
+        Self::create_with_params(builder.build())
     }
 
     /// Creates a new JACS agent with full programmatic control.
