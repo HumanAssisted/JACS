@@ -168,6 +168,80 @@ fn create_still_defaults_to_filesystem() {
 
 #[test]
 #[serial]
+fn documents_stored_in_custom_backend_not_filesystem() {
+    let tmp = TempDir::new().expect("create tempdir");
+    let data_dir = tmp.path().join("jacs_data");
+    let key_dir = tmp.path().join("jacs_keys");
+    let config_path = tmp.path().join("jacs.config.json");
+
+    let memory_storage =
+        MultiStorage::new("memory".to_string()).expect("create memory storage");
+
+    let params = CreateAgentParams::builder()
+        .name("memory-routing-agent")
+        .password(TEST_PASSWORD)
+        .algorithm("ring-Ed25519")
+        .data_directory(data_dir.to_str().unwrap())
+        .key_directory(key_dir.to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .default_storage("fs")
+        .description("Agent for verifying storage routing")
+        .storage(memory_storage)
+        .build();
+
+    // Re-set env vars so the agent can find its keys
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+        std::env::set_var("JACS_DATA_DIRECTORY", data_dir.to_str().unwrap());
+        std::env::set_var("JACS_KEY_DIRECTORY", key_dir.to_str().unwrap());
+    }
+
+    let (agent, _info) =
+        SimpleAgent::create_with_params(params).expect("create_with_params with memory storage");
+
+    // Sign a document — this should go through the memory backend
+    let data = serde_json::json!({"routing_test": "memory_only", "value": 99});
+    let signed = agent
+        .sign_message(&data)
+        .expect("sign_message should succeed");
+
+    assert!(
+        !signed.document_id.is_empty(),
+        "signed document should have a document ID"
+    );
+
+    // The documents/ subdirectory under data_dir should NOT contain the signed
+    // document if it was routed through the memory backend. The agent identity
+    // is stored via filesystem during create (before storage injection), but
+    // subsequent document operations should use the memory backend.
+    let documents_dir = data_dir.join("documents");
+    if documents_dir.exists() {
+        let doc_files: Vec<_> = std::fs::read_dir(&documents_dir)
+            .expect("read documents dir")
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|s| s.contains(&signed.document_id))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert!(
+            doc_files.is_empty(),
+            "document '{}' should NOT be in filesystem documents/ dir when using memory backend, \
+             but found {:?}",
+            signed.document_id,
+            doc_files
+                .iter()
+                .map(|e| e.file_name())
+                .collect::<Vec<_>>()
+        );
+    }
+    // If documents/ doesn't exist at all, that's also correct — nothing was written there.
+}
+
+#[test]
+#[serial]
 fn custom_fs_storage_with_explicit_path() {
     let tmp = TempDir::new().expect("create tempdir");
     let data_dir = tmp.path().join("jacs_data");

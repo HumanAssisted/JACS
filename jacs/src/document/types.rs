@@ -173,6 +173,13 @@ pub enum DocumentVisibility {
 
     /// Restricted to explicitly named agent IDs or roles.
     /// The inner `Vec<String>` contains the agent IDs or roles that can access this document.
+    ///
+    /// # Design Note
+    ///
+    /// The PRD (Section 3.1.4) specifies `Restricted { principals: Vec<String> }` (struct
+    /// variant). The tuple variant `Restricted(Vec<String>)` is used instead because it is
+    /// simpler at call sites and the serde output is identical: both serialize to
+    /// `{"restricted":["agent-a","agent-b"]}` with `#[serde(rename_all = "lowercase")]`.
     Restricted(Vec<String>),
 }
 

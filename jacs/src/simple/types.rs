@@ -279,6 +279,15 @@ pub struct CreateAgentParams {
     /// When `None` (the default), the agent creates its own storage from
     /// the `default_storage` type and `data_directory`.
     ///
+    /// # Design Note
+    ///
+    /// The PRD (Section 4.2.4) specifies `Option<Box<dyn StorageDocumentTraits>>`.
+    /// The current implementation uses `Option<MultiStorage>` (concrete type)
+    /// because `Agent::set_storage()` accepts `MultiStorage`. `MultiStorage`
+    /// already supports `fs`, `memory`, and `aws` backends internally, which
+    /// covers all current use cases. Migrating to a trait object would require
+    /// refactoring `Agent::set_storage()` and is tracked as a future improvement.
+    ///
     /// # Example
     ///
     /// ```rust,ignore
