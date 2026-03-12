@@ -7,6 +7,7 @@
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
+use crate::storage::MultiStorage;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -268,6 +269,31 @@ pub struct CreateAgentParams {
     /// Default storage backend. Default: "fs".
     #[serde(default = "default_storage")]
     pub default_storage: String,
+    /// Optional pre-configured storage backend.
+    ///
+    /// When `Some`, the agent will use this storage backend instead of
+    /// creating one from `default_storage` and `data_directory`. This is
+    /// useful for testing (in-memory backends) or when the caller has
+    /// already configured storage with specific options.
+    ///
+    /// When `None` (the default), the agent creates its own storage from
+    /// the `default_storage` type and `data_directory`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::storage::MultiStorage;
+    /// use jacs::simple::CreateAgentParams;
+    ///
+    /// let memory_storage = MultiStorage::new("memory".to_string())?;
+    /// let params = CreateAgentParams::builder()
+    ///     .name("test-agent")
+    ///     .password("secret")
+    ///     .storage(memory_storage)
+    ///     .build();
+    /// ```
+    #[serde(skip)]
+    pub storage: Option<MultiStorage>,
 }
 
 fn default_algorithm() -> String {
@@ -302,6 +328,7 @@ impl Default for CreateAgentParams {
             description: String::new(),
             domain: String::new(),
             default_storage: default_storage(),
+            storage: None,
         }
     }
 }
@@ -356,8 +383,17 @@ impl CreateAgentParamsBuilder {
         self.params.domain = domain.to_string();
         self
     }
-    pub fn default_storage(mut self, storage: &str) -> Self {
-        self.params.default_storage = storage.to_string();
+    pub fn default_storage(mut self, storage_type: &str) -> Self {
+        self.params.default_storage = storage_type.to_string();
+        self
+    }
+    /// Set a pre-configured storage backend.
+    ///
+    /// When set, the agent will use this storage instead of creating one
+    /// from `default_storage` and `data_directory`. Useful for in-memory
+    /// testing or custom storage configurations.
+    pub fn storage(mut self, storage: MultiStorage) -> Self {
+        self.params.storage = Some(storage);
         self
     }
     /// Build the `CreateAgentParams`. Name is required.

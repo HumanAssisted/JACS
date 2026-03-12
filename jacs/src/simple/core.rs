@@ -164,9 +164,11 @@ impl SimpleAgent {
 
     /// Returns the JACS agent ID, used as the signing key identifier.
     /// Derived from the underlying Agent — no cached copy needed.
-    pub fn key_id(&self) -> String {
-        let agent = self.agent.lock().unwrap();
-        agent.get_id().unwrap_or_default()
+    pub fn key_id(&self) -> Result<String, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        Ok(agent.get_id().unwrap_or_default())
     }
 
     /// Creates a new JACS agent with persistent identity.
@@ -600,6 +602,14 @@ impl SimpleAgent {
         agent.save().map_err(|e| JacsError::Internal {
             message: format!("Failed to save agent: {}", e),
         })?;
+
+        // If a custom storage backend was provided, inject it now.
+        // The agent.save() above uses the default filesystem storage to persist
+        // the agent identity. After that, we switch to the caller's storage
+        // for all subsequent document operations.
+        if let Some(custom_storage) = params.storage.clone() {
+            agent.set_storage(custom_storage);
+        }
 
         // Handle DNS record generation if domain is set
         let mut dns_record = String::new();
@@ -1060,34 +1070,7 @@ impl SimpleAgent {
     #[must_use = "verification result must be checked"]
     pub fn verify(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
         debug!("verify() called");
-
-        // Pre-check: if input doesn't look like JSON, give a helpful error
-        let trimmed = signed_document.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
-            return Err(JacsError::DocumentMalformed {
-                field: "json".to_string(),
-                reason: format!(
-                    "Input does not appear to be a JSON document. \
-                    If you have a document ID (e.g., 'uuid:version'), use verify_by_id() instead. \
-                    Received: '{}'",
-                    if trimmed.len() > 60 {
-                        &trimmed[..60]
-                    } else {
-                        trimmed
-                    }
-                ),
-            });
-        }
-
-        // Check document size before processing
-        check_document_size(signed_document)?;
-
-        // Parse the document to validate JSON
-        let _: Value =
-            serde_json::from_str(signed_document).map_err(|e| JacsError::DocumentMalformed {
-                field: "json".to_string(),
-                reason: e.to_string(),
-            })?;
+        Self::validate_json_input(signed_document)?;
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -1104,12 +1087,9 @@ impl SimpleAgent {
 
         let document_key = jacs_doc.getkey();
 
-        // Verify the signature
-        let verification_result =
-            agent.verify_document_signature(&document_key, None, None, None, None);
-
+        // Verify the signature using the agent's own key
         let mut errors = Vec::new();
-        if let Err(e) = verification_result {
+        if let Err(e) = agent.verify_document_signature(&document_key, None, None, None, None) {
             errors.push(e.to_string());
         }
 
@@ -1118,44 +1098,7 @@ impl SimpleAgent {
             errors.push(format!("Hash verification failed: {}", e));
         }
 
-        let valid = errors.is_empty();
-
-        // In strict mode, verification failure is a hard error
-        if self.strict && !valid {
-            return Err(JacsError::SignatureVerificationFailed {
-                reason: errors.join("; "),
-            });
-        }
-
-        // Extract signer info
-        let signer_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
-
-        info!("Document verified: valid={}, signer={}", valid, signer_id);
-
-        // Extract original content
-        let data = if let Some(content) = jacs_doc.value.get("content") {
-            content.clone()
-        } else {
-            jacs_doc.value.clone()
-        };
-
-        // Extract attachments
-        let attachments = extract_attachments(&jacs_doc.value);
-
-        Ok(VerificationResult {
-            valid,
-            data,
-            signer_id,
-            signer_name: None, // TODO: Look up in trust store
-            timestamp,
-            attachments,
-            errors,
-        })
+        self.build_verification_result(&jacs_doc.value, errors, "Document verified")
     }
 
     /// Verifies a signed JACS document using a provided public key.
@@ -1186,34 +1129,7 @@ impl SimpleAgent {
         public_key: Vec<u8>,
     ) -> Result<VerificationResult, JacsError> {
         debug!("verify_with_key() called");
-
-        // Pre-check: if input doesn't look like JSON, give a helpful error
-        let trimmed = signed_document.trim();
-        if !trimmed.is_empty() && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
-            return Err(JacsError::DocumentMalformed {
-                field: "json".to_string(),
-                reason: format!(
-                    "Input does not appear to be a JSON document. \
-                    If you have a document ID (e.g., 'uuid:version'), use verify_by_id() instead. \
-                    Received: '{}'",
-                    if trimmed.len() > 60 {
-                        &trimmed[..60]
-                    } else {
-                        trimmed
-                    }
-                ),
-            });
-        }
-
-        // Check document size before processing
-        check_document_size(signed_document)?;
-
-        // Parse the document to validate JSON
-        let _: Value =
-            serde_json::from_str(signed_document).map_err(|e| JacsError::DocumentMalformed {
-                field: "json".to_string(),
-                reason: e.to_string(),
-            })?;
+        Self::validate_json_input(signed_document)?;
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
@@ -1236,25 +1152,7 @@ impl SimpleAgent {
                     }
                 })?;
                 errors.push(format!("Document load failed: {}", e));
-
-                let signer_id = value.get_path_str_or(&["jacsSignature", "agentID"], "");
-                let timestamp = value.get_path_str_or(&["jacsSignature", "date"], "");
-                let data = if let Some(content) = value.get("content") {
-                    content.clone()
-                } else {
-                    value.clone()
-                };
-                let attachments = extract_attachments(&value);
-
-                return Ok(VerificationResult {
-                    valid: false,
-                    data,
-                    signer_id,
-                    signer_name: None,
-                    timestamp,
-                    attachments,
-                    errors,
-                });
+                return self.build_verification_result(&value, errors, "Document load failed");
             }
             Err(e) => {
                 return Err(JacsError::DocumentMalformed {
@@ -1267,10 +1165,9 @@ impl SimpleAgent {
         let document_key = jacs_doc.getkey();
 
         // Verify the signature using the provided public key
-        let verification_result =
-            agent.verify_document_signature(&document_key, None, None, Some(public_key), None);
-
-        if let Err(e) = verification_result {
+        if let Err(e) =
+            agent.verify_document_signature(&document_key, None, None, Some(public_key), None)
+        {
             errors.push(e.to_string());
         }
 
@@ -1279,6 +1176,52 @@ impl SimpleAgent {
             errors.push(format!("Hash verification failed: {}", e));
         }
 
+        self.build_verification_result(&jacs_doc.value, errors, "Document verified with key")
+    }
+
+    /// Validates that the input string is well-formed JSON suitable for verification.
+    ///
+    /// Checks: looks like JSON, within size limits, parses successfully.
+    fn validate_json_input(signed_document: &str) -> Result<(), JacsError> {
+        let trimmed = signed_document.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+            return Err(JacsError::DocumentMalformed {
+                field: "json".to_string(),
+                reason: format!(
+                    "Input does not appear to be a JSON document. \
+                    If you have a document ID (e.g., 'uuid:version'), use verify_by_id() instead. \
+                    Received: '{}'",
+                    if trimmed.len() > 60 {
+                        &trimmed[..60]
+                    } else {
+                        trimmed
+                    }
+                ),
+            });
+        }
+
+        check_document_size(signed_document)?;
+
+        let _: Value =
+            serde_json::from_str(signed_document).map_err(|e| JacsError::DocumentMalformed {
+                field: "json".to_string(),
+                reason: e.to_string(),
+            })?;
+
+        Ok(())
+    }
+
+    /// Builds a `VerificationResult` from a document value and accumulated errors.
+    ///
+    /// Handles strict mode enforcement, signer info extraction, content extraction,
+    /// and attachment extraction. Used by `verify()`, `verify_with_key()`, and
+    /// the `verify_with_key()` fallback path.
+    fn build_verification_result(
+        &self,
+        doc_value: &Value,
+        errors: Vec<String>,
+        log_label: &str,
+    ) -> Result<VerificationResult, JacsError> {
         let valid = errors.is_empty();
 
         // In strict mode, verification failure is a hard error
@@ -1288,28 +1231,18 @@ impl SimpleAgent {
             });
         }
 
-        // Extract signer info
-        let signer_id = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "agentID"], "");
-        let timestamp = jacs_doc
-            .value
-            .get_path_str_or(&["jacsSignature", "date"], "");
+        let signer_id = doc_value.get_path_str_or(&["jacsSignature", "agentID"], "");
+        let timestamp = doc_value.get_path_str_or(&["jacsSignature", "date"], "");
 
-        info!(
-            "Document verified with key: valid={}, signer={}",
-            valid, signer_id
-        );
+        info!("{}: valid={}, signer={}", log_label, valid, signer_id);
 
-        // Extract original content
-        let data = if let Some(content) = jacs_doc.value.get("content") {
+        let data = if let Some(content) = doc_value.get("content") {
             content.clone()
         } else {
-            jacs_doc.value.clone()
+            doc_value.clone()
         };
 
-        // Extract attachments
-        let attachments = extract_attachments(&jacs_doc.value);
+        let attachments = extract_attachments(doc_value);
 
         Ok(VerificationResult {
             valid,

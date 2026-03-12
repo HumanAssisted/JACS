@@ -927,6 +927,7 @@ impl SimpleAgent {
             description: description.unwrap_or("").to_string(),
             domain: domain.unwrap_or("").to_string(),
             default_storage: default_storage.unwrap_or("fs").to_string(),
+            storage: None,
         };
 
         let (agent, info) =

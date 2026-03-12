@@ -2281,6 +2281,7 @@ pub fn create_agent_programmatic(
         description: description.unwrap_or("").to_string(),
         domain: domain.unwrap_or("").to_string(),
         default_storage: default_storage.unwrap_or("fs").to_string(),
+        storage: None,
     };
 
     let (_agent, info) = SimpleAgent::create_with_params(params)

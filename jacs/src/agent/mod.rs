@@ -587,6 +587,21 @@ impl Agent {
         }
     }
 
+    /// Replace the internal storage with a pre-configured [`MultiStorage`].
+    ///
+    /// This allows callers to inject a custom storage backend (e.g., in-memory
+    /// for testing, or a pre-configured filesystem backend with a specific root).
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let storage = MultiStorage::new("memory".to_string())?;
+    /// agent.set_storage(storage);
+    /// ```
+    pub fn set_storage(&mut self, storage: MultiStorage) {
+        self.storage = storage;
+    }
+
     /// Replace the internal storage with one rooted at `root`.
     ///
     /// This is used by `verify_document_standalone` so that absolute

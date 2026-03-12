@@ -58,6 +58,8 @@ pub use sqlite::SqliteStorage;
 pub mod rusqlite_storage;
 #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
 pub use rusqlite_storage::RusqliteStorage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+pub use rusqlite_storage::SqliteDocumentService;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
 pub mod surrealdb_storage;

@@ -17,8 +17,10 @@
 //! Storage backends implement this trait. JACS core provides a default
 //! filesystem + sqlite implementation.
 
+pub mod filesystem;
 pub mod types;
 
+pub use filesystem::FilesystemDocumentService;
 pub use types::{
     CreateOptions, DocumentDiff, DocumentSummary, DocumentVisibility, ListFilter, UpdateOptions,
 };
@@ -116,8 +118,12 @@ pub trait DocumentService: Send + Sync {
 
     /// Set the visibility level of a document.
     ///
-    /// Note: changing visibility creates a new signed version internally
-    /// to maintain provenance integrity.
+    /// Visibility is storage-level metadata (a separate database column),
+    /// not part of the signed document payload. Changing visibility updates
+    /// the metadata in place without creating a new document version.
+    /// This is intentional: visibility is an access-control hint that can
+    /// be changed without re-signing, which would require the agent's
+    /// private key.
     fn set_visibility(
         &self,
         key: &str,

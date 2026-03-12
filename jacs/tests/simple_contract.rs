@@ -661,7 +661,7 @@ fn test_get_agent_id_returns_non_empty() {
         Err(e) => {
             // If get_agent_id fails, verify key_id still works as fallback,
             // but flag the failure clearly so it doesn't hide a regression.
-            let kid = agent.key_id();
+            let kid = agent.key_id().expect("key_id should succeed");
             assert!(!kid.is_empty(), "key_id should be non-empty as fallback");
             panic!(
                 "get_agent_id() failed but key_id() succeeds — \
@@ -679,7 +679,7 @@ fn test_get_agent_id_returns_non_empty() {
 #[test]
 fn test_key_id_returns_non_empty() {
     let (agent, _info) = ephemeral_ed25519();
-    let kid = agent.key_id();
+    let kid = agent.key_id().expect("key_id should succeed");
     assert!(!kid.is_empty(), "key_id should be non-empty");
 }
 
