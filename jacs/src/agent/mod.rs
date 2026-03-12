@@ -44,6 +44,24 @@ use uuid::Uuid;
 use crate::validation::are_valid_uuid_parts;
 use secrecy::SecretBox;
 
+/// Normalize a verification claim value.
+///
+/// Maps the deprecated `"verified-hai.ai"` alias to `"verified-registry"` and logs
+/// a deprecation warning. All other values pass through unchanged.
+///
+/// This alias will be removed in the next major version.
+pub fn normalize_verification_claim(claim: &str) -> &str {
+    if claim == "verified-hai.ai" {
+        warn!(
+            "Verification claim \"verified-hai.ai\" is deprecated. \
+             Use \"verified-registry\" instead. This alias will be removed in the next major version."
+        );
+        "verified-registry"
+    } else {
+        claim
+    }
+}
+
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
 pub const DOCUMENT_AGREEMENT_HASH_FIELDNAME: &str = "jacsAgreementHash";
@@ -605,14 +623,13 @@ impl Agent {
 
     /// Get the verification claim from the agent's value.
     ///
-    /// Returns the claim as a string, or None if not set.
-    /// Valid claims are: "unverified", "verified", "verified-registry" (legacy: "verified-hai.ai")
+    /// Returns the normalized claim as a string, or None if not set.
+    /// Valid claims are: "unverified", "verified", "verified-registry".
+    /// The deprecated "verified-hai.ai" is accepted but normalized to "verified-registry"
+    /// with a deprecation warning. It will be removed in the next major version.
     fn get_verification_claim(&self) -> Option<String> {
-        self.value
-            .as_ref()?
-            .get("jacsVerificationClaim")?
-            .as_str()
-            .map(|s| s.to_string())
+        let raw = self.value.as_ref()?.get("jacsVerificationClaim")?.as_str()?;
+        Some(normalize_verification_claim(raw).to_string())
     }
 
     /// Get the agent's key algorithm
@@ -861,6 +878,7 @@ impl Agent {
         let verification_claim = self.get_verification_claim();
         let domain_present = maybe_domain.is_some();
         let (validate, strict, required) = match verification_claim.as_deref() {
+            // "verified-hai.ai" kept as fallback during deprecation period (normalized above)
             Some("verified") | Some("verified-registry") | Some("verified-hai.ai") => {
                 // Verified claims MUST use strict settings
                 if !domain_present {
@@ -924,8 +942,9 @@ impl Agent {
             }
         }
 
-        // Registry verification for verified-registry (and legacy verified-hai.ai) claims
+        // Registry verification for verified-registry claims
         // This MUST succeed for agents claiming registry-verified status
+        // "verified-hai.ai" kept as fallback during deprecation period (normalized above)
         #[cfg(not(target_arch = "wasm32"))]
         if matches!(
             verification_claim.as_deref(),
@@ -1239,6 +1258,7 @@ impl Agent {
         // Security: Once an agent claims verified status, it cannot be downgraded
         fn claim_level(claim: &str) -> u8 {
             match claim {
+                // "verified-hai.ai" kept as fallback during deprecation period
                 "verified-registry" | "verified-hai.ai" => 2,
                 "verified" => 1,
                 _ => 0, // "unverified" or missing
@@ -1836,6 +1856,37 @@ impl AgentBuilder {
             JacsError::AgentError(format!("Failed to load agent '{}': {}", agent_id, e))
         })?;
         Ok(agent)
+    }
+}
+
+#[cfg(test)]
+mod verification_claim_normalization_tests {
+    use super::normalize_verification_claim;
+
+    #[test]
+    fn verified_registry_passes_through_unchanged() {
+        assert_eq!(
+            normalize_verification_claim("verified-registry"),
+            "verified-registry"
+        );
+    }
+
+    #[test]
+    fn verified_hai_ai_normalizes_to_verified_registry() {
+        assert_eq!(
+            normalize_verification_claim("verified-hai.ai"),
+            "verified-registry"
+        );
+    }
+
+    #[test]
+    fn unverified_passes_through_unchanged() {
+        assert_eq!(normalize_verification_claim("unverified"), "unverified");
+    }
+
+    #[test]
+    fn verified_passes_through_unchanged() {
+        assert_eq!(normalize_verification_claim("verified"), "verified");
     }
 }
 

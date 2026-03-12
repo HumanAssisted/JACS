@@ -23,6 +23,10 @@ JACS can say all of the following without overstating conformance:
 3. JACS does not yet natively implement the current W3C draft's `did:wba` identity model, JSON-LD agent descriptions, `.well-known/agent-descriptions` discovery pattern, or DID-based authorization header format.
 4. JACS can help the W3C work by contributing practical implementation guidance for provenance, attestation, offline verification, trust policy, and multi-party authorization.
 
+ https://github.com/w3c-cg/ai-agent-protocol/issues/28 
+ https://github.com/w3c-cg/ai-agent-protocol/issues/26  
+ https://github.com/w3c-cg/ai-agent-protocol/issues/27
+
 ## Public Message
 
 Suggested short public statement:

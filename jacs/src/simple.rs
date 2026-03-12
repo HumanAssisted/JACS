@@ -1676,9 +1676,11 @@ impl SimpleAgent {
                 message: format!("Failed to parse agent JSON: {}", e),
             })?;
 
-        // Try to extract the agent ID from the document
+        // Try to extract the agent ID from the document.
+        // The canonical field is "jacsId"; also check legacy field names.
         let agent_id = doc
-            .pointer("/jacsAgentID")
+            .pointer("/jacsId")
+            .or_else(|| doc.pointer("/jacsAgentID"))
             .or_else(|| doc.pointer("/id"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| JacsError::Internal {

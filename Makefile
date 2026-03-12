@@ -61,17 +61,17 @@ build-jacsbook-pdf:
 # ============================================================================
 
 test-jacs:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features cli -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --lib --tests -- --nocapture
 
 audit-jacs:
 	@command -v cargo-audit >/dev/null 2>&1 || (echo "cargo-audit is required. Install with: cargo install cargo-audit --locked --version 0.22.1"; exit 1)
 	cargo audit --ignore RUSTSEC-2023-0071
 
 test-jacs-cli:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features cli --test cli_tests -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests --test cli_flags -- --nocapture
 
 test-jacs-observability:
-	RUST_BACKTRACE=1 cargo test --features "cli observability-convenience otlp-logs otlp-metrics otlp-tracing" --test observability_tests --test observability_oltp_meter -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --features "observability-convenience otlp-logs otlp-metrics otlp-tracing" --test observability_tests --test observability_oltp_meter -- --nocapture
 
 test-jacspy:
 	cd jacspy && maturin develop && python -m pytest tests/ -v

@@ -7,7 +7,6 @@ use futures_util::StreamExt;
 use object_store::{
     Error as ObjectStoreError, ObjectStore, PutPayload,
     aws::{AmazonS3, AmazonS3Builder},
-    http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,
     memory::InMemory,
     path::Path as ObjectPath,
@@ -17,7 +16,6 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use strum_macros::{AsRefStr, Display, EnumString};
 use tracing::debug;
-use url::Url;
 
 pub mod jenv;
 
@@ -196,7 +194,6 @@ impl ObjectStore for WebLocalStorage {
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,
-    hai_ai: Option<Arc<HttpStore>>,
     memory: Option<Arc<InMemory>>,
     #[cfg(target_arch = "wasm32")]
     web_local: Option<Arc<WebLocalStorage>>,
@@ -212,8 +209,6 @@ pub enum StorageType {
     AWS,
     #[strum(serialize = "fs")]
     FS,
-    #[strum(serialize = "hai")]
-    HAI,
     #[strum(serialize = "memory")]
     Memory,
     #[cfg(target_arch = "wasm32")]
@@ -264,7 +259,6 @@ impl MultiStorage {
 
     pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
         let mut _s3;
-        let mut _http;
         let mut _local;
         let mut _memory: Option<Arc<InMemory>>;
 
@@ -290,19 +284,6 @@ impl MultiStorage {
             storages.push(tmps3);
         } else {
             _s3 = None;
-        }
-
-        // Check HAI storage
-        if default_storage == StorageType::HAI {
-            let http_url = get_required_env_var("HAI_STORAGE_URL", true)
-                .expect("HAI_STORAGE_URL must be set when JACS_ENABLE_HAI_STORAGE is enabled");
-            let url_obj = Url::parse(&http_url).unwrap();
-            let http = HttpBuilder::new().with_url(url_obj).build()?;
-            let tmphttp = Arc::new(http);
-            _http = Some(tmphttp.clone());
-            storages.push(tmphttp);
-        } else {
-            _http = None;
         }
 
         let is_fs = default_storage == StorageType::FS;
@@ -340,7 +321,7 @@ impl MultiStorage {
         };
 
         #[cfg(target_arch = "wasm32")]
-        if _local.is_none() && _http.is_none() && _s3.is_none() && web_local.is_none() {
+        if _local.is_none() && _s3.is_none() && web_local.is_none() {
             return Err(ObjectStoreError::Generic {
                 store: "MultiStorage",
                 source: Box::new(std::io::Error::new(
@@ -353,7 +334,6 @@ impl MultiStorage {
         Ok(Self {
             aws: _s3,
             fs: _local,
-            hai_ai: _http,
             memory,
             #[cfg(target_arch = "wasm32")]
             web_local,
@@ -514,7 +494,6 @@ impl MultiStorage {
         match selected {
             StorageType::AWS => self.aws.clone().expect("aws storage not loaded"),
             StorageType::FS => self.fs.clone().expect("filesystem storage not loaded"),
-            StorageType::HAI => self.hai_ai.clone().expect("hai storage not loaded"),
             StorageType::Memory => self.memory.clone().expect("memory storage not loaded"),
             #[cfg(target_arch = "wasm32")]
             StorageType::WebLocal => self
@@ -1033,6 +1012,16 @@ mod tests {
         assert!(
             !elsewhere.path().join("relative").join("path.txt").exists(),
             "relative writes must stay rooted to the storage creation cwd"
+        );
+    }
+
+    #[test]
+    fn hai_storage_type_is_rejected() {
+        use super::StorageType;
+        use std::str::FromStr;
+        assert!(
+            StorageType::from_str("hai").is_err(),
+            "\"hai\" should not be accepted as a storage type"
         );
     }
 

@@ -53,8 +53,6 @@ impl FromStr for KeyResolutionSource {
             "local" => Ok(KeyResolutionSource::Local),
             "dns" => Ok(KeyResolutionSource::Dns),
             "registry" => Ok(KeyResolutionSource::Registry),
-            // Backward compat: "hai" maps to Registry
-            "hai" => Ok(KeyResolutionSource::Registry),
             other => Err(format!(
                 "Unknown key resolution source '{}'. Valid options are: local, dns, registry",
                 other
@@ -77,7 +75,6 @@ impl FromStr for KeyResolutionSource {
 /// - `local` - Local filesystem (keys in `public_keys/` directory)
 /// - `dns` - DNS TXT record verification
 /// - `registry` - Remote registry key service (JACS_KEYS_BASE_URL)
-/// - `hai` - Backward-compatible alias for `registry`
 ///
 /// # Examples
 ///
@@ -2083,14 +2080,14 @@ mod tests {
             KeyResolutionSource::from_str(" registry ").unwrap(),
             KeyResolutionSource::Registry
         );
-        // Backward compat: "hai" maps to Registry
-        assert_eq!(
-            KeyResolutionSource::from_str("hai").unwrap(),
-            KeyResolutionSource::Registry
+        // "hai" is no longer a valid key resolution source (removed in architecture upgrade)
+        assert!(
+            KeyResolutionSource::from_str("hai").is_err(),
+            "\"hai\" should be rejected as a key resolution source"
         );
-        assert_eq!(
-            KeyResolutionSource::from_str("HAI").unwrap(),
-            KeyResolutionSource::Registry
+        assert!(
+            KeyResolutionSource::from_str("HAI").is_err(),
+            "\"HAI\" should be rejected as a key resolution source"
         );
 
         // Invalid sources
@@ -2144,12 +2141,19 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_get_key_resolution_order_hai_backward_compat() {
+    fn test_get_key_resolution_order_hai_is_rejected() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "hai").unwrap();
 
+        // "hai" should be silently skipped (invalid source), resulting in empty order
+        // which falls back to default
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![KeyResolutionSource::Registry]);
+        // Since "hai" is no longer valid, it should be skipped and order should be empty
+        // (the get_key_resolution_order function logs a warning and skips invalid sources)
+        assert!(
+            !order.iter().any(|s| format!("{}", s) == "hai"),
+            "\"hai\" should not appear in key resolution order"
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }

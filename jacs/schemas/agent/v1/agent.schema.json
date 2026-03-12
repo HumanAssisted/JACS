@@ -30,7 +30,7 @@
           "type": "string",
           "enum": ["unverified", "verified", "verified-registry", "verified-hai.ai"],
           "default": "unverified",
-          "description": "Agent's claim about verification status. 'unverified' (default) allows relaxed DNS/TLS settings. 'verified' requires strict DNS with DNSSEC and domain must be set. 'verified-registry' requires registry verification. 'verified-hai.ai' is a legacy alias for registry verification and remains supported for backward compatibility.",
+          "description": "Agent's claim about verification status. 'unverified' (default) allows relaxed DNS/TLS settings. 'verified' requires strict DNS with DNSSEC and domain must be set. 'verified-registry' requires registry verification. DEPRECATED: 'verified-hai.ai' is a deprecated alias for 'verified-registry' and will be removed in the next major version.",
           "hai": "meta"
         }
       },

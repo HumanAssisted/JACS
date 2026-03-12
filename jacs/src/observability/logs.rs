@@ -92,7 +92,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             Ok(None)
         }
         LogDestination::Otlp {
-            endpoint: _,
+            endpoint,
             headers: _,
         } => {
             #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]

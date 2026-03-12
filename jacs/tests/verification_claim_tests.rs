@@ -5,7 +5,7 @@
 //! - `unverified` (default): Relaxed settings allowed
 //! - `verified`: Requires domain, strict DNS, strict TLS
 //! - `verified-registry`: Above + registry verification
-//! - `verified-hai.ai`: Legacy alias for `verified-registry`
+//! - `verified-hai.ai`: DEPRECATED alias for `verified-registry` (will be removed next major version)
 //!
 //! The principle is: "If you claim it, you must prove it."
 

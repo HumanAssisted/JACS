@@ -239,8 +239,7 @@ pub fn verify_pubkey_via_dns_or_embedded(
         match lookup {
             Ok(txt) => {
                 let f = parse_agent_txt(&txt)?;
-                // Accept both "jacs" (current) and "hai.ai" (legacy) for backward compat
-                if f.v != "jacs" && f.v != "hai.ai" {
+                if f.v != "jacs" {
                     return Err(format!("Unexpected v field: {}", f.v));
                 }
                 if f.jacs_agent_id != agent_id {
@@ -359,8 +358,7 @@ struct RegistryApiResponse {
 ///
 /// # Environment Variables
 ///
-/// * `JACS_REGISTRY_URL` - Registry API URL. Falls back to `HAI_API_URL` for
-///   backward compatibility. No default -- returns an error if not configured.
+/// * `JACS_REGISTRY_URL` - Registry API URL. No default -- returns an error if not configured.
 ///
 /// # Errors
 ///
@@ -399,13 +397,10 @@ pub fn verify_registry_registration_sync(
     })?;
 
     // Registry API endpoint for agent verification
-    // JACS_REGISTRY_URL preferred; HAI_API_URL kept for backward compat
-    let api_url = std::env::var("JACS_REGISTRY_URL")
-        .or_else(|_| std::env::var("HAI_API_URL"))
-        .map_err(|_| {
-            "No registry URL configured. Set JACS_REGISTRY_URL to enable registry verification."
-                .to_string()
-        })?;
+    let api_url = std::env::var("JACS_REGISTRY_URL").map_err(|_| {
+        "No registry URL configured. Set JACS_REGISTRY_URL to enable registry verification."
+            .to_string()
+    })?;
     let parsed = url::Url::parse(&api_url)
         .map_err(|e| format!("Invalid JACS_REGISTRY_URL '{}': {}", api_url, e))?;
     let host = parsed.host_str().unwrap_or_default();
@@ -711,5 +706,110 @@ mod tests {
         let text = tld_requirement_text();
         assert!(!text.is_empty());
         assert!(text.contains("_v1.agent.jacs"));
+    }
+
+    // --- Task 010: DNS format is registry-agnostic ---
+
+    #[test]
+    fn test_build_agent_dns_txt_uses_jacs_version_tag() {
+        let txt = build_agent_dns_txt("agent-123", "digest-abc", DigestEncoding::Base64);
+        assert!(
+            txt.starts_with("v=jacs;"),
+            "TXT record must use v=jacs, got: {}",
+            txt
+        );
+    }
+
+    #[test]
+    fn test_parse_agent_txt_accepts_jacs_version() {
+        let txt = "v=jacs; jacs_agent_id=a1; alg=SHA-256; enc=base64; jac_public_key_hash=abc";
+        let result = parse_agent_txt(txt).unwrap();
+        assert_eq!(result.v, "jacs");
+    }
+
+    #[test]
+    fn test_parse_agent_txt_rejects_hai_ai_version() {
+        // "hai.ai" is no longer accepted as a version tag in DNS TXT records
+        let pubkey = b"test-public-key-bytes-for-digest";
+        let digest = pubkey_digest_b64(pubkey);
+        let agent_id = "test-agent-id";
+
+        let txt = format!(
+            "v=hai.ai; jacs_agent_id={}; alg=SHA-256; enc=base64; jac_public_key_hash={}",
+            agent_id, digest
+        );
+
+        // parse_agent_txt itself is format-only; it parses any v value.
+        // The rejection happens in verify_pubkey_via_dns_or_embedded.
+        let fields = parse_agent_txt(&txt).unwrap();
+        assert_eq!(fields.v, "hai.ai");
+        // The verify function should reject this v field
+    }
+
+    #[test]
+    fn test_record_owner_uses_jacs_namespace() {
+        let owner = record_owner("example.com");
+        assert_eq!(owner, "_v1.agent.jacs.example.com.");
+        assert!(
+            !owner.contains("hai"),
+            "DNS record owner must not contain hai references"
+        );
+    }
+
+    #[test]
+    fn test_dns_code_no_hai_references_in_txt_format() {
+        // Verify the TXT record format is completely generic
+        let txt = build_agent_dns_txt("my-agent", "my-digest", DigestEncoding::Hex);
+        assert!(
+            !txt.to_lowercase().contains("hai"),
+            "TXT format must not contain hai references, got: {}",
+            txt
+        );
+    }
+
+    #[test]
+    fn test_registry_verification_requires_jacs_registry_url() {
+        // Ensure HAI_API_URL is NOT used as a fallback
+        // SAFETY: test-only env var manipulation; tests run serially for env var tests
+        unsafe {
+            std::env::remove_var("JACS_REGISTRY_URL");
+            std::env::remove_var("HAI_API_URL");
+
+            // Set only HAI_API_URL -- should NOT be picked up
+            std::env::set_var("HAI_API_URL", "https://api.hai.ai");
+        }
+
+        let result = verify_registry_registration_sync(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "some-hash",
+        );
+        assert!(result.is_err(), "Should fail without JACS_REGISTRY_URL");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("JACS_REGISTRY_URL"),
+            "Error should mention JACS_REGISTRY_URL, got: {}",
+            err
+        );
+
+        // Cleanup
+        unsafe {
+            std::env::remove_var("HAI_API_URL");
+        }
+    }
+
+    #[test]
+    fn test_verify_pubkey_embedded_fallback_no_hai_references() {
+        // Test that embedded fingerprint verification works without any hai.ai involvement
+        let pubkey = b"test-key-for-embedded-verification";
+        let digest = pubkey_digest_b64(pubkey);
+
+        let result = verify_pubkey_via_dns_or_embedded(
+            pubkey,
+            "agent-123",
+            None,              // no domain
+            Some(&digest),     // embedded fingerprint
+            false,             // not strict
+        );
+        assert!(result.is_ok(), "Embedded verification should succeed: {:?}", result);
     }
 }

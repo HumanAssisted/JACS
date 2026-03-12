@@ -169,7 +169,8 @@ fn should_accept_invalid_certs() -> bool {
 
 /// Check TLS strictness considering verification claim.
 ///
-/// Verified claims (`verified`, `verified-registry`, or legacy `verified-hai.ai`) ALWAYS require strict TLS.
+/// Verified claims (`verified`, `verified-registry`) ALWAYS require strict TLS.
+/// The deprecated `verified-hai.ai` alias is also handled during the deprecation period.
 /// This enforces the principle: "If you claim it, you must prove it."
 ///
 /// # Arguments
@@ -200,6 +201,7 @@ fn should_accept_invalid_certs() -> bool {
 pub fn should_accept_invalid_certs_for_claim(claim: Option<&str>) -> bool {
     // Verified claims ALWAYS require strict TLS
     match claim {
+        // "verified-hai.ai" kept as fallback during deprecation period
         Some("verified") | Some("verified-registry") | Some("verified-hai.ai") => false,
         _ => should_accept_invalid_certs(), // existing env-var check
     }

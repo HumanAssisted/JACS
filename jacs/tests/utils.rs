@@ -1,7 +1,9 @@
-use jacs::agent::Agent;
+#![allow(dead_code)]
+
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
+use jacs::agent::Agent;
 use jacs::config::Config;
 use log::debug;
 use serde_json::json;
@@ -11,6 +13,7 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 // ============================================================================
 // Centralized test password constants for JACS test suite.
@@ -57,25 +60,21 @@ pub const PASSWORD_ENV_VAR: &str = "JACS_PRIVATE_KEY_PASSWORD";
 /// Returns the path to the fixtures directory.
 /// This is the single source of truth for fixture path resolution.
 pub fn find_fixtures_dir() -> PathBuf {
-    let possible_paths = [
-        "../fixtures",         // When running from tests/scratch
-        "tests/fixtures",      // When running from jacs/
-        "jacs/tests/fixtures", // When running from workspace root
-    ];
+    static FIXTURES_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-    println!(
-        "Current working directory: {:?}",
-        std::env::current_dir().unwrap()
-    );
-    for path in possible_paths.iter() {
-        println!("Checking path: {}", path);
-        if Path::new(path).exists() {
-            let found_path = Path::new(path).to_path_buf();
-            println!("Found fixtures directory at: {:?}", found_path);
-            return found_path;
-        }
-    }
-    panic!("Could not find fixtures directory in any of the expected locations");
+    FIXTURES_DIR
+        .get_or_init(|| {
+            let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("fixtures");
+            assert!(
+                fixtures_dir.exists(),
+                "Could not find fixtures directory at {}",
+                fixtures_dir.display()
+            );
+            fixtures_dir
+        })
+        .clone()
 }
 
 /// Returns the path to the fixtures/keys directory.
@@ -345,9 +344,13 @@ pub fn load_test_agent_two() -> Agent {
 
 #[cfg(test)]
 pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> {
-    let current_dir = env::current_dir()?;
-    let document_path: PathBuf = current_dir.join(filepath);
-    let json_data = fs::read_to_string(document_path);
+    let document_path = Path::new(filepath);
+    let resolved_path = if document_path.is_absolute() {
+        document_path.to_path_buf()
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(document_path)
+    };
+    let json_data = fs::read_to_string(&resolved_path);
     match json_data {
         Ok(data) => {
             let mut value: serde_json::Value = serde_json::from_str(&data)?;
@@ -390,7 +393,7 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
             Ok(serialized)
         }
         Err(e) => {
-            panic!("Failed to find file: {} {}", filepath, e);
+            panic!("Failed to find file: {} {}", resolved_path.display(), e);
         }
     }
 }
