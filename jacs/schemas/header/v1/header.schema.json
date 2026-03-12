@@ -98,6 +98,28 @@
         "artifact",
         "derived"
       ]
+    },
+    "jacsVisibility": {
+      "description": "Document visibility level for access control. Controls who can see and access a document through tool responses and API queries. Default is private (safe by default).",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["public", "private"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "restricted": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "description": "Agent IDs or roles that can access this document"
+            }
+          },
+          "required": ["restricted"]
+        }
+      ],
+      "default": "private"
     }
   },
   "required": [
