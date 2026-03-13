@@ -556,6 +556,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     fn test_simple_ephemeral_default_pq2025() {
         let (agent, info) = SimpleAgent::ephemeral(None).unwrap();
@@ -569,6 +570,7 @@ mod tests {
         assert!(result.valid);
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     fn test_simple_ephemeral_pq2025() {
         let (agent, info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
@@ -579,7 +581,7 @@ mod tests {
 
     #[test]
     fn test_simple_ephemeral_sign_and_verify() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let msg = serde_json::json!({"hello": "world"});
         let signed = agent.sign_message(&msg).unwrap();
         assert!(!signed.raw.is_empty());
@@ -621,7 +623,7 @@ mod tests {
         let temp = std::env::temp_dir().join("jacs_simple_ephemeral_no_files");
         let _ = std::fs::remove_dir_all(&temp);
         std::fs::create_dir_all(&temp).unwrap();
-        let (_agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (_agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let entries: Vec<_> = std::fs::read_dir(&temp).unwrap().collect();
         assert!(entries.is_empty());
         let _ = std::fs::remove_dir_all(&temp);
@@ -634,7 +636,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let card = crate::a2a::simple::export_agent_card(&agent).unwrap();
         assert!(!card.name.is_empty());
         assert!(!card.protocol_versions.is_empty());
@@ -646,7 +648,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn test_wrap_and_verify_a2a_artifact() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let artifact = r#"{"text": "hello from A2A"}"#;
 
         let wrapped = crate::a2a::simple::wrap_artifact(&agent, artifact, "message", None).unwrap();
@@ -667,7 +669,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_sign_artifact_alias() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let artifact = r#"{"data": "test"}"#;
 
         // sign_artifact should produce the same structure as wrap_a2a_artifact
@@ -686,7 +688,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_with_parent_signatures() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
 
         // Create a first artifact
         let first =
@@ -708,7 +710,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let result = crate::a2a::simple::wrap_artifact(&agent, "not json", "artifact", None);
         assert!(result.is_err());
         match result {
@@ -722,7 +724,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_verify_a2a_artifact_invalid_json() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let result = crate::a2a::simple::verify_artifact(&agent, "not json");
         assert!(result.is_err());
         match result {
@@ -734,6 +736,7 @@ mod tests {
     }
 
     #[cfg(feature = "a2a")]
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_pq2025() {
@@ -750,7 +753,7 @@ mod tests {
     #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card_has_jacs_extension() {
-        let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
+        let (agent, _info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let card = crate::a2a::simple::export_agent_card(&agent).unwrap();
 
         let extensions = card.capabilities.extensions.unwrap();

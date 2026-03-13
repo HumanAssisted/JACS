@@ -1,3 +1,4 @@
+#![cfg(feature = "pq-tests")]
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::loaders::FileLoader;
 use jacs::config::Config;

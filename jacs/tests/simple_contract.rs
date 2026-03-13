@@ -203,6 +203,7 @@ fn test_create_with_params_ed25519() {
     assert!(signed.is_ok(), "ed25519 agent should sign successfully");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 #[serial]
 fn test_create_with_params_pq2025() {
@@ -315,6 +316,7 @@ fn test_ephemeral_creates_agent_no_disk_writes() {
     assert!(signed.is_ok(), "ephemeral agent should be able to sign");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_ephemeral_default_algorithm() {
     let (agent, info) = ephemeral_default();
@@ -928,6 +930,7 @@ fn test_cross_agent_verification() {
 // Integration: Sign-then-verify roundtrip with pq2025
 // =============================================================================
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_sign_verify_roundtrip_pq2025() {
     let (agent, _info) = ephemeral_default(); // pq2025

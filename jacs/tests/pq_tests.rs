@@ -1,3 +1,4 @@
+#![cfg(feature = "pq-tests")]
 mod utils;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jacs::agent::boilerplate::BoilerPlate;

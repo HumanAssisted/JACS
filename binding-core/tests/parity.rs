@@ -40,6 +40,7 @@ fn test_parity_signed_document_structure_ed25519() {
     parity_signed_document_structure("ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_parity_signed_document_structure_pq2025() {
     parity_signed_document_structure("pq2025");
@@ -105,6 +106,7 @@ fn test_parity_sign_verify_roundtrip_ed25519() {
     parity_sign_verify_roundtrip("ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_parity_sign_verify_roundtrip_pq2025() {
     parity_sign_verify_roundtrip("pq2025");
@@ -142,6 +144,7 @@ fn parity_sign_verify_roundtrip(algo: &str) {
 // 3. Cross-algorithm verify: sign with ed25519, verify structure is consistent
 // =============================================================================
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_parity_cross_algorithm_structure_consistency() {
     let fixtures = load_parity_inputs();
@@ -218,6 +221,7 @@ fn test_parity_verify_with_key_ed25519() {
     parity_verify_with_key("ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_parity_verify_with_key_pq2025() {
     parity_verify_with_key("pq2025");
@@ -254,6 +258,7 @@ fn test_parity_sign_raw_bytes_ed25519() {
     parity_sign_raw_bytes("ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_parity_sign_raw_bytes_pq2025() {
     parity_sign_raw_bytes("pq2025");
@@ -301,6 +306,7 @@ fn test_parity_identity_methods_ed25519() {
     parity_identity_methods("ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_parity_identity_methods_pq2025() {
     parity_identity_methods("pq2025");
@@ -485,6 +491,7 @@ fn test_parity_sign_file_ed25519() {
     parity_sign_file("ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_parity_sign_file_pq2025() {
     parity_sign_file("pq2025");

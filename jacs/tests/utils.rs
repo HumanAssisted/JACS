@@ -450,6 +450,17 @@ pub fn clear_test_env_vars() {
     }
 }
 
+/// Returns the default algorithm for tests.
+/// - Without `pq-tests` feature: returns "ed25519" (fast keygen)
+/// - With `pq-tests` feature: returns "pq2025" (slow, full PQ coverage)
+pub fn test_algorithm() -> &'static str {
+    if cfg!(feature = "pq-tests") {
+        "pq2025"
+    } else {
+        "ed25519"
+    }
+}
+
 // ============================================================================
 // Centralized test agent creation helpers for JACS test suite.
 //

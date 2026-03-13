@@ -285,6 +285,7 @@ fn generate_ed25519_fixture() {
     generate_fixture("ed25519", "ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 #[serial]
 fn generate_pq2025_fixture() {
@@ -311,6 +312,7 @@ fn verify_ed25519_fixture_standalone() {
     verify_fixture("ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 #[serial]
 fn verify_pq2025_fixture_standalone() {

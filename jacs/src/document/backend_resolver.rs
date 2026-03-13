@@ -25,13 +25,25 @@ pub struct BackendConfig {
 }
 
 /// Credentials parsed from a connection string.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ConnectionCredentials {
     pub username: Option<String>,
     pub password: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub database: Option<String>,
+}
+
+impl std::fmt::Debug for ConnectionCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionCredentials")
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("database", &self.database)
+            .finish()
+    }
 }
 
 /// Known plain-label backend names that do NOT require connection string parsing.

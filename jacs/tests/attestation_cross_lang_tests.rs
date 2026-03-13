@@ -501,6 +501,7 @@ mod attestation_cross_lang {
         generate_attestation_fixture("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn generate_pq2025_attestation_fixture() {
@@ -519,6 +520,7 @@ mod attestation_cross_lang {
         verify_attestation_fixture("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn verify_pq2025_attestation_fixture() {
@@ -535,6 +537,7 @@ mod attestation_cross_lang {
         verify_tampered_signature_fails("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn tampered_signature_pq2025_fails() {
@@ -551,6 +554,7 @@ mod attestation_cross_lang {
         verify_tampered_body_fails("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn tampered_body_pq2025_fails() {

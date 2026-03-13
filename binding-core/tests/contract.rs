@@ -47,6 +47,7 @@ fn create_ephemeral_wrapper_rsa() -> AgentWrapper {
     wrapper
 }
 
+#[cfg(feature = "pq-tests")]
 fn create_ephemeral_wrapper_pq() -> AgentWrapper {
     let wrapper = AgentWrapper::new();
     wrapper
@@ -80,6 +81,7 @@ fn test_create_agent_via_wrapper_valid_json() {
     );
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_create_agent_pq2025() {
     let wrapper = AgentWrapper::new();
@@ -355,6 +357,7 @@ fn test_full_roundtrip_create_sign_verify_rsa() {
     assert!(valid, "RSA roundtrip should verify successfully");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_full_roundtrip_create_sign_verify_pq2025() {
     let wrapper = create_ephemeral_wrapper_pq();

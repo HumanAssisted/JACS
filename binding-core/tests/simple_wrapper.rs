@@ -124,6 +124,7 @@ fn test_ephemeral_creates_wrapper() {
     assert!(signed.is_ok());
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 fn test_ephemeral_default_algorithm() {
     let (wrapper, info_json) =
