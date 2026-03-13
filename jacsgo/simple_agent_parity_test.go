@@ -13,6 +13,8 @@ package jacs
 // 5. Sign raw bytes parity: raw byte signing produces valid base64
 // 6. Sign file parity: file signing produces verifiable documents
 // 7. Verification result structure parity
+// 8. Verify with explicit key parity
+// 9. Cross-algorithm structure consistency
 //
 // Note: Exact crypto output bytes differ per invocation (nonce/randomness),
 // so we verify structure and verifiability, not byte-equality.
@@ -23,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -135,40 +138,45 @@ func ephemeral(t *testing.T, algo string) *JacsSimpleAgent {
 func TestParitySignedDocumentStructure(t *testing.T) {
 	skipIfLibraryMissing(t)
 	fixtures := loadParityFixtures(t)
-	agent := ephemeral(t, "ed25519")
 
-	for _, input := range fixtures.SignMessageInputs {
-		t.Run(input.Name, func(t *testing.T) {
-			signed, err := agent.SignMessage(input.Data)
-			if err != nil {
-				t.Fatalf("SignMessage failed for %q: %v", input.Name, err)
-			}
-			if signed == nil || signed.Raw == "" {
-				t.Fatalf("SignMessage returned empty result for %q", input.Name)
-			}
+	for _, algo := range fixtures.Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent := ephemeral(t, algo)
 
-			// Parse the raw signed JSON to check field presence.
-			var doc map[string]interface{}
-			if err := json.Unmarshal([]byte(signed.Raw), &doc); err != nil {
-				t.Fatalf("signed output for %q is not valid JSON: %v", input.Name, err)
-			}
+			for _, input := range fixtures.SignMessageInputs {
+				t.Run(input.Name, func(t *testing.T) {
+					signed, err := agent.SignMessage(input.Data)
+					if err != nil {
+						t.Fatalf("SignMessage failed for %q: %v", input.Name, err)
+					}
+					if signed == nil || signed.Raw == "" {
+						t.Fatalf("SignMessage returned empty result for %q", input.Name)
+					}
 
-			// Check required top-level fields.
-			for _, field := range fixtures.ExpectedSignedDoc.RequiredTopLevel {
-				if _, ok := doc[field]; !ok {
-					t.Errorf("signed document for %q missing required field %q", input.Name, field)
-				}
-			}
+					// Parse the raw signed JSON to check field presence.
+					var doc map[string]interface{}
+					if err := json.Unmarshal([]byte(signed.Raw), &doc); err != nil {
+						t.Fatalf("signed output for %q is not valid JSON: %v", input.Name, err)
+					}
 
-			// Check required signature fields.
-			sigObj, ok := doc["jacsSignature"].(map[string]interface{})
-			if !ok {
-				t.Fatalf("signed document for %q: jacsSignature is not an object", input.Name)
-			}
-			for _, field := range fixtures.ExpectedSignedDoc.RequiredSignatureFields {
-				if _, ok := sigObj[field]; !ok {
-					t.Errorf("jacsSignature for %q missing required field %q", input.Name, field)
-				}
+					// Check required top-level fields.
+					for _, field := range fixtures.ExpectedSignedDoc.RequiredTopLevel {
+						if _, ok := doc[field]; !ok {
+							t.Errorf("[%s] signed document for %q missing required field %q", algo, input.Name, field)
+						}
+					}
+
+					// Check required signature fields.
+					sigObj, ok := doc["jacsSignature"].(map[string]interface{})
+					if !ok {
+						t.Fatalf("signed document for %q: jacsSignature is not an object", input.Name)
+					}
+					for _, field := range fixtures.ExpectedSignedDoc.RequiredSignatureFields {
+						if _, ok := sigObj[field]; !ok {
+							t.Errorf("[%s] jacsSignature for %q missing required field %q", algo, input.Name, field)
+						}
+					}
+				})
 			}
 		})
 	}
@@ -181,21 +189,26 @@ func TestParitySignedDocumentStructure(t *testing.T) {
 func TestParitySignVerifyRoundtrip(t *testing.T) {
 	skipIfLibraryMissing(t)
 	fixtures := loadParityFixtures(t)
-	agent := ephemeral(t, "ed25519")
 
-	for _, input := range fixtures.SignMessageInputs {
-		t.Run(input.Name, func(t *testing.T) {
-			signed, err := agent.SignMessage(input.Data)
-			if err != nil {
-				t.Fatalf("SignMessage failed for %q: %v", input.Name, err)
-			}
+	for _, algo := range fixtures.Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent := ephemeral(t, algo)
 
-			result, err := agent.Verify(signed.Raw)
-			if err != nil {
-				t.Fatalf("Verify failed for %q: %v", input.Name, err)
-			}
-			if !result.Valid {
-				t.Errorf("roundtrip verification failed for %q: errors=%v", input.Name, result.Errors)
+			for _, input := range fixtures.SignMessageInputs {
+				t.Run(input.Name, func(t *testing.T) {
+					signed, err := agent.SignMessage(input.Data)
+					if err != nil {
+						t.Fatalf("SignMessage failed for %q: %v", input.Name, err)
+					}
+
+					result, err := agent.Verify(signed.Raw)
+					if err != nil {
+						t.Fatalf("Verify failed for %q: %v", input.Name, err)
+					}
+					if !result.Valid {
+						t.Errorf("[%s] roundtrip verification failed for %q: errors=%v", algo, input.Name, result.Errors)
+					}
+				})
 			}
 		})
 	}
@@ -208,34 +221,39 @@ func TestParitySignVerifyRoundtrip(t *testing.T) {
 func TestParitySignRawBytes(t *testing.T) {
 	skipIfLibraryMissing(t)
 	fixtures := loadParityFixtures(t)
-	agent := ephemeral(t, "ed25519")
 
-	for _, input := range fixtures.SignRawBytesInputs {
-		t.Run(input.Name, func(t *testing.T) {
-			data, err := base64.StdEncoding.DecodeString(input.DataBase64)
-			if err != nil {
-				t.Fatalf("fixture %q has invalid base64: %v", input.Name, err)
-			}
+	for _, algo := range fixtures.Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent := ephemeral(t, algo)
 
-			sigB64, err := agent.SignRawBytes(data)
-			if err != nil {
-				t.Fatalf("SignRawBytes failed for %q: %v", input.Name, err)
-			}
-
-			// Result should be valid base64.
-			sigBytes, err := base64.StdEncoding.DecodeString(sigB64)
-			if err != nil {
-				// Some implementations use URL-safe or raw base64; try those too.
-				sigBytes, err = base64.RawStdEncoding.DecodeString(sigB64)
-				if err != nil {
-					sigBytes, err = base64.URLEncoding.DecodeString(sigB64)
+			for _, input := range fixtures.SignRawBytesInputs {
+				t.Run(input.Name, func(t *testing.T) {
+					data, err := base64.StdEncoding.DecodeString(input.DataBase64)
 					if err != nil {
-						t.Fatalf("SignRawBytes result for %q is not valid base64: %q", input.Name, sigB64)
+						t.Fatalf("fixture %q has invalid base64: %v", input.Name, err)
 					}
-				}
-			}
-			if len(sigBytes) == 0 {
-				t.Errorf("signature for %q should be non-empty", input.Name)
+
+					sigB64, err := agent.SignRawBytes(data)
+					if err != nil {
+						t.Fatalf("SignRawBytes failed for %q: %v", input.Name, err)
+					}
+
+					// Result should be valid base64.
+					sigBytes, err := base64.StdEncoding.DecodeString(sigB64)
+					if err != nil {
+						// Some implementations use URL-safe or raw base64; try those too.
+						sigBytes, err = base64.RawStdEncoding.DecodeString(sigB64)
+						if err != nil {
+							sigBytes, err = base64.URLEncoding.DecodeString(sigB64)
+							if err != nil {
+								t.Fatalf("SignRawBytes result for %q is not valid base64: %q", input.Name, sigB64)
+							}
+						}
+					}
+					if len(sigBytes) == 0 {
+						t.Errorf("[%s] signature for %q should be non-empty", algo, input.Name)
+					}
+				})
 			}
 		})
 	}
@@ -247,99 +265,111 @@ func TestParitySignRawBytes(t *testing.T) {
 
 func TestParityIdentityMethods(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
 
-	t.Run("GetAgentID", func(t *testing.T) {
-		agentID, err := agent.GetAgentID()
-		if err != nil {
-			t.Fatalf("GetAgentID failed: %v", err)
-		}
-		if agentID == "" {
-			t.Error("agent_id should be non-empty")
-		}
-	})
+	for _, algo := range loadParityFixtures(t).Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent := ephemeral(t, algo)
 
-	t.Run("KeyID", func(t *testing.T) {
-		keyID, err := agent.KeyID()
-		if err != nil {
-			t.Fatalf("KeyID failed: %v", err)
-		}
-		if keyID == "" {
-			t.Error("key_id should be non-empty")
-		}
-	})
+			t.Run("GetAgentID", func(t *testing.T) {
+				agentID, err := agent.GetAgentID()
+				if err != nil {
+					t.Fatalf("GetAgentID failed: %v", err)
+				}
+				if agentID == "" {
+					t.Error("agent_id should be non-empty")
+				}
+			})
 
-	t.Run("GetPublicKeyPEM", func(t *testing.T) {
-		pem, err := agent.GetPublicKeyPEM()
-		if err != nil {
-			t.Fatalf("GetPublicKeyPEM failed: %v", err)
-		}
-		if !strings.Contains(pem, "-----BEGIN") && !strings.Contains(pem, "PUBLIC KEY") {
-			t.Errorf("expected PEM format, got: %s", truncate(pem, 80))
-		}
-	})
+			t.Run("KeyID", func(t *testing.T) {
+				keyID, err := agent.KeyID()
+				if err != nil {
+					t.Fatalf("KeyID failed: %v", err)
+				}
+				if keyID == "" {
+					t.Error("key_id should be non-empty")
+				}
+			})
 
-	t.Run("GetPublicKeyBase64", func(t *testing.T) {
-		keyB64, err := agent.GetPublicKeyBase64()
-		if err != nil {
-			t.Fatalf("GetPublicKeyBase64 failed: %v", err)
-		}
-		decoded, err := base64.StdEncoding.DecodeString(keyB64)
-		if err != nil {
-			// Try raw or URL-safe base64.
-			decoded, err = base64.RawStdEncoding.DecodeString(keyB64)
-			if err != nil {
-				t.Fatalf("public key base64 is invalid: %v (value: %q)", err, truncate(keyB64, 80))
-			}
-		}
-		if len(decoded) == 0 {
-			t.Error("decoded public key should be non-empty")
-		}
-	})
+			t.Run("GetPublicKeyPEM", func(t *testing.T) {
+				pem, err := agent.GetPublicKeyPEM()
+				if err != nil {
+					t.Fatalf("GetPublicKeyPEM failed: %v", err)
+				}
+				if !strings.Contains(pem, "-----BEGIN") && !strings.Contains(pem, "PUBLIC KEY") {
+					t.Errorf("expected PEM format, got: %s", truncate(pem, 80))
+				}
+			})
 
-	t.Run("ExportAgent", func(t *testing.T) {
-		exported, err := agent.ExportAgent()
-		if err != nil {
-			t.Fatalf("ExportAgent failed: %v", err)
-		}
-		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(exported), &parsed); err != nil {
-			t.Fatalf("ExportAgent output is not valid JSON: %v", err)
-		}
-		if _, ok := parsed["jacsId"]; !ok {
-			t.Error("exported agent should have jacsId")
-		}
-	})
+			t.Run("GetPublicKeyBase64", func(t *testing.T) {
+				keyB64, err := agent.GetPublicKeyBase64()
+				if err != nil {
+					t.Fatalf("GetPublicKeyBase64 failed: %v", err)
+				}
+				decoded, err := base64.StdEncoding.DecodeString(keyB64)
+				if err != nil {
+					// Try raw or URL-safe base64.
+					decoded, err = base64.RawStdEncoding.DecodeString(keyB64)
+					if err != nil {
+						t.Fatalf("public key base64 is invalid: %v (value: %q)", err, truncate(keyB64, 80))
+					}
+				}
+				if len(decoded) == 0 {
+					t.Error("decoded public key should be non-empty")
+				}
+			})
 
-	t.Run("Diagnostics", func(t *testing.T) {
-		diag := agent.Diagnostics()
-		var diagMap map[string]interface{}
-		if err := json.Unmarshal([]byte(diag), &diagMap); err != nil {
-			t.Fatalf("Diagnostics is not valid JSON: %v", err)
-		}
-		if _, ok := diagMap["jacs_version"]; !ok {
-			t.Error("diagnostics should have jacs_version")
-		}
-		if loaded, ok := diagMap["agent_loaded"].(bool); !ok || !loaded {
-			t.Errorf("diagnostics should show agent_loaded=true, got %v", diagMap["agent_loaded"])
-		}
-	})
+			t.Run("ExportAgent", func(t *testing.T) {
+				exported, err := agent.ExportAgent()
+				if err != nil {
+					t.Fatalf("ExportAgent failed: %v", err)
+				}
+				var parsed map[string]interface{}
+				if err := json.Unmarshal([]byte(exported), &parsed); err != nil {
+					t.Fatalf("ExportAgent output is not valid JSON: %v", err)
+				}
+				if _, ok := parsed["jacsId"]; !ok {
+					t.Error("exported agent should have jacsId")
+				}
+			})
 
-	t.Run("VerifySelf", func(t *testing.T) {
-		result, err := agent.VerifySelf()
-		if err != nil {
-			t.Fatalf("VerifySelf failed: %v", err)
-		}
-		if !result.Valid {
-			t.Errorf("VerifySelf should be valid, errors=%v", result.Errors)
-		}
-	})
+			t.Run("Diagnostics", func(t *testing.T) {
+				diag := agent.Diagnostics()
+				var diagMap map[string]interface{}
+				if err := json.Unmarshal([]byte(diag), &diagMap); err != nil {
+					t.Fatalf("Diagnostics is not valid JSON: %v", err)
+				}
+				if _, ok := diagMap["jacs_version"]; !ok {
+					t.Error("diagnostics should have jacs_version")
+				}
+				if loaded, ok := diagMap["agent_loaded"].(bool); !ok || !loaded {
+					t.Errorf("diagnostics should show agent_loaded=true, got %v", diagMap["agent_loaded"])
+				}
+			})
 
-	t.Run("IsStrict", func(t *testing.T) {
-		if agent.IsStrict() {
-			t.Error("ephemeral agent should not be strict")
-		}
-	})
+			t.Run("VerifySelf", func(t *testing.T) {
+				result, err := agent.VerifySelf()
+				if err != nil {
+					t.Fatalf("VerifySelf failed: %v", err)
+				}
+				if !result.Valid {
+					t.Errorf("VerifySelf should be valid, errors=%v", result.Errors)
+				}
+			})
+
+			t.Run("IsStrict", func(t *testing.T) {
+				if agent.IsStrict() {
+					t.Error("ephemeral agent should not be strict")
+				}
+			})
+
+			t.Run("ConfigPath", func(t *testing.T) {
+				cp := agent.ConfigPath()
+				if cp != nil {
+					t.Errorf("ephemeral agent should have nil ConfigPath, got %q", *cp)
+				}
+			})
+		})
+	}
 }
 
 // =============================================================================
@@ -416,44 +446,66 @@ func TestParityVerifyByIDRejectsBadFormat(t *testing.T) {
 	}
 }
 
+func TestParityVerifyWithKeyRejectsInvalidBase64(t *testing.T) {
+	skipIfLibraryMissing(t)
+	agent := ephemeral(t, "ed25519")
+
+	signed, err := agent.SignMessage(map[string]interface{}{"test": 1})
+	if err != nil {
+		t.Fatalf("SignMessage failed: %v", err)
+	}
+
+	result, verifyErr := agent.VerifyWithKey(signed.Raw, "not-valid-base64!!!")
+	// Either an error or valid=false is acceptable.
+	if verifyErr == nil && result != nil && result.Valid {
+		t.Error("VerifyWithKey should reject invalid base64 key")
+	}
+}
+
 // =============================================================================
 // 6. Sign file parity
 // =============================================================================
 
 func TestParitySignFile(t *testing.T) {
 	skipIfLibraryMissing(t)
-	agent := ephemeral(t, "ed25519")
+	fixtures := loadParityFixtures(t)
 
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "parity_test_file.txt")
-	if err := os.WriteFile(filePath, []byte("parity test content"), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	for _, algo := range fixtures.Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent := ephemeral(t, algo)
 
-	signed, err := agent.SignFile(filePath, true)
-	if err != nil {
-		t.Fatalf("SignFile failed: %v", err)
-	}
+			tmpDir := t.TempDir()
+			filePath := filepath.Join(tmpDir, "parity_test_file.txt")
+			if err := os.WriteFile(filePath, []byte("parity test content"), 0644); err != nil {
+				t.Fatalf("failed to write test file: %v", err)
+			}
 
-	// Check structure.
-	var doc map[string]interface{}
-	if err := json.Unmarshal([]byte(signed.Raw), &doc); err != nil {
-		t.Fatalf("SignFile output is not valid JSON: %v", err)
-	}
-	if _, ok := doc["jacsSignature"]; !ok {
-		t.Error("signed file should have jacsSignature")
-	}
-	if _, ok := doc["jacsId"]; !ok {
-		t.Error("signed file should have jacsId")
-	}
+			signed, err := agent.SignFile(filePath, true)
+			if err != nil {
+				t.Fatalf("SignFile failed: %v", err)
+			}
 
-	// Verify the signed file.
-	result, err := agent.Verify(signed.Raw)
-	if err != nil {
-		t.Fatalf("Verify signed file failed: %v", err)
-	}
-	if !result.Valid {
-		t.Errorf("signed file should verify, errors=%v", result.Errors)
+			// Check structure.
+			var doc map[string]interface{}
+			if err := json.Unmarshal([]byte(signed.Raw), &doc); err != nil {
+				t.Fatalf("SignFile output is not valid JSON: %v", err)
+			}
+			if _, ok := doc["jacsSignature"]; !ok {
+				t.Error("signed file should have jacsSignature")
+			}
+			if _, ok := doc["jacsId"]; !ok {
+				t.Error("signed file should have jacsId")
+			}
+
+			// Verify the signed file.
+			result, err := agent.Verify(signed.Raw)
+			if err != nil {
+				t.Fatalf("Verify signed file failed: %v", err)
+			}
+			if !result.Valid {
+				t.Errorf("[%s] signed file should verify, errors=%v", algo, result.Errors)
+			}
+		})
 	}
 }
 
@@ -464,38 +516,131 @@ func TestParitySignFile(t *testing.T) {
 func TestParityVerificationResultStructure(t *testing.T) {
 	skipIfLibraryMissing(t)
 	fixtures := loadParityFixtures(t)
-	agent := ephemeral(t, "ed25519")
 
-	signed, err := agent.SignMessage(map[string]interface{}{"structure_test": true})
+	for _, algo := range fixtures.Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent := ephemeral(t, algo)
+
+			signed, err := agent.SignMessage(map[string]interface{}{"structure_test": true})
+			if err != nil {
+				t.Fatalf("SignMessage failed: %v", err)
+			}
+
+			result, err := agent.Verify(signed.Raw)
+			if err != nil {
+				t.Fatalf("Verify failed: %v", err)
+			}
+
+			// The Go VerificationResult is a typed struct, so we re-marshal it to JSON
+			// and check field presence against the fixture expectations.
+			resultJSON, err := json.Marshal(result)
+			if err != nil {
+				t.Fatalf("failed to marshal VerificationResult: %v", err)
+			}
+			var resultMap map[string]interface{}
+			if err := json.Unmarshal(resultJSON, &resultMap); err != nil {
+				t.Fatalf("failed to unmarshal VerificationResult JSON: %v", err)
+			}
+
+			for _, field := range fixtures.ExpectedVerifyRes.Required {
+				if _, ok := resultMap[field]; !ok {
+					t.Errorf("[%s] verification result missing required field %q", algo, field)
+				}
+			}
+		})
+	}
+}
+
+// =============================================================================
+// 8. Verify with explicit key parity
+// =============================================================================
+
+func TestParityVerifyWithKey(t *testing.T) {
+	skipIfLibraryMissing(t)
+	fixtures := loadParityFixtures(t)
+
+	for _, algo := range fixtures.Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent := ephemeral(t, algo)
+
+			keyB64, err := agent.GetPublicKeyBase64()
+			if err != nil {
+				t.Fatalf("GetPublicKeyBase64 failed: %v", err)
+			}
+
+			input := fixtures.SignMessageInputs[0]
+			signed, err := agent.SignMessage(input.Data)
+			if err != nil {
+				t.Fatalf("SignMessage failed: %v", err)
+			}
+
+			result, err := agent.VerifyWithKey(signed.Raw, keyB64)
+			if err != nil {
+				t.Fatalf("VerifyWithKey failed: %v", err)
+			}
+			if !result.Valid {
+				t.Errorf("[%s] verify with explicit key should succeed, errors=%v", algo, result.Errors)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// 9. Cross-algorithm structure consistency
+// =============================================================================
+
+func TestParityCrossAlgorithmStructure(t *testing.T) {
+	skipIfLibraryMissing(t)
+	fixtures := loadParityFixtures(t)
+	if len(fixtures.Algorithms) < 2 {
+		t.Skip("need at least 2 algorithms for cross-algorithm test")
+	}
+
+	edAgent := ephemeral(t, "ed25519")
+	pqAgent := ephemeral(t, "pq2025")
+	input := fixtures.SignMessageInputs[0]
+
+	edSigned, err := edAgent.SignMessage(input.Data)
 	if err != nil {
-		t.Fatalf("SignMessage failed: %v", err)
+		t.Fatalf("ed25519 SignMessage failed: %v", err)
 	}
-
-	result, err := agent.Verify(signed.Raw)
+	pqSigned, err := pqAgent.SignMessage(input.Data)
 	if err != nil {
-		t.Fatalf("Verify failed: %v", err)
+		t.Fatalf("pq2025 SignMessage failed: %v", err)
 	}
 
-	// The Go VerificationResult is a typed struct, so we re-marshal it to JSON
-	// and check field presence against the fixture expectations.
-	resultJSON, err := json.Marshal(result)
-	if err != nil {
-		t.Fatalf("failed to marshal VerificationResult: %v", err)
+	var edDoc, pqDoc map[string]interface{}
+	if err := json.Unmarshal([]byte(edSigned.Raw), &edDoc); err != nil {
+		t.Fatalf("ed25519 output is not valid JSON: %v", err)
 	}
-	var resultMap map[string]interface{}
-	if err := json.Unmarshal(resultJSON, &resultMap); err != nil {
-		t.Fatalf("failed to unmarshal VerificationResult JSON: %v", err)
+	if err := json.Unmarshal([]byte(pqSigned.Raw), &pqDoc); err != nil {
+		t.Fatalf("pq2025 output is not valid JSON: %v", err)
 	}
 
-	for _, field := range fixtures.ExpectedVerifyRes.Required {
-		if _, ok := resultMap[field]; !ok {
-			t.Errorf("verification result missing required field %q", field)
+	edSig, ok := edDoc["jacsSignature"].(map[string]interface{})
+	if !ok {
+		t.Fatal("ed25519 jacsSignature is not an object")
+	}
+	pqSig, ok := pqDoc["jacsSignature"].(map[string]interface{})
+	if !ok {
+		t.Fatal("pq2025 jacsSignature is not an object")
+	}
+
+	edKeys := sortedKeys(edSig)
+	pqKeys := sortedKeys(pqSig)
+
+	if len(edKeys) != len(pqKeys) {
+		t.Fatalf("jacsSignature field count differs: ed25519=%v, pq2025=%v", edKeys, pqKeys)
+	}
+	for i := range edKeys {
+		if edKeys[i] != pqKeys[i] {
+			t.Fatalf("jacsSignature fields differ at index %d: ed25519=%v, pq2025=%v", i, edKeys, pqKeys)
 		}
 	}
 }
 
 // =============================================================================
-// 8. CreateSimpleAgentWithParams parity
+// 10. CreateSimpleAgentWithParams parity
 // =============================================================================
 
 func TestParityCreateWithParams(t *testing.T) {
@@ -552,7 +697,7 @@ func TestParityCreateWithParams(t *testing.T) {
 }
 
 // =============================================================================
-// 9. Signed document fields populated in Go wrapper
+// 11. Signed document fields populated in Go wrapper
 // =============================================================================
 
 func TestParitySignedDocumentGoFields(t *testing.T) {
@@ -588,30 +733,31 @@ func TestParitySignedDocumentGoFields(t *testing.T) {
 }
 
 // =============================================================================
-// 10. EphemeralSimpleAgent returns usable AgentInfo
+// 12. EphemeralSimpleAgent returns usable AgentInfo
 // =============================================================================
 
 func TestParityEphemeralAgentInfo(t *testing.T) {
 	skipIfLibraryMissing(t)
 
-	algo := "ed25519"
-	agent, info, err := EphemeralSimpleAgent(&algo)
-	if err != nil {
-		t.Fatalf("EphemeralSimpleAgent failed: %v", err)
-	}
-	defer agent.Close()
+	for _, algo := range loadParityFixtures(t).Algorithms {
+		t.Run(algo, func(t *testing.T) {
+			agent, info, err := EphemeralSimpleAgent(&algo)
+			if err != nil {
+				t.Fatalf("EphemeralSimpleAgent failed: %v", err)
+			}
+			defer agent.Close()
 
-	if info == nil {
-		t.Fatal("EphemeralSimpleAgent should return non-nil AgentInfo")
-	}
-	// AgentInfo.AgentID may or may not be populated from the ephemeral FFI;
-	// the key contract is that GetAgentID() works on the agent itself.
-	agentID, err := agent.GetAgentID()
-	if err != nil {
-		t.Fatalf("GetAgentID failed: %v", err)
-	}
-	if agentID == "" {
-		t.Error("ephemeral agent should have a non-empty agent ID")
+			if info == nil {
+				t.Fatal("EphemeralSimpleAgent should return non-nil AgentInfo")
+			}
+			agentID, err := agent.GetAgentID()
+			if err != nil {
+				t.Fatalf("GetAgentID failed: %v", err)
+			}
+			if agentID == "" {
+				t.Error("ephemeral agent should have a non-empty agent ID")
+			}
+		})
 	}
 }
 
@@ -625,4 +771,14 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// sortedKeys returns the keys of a map in sorted order.
+func sortedKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

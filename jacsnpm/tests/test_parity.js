@@ -63,10 +63,11 @@ function skipUnless(condition, msg) {
   return {};
 }
 
-const ALGO = 'ed25519';
+// Use all algorithms from the fixture file instead of hardcoding one.
+const ALGORITHMS = fixtures ? fixtures.algorithms : ['ed25519'];
 
 function createEphemeral(algorithm) {
-  return JacsSimpleAgent.ephemeral(algorithm || ALGO);
+  return JacsSimpleAgent.ephemeral(algorithm || 'ed25519');
 }
 
 /**
@@ -82,138 +83,144 @@ function assertValidBase64(str, label) {
 // 1. Structural parity: signed documents have required fields
 // =============================================================================
 
-describe('Parity: signed document structure', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
-  let agent;
+for (const algo of ALGORITHMS) {
+  describe(`Parity: signed document structure [${algo}]`, skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+    let agent;
 
-  before(() => {
-    agent = createEphemeral();
+    before(() => {
+      agent = createEphemeral(algo);
+    });
+
+    const requiredTop = () => fixtures.expected_signed_document_fields.required_top_level;
+    const requiredSig = () => fixtures.expected_signed_document_fields.required_signature_fields;
+
+    for (const input of (fixtures ? fixtures.sign_message_inputs : [])) {
+      it(`signed document for "${input.name}" has required top-level fields`, () => {
+        const dataJson = JSON.stringify(input.data);
+        const signedJson = agent.signMessage(dataJson);
+        const signed = JSON.parse(signedJson);
+
+        for (const field of requiredTop()) {
+          assert.ok(
+            field in signed,
+            `[${algo}] signed document for '${input.name}' missing required field '${field}'`,
+          );
+        }
+      });
+
+      it(`signed document for "${input.name}" has required jacsSignature fields`, () => {
+        const dataJson = JSON.stringify(input.data);
+        const signedJson = agent.signMessage(dataJson);
+        const signed = JSON.parse(signedJson);
+
+        assert.ok('jacsSignature' in signed, 'jacsSignature should exist');
+        const sigObj = signed.jacsSignature;
+
+        for (const field of requiredSig()) {
+          assert.ok(
+            field in sigObj,
+            `[${algo}] jacsSignature for '${input.name}' missing required field '${field}'`,
+          );
+        }
+      });
+    }
   });
-
-  const requiredTop = () => fixtures.expected_signed_document_fields.required_top_level;
-  const requiredSig = () => fixtures.expected_signed_document_fields.required_signature_fields;
-
-  for (const input of (fixtures ? fixtures.sign_message_inputs : [])) {
-    it(`signed document for "${input.name}" has required top-level fields`, () => {
-      const dataJson = JSON.stringify(input.data);
-      const signedJson = agent.signMessage(dataJson);
-      const signed = JSON.parse(signedJson);
-
-      for (const field of requiredTop()) {
-        assert.ok(
-          field in signed,
-          `[${ALGO}] signed document for '${input.name}' missing required field '${field}'`,
-        );
-      }
-    });
-
-    it(`signed document for "${input.name}" has required jacsSignature fields`, () => {
-      const dataJson = JSON.stringify(input.data);
-      const signedJson = agent.signMessage(dataJson);
-      const signed = JSON.parse(signedJson);
-
-      assert.ok('jacsSignature' in signed, 'jacsSignature should exist');
-      const sigObj = signed.jacsSignature;
-
-      for (const field of requiredSig()) {
-        assert.ok(
-          field in sigObj,
-          `[${ALGO}] jacsSignature for '${input.name}' missing required field '${field}'`,
-        );
-      }
-    });
-  }
-});
+}
 
 // =============================================================================
 // 2. Roundtrip parity: sign -> verify succeeds for all fixture inputs
 // =============================================================================
 
-describe('Parity: sign/verify roundtrip', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
-  let agent;
+for (const algo of ALGORITHMS) {
+  describe(`Parity: sign/verify roundtrip [${algo}]`, skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+    let agent;
 
-  before(() => {
-    agent = createEphemeral();
-  });
-
-  for (const input of (fixtures ? fixtures.sign_message_inputs : [])) {
-    it(`roundtrip for "${input.name}" succeeds`, () => {
-      const dataJson = JSON.stringify(input.data);
-      const signedJson = agent.signMessage(dataJson);
-
-      const verifyResultJson = agent.verify(signedJson);
-      const result = JSON.parse(verifyResultJson);
-
-      assert.strictEqual(
-        result.valid,
-        true,
-        `[${ALGO}] roundtrip verification failed for '${input.name}'`,
-      );
+    before(() => {
+      agent = createEphemeral(algo);
     });
-  }
-});
+
+    for (const input of (fixtures ? fixtures.sign_message_inputs : [])) {
+      it(`roundtrip for "${input.name}" succeeds`, () => {
+        const dataJson = JSON.stringify(input.data);
+        const signedJson = agent.signMessage(dataJson);
+
+        const verifyResultJson = agent.verify(signedJson);
+        const result = JSON.parse(verifyResultJson);
+
+        assert.strictEqual(
+          result.valid,
+          true,
+          `[${algo}] roundtrip verification failed for '${input.name}'`,
+        );
+      });
+    }
+  });
+}
 
 // =============================================================================
 // 3. Identity methods parity
 // =============================================================================
 
-describe('Parity: identity methods', skipUnless(nativeAvailable, 'native module not available'), () => {
-  let agent;
+for (const algo of ALGORITHMS) {
+  describe(`Parity: identity methods [${algo}]`, skipUnless(nativeAvailable, 'native module not available'), () => {
+    let agent;
 
-  before(() => {
-    agent = createEphemeral();
-  });
+    before(() => {
+      agent = createEphemeral(algo);
+    });
 
-  it('getAgentId returns a non-empty string', () => {
-    const agentId = agent.getAgentId();
-    assert.ok(typeof agentId === 'string' && agentId.length > 0, 'agent_id should be non-empty');
-  });
+    it('getAgentId returns a non-empty string', () => {
+      const agentId = agent.getAgentId();
+      assert.ok(typeof agentId === 'string' && agentId.length > 0, 'agent_id should be non-empty');
+    });
 
-  it('keyId returns a non-empty string', () => {
-    const kid = agent.keyId();
-    assert.ok(typeof kid === 'string' && kid.length > 0, 'key_id should be non-empty');
-  });
+    it('keyId returns a non-empty string', () => {
+      const kid = agent.keyId();
+      assert.ok(typeof kid === 'string' && kid.length > 0, 'key_id should be non-empty');
+    });
 
-  it('getPublicKeyPem returns PEM format', () => {
-    const pem = agent.getPublicKeyPem();
-    assert.ok(
-      pem.includes('-----BEGIN') || pem.includes('PUBLIC KEY'),
-      'should return PEM format',
-    );
-  });
+    it('getPublicKeyPem returns PEM format', () => {
+      const pem = agent.getPublicKeyPem();
+      assert.ok(
+        pem.includes('-----BEGIN') || pem.includes('PUBLIC KEY'),
+        'should return PEM format',
+      );
+    });
 
-  it('getPublicKeyBase64 returns valid base64', () => {
-    const keyB64 = agent.getPublicKeyBase64();
-    assertValidBase64(keyB64, 'public key base64');
-  });
+    it('getPublicKeyBase64 returns valid base64', () => {
+      const keyB64 = agent.getPublicKeyBase64();
+      assertValidBase64(keyB64, 'public key base64');
+    });
 
-  it('exportAgent returns valid JSON with jacsId', () => {
-    const exported = agent.exportAgent();
-    const parsed = JSON.parse(exported);
-    assert.ok('jacsId' in parsed, 'exported agent should have jacsId');
-  });
+    it('exportAgent returns valid JSON with jacsId', () => {
+      const exported = agent.exportAgent();
+      const parsed = JSON.parse(exported);
+      assert.ok('jacsId' in parsed, 'exported agent should have jacsId');
+    });
 
-  it('diagnostics returns valid JSON with expected keys', () => {
-    const diag = agent.diagnostics();
-    const diagV = JSON.parse(diag);
-    assert.ok('jacs_version' in diagV, 'diagnostics should have jacs_version');
-    assert.strictEqual(diagV.agent_loaded, true, 'diagnostics should show agent_loaded=true');
-  });
+    it('diagnostics returns valid JSON with expected keys', () => {
+      const diag = agent.diagnostics();
+      const diagV = JSON.parse(diag);
+      assert.ok('jacs_version' in diagV, 'diagnostics should have jacs_version');
+      assert.strictEqual(diagV.agent_loaded, true, 'diagnostics should show agent_loaded=true');
+    });
 
-  it('verifySelf succeeds', () => {
-    const selfResultJson = agent.verifySelf();
-    const selfResult = JSON.parse(selfResultJson);
-    assert.strictEqual(selfResult.valid, true, 'verify_self should be valid');
-  });
+    it('verifySelf succeeds', () => {
+      const selfResultJson = agent.verifySelf();
+      const selfResult = JSON.parse(selfResultJson);
+      assert.strictEqual(selfResult.valid, true, 'verify_self should be valid');
+    });
 
-  it('isStrict returns false for ephemeral agent', () => {
-    assert.strictEqual(agent.isStrict(), false, 'ephemeral agent should not be strict');
-  });
+    it('isStrict returns false for ephemeral agent', () => {
+      assert.strictEqual(agent.isStrict(), false, 'ephemeral agent should not be strict');
+    });
 
-  it('configPath returns null/undefined for ephemeral agent', () => {
-    const cp = agent.configPath();
-    assert.ok(cp === null || cp === undefined, 'ephemeral agent should have no config_path');
+    it('configPath returns null/undefined for ephemeral agent', () => {
+      const cp = agent.configPath();
+      assert.ok(cp === null || cp === undefined, 'ephemeral agent should have no config_path');
+    });
   });
-});
+}
 
 // =============================================================================
 // 4. Error parity: invalid inputs are rejected
@@ -288,125 +295,148 @@ describe('Parity: error handling', skipUnless(nativeAvailable, 'native module no
 // 5. Sign raw bytes parity
 // =============================================================================
 
-describe('Parity: signRawBytes', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
-  let agent;
+for (const algo of ALGORITHMS) {
+  describe(`Parity: signRawBytes [${algo}]`, skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+    let agent;
 
-  before(() => {
-    agent = createEphemeral();
-  });
-
-  for (const input of (fixtures ? fixtures.sign_raw_bytes_inputs : [])) {
-    it(`signRawBytes for "${input.name}" returns valid base64`, () => {
-      const dataBytes = Buffer.from(input.data_base64, 'base64');
-      const sigB64 = agent.signRawBytes(dataBytes);
-
-      assertValidBase64(sigB64, `signRawBytes result for '${input.name}'`);
+    before(() => {
+      agent = createEphemeral(algo);
     });
-  }
-});
+
+    for (const input of (fixtures ? fixtures.sign_raw_bytes_inputs : [])) {
+      it(`signRawBytes for "${input.name}" returns valid base64`, () => {
+        const dataBytes = Buffer.from(input.data_base64, 'base64');
+        const sigB64 = agent.signRawBytes(dataBytes);
+
+        assertValidBase64(sigB64, `signRawBytes result for '${input.name}'`);
+      });
+    }
+  });
+}
 
 // =============================================================================
 // 6. Verify with explicit key parity
 // =============================================================================
 
-describe('Parity: verifyWithKey', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
-  let agent;
+for (const algo of ALGORITHMS) {
+  describe(`Parity: verifyWithKey [${algo}]`, skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+    let agent;
 
-  before(() => {
-    agent = createEphemeral();
+    before(() => {
+      agent = createEphemeral(algo);
+    });
+
+    it('verify with explicit public key succeeds', () => {
+      const keyB64 = agent.getPublicKeyBase64();
+      const input = fixtures.sign_message_inputs[0]; // simple_message
+      const dataJson = JSON.stringify(input.data);
+      const signedJson = agent.signMessage(dataJson);
+
+      const resultJson = agent.verifyWithKey(signedJson, keyB64);
+      const result = JSON.parse(resultJson);
+
+      assert.strictEqual(result.valid, true, `[${algo}] verify with explicit key should succeed`);
+    });
   });
-
-  it('verify with explicit public key succeeds', () => {
-    const keyB64 = agent.getPublicKeyBase64();
-    const input = fixtures.sign_message_inputs[0]; // simple_message
-    const dataJson = JSON.stringify(input.data);
-    const signedJson = agent.signMessage(dataJson);
-
-    const resultJson = agent.verifyWithKey(signedJson, keyB64);
-    const result = JSON.parse(resultJson);
-
-    assert.strictEqual(result.valid, true, 'verify with explicit key should succeed');
-  });
-});
+}
 
 // =============================================================================
 // 7. Sign file parity
 // =============================================================================
 
-describe('Parity: signFile', skipUnless(nativeAvailable, 'native module not available'), () => {
-  let agent;
-  let tmpDir;
+for (const algo of ALGORITHMS) {
+  describe(`Parity: signFile [${algo}]`, skipUnless(nativeAvailable, 'native module not available'), () => {
+    let agent;
+    let tmpDir;
 
-  before(() => {
-    agent = createEphemeral();
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-parity-'));
+    before(() => {
+      agent = createEphemeral(algo);
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-parity-'));
+    });
+
+    it('signFile produces signed document with required fields', () => {
+      const filePath = path.join(tmpDir, 'parity_test_file.txt');
+      fs.writeFileSync(filePath, 'parity test content');
+
+      const signedJson = agent.signFile(filePath, true);
+      const signed = JSON.parse(signedJson);
+
+      assert.ok('jacsSignature' in signed, 'signed file should have jacsSignature');
+      assert.ok('jacsId' in signed, 'signed file should have jacsId');
+
+      // Verify the signed file
+      const verifyJson = agent.verify(signedJson);
+      const result = JSON.parse(verifyJson);
+      assert.strictEqual(result.valid, true, `[${algo}] signed file should verify`);
+    });
+
+    // Cleanup
+    after(() => {
+      if (tmpDir) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
   });
-
-  it('signFile produces signed document with required fields', () => {
-    const filePath = path.join(tmpDir, 'parity_test_file.txt');
-    fs.writeFileSync(filePath, 'parity test content');
-
-    const signedJson = agent.signFile(filePath, true);
-    const signed = JSON.parse(signedJson);
-
-    assert.ok('jacsSignature' in signed, 'signed file should have jacsSignature');
-    assert.ok('jacsId' in signed, 'signed file should have jacsId');
-
-    // Verify the signed file
-    const verifyJson = agent.verify(signedJson);
-    const result = JSON.parse(verifyJson);
-    assert.strictEqual(result.valid, true, 'signed file should verify');
-  });
-
-  // Cleanup
-  after(() => {
-    if (tmpDir) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-});
+}
 
 // =============================================================================
 // 8. Verification result structure parity
 // =============================================================================
 
-describe('Parity: verification result structure', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
-  let agent;
+for (const algo of ALGORITHMS) {
+  describe(`Parity: verification result structure [${algo}]`, skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
+    let agent;
 
-  before(() => {
-    agent = createEphemeral();
+    before(() => {
+      agent = createEphemeral(algo);
+    });
+
+    it('verification result has required fields', () => {
+      const requiredFields = fixtures.expected_verification_result_fields.required;
+
+      const signedJson = agent.signMessage(JSON.stringify({ structure_test: true }));
+      const verifyJson = agent.verify(signedJson);
+      const result = JSON.parse(verifyJson);
+
+      for (const field of requiredFields) {
+        assert.ok(
+          field in result,
+          `[${algo}] verification result missing required field '${field}'`,
+        );
+      }
+    });
   });
-
-  it('verification result has required fields', () => {
-    const requiredFields = fixtures.expected_verification_result_fields.required;
-
-    const signedJson = agent.signMessage(JSON.stringify({ structure_test: true }));
-    const verifyJson = agent.verify(signedJson);
-    const result = JSON.parse(verifyJson);
-
-    for (const field of requiredFields) {
-      assert.ok(
-        field in result,
-        `verification result missing required field '${field}'`,
-      );
-    }
-  });
-});
+}
 
 // =============================================================================
 // 9. Cross-algorithm structure consistency
 // =============================================================================
 
 describe('Parity: cross-algorithm structure consistency', skipUnless(nativeAvailable && fixtures, 'native module or fixtures not available'), () => {
-  it('ed25519 signed document has jacsId and jacsSignature', () => {
+  it('ed25519 and pq2025 signed documents have same jacsSignature field names', () => {
     const edAgent = createEphemeral('ed25519');
+    const pqAgent = createEphemeral('pq2025');
     const input = fixtures.sign_message_inputs[0];
     const dataJson = JSON.stringify(input.data);
 
-    const signedJson = edAgent.signMessage(dataJson);
-    const signed = JSON.parse(signedJson);
+    const edSignedJson = edAgent.signMessage(dataJson);
+    const pqSignedJson = pqAgent.signMessage(dataJson);
+    const edSigned = JSON.parse(edSignedJson);
+    const pqSigned = JSON.parse(pqSignedJson);
 
-    assert.ok('jacsId' in signed, 'ed25519 signed doc should have jacsId');
-    assert.ok('jacsSignature' in signed, 'ed25519 signed doc should have jacsSignature');
+    // Both should have jacsId and jacsSignature
+    assert.ok('jacsId' in edSigned, 'ed25519 signed doc should have jacsId');
+    assert.ok('jacsId' in pqSigned, 'pq2025 signed doc should have jacsId');
+    assert.ok('jacsSignature' in edSigned, 'ed25519 signed doc should have jacsSignature');
+    assert.ok('jacsSignature' in pqSigned, 'pq2025 signed doc should have jacsSignature');
+
+    // Signature objects should have the same field names
+    const edSigKeys = Object.keys(edSigned.jacsSignature).sort();
+    const pqSigKeys = Object.keys(pqSigned.jacsSignature).sort();
+    assert.deepStrictEqual(
+      edSigKeys,
+      pqSigKeys,
+      `jacsSignature fields should be identical across algorithms: ed25519=${JSON.stringify(edSigKeys)}, pq2025=${JSON.stringify(pqSigKeys)}`,
+    );
   });
 });

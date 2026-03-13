@@ -1114,6 +1114,62 @@ impl SimpleAgent {
         Ok((SimpleAgent { inner: wrapper }, dict.into()))
     }
 
+    /// Create a new JACS agent from a JSON parameters string.
+    ///
+    /// This matches the API shape of Node's `JacsSimpleAgent.createWithParams(paramsJSON)`
+    /// and Go's `CreateSimpleAgentWithParams(paramsJSON)`.
+    ///
+    /// Args:
+    ///     params_json: A JSON string of CreateAgentParams fields
+    ///         (e.g., `{"name":"foo","password":"bar","algorithm":"ed25519"}`)
+    ///
+    /// Returns:
+    ///     Tuple of (SimpleAgent, dict with agent info)
+    #[staticmethod]
+    fn create_with_params(py: Python, params_json: &str) -> PyResult<(Self, PyObject)> {
+        let (wrapper, info_json) =
+            SimpleAgentWrapper::create_with_params(params_json).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create agent with params: {}",
+                    e
+                ))
+            })?;
+
+        let info: serde_json::Value = serde_json::from_str(&info_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to parse agent info: {}",
+                e
+            ))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("agent_id", info["agent_id"].as_str().unwrap_or(""))?;
+        dict.set_item("name", info["name"].as_str().unwrap_or(""))?;
+        dict.set_item(
+            "public_key_path",
+            info["public_key_path"].as_str().unwrap_or(""),
+        )?;
+        dict.set_item("config_path", info["config_path"].as_str().unwrap_or(""))?;
+        dict.set_item("version", info["version"].as_str().unwrap_or(""))?;
+        dict.set_item("algorithm", info["algorithm"].as_str().unwrap_or(""))?;
+        dict.set_item(
+            "private_key_path",
+            info["private_key_path"].as_str().unwrap_or(""),
+        )?;
+        dict.set_item(
+            "data_directory",
+            info["data_directory"].as_str().unwrap_or(""),
+        )?;
+        dict.set_item(
+            "key_directory",
+            info["key_directory"].as_str().unwrap_or(""),
+        )?;
+        dict.set_item("domain", info["domain"].as_str().unwrap_or(""))?;
+        dict.set_item("dns_record", info["dns_record"].as_str().unwrap_or(""))?;
+
+        Ok((SimpleAgent { inner: wrapper }, dict.into()))
+    }
+
     /// Verify a document by its ID from storage.
     ///
     /// Args:
