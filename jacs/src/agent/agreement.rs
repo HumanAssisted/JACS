@@ -351,10 +351,10 @@ impl Agreement for Agent {
                     );
                 }
             } else {
-                return Err("Agreement modification failed: agents field not found");
+                return Err("Agreement modification failed: agents field not found".into());
             }
         } else {
-            return Err("Agreement modification failed: no agreement field present");
+            return Err("Agreement modification failed: no agreement field present".into());
         }
 
         let updated_document =
@@ -671,7 +671,7 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("Agreement verification failed: agreement hashes do not match");
+            return Err("Agreement verification failed: agreement hashes do not match".into());
         }
 
         if let Some(jacs_agreement) = document.value.get(agreement_fieldname_key) {
@@ -714,7 +714,7 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("Agreement verification failed: agreement hashes do not match");
+            return Err("Agreement verification failed: agreement hashes do not match".into());
         }
 
         let jacs_agreement = document

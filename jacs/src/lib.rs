@@ -4,7 +4,6 @@ use tracing::error;
 
 use crate::agent::Agent;
 use crate::agent::loaders::FileLoader;
-use crate::error::JacsError;
 use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;

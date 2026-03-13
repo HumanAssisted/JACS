@@ -384,13 +384,15 @@ impl FileLoader for Agent {
                         match self.storage.get_file(&file_path, None) {
                             Ok(contents) => match String::from_utf8(contents) {
                                 Ok(doc) => documents.push(doc),
-                                Err(e) => errors.push(Box::new(e)),
+                                Err(e) => errors.push(JacsError::Internal {
+                                    message: e.to_string(),
+                                }),
                             },
-                            Err(e) => errors.push(Box::new(e)),
+                            Err(e) => errors.push(JacsError::from(e)),
                         }
                     }
                 }
-                Err(e) => errors.push(Box::new(e)),
+                Err(e) => errors.push(JacsError::from(e)),
             }
         }
 
@@ -644,7 +646,10 @@ impl FileLoader for Agent {
         let file_stem = path
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .ok_or_else(|| Box::new(std::io::Error::other("Failed to read file stem")))?;
+            .ok_or_else(|| JacsError::FileReadFailed {
+                path: file_path.to_string(),
+                reason: "Failed to read file stem".to_string(),
+            })?;
         let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
 
         // Create the backup path

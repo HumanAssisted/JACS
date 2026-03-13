@@ -67,11 +67,28 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
         return Ok(None);
     }
 
-    let filter = EnvFilter::new(&config.level)
-        .add_directive("hyper=warn".parse()?)
-        .add_directive("tonic=warn".parse()?)
-        .add_directive("h2=warn".parse()?)
-        .add_directive("reqwest=warn".parse()?);
+    let filter =
+        EnvFilter::new(&config.level)
+            .add_directive("hyper=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?)
+            .add_directive("tonic=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?)
+            .add_directive("h2=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?)
+            .add_directive("reqwest=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?);
 
     match &config.destination {
         LogDestination::File { path } => {
@@ -81,7 +98,8 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
             Registry::default()
                 .with(filter)
                 .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
-                .try_init()?;
+                .try_init()
+                .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
             Ok(Some(guard))
         }
         LogDestination::Stderr => {

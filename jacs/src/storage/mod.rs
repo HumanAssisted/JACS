@@ -485,8 +485,6 @@ use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::error::Error;
-
 /// Base trait for document storage operations (Level 1 in the trait hierarchy).
 ///
 /// Provides CRUD, listing, versioning, and bulk operations for JACS documents.

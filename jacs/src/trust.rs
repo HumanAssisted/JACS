@@ -716,7 +716,7 @@ fn verify_agent_self_signature(
         }
     };
 
-    let verify_with_payload = |payload: &str| -> Result<(), Box<dyn std::error::Error>> {
+    let verify_with_payload = |payload: &str| -> Result<(), JacsError> {
         match algo {
             CryptoSigningAlgorithm::RsaPss => crate::crypt::rsawrapper::verify_string(
                 public_key_bytes.to_vec(),

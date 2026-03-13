@@ -6,7 +6,6 @@ use crate::agent::agreement::Agreement;
 use crate::agent::document::DocumentTraits;
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
-use crate::error::JacsError;
 use tracing::{debug, info};
 
 pub fn document_create(

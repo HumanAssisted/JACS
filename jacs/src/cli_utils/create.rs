@@ -28,8 +28,7 @@ const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
 /// Accepts pre-built `CreateAgentParams` and delegates to `SimpleAgent::create_with_params()`.
 /// Use this when integrating CLI commands with the programmatic API.
 pub fn handle_agent_create_programmatic(params: CreateAgentParams) -> Result<AgentInfo, JacsError> {
-    let (_agent, info) =
-        SimpleAgent::create_with_params(params).map_err(|e| -> JacsError { Box::new(e) })?;
+    let (_agent, info) = SimpleAgent::create_with_params(params)?;
     Ok(info)
 }
 

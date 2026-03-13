@@ -557,6 +557,19 @@ impl From<&str> for JacsError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+impl From<object_store::Error> for JacsError {
+    fn from(err: object_store::Error) -> Self {
+        JacsError::StorageError(err.to_string())
+    }
+}
+
+impl From<base64::DecodeError> for JacsError {
+    fn from(err: base64::DecodeError) -> Self {
+        JacsError::CryptoError(format!("base64 decode failed: {}", err))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

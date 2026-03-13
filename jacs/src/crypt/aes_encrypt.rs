@@ -317,7 +317,8 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
 /// - Not be empty or whitespace-only
 pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, JacsError> {
     // Password is required and must be non-empty
-    let password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
+    let password =
+        get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
 
     // Validate password strength
     validate_password(&password)?;
@@ -409,7 +410,8 @@ pub fn decrypt_private_key_secure(
     // 1. The password must match whatever was used during encryption
     // 2. Existing keys may have been encrypted with older/weaker passwords
     // Password strength is validated only during encrypt_private_key()
-    let password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
+    let password =
+        get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
 
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(

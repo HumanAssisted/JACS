@@ -152,9 +152,12 @@ impl FsEncryptedStore {
 
     /// Compute the current on-disk paths for the private and public key files.
     fn key_paths() -> Result<(String, String, String), JacsError> {
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
+        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
+        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
         let final_priv_path = if !priv_path.ends_with(".enc") {
@@ -231,15 +234,19 @@ impl KeyStore for FsEncryptedStore {
             pub_len = pub_key.len(),
             "FsEncryptedStore::generate keys created"
         );
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
         let storage = Self::storage_for_key_dir(&key_dir)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
+        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
+        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
 
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
 
-        let _password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
+        let _password =
+            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
         let enc = encrypt_private_key(&priv_key).map_err(|e| {
             format!(
                 "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
@@ -274,12 +281,15 @@ impl KeyStore for FsEncryptedStore {
     }
 
     fn load_private(&self) -> Result<Vec<u8>, JacsError> {
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
         let storage = Self::storage_for_key_dir(&key_dir)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
+        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let enc_path = format!("{}.enc", priv_path);
-        let _password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
+        let _password =
+            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
 
         let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
             storage.get_file(&enc_path, None).map_err(|e2| {
@@ -309,9 +319,11 @@ impl KeyStore for FsEncryptedStore {
     }
 
     fn load_public(&self) -> Result<Vec<u8>, JacsError> {
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
         let storage = Self::storage_for_key_dir(&key_dir)?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
+        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
         let bytes = storage.get_file(&pub_path, None).map_err(|e| {
             format!(
@@ -360,7 +372,9 @@ impl KeyStore for FsEncryptedStore {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
-        Ok(STANDARD.decode(sig_b64)?)
+        Ok(STANDARD
+            .decode(sig_b64)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?)
     }
 
     fn rotate(&self, old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
@@ -561,7 +575,9 @@ impl KeyStore for InMemoryKeyStore {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
-        Ok(STANDARD.decode(sig_b64)?)
+        Ok(STANDARD
+            .decode(sig_b64)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?)
     }
 
     fn rotate(&self, _old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
