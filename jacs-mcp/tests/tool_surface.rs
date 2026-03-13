@@ -8,7 +8,7 @@ fn canonical_tool_surface_is_stable() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
-    assert_eq!(tools.len(), 33, "unexpected jacs-mcp tool count");
+    assert_eq!(tools.len(), 42, "unexpected jacs-mcp tool count");
     assert!(names.contains(&"jacs_sign_state"));
     assert!(names.contains(&"jacs_list_state"));
     assert!(names.contains(&"jacs_wrap_a2a_artifact"));
@@ -41,11 +41,28 @@ fn per_category_tool_counts_match_baseline() {
             ],
         ),
         (
+            "memory",
+            5,
+            &[
+                "jacs_memory_save",
+                "jacs_memory_recall",
+                "jacs_memory_list",
+                "jacs_memory_forget",
+                "jacs_memory_update",
+            ],
+        ),
+        (
             "agent management",
             2,
             &["jacs_create_agent", "jacs_reencrypt_key"],
         ),
-        ("audit", 1, &["jacs_audit"]),
+        ("security audit", 1, &["jacs_audit"]),
+        (
+            "audit trail",
+            3,
+            &["jacs_audit_log", "jacs_audit_query", "jacs_audit_export"],
+        ),
+        ("search", 1, &["jacs_search"]),
         (
             "messaging",
             4,
@@ -159,6 +176,9 @@ fn tool_names_snapshot_is_sorted_and_complete() {
         "jacs_attest_lift",
         "jacs_attest_verify",
         "jacs_audit",
+        "jacs_audit_export",
+        "jacs_audit_log",
+        "jacs_audit_query",
         "jacs_check_agreement",
         "jacs_create_agent",
         "jacs_create_agreement",
@@ -170,11 +190,17 @@ fn tool_names_snapshot_is_sorted_and_complete() {
         "jacs_list_state",
         "jacs_list_trusted_agents",
         "jacs_load_state",
+        "jacs_memory_forget",
+        "jacs_memory_list",
+        "jacs_memory_recall",
+        "jacs_memory_save",
+        "jacs_memory_update",
         "jacs_message_agree",
         "jacs_message_receive",
         "jacs_message_send",
         "jacs_message_update",
         "jacs_reencrypt_key",
+        "jacs_search",
         "jacs_sign_agreement",
         "jacs_sign_document",
         "jacs_sign_state",

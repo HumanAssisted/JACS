@@ -1656,9 +1656,12 @@ impl JacsMcpServer {
 
                 AuditExportResult {
                     success: true,
-                    signed_bundle: Some(doc_id),
+                    signed_bundle: Some(signed_doc_string),
                     entry_count,
-                    message: format!("Exported {} audit entries as signed bundle", entry_count),
+                    message: format!(
+                        "Exported {} audit entries as signed bundle (id: {})",
+                        entry_count, doc_id
+                    ),
                     error: None,
                 }
             }
@@ -3746,6 +3749,22 @@ impl JacsMcpServer {
                 jacs_document_id: params.jacs_id,
                 message: "Document is not a memory document".to_string(),
                 error: Some("NOT_A_MEMORY".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Check if already removed to avoid creating redundant versions.
+        if doc
+            .get("jacsAgentStateRemoved")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let result = MemoryForgetResult {
+                success: false,
+                jacs_document_id: params.jacs_id,
+                message: "Memory is already forgotten".to_string(),
+                error: Some("ALREADY_REMOVED".to_string()),
             };
             return serde_json::to_string_pretty(&result)
                 .unwrap_or_else(|e| format!("Error: {}", e));

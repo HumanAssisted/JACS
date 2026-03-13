@@ -13,9 +13,17 @@ keywords = ["mcp", "jacs", "ai", "agents", "signing"]
 categories = ["cryptography", "development-tools"]
 
 [features]
-default = ["mcp", "attestation"]
+default = ["mcp", "attestation", "core-tools"]
 mcp = ["dep:rmcp", "dep:tokio", "jacs/mcp-server"]
 attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
+# Tool family feature flags (Issue 010 / TASK_039).
+# core-tools enables all standard tool families by default.
+core-tools = ["state-tools", "memory-tools", "key-tools", "audit-tools", "search-tools"]
+state-tools = []
+memory-tools = []
+key-tools = []
+audit-tools = []
+search-tools = []
 
 [dependencies]
 anyhow = "1"
@@ -24,7 +32,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 rmcp = { version = "0.12", features = ["client", "server", "transport-io", "transport-child-process", "macros"], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"], optional = true }
 jacs = { version = "0.9.3", path = "../jacs", default-features = true }
-jacs-binding-core = { version = "0.9.3", path = "../binding-core" }
+jacs-binding-core = { version = "0.9.3", path = "../binding-core", features = ["a2a"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1.0"

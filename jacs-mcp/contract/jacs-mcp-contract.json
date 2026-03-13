@@ -5,7 +5,7 @@
     "title": "JACS MCP Server",
     "version": "0.9.3",
     "website_url": "https://humanassisted.github.io/JACS/",
-    "instructions": "This MCP server provides data provenance and cryptographic signing for agent state files and agent-to-agent messaging. Agent state tools: jacs_sign_state (sign files), jacs_verify_state (verify integrity), jacs_load_state (load with verification), jacs_update_state (update and re-sign), jacs_list_state (list signed docs), jacs_adopt_state (adopt external files). Messaging tools: jacs_message_send (create and sign a message), jacs_message_update (update and re-sign a message), jacs_message_agree (co-sign/agree to a message), jacs_message_receive (verify and extract a received message). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Security: jacs_audit (read-only security audit and health checks)."
+    "instructions": "This MCP server provides data provenance and cryptographic signing for agent state files and agent-to-agent messaging. Agent state tools: jacs_sign_state (sign files), jacs_verify_state (verify integrity), jacs_load_state (load with verification), jacs_update_state (update and re-sign), jacs_list_state (list signed docs), jacs_adopt_state (adopt external files). Memory tools: jacs_memory_save (save a memory), jacs_memory_recall (search memories by query), jacs_memory_list (list all memories), jacs_memory_forget (soft-delete a memory), jacs_memory_update (update an existing memory). Messaging tools: jacs_message_send (create and sign a message), jacs_message_update (update and re-sign a message), jacs_message_agree (co-sign/agree to a message), jacs_message_receive (verify and extract a received message). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Security: jacs_audit (read-only security audit and health checks). Audit trail: jacs_audit_log (record events as signed audit entries), jacs_audit_query (search audit trail by action, target, time range), jacs_audit_export (export audit trail as signed bundle). Search: jacs_search (unified search across all signed documents)."
   },
   "tools": [
     {
@@ -188,6 +188,138 @@
           }
         },
         "title": "JacsAuditParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_audit_export",
+      "description": "Export audit trail entries for a time period as a single signed JACS document. The exported bundle contains all matching audit entries and can be verified independently.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for exporting the audit trail as a signed bundle.",
+        "properties": {
+          "action": {
+            "description": "Optional filter by action type",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end_time": {
+            "description": "ISO 8601 end time for the export range (required)",
+            "type": "string"
+          },
+          "start_time": {
+            "description": "ISO 8601 start time for the export range (required)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_time",
+          "end_time"
+        ],
+        "title": "AuditExportParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_audit_log",
+      "description": "Record a tool-use, data-access, or other event as a cryptographically signed audit trail entry. The entry is stored as a private agentstate document with type 'hook'. Use this to maintain a tamper-evident log of agent actions.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for recording an audit trail event.",
+        "properties": {
+          "action": {
+            "description": "Action type for this audit entry (e.g., 'tool_use', 'data_access', 'sign', 'verify')",
+            "type": "string"
+          },
+          "details": {
+            "description": "Additional JSON-formatted details about the event",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "description": "Optional tags for categorizing this audit entry",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "What was acted upon (e.g., a JACS document ID or resource identifier)",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "AuditLogParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_audit_query",
+      "description": "Search the audit trail by action type, target, and/or time range. Returns matching audit entries from the signed audit log. Supports pagination.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for querying the audit trail.",
+        "properties": {
+          "action": {
+            "description": "Filter by action type (e.g., 'tool_use', 'data_access')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end_time": {
+            "description": "ISO 8601 end time for the query range (e.g., '2025-12-31T23:59:59Z')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "Maximum number of results to return (default: 50)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "description": "Pagination offset (default: 0)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "start_time": {
+            "description": "ISO 8601 start time for the query range (e.g., '2025-01-01T00:00:00Z')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "Filter by target resource identifier",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "AuditQueryParams",
         "type": "object"
       }
     },
@@ -507,6 +639,201 @@
       }
     },
     {
+      "name": "jacs_memory_forget",
+      "description": "Mark a memory document as removed. The document's provenance chain is preserved but the memory is no longer returned by recall or list operations.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for forgetting (soft-deleting) a memory.",
+        "properties": {
+          "jacs_id": {
+            "description": "JACS document ID of the memory to forget (uuid:version)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jacs_id"
+        ],
+        "title": "MemoryForgetParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_memory_list",
+      "description": "List all saved memory documents with optional filtering by tags or framework. Supports pagination via limit and offset parameters.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for listing memories with optional filtering.",
+        "properties": {
+          "framework": {
+            "description": "Optional framework filter",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "Maximum number of results to return (default: 20)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "description": "Pagination offset (default: 0)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tags": {
+            "description": "Optional tag filter (memories must have all specified tags)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "title": "MemoryListParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_memory_recall",
+      "description": "Search saved memories by query string and optional tag filter. Returns matching private memory documents. Use this to retrieve previously saved context or information.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for recalling (searching) memories.",
+        "properties": {
+          "limit": {
+            "description": "Maximum number of results to return (default: 10)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "query": {
+            "description": "Search query to match against memory name, content, and description",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Optional tag filter (memories must have all specified tags)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "MemoryRecallParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_memory_save",
+      "description": "Save a memory as a cryptographically signed private document. The memory is stored as an agentstate document with type 'memory' and private visibility. Use this to persist context, decisions, or learned information across sessions.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for saving a memory.",
+        "properties": {
+          "content": {
+            "description": "Memory content to save (text, JSON, markdown, etc.)",
+            "type": "string"
+          },
+          "description": {
+            "description": "Optional description of what this memory contains",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "framework": {
+            "description": "Optional framework identifier (e.g., 'claude-code', 'openai')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Human-readable name for this memory",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Optional tags for categorization and filtering",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ],
+        "title": "MemorySaveParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_memory_update",
+      "description": "Update an existing memory with new content, name, or tags. Creates a new signed version linked to the previous version.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for updating an existing memory.",
+        "properties": {
+          "content": {
+            "description": "New content for the memory (replaces existing content)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "jacs_id": {
+            "description": "JACS document ID of the memory to update (uuid:version)",
+            "type": "string"
+          },
+          "name": {
+            "description": "New name for the memory (replaces existing name)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "description": "New tags for the memory (replaces all existing tags)",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "jacs_id"
+        ],
+        "title": "MemoryUpdateParams",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_message_agree",
       "description": "Verify and co-sign (agree to) a received signed message. Creates an agreement document that references the original message.",
       "input_schema": {
@@ -627,6 +954,50 @@
           "new_password"
         ],
         "title": "ReencryptKeyParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_search",
+      "description": "Search across all signed documents using the unified search interface. Supports fulltext search with optional filtering by document type. Results include relevance scores and matching snippets. The search method (fulltext, vector, or hybrid) is chosen automatically based on the storage backend.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for the unified search tool.",
+        "properties": {
+          "jacs_type": {
+            "description": "Optional filter by JACS document type (e.g., 'agentstate', 'message', 'agreement')",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "Maximum number of results to return (default: 20)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offset": {
+            "description": "Pagination offset (default: 0)",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "query": {
+            "description": "Search query string to match against document content and names",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchParams",
         "type": "object"
       }
     },

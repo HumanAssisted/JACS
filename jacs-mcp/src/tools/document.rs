@@ -4,13 +4,7 @@ use rmcp::model::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-fn schema_map<T: JsonSchema>() -> serde_json::Map<String, serde_json::Value> {
-    let schema = schemars::schema_for!(T);
-    match serde_json::to_value(schema) {
-        Ok(serde_json::Value::Object(map)) => map,
-        _ => serde_json::Map::new(),
-    }
-}
+use super::schema_map;
 
 // =============================================================================
 // Request/Response Types

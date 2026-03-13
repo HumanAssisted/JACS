@@ -43,17 +43,47 @@ pub use state::*;
 pub use trust::*;
 
 use rmcp::model::Tool;
+use schemars::JsonSchema;
+
+/// Shared helper: generate a JSON Schema map for a type implementing `JsonSchema`.
+///
+/// Used by all tool family modules to produce the `input_schema` for MCP tool
+/// definitions. Centralised here to avoid duplication (was copy-pasted in all 11
+/// modules — see Issue 011).
+pub(crate) fn schema_map<T: JsonSchema>() -> serde_json::Map<String, serde_json::Value> {
+    let schema = schemars::schema_for!(T);
+    match serde_json::to_value(schema) {
+        Ok(serde_json::Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    }
+}
 
 /// Combine tool definitions from all families into one list.
 ///
 /// This is the single source of truth for the tool surface.
 /// The order here determines the order tools appear in `listTools`.
+///
+/// Tool families are gated by feature flags (Issue 010 / TASK_039):
+/// - `state-tools`: state management (sign, verify, load, update, list, adopt)
+/// - `memory-tools`: memory persistence (save, recall, list, forget, update)
+/// - `key-tools`: key/agent management (create agent, reencrypt, export, well-known)
+/// - `audit-tools`: security audit + audit trail (audit, log, query, export)
+/// - `search-tools`: unified search
+///
+/// All are included in the `core-tools` default feature.
+/// Messaging, agreements, document, A2A, trust, and attestation tools are
+/// always included (they have no separate feature gate yet).
 pub fn all_tools() -> Vec<Tool> {
     let mut tools = Vec::new();
+    #[cfg(feature = "state-tools")]
     tools.extend(state::tools());
+    #[cfg(feature = "memory-tools")]
     tools.extend(memory::tools());
+    #[cfg(feature = "key-tools")]
     tools.extend(key::tools());
+    #[cfg(feature = "audit-tools")]
     tools.extend(audit::tools());
+    #[cfg(feature = "search-tools")]
     tools.extend(search::tools());
     tools.extend(messaging::tools());
     tools.extend(agreements::tools());
