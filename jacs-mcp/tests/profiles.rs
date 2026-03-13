@@ -271,8 +271,10 @@ fn core_profile_excludes_agreement_tools() {
 
     for name in &names {
         assert!(
-            !name.starts_with("jacs_agreement") && !name.starts_with("jacs_create_agreement")
-                && !name.starts_with("jacs_sign_agreement") && !name.starts_with("jacs_check_agreement"),
+            !name.starts_with("jacs_agreement")
+                && !name.starts_with("jacs_create_agreement")
+                && !name.starts_with("jacs_sign_agreement")
+                && !name.starts_with("jacs_check_agreement"),
             "Core profile should not contain agreement tool '{}'",
             name
         );

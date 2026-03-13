@@ -206,7 +206,10 @@ fn service_from_agent_with_sqlite_connection_string() {
             jacs::document::types::CreateOptions::default(),
         )
         .expect("create document via connection-string-resolved sqlite backend");
-    assert!(!doc.id.is_empty(), "created doc should have an assigned jacsId");
+    assert!(
+        !doc.id.is_empty(),
+        "created doc should have an assigned jacsId"
+    );
 
     // The database file should exist at the path from the connection string
     assert!(
