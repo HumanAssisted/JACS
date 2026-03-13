@@ -122,10 +122,7 @@ fn compile_time_features_are_additive() {
 /// `Profile::Core` filters out advanced tools even when compiled in.
 #[test]
 fn runtime_core_profile_filters_advanced_tools() {
-    let server = jacs_mcp::JacsMcpServer::with_profile(
-        AgentWrapper::new(),
-        Profile::Core,
-    );
+    let server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
     let tools = server.active_tools();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
@@ -160,10 +157,7 @@ fn runtime_core_profile_filters_advanced_tools() {
 /// `Profile::Full` exposes all compiled-in tools.
 #[test]
 fn runtime_full_profile_exposes_all_tools() {
-    let server = jacs_mcp::JacsMcpServer::with_profile(
-        AgentWrapper::new(),
-        Profile::Full,
-    );
+    let server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Full);
     let full_tools = server.active_tools();
     let all_tools = jacs_mcp::JacsMcpServer::tools();
 
@@ -209,27 +203,33 @@ fn runtime_cli_overrides_env_var() {
     assert_eq!(profile, Profile::Full);
 }
 
-/// `JACS_MCP_PROFILE` env var works when no CLI flag is provided.
+/// Env var and default resolution tests.
 ///
-/// NOTE: This test modifies process-global state. It runs in its own
-/// test binary (integration test), so env var mutations don't race
-/// with unit tests.
+/// Combined into a single test to avoid parallel execution races on the
+/// process-global JACS_MCP_PROFILE environment variable.
 #[test]
-fn runtime_env_var_sets_profile() {
-    // SAFETY: integration test binary, sequential test execution not guaranteed
-    // but env var is unique enough to not conflict with other tests.
+fn runtime_env_var_and_default_resolution() {
+    // Test 1: Env var sets profile
     unsafe { std::env::set_var("JACS_MCP_PROFILE", "full") };
     let profile = Profile::resolve(None);
-    unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
-    assert_eq!(profile, Profile::Full);
-}
+    assert_eq!(profile, Profile::Full, "env var 'full' should resolve to Full");
 
-/// When neither CLI nor env var is set, default to Core.
-#[test]
-fn runtime_no_config_defaults_to_core() {
+    // Test 2: CLI overrides env var
+    let profile = Profile::resolve(Some("core"));
+    assert_eq!(profile, Profile::Core, "CLI 'core' should override env var 'full'");
+
+    // Test 3: When env var is removed, default to Core
     unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
     let profile = Profile::resolve(None);
-    assert_eq!(profile, Profile::Core);
+    assert_eq!(profile, Profile::Core, "no config should default to Core");
+
+    // Test 4: Empty env var defaults to Core
+    unsafe { std::env::set_var("JACS_MCP_PROFILE", "") };
+    let profile = Profile::resolve(None);
+    assert_eq!(profile, Profile::Core, "empty env var should default to Core");
+
+    // Cleanup
+    unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
 }
 
 // =========================================================================
@@ -239,16 +239,10 @@ fn runtime_no_config_defaults_to_core() {
 /// `with_profile` constructor stores the profile and uses it in `active_tools()`.
 #[test]
 fn server_with_profile_stores_and_uses_profile() {
-    let core_server = jacs_mcp::JacsMcpServer::with_profile(
-        AgentWrapper::new(),
-        Profile::Core,
-    );
+    let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
     assert_eq!(core_server.profile(), &Profile::Core);
 
-    let full_server = jacs_mcp::JacsMcpServer::with_profile(
-        AgentWrapper::new(),
-        Profile::Full,
-    );
+    let full_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Full);
     assert_eq!(full_server.profile(), &Profile::Full);
 }
 
@@ -257,10 +251,7 @@ fn server_with_profile_stores_and_uses_profile() {
 #[test]
 fn static_tools_vs_instance_active_tools() {
     let static_tools = jacs_mcp::JacsMcpServer::tools();
-    let core_server = jacs_mcp::JacsMcpServer::with_profile(
-        AgentWrapper::new(),
-        Profile::Core,
-    );
+    let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
     let active = core_server.active_tools();
 
     // Static tools include everything compiled in.

@@ -111,9 +111,7 @@ pub fn annotate_response(document: &Value) -> Value {
 /// On parse failure the original string is returned unchanged — this
 /// ensures error responses that aren't valid JSON pass through safely.
 pub fn inject_meta(result_json: &str, doc: Option<&Value>) -> String {
-    let visibility = doc
-        .map(|d| extract_visibility(d))
-        .unwrap_or(Visibility::Private);
+    let visibility = doc.map(extract_visibility).unwrap_or(Visibility::Private);
 
     if let Ok(mut val) = serde_json::from_str::<Value>(result_json) {
         if let Some(obj) = val.as_object_mut() {

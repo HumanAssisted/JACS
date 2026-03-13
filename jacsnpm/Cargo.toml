@@ -24,6 +24,7 @@ napi-derive = "2.16.13"
 
 [features]
 default = ["attestation"]
+a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
 
 [build-dependencies]

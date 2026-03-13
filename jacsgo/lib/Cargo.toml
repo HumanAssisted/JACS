@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 
 [features]
 default = []
+a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
 
 [dependencies]

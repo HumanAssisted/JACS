@@ -76,11 +76,7 @@ fn per_category_core_tool_counts() {
                 "jacs_get_trusted_agent",
             ],
         ),
-        (
-            "security audit",
-            1,
-            &["jacs_audit"],
-        ),
+        ("security audit", 1, &["jacs_audit"]),
         (
             "audit trail",
             3,
@@ -254,10 +250,7 @@ fn server_metadata_identifies_as_jacs_mcp() {
 fn active_tools_respects_profile() {
     use jacs_mcp::Profile;
 
-    let core_server = jacs_mcp::JacsMcpServer::with_profile(
-        AgentWrapper::new(),
-        Profile::Core,
-    );
+    let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
     let core_tools = core_server.active_tools();
     let core_names: Vec<&str> = core_tools.iter().map(|t| t.name.as_ref()).collect();
 

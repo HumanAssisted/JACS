@@ -56,12 +56,16 @@ fn parity_signed_document_structure(algo: &str) {
         let data = &input["data"];
         let data_json = serde_json::to_string(data).unwrap();
 
-        let signed_json = wrapper
-            .sign_message_json(&data_json)
-            .unwrap_or_else(|e| panic!("[{}] sign_message_json failed for '{}': {}", algo, name, e));
+        let signed_json = wrapper.sign_message_json(&data_json).unwrap_or_else(|e| {
+            panic!("[{}] sign_message_json failed for '{}': {}", algo, name, e)
+        });
 
-        let signed: Value = serde_json::from_str(&signed_json)
-            .unwrap_or_else(|e| panic!("[{}] signed output for '{}' is not valid JSON: {}", algo, name, e));
+        let signed: Value = serde_json::from_str(&signed_json).unwrap_or_else(|e| {
+            panic!(
+                "[{}] signed output for '{}' is not valid JSON: {}",
+                algo, name, e
+            )
+        });
 
         // Check required top-level fields
         for field in required_top.as_array().unwrap() {
@@ -123,8 +127,8 @@ fn parity_sign_verify_roundtrip(algo: &str) {
             .verify_json(&signed_json)
             .unwrap_or_else(|e| panic!("[{}] verify failed for '{}': {}", algo, name, e));
 
-        let result: Value = serde_json::from_str(&verify_result_json)
-            .expect("verify result should be valid JSON");
+        let result: Value =
+            serde_json::from_str(&verify_result_json).expect("verify result should be valid JSON");
 
         assert_eq!(
             result["valid"], true,
@@ -147,15 +151,11 @@ fn test_parity_cross_algorithm_structure_consistency() {
     let ed_wrapper = ephemeral("ed25519");
     let pq_wrapper = ephemeral("pq2025");
 
-    let ed_signed: Value = serde_json::from_str(
-        &ed_wrapper.sign_message_json(&data_json).unwrap(),
-    )
-    .unwrap();
+    let ed_signed: Value =
+        serde_json::from_str(&ed_wrapper.sign_message_json(&data_json).unwrap()).unwrap();
 
-    let pq_signed: Value = serde_json::from_str(
-        &pq_wrapper.sign_message_json(&data_json).unwrap(),
-    )
-    .unwrap();
+    let pq_signed: Value =
+        serde_json::from_str(&pq_wrapper.sign_message_json(&data_json).unwrap()).unwrap();
 
     // Both should have the same top-level field names (structure parity)
     let ed_keys: Vec<&str> = ed_signed
@@ -420,9 +420,7 @@ fn test_parity_verify_rejects_invalid_json() {
 fn test_parity_verify_rejects_tampered_document() {
     let wrapper = ephemeral("ed25519");
 
-    let signed_json = wrapper
-        .sign_message_json(r#"{"original": true}"#)
-        .unwrap();
+    let signed_json = wrapper.sign_message_json(r#"{"original": true}"#).unwrap();
 
     // Tamper with the content
     let mut parsed: Value = serde_json::from_str(&signed_json).unwrap();
@@ -470,9 +468,7 @@ fn test_parity_verify_by_id_rejects_bad_format() {
 #[test]
 fn test_parity_verify_with_key_rejects_invalid_base64() {
     let wrapper = ephemeral("ed25519");
-    let signed = wrapper
-        .sign_message_json(r#"{"test": 1}"#)
-        .unwrap();
+    let signed = wrapper.sign_message_json(r#"{"test": 1}"#).unwrap();
     let result = wrapper.verify_with_key_json(&signed, "not-valid-base64!!!");
     assert!(
         result.is_err(),

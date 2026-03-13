@@ -811,6 +811,7 @@ pub extern "C" fn jacs_agent_export_attestation_dsse(
 /// Export an A2A Agent Card for the current agent.
 /// Returns a JSON string of the Agent Card, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_export_agent_card(handle: *mut JacsAgentHandle) -> *mut c_char {
     if handle.is_null() {
@@ -833,6 +834,7 @@ pub extern "C" fn jacs_agent_export_agent_card(handle: *mut JacsAgentHandle) -> 
 /// `artifact_json` is the artifact payload, `artifact_type` is the type string.
 /// Returns a JSON string of the JACS-wrapped artifact, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_sign_a2a_artifact(
     handle: *mut JacsAgentHandle,
@@ -869,6 +871,7 @@ pub extern "C" fn jacs_agent_sign_a2a_artifact(
 /// Verify a JACS-wrapped A2A artifact (crypto-only, no trust policy).
 /// Returns a JSON string of the verification result, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_verify_a2a_artifact(
     handle: *mut JacsAgentHandle,
@@ -899,6 +902,7 @@ pub extern "C" fn jacs_agent_verify_a2a_artifact(
 /// Combines crypto verification with trust assessment.
 /// Returns a JSON string of the verification result with trust info, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
     handle: *mut JacsAgentHandle,
@@ -940,6 +944,7 @@ pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
 /// Assess an A2A agent's trustworthiness against a trust policy.
 /// Returns a JSON string of the trust assessment, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_assess_a2a_agent(
     handle: *mut JacsAgentHandle,
@@ -2156,7 +2161,9 @@ pub extern "C" fn jacs_simple_get_agent_id(handle: *const SimpleAgentHandle) -> 
     }
     let h = unsafe { &*handle };
     match h.wrapper.get_agent_id() {
-        Ok(id) => CString::new(id).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(id) => CString::new(id)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2169,7 +2176,9 @@ pub extern "C" fn jacs_simple_key_id(handle: *const SimpleAgentHandle) -> *mut c
     }
     let h = unsafe { &*handle };
     match h.wrapper.key_id() {
-        Ok(id) => CString::new(id).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(id) => CString::new(id)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2192,7 +2201,9 @@ pub extern "C" fn jacs_simple_export_agent(handle: *const SimpleAgentHandle) -> 
     }
     let h = unsafe { &*handle };
     match h.wrapper.export_agent() {
-        Ok(json) => CString::new(json).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2205,7 +2216,9 @@ pub extern "C" fn jacs_simple_get_public_key_pem(handle: *const SimpleAgentHandl
     }
     let h = unsafe { &*handle };
     match h.wrapper.get_public_key_pem() {
-        Ok(pem) => CString::new(pem).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(pem) => CString::new(pem)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2220,7 +2233,9 @@ pub extern "C" fn jacs_simple_get_public_key_base64(
     }
     let h = unsafe { &*handle };
     match h.wrapper.get_public_key_base64() {
-        Ok(b64) => CString::new(b64).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(b64) => CString::new(b64)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2233,7 +2248,9 @@ pub extern "C" fn jacs_simple_diagnostics(handle: *const SimpleAgentHandle) -> *
     }
     let h = unsafe { &*handle };
     let diag = h.wrapper.diagnostics();
-    CString::new(diag).map(|c| c.into_raw()).unwrap_or(ptr::null_mut())
+    CString::new(diag)
+        .map(|c| c.into_raw())
+        .unwrap_or(ptr::null_mut())
 }
 
 /// Verify self. Returns VerificationResult JSON. Caller must free with jacs_free_string.
@@ -2244,7 +2261,9 @@ pub extern "C" fn jacs_simple_verify_self(handle: *const SimpleAgentHandle) -> *
     }
     let h = unsafe { &*handle };
     match h.wrapper.verify_self() {
-        Ok(json) => CString::new(json).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2264,7 +2283,9 @@ pub extern "C" fn jacs_simple_verify_json(
         Err(_) => return ptr::null_mut(),
     };
     match h.wrapper.verify_json(doc_str) {
-        Ok(json) => CString::new(json).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2284,7 +2305,9 @@ pub extern "C" fn jacs_simple_verify_by_id(
         Err(_) => return ptr::null_mut(),
     };
     match h.wrapper.verify_by_id_json(id_str) {
-        Ok(json) => CString::new(json).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2304,7 +2327,9 @@ pub extern "C" fn jacs_simple_sign_message(
         Err(_) => return ptr::null_mut(),
     };
     match h.wrapper.sign_message_json(data_str) {
-        Ok(json) => CString::new(json).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2322,7 +2347,9 @@ pub extern "C" fn jacs_simple_sign_raw_bytes(
     let h = unsafe { &*handle };
     let data_slice = unsafe { slice::from_raw_parts(data, data_len) };
     match h.wrapper.sign_raw_bytes_base64(data_slice) {
-        Ok(b64) => CString::new(b64).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(b64) => CString::new(b64)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }
@@ -2343,7 +2370,9 @@ pub extern "C" fn jacs_simple_sign_file(
         Err(_) => return ptr::null_mut(),
     };
     match h.wrapper.sign_file_json(path_str, embed != 0) {
-        Ok(json) => CString::new(json).map(|c| c.into_raw()).unwrap_or(ptr::null_mut()),
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
         Err(_) => ptr::null_mut(),
     }
 }

@@ -4,10 +4,10 @@
 //! helpers produce the correct visibility levels and hints per
 //! ARCHITECTURE_UPGRADE.md Section 3.1.5.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // Re-use the helpers from the library crate.
-use jacs_mcp::tools::common::{annotate_response, extract_visibility, inject_meta, Visibility};
+use jacs_mcp::tools::common::{Visibility, annotate_response, extract_visibility, inject_meta};
 
 // ============================================================================
 // extract_visibility
@@ -111,7 +111,10 @@ fn annotate_response_wraps_with_document_and_meta() {
     let doc = json!({"jacsVisibility": "public", "content": "hello"});
     let annotated = annotate_response(&doc);
 
-    assert!(annotated.get("document").is_some(), "missing 'document' key");
+    assert!(
+        annotated.get("document").is_some(),
+        "missing 'document' key"
+    );
     assert!(
         annotated.get("_jacs_meta").is_some(),
         "missing '_jacs_meta' key"
@@ -182,10 +185,12 @@ fn inject_meta_uses_restricted_when_doc_says_restricted() {
         parsed["_jacs_meta"]["visibility"].as_str().unwrap(),
         "restricted"
     );
-    assert!(parsed["_jacs_meta"]["hint"]
-        .as_str()
-        .unwrap()
-        .contains("authorized agents"));
+    assert!(
+        parsed["_jacs_meta"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("authorized agents")
+    );
 }
 
 #[test]
@@ -235,7 +240,11 @@ fn inject_meta_handles_empty_json_object() {
 
 #[test]
 fn visibility_as_str_roundtrip() {
-    for vis in [Visibility::Public, Visibility::Private, Visibility::Restricted] {
+    for vis in [
+        Visibility::Public,
+        Visibility::Private,
+        Visibility::Restricted,
+    ] {
         let s = vis.as_str();
         let parsed = Visibility::from_str_lossy(s);
         assert_eq!(vis, parsed, "roundtrip failed for {s}");

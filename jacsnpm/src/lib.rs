@@ -741,6 +741,15 @@ impl JacsAgent {
         })
     }
 
+}
+
+// =============================================================================
+// A2A Protocol Methods — only available with the `a2a` feature
+// =============================================================================
+
+#[cfg(feature = "a2a")]
+#[napi]
+impl JacsAgent {
     // =========================================================================
     // A2A Protocol Methods (sync)
     // =========================================================================
@@ -915,7 +924,10 @@ impl JacsAgent {
             })),
         })
     }
+}
 
+#[napi]
+impl JacsAgent {
     // =========================================================================
     // HAI SDK Methods (sync)
     // =========================================================================
@@ -1188,12 +1200,9 @@ impl JacsSimpleAgent {
         purpose: Option<String>,
         key_algorithm: Option<String>,
     ) -> Result<JacsSimpleAgent> {
-        let (wrapper, _info_json) = SimpleAgentWrapper::create(
-            &name,
-            purpose.as_deref(),
-            key_algorithm.as_deref(),
-        )
-        .to_napi()?;
+        let (wrapper, _info_json) =
+            SimpleAgentWrapper::create(&name, purpose.as_deref(), key_algorithm.as_deref())
+                .to_napi()?;
         Ok(JacsSimpleAgent { inner: wrapper })
     }
 
@@ -1206,9 +1215,11 @@ impl JacsSimpleAgent {
 
     /// Load an existing agent from a config file.
     #[napi(factory, js_name = "load")]
-    pub fn load_agent(config_path: Option<String>, strict: Option<bool>) -> Result<JacsSimpleAgent> {
-        let wrapper =
-            SimpleAgentWrapper::load(config_path.as_deref(), strict).to_napi()?;
+    pub fn load_agent(
+        config_path: Option<String>,
+        strict: Option<bool>,
+    ) -> Result<JacsSimpleAgent> {
+        let wrapper = SimpleAgentWrapper::load(config_path.as_deref(), strict).to_napi()?;
         Ok(JacsSimpleAgent { inner: wrapper })
     }
 
@@ -1285,7 +1296,11 @@ impl JacsSimpleAgent {
     /// Verify a signed document with an explicit public key (base64-encoded).
     /// Returns JSON VerificationResult.
     #[napi(js_name = "verifyWithKey")]
-    pub fn verify_with_key(&self, signed_document: String, public_key_base64: String) -> Result<String> {
+    pub fn verify_with_key(
+        &self,
+        signed_document: String,
+        public_key_base64: String,
+    ) -> Result<String> {
         self.inner
             .verify_with_key_json(&signed_document, &public_key_base64)
             .to_napi()
@@ -1307,9 +1322,7 @@ impl JacsSimpleAgent {
     /// Sign raw bytes and return the signature as base64.
     #[napi(js_name = "signRawBytes")]
     pub fn sign_raw_bytes(&self, data: Buffer) -> Result<String> {
-        self.inner
-            .sign_raw_bytes_base64(data.as_ref())
-            .to_napi()
+        self.inner.sign_raw_bytes_base64(data.as_ref()).to_napi()
     }
 
     /// Sign a file with optional content embedding.

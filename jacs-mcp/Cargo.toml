@@ -32,7 +32,7 @@ key-tools = []
 # Advanced tool families — require explicit opt-in via feature flag or runtime profile.
 agreement-tools = ["jacs/agreements"]
 messaging-tools = []
-a2a-tools = ["jacs/a2a", "jacs-binding-core/a2a"]
+a2a-tools = ["jacs/a2a"]
 attestation-tools = ["attestation"]
 
 # Everything: all core + advanced families.

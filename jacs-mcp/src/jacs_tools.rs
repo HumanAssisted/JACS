@@ -4089,20 +4089,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tools_list_core() {
-        // With default features (core-tools), only core families are registered.
+    fn test_tools_list_matches_compiled_features() {
         let tools = JacsMcpServer::tools();
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
 
-        // Core families: state(6) + document(3) + trust(5) + audit(4) +
-        // memory(5) + search(1) + key(4) = 28
+        // Total should match the compiled-in tool count
         assert_eq!(
             tools.len(),
-            crate::tools::core_tool_count(),
-            "Default features should expose only core tools"
+            crate::tools::total_tool_count(),
+            "tools() count should match total_tool_count()"
         );
 
-        // Spot-check core tools are present
+        // Core tools are always present (core-tools is in default features)
         assert!(names.contains(&"jacs_sign_state"));
         assert!(names.contains(&"jacs_verify_state"));
         assert!(names.contains(&"jacs_load_state"));
@@ -4132,13 +4130,24 @@ mod tests {
         assert!(names.contains(&"jacs_memory_forget"));
         assert!(names.contains(&"jacs_memory_update"));
 
-        // Advanced tools should NOT be present with default features
+        // Advanced tools conditionally present based on feature flags
+        #[cfg(feature = "messaging-tools")]
+        assert!(names.contains(&"jacs_message_send"));
         #[cfg(not(feature = "messaging-tools"))]
         assert!(!names.contains(&"jacs_message_send"));
+
+        #[cfg(feature = "agreement-tools")]
+        assert!(names.contains(&"jacs_create_agreement"));
         #[cfg(not(feature = "agreement-tools"))]
         assert!(!names.contains(&"jacs_create_agreement"));
+
+        #[cfg(feature = "a2a-tools")]
+        assert!(names.contains(&"jacs_wrap_a2a_artifact"));
         #[cfg(not(feature = "a2a-tools"))]
         assert!(!names.contains(&"jacs_wrap_a2a_artifact"));
+
+        #[cfg(feature = "attestation-tools")]
+        assert!(names.contains(&"jacs_attest_create"));
         #[cfg(not(feature = "attestation-tools"))]
         assert!(!names.contains(&"jacs_attest_create"));
     }
