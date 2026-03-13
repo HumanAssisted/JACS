@@ -85,7 +85,7 @@ impl RedbStorage {
     }
 
     /// Parse a document key in format `"id:version"` into `(id, version)`.
-    fn parse_key(key: &str) -> Result<(&str, &str), Box<dyn Error>> {
+    fn parse_key(key: &str) -> Result<(&str, &str), JacsError> {
         let parts: Vec<&str> = key.splitn(2, ':').collect();
         if parts.len() != 2 {
             return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());
@@ -94,7 +94,7 @@ impl RedbStorage {
     }
 
     /// Deserialize JSON bytes into a JACSDocument.
-    fn bytes_to_document(bytes: &[u8]) -> Result<JACSDocument, Box<dyn Error>> {
+    fn bytes_to_document(bytes: &[u8]) -> Result<JACSDocument, JacsError> {
         let value: Value = serde_json::from_slice(bytes)?;
 
         let id = value
@@ -136,7 +136,7 @@ impl RedbStorage {
         &self,
         table_def: TableDefinition<&str, &[u8]>,
         prefix: &str,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
+    ) -> Result<Vec<String>, JacsError> {
         let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
 
         let table = read_txn.open_table(table_def);
@@ -166,7 +166,7 @@ impl RedbStorage {
     }
 
     /// Check whether a document key has been tombstoned (soft-deleted).
-    fn is_tombstoned(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn is_tombstoned(&self, key: &str) -> Result<bool, JacsError> {
         let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
         let table = read_txn.open_table(TOMBSTONE_INDEX);
         let table = match table {
@@ -178,7 +178,7 @@ impl RedbStorage {
     }
 
     /// Filter out any tombstoned keys from a list.
-    fn filter_tombstoned(&self, keys: Vec<String>) -> Result<Vec<String>, Box<dyn Error>> {
+    fn filter_tombstoned(&self, keys: Vec<String>) -> Result<Vec<String>, JacsError> {
         let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
         let table = read_txn.open_table(TOMBSTONE_INDEX);
         let table = match table {
@@ -195,7 +195,7 @@ impl RedbStorage {
 }
 
 impl StorageDocumentTraits for RedbStorage {
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let key = doc.getkey();
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let json_bytes = raw_json.as_bytes();
@@ -256,7 +256,7 @@ impl StorageDocumentTraits for RedbStorage {
         Ok(())
     }
 
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let (_id, _version) = Self::parse_key(key)?;
 
         // Check tombstone first — soft-deleted documents appear as "not found"
@@ -276,14 +276,14 @@ impl StorageDocumentTraits for RedbStorage {
             table
                 .get(key)
                 .map_err(db_err("get_document"))?
-                .ok_or_else(|| -> Box<dyn Error> {
+                .ok_or_else(|| {
                     db_err_box("get_document", format!("Document not found: {}", key))
                 })?;
 
         Self::bytes_to_document(guard.value())
     }
 
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         // Fetch the document first (this also checks it exists and is not already tombstoned)
         let doc = self.get_document(key)?;
 
@@ -302,12 +302,12 @@ impl StorageDocumentTraits for RedbStorage {
         Ok(doc)
     }
 
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError> {
         let keys = self.collect_keys_from_index(TYPE_INDEX, prefix)?;
         self.filter_tombstoned(keys)
     }
 
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError> {
         let (_id, _version) = Self::parse_key(key)?;
 
         let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
@@ -326,12 +326,12 @@ impl StorageDocumentTraits for RedbStorage {
         Ok(exists)
     }
 
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError> {
         let keys = self.collect_keys_from_index(AGENT_INDEX, agent_id)?;
         self.filter_tombstoned(keys)
     }
 
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError> {
         let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
 
         let table = read_txn.open_table(VERSION_INDEX);
@@ -362,7 +362,7 @@ impl StorageDocumentTraits for RedbStorage {
         self.filter_tombstoned(keys)
     }
 
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
         let versions = self.get_document_versions(document_id)?;
 
         if versions.is_empty() {
@@ -382,14 +382,14 @@ impl StorageDocumentTraits for RedbStorage {
         _doc_id: &str,
         _v1: &str,
         _v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
+    ) -> Result<JACSDocument, JacsError> {
         Err(db_err_box(
             "merge_documents",
             "Not implemented for Redb backend",
         ))
     }
 
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
         let mut errors = Vec::new();
         let mut keys = Vec::new();
         for doc in &docs {
@@ -406,7 +406,7 @@ impl StorageDocumentTraits for RedbStorage {
         }
     }
 
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
         let mut docs = Vec::new();
         let mut errors = Vec::new();
         for key in &keys {
@@ -429,7 +429,7 @@ impl DatabaseDocumentTraits for RedbStorage {
         jacs_type: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let keys = self.collect_keys_from_index(TYPE_INDEX, jacs_type)?;
         let keys = self.filter_tombstoned(keys)?;
         let mut docs = Vec::new();
@@ -446,7 +446,7 @@ impl DatabaseDocumentTraits for RedbStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
 
         let doc_table = read_txn
@@ -495,13 +495,13 @@ impl DatabaseDocumentTraits for RedbStorage {
         Ok(results)
     }
 
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>> {
+    fn count_by_type(&self, jacs_type: &str) -> Result<usize, JacsError> {
         let keys = self.collect_keys_from_index(TYPE_INDEX, jacs_type)?;
         let keys = self.filter_tombstoned(keys)?;
         Ok(keys.len())
     }
 
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, JacsError> {
         let keys = self.get_document_versions(jacs_id)?;
         let mut docs = Vec::new();
         for key in keys {
@@ -510,7 +510,7 @@ impl DatabaseDocumentTraits for RedbStorage {
         Ok(docs)
     }
 
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, JacsError> {
         self.get_latest_document(jacs_id)
     }
 
@@ -520,7 +520,7 @@ impl DatabaseDocumentTraits for RedbStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let keys = self.collect_keys_from_index(AGENT_INDEX, agent_id)?;
         let keys = self.filter_tombstoned(keys)?;
         let mut results = Vec::new();
@@ -549,7 +549,7 @@ impl DatabaseDocumentTraits for RedbStorage {
         Ok(results)
     }
 
-    fn run_migrations(&self) -> Result<(), Box<dyn Error>> {
+    fn run_migrations(&self) -> Result<(), JacsError> {
         let write_txn = self.db.begin_write().map_err(db_err("begin_write"))?;
 
         {
@@ -607,22 +607,22 @@ fn get_nested_field<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     Some(current)
 }
 
-/// Helper to create a closure that maps any Display error to a DatabaseError Box.
-fn db_err<E: std::fmt::Display>(operation: &'static str) -> impl FnOnce(E) -> Box<dyn Error> {
-    move |e: E| -> Box<dyn Error> {
-        Box::new(JacsError::DatabaseError {
+/// Helper to create a closure that maps any Display error to a DatabaseError.
+fn db_err<E: std::fmt::Display>(operation: &'static str) -> impl FnOnce(E) -> JacsError {
+    move |e: E| -> JacsError {
+        JacsError::DatabaseError {
             operation: operation.to_string(),
             reason: e.to_string(),
-        })
+        }
     }
 }
 
-/// Helper to create a DatabaseError Box directly from an operation and reason.
-fn db_err_box(operation: &str, reason: impl std::fmt::Display) -> Box<dyn Error> {
-    Box::new(JacsError::DatabaseError {
+/// Helper to create a DatabaseError directly from an operation and reason.
+fn db_err_box(operation: &str, reason: impl std::fmt::Display) -> JacsError {
+    JacsError::DatabaseError {
         operation: operation.to_string(),
         reason: reason.to_string(),
-    })
+    }
 }
 
 // =============================================================================

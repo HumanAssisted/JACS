@@ -104,19 +104,26 @@
       "oneOf": [
         {
           "type": "string",
-          "enum": ["public", "private"]
+          "enum": [
+            "public",
+            "private"
+          ]
         },
         {
           "type": "object",
           "properties": {
             "restricted": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "minItems": 1,
               "description": "Agent IDs or roles that can access this document"
             }
           },
-          "required": ["restricted"]
+          "required": [
+            "restricted"
+          ]
         }
       ],
       "default": "private"

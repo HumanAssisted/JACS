@@ -592,12 +592,12 @@ impl DocumentTraits for Agent {
 
     fn get_document(&self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>> {
         // Use storage to retrieve the document
-        self.storage.get_document(document_key)
+        Ok(self.storage.get_document(document_key)?)
     }
 
     fn remove_document(&mut self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>> {
         // Use storage to remove and archive the document
-        self.storage.remove_document(document_key)
+        Ok(self.storage.remove_document(document_key)?)
     }
 
     // used to see if key is already in index

@@ -65,8 +65,9 @@ fn test_claim() -> Claim {
 fn attestation_create_verify_round_trip() {
     let agent = ephemeral_simple_agent();
     let subject = test_subject();
-    let signed = jacs::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
-        .expect("create attestation");
+    let signed =
+        jacs::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
+            .expect("create attestation");
 
     let doc: Value = serde_json::from_str(&signed.raw).unwrap();
     let key = format!(
@@ -427,8 +428,15 @@ fn attestation_simple_agent_full_pipeline() {
     let agent = ephemeral_simple_agent();
 
     // Create attestation
-    let signed = jacs::attestation::simple::create(&agent, &test_subject(), &[test_claim()], &[], None, None)
-        .expect("create attestation");
+    let signed = jacs::attestation::simple::create(
+        &agent,
+        &test_subject(),
+        &[test_claim()],
+        &[],
+        None,
+        None,
+    )
+    .expect("create attestation");
 
     // Local verify
     let doc: Value = serde_json::from_str(&signed.raw).unwrap();

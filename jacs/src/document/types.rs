@@ -260,9 +260,8 @@ mod tests {
 
     #[test]
     fn document_visibility_restricted_holds_principals() {
-        let vis = DocumentVisibility::Restricted(
-            vec!["agent-a".to_string(), "agent-b".to_string()],
-        );
+        let vis =
+            DocumentVisibility::Restricted(vec!["agent-a".to_string(), "agent-b".to_string()]);
         if let DocumentVisibility::Restricted(principals) = vis {
             assert_eq!(principals.len(), 2);
             assert_eq!(principals[0], "agent-a");
@@ -319,12 +318,10 @@ mod tests {
 
     #[test]
     fn document_visibility_restricted_serializes_as_flat_array() {
-        let vis = DocumentVisibility::Restricted(
-            vec!["agent-a".to_string(), "agent-b".to_string()],
-        );
+        let vis =
+            DocumentVisibility::Restricted(vec!["agent-a".to_string(), "agent-b".to_string()]);
         let json = serde_json::to_string(&vis).expect("serialize Restricted");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json).expect("parse serialized JSON");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse serialized JSON");
         // Tuple variant serializes as {"restricted":["agent-a","agent-b"]} -- matches schema
         let arr = parsed
             .get("restricted")
@@ -340,8 +337,7 @@ mod tests {
     fn document_visibility_public_roundtrips() {
         let original = DocumentVisibility::Public;
         let json = serde_json::to_string(&original).expect("serialize");
-        let deserialized: DocumentVisibility =
-            serde_json::from_str(&json).expect("deserialize");
+        let deserialized: DocumentVisibility = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, deserialized);
     }
 
@@ -349,22 +345,18 @@ mod tests {
     fn document_visibility_private_roundtrips() {
         let original = DocumentVisibility::Private;
         let json = serde_json::to_string(&original).expect("serialize");
-        let deserialized: DocumentVisibility =
-            serde_json::from_str(&json).expect("deserialize");
+        let deserialized: DocumentVisibility = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, deserialized);
     }
 
     #[test]
     fn document_visibility_restricted_roundtrips() {
-        let original = DocumentVisibility::Restricted(
-            vec![
-                "agent-x".to_string(),
-                "role:reviewer".to_string(),
-            ],
-        );
+        let original = DocumentVisibility::Restricted(vec![
+            "agent-x".to_string(),
+            "role:reviewer".to_string(),
+        ]);
         let json = serde_json::to_string(&original).expect("serialize");
-        let deserialized: DocumentVisibility =
-            serde_json::from_str(&json).expect("deserialize");
+        let deserialized: DocumentVisibility = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, deserialized);
     }
 
@@ -384,10 +376,9 @@ mod tests {
 
     #[test]
     fn document_visibility_deserializes_from_object_restricted() {
-        let vis: DocumentVisibility = serde_json::from_str(
-            r#"{"restricted":["agent-1","agent-2"]}"#,
-        )
-        .expect("deserialize restricted");
+        let vis: DocumentVisibility =
+            serde_json::from_str(r#"{"restricted":["agent-1","agent-2"]}"#)
+                .expect("deserialize restricted");
         if let DocumentVisibility::Restricted(principals) = vis {
             assert_eq!(principals, vec!["agent-1", "agent-2"]);
         } else {
@@ -416,43 +407,47 @@ mod tests {
     #[test]
     fn schema_validates_visibility_public() {
         let schema = visibility_schema();
-        let validator = jsonschema::validator_for(&schema)
-            .expect("compile visibility schema");
+        let validator = jsonschema::validator_for(&schema).expect("compile visibility schema");
         let value = serde_json::json!("public");
         let result = validator.validate(&value);
-        assert!(result.is_ok(), "public visibility should pass schema validation");
+        assert!(
+            result.is_ok(),
+            "public visibility should pass schema validation"
+        );
     }
 
     #[test]
     fn schema_validates_visibility_private() {
         let schema = visibility_schema();
-        let validator = jsonschema::validator_for(&schema)
-            .expect("compile visibility schema");
+        let validator = jsonschema::validator_for(&schema).expect("compile visibility schema");
         let value = serde_json::json!("private");
         let result = validator.validate(&value);
-        assert!(result.is_ok(), "private visibility should pass schema validation");
+        assert!(
+            result.is_ok(),
+            "private visibility should pass schema validation"
+        );
     }
 
     #[test]
     fn schema_validates_visibility_restricted() {
         let schema = visibility_schema();
-        let validator = jsonschema::validator_for(&schema)
-            .expect("compile visibility schema");
+        let validator = jsonschema::validator_for(&schema).expect("compile visibility schema");
         let value = serde_json::json!({"restricted": ["agent-1", "agent-2"]});
         let result = validator.validate(&value);
-        assert!(result.is_ok(), "restricted visibility should pass schema validation");
+        assert!(
+            result.is_ok(),
+            "restricted visibility should pass schema validation"
+        );
     }
 
     #[test]
     fn schema_validates_rust_serialized_restricted_matches_schema() {
         let schema = visibility_schema();
-        let validator = jsonschema::validator_for(&schema)
-            .expect("compile visibility schema");
+        let validator = jsonschema::validator_for(&schema).expect("compile visibility schema");
 
         // Serialize Restricted via serde and validate directly against schema
-        let vis = DocumentVisibility::Restricted(
-            vec!["agent-a".to_string(), "agent-b".to_string()],
-        );
+        let vis =
+            DocumentVisibility::Restricted(vec!["agent-a".to_string(), "agent-b".to_string()]);
         let vis_value: serde_json::Value =
             serde_json::to_value(&vis).expect("serialize visibility");
         let result = validator.validate(&vis_value);
@@ -465,21 +460,25 @@ mod tests {
     #[test]
     fn schema_rejects_empty_restricted_principals() {
         let schema = visibility_schema();
-        let validator = jsonschema::validator_for(&schema)
-            .expect("compile visibility schema");
+        let validator = jsonschema::validator_for(&schema).expect("compile visibility schema");
         let value = serde_json::json!({"restricted": []});
         let result = validator.validate(&value);
-        assert!(result.is_err(), "empty restricted principals should fail schema validation (minItems: 1)");
+        assert!(
+            result.is_err(),
+            "empty restricted principals should fail schema validation (minItems: 1)"
+        );
     }
 
     #[test]
     fn schema_rejects_invalid_visibility_value() {
         let schema = visibility_schema();
-        let validator = jsonschema::validator_for(&schema)
-            .expect("compile visibility schema");
+        let validator = jsonschema::validator_for(&schema).expect("compile visibility schema");
         let value = serde_json::json!("invalid");
         let result = validator.validate(&value);
-        assert!(result.is_err(), "invalid visibility string should fail schema validation");
+        assert!(
+            result.is_err(),
+            "invalid visibility string should fail schema validation"
+        );
     }
 
     // =========================================================================

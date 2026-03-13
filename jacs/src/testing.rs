@@ -70,8 +70,8 @@ pub fn make_test_doc(
 #[macro_export]
 macro_rules! storage_conformance_tests {
     ($factory:expr) => {
-        use jacs::testing::make_test_doc;
         use jacs::storage::StorageDocumentTraits;
+        use jacs::testing::make_test_doc;
 
         #[tokio::test(flavor = "multi_thread")]
         #[serial]

@@ -125,38 +125,38 @@ impl DuckDbStorage {
     ///
     /// Inspired by the `db_stats()` pattern from `libhai/src/io/quack.rs`.
     pub fn db_stats(&self) -> Result<Vec<(i64, String)>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "db_stats".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare("SELECT count(*) as count, jacs_type FROM jacs_document WHERE tombstoned = 0 GROUP BY jacs_type")
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "db_stats".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "db_stats".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut results = Vec::new();
         for row in rows {
-            results.push(row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            results.push(row.map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "db_stats".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?);
         }
         Ok(results)
@@ -168,7 +168,7 @@ impl DuckDbStorage {
 // =============================================================================
 
 impl StorageDocumentTraits for DuckDbStorage {
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let file_contents_json = serde_json::to_string(&doc.value)?;
         let agent_id = doc
@@ -178,11 +178,11 @@ impl StorageDocumentTraits for DuckDbStorage {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "store_document".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         conn.execute(
@@ -190,35 +190,35 @@ impl StorageDocumentTraits for DuckDbStorage {
                VALUES (?, ?, ?, ?, ?, ?)"#,
             params![doc.id, doc.version, agent_id, doc.jacs_type, raw_json, file_contents_json],
         )
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "store_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(())
     }
 
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_document".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? AND jacs_version = ? AND tombstoned = 0",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut rows = stmt
@@ -229,11 +229,11 @@ impl StorageDocumentTraits for DuckDbStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         match rows.next() {
@@ -246,59 +246,59 @@ impl StorageDocumentTraits for DuckDbStorage {
                     jacs_type,
                 })
             }
-            Some(Err(e)) => Err(Box::new(JacsError::DatabaseError {
+            Some(Err(e)) => Err(JacsError::DatabaseError {
                 operation: "get_document".to_string(),
                 reason: e.to_string(),
-            })),
-            None => Err(Box::new(JacsError::DatabaseError {
+            }),
+            None => Err(JacsError::DatabaseError {
                 operation: "get_document".to_string(),
                 reason: format!("Document not found: {}", key),
-            })),
+            }),
         }
     }
 
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let doc = self.get_document(key)?;
         let (id, version) = Self::parse_key(key)?;
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "remove_document".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         conn.execute(
             "UPDATE jacs_document SET tombstoned = 1 WHERE jacs_id = ? AND jacs_version = ?",
             params![id, version],
         )
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "remove_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(doc)
     }
 
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "list_documents".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "list_documents".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -307,33 +307,33 @@ impl StorageDocumentTraits for DuckDbStorage {
                 let version: String = row.get(1)?;
                 Ok(format!("{}:{}", id, version))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "list_documents".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut keys = Vec::new();
         for row in rows {
-            keys.push(row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            keys.push(row.map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "list_documents".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?);
         }
         Ok(keys)
     }
 
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "document_exists".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let count: i64 = conn
@@ -342,33 +342,33 @@ impl StorageDocumentTraits for DuckDbStorage {
                 params![id, version],
                 |row| row.get(0),
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "document_exists".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(count > 0)
     }
 
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_documents_by_agent".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version FROM jacs_document WHERE agent_id = ? AND tombstoned = 0 ORDER BY created_at DESC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_documents_by_agent".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -377,42 +377,42 @@ impl StorageDocumentTraits for DuckDbStorage {
                 let version: String = row.get(1)?;
                 Ok(format!("{}:{}", id, version))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_documents_by_agent".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut keys = Vec::new();
         for row in rows {
-            keys.push(row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            keys.push(row.map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_documents_by_agent".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?);
         }
         Ok(keys)
     }
 
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_document_versions".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_id = ? AND tombstoned = 0 ORDER BY created_at ASC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -421,42 +421,42 @@ impl StorageDocumentTraits for DuckDbStorage {
                 let version: String = row.get(1)?;
                 Ok(format!("{}:{}", id, version))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut keys = Vec::new();
         for row in rows {
-            keys.push(row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            keys.push(row.map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?);
         }
         Ok(keys)
     }
 
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_latest_document".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT 1",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_latest_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut rows = stmt
@@ -467,11 +467,11 @@ impl StorageDocumentTraits for DuckDbStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_latest_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         match rows.next() {
@@ -484,14 +484,14 @@ impl StorageDocumentTraits for DuckDbStorage {
                     jacs_type,
                 })
             }
-            Some(Err(e)) => Err(Box::new(JacsError::DatabaseError {
+            Some(Err(e)) => Err(JacsError::DatabaseError {
                 operation: "get_latest_document".to_string(),
                 reason: e.to_string(),
-            })),
-            None => Err(Box::new(JacsError::DatabaseError {
+            }),
+            None => Err(JacsError::DatabaseError {
                 operation: "get_latest_document".to_string(),
                 reason: format!("Document not found: {}", document_id),
-            })),
+            }),
         }
     }
 
@@ -500,14 +500,14 @@ impl StorageDocumentTraits for DuckDbStorage {
         _doc_id: &str,
         _v1: &str,
         _v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
-        Err(Box::new(JacsError::DatabaseError {
+    ) -> Result<JACSDocument, JacsError> {
+        Err(JacsError::DatabaseError {
             operation: "merge_documents".to_string(),
             reason: "Not implemented for DuckDB backend".to_string(),
-        }))
+        })
     }
 
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
         let mut errors = Vec::new();
         let mut keys = Vec::new();
         for doc in &docs {
@@ -523,7 +523,7 @@ impl StorageDocumentTraits for DuckDbStorage {
         }
     }
 
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
         let mut docs = Vec::new();
         let mut errors = Vec::new();
         for key in &keys {
@@ -550,23 +550,23 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         jacs_type: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_type".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "query_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -577,20 +577,20 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "query_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut docs = Vec::new();
         for row in rows {
-            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "query_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
             let value: Value = serde_json::from_str(&raw)?;
             docs.push(JACSDocument {
@@ -610,14 +610,14 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let json_path = format!("$.{}", field_path);
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_field".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let rows_result: Vec<(String, String, String, String)> = if let Some(doc_type) = jacs_type {
@@ -625,11 +625,11 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract_string(file_contents, ?) = ? AND jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -643,20 +643,20 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                         Ok((jacs_id, jacs_version, jacs_type, raw))
                     },
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                collected.push(row.map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?);
             }
             collected
@@ -665,11 +665,11 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract_string(file_contents, ?) = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -683,20 +683,20 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                         Ok((jacs_id, jacs_version, jacs_type, raw))
                     },
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                collected.push(row.map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?);
             }
             collected
@@ -715,12 +715,12 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         Ok(docs)
     }
 
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    fn count_by_type(&self, jacs_type: &str) -> Result<usize, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "count_by_type".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let count: i64 = conn
@@ -729,33 +729,33 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 params![jacs_type],
                 |row| row.get(0),
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "count_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(count as usize)
     }
 
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_versions".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? AND tombstoned = 0 ORDER BY created_at ASC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -766,20 +766,20 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut docs = Vec::new();
         for row in rows {
-            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
             let value: Value = serde_json::from_str(&raw)?;
             docs.push(JACSDocument {
@@ -792,7 +792,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         Ok(docs)
     }
 
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, JacsError> {
         self.get_latest_document(jacs_id)
     }
 
@@ -802,12 +802,12 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_agent".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         let rows_result: Vec<(String, String, String, String)> = if let Some(doc_type) = jacs_type {
@@ -815,11 +815,11 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ? AND jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -833,20 +833,20 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                         Ok((jacs_id, jacs_version, jacs_type, raw))
                     },
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                collected.push(row.map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?);
             }
             collected
@@ -855,11 +855,11 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -870,20 +870,20 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                     let jacs_type: String = row.get(3)?;
                     Ok((jacs_id, jacs_version, jacs_type, raw))
                 })
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                collected.push(row.map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?);
             }
             collected
@@ -902,29 +902,29 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         Ok(docs)
     }
 
-    fn run_migrations(&self) -> Result<(), Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+    fn run_migrations(&self) -> Result<(), JacsError> {
+        let conn = self.conn.lock().map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "run_migrations".to_string(),
                 reason: format!("Lock poisoned: {}", e),
-            })
+            }
         })?;
 
         conn.execute_batch(Self::CREATE_TABLE_SQL)
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "run_migrations".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         for index_sql in Self::CREATE_INDEXES_SQL {
             conn.execute_batch(index_sql)
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "run_migrations".to_string(),
                         reason: format!("Failed to create index: {}", e),
-                    })
+                    }
                 })?;
         }
 

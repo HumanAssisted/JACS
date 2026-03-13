@@ -4,9 +4,9 @@
 //! agent-management operations. They were previously methods on `SimpleAgent`
 //! and were moved here as part of Phase 5 (narrow contract).
 
+use crate::agent::SHA256_FIELDNAME;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::document::DocumentTraits;
-use crate::agent::SHA256_FIELDNAME;
 use crate::crypt::hash::hash_string;
 use crate::error::JacsError;
 use crate::protocol::canonicalize_json;
@@ -359,12 +359,11 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
     }
 
     // Step 1: Load config to find the agent file
-    let config = crate::config::load_config_12factor(Some(path)).map_err(|e| {
-        JacsError::ConfigInvalid {
+    let config =
+        crate::config::load_config_12factor(Some(path)).map_err(|e| JacsError::ConfigInvalid {
             field: "config".to_string(),
             reason: format!("Could not load configuration from '{}': {}", path, e),
-        }
-    })?;
+        })?;
 
     let id_and_version = config
         .jacs_agent_id_and_version()
@@ -531,10 +530,9 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
     // Step 10: Update config file with the new version
     let config_path_p = Path::new(path);
     if config_path_p.exists() {
-        let config_str =
-            fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
-                message: format!("Failed to read config for migration update: {}", e),
-            })?;
+        let config_str = fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
+            message: format!("Failed to read config for migration update: {}", e),
+        })?;
         let mut config_value: Value =
             serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
                 message: format!("Failed to parse config: {}", e),

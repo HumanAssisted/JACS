@@ -122,13 +122,17 @@ impl PostgresStorage {
 
     /// Build a JACSDocument from a database row.
     /// Uses raw_contents (TEXT) to preserve exact signed JSON bytes.
-    fn row_to_document(row: &PgRow) -> Result<JACSDocument, Box<dyn Error>> {
-        let raw: String = row.try_get("raw_contents")?;
+    fn row_to_document(row: &PgRow) -> Result<JACSDocument, JacsError> {
+        let raw: String = row.try_get("raw_contents")
+            .map_err(|e| JacsError::DatabaseError { operation: "row_to_document".into(), reason: e.to_string() })?;
         let value: Value = serde_json::from_str(&raw)?;
 
-        let id: String = row.try_get("jacs_id")?;
-        let version: String = row.try_get("jacs_version")?;
-        let jacs_type: String = row.try_get("jacs_type")?;
+        let id: String = row.try_get("jacs_id")
+            .map_err(|e| JacsError::DatabaseError { operation: "row_to_document".into(), reason: e.to_string() })?;
+        let version: String = row.try_get("jacs_version")
+            .map_err(|e| JacsError::DatabaseError { operation: "row_to_document".into(), reason: e.to_string() })?;
+        let jacs_type: String = row.try_get("jacs_type")
+            .map_err(|e| JacsError::DatabaseError { operation: "row_to_document".into(), reason: e.to_string() })?;
 
         Ok(JACSDocument {
             id,
@@ -169,7 +173,7 @@ impl PostgresStorage {
 }
 
 impl StorageDocumentTraits for PostgresStorage {
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let jsonb_value = &doc.value;
         let agent_id = doc
@@ -194,17 +198,17 @@ impl StorageDocumentTraits for PostgresStorage {
             .execute(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "store_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(())
     }
 
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
         let row = self.block_on(async {
@@ -217,17 +221,17 @@ impl StorageDocumentTraits for PostgresStorage {
             .fetch_one(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Self::row_to_document(&row)
     }
 
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let doc = self.get_document(key)?;
         let (id, version) = Self::parse_key(key)?;
 
@@ -238,17 +242,17 @@ impl StorageDocumentTraits for PostgresStorage {
                 .execute(&self.pool)
                 .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "remove_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(doc)
     }
 
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError> {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version FROM jacs_document \
@@ -258,11 +262,11 @@ impl StorageDocumentTraits for PostgresStorage {
             .fetch_all(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "list_documents".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(rows
@@ -275,7 +279,7 @@ impl StorageDocumentTraits for PostgresStorage {
             .collect())
     }
 
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
         let exists: bool = self
@@ -289,17 +293,17 @@ impl StorageDocumentTraits for PostgresStorage {
                 .fetch_one(&self.pool)
                 .await
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "document_exists".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(exists)
     }
 
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError> {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version FROM jacs_document \
@@ -309,11 +313,11 @@ impl StorageDocumentTraits for PostgresStorage {
             .fetch_all(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_documents_by_agent".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(rows
@@ -326,7 +330,7 @@ impl StorageDocumentTraits for PostgresStorage {
             .collect())
     }
 
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError> {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version FROM jacs_document \
@@ -336,11 +340,11 @@ impl StorageDocumentTraits for PostgresStorage {
             .fetch_all(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_document_versions".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(rows
@@ -353,7 +357,7 @@ impl StorageDocumentTraits for PostgresStorage {
             .collect())
     }
 
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
         let row = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
@@ -363,11 +367,11 @@ impl StorageDocumentTraits for PostgresStorage {
             .fetch_one(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_latest_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Self::row_to_document(&row)
@@ -378,17 +382,17 @@ impl StorageDocumentTraits for PostgresStorage {
         _doc_id: &str,
         _v1: &str,
         _v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
-        Err(Box::new(JacsError::DatabaseError {
+    ) -> Result<JACSDocument, JacsError> {
+        Err(JacsError::DatabaseError {
             operation: "merge_documents".to_string(),
             reason: "Not implemented for database backend".to_string(),
-        }))
+        })
     }
 
     fn store_documents(
         &self,
         docs: Vec<JACSDocument>,
-    ) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    ) -> Result<Vec<String>, Vec<JacsError>> {
         let mut errors = Vec::new();
         let mut keys = Vec::new();
         for doc in &docs {
@@ -407,7 +411,7 @@ impl StorageDocumentTraits for PostgresStorage {
     fn get_documents(
         &self,
         keys: Vec<String>,
-    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    ) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
         let mut docs = Vec::new();
         let mut errors = Vec::new();
         for key in &keys {
@@ -430,7 +434,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
         jacs_type: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
@@ -443,11 +447,11 @@ impl DatabaseDocumentTraits for PostgresStorage {
             .fetch_all(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_type".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         rows.iter().map(Self::row_to_document).collect()
@@ -460,7 +464,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let rows = if let Some(doc_type) = jacs_type {
             self.block_on(async {
                 sqlx::query(
@@ -491,17 +495,17 @@ impl DatabaseDocumentTraits for PostgresStorage {
                 .await
             })
         }
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_field".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         rows.iter().map(Self::row_to_document).collect()
     }
 
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>> {
+    fn count_by_type(&self, jacs_type: &str) -> Result<usize, JacsError> {
         let count: i64 = self
             .block_on(async {
                 sqlx::query_scalar::<_, i64>(
@@ -511,17 +515,17 @@ impl DatabaseDocumentTraits for PostgresStorage {
                 .fetch_one(&self.pool)
                 .await
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "count_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(count as usize)
     }
 
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, JacsError> {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
@@ -531,17 +535,17 @@ impl DatabaseDocumentTraits for PostgresStorage {
             .fetch_all(&self.pool)
             .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "get_versions".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         rows.iter().map(Self::row_to_document).collect()
     }
 
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, JacsError> {
         self.get_latest_document(jacs_id)
     }
 
@@ -551,7 +555,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let rows = if let Some(doc_type) = jacs_type {
             self.block_on(async {
                 sqlx::query(
@@ -580,36 +584,36 @@ impl DatabaseDocumentTraits for PostgresStorage {
                 .await
             })
         }
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_agent".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         rows.iter().map(Self::row_to_document).collect()
     }
 
-    fn run_migrations(&self) -> Result<(), Box<dyn Error>> {
+    fn run_migrations(&self) -> Result<(), JacsError> {
         self.block_on(async {
             sqlx::query(Self::CREATE_TABLE_SQL)
                 .execute(&self.pool)
                 .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "run_migrations".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         for index_sql in Self::CREATE_INDEXES_SQL {
             self.block_on(async { sqlx::query(index_sql).execute(&self.pool).await })
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "run_migrations".to_string(),
                         reason: format!("Failed to create index: {}", e),
-                    })
+                    }
                 })?;
         }
 
@@ -619,11 +623,11 @@ impl DatabaseDocumentTraits for PostgresStorage {
                 .execute(&self.pool)
                 .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "run_migrations".to_string(),
                 reason: format!("Failed to create FTS index: {}", e),
-            })
+            }
         })?;
 
         // Tombstone migration: add tombstoned column for soft-delete support.

@@ -23,12 +23,14 @@ use tracing::warn;
 
 use crate::agent::Agent;
 use crate::agent::document::{DocumentTraits, JACSDocument};
+use crate::document::DocumentService;
 use crate::document::types::{
     CreateOptions, DocumentDiff, DocumentSummary, DocumentVisibility, ListFilter, UpdateOptions,
 };
-use crate::document::DocumentService;
 use crate::error::JacsError;
-use crate::search::{SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery, SearchResults};
+use crate::search::{
+    SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery, SearchResults,
+};
 use crate::storage::{MultiStorage, StorageDocumentTraits};
 
 /// Filesystem-backed [`DocumentService`] implementation.
@@ -189,8 +191,8 @@ impl DocumentService for FilesystemDocumentService {
             obj.insert("jacsVisibility".to_string(), vis_value);
         }
 
-        let doc_string = serde_json::to_string(&value)
-            .map_err(|e| JacsError::DocumentError(e.to_string()))?;
+        let doc_string =
+            serde_json::to_string(&value).map_err(|e| JacsError::DocumentError(e.to_string()))?;
 
         // Sign the document via the Agent
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
@@ -210,11 +212,9 @@ impl DocumentService for FilesystemDocumentService {
     }
 
     fn get(&self, key: &str) -> Result<JACSDocument, JacsError> {
-        self.storage
-            .get_document(key)
-            .map_err(|e| {
-                JacsError::StorageError(format!("Failed to get document '{}': {}", key, e))
-            })
+        self.storage.get_document(key).map_err(|e| {
+            JacsError::StorageError(format!("Failed to get document '{}': {}", key, e))
+        })
     }
 
     fn get_latest(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
@@ -275,18 +275,23 @@ impl DocumentService for FilesystemDocumentService {
             // Must match the current document's ID and version for update_document
             obj.insert(
                 "jacsId".to_string(),
-                current.value.get("jacsId").cloned().unwrap_or(serde_json::json!(document_id)),
+                current
+                    .value
+                    .get("jacsId")
+                    .cloned()
+                    .unwrap_or(serde_json::json!(document_id)),
             );
             obj.insert(
                 "jacsVersion".to_string(),
-                current.value.get("jacsVersion").cloned().unwrap_or(serde_json::json!(current.version)),
+                current
+                    .value
+                    .get("jacsVersion")
+                    .cloned()
+                    .unwrap_or(serde_json::json!(current.version)),
             );
 
             // Preserve jacsType
-            obj.insert(
-                "jacsType".to_string(),
-                serde_json::json!(current.jacs_type),
-            );
+            obj.insert("jacsType".to_string(), serde_json::json!(current.jacs_type));
 
             // Set jacsLevel to "artifact" for editability
             obj.insert("jacsLevel".to_string(), serde_json::json!("artifact"));
@@ -315,8 +320,8 @@ impl DocumentService for FilesystemDocumentService {
             }
         }
 
-        let doc_string = serde_json::to_string(&value)
-            .map_err(|e| JacsError::DocumentError(e.to_string()))?;
+        let doc_string =
+            serde_json::to_string(&value).map_err(|e| JacsError::DocumentError(e.to_string()))?;
 
         // Use Agent::update_document to create a new version with the same ID
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
@@ -332,16 +337,12 @@ impl DocumentService for FilesystemDocumentService {
 
         let new_doc = agent
             .update_document(&current_key, &doc_string, None, None)
-            .map_err(|e| {
-                JacsError::DocumentError(format!("Failed to update document: {}", e))
-            })?;
+            .map_err(|e| JacsError::DocumentError(format!("Failed to update document: {}", e)))?;
 
         // Store the new version on the filesystem
-        self.storage
-            .store_document(&new_doc)
-            .map_err(|e| {
-                JacsError::StorageError(format!("Failed to store updated document: {}", e))
-            })?;
+        self.storage.store_document(&new_doc).map_err(|e| {
+            JacsError::StorageError(format!("Failed to store updated document: {}", e))
+        })?;
 
         Ok(new_doc)
     }
@@ -493,10 +494,7 @@ impl DocumentService for FilesystemDocumentService {
                 if let Some(ref field_filter) = query.field_filter {
                     let field_value = doc
                         .value
-                        .pointer(&format!(
-                            "/{}",
-                            field_filter.field_path.replace('.', "/")
-                        ))
+                        .pointer(&format!("/{}", field_filter.field_path.replace('.', "/")))
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
                     if field_value == field_filter.value {
@@ -603,11 +601,7 @@ impl DocumentService for FilesystemDocumentService {
         Ok(vis)
     }
 
-    fn set_visibility(
-        &self,
-        key: &str,
-        visibility: DocumentVisibility,
-    ) -> Result<(), JacsError> {
+    fn set_visibility(&self, key: &str, visibility: DocumentVisibility) -> Result<(), JacsError> {
         let doc = self.get(key)?;
         let document_id = Self::document_id_from_key(key);
 

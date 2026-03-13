@@ -3,9 +3,9 @@
 //! Tests the unified Document API backed by the filesystem storage backend.
 //! Each test uses an isolated tempdir and a freshly created agent.
 
+use jacs::document::DocumentService;
 use jacs::document::filesystem::FilesystemDocumentService;
 use jacs::document::types::{CreateOptions, DocumentVisibility, ListFilter, UpdateOptions};
-use jacs::document::DocumentService;
 use jacs::search::{SearchMethod, SearchQuery};
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs::storage::MultiStorage;
@@ -58,11 +58,8 @@ fn create_test_service() -> (FilesystemDocumentService, TempDir, SimpleAgent) {
         .load_by_config(config_path.to_str().unwrap().to_string())
         .expect("load agent by config");
 
-    let service = FilesystemDocumentService::new(
-        Arc::new(storage),
-        Arc::new(Mutex::new(fs_agent)),
-        data_dir,
-    );
+    let service =
+        FilesystemDocumentService::new(Arc::new(storage), Arc::new(Mutex::new(fs_agent)), data_dir);
 
     (service, tmp, agent)
 }
@@ -77,10 +74,7 @@ fn create_stores_document_and_returns_it_signed() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let doc = svc
-        .create(
-            r#"{"content": "hello world"}"#,
-            CreateOptions::default(),
-        )
+        .create(r#"{"content": "hello world"}"#, CreateOptions::default())
         .expect("create should succeed");
 
     // Document should have an ID and version
@@ -107,10 +101,7 @@ fn get_retrieves_a_created_document_by_key() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let created = svc
-        .create(
-            r#"{"content": "test get"}"#,
-            CreateOptions::default(),
-        )
+        .create(r#"{"content": "test get"}"#, CreateOptions::default())
         .expect("create should succeed");
 
     let key = created.getkey();
@@ -126,10 +117,7 @@ fn get_latest_returns_the_most_recent_version() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let v1 = svc
-        .create(
-            r#"{"content": "version 1"}"#,
-            CreateOptions::default(),
-        )
+        .create(r#"{"content": "version 1"}"#, CreateOptions::default())
         .expect("create v1");
 
     let v2 = svc
@@ -140,9 +128,7 @@ fn get_latest_returns_the_most_recent_version() {
         )
         .expect("update to v2");
 
-    let latest = svc
-        .get_latest(&v1.id)
-        .expect("get_latest should succeed");
+    let latest = svc.get_latest(&v1.id).expect("get_latest should succeed");
 
     // The latest should be v2, not v1
     assert_ne!(
@@ -159,10 +145,7 @@ fn update_creates_a_new_version_linked_to_prior() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let v1 = svc
-        .create(
-            r#"{"content": "original"}"#,
-            CreateOptions::default(),
-        )
+        .create(r#"{"content": "original"}"#, CreateOptions::default())
         .expect("create v1");
 
     let v2 = svc
@@ -178,10 +161,7 @@ fn update_creates_a_new_version_linked_to_prior() {
 
     // v2 should reference v1 as previous version.
     // JACS stores the previous *version UUID* (not the full key) in jacsPreviousVersion.
-    let prev = v2
-        .value
-        .get("jacsPreviousVersion")
-        .and_then(|v| v.as_str());
+    let prev = v2.value.get("jacsPreviousVersion").and_then(|v| v.as_str());
     assert_eq!(
         prev,
         Some(v1.version.as_str()),
@@ -195,10 +175,7 @@ fn remove_archives_document_and_get_returns_error() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let doc = svc
-        .create(
-            r#"{"content": "to be removed"}"#,
-            CreateOptions::default(),
-        )
+        .create(r#"{"content": "to be removed"}"#, CreateOptions::default())
         .expect("create");
 
     let key = doc.getkey();
@@ -221,17 +198,11 @@ fn remove_archives_document_and_get_returns_error() {
 fn list_returns_created_documents() {
     let (svc, tmp, _agent) = create_test_service();
 
-    svc.create(
-        r#"{"content": "doc1"}"#,
-        CreateOptions::default(),
-    )
-    .expect("create doc1");
+    svc.create(r#"{"content": "doc1"}"#, CreateOptions::default())
+        .expect("create doc1");
 
-    svc.create(
-        r#"{"content": "doc2"}"#,
-        CreateOptions::default(),
-    )
-    .expect("create doc2");
+    svc.create(r#"{"content": "doc2"}"#, CreateOptions::default())
+        .expect("create doc2");
 
     let summaries = svc
         .list(ListFilter::default())
@@ -250,18 +221,11 @@ fn versions_returns_version_history() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let v1 = svc
-        .create(
-            r#"{"content": "v1"}"#,
-            CreateOptions::default(),
-        )
+        .create(r#"{"content": "v1"}"#, CreateOptions::default())
         .expect("create v1");
 
     let v2 = svc
-        .update(
-            &v1.id,
-            r#"{"content": "v2"}"#,
-            UpdateOptions::default(),
-        )
+        .update(&v1.id, r#"{"content": "v2"}"#, UpdateOptions::default())
         .expect("update to v2");
 
     let versions = svc.versions(&v1.id).expect("versions should succeed");
@@ -327,17 +291,11 @@ fn search_with_query_returns_field_match_method() {
 fn search_empty_query_returns_all_documents() {
     let (svc, _tmp, _agent) = create_test_service();
 
-    svc.create(
-        r#"{"content": "alpha"}"#,
-        CreateOptions::default(),
-    )
-    .expect("create alpha");
+    svc.create(r#"{"content": "alpha"}"#, CreateOptions::default())
+        .expect("create alpha");
 
-    svc.create(
-        r#"{"content": "beta"}"#,
-        CreateOptions::default(),
-    )
-    .expect("create beta");
+    svc.create(r#"{"content": "beta"}"#, CreateOptions::default())
+        .expect("create beta");
 
     let results = svc
         .search(SearchQuery::default())
@@ -416,10 +374,7 @@ fn visibility_returns_private_by_default() {
     let (svc, _tmp, _agent) = create_test_service();
 
     let doc = svc
-        .create(
-            r#"{"content": "private doc"}"#,
-            CreateOptions::default(),
-        )
+        .create(r#"{"content": "private doc"}"#, CreateOptions::default())
         .expect("create");
 
     let vis = svc.visibility(&doc.getkey()).expect("visibility");

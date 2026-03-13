@@ -48,10 +48,7 @@ fn internal_algorithm(friendly: &str) -> &str {
 
 const TEST_PASSWORD: &str = "TestP@ss123!#";
 
-fn persistent_agent_in(
-    dir: &TempDir,
-    algorithm: &str,
-) -> (SimpleAgent, jacs::simple::AgentInfo) {
+fn persistent_agent_in(dir: &TempDir, algorithm: &str) -> (SimpleAgent, jacs::simple::AgentInfo) {
     let data_dir = dir.path().join("jacs_data");
     let key_dir = dir.path().join("jacs_keys");
     let config_path = dir.path().join("jacs.config.json");
@@ -69,8 +66,8 @@ fn persistent_agent_in(
     // create_with_params sets env vars inside a mutex guard and restores them
     // on return. The persistent agent needs JACS_PRIVATE_KEY_PASSWORD to be
     // set for subsequent sign operations, so we set it after creation.
-    let result = SimpleAgent::create_with_params(params)
-        .expect("create_with_params should succeed");
+    let result =
+        SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
 
     // Re-set password env var so signing can decrypt the private key.
     // Also re-set key/data directories so the agent can find its files.
@@ -165,8 +162,8 @@ fn test_create_with_params_respects_all_fields() {
         .agent_type("ai")
         .build();
 
-    let (_agent, info) = SimpleAgent::create_with_params(params)
-        .expect("create_with_params should succeed");
+    let (_agent, info) =
+        SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
 
     assert_eq!(info.name, "params-test-agent");
     assert!(
@@ -245,8 +242,8 @@ fn test_load_roundtrips_with_create() {
         .config_path(config_path.to_str().unwrap())
         .build();
 
-    let (_agent, info) = SimpleAgent::create_with_params(params)
-        .expect("create_with_params should succeed");
+    let (_agent, info) =
+        SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
 
     // Set env vars so load() can find the agent files and decrypt the key.
     // create_with_params restores env vars on return, so we must re-set them.
@@ -295,8 +292,7 @@ fn test_ephemeral_creates_agent_no_disk_writes() {
     let tmp = TempDir::new().unwrap();
     let before_count = fs::read_dir(tmp.path()).unwrap().count();
 
-    let (agent, info) = SimpleAgent::ephemeral(Some("ed25519"))
-        .expect("ephemeral should succeed");
+    let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral should succeed");
 
     let after_count = fs::read_dir(tmp.path()).unwrap().count();
     assert_eq!(
@@ -304,7 +300,10 @@ fn test_ephemeral_creates_agent_no_disk_writes() {
         "ephemeral should not write to disk"
     );
 
-    assert!(!info.agent_id.is_empty(), "ephemeral agent_id should be non-empty");
+    assert!(
+        !info.agent_id.is_empty(),
+        "ephemeral agent_id should be non-empty"
+    );
     assert_eq!(info.name, "ephemeral");
     assert!(
         info.config_path.is_empty(),
@@ -344,8 +343,8 @@ fn test_ephemeral_ed25519() {
 
 #[test]
 fn test_ephemeral_rsa() {
-    let (agent, info) = SimpleAgent::ephemeral(Some("rsa-pss"))
-        .expect("ephemeral rsa-pss should succeed");
+    let (agent, info) =
+        SimpleAgent::ephemeral(Some("rsa-pss")).expect("ephemeral rsa-pss should succeed");
     assert!(!info.agent_id.is_empty());
     assert!(
         info.algorithm.contains("RSA") || info.algorithm.contains("rsa"),
@@ -364,9 +363,15 @@ fn test_ephemeral_rsa() {
 fn test_verify_self_on_fresh_ephemeral() {
     let (agent, _info) = ephemeral_ed25519();
     let result = agent.verify_self().expect("verify_self should not error");
-    assert!(result.valid, "fresh ephemeral agent should verify_self as valid");
+    assert!(
+        result.valid,
+        "fresh ephemeral agent should verify_self as valid"
+    );
     assert!(result.errors.is_empty(), "no errors expected");
-    assert!(!result.signer_id.is_empty(), "signer_id should be populated");
+    assert!(
+        !result.signer_id.is_empty(),
+        "signer_id should be populated"
+    );
 }
 
 #[test]
@@ -386,16 +391,23 @@ fn test_verify_self_on_persistent_agent() {
 fn test_sign_message_produces_verifiable_output() {
     let (agent, _info) = ephemeral_ed25519();
     let data = json!({"action": "test", "value": 42});
-    let signed = agent.sign_message(&data).expect("sign_message should succeed");
+    let signed = agent
+        .sign_message(&data)
+        .expect("sign_message should succeed");
 
     assert!(!signed.raw.is_empty(), "signed.raw should be non-empty");
-    assert!(!signed.document_id.is_empty(), "document_id should be non-empty");
+    assert!(
+        !signed.document_id.is_empty(),
+        "document_id should be non-empty"
+    );
     assert!(!signed.agent_id.is_empty(), "agent_id should be non-empty");
-    assert!(!signed.timestamp.is_empty(), "timestamp should be non-empty");
+    assert!(
+        !signed.timestamp.is_empty(),
+        "timestamp should be non-empty"
+    );
 
     // The raw JSON should be parseable
-    let parsed: Value = serde_json::from_str(&signed.raw)
-        .expect("signed.raw should be valid JSON");
+    let parsed: Value = serde_json::from_str(&signed.raw).expect("signed.raw should be valid JSON");
     assert!(
         parsed.get("jacsSignature").is_some(),
         "signed document should have jacsSignature"
@@ -470,7 +482,10 @@ fn test_verify_accepts_valid_document() {
     let signed = agent.sign_message(&json!({"data": "valid"})).unwrap();
 
     let result = agent.verify(&signed.raw).expect("verify should not error");
-    assert!(result.valid, "verify should return valid for a valid document");
+    assert!(
+        result.valid,
+        "verify should return valid for a valid document"
+    );
     assert!(result.errors.is_empty(), "no errors on valid document");
 }
 
@@ -511,12 +526,17 @@ fn test_verify_with_key_correct_key() {
     let signed = agent.sign_message(&json!({"key_test": true})).unwrap();
 
     // Get the agent's public key
-    let pubkey = agent.get_public_key().expect("get_public_key should succeed");
+    let pubkey = agent
+        .get_public_key()
+        .expect("get_public_key should succeed");
 
     let result = agent
         .verify_with_key(&signed.raw, pubkey)
         .expect("verify_with_key should not error");
-    assert!(result.valid, "verify_with_key with correct key should be valid");
+    assert!(
+        result.valid,
+        "verify_with_key with correct key should be valid"
+    );
 }
 
 #[test]
@@ -554,8 +574,12 @@ fn test_verify_by_id_on_signed_message() {
     let signed_value: Value = serde_json::from_str(&signed.raw).expect("parse signed document");
     let document_key = format!(
         "{}:{}",
-        signed_value["jacsId"].as_str().expect("jacsId should exist"),
-        signed_value["jacsVersion"].as_str().expect("jacsVersion should exist")
+        signed_value["jacsId"]
+            .as_str()
+            .expect("jacsId should exist"),
+        signed_value["jacsVersion"]
+            .as_str()
+            .expect("jacsVersion should exist")
     );
 
     let result = agent
@@ -635,7 +659,9 @@ fn test_get_public_key_pem_returns_pem_format() {
 fn test_get_public_key_pem_rsa() {
     let (agent, _info) =
         SimpleAgent::ephemeral(Some("rsa-pss")).expect("ephemeral rsa-pss should succeed");
-    let pem = agent.get_public_key_pem().expect("get_public_key_pem should succeed");
+    let pem = agent
+        .get_public_key_pem()
+        .expect("get_public_key_pem should succeed");
     assert!(
         pem.contains("-----BEGIN") || pem.contains("PUBLIC KEY"),
         "RSA PEM should have standard markers"
@@ -693,14 +719,24 @@ fn test_diagnostics_returns_expected_fields() {
     let diag = agent.diagnostics();
 
     // Should have these fields (from the standalone diagnostics + agent additions)
-    assert!(diag.get("jacs_version").is_some(), "diagnostics should have jacs_version");
+    assert!(
+        diag.get("jacs_version").is_some(),
+        "diagnostics should have jacs_version"
+    );
     assert!(diag.get("os").is_some(), "diagnostics should have os");
     assert!(diag.get("arch").is_some(), "diagnostics should have arch");
-    assert!(diag.get("agent_loaded").is_some(), "diagnostics should have agent_loaded");
+    assert!(
+        diag.get("agent_loaded").is_some(),
+        "diagnostics should have agent_loaded"
+    );
 
     // For a loaded agent, agent_loaded should be true
     let agent_loaded = diag["agent_loaded"].as_bool();
-    assert_eq!(agent_loaded, Some(true), "agent_loaded should be true for a loaded agent");
+    assert_eq!(
+        agent_loaded,
+        Some(true),
+        "agent_loaded should be true for a loaded agent"
+    );
 }
 
 #[test]
@@ -808,7 +844,9 @@ fn test_cross_agent_verification() {
         .expect("agent_a sign should succeed");
 
     // Get agent A's public key
-    let pubkey_a = agent_a.get_public_key().expect("get_public_key should succeed");
+    let pubkey_a = agent_a
+        .get_public_key()
+        .expect("get_public_key should succeed");
 
     // Agent B verifies with agent A's key
     let result = agent_b
@@ -833,5 +871,8 @@ fn test_sign_verify_roundtrip_pq2025() {
     let signed = agent.sign_message(&data).expect("sign should succeed");
     let result = agent.verify(&signed.raw).expect("verify should succeed");
 
-    assert!(result.valid, "pq2025 roundtrip verification should be valid");
+    assert!(
+        result.valid,
+        "pq2025 roundtrip verification should be valid"
+    );
 }

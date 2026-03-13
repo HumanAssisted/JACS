@@ -14,9 +14,7 @@ use tracing::warn;
 ///
 /// The Agent Card describes the agent's capabilities, skills, and
 /// cryptographic configuration for zero-config A2A discovery.
-pub fn export_agent_card(
-    agent: &SimpleAgent,
-) -> Result<crate::a2a::AgentCard, JacsError> {
+pub fn export_agent_card(agent: &SimpleAgent) -> Result<crate::a2a::AgentCard, JacsError> {
     let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
         message: format!("Failed to acquire agent lock: {}", e),
     })?;
@@ -39,12 +37,11 @@ pub fn generate_well_known_documents(
     let agent_card = export_agent_card(agent)?;
 
     let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
-    let dual_keys =
-        crate::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
-            JacsError::Internal {
-                message: format!("Failed to generate A2A keys: {}", e),
-            }
-        })?;
+    let dual_keys = crate::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
+        JacsError::Internal {
+            message: format!("Failed to generate A2A keys: {}", e),
+        }
+    })?;
 
     let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
         message: format!("Failed to acquire agent lock: {}", e),
@@ -162,10 +159,7 @@ pub fn sign_artifact(
 ///
 /// * `agent` - The SimpleAgent to use for verification
 /// * `wrapped_json` - JSON string of the wrapped artifact to verify
-pub fn verify_artifact(
-    agent: &SimpleAgent,
-    wrapped_json: &str,
-) -> Result<String, JacsError> {
+pub fn verify_artifact(agent: &SimpleAgent, wrapped_json: &str) -> Result<String, JacsError> {
     let wrapped: Value =
         serde_json::from_str(wrapped_json).map_err(|e| JacsError::DocumentMalformed {
             field: "wrapped_json".to_string(),

@@ -1,3 +1,4 @@
+#![cfg(feature = "a2a")]
 //! Integration tests for A2A protocol support in JACS (v0.4.0)
 
 use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*, *};

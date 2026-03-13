@@ -130,11 +130,7 @@ pub trait DocumentService: Send + Sync {
     /// This is intentional: visibility is an access-control hint that can
     /// be changed without re-signing, which would require the agent's
     /// private key.
-    fn set_visibility(
-        &self,
-        key: &str,
-        visibility: DocumentVisibility,
-    ) -> Result<(), JacsError>;
+    fn set_visibility(&self, key: &str, visibility: DocumentVisibility) -> Result<(), JacsError>;
 }
 
 // =============================================================================

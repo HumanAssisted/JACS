@@ -5,17 +5,25 @@
   "description": "A JACS attestation document that proves WHO did WHAT and WHY it should be trusted.",
   "type": "object",
   "allOf": [
-    { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" }
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+    }
   ],
   "properties": {
     "jacsType": {
       "type": "string",
-      "enum": ["attestation", "attestation-transform-receipt"],
+      "enum": [
+        "attestation",
+        "attestation-transform-receipt"
+      ],
       "description": "Attestation document type. Must be 'attestation' or 'attestation-transform-receipt'."
     },
     "jacsLevel": {
       "type": "string",
-      "enum": ["raw", "derived"],
+      "enum": [
+        "raw",
+        "derived"
+      ],
       "description": "Attestation data level. 'raw' for direct attestations, 'derived' for transform receipts."
     },
     "attestation": {
@@ -26,7 +34,12 @@
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["agent", "artifact", "workflow", "identity"]
+              "enum": [
+                "agent",
+                "artifact",
+                "workflow",
+                "identity"
+              ]
             },
             "id": {
               "type": "string",
@@ -36,14 +49,26 @@
               "type": "object",
               "description": "Content-addressable digests of the subject. For agents: hash of public key. For artifacts: hash of content.",
               "properties": {
-                "sha256": { "type": "string" },
-                "sha512": { "type": "string" }
+                "sha256": {
+                  "type": "string"
+                },
+                "sha512": {
+                  "type": "string"
+                }
               },
-              "required": ["sha256"],
-              "additionalProperties": { "type": "string" }
+              "required": [
+                "sha256"
+              ],
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           },
-          "required": ["type", "id", "digests"],
+          "required": [
+            "type",
+            "id",
+            "digests"
+          ],
           "additionalProperties": false
         },
         "claims": {
@@ -51,7 +76,9 @@
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string" },
+              "name": {
+                "type": "string"
+              },
               "value": {},
               "confidence": {
                 "type": "number",
@@ -61,7 +88,11 @@
               },
               "assuranceLevel": {
                 "type": "string",
-                "enum": ["self-asserted", "verified", "independently-attested"],
+                "enum": [
+                  "self-asserted",
+                  "verified",
+                  "independently-attested"
+                ],
                 "description": "Categorical assurance level."
               },
               "issuer": {
@@ -73,7 +104,10 @@
                 "format": "date-time"
               }
             },
-            "required": ["name", "value"],
+            "required": [
+              "name",
+              "value"
+            ],
             "additionalProperties": false
           },
           "minItems": 1
@@ -85,18 +119,32 @@
             "properties": {
               "kind": {
                 "type": "string",
-                "enum": ["a2a", "email", "jwt", "tlsnotary", "custom"],
+                "enum": [
+                  "a2a",
+                  "email",
+                  "jwt",
+                  "tlsnotary",
+                  "custom"
+                ],
                 "description": "Type of evidence source."
               },
               "digests": {
                 "type": "object",
                 "description": "Algorithm-agile content digests of the evidence.",
                 "properties": {
-                  "sha256": { "type": "string" },
-                  "sha512": { "type": "string" }
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "sha512": {
+                    "type": "string"
+                  }
                 },
-                "required": ["sha256"],
-                "additionalProperties": { "type": "string" }
+                "required": [
+                  "sha256"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
               },
               "uri": {
                 "type": "string",
@@ -122,21 +170,37 @@
               },
               "sensitivity": {
                 "type": "string",
-                "enum": ["public", "restricted", "confidential"],
+                "enum": [
+                  "public",
+                  "restricted",
+                  "confidential"
+                ],
                 "default": "public",
                 "description": "Privacy classification of the evidence."
               },
               "verifier": {
                 "type": "object",
                 "properties": {
-                  "name": { "type": "string" },
-                  "version": { "type": "string" }
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
                 },
-                "required": ["name", "version"],
+                "required": [
+                  "name",
+                  "version"
+                ],
                 "additionalProperties": false
               }
             },
-            "required": ["kind", "digests", "collectedAt", "verifier"],
+            "required": [
+              "kind",
+              "digests",
+              "collectedAt",
+              "verifier"
+            ],
             "additionalProperties": false
           }
         },
@@ -152,18 +216,28 @@
                   "digests": {
                     "type": "object",
                     "properties": {
-                      "sha256": { "type": "string" },
-                      "sha512": { "type": "string" }
+                      "sha256": {
+                        "type": "string"
+                      },
+                      "sha512": {
+                        "type": "string"
+                      }
                     },
-                    "required": ["sha256"],
-                    "additionalProperties": { "type": "string" }
+                    "required": [
+                      "sha256"
+                    ],
+                    "additionalProperties": {
+                      "type": "string"
+                    }
                   },
                   "id": {
                     "type": "string",
                     "description": "JACS document ID of the input, if available."
                   }
                 },
-                "required": ["digests"],
+                "required": [
+                  "digests"
+                ],
                 "additionalProperties": false
               }
             },
@@ -187,23 +261,40 @@
                 "environment": {
                   "type": "object",
                   "description": "Runtime parameters that affect the output.",
-                  "additionalProperties": { "type": "string" }
+                  "additionalProperties": {
+                    "type": "string"
+                  }
                 }
               },
-              "required": ["name", "hash"],
+              "required": [
+                "name",
+                "hash"
+              ],
               "additionalProperties": false
             },
             "outputDigests": {
               "type": "object",
               "properties": {
-                "sha256": { "type": "string" },
-                "sha512": { "type": "string" }
+                "sha256": {
+                  "type": "string"
+                },
+                "sha512": {
+                  "type": "string"
+                }
               },
-              "required": ["sha256"],
-              "additionalProperties": { "type": "string" }
+              "required": [
+                "sha256"
+              ],
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           },
-          "required": ["inputs", "transform", "outputDigests"],
+          "required": [
+            "inputs",
+            "transform",
+            "outputDigests"
+          ],
           "additionalProperties": false
         },
         "policyContext": {
@@ -216,7 +307,12 @@
             },
             "requiredTrustLevel": {
               "type": "string",
-              "enum": ["open", "verified", "strict", "custom"]
+              "enum": [
+                "open",
+                "verified",
+                "strict",
+                "custom"
+              ]
             },
             "maxEvidenceAge": {
               "type": "string",
@@ -226,9 +322,14 @@
           "additionalProperties": false
         }
       },
-      "required": ["subject", "claims"],
+      "required": [
+        "subject",
+        "claims"
+      ],
       "additionalProperties": false
     }
   },
-  "required": ["attestation"]
+  "required": [
+    "attestation"
+  ]
 }

@@ -11585,7 +11585,7 @@ const client = await JacsClient.quickstart({
 <tr><td>PostgreSQL</td><td><code>database</code></td><td>PostgreSQL with JSONB queries (requires <code>database</code> feature)</td></tr>
 <tr><td>Rusqlite</td><td><code>rusqlite</code></td><td>Embedded SQLite (requires <code>rusqlite-storage</code> feature)</td></tr>
 <tr><td>DuckDB</td><td><code>duckdb</code></td><td>Embedded analytical DB (requires <code>duckdb-storage</code> feature)</td></tr>
-<tr><td>Redb</td><td><code>redb</code></td><td>Pure-Rust embedded KV (requires <code>redb-storage</code> feature)</td></tr>
+<tr><td>Redb</td><td><code>redb</code></td><td>Pure-Rust embedded KV (standalone <code>jacs-redb</code> crate)</td></tr>
 <tr><td>SurrealDB</td><td><code>surrealdb</code></td><td>Multi-model DB with SurrealQL (requires <code>surrealdb-storage</code> feature)</td></tr>
 </tbody></table>
 </div>
@@ -11860,10 +11860,9 @@ cargo test --features rusqlite-storage-tests
 cargo test --features duckdb-storage-tests
 </code></pre>
 <p><strong>When to use:</strong> You need analytical queries or columnar storage over signed documents.</p>
-<h3 id="redb-redb-storage"><a class="header" href="#redb-redb-storage">Redb (<code>redb-storage</code>)</a></h3>
-<p>Pure-Rust embedded key-value store. No C dependencies.</p>
-<pre><code class="language-bash">cargo build --features redb-storage
-cargo test --features redb-storage-tests
+<h3 id="redb-jacs-redb-crate"><a class="header" href="#redb-jacs-redb-crate">Redb (<code>jacs-redb</code> crate)</a></h3>
+<p>Pure-Rust embedded key-value store. No C dependencies. Extracted to the standalone <code>jacs-redb</code> crate.</p>
+<pre><code class="language-bash">cargo test -p jacs-redb
 </code></pre>
 <p><strong>When to use:</strong> You want the simplest embedded backend with zero non-Rust dependencies.</p>
 <h3 id="surrealdb-surrealdb-storage"><a class="header" href="#surrealdb-surrealdb-storage">SurrealDB (<code>surrealdb-storage</code>)</a></h3>

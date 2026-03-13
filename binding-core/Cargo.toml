@@ -13,6 +13,7 @@ homepage = "https://humanassisted.github.io/JACS"
 
 [features]
 default = []
+a2a = ["jacs/a2a"]
 attestation = ["jacs/attestation"]
 
 [dependencies]

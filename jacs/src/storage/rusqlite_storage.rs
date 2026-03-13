@@ -98,7 +98,7 @@ impl RusqliteStorage {
 }
 
 impl StorageDocumentTraits for RusqliteStorage {
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let file_contents_json = serde_json::to_string(&doc.value)?;
         let agent_id = doc
@@ -108,11 +108,9 @@ impl StorageDocumentTraits for RusqliteStorage {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "store_document".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "store_document".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         conn.execute(
@@ -120,35 +118,33 @@ impl StorageDocumentTraits for RusqliteStorage {
                VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
             params![doc.id, doc.version, agent_id, doc.jacs_type, raw_json, file_contents_json],
         )
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "store_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(())
     }
 
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "get_document".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "get_document".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ?1 AND jacs_version = ?2",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut rows = stmt
@@ -159,11 +155,9 @@ impl StorageDocumentTraits for RusqliteStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "get_document".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "get_document".to_string(),
+                reason: e.to_string(),
             })?;
 
         match rows.next() {
@@ -176,59 +170,53 @@ impl StorageDocumentTraits for RusqliteStorage {
                     jacs_type,
                 })
             }
-            Some(Err(e)) => Err(Box::new(JacsError::DatabaseError {
+            Some(Err(e)) => Err(JacsError::DatabaseError {
                 operation: "get_document".to_string(),
                 reason: e.to_string(),
-            })),
-            None => Err(Box::new(JacsError::DatabaseError {
+            }),
+            None => Err(JacsError::DatabaseError {
                 operation: "get_document".to_string(),
                 reason: format!("Document not found: {}", key),
-            })),
+            }),
         }
     }
 
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let doc = self.get_document(key)?;
         let (id, version) = Self::parse_key(key)?;
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "remove_document".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "remove_document".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         conn.execute(
             "DELETE FROM jacs_document WHERE jacs_id = ?1 AND jacs_version = ?2",
             params![id, version],
         )
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "remove_document".to_string(),
-                reason: e.to_string(),
-            })
+        .map_err(|e| JacsError::DatabaseError {
+            operation: "remove_document".to_string(),
+            reason: e.to_string(),
         })?;
 
         Ok(doc)
     }
 
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "list_documents".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "list_documents".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_type = ?1 ORDER BY created_at DESC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "list_documents".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -237,33 +225,27 @@ impl StorageDocumentTraits for RusqliteStorage {
                 let version: String = row.get(1)?;
                 Ok(format!("{}:{}", id, version))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "list_documents".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "list_documents".to_string(),
+                reason: e.to_string(),
             })?;
 
         let mut keys = Vec::new();
         for row in rows {
-            keys.push(row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "list_documents".to_string(),
-                    reason: e.to_string(),
-                })
+            keys.push(row.map_err(|e| JacsError::DatabaseError {
+                operation: "list_documents".to_string(),
+                reason: e.to_string(),
             })?);
         }
         Ok(keys)
     }
 
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "document_exists".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "document_exists".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let count: i64 = conn
@@ -272,33 +254,29 @@ impl StorageDocumentTraits for RusqliteStorage {
                 params![id, version],
                 |row| row.get(0),
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "document_exists".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "document_exists".to_string(),
+                reason: e.to_string(),
             })?;
 
         Ok(count > 0)
     }
 
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "get_documents_by_agent".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "get_documents_by_agent".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version FROM jacs_document WHERE agent_id = ?1 ORDER BY created_at DESC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_documents_by_agent".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -307,42 +285,36 @@ impl StorageDocumentTraits for RusqliteStorage {
                 let version: String = row.get(1)?;
                 Ok(format!("{}:{}", id, version))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "get_documents_by_agent".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "get_documents_by_agent".to_string(),
+                reason: e.to_string(),
             })?;
 
         let mut keys = Vec::new();
         for row in rows {
-            keys.push(row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "get_documents_by_agent".to_string(),
-                    reason: e.to_string(),
-                })
+            keys.push(row.map_err(|e| JacsError::DatabaseError {
+                operation: "get_documents_by_agent".to_string(),
+                reason: e.to_string(),
             })?);
         }
         Ok(keys)
     }
 
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "get_document_versions".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "get_document_versions".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_id = ?1 ORDER BY created_at ASC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -351,42 +323,36 @@ impl StorageDocumentTraits for RusqliteStorage {
                 let version: String = row.get(1)?;
                 Ok(format!("{}:{}", id, version))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "get_document_versions".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "get_document_versions".to_string(),
+                reason: e.to_string(),
             })?;
 
         let mut keys = Vec::new();
         for row in rows {
-            keys.push(row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "get_document_versions".to_string(),
-                    reason: e.to_string(),
-                })
+            keys.push(row.map_err(|e| JacsError::DatabaseError {
+                operation: "get_document_versions".to_string(),
+                reason: e.to_string(),
             })?);
         }
         Ok(keys)
     }
 
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "get_latest_document".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "get_latest_document".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ?1 ORDER BY created_at DESC LIMIT 1",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_latest_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let mut rows = stmt
@@ -397,11 +363,9 @@ impl StorageDocumentTraits for RusqliteStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "get_latest_document".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "get_latest_document".to_string(),
+                reason: e.to_string(),
             })?;
 
         match rows.next() {
@@ -414,14 +378,14 @@ impl StorageDocumentTraits for RusqliteStorage {
                     jacs_type,
                 })
             }
-            Some(Err(e)) => Err(Box::new(JacsError::DatabaseError {
+            Some(Err(e)) => Err(JacsError::DatabaseError {
                 operation: "get_latest_document".to_string(),
                 reason: e.to_string(),
-            })),
-            None => Err(Box::new(JacsError::DatabaseError {
+            }),
+            None => Err(JacsError::DatabaseError {
                 operation: "get_latest_document".to_string(),
                 reason: format!("Document not found: {}", document_id),
-            })),
+            }),
         }
     }
 
@@ -430,14 +394,14 @@ impl StorageDocumentTraits for RusqliteStorage {
         _doc_id: &str,
         _v1: &str,
         _v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
-        Err(Box::new(JacsError::DatabaseError {
+    ) -> Result<JACSDocument, JacsError> {
+        Err(JacsError::DatabaseError {
             operation: "merge_documents".to_string(),
             reason: "Not implemented for rusqlite backend".to_string(),
-        }))
+        })
     }
 
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
         let mut errors = Vec::new();
         let mut keys = Vec::new();
         for doc in &docs {
@@ -453,7 +417,7 @@ impl StorageDocumentTraits for RusqliteStorage {
         }
     }
 
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
         let mut docs = Vec::new();
         let mut errors = Vec::new();
         for key in &keys {
@@ -476,23 +440,21 @@ impl DatabaseDocumentTraits for RusqliteStorage {
         jacs_type: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "query_by_type".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    ) -> Result<Vec<JACSDocument>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "query_by_type".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_type = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "query_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -503,21 +465,18 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "query_by_type".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "query_by_type".to_string(),
+                reason: e.to_string(),
             })?;
 
         let mut docs = Vec::new();
         for row in rows {
-            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            let (jacs_id, jacs_version, jacs_type, raw) =
+                row.map_err(|e| JacsError::DatabaseError {
                     operation: "query_by_type".to_string(),
                     reason: e.to_string(),
-                })
-            })?;
+                })?;
             let value: Value = serde_json::from_str(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,
@@ -536,14 +495,12 @@ impl DatabaseDocumentTraits for RusqliteStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let json_path = format!("$.{}", field_path);
 
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "query_by_field".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "query_by_field".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let rows_result: Vec<(String, String, String, String)> = if let Some(doc_type) = jacs_type {
@@ -551,11 +508,11 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract(file_contents, ?1) = ?2 AND jacs_type = ?3 ORDER BY created_at DESC LIMIT ?4 OFFSET ?5",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -569,20 +526,16 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                         Ok((jacs_id, jacs_version, jacs_type, raw))
                     },
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_field".to_string(),
-                        reason: e.to_string(),
-                    })
+                .map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_field".to_string(),
+                    reason: e.to_string(),
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_field".to_string(),
-                        reason: e.to_string(),
-                    })
+                collected.push(row.map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_field".to_string(),
+                    reason: e.to_string(),
                 })?);
             }
             collected
@@ -591,11 +544,11 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract(file_contents, ?1) = ?2 ORDER BY created_at DESC LIMIT ?3 OFFSET ?4",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_field".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -609,20 +562,16 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                         Ok((jacs_id, jacs_version, jacs_type, raw))
                     },
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_field".to_string(),
-                        reason: e.to_string(),
-                    })
+                .map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_field".to_string(),
+                    reason: e.to_string(),
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_field".to_string(),
-                        reason: e.to_string(),
-                    })
+                collected.push(row.map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_field".to_string(),
+                    reason: e.to_string(),
                 })?);
             }
             collected
@@ -641,12 +590,10 @@ impl DatabaseDocumentTraits for RusqliteStorage {
         Ok(docs)
     }
 
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "count_by_type".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    fn count_by_type(&self, jacs_type: &str) -> Result<usize, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "count_by_type".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let count: i64 = conn
@@ -655,33 +602,29 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                 params![jacs_type],
                 |row| row.get(0),
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "count_by_type".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "count_by_type".to_string(),
+                reason: e.to_string(),
             })?;
 
         Ok(count as usize)
     }
 
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "get_versions".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "get_versions".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let mut stmt = conn
             .prepare(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ?1 ORDER BY created_at ASC",
             )
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let rows = stmt
@@ -692,21 +635,18 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                 let jacs_type: String = row.get(3)?;
                 Ok((jacs_id, jacs_version, jacs_type, raw))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "get_versions".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "get_versions".to_string(),
+                reason: e.to_string(),
             })?;
 
         let mut docs = Vec::new();
         for row in rows {
-            let (jacs_id, jacs_version, jacs_type, raw) = row.map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            let (jacs_id, jacs_version, jacs_type, raw) =
+                row.map_err(|e| JacsError::DatabaseError {
                     operation: "get_versions".to_string(),
                     reason: e.to_string(),
-                })
-            })?;
+                })?;
             let value: Value = serde_json::from_str(&raw)?;
             docs.push(JACSDocument {
                 id: jacs_id,
@@ -718,7 +658,7 @@ impl DatabaseDocumentTraits for RusqliteStorage {
         Ok(docs)
     }
 
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, JacsError> {
         self.get_latest_document(jacs_id)
     }
 
@@ -728,12 +668,10 @@ impl DatabaseDocumentTraits for RusqliteStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "query_by_agent".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    ) -> Result<Vec<JACSDocument>, JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "query_by_agent".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         let rows_result: Vec<(String, String, String, String)> = if let Some(doc_type) = jacs_type {
@@ -741,11 +679,11 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ?1 AND jacs_type = ?2 ORDER BY created_at DESC LIMIT ?3 OFFSET ?4",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -759,20 +697,16 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                         Ok((jacs_id, jacs_version, jacs_type, raw))
                     },
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_agent".to_string(),
-                        reason: e.to_string(),
-                    })
+                .map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_agent".to_string(),
+                    reason: e.to_string(),
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_agent".to_string(),
-                        reason: e.to_string(),
-                    })
+                collected.push(row.map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_agent".to_string(),
+                    reason: e.to_string(),
                 })?);
             }
             collected
@@ -781,11 +715,11 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                 .prepare(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
                 )
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
+                .map_err(|e| {
+                    JacsError::DatabaseError {
                         operation: "query_by_agent".to_string(),
                         reason: e.to_string(),
-                    })
+                    }
                 })?;
 
             let rows = stmt
@@ -796,20 +730,16 @@ impl DatabaseDocumentTraits for RusqliteStorage {
                     let jacs_type: String = row.get(3)?;
                     Ok((jacs_id, jacs_version, jacs_type, raw))
                 })
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_agent".to_string(),
-                        reason: e.to_string(),
-                    })
+                .map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_agent".to_string(),
+                    reason: e.to_string(),
                 })?;
 
             let mut collected = Vec::new();
             for row in rows {
-                collected.push(row.map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "query_by_agent".to_string(),
-                        reason: e.to_string(),
-                    })
+                collected.push(row.map_err(|e| JacsError::DatabaseError {
+                    operation: "query_by_agent".to_string(),
+                    reason: e.to_string(),
                 })?);
             }
             collected
@@ -828,29 +758,23 @@ impl DatabaseDocumentTraits for RusqliteStorage {
         Ok(docs)
     }
 
-    fn run_migrations(&self) -> Result<(), Box<dyn Error>> {
-        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "run_migrations".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            })
+    fn run_migrations(&self) -> Result<(), JacsError> {
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "run_migrations".to_string(),
+            reason: format!("Lock poisoned: {}", e),
         })?;
 
         conn.execute_batch(Self::CREATE_TABLE_SQL)
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
-                    operation: "run_migrations".to_string(),
-                    reason: e.to_string(),
-                })
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "run_migrations".to_string(),
+                reason: e.to_string(),
             })?;
 
         for index_sql in Self::CREATE_INDEXES_SQL {
             conn.execute_batch(index_sql)
-                .map_err(|e| -> Box<dyn Error> {
-                    Box::new(JacsError::DatabaseError {
-                        operation: "run_migrations".to_string(),
-                        reason: format!("Failed to create index: {}", e),
-                    })
+                .map_err(|e| JacsError::DatabaseError {
+                    operation: "run_migrations".to_string(),
+                    reason: format!("Failed to create index: {}", e),
                 })?;
         }
 
@@ -862,11 +786,13 @@ impl DatabaseDocumentTraits for RusqliteStorage {
 // SqliteDocumentService — implements DocumentService + SearchProvider with FTS5
 // =============================================================================
 
+use crate::document::DocumentService;
 use crate::document::types::{
     CreateOptions, DocumentDiff, DocumentSummary, DocumentVisibility, ListFilter, UpdateOptions,
 };
-use crate::document::DocumentService;
-use crate::search::{SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery, SearchResults};
+use crate::search::{
+    SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery, SearchResults,
+};
 
 /// SQLite-backed implementation of [`DocumentService`] with FTS5 fulltext search.
 ///
@@ -1000,7 +926,10 @@ impl SqliteDocumentService {
     "#;
 
     /// Helper: lock the connection and return a guard.
-    fn lock_conn(&self, operation: &str) -> Result<std::sync::MutexGuard<'_, Connection>, JacsError> {
+    fn lock_conn(
+        &self,
+        operation: &str,
+    ) -> Result<std::sync::MutexGuard<'_, Connection>, JacsError> {
         self.conn.lock().map_err(|e| JacsError::DatabaseError {
             operation: operation.to_string(),
             reason: format!("Lock poisoned: {}", e),
@@ -1098,9 +1027,8 @@ impl SqliteDocumentService {
 
 impl DocumentService for SqliteDocumentService {
     fn create(&self, json: &str, options: CreateOptions) -> Result<JACSDocument, JacsError> {
-        let value: Value = serde_json::from_str(json).map_err(|e| {
-            JacsError::DocumentError(format!("Invalid JSON: {}", e))
-        })?;
+        let value: Value = serde_json::from_str(json)
+            .map_err(|e| JacsError::DocumentError(format!("Invalid JSON: {}", e)))?;
 
         let id = value
             .get("jacsId")
@@ -1216,9 +1144,8 @@ impl DocumentService for SqliteDocumentService {
         // Verify the original document exists
         let _existing = self.get_latest(document_id)?;
 
-        let value: Value = serde_json::from_str(new_json).map_err(|e| {
-            JacsError::DocumentError(format!("Invalid JSON: {}", e))
-        })?;
+        let value: Value = serde_json::from_str(new_json)
+            .map_err(|e| JacsError::DocumentError(format!("Invalid JSON: {}", e)))?;
 
         let version = value
             .get("jacsVersion")
@@ -1337,8 +1264,8 @@ impl DocumentService for SqliteDocumentService {
 
         let mut summaries = Vec::new();
         for row in rows {
-            let (jacs_id, jacs_version, jacs_type, agent_id, visibility_str, created_at) =
-                row.map_err(|e| JacsError::DatabaseError {
+            let (jacs_id, jacs_version, jacs_type, agent_id, visibility_str, created_at) = row
+                .map_err(|e| JacsError::DatabaseError {
                     operation: "list".to_string(),
                     reason: e.to_string(),
                 })?;
@@ -1457,11 +1384,12 @@ impl DocumentService for SqliteDocumentService {
         })?;
 
         // Use a transaction for atomicity
-        conn.execute_batch("BEGIN TRANSACTION")
-            .map_err(|e| vec![JacsError::DatabaseError {
+        conn.execute_batch("BEGIN TRANSACTION").map_err(|e| {
+            vec![JacsError::DatabaseError {
                 operation: "create_batch".to_string(),
                 reason: format!("Failed to begin transaction: {}", e),
-            }])?;
+            }]
+        })?;
 
         let mut created = Vec::new();
         let mut errors = Vec::new();
@@ -1505,8 +1433,8 @@ impl DocumentService for SqliteDocumentService {
                 .and_then(|s| s.get("jacsSignatureAgentId"))
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let visibility_str =
-                serde_json::to_string(&options.visibility).unwrap_or_else(|_| "\"private\"".to_string());
+            let visibility_str = serde_json::to_string(&options.visibility)
+                .unwrap_or_else(|_| "\"private\"".to_string());
 
             if let Err(e) = conn.execute(
                 r#"INSERT INTO jacs_document
@@ -1560,11 +1488,12 @@ impl DocumentService for SqliteDocumentService {
             return Err(errors);
         }
 
-        conn.execute_batch("COMMIT")
-            .map_err(|e| vec![JacsError::DatabaseError {
+        conn.execute_batch("COMMIT").map_err(|e| {
+            vec![JacsError::DatabaseError {
                 operation: "create_batch".to_string(),
                 reason: format!("Failed to commit transaction: {}", e),
-            }])?;
+            }]
+        })?;
 
         Ok(created)
     }
@@ -1584,16 +1513,11 @@ impl DocumentService for SqliteDocumentService {
                 reason: e.to_string(),
             })?;
 
-        serde_json::from_str(&vis_str).map_err(|e| {
-            JacsError::DocumentError(format!("Failed to parse visibility: {}", e))
-        })
+        serde_json::from_str(&vis_str)
+            .map_err(|e| JacsError::DocumentError(format!("Failed to parse visibility: {}", e)))
     }
 
-    fn set_visibility(
-        &self,
-        key: &str,
-        visibility: DocumentVisibility,
-    ) -> Result<(), JacsError> {
+    fn set_visibility(&self, key: &str, visibility: DocumentVisibility) -> Result<(), JacsError> {
         let (id, version) = Self::parse_key(key)?;
         let vis_str = serde_json::to_string(&visibility).map_err(|e| {
             JacsError::DocumentError(format!("Failed to serialize visibility: {}", e))
@@ -1626,7 +1550,11 @@ impl SearchProvider for SqliteDocumentService {
         let conn = self.lock_conn("search")?;
 
         // If query is completely empty (no text, no filters), return empty results
-        if query.query.trim().is_empty() && query.jacs_type.is_none() && query.agent_id.is_none() && query.field_filter.is_none() {
+        if query.query.trim().is_empty()
+            && query.jacs_type.is_none()
+            && query.agent_id.is_none()
+            && query.field_filter.is_none()
+        {
             return Ok(SearchResults {
                 results: vec![],
                 total_count: 0,
@@ -1670,8 +1598,7 @@ impl SearchProvider for SqliteDocumentService {
                    FROM jacs_document d \
                    WHERE d.removed = 0"
                 .to_string();
-            count_sql =
-                "SELECT COUNT(*) FROM jacs_document d WHERE d.removed = 0".to_string();
+            count_sql = "SELECT COUNT(*) FROM jacs_document d WHERE d.removed = 0".to_string();
         }
 
         if let Some(ref jt) = query.jacs_type {

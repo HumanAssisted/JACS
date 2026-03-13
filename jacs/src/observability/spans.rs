@@ -21,11 +21,7 @@ use tracing::span::EnteredSpan;
 ///
 /// Records the `agent_id` and `algorithm` as span fields.
 pub fn signing_span(agent_id: &str, algorithm: &str) -> EnteredSpan {
-    let span = tracing::info_span!(
-        "jacs.signing",
-        agent_id = agent_id,
-        algorithm = algorithm,
-    );
+    let span = tracing::info_span!("jacs.signing", agent_id = agent_id, algorithm = algorithm,);
     span.entered()
 }
 
@@ -69,11 +65,7 @@ pub fn key_management_span(operation: &str, key_id: &str) -> EnteredSpan {
 ///
 /// Records the `backend` (filesystem, sqlite, etc.) and `operation`.
 pub fn storage_span(backend: &str, operation: &str) -> EnteredSpan {
-    let span = tracing::info_span!(
-        "jacs.storage",
-        backend = backend,
-        operation = operation,
-    );
+    let span = tracing::info_span!("jacs.storage", backend = backend, operation = operation,);
     span.entered()
 }
 
@@ -81,9 +73,6 @@ pub fn storage_span(backend: &str, operation: &str) -> EnteredSpan {
 ///
 /// Records the `domain` being verified.
 pub fn dns_verification_span(domain: &str) -> EnteredSpan {
-    let span = tracing::info_span!(
-        "jacs.dns_verification",
-        domain = domain,
-    );
+    let span = tracing::info_span!("jacs.dns_verification", domain = domain,);
     span.entered()
 }

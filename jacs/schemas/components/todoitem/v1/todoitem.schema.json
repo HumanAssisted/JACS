@@ -12,7 +12,10 @@
     },
     "itemType": {
       "type": "string",
-      "enum": ["goal", "task"],
+      "enum": [
+        "goal",
+        "task"
+      ],
       "description": "Whether this is a broad goal or a specific task."
     },
     "description": {
@@ -21,12 +24,22 @@
     },
     "status": {
       "type": "string",
-      "enum": ["pending", "in-progress", "completed", "abandoned"],
+      "enum": [
+        "pending",
+        "in-progress",
+        "completed",
+        "abandoned"
+      ],
       "description": "Current status of the item."
     },
     "priority": {
       "type": "string",
-      "enum": ["low", "medium", "high", "critical"],
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
       "description": "Priority level of the item."
     },
     "childItemIds": {

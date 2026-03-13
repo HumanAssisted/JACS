@@ -283,10 +283,12 @@ pub struct NoopEmbeddingProvider;
 
 impl EmbeddingProvider for NoopEmbeddingProvider {
     fn embed(&self, _content: &str) -> Result<Vec<f64>, Box<dyn Error + Send + Sync>> {
-        Err("Embedding not configured: no EmbeddingProvider was supplied. \
+        Err(
+            "Embedding not configured: no EmbeddingProvider was supplied. \
              To use vector search, provide an EmbeddingProvider implementation \
              when configuring your storage backend."
-            .into())
+                .into(),
+        )
     }
 
     fn dimensions(&self) -> usize {
@@ -572,9 +574,8 @@ mod tests {
         let provider: Box<dyn EmbeddingProvider> =
             Box::new(MockEmbeddingProvider::new(3, "test-model"));
 
-        let handle = std::thread::spawn(move || {
-            provider.embed("cross-thread").expect("embed should work")
-        });
+        let handle =
+            std::thread::spawn(move || provider.embed("cross-thread").expect("embed should work"));
         let result = handle.join().expect("thread should complete");
         assert_eq!(result.len(), 3);
     }

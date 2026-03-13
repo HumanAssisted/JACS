@@ -34,6 +34,7 @@ The basis for a JACS document
 | [jacsFiles](#jacsfiles)                     | `array`  | Optional | cannot be null | [Header](header-properties-jacsfiles.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsFiles")                           |
 | [jacsEmbedding](#jacsembedding)             | `array`  | Optional | cannot be null | [Header](header-properties-jacsembedding.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsEmbedding")                   |
 | [jacsLevel](#jacslevel)                     | `string` | Required | cannot be null | [Header](header-properties-jacslevel.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsLevel")                           |
+| [jacsVisibility](#jacsvisibility)           | Merged   | Optional | cannot be null | [Header](header-properties-jacsvisibility.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVisibility")                 |
 
 ## jacsId
 
@@ -143,7 +144,7 @@ Type of the document
 
 ## jacsSignature
 
-Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+SACRED CRYPTOGRAPHIC COMMITMENT: A signature is a permanent, irreversible cryptographic proof binding the signer to document content. Once signed, the signer cannot deny their attestation (non-repudiation). Signatures should only be created after careful review of document content. The signer is forever accountable for what they sign.
 
 `jacsSignature`
 
@@ -161,7 +162,7 @@ Cryptographic signature to be embedded in other documents. Signature may be vali
 
 ## jacsRegistration
 
-Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+SACRED CRYPTOGRAPHIC COMMITMENT: A signature is a permanent, irreversible cryptographic proof binding the signer to document content. Once signed, the signer cannot deny their attestation (non-repudiation). Signatures should only be created after careful review of document content. The signer is forever accountable for what they sign.
 
 `jacsRegistration`
 
@@ -361,3 +362,35 @@ What is the intended use of the data? Raw data should not change, where as an ar
 | `"config"`   |             |
 | `"artifact"` |             |
 | `"derived"`  |             |
+
+## jacsVisibility
+
+Document visibility level for access control. Controls who can see and access a document through tool responses and API queries. Default is private (safe by default).
+
+`jacsVisibility`
+
+* is optional
+
+* Type: merged type ([Details](header-properties-jacsvisibility.md))
+
+* cannot be null
+
+* defined in: [Header](header-properties-jacsvisibility.md "https://hai.ai/schemas/header/v1/header.schema.json#/properties/jacsVisibility")
+
+### jacsVisibility Type
+
+merged type ([Details](header-properties-jacsvisibility.md))
+
+one (and only one) of
+
+* [Untitled string in Header](header-properties-jacsvisibility-oneof-0.md "check type definition")
+
+* [Untitled object in Header](header-properties-jacsvisibility-oneof-1.md "check type definition")
+
+### jacsVisibility Default Value
+
+The default value is:
+
+```json
+"private"
+```

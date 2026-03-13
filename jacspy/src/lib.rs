@@ -365,12 +365,13 @@ impl JacsAgent {
     }
 
     // =========================================================================
-    // A2A Protocol Methods
+    // A2A Protocol Methods (require `a2a` feature)
     // =========================================================================
 
     /// Export this agent as an A2A Agent Card (v0.4.0).
     ///
     /// Returns the Agent Card as a JSON string.
+    #[cfg(feature = "a2a")]
     fn export_agent_card(&self) -> PyResult<String> {
         self.inner.export_agent_card().to_py()
     }
@@ -384,6 +385,7 @@ impl JacsAgent {
     ///
     /// Returns:
     ///     JSON string of the wrapped, signed artifact
+    #[cfg(feature = "a2a")]
     #[pyo3(signature = (artifact_json, artifact_type, parent_signatures_json=None))]
     #[allow(deprecated)]
     fn wrap_a2a_artifact(
@@ -400,6 +402,7 @@ impl JacsAgent {
     /// Sign an A2A artifact with JACS provenance.
     ///
     /// Alias for wrap_a2a_artifact(). This is the recommended primary API name.
+    #[cfg(feature = "a2a")]
     #[pyo3(signature = (artifact_json, artifact_type, parent_signatures_json=None))]
     fn sign_artifact(
         &self,
@@ -419,6 +422,7 @@ impl JacsAgent {
     ///
     /// Returns:
     ///     JSON string containing the verification result
+    #[cfg(feature = "a2a")]
     fn verify_a2a_artifact(&self, wrapped_json: &str) -> PyResult<String> {
         self.inner.verify_a2a_artifact(wrapped_json).to_py()
     }
@@ -432,6 +436,7 @@ impl JacsAgent {
     ///
     /// Returns:
     ///     JSON string containing the verification result with trust assessment
+    #[cfg(feature = "a2a")]
     fn verify_a2a_artifact_with_policy(
         &self,
         wrapped_json: &str,
@@ -451,6 +456,7 @@ impl JacsAgent {
     ///
     /// Returns:
     ///     JSON string containing the trust assessment result
+    #[cfg(feature = "a2a")]
     fn assess_a2a_agent(&self, agent_card_json: &str, policy: &str) -> PyResult<String> {
         self.inner.assess_a2a_agent(agent_card_json, policy).to_py()
     }

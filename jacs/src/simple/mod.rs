@@ -55,7 +55,6 @@
 //! - **Thread Safety**: Instance-based design avoids global mutable state
 //! - **Signing Gravity**: Documentation emphasizes the sacred nature of signing
 
-
 pub mod advanced;
 pub mod batch;
 pub mod core;
@@ -69,13 +68,13 @@ use crate::error::JacsError;
 
 // The following imports are used by tests via `use super::*`
 #[allow(unused_imports)]
-use core::resolve_strict;
-#[allow(unused_imports)]
-use std::sync::Mutex;
-#[allow(unused_imports)]
 pub(crate) use core::extract_attachments;
 #[allow(unused_imports)]
+use core::resolve_strict;
+#[allow(unused_imports)]
 use serde_json::{Value, json};
+#[allow(unused_imports)]
+use std::sync::Mutex;
 
 /// Migrates a legacy agent that predates a schema change.
 ///
@@ -86,11 +85,10 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
     advanced::migrate_agent(config_path)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::document::{JACSDocument, DocumentTraits};
+    use crate::agent::document::{DocumentTraits, JACSDocument};
     use serial_test::serial;
 
     #[test]
@@ -630,9 +628,10 @@ mod tests {
     }
 
     // =========================================================================
-    // A2A Protocol Method Tests
+    // A2A Protocol Method Tests (require `a2a` feature)
     // =========================================================================
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
@@ -643,6 +642,7 @@ mod tests {
         assert!(!card.supported_interfaces.is_empty());
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_and_verify_a2a_artifact() {
@@ -664,6 +664,7 @@ mod tests {
         assert_eq!(result["status"], "SelfSigned");
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_sign_artifact_alias() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
@@ -681,19 +682,21 @@ mod tests {
         assert_eq!(result["valid"], true);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_with_parent_signatures() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
 
         // Create a first artifact
-        let first = crate::a2a::simple::wrap_artifact(&agent, r#"{"step": 1}"#, "task", None)
-            .unwrap();
+        let first =
+            crate::a2a::simple::wrap_artifact(&agent, r#"{"step": 1}"#, "task", None).unwrap();
 
         // Use the first as a parent signature for a second
         let parents = format!("[{}]", first);
-        let second = crate::a2a::simple::wrap_artifact(&agent, r#"{"step": 2}"#, "task", Some(&parents))
-            .unwrap();
+        let second =
+            crate::a2a::simple::wrap_artifact(&agent, r#"{"step": 2}"#, "task", Some(&parents))
+                .unwrap();
 
         let second_value: Value = serde_json::from_str(&second).unwrap();
         assert!(second_value.get("jacsParentSignatures").is_some());
@@ -701,6 +704,7 @@ mod tests {
         assert_eq!(parent_sigs.len(), 1);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json() {
@@ -715,6 +719,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_verify_a2a_artifact_invalid_json() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
@@ -728,18 +733,21 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_pq2025() {
         let (agent, _info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
         let artifact = r#"{"quantum": "safe"}"#;
 
-        let wrapped = crate::a2a::simple::wrap_artifact(&agent, artifact, "artifact", None).unwrap();
+        let wrapped =
+            crate::a2a::simple::wrap_artifact(&agent, artifact, "artifact", None).unwrap();
         let result_json = crate::a2a::simple::verify_artifact(&agent, &wrapped).unwrap();
         let result: Value = serde_json::from_str(&result_json).unwrap();
         assert_eq!(result["valid"], true);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card_has_jacs_extension() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
@@ -1677,7 +1685,14 @@ mod tests {
         fn simple_create_attestation_returns_signed_document() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let result = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None);
+            let result = crate::attestation::simple::create(
+                &agent,
+                &subject,
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            );
             assert!(
                 result.is_ok(),
                 "create_attestation should succeed: {:?}",
@@ -1695,8 +1710,15 @@ mod tests {
         fn simple_create_attestation_raw_contains_attestation_fields() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
-                .unwrap();
+            let signed = crate::attestation::simple::create(
+                &agent,
+                &subject,
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            )
+            .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
             assert!(
@@ -1714,8 +1736,15 @@ mod tests {
         fn simple_verify_attestation_local_valid() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
-                .unwrap();
+            let signed = crate::attestation::simple::create(
+                &agent,
+                &subject,
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            )
+            .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
             let key = format!(
@@ -1743,8 +1772,15 @@ mod tests {
         fn simple_verify_attestation_full_valid() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
-                .unwrap();
+            let signed = crate::attestation::simple::create(
+                &agent,
+                &subject,
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            )
+            .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
             let key = format!(
@@ -1772,8 +1808,15 @@ mod tests {
         fn simple_verify_attestation_returns_signer_info() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
-                .unwrap();
+            let signed = crate::attestation::simple::create(
+                &agent,
+                &subject,
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            )
+            .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
             let key = format!(
@@ -1834,8 +1877,8 @@ mod tests {
             let signed_msg = agent.sign_message(&msg).unwrap();
             let original_id = signed_msg.document_id.clone();
 
-            let attestation = crate::attestation::simple::lift(&agent, &signed_msg.raw, &[test_claim()])
-                .unwrap();
+            let attestation =
+                crate::attestation::simple::lift(&agent, &signed_msg.raw, &[test_claim()]).unwrap();
 
             let att_doc: Value = serde_json::from_str(&attestation.raw).unwrap();
             assert_eq!(
@@ -1877,7 +1920,14 @@ mod tests {
                 },
             }];
 
-            let result = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &evidence, None, None);
+            let result = crate::attestation::simple::create(
+                &agent,
+                &subject,
+                &[test_claim()],
+                &evidence,
+                None,
+                None,
+            );
             assert!(
                 result.is_ok(),
                 "attestation with evidence should succeed: {:?}",
@@ -1907,8 +1957,15 @@ mod tests {
         fn simple_export_dsse_produces_valid_envelope() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
-                .unwrap();
+            let signed = crate::attestation::simple::create(
+                &agent,
+                &subject,
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            )
+            .unwrap();
 
             let dsse_json = crate::attestation::simple::export_dsse(&signed.raw).unwrap();
             let envelope: Value = serde_json::from_str(&dsse_json).unwrap();

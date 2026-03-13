@@ -5,8 +5,8 @@
 //! here as part of Phase 5 (narrow contract).
 
 use crate::error::JacsError;
-use crate::simple::types::SignedDocument;
 use crate::simple::SimpleAgent;
+use crate::simple::types::SignedDocument;
 
 /// Create a signed attestation document.
 ///
@@ -153,25 +153,27 @@ pub fn create_from_json(
         _ => vec![],
     };
 
-    let derivation: Option<Derivation> =
-        match params.get("derivation") {
-            Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone()).map_err(
-                |e| JacsError::Internal {
+    let derivation: Option<Derivation> = match params.get("derivation") {
+        Some(v) if !v.is_null() => {
+            Some(
+                serde_json::from_value(v.clone()).map_err(|e| JacsError::Internal {
                     message: format!("Invalid derivation: {}", e),
-                },
-            )?),
-            _ => None,
-        };
+                })?,
+            )
+        }
+        _ => None,
+    };
 
-    let policy_context: Option<PolicyContext> =
-        match params.get("policyContext") {
-            Some(v) if !v.is_null() => Some(serde_json::from_value(v.clone()).map_err(
-                |e| JacsError::Internal {
+    let policy_context: Option<PolicyContext> = match params.get("policyContext") {
+        Some(v) if !v.is_null() => {
+            Some(
+                serde_json::from_value(v.clone()).map_err(|e| JacsError::Internal {
                     message: format!("Invalid policyContext: {}", e),
-                },
-            )?),
-            _ => None,
-        };
+                })?,
+            )
+        }
+        _ => None,
+    };
 
     create(
         agent,

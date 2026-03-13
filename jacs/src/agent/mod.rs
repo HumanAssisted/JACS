@@ -643,7 +643,11 @@ impl Agent {
     /// The deprecated "verified-hai.ai" is accepted but normalized to "verified-registry"
     /// with a deprecation warning. It will be removed in the next major version.
     fn get_verification_claim(&self) -> Option<String> {
-        let raw = self.value.as_ref()?.get("jacsVerificationClaim")?.as_str()?;
+        let raw = self
+            .value
+            .as_ref()?
+            .get("jacsVerificationClaim")?
+            .as_str()?;
         Some(normalize_verification_claim(raw).to_string())
     }
 

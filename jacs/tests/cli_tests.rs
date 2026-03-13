@@ -1,11 +1,11 @@
 // here I want to test the CLI commands
 use assert_cmd::prelude::*; // Add methods on commands
-use base64::{engine::general_purpose::STANDARD, Engine as _}; // Import Engine trait and STANDARD engine
+use base64::{Engine as _, engine::general_purpose::STANDARD}; // Import Engine trait and STANDARD engine
 use predicates::prelude::*; // Used for writing assertions
 use std::env;
 use std::fs::{self, File}; // Add fs for file operations
 use std::io::Write; // Add Write trait
-                    // use std::sync::Once;
+// use std::sync::Once;
 use jacs::storage::MultiStorage;
 use std::{
     error::Error,

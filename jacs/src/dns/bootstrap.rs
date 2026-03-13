@@ -779,10 +779,8 @@ mod tests {
             std::env::set_var("HAI_API_URL", "https://api.hai.ai");
         }
 
-        let result = verify_registry_registration_sync(
-            "550e8400-e29b-41d4-a716-446655440000",
-            "some-hash",
-        );
+        let result =
+            verify_registry_registration_sync("550e8400-e29b-41d4-a716-446655440000", "some-hash");
         assert!(result.is_err(), "Should fail without JACS_REGISTRY_URL");
         let err = result.unwrap_err();
         assert!(
@@ -806,10 +804,14 @@ mod tests {
         let result = verify_pubkey_via_dns_or_embedded(
             pubkey,
             "agent-123",
-            None,              // no domain
-            Some(&digest),     // embedded fingerprint
-            false,             // not strict
+            None,          // no domain
+            Some(&digest), // embedded fingerprint
+            false,         // not strict
         );
-        assert!(result.is_ok(), "Embedded verification should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Embedded verification should succeed: {:?}",
+            result
+        );
     }
 }

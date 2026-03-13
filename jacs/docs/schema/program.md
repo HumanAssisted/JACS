@@ -1,7 +1,7 @@
 # Program Schema
 
 ```txt
-https://hai.ai/schemas/program/v1/eval.program.json
+https://hai.ai/schemas/program/v1/program.schema.json
 ```
 
 A signed, immutable message evaluation an agent's performance on a task
@@ -16,6 +16,6 @@ A signed, immutable message evaluation an agent's performance on a task
 
 all of
 
-* [Header](task-allof-header.md "check type definition")
+* [Header](todo-allof-header.md "check type definition")
 
 * [Untitled undefined type in Program](program-allof-1.md "check type definition")

@@ -7,8 +7,8 @@
 use crate::agent::document::DocumentTraits;
 use crate::error::JacsError;
 use crate::schema::utils::check_document_size;
-use crate::simple::types::*;
 use crate::simple::SimpleAgent;
+use crate::simple::types::*;
 use serde_json::{Value, json};
 use tracing::info;
 

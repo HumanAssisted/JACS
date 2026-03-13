@@ -18,8 +18,15 @@ default storage to use
 
 **enum**: the value of this property must be equal to one of the following values:
 
-| Value   | Explanation |
-| :------ | :---------- |
-| `"fs"`  |             |
-| `"aws"` |             |
-| `"hai"` |             |
+| Value         | Explanation |
+| :------------ | :---------- |
+| `"fs"`        |             |
+| `"aws"`       |             |
+| `"hai"`       |             |
+| `"memory"`    |             |
+| `"database"`  |             |
+| `"sqlite"`    |             |
+| `"rusqlite"`  |             |
+| `"surrealdb"` |             |
+| `"duckdb"`    |             |
+| `"redb"`      |             |

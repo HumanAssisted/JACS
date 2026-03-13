@@ -20,21 +20,28 @@
 //! cargo test --features rusqlite-tests -- document_sqlite
 //! ```
 
-use jacs::document::types::{
-    CreateOptions, DocumentVisibility, ListFilter, UpdateOptions,
-};
 use jacs::document::DocumentService;
+use jacs::document::types::{CreateOptions, DocumentVisibility, ListFilter, UpdateOptions};
 use jacs::search::{FieldFilter, SearchCapabilities, SearchMethod, SearchProvider, SearchQuery};
 
 /// Helper: call search() via SearchProvider to avoid ambiguity with DocumentService::search.
-fn do_search(svc: &SqliteDocumentService, query: SearchQuery) -> Result<jacs::search::SearchResults, jacs::error::JacsError> {
+fn do_search(
+    svc: &SqliteDocumentService,
+    query: SearchQuery,
+) -> Result<jacs::search::SearchResults, jacs::error::JacsError> {
     SearchProvider::search(svc, query)
 }
 use jacs::storage::SqliteDocumentService;
 use serde_json::json;
 
 /// Helper: create test JSON with the given fields.
-fn test_json(id: &str, version: &str, jacs_type: &str, content: &str, agent_id: Option<&str>) -> String {
+fn test_json(
+    id: &str,
+    version: &str,
+    jacs_type: &str,
+    content: &str,
+    agent_id: Option<&str>,
+) -> String {
     let mut value = json!({
         "jacsId": id,
         "jacsVersion": version,
@@ -115,19 +122,34 @@ fn crud_roundtrip_create_get_update_get_latest_versions() {
 fn fts5_search_finds_document_by_content_match() {
     let svc = create_service();
 
-    let json1 = test_json("fts-1", "v1", "artifact", "authentication middleware for security", None);
+    let json1 = test_json(
+        "fts-1",
+        "v1",
+        "artifact",
+        "authentication middleware for security",
+        None,
+    );
     let json2 = test_json("fts-2", "v1", "artifact", "database migration helper", None);
-    let json3 = test_json("fts-3", "v1", "artifact", "user authentication service", None);
+    let json3 = test_json(
+        "fts-3",
+        "v1",
+        "artifact",
+        "user authentication service",
+        None,
+    );
 
     svc.create(&json1, CreateOptions::default()).unwrap();
     svc.create(&json2, CreateOptions::default()).unwrap();
     svc.create(&json3, CreateOptions::default()).unwrap();
 
-    let results = do_search(&svc, SearchQuery {
+    let results = do_search(
+        &svc,
+        SearchQuery {
             query: "authentication".to_string(),
             ..SearchQuery::default()
-        })
-        .expect("search failed");
+        },
+    )
+    .expect("search failed");
 
     assert!(
         results.results.len() >= 2,
@@ -144,11 +166,14 @@ fn fts5_search_returns_fulltext_method() {
     let json1 = test_json("method-1", "v1", "artifact", "test content", None);
     svc.create(&json1, CreateOptions::default()).unwrap();
 
-    let results = do_search(&svc, SearchQuery {
+    let results = do_search(
+        &svc,
+        SearchQuery {
             query: "test".to_string(),
             ..SearchQuery::default()
-        })
-        .expect("search failed");
+        },
+    )
+    .expect("search failed");
 
     assert_eq!(
         results.method,
@@ -169,16 +194,40 @@ fn search_with_jacs_type_filter_restricts_results() {
     let json2 = test_json("tf-2", "v1", "message", "common search term", None);
     let json3 = test_json("tf-3", "v1", "artifact", "common search term", None);
 
-    svc.create(&json1, CreateOptions { jacs_type: "artifact".to_string(), ..CreateOptions::default() }).unwrap();
-    svc.create(&json2, CreateOptions { jacs_type: "message".to_string(), ..CreateOptions::default() }).unwrap();
-    svc.create(&json3, CreateOptions { jacs_type: "artifact".to_string(), ..CreateOptions::default() }).unwrap();
+    svc.create(
+        &json1,
+        CreateOptions {
+            jacs_type: "artifact".to_string(),
+            ..CreateOptions::default()
+        },
+    )
+    .unwrap();
+    svc.create(
+        &json2,
+        CreateOptions {
+            jacs_type: "message".to_string(),
+            ..CreateOptions::default()
+        },
+    )
+    .unwrap();
+    svc.create(
+        &json3,
+        CreateOptions {
+            jacs_type: "artifact".to_string(),
+            ..CreateOptions::default()
+        },
+    )
+    .unwrap();
 
-    let results = do_search(&svc, SearchQuery {
+    let results = do_search(
+        &svc,
+        SearchQuery {
             query: "common".to_string(),
             jacs_type: Some("artifact".to_string()),
             ..SearchQuery::default()
-        })
-        .expect("search failed");
+        },
+    )
+    .expect("search failed");
 
     assert_eq!(
         results.results.len(),
@@ -195,20 +244,35 @@ fn search_with_jacs_type_filter_restricts_results() {
 fn search_with_agent_id_filter_restricts_results() {
     let svc = create_service();
 
-    let json1 = test_json("af-1", "v1", "artifact", "shared content data", Some("alice"));
+    let json1 = test_json(
+        "af-1",
+        "v1",
+        "artifact",
+        "shared content data",
+        Some("alice"),
+    );
     let json2 = test_json("af-2", "v1", "artifact", "shared content data", Some("bob"));
-    let json3 = test_json("af-3", "v1", "artifact", "shared content data", Some("alice"));
+    let json3 = test_json(
+        "af-3",
+        "v1",
+        "artifact",
+        "shared content data",
+        Some("alice"),
+    );
 
     svc.create(&json1, CreateOptions::default()).unwrap();
     svc.create(&json2, CreateOptions::default()).unwrap();
     svc.create(&json3, CreateOptions::default()).unwrap();
 
-    let results = do_search(&svc, SearchQuery {
+    let results = do_search(
+        &svc,
+        SearchQuery {
             query: "shared".to_string(),
             agent_id: Some("alice".to_string()),
             ..SearchQuery::default()
-        })
-        .expect("search failed");
+        },
+    )
+    .expect("search failed");
 
     assert_eq!(
         results.results.len(),
@@ -226,29 +290,35 @@ fn search_with_field_filter_restricts_results() {
     let json1 = json!({
         "jacsId": "ff-1", "jacsVersion": "v1", "jacsType": "artifact",
         "jacsLevel": "raw", "data": "searchable content", "category": "security"
-    }).to_string();
+    })
+    .to_string();
     let json2 = json!({
         "jacsId": "ff-2", "jacsVersion": "v1", "jacsType": "artifact",
         "jacsLevel": "raw", "data": "searchable content", "category": "networking"
-    }).to_string();
+    })
+    .to_string();
     let json3 = json!({
         "jacsId": "ff-3", "jacsVersion": "v1", "jacsType": "artifact",
         "jacsLevel": "raw", "data": "searchable content", "category": "security"
-    }).to_string();
+    })
+    .to_string();
 
     svc.create(&json1, CreateOptions::default()).unwrap();
     svc.create(&json2, CreateOptions::default()).unwrap();
     svc.create(&json3, CreateOptions::default()).unwrap();
 
-    let results = do_search(&svc, SearchQuery {
+    let results = do_search(
+        &svc,
+        SearchQuery {
             query: "searchable".to_string(),
             field_filter: Some(FieldFilter {
                 field_path: "category".to_string(),
                 value: "security".to_string(),
             }),
             ..SearchQuery::default()
-        })
-        .expect("search failed");
+        },
+    )
+    .expect("search failed");
 
     assert_eq!(
         results.results.len(),
@@ -265,25 +335,30 @@ fn search_with_field_filter_only_no_text_query() {
     let json1 = json!({
         "jacsId": "ffo-1", "jacsVersion": "v1", "jacsType": "artifact",
         "jacsLevel": "raw", "data": "content", "status": "active"
-    }).to_string();
+    })
+    .to_string();
     let json2 = json!({
         "jacsId": "ffo-2", "jacsVersion": "v1", "jacsType": "artifact",
         "jacsLevel": "raw", "data": "content", "status": "archived"
-    }).to_string();
+    })
+    .to_string();
 
     svc.create(&json1, CreateOptions::default()).unwrap();
     svc.create(&json2, CreateOptions::default()).unwrap();
 
     // Search with field_filter only (no text query)
-    let results = do_search(&svc, SearchQuery {
+    let results = do_search(
+        &svc,
+        SearchQuery {
             query: String::new(),
             field_filter: Some(FieldFilter {
                 field_path: "status".to_string(),
                 value: "active".to_string(),
             }),
             ..SearchQuery::default()
-        })
-        .expect("search failed");
+        },
+    )
+    .expect("search failed");
 
     assert_eq!(
         results.results.len(),
@@ -368,14 +443,18 @@ fn remove_tombstones_document_still_findable_by_get_but_not_by_list() {
     assert_eq!(removed.id, "rm-1");
 
     // Still findable by direct get
-    let got = svc.get("rm-1:v1").expect("get should still work after tombstone");
+    let got = svc
+        .get("rm-1:v1")
+        .expect("get should still work after tombstone");
     assert_eq!(got.id, "rm-1");
 
     // Not in list()
-    let list = svc
-        .list(ListFilter::default())
-        .expect("list failed");
-    assert_eq!(list.len(), 1, "Only the non-removed document should be listed");
+    let list = svc.list(ListFilter::default()).expect("list failed");
+    assert_eq!(
+        list.len(),
+        1,
+        "Only the non-removed document should be listed"
+    );
     assert_eq!(list[0].document_id, "rm-2");
 }
 
@@ -468,9 +547,7 @@ fn diff_between_two_versions_shows_changes() {
     svc.update("diff-1", &json_v2, UpdateOptions::default())
         .unwrap();
 
-    let diff = svc
-        .diff("diff-1:v1", "diff-1:v2")
-        .expect("diff failed");
+    let diff = svc.diff("diff-1:v1", "diff-1:v2").expect("diff failed");
     assert_eq!(diff.key_a, "diff-1:v1");
     assert_eq!(diff.key_b, "diff-1:v2");
     assert!(
@@ -584,10 +661,7 @@ fn create_batch_with_duplicate_in_batch_returns_error() {
     let docs: Vec<&str> = vec![&json2, &json3];
 
     let result = svc.create_batch(&docs, CreateOptions::default());
-    assert!(
-        result.is_err(),
-        "Batch with duplicate should return errors"
-    );
+    assert!(result.is_err(), "Batch with duplicate should return errors");
 }
 
 // =============================================================================
@@ -606,7 +680,10 @@ fn update_nonexistent_document_returns_error() {
     let svc = create_service();
     let json = test_json("nope", "v1", "artifact", "content", None);
     let result = svc.update("nope", &json, UpdateOptions::default());
-    assert!(result.is_err(), "Should error on update of nonexistent document");
+    assert!(
+        result.is_err(),
+        "Should error on update of nonexistent document"
+    );
 }
 
 #[test]
@@ -616,9 +693,12 @@ fn search_empty_query_returns_empty_results() {
     let json1 = test_json("eq-1", "v1", "artifact", "some content", None);
     svc.create(&json1, CreateOptions::default()).unwrap();
 
-    let results = do_search(&svc, SearchQuery::default())
-        .expect("search failed");
-    assert_eq!(results.results.len(), 0, "Empty query should return empty results");
+    let results = do_search(&svc, SearchQuery::default()).expect("search failed");
+    assert_eq!(
+        results.results.len(),
+        0,
+        "Empty query should return empty results"
+    );
 }
 
 #[test]
@@ -629,14 +709,24 @@ fn search_without_fts_query_but_with_type_filter() {
     let json2 = test_json("nfq-2", "v1", "message", "content b", None);
 
     svc.create(&json1, CreateOptions::default()).unwrap();
-    svc.create(&json2, CreateOptions { jacs_type: "message".to_string(), ..CreateOptions::default() }).unwrap();
+    svc.create(
+        &json2,
+        CreateOptions {
+            jacs_type: "message".to_string(),
+            ..CreateOptions::default()
+        },
+    )
+    .unwrap();
 
-    let results = do_search(&svc, SearchQuery {
+    let results = do_search(
+        &svc,
+        SearchQuery {
             query: String::new(),
             jacs_type: Some("artifact".to_string()),
             ..SearchQuery::default()
-        })
-        .expect("search failed");
+        },
+    )
+    .expect("search failed");
 
     assert_eq!(results.results.len(), 1);
     assert_eq!(results.results[0].document.jacs_type, "artifact");

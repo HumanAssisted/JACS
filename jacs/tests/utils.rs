@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
+use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
-use jacs::agent::Agent;
 use jacs::config::Config;
 use log::debug;
 use serde_json::json;

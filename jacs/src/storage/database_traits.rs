@@ -23,7 +23,7 @@
 //! keyed by `(jacs_id, jacs_version)`. No UPDATE operations on existing rows.
 
 use crate::agent::document::JACSDocument;
-use std::error::Error;
+use crate::error::JacsError;
 
 /// Extended storage trait for database backends (Level 2).
 ///
@@ -37,14 +37,14 @@ use std::error::Error;
 ///
 /// All methods are synchronous. Async implementations bridge internally
 /// (e.g., `tokio::runtime::Handle::block_on`).
-pub trait DatabaseDocumentTraits: Send + Sync {
+pub trait DatabaseDocumentTraits: super::StorageDocumentTraits {
     /// Query documents by their `jacsType` field with pagination.
     fn query_by_type(
         &self,
         jacs_type: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    ) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Query documents where a JSONB field matches a value.
     /// `field_path` is a top-level field name (e.g., "jacsCommitmentStatus").
@@ -55,16 +55,16 @@ pub trait DatabaseDocumentTraits: Send + Sync {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    ) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Count documents by type.
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>>;
+    fn count_by_type(&self, jacs_type: &str) -> Result<usize, JacsError>;
 
     /// Get all versions of a document ordered by creation date.
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Get the most recent version of a document.
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, Box<dyn Error>>;
+    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, JacsError>;
 
     /// Query documents by the agent that signed them.
     fn query_by_agent(
@@ -73,10 +73,10 @@ pub trait DatabaseDocumentTraits: Send + Sync {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    ) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Run database migrations to create/update the schema.
-    fn run_migrations(&self) -> Result<(), Box<dyn Error>>;
+    fn run_migrations(&self) -> Result<(), JacsError>;
 }
 
 /// Placeholder for future vector search capabilities.

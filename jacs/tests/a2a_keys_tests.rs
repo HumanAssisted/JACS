@@ -1,3 +1,4 @@
+#![cfg(feature = "a2a")]
 use jacs::a2a::keys::create_jwk_keys;
 
 #[test]

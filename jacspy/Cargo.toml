@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 default = []
 extension-module = ["pyo3/extension-module"]
 auto-initialize = ["pyo3/auto-initialize"]
+a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
 
 [dependencies]

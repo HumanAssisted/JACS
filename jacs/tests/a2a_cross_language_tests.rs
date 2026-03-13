@@ -1,3 +1,4 @@
+#![cfg(feature = "a2a")]
 //! Cross-language A2A fixture tests.
 //!
 //! These tests generate A2A-specific fixtures (Agent Cards, wrapped artifacts,
@@ -72,12 +73,12 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
     });
     #[allow(deprecated)]
     let wrapped = jacs::a2a::simple::wrap_artifact(
-            &agent,
-            &serde_json::to_string(&test_artifact).unwrap(),
-            "artifact",
-            None,
-        )
-        .expect("wrap artifact");
+        &agent,
+        &serde_json::to_string(&test_artifact).unwrap(),
+        "artifact",
+        None,
+    )
+    .expect("wrap artifact");
 
     // 3. Create a second artifact with parent signature chain
     let wrapped_value: Value = serde_json::from_str(&wrapped).expect("parse wrapped");
@@ -99,12 +100,12 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
     let parent_sigs_json = serde_json::to_string(&vec![parent_sig]).unwrap();
     #[allow(deprecated)]
     let child_wrapped = jacs::a2a::simple::wrap_artifact(
-            &agent,
-            &serde_json::to_string(&child_artifact).unwrap(),
-            "artifact",
-            Some(&parent_sigs_json),
-        )
-        .expect("wrap child artifact");
+        &agent,
+        &serde_json::to_string(&child_artifact).unwrap(),
+        "artifact",
+        Some(&parent_sigs_json),
+    )
+    .expect("wrap child artifact");
 
     // Read public key
     let pub_key_path = tmp.join("jacs_keys").join("jacs.public.pem");

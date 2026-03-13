@@ -130,7 +130,7 @@ impl SurrealDbStorage {
     }
 
     /// Convert a JacsRecord to a JACSDocument.
-    fn record_to_document(record: &JacsRecord) -> Result<JACSDocument, Box<dyn Error>> {
+    fn record_to_document(record: &JacsRecord) -> Result<JACSDocument, JacsError> {
         let value: Value = serde_json::from_str(&record.raw_contents)?;
         Ok(JACSDocument {
             id: record.jacs_id.clone(),
@@ -158,7 +158,7 @@ impl SurrealDbStorage {
 }
 
 impl StorageDocumentTraits for SurrealDbStorage {
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let file_contents_json = doc.value.clone();
         let agent_id = doc
@@ -200,17 +200,17 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 .bind(("tombstoned", false))
                 .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "store_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(())
     }
 
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
         let records: Vec<JacsRecord> = self
@@ -224,27 +224,27 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 let records: Vec<JacsRecord> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(records)
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let record = records
             .into_iter()
             .next()
-            .ok_or_else(|| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .ok_or_else(|| {
+                JacsError::DatabaseError {
                     operation: "get_document".to_string(),
                     reason: format!("Document not found: {}", key),
-                })
+                }
             })?;
 
         Self::record_to_document(&record)
     }
 
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let doc = self.get_document(key)?;
         let (id, version) = Self::parse_key(key)?;
 
@@ -255,17 +255,17 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 .bind(("jacs_version", version))
                 .await
         })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "remove_document".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         Ok(doc)
     }
 
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError> {
         let jacs_type = prefix.to_string();
         let records: Vec<JacsRecord> = self
             .block_on(async {
@@ -277,11 +277,11 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 let records: Vec<JacsRecord> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(records)
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "list_documents".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(records
@@ -290,7 +290,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .collect())
     }
 
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError> {
         let (id, version) = Self::parse_key(key)?;
 
         let count: usize = self
@@ -304,17 +304,17 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 let row: Option<CountResult> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(row.map(|r| r.count).unwrap_or(0))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "document_exists".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(count > 0)
     }
 
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError> {
         let agent_id_owned = agent_id.to_string();
         let records: Vec<JacsRecord> = self
             .block_on(async {
@@ -326,11 +326,11 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 let records: Vec<JacsRecord> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(records)
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_documents_by_agent".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(records
@@ -339,7 +339,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .collect())
     }
 
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError> {
         let jacs_id = document_id.to_string();
         let records: Vec<JacsRecord> = self
             .block_on(async {
@@ -351,11 +351,11 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 let records: Vec<JacsRecord> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(records)
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_document_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(records
@@ -364,7 +364,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .collect())
     }
 
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
         let jacs_id = document_id.to_string();
         let records: Vec<JacsRecord> = self
             .block_on(async {
@@ -376,21 +376,21 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 let records: Vec<JacsRecord> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(records)
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_latest_document".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         let record = records
             .into_iter()
             .next()
-            .ok_or_else(|| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .ok_or_else(|| {
+                JacsError::DatabaseError {
                     operation: "get_latest_document".to_string(),
                     reason: format!("No documents found with ID: {}", document_id),
-                })
+                }
             })?;
 
         Self::record_to_document(&record)
@@ -401,14 +401,14 @@ impl StorageDocumentTraits for SurrealDbStorage {
         _doc_id: &str,
         _v1: &str,
         _v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
-        Err(Box::new(JacsError::DatabaseError {
+    ) -> Result<JACSDocument, JacsError> {
+        Err(JacsError::DatabaseError {
             operation: "merge_documents".to_string(),
             reason: "Not implemented for SurrealDB backend".to_string(),
-        }))
+        })
     }
 
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
         let mut errors = Vec::new();
         let mut keys = Vec::new();
         for doc in &docs {
@@ -424,7 +424,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
         }
     }
 
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
         let mut docs = Vec::new();
         let mut errors = Vec::new();
         for key in &keys {
@@ -447,7 +447,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
         jacs_type: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let jacs_type_owned = jacs_type.to_string();
         let records: Vec<JacsRecord> = self
             .block_on(async {
@@ -461,11 +461,11 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
                 let records: Vec<JacsRecord> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(records)
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "query_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         records.iter().map(Self::record_to_document).collect()
@@ -478,20 +478,20 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         // Validate field_path to prevent SurrealQL injection.
         // Only allow alphanumeric characters, dots, and underscores.
         if !field_path
             .chars()
             .all(|c| c.is_alphanumeric() || c == '.' || c == '_')
         {
-            return Err(Box::new(JacsError::DatabaseError {
+            return Err(JacsError::DatabaseError {
                 operation: "query_by_field".to_string(),
                 reason: format!(
                     "Invalid field path: contains disallowed characters: {}",
                     field_path
                 ),
-            }));
+            });
         }
 
         let value_owned = value.to_string();
@@ -532,17 +532,17 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
                 Ok::<_, surrealdb::Error>(records)
             })
         }
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_field".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         records.iter().map(Self::record_to_document).collect()
     }
 
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>> {
+    fn count_by_type(&self, jacs_type: &str) -> Result<usize, JacsError> {
         let jacs_type_owned = jacs_type.to_string();
         let count: usize = self
             .block_on(async {
@@ -554,17 +554,17 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
                 let row: Option<CountResult> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(row.map(|r| r.count).unwrap_or(0))
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "count_by_type".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(count)
     }
 
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, JacsError> {
         let jacs_id_owned = jacs_id.to_string();
         let records: Vec<JacsRecord> = self
             .block_on(async {
@@ -576,17 +576,17 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
                 let records: Vec<JacsRecord> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(records)
             })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "get_versions".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         records.iter().map(Self::record_to_document).collect()
     }
 
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, JacsError> {
         self.get_latest_document(jacs_id)
     }
 
@@ -596,7 +596,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         let agent_id_owned = agent_id.to_string();
         let jacs_type_owned = jacs_type.map(|s| s.to_string());
 
@@ -626,23 +626,23 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
                 Ok::<_, surrealdb::Error>(records)
             })
         }
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
+        .map_err(|e| {
+            JacsError::DatabaseError {
                 operation: "query_by_agent".to_string(),
                 reason: e.to_string(),
-            })
+            }
         })?;
 
         records.iter().map(Self::record_to_document).collect()
     }
 
-    fn run_migrations(&self) -> Result<(), Box<dyn Error>> {
+    fn run_migrations(&self) -> Result<(), JacsError> {
         self.block_on(async { self.db.query(Self::SCHEMA_SQL).await })
-            .map_err(|e| -> Box<dyn Error> {
-                Box::new(JacsError::DatabaseError {
+            .map_err(|e| {
+                JacsError::DatabaseError {
                     operation: "run_migrations".to_string(),
                     reason: e.to_string(),
-                })
+                }
             })?;
 
         Ok(())

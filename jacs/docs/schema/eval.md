@@ -49,7 +49,7 @@ A signed, immutable message evaluation an agent's performance on a task
 
 ## signature
 
-Cryptographic signature to be embedded in other documents. Signature may be validated with registrar.
+SACRED CRYPTOGRAPHIC COMMITMENT: A signature is a permanent, irreversible cryptographic proof binding the signer to document content. Once signed, the signer cannot deny their attestation (non-repudiation). Signatures should only be created after careful review of document content. The signer is forever accountable for what they sign.
 
 `signature`
 

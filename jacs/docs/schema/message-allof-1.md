@@ -16,13 +16,14 @@ https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1
 
 # 1 Properties
 
-| Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                   |
-| :-------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
-| [threadID](#threadid)       | `string` | Optional | cannot be null | [Message](message-allof-1-properties-threadid.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/threadID")       |
-| [to](#to)                   | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/to")                   |
-| [from](#from)               | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-from.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/from")               |
-| [content](#content)         | `object` | Optional | cannot be null | [Message](message-allof-1-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/content")         |
-| [attachments](#attachments) | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/attachments") |
+| Property                                        | Type     | Required | Nullable       | Defined by                                                                                                                                                       |
+| :---------------------------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [threadID](#threadid)                           | `string` | Optional | cannot be null | [Message](message-allof-1-properties-threadid.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/threadID")                           |
+| [to](#to)                                       | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-to.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/to")                                       |
+| [from](#from)                                   | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-from.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/from")                                   |
+| [content](#content)                             | `object` | Optional | cannot be null | [Message](message-allof-1-properties-content.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/content")                             |
+| [jacsMessagePreviousId](#jacsmessagepreviousid) | `string` | Optional | cannot be null | [Message](message-allof-1-properties-jacsmessagepreviousid.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/jacsMessagePreviousId") |
+| [attachments](#attachments)                     | `array`  | Optional | cannot be null | [Message](message-allof-1-properties-attachments.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/attachments")                     |
 
 ## threadID
 
@@ -95,6 +96,28 @@ body , subject etc
 ### content Type
 
 `object` ([Details](message-allof-1-properties-content.md))
+
+## jacsMessagePreviousId
+
+UUID of the previous message in this thread for ordering.
+
+`jacsMessagePreviousId`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Message](message-allof-1-properties-jacsmessagepreviousid.md "https://hai.ai/schemas/message/v1/message.schema.json#/allOf/1/properties/jacsMessagePreviousId")
+
+### jacsMessagePreviousId Type
+
+`string`
+
+### jacsMessagePreviousId Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
 ## attachments
 

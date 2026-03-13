@@ -349,13 +349,13 @@ fn test_agreement_created_event() {
 
     let events = with_captured_logs(|| {
         let _agreement = jacs::agreements::create(
-                &agent,
-                &payload,
-                &[agent_id.clone()],
-                Some("Do you agree?"),
-                Some("Test context"),
-            )
-            .expect("create_agreement should succeed");
+            &agent,
+            &payload,
+            &[agent_id.clone()],
+            Some("Do you agree?"),
+            Some("Test context"),
+        )
+        .expect("create_agreement should succeed");
     });
 
     let created_events = events_with_name(&events, "agreement_created");
@@ -398,18 +398,18 @@ fn test_signature_added_and_quorum_events() {
 
     // Create agreement first (outside capture)
     let agreement = jacs::agreements::create(
-            &agent,
-            &payload,
-            &[agent_id],
-            Some("Do you agree?"),
-            Some("Context"),
-        )
-        .expect("create_agreement should succeed");
+        &agent,
+        &payload,
+        &[agent_id],
+        Some("Do you agree?"),
+        Some("Context"),
+    )
+    .expect("create_agreement should succeed");
 
     // Now sign the agreement (inside capture)
     let events = with_captured_logs(|| {
-        let _signed = jacs::agreements::sign(&agent, &agreement.raw)
-            .expect("sign_agreement should succeed");
+        let _signed =
+            jacs::agreements::sign(&agent, &agreement.raw).expect("sign_agreement should succeed");
     });
 
     let added_events = events_with_name(&events, "signature_added");
@@ -527,8 +527,15 @@ mod attestation_tracing {
         let agent = ephemeral_agent();
 
         let events = with_captured_logs(|| {
-            let _doc = jacs::attestation::simple::create(&agent, &test_subject(), &[test_claim()], &[], None, None)
-                .expect("create attestation");
+            let _doc = jacs::attestation::simple::create(
+                &agent,
+                &test_subject(),
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            )
+            .expect("create attestation");
         });
 
         let create_events = events_with_name(&events, "attestation_created");
@@ -558,8 +565,15 @@ mod attestation_tracing {
     #[serial]
     fn attestation_verify_local_emits_event() {
         let agent = ephemeral_agent();
-        let signed = jacs::attestation::simple::create(&agent, &test_subject(), &[test_claim()], &[], None, None)
-            .expect("create attestation");
+        let signed = jacs::attestation::simple::create(
+            &agent,
+            &test_subject(),
+            &[test_claim()],
+            &[],
+            None,
+            None,
+        )
+        .expect("create attestation");
 
         let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
         let key = format!(
@@ -598,8 +612,15 @@ mod attestation_tracing {
     #[serial]
     fn attestation_verify_full_emits_event() {
         let agent = ephemeral_agent();
-        let signed = jacs::attestation::simple::create(&agent, &test_subject(), &[test_claim()], &[], None, None)
-            .expect("create attestation");
+        let signed = jacs::attestation::simple::create(
+            &agent,
+            &test_subject(),
+            &[test_claim()],
+            &[],
+            None,
+            None,
+        )
+        .expect("create attestation");
 
         let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
         let key = format!(
@@ -609,7 +630,8 @@ mod attestation_tracing {
         );
 
         let events = with_captured_logs(|| {
-            let _result = jacs::attestation::simple::verify_full(&agent, &key).expect("full verify");
+            let _result =
+                jacs::attestation::simple::verify_full(&agent, &key).expect("full verify");
         });
 
         let verify_events = events_with_name(&events, "attestation_verify_full");

@@ -140,8 +140,9 @@ mod attestation_cross_lang {
         let subject = make_subject();
         let claims = make_claims();
         let evidence = make_evidence();
-        let signed = jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
-            .expect("create_attestation should succeed");
+        let signed =
+            jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
+                .expect("create_attestation should succeed");
 
         // Parse signed attestation for metadata extraction
         let signed_value: Value =

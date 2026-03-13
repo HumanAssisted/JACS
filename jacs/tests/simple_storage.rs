@@ -66,8 +66,7 @@ fn create_with_params_accepts_custom_memory_storage() {
     let key_dir = tmp.path().join("jacs_keys");
     let config_path = tmp.path().join("jacs.config.json");
 
-    let memory_storage =
-        MultiStorage::new("memory".to_string()).expect("create memory storage");
+    let memory_storage = MultiStorage::new("memory".to_string()).expect("create memory storage");
 
     let params = CreateAgentParams::builder()
         .name("memory-storage-agent")
@@ -100,8 +99,7 @@ fn agent_with_custom_storage_can_sign_document() {
     let key_dir = tmp.path().join("jacs_keys");
     let config_path = tmp.path().join("jacs.config.json");
 
-    let memory_storage =
-        MultiStorage::new("memory".to_string()).expect("create memory storage");
+    let memory_storage = MultiStorage::new("memory".to_string()).expect("create memory storage");
 
     let params = CreateAgentParams::builder()
         .name("sign-test-agent")
@@ -174,8 +172,7 @@ fn documents_stored_in_custom_backend_not_filesystem() {
     let key_dir = tmp.path().join("jacs_keys");
     let config_path = tmp.path().join("jacs.config.json");
 
-    let memory_storage =
-        MultiStorage::new("memory".to_string()).expect("create memory storage");
+    let memory_storage = MultiStorage::new("memory".to_string()).expect("create memory storage");
 
     let params = CreateAgentParams::builder()
         .name("memory-routing-agent")
@@ -231,10 +228,7 @@ fn documents_stored_in_custom_backend_not_filesystem() {
             "document '{}' should NOT be in filesystem documents/ dir when using memory backend, \
              but found {:?}",
             signed.document_id,
-            doc_files
-                .iter()
-                .map(|e| e.file_name())
-                .collect::<Vec<_>>()
+            doc_files.iter().map(|e| e.file_name()).collect::<Vec<_>>()
         );
     }
     // If documents/ doesn't exist at all, that's also correct — nothing was written there.

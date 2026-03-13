@@ -1120,6 +1120,10 @@ impl AgentWrapper {
         }
     }
 
+}
+
+#[cfg(feature = "a2a")]
+impl AgentWrapper {
     // =========================================================================
     // A2A Protocol Methods
     // =========================================================================
@@ -1360,6 +1364,9 @@ impl AgentWrapper {
         })
     }
 
+}
+
+impl AgentWrapper {
     // =========================================================================
     // Attestation API (gated behind `attestation` feature)
     // =========================================================================
@@ -2597,6 +2604,7 @@ mod tests {
         wrapper
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card_returns_valid_json() {
         let wrapper = ephemeral_wrapper();
@@ -2607,6 +2615,7 @@ mod tests {
         assert_eq!(card["protocolVersions"][0], "0.4.0");
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_and_verify_a2a_artifact() {
@@ -2626,6 +2635,7 @@ mod tests {
         assert_eq!(result["status"], "SelfSigned");
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_sign_artifact_alias_matches_wrap() {
         let wrapper = ephemeral_wrapper();
@@ -2640,6 +2650,7 @@ mod tests {
         assert_eq!(result["valid"], true);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_with_parent_chain() {
@@ -2658,6 +2669,7 @@ mod tests {
         assert_eq!(parent_sigs.len(), 1);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json_error() {
@@ -2667,6 +2679,7 @@ mod tests {
         assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidArgument);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_verify_a2a_artifact_invalid_json_error() {
         let wrapper = ephemeral_wrapper();

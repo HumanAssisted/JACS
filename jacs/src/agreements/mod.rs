@@ -9,8 +9,8 @@
 use crate::agent::agreement::{Agreement, AgreementOptions};
 use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
-use crate::simple::types::*;
 use crate::simple::SimpleAgent;
+use crate::simple::types::*;
 use tracing::{debug, info};
 
 /// Creates a multi-party agreement requiring signatures from specified agents.
@@ -109,14 +109,7 @@ pub fn create_with_options(
 
     // Then create the agreement on it
     let agreement_doc = inner
-        .create_agreement_with_options(
-            &jacs_doc.getkey(),
-            agent_ids,
-            question,
-            context,
-            None,
-            opts,
-        )
+        .create_agreement_with_options(&jacs_doc.getkey(), agent_ids, question, context, None, opts)
         .map_err(|e| JacsError::Internal {
             message: format!("Failed to create agreement: {}", e),
         })?;
@@ -236,12 +229,11 @@ pub fn check(agent: &SimpleAgent, document: &str) -> Result<AgreementStatus, Jac
         })?;
 
     // Get the unsigned agents
-    let unsigned =
-        jacs_doc
-            .agreement_unsigned_agents(None)
-            .map_err(|e| JacsError::Internal {
-                message: format!("Failed to check unsigned agents: {}", e),
-            })?;
+    let unsigned = jacs_doc
+        .agreement_unsigned_agents(None)
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to check unsigned agents: {}", e),
+        })?;
 
     // Get all requested agents from the agreement
     let all_agents =

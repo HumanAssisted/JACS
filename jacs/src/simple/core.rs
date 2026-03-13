@@ -1325,5 +1325,4 @@ impl SimpleAgent {
     pub fn config_path(&self) -> Option<&str> {
         self.config_path.as_deref()
     }
-
 }

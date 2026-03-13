@@ -18,10 +18,8 @@
 //! cargo test --features rusqlite-tests --test document_lifecycle
 //! ```
 
-use jacs::document::types::{
-    CreateOptions, DocumentVisibility, ListFilter, UpdateOptions,
-};
 use jacs::document::DocumentService;
+use jacs::document::types::{CreateOptions, DocumentVisibility, ListFilter, UpdateOptions};
 use jacs::search::{SearchMethod, SearchQuery};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -812,9 +810,8 @@ mod fs_helpers {
                 std::env::set_var("JACS_KEY_DIRECTORY", cached.key_dir.to_str().unwrap());
             }
 
-            let storage =
-                jacs::storage::MultiStorage::_new("fs".to_string(), data_dir.clone())
-                    .expect("create MultiStorage");
+            let storage = jacs::storage::MultiStorage::_new("fs".to_string(), data_dir.clone())
+                .expect("create MultiStorage");
 
             let mut fs_agent = jacs::get_empty_agent();
             fs_agent
