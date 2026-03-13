@@ -1,12 +1,12 @@
 //! Characterization tests for the narrow SimpleAgent contract.
 //!
-//! These tests cover the 17 methods defined in Section 4.1.2 of
+//! These tests cover the 19 methods defined in Section 4.1.2 of
 //! docs/ARCHITECTURE_UPGRADE.md as the narrow simple contract:
 //!
 //!   create, create_with_params, load, ephemeral, verify_self,
-//!   sign_message, sign_file, verify, verify_with_key, verify_by_id,
-//!   export_agent, get_public_key_pem, get_agent_id, key_id,
-//!   diagnostics, is_strict, config_path
+//!   sign_message, sign_raw_bytes, sign_file, verify, verify_with_key,
+//!   verify_by_id, export_agent, get_public_key, get_public_key_pem,
+//!   get_agent_id, key_id, diagnostics, is_strict, config_path
 //!
 //! These tests form the behavioral baseline that MUST pass before
 //! any refactoring begins. If a later refactor breaks any of these,

@@ -1,12 +1,10 @@
 //! Core `SimpleAgent` definition and narrow contract methods.
 //!
 //! This module contains the `SimpleAgent` struct and the 19 methods that form
-//! the narrow public API contract (17 from Section 4.1.2 of the architecture
-//! doc, plus `sign_raw_bytes` and `get_public_key`).
+//! the narrow public API contract (Section 4.1.2 of `ARCHITECTURE_UPGRADE.md`).
 //!
 //! Advanced methods (agreements, A2A, attestation, batch, agent management)
-//! remain in the parent `mod.rs` as separate `impl SimpleAgent` blocks until
-//! Phase 5 moves them to dedicated modules.
+//! live in sibling modules: [`super::advanced`], [`super::batch`], etc.
 
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
@@ -124,6 +122,34 @@ pub(crate) fn extract_attachments(doc: &Value) -> Vec<Attachment> {
 /// `SimpleAgent` does not use global mutable state, making it thread-safe when
 /// used with appropriate synchronization.
 ///
+/// # Narrow Contract (19 methods)
+///
+/// These are the ONLY public methods on `SimpleAgent`. This list is the
+/// single source of truth (Section 4.1.2 of `ARCHITECTURE_UPGRADE.md`).
+/// Advanced operations live in [`super::advanced`], [`super::batch`], etc.
+///
+/// | # | Method | Purpose |
+/// |---|--------|---------|
+/// | 1 | [`create`](Self::create) | Create agent with defaults |
+/// | 2 | [`create_with_params`](Self::create_with_params) | Create agent with full control |
+/// | 3 | [`load`](Self::load) | Load existing agent from disk |
+/// | 4 | [`ephemeral`](Self::ephemeral) | Create throwaway agent (no disk) |
+/// | 5 | [`verify_self`](Self::verify_self) | Verify own agent document signature |
+/// | 6 | [`sign_message`](Self::sign_message) | Sign a JSON value |
+/// | 7 | [`sign_raw_bytes`](Self::sign_raw_bytes) | Sign raw byte data |
+/// | 8 | [`sign_file`](Self::sign_file) | Sign a file |
+/// | 9 | [`verify`](Self::verify) | Verify a signed document string |
+/// | 10 | [`verify_with_key`](Self::verify_with_key) | Verify with explicit public key |
+/// | 11 | [`verify_by_id`](Self::verify_by_id) | Verify a stored document by ID |
+/// | 12 | [`export_agent`](Self::export_agent) | Export agent identity JSON |
+/// | 13 | [`get_public_key`](Self::get_public_key) | Get public key as raw bytes |
+/// | 14 | [`get_public_key_pem`](Self::get_public_key_pem) | Get public key as PEM string |
+/// | 15 | [`get_agent_id`](Self::get_agent_id) | Get agent ID |
+/// | 16 | [`key_id`](Self::key_id) | Get key ID |
+/// | 17 | [`diagnostics`](Self::diagnostics) | Runtime diagnostic info |
+/// | 18 | [`is_strict`](Self::is_strict) | Check strict mode |
+/// | 19 | [`config_path`](Self::config_path) | Get config file path |
+///
 /// # Thread Safety
 ///
 /// `SimpleAgent` uses interior mutability via `Mutex` to allow safe concurrent
@@ -153,7 +179,7 @@ pub struct SimpleAgent {
 }
 
 // =============================================================================
-// Narrow Contract Methods (17 + sign_raw_bytes + get_public_key = 19)
+// Narrow Contract Methods (19 total -- see doc comment on SimpleAgent)
 // =============================================================================
 
 impl SimpleAgent {
