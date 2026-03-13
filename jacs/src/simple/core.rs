@@ -295,7 +295,13 @@ impl SimpleAgent {
         let algorithm = if params.algorithm.is_empty() {
             "pq2025".to_string()
         } else {
-            params.algorithm.clone()
+            // Normalize user-friendly algorithm names to internal names,
+            // matching ephemeral() and quickstart() behaviour.
+            match params.algorithm.as_str() {
+                "ed25519" => "ring-Ed25519".to_string(),
+                "rsa-pss" => "RSA-PSS".to_string(),
+                other => other.to_string(),
+            }
         };
 
         info!(

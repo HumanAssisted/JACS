@@ -505,7 +505,7 @@ use std::error::Error;
 /// External backend crates (`jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`,
 /// `jacs-redb`) implement all three levels. Built-in backends (filesystem,
 /// in-memory, S3) implement only `StorageDocumentTraits`.
-pub trait StorageDocumentTraits {
+pub trait StorageDocumentTraits: Send + Sync {
     // Basic document operations
     fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>>;
     fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>>;
