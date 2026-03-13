@@ -14,12 +14,14 @@
 //! - `raw_contents` (VARCHAR) — pretty-printed JSON for signature verification
 //! - `file_contents` (VARCHAR) — compact JSON for `json_extract_string()` queries
 //! - `created_at` (TIMESTAMP) — insertion timestamp
+//! - `tombstoned` (INTEGER, default 0) — soft-delete flag (0 = live, 1 = tombstoned)
 //!
 //! # Append-Only Model
 //!
 //! Documents are immutable once stored. New versions create new rows
-//! keyed by `(jacs_id, jacs_version)`. No UPDATE operations on existing rows.
-//! `INSERT OR IGNORE` provides idempotent writes.
+//! keyed by `(jacs_id, jacs_version)`. `INSERT OR IGNORE` provides idempotent writes.
+//! Removal uses a tombstone pattern (`tombstoned = 1`) rather than hard DELETE,
+//! so audit history is preserved. All SELECT queries filter on `tombstoned = 0`.
 //!
 //! # Search Capabilities
 //!
@@ -107,6 +109,7 @@ impl DuckDbStorage {
             raw_contents VARCHAR NOT NULL,
             file_contents VARCHAR NOT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            tombstoned INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (jacs_id, jacs_version)
         )
     "#;
@@ -130,7 +133,7 @@ impl DuckDbStorage {
         })?;
 
         let mut stmt = conn
-            .prepare("SELECT count(*) as count, jacs_type FROM jacs_document GROUP BY jacs_type")
+            .prepare("SELECT count(*) as count, jacs_type FROM jacs_document WHERE tombstoned = 0 GROUP BY jacs_type")
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
                     operation: "db_stats".to_string(),
@@ -209,7 +212,7 @@ impl StorageDocumentTraits for DuckDbStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? AND jacs_version = ?",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? AND jacs_version = ? AND tombstoned = 0",
             )
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
@@ -266,7 +269,7 @@ impl StorageDocumentTraits for DuckDbStorage {
         })?;
 
         conn.execute(
-            "DELETE FROM jacs_document WHERE jacs_id = ? AND jacs_version = ?",
+            "UPDATE jacs_document SET tombstoned = 1 WHERE jacs_id = ? AND jacs_version = ?",
             params![id, version],
         )
         .map_err(|e| -> Box<dyn Error> {
@@ -289,7 +292,7 @@ impl StorageDocumentTraits for DuckDbStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_type = ? ORDER BY created_at DESC",
+                "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC",
             )
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
@@ -335,7 +338,7 @@ impl StorageDocumentTraits for DuckDbStorage {
 
         let count: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM jacs_document WHERE jacs_id = ? AND jacs_version = ?",
+                "SELECT COUNT(*) FROM jacs_document WHERE jacs_id = ? AND jacs_version = ? AND tombstoned = 0",
                 params![id, version],
                 |row| row.get(0),
             )
@@ -359,7 +362,7 @@ impl StorageDocumentTraits for DuckDbStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT jacs_id, jacs_version FROM jacs_document WHERE agent_id = ? ORDER BY created_at DESC",
+                "SELECT jacs_id, jacs_version FROM jacs_document WHERE agent_id = ? AND tombstoned = 0 ORDER BY created_at DESC",
             )
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
@@ -403,7 +406,7 @@ impl StorageDocumentTraits for DuckDbStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_id = ? ORDER BY created_at ASC",
+                "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_id = ? AND tombstoned = 0 ORDER BY created_at ASC",
             )
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
@@ -447,7 +450,7 @@ impl StorageDocumentTraits for DuckDbStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? ORDER BY created_at DESC LIMIT 1",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT 1",
             )
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
@@ -557,7 +560,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
             )
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
@@ -620,7 +623,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         let rows_result: Vec<(String, String, String, String)> = if let Some(doc_type) = jacs_type {
             let mut stmt = conn
                 .prepare(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract_string(file_contents, ?) = ? AND jacs_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract_string(file_contents, ?) = ? AND jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
                 .map_err(|e| -> Box<dyn Error> {
                     Box::new(JacsError::DatabaseError {
@@ -660,7 +663,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         } else {
             let mut stmt = conn
                 .prepare(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract_string(file_contents, ?) = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE json_extract_string(file_contents, ?) = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
                 .map_err(|e| -> Box<dyn Error> {
                     Box::new(JacsError::DatabaseError {
@@ -722,7 +725,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
 
         let count: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM jacs_document WHERE jacs_type = ?",
+                "SELECT COUNT(*) FROM jacs_document WHERE jacs_type = ? AND tombstoned = 0",
                 params![jacs_type],
                 |row| row.get(0),
             )
@@ -746,7 +749,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
 
         let mut stmt = conn
             .prepare(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? ORDER BY created_at ASC",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = ? AND tombstoned = 0 ORDER BY created_at ASC",
             )
             .map_err(|e| -> Box<dyn Error> {
                 Box::new(JacsError::DatabaseError {
@@ -810,7 +813,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         let rows_result: Vec<(String, String, String, String)> = if let Some(doc_type) = jacs_type {
             let mut stmt = conn
                 .prepare(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ? AND jacs_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ? AND jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
                 .map_err(|e| -> Box<dyn Error> {
                     Box::new(JacsError::DatabaseError {
@@ -850,7 +853,7 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         } else {
             let mut stmt = conn
                 .prepare(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 )
                 .map_err(|e| -> Box<dyn Error> {
                     Box::new(JacsError::DatabaseError {
@@ -925,6 +928,11 @@ impl DatabaseDocumentTraits for DuckDbStorage {
                 })?;
         }
 
+        // Tombstone migration -- idempotent via error suppression
+        let _ = conn.execute_batch(
+            "ALTER TABLE jacs_document ADD COLUMN tombstoned INTEGER NOT NULL DEFAULT 0",
+        );
+
         Ok(())
     }
 }
@@ -977,19 +985,19 @@ impl SearchProvider for DuckDbStorage {
 
         let (sql, param_count) = match (&query.jacs_type, &query.agent_id) {
             (Some(_), Some(_)) => (
-                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND jacs_type = ? AND agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND jacs_type = ? AND agent_id = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 5,
             ),
             (Some(_), None) => (
-                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND jacs_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND jacs_type = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 4,
             ),
             (None, Some(_)) => (
-                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND agent_id = ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 4,
             ),
             (None, None) => (
-                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND tombstoned = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 3,
             ),
         };
@@ -1053,10 +1061,10 @@ impl SearchProvider for DuckDbStorage {
 
         // Pre-pagination total: run a separate COUNT query
         let count_where = match (&query.jacs_type, &query.agent_id) {
-            (Some(_), Some(_)) => "WHERE file_contents LIKE ? AND jacs_type = ? AND agent_id = ?",
-            (Some(_), None) => "WHERE file_contents LIKE ? AND jacs_type = ?",
-            (None, Some(_)) => "WHERE file_contents LIKE ? AND agent_id = ?",
-            (None, None) => "WHERE file_contents LIKE ?",
+            (Some(_), Some(_)) => "WHERE file_contents LIKE ? AND jacs_type = ? AND agent_id = ? AND tombstoned = 0",
+            (Some(_), None) => "WHERE file_contents LIKE ? AND jacs_type = ? AND tombstoned = 0",
+            (None, Some(_)) => "WHERE file_contents LIKE ? AND agent_id = ? AND tombstoned = 0",
+            (None, None) => "WHERE file_contents LIKE ? AND tombstoned = 0",
         };
         let count_sql = format!("SELECT COUNT(*) FROM jacs_document {}", count_where);
         let mut count_stmt = conn.prepare(&count_sql).map_err(|e| JacsError::DatabaseError {
@@ -1134,6 +1142,7 @@ impl SearchProvider for DuckDbStorage {
 mod tests {
     use super::*;
     use jacs::testing::make_test_doc as make_doc;
+    use serde_json::json;
 
     fn setup() -> DuckDbStorage {
         let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
@@ -1214,7 +1223,8 @@ mod tests {
     fn search_capabilities_reports_correctly() {
         let storage = setup();
         let caps = storage.capabilities();
-        assert!(caps.fulltext);
+        // DuckDB LIKE is substring match — fulltext must be false
+        assert_eq!(caps.fulltext, false);
         assert!(!caps.vector);
         assert!(!caps.hybrid);
         assert!(caps.field_filter);

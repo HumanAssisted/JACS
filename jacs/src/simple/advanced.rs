@@ -571,3 +571,188 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
         patched_fields,
     })
 }
+
+/// Zero-config persistent agent creation.
+///
+/// If a config file already exists at `config_path` (default: `./jacs.config.json`),
+/// loads the existing agent. Otherwise, creates a new persistent agent with keys
+/// on disk and a minimal config file.
+///
+/// `JACS_PRIVATE_KEY_PASSWORD` must be set (or provided by caller wrappers).
+/// Quickstart fails hard if no password is available.
+///
+/// # Arguments
+///
+/// * `name` - Agent name to use when creating a new config/identity
+/// * `domain` - Agent domain to use for DNS/public-key verification workflows
+/// * `description` - Optional human-readable description for a newly created agent
+/// * `algorithm` - Signing algorithm (default: "pq2025"). Also: "ed25519", "rsa-pss"
+/// * `config_path` - Config file path (default: "./jacs.config.json")
+///
+/// # Returns
+///
+/// A `SimpleAgent` with persistent keys on disk, along with `AgentInfo`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use jacs::simple::advanced;
+///
+/// let (agent, info) = advanced::quickstart(
+///     "my-agent",
+///     "agent.example.com",
+///     Some("My JACS agent"),
+///     None,
+///     None,
+/// )?;
+/// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
+/// ```
+#[must_use = "quickstart result must be checked for errors"]
+pub fn quickstart(
+    name: &str,
+    domain: &str,
+    description: Option<&str>,
+    algorithm: Option<&str>,
+    config_path: Option<&str>,
+) -> Result<(SimpleAgent, AgentInfo), JacsError> {
+    use super::core::{DEFAULT_PRIVATE_KEY_FILENAME, DEFAULT_PUBLIC_KEY_FILENAME};
+
+    let config = config_path.unwrap_or("./jacs.config.json");
+
+    // If config already exists, load the existing agent
+    if Path::new(config).exists() {
+        info!(
+            "quickstart: found existing config at {}, loading agent",
+            config
+        );
+        let agent = SimpleAgent::load(Some(config), None)?;
+
+        // Build AgentInfo from the loaded agent
+        let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        let agent_value = inner
+            .get_value()
+            .cloned()
+            .ok_or(JacsError::AgentNotLoaded)?;
+        let agent_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
+        let version = agent_value["jacsVersion"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let loaded_name = agent_value
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(name)
+            .to_string();
+        let loaded_domain = agent_value
+            .get("jacsAgentDomain")
+            .and_then(|v| v.as_str())
+            .or_else(|| agent_value.get("domain").and_then(|v| v.as_str()))
+            .unwrap_or(domain)
+            .to_string();
+        let (algo, key_dir, data_dir, private_key_filename, public_key_filename) =
+            if let Some(ref cfg) = inner.config {
+                let a = cfg
+                    .jacs_agent_key_algorithm()
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_string();
+                let k = cfg
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys")
+                    .to_string();
+                let d = cfg
+                    .jacs_data_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_data")
+                    .to_string();
+                let priv_name = cfg
+                    .jacs_agent_private_key_filename()
+                    .as_deref()
+                    .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME)
+                    .to_string();
+                let pub_name = cfg
+                    .jacs_agent_public_key_filename()
+                    .as_deref()
+                    .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME)
+                    .to_string();
+                (a, k, d, priv_name, pub_name)
+            } else {
+                (
+                    String::new(),
+                    "./jacs_keys".to_string(),
+                    "./jacs_data".to_string(),
+                    DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
+                    DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
+                )
+            };
+        drop(inner);
+
+        let info = AgentInfo {
+            agent_id,
+            name: loaded_name,
+            public_key_path: format!("{}/{}", key_dir, public_key_filename),
+            config_path: config.to_string(),
+            version,
+            algorithm: algo,
+            private_key_path: format!("{}/{}", key_dir, private_key_filename),
+            data_directory: data_dir,
+            key_directory: key_dir,
+            domain: loaded_domain,
+            dns_record: String::new(),
+        };
+
+        return Ok((agent, info));
+    }
+
+    // No existing config -- create a new persistent agent
+    info!(
+        "quickstart: no config at {}, creating new persistent agent",
+        config
+    );
+
+    if name.trim().is_empty() {
+        return Err(JacsError::ConfigError(
+            "Quickstart requires a non-empty agent name.".to_string(),
+        ));
+    }
+    if domain.trim().is_empty() {
+        return Err(JacsError::ConfigError(
+            "Quickstart requires a non-empty domain.".to_string(),
+        ));
+    }
+
+    // Fail hard if no password is available.
+    let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD")
+        .ok()
+        .filter(|pw| !pw.trim().is_empty())
+        .ok_or_else(|| {
+            JacsError::ConfigError(
+                "Missing private key password. Set JACS_PRIVATE_KEY_PASSWORD \
+                from your environment or secret manager before calling quickstart()."
+                    .to_string(),
+            )
+        })?;
+
+    // Use create_with_params for full control
+    let algo = match algorithm.unwrap_or("pq2025") {
+        "ed25519" => "ring-Ed25519",
+        "rsa-pss" => "RSA-PSS",
+        "pq2025" => "pq2025",
+        other => other,
+    };
+
+    let params = CreateAgentParams {
+        name: name.to_string(),
+        password,
+        algorithm: algo.to_string(),
+        config_path: config.to_string(),
+        description: description.unwrap_or("").to_string(),
+        domain: domain.to_string(),
+        ..Default::default()
+    };
+
+    SimpleAgent::create_with_params(params)
+}

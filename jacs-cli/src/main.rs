@@ -1746,7 +1746,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         quickstart_password_bootstrap_help()
                     )))
                 })?;
-                let (agent, info) = SimpleAgent::quickstart(
+                let (agent, info) = jacs::simple::advanced::quickstart(
                     "jacs-agent",
                     "localhost",
                     Some("JACS A2A agent"),
@@ -1853,7 +1853,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     )))
                 })?;
                 let (agent, info) =
-                    SimpleAgent::quickstart(name, domain, description, algorithm, None).map_err(
+                    jacs::simple::advanced::quickstart(name, domain, description, algorithm, None).map_err(
                         |e| {
                             wrap_quickstart_error_with_password_help(
                                 "Failed to quickstart agent",
@@ -1963,7 +1963,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     quickstart_password_bootstrap_help()
                 )))
             })?;
-            let (agent, info) = SimpleAgent::quickstart(name, domain, description, algorithm, None)
+            let (agent, info) = jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
                 .map_err(|e| wrap_quickstart_error_with_password_help("Quickstart failed", e))?;
 
             if do_sign {
@@ -2086,8 +2086,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             },
                         };
 
-                        let result = agent
-                            .create_attestation(&subject, &claims, &evidence, None, None)
+                        let result = jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
                             .map_err(|e| format!("Failed to create attestation: {}", e))?;
                         result.raw
                     };
@@ -2168,9 +2167,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                     // Now do attestation-specific verification
                     let att_result = if full {
-                        agent.verify_attestation_full(&doc_key)
+                        jacs::attestation::simple::verify_full(&agent, &doc_key)
                     } else {
-                        agent.verify_attestation(&doc_key)
+                        jacs::attestation::simple::verify(&agent, &doc_key)
                     };
 
                     match att_result {
@@ -2245,7 +2244,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             process::exit(1);
                         });
 
-                    match agent.export_dsse(&attestation_json) {
+                    match jacs::attestation::simple::export_dsse(&attestation_json) {
                         Ok(envelope_json) => {
                             if let Some(out_path) = output_path {
                                 std::fs::write(out_path, &envelope_json).unwrap_or_else(|e| {

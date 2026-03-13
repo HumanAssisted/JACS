@@ -1319,4 +1319,46 @@ impl SimpleAgent {
     pub fn config_path(&self) -> Option<&str> {
         self.config_path.as_deref()
     }
+
+    /// Updates the current agent with new data and re-signs it.
+    #[must_use = "updated agent JSON must be used or stored"]
+    pub fn update_agent(&self, new_agent_data: &str) -> Result<String, JacsError> {
+        use crate::schema::utils::check_document_size;
+        check_document_size(new_agent_data)?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        agent
+            .update_self(new_agent_data)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to update agent: {}", e),
+            })
+    }
+
+    /// Updates an existing document with new data and re-signs it.
+    #[must_use = "updated document must be used or stored"]
+    pub fn update_document(
+        &self,
+        document_id: &str,
+        new_data: &str,
+        attachments: Option<Vec<String>>,
+        embed: Option<bool>,
+    ) -> Result<SignedDocument, JacsError> {
+        use crate::schema::utils::check_document_size;
+        check_document_size(new_data)?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        let jacs_doc = agent
+            .update_document(document_id, new_data, attachments, embed)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to update document: {}", e),
+            })?;
+
+        SignedDocument::from_jacs_document(jacs_doc, "document")
+    }
 }

@@ -18,6 +18,7 @@ use serial_test::serial;
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
+use serde_json::json;
 
 /// Spin up a fresh PostgreSQL container and return the `PostgresStorage`
 /// connected to it (with migrations already applied) together with the

@@ -986,8 +986,7 @@ impl SimpleAgent {
     ///     old_password: Current password
     ///     new_password: New password (must meet password requirements)
     fn reencrypt_key(&self, old_password: &str, new_password: &str) -> PyResult<()> {
-        self.inner
-            .reencrypt_key(old_password, new_password)
+        jacs_core::simple::advanced::reencrypt_key(&self.inner, old_password, new_password)
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Failed to re-encrypt key: {}",
@@ -1009,8 +1008,7 @@ impl SimpleAgent {
     ///     JSON string of the signed attestation document
     #[cfg(feature = "attestation")]
     fn create_attestation(&self, params_json: &str) -> PyResult<String> {
-        self.inner
-            .create_attestation_from_json(params_json)
+        jacs_core::attestation::simple::create_from_json(&self.inner, params_json)
             .map(|d| d.raw)
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
@@ -1023,7 +1021,7 @@ impl SimpleAgent {
     /// Verify an attestation (local tier: crypto + hash only).
     #[cfg(feature = "attestation")]
     fn verify_attestation(&self, document_key: &str) -> PyResult<String> {
-        let result = self.inner.verify_attestation(document_key).map_err(|e| {
+        let result = jacs_core::attestation::simple::verify(&self.inner, document_key).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to verify attestation: {}",
                 e
@@ -1040,9 +1038,7 @@ impl SimpleAgent {
     /// Verify an attestation (full tier: crypto + evidence + chain).
     #[cfg(feature = "attestation")]
     fn verify_attestation_full(&self, document_key: &str) -> PyResult<String> {
-        let result = self
-            .inner
-            .verify_attestation_full(document_key)
+        let result = jacs_core::attestation::simple::verify_full(&self.inner, document_key)
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Failed to verify attestation (full): {}",
@@ -1060,8 +1056,7 @@ impl SimpleAgent {
     /// Lift a signed document into an attestation.
     #[cfg(feature = "attestation")]
     fn lift_to_attestation(&self, signed_doc_json: &str, claims_json: &str) -> PyResult<String> {
-        self.inner
-            .lift_to_attestation_from_json(signed_doc_json, claims_json)
+        jacs_core::attestation::simple::lift_from_json(&self.inner, signed_doc_json, claims_json)
             .map(|d| d.raw)
             .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
@@ -1074,7 +1069,7 @@ impl SimpleAgent {
     /// Export an attestation as a DSSE envelope.
     #[cfg(feature = "attestation")]
     fn export_dsse(&self, attestation_json: &str) -> PyResult<String> {
-        self.inner.export_dsse(attestation_json).map_err(|e| {
+        jacs_core::attestation::simple::export_dsse(attestation_json).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to export DSSE: {}",
                 e

@@ -12,10 +12,12 @@
 //! - `raw_contents` (TEXT): Preserves exact JSON bytes for signature verification
 //! - `file_contents` (JSONB): Enables efficient queries and indexing
 //!
-//! # Append-Only Model
+//! # Append-Only Model with Soft Delete
 //!
 //! Documents are immutable once stored. New versions create new rows
-//! keyed by `(jacs_id, jacs_version)`. No UPDATE operations on existing rows.
+//! keyed by `(jacs_id, jacs_version)`. The only UPDATE operation is
+//! soft-delete via `remove_document`, which sets `tombstoned = true`
+//! rather than physically deleting rows.
 //!
 //! # Usage
 //!
@@ -146,6 +148,7 @@ impl PostgresStorage {
             raw_contents TEXT NOT NULL,
             file_contents JSONB NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            tombstoned BOOLEAN NOT NULL DEFAULT false,
             PRIMARY KEY (jacs_id, jacs_version)
         )
     "#;
@@ -207,7 +210,7 @@ impl StorageDocumentTraits for PostgresStorage {
         let row = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                 FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2",
+                 FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2 AND tombstoned = false",
             )
             .bind(id)
             .bind(version)
@@ -229,7 +232,7 @@ impl StorageDocumentTraits for PostgresStorage {
         let (id, version) = Self::parse_key(key)?;
 
         self.block_on(async {
-            sqlx::query("DELETE FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2")
+            sqlx::query("UPDATE jacs_document SET tombstoned = true WHERE jacs_id = $1 AND jacs_version = $2")
                 .bind(id)
                 .bind(version)
                 .execute(&self.pool)
@@ -249,7 +252,7 @@ impl StorageDocumentTraits for PostgresStorage {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version FROM jacs_document \
-                 WHERE jacs_type = $1 ORDER BY created_at DESC",
+                 WHERE jacs_type = $1 AND tombstoned = false ORDER BY created_at DESC",
             )
             .bind(prefix)
             .fetch_all(&self.pool)
@@ -279,7 +282,7 @@ impl StorageDocumentTraits for PostgresStorage {
             .block_on(async {
                 sqlx::query_scalar::<_, bool>(
                     "SELECT EXISTS(SELECT 1 FROM jacs_document \
-                     WHERE jacs_id = $1 AND jacs_version = $2)",
+                     WHERE jacs_id = $1 AND jacs_version = $2 AND tombstoned = false)",
                 )
                 .bind(id)
                 .bind(version)
@@ -300,7 +303,7 @@ impl StorageDocumentTraits for PostgresStorage {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version FROM jacs_document \
-                 WHERE agent_id = $1 ORDER BY created_at DESC",
+                 WHERE agent_id = $1 AND tombstoned = false ORDER BY created_at DESC",
             )
             .bind(agent_id)
             .fetch_all(&self.pool)
@@ -327,7 +330,7 @@ impl StorageDocumentTraits for PostgresStorage {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version FROM jacs_document \
-                 WHERE jacs_id = $1 ORDER BY created_at ASC",
+                 WHERE jacs_id = $1 AND tombstoned = false ORDER BY created_at ASC",
             )
             .bind(document_id)
             .fetch_all(&self.pool)
@@ -354,7 +357,7 @@ impl StorageDocumentTraits for PostgresStorage {
         let row = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                 FROM jacs_document WHERE jacs_id = $1 ORDER BY created_at DESC LIMIT 1",
+                 FROM jacs_document WHERE jacs_id = $1 AND tombstoned = false ORDER BY created_at DESC LIMIT 1",
             )
             .bind(document_id)
             .fetch_one(&self.pool)
@@ -431,7 +434,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                 FROM jacs_document WHERE jacs_type = $1 \
+                 FROM jacs_document WHERE jacs_type = $1 AND tombstoned = false \
                  ORDER BY created_at DESC LIMIT $2 OFFSET $3",
             )
             .bind(jacs_type)
@@ -462,7 +465,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
             self.block_on(async {
                 sqlx::query(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                     FROM jacs_document WHERE file_contents->>$1 = $2 AND jacs_type = $3 \
+                     FROM jacs_document WHERE file_contents->>$1 = $2 AND jacs_type = $3 AND tombstoned = false \
                      ORDER BY created_at DESC LIMIT $4 OFFSET $5",
                 )
                 .bind(field_path)
@@ -477,7 +480,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
             self.block_on(async {
                 sqlx::query(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                     FROM jacs_document WHERE file_contents->>$1 = $2 \
+                     FROM jacs_document WHERE file_contents->>$1 = $2 AND tombstoned = false \
                      ORDER BY created_at DESC LIMIT $3 OFFSET $4",
                 )
                 .bind(field_path)
@@ -502,7 +505,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
         let count: i64 = self
             .block_on(async {
                 sqlx::query_scalar::<_, i64>(
-                    "SELECT COUNT(*) FROM jacs_document WHERE jacs_type = $1",
+                    "SELECT COUNT(*) FROM jacs_document WHERE jacs_type = $1 AND tombstoned = false",
                 )
                 .bind(jacs_type)
                 .fetch_one(&self.pool)
@@ -522,7 +525,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
         let rows = self.block_on(async {
             sqlx::query(
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                 FROM jacs_document WHERE jacs_id = $1 ORDER BY created_at ASC",
+                 FROM jacs_document WHERE jacs_id = $1 AND tombstoned = false ORDER BY created_at ASC",
             )
             .bind(jacs_id)
             .fetch_all(&self.pool)
@@ -553,7 +556,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
             self.block_on(async {
                 sqlx::query(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                     FROM jacs_document WHERE agent_id = $1 AND jacs_type = $2 \
+                     FROM jacs_document WHERE agent_id = $1 AND jacs_type = $2 AND tombstoned = false \
                      ORDER BY created_at DESC LIMIT $3 OFFSET $4",
                 )
                 .bind(agent_id)
@@ -567,7 +570,7 @@ impl DatabaseDocumentTraits for PostgresStorage {
             self.block_on(async {
                 sqlx::query(
                     "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
-                     FROM jacs_document WHERE agent_id = $1 \
+                     FROM jacs_document WHERE agent_id = $1 AND tombstoned = false \
                      ORDER BY created_at DESC LIMIT $2 OFFSET $3",
                 )
                 .bind(agent_id)
@@ -622,6 +625,14 @@ impl DatabaseDocumentTraits for PostgresStorage {
                 reason: format!("Failed to create FTS index: {}", e),
             })
         })?;
+
+        // Tombstone migration: add tombstoned column for soft-delete support.
+        // Idempotent -- IF NOT EXISTS prevents errors on re-run.
+        let _ = self.block_on(async {
+            sqlx::query("ALTER TABLE jacs_document ADD COLUMN IF NOT EXISTS tombstoned BOOLEAN NOT NULL DEFAULT false")
+                .execute(&self.pool)
+                .await
+        });
 
         Ok(())
     }
@@ -682,50 +693,52 @@ impl SearchProvider for PostgresStorage {
             (true, true) => (
                 "SELECT COUNT(*) FROM jacs_document \
                  WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                 AND jacs_type = $2 AND agent_id = $3"
+                 AND jacs_type = $2 AND agent_id = $3 AND tombstoned = false"
                     .to_string(),
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
                  ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
                  FROM jacs_document \
                  WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                 AND jacs_type = $2 AND agent_id = $3 \
+                 AND jacs_type = $2 AND agent_id = $3 AND tombstoned = false \
                  ORDER BY rank DESC LIMIT $4 OFFSET $5"
                     .to_string(),
             ),
             (true, false) => (
                 "SELECT COUNT(*) FROM jacs_document \
                  WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                 AND jacs_type = $2"
+                 AND jacs_type = $2 AND tombstoned = false"
                     .to_string(),
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
                  ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
                  FROM jacs_document \
                  WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                 AND jacs_type = $2 \
+                 AND jacs_type = $2 AND tombstoned = false \
                  ORDER BY rank DESC LIMIT $3 OFFSET $4"
                     .to_string(),
             ),
             (false, true) => (
                 "SELECT COUNT(*) FROM jacs_document \
                  WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                 AND agent_id = $2"
+                 AND agent_id = $2 AND tombstoned = false"
                     .to_string(),
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
                  ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
                  FROM jacs_document \
                  WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                 AND agent_id = $2 \
+                 AND agent_id = $2 AND tombstoned = false \
                  ORDER BY rank DESC LIMIT $3 OFFSET $4"
                     .to_string(),
             ),
             (false, false) => (
                 "SELECT COUNT(*) FROM jacs_document \
-                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1)"
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND tombstoned = false"
                     .to_string(),
                 "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
                  ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
                  FROM jacs_document \
                  WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND tombstoned = false \
                  ORDER BY rank DESC LIMIT $2 OFFSET $3"
                     .to_string(),
             ),

@@ -55,6 +55,7 @@ struct JacsRecord {
     raw_contents: String,
     file_contents: Value,
     created_at: String,
+    tombstoned: bool,
 }
 
 /// Helper for deserializing COUNT ... GROUP ALL results.
@@ -149,6 +150,7 @@ impl SurrealDbStorage {
         DEFINE FIELD IF NOT EXISTS raw_contents ON TABLE jacs_document TYPE string;
         DEFINE FIELD IF NOT EXISTS file_contents ON TABLE jacs_document TYPE object FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS created_at ON TABLE jacs_document TYPE string;
+        DEFINE FIELD IF NOT EXISTS tombstoned ON TABLE jacs_document TYPE bool DEFAULT false;
         DEFINE INDEX IF NOT EXISTS idx_jacs_type ON TABLE jacs_document COLUMNS jacs_type;
         DEFINE INDEX IF NOT EXISTS idx_agent_id ON TABLE jacs_document COLUMNS agent_id;
         DEFINE INDEX IF NOT EXISTS idx_created_at ON TABLE jacs_document COLUMNS created_at;
@@ -181,7 +183,8 @@ impl StorageDocumentTraits for SurrealDbStorage {
                     jacs_type: $jacs_type,
                     raw_contents: $raw_contents,
                     file_contents: $file_contents,
-                    created_at: $created_at
+                    created_at: $created_at,
+                    tombstoned: $tombstoned
                 } ON DUPLICATE KEY UPDATE id = id
             "#;
 
@@ -194,6 +197,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 .bind(("raw_contents", raw_json))
                 .bind(("file_contents", file_contents_json))
                 .bind(("created_at", created_at))
+                .bind(("tombstoned", false))
                 .await
         })
         .map_err(|e| -> Box<dyn Error> {
@@ -213,7 +217,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id AND jacs_version = $jacs_version LIMIT 1")
+                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id AND jacs_version = $jacs_version AND tombstoned = false LIMIT 1")
                     .bind(("jacs_id", id))
                     .bind(("jacs_version", version))
                     .await?;
@@ -246,7 +250,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
 
         self.block_on(async {
             self.db
-                .query("DELETE FROM jacs_document WHERE jacs_id = $jacs_id AND jacs_version = $jacs_version")
+                .query("UPDATE jacs_document SET tombstoned = true WHERE jacs_id = $jacs_id AND jacs_version = $jacs_version")
                 .bind(("jacs_id", id))
                 .bind(("jacs_version", version))
                 .await
@@ -267,7 +271,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE jacs_type = $jacs_type ORDER BY created_at DESC")
+                    .query("SELECT * FROM jacs_document WHERE jacs_type = $jacs_type AND tombstoned = false ORDER BY created_at DESC")
                     .bind(("jacs_type", jacs_type))
                     .await?;
                 let records: Vec<JacsRecord> = result.take(0)?;
@@ -293,7 +297,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT count() AS count FROM jacs_document WHERE jacs_id = $jacs_id AND jacs_version = $jacs_version GROUP ALL")
+                    .query("SELECT count() AS count FROM jacs_document WHERE jacs_id = $jacs_id AND jacs_version = $jacs_version AND tombstoned = false GROUP ALL")
                     .bind(("jacs_id", id))
                     .bind(("jacs_version", version))
                     .await?;
@@ -316,7 +320,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE agent_id = $agent_id ORDER BY created_at DESC")
+                    .query("SELECT * FROM jacs_document WHERE agent_id = $agent_id AND tombstoned = false ORDER BY created_at DESC")
                     .bind(("agent_id", agent_id_owned))
                     .await?;
                 let records: Vec<JacsRecord> = result.take(0)?;
@@ -341,7 +345,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id ORDER BY created_at ASC")
+                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id AND tombstoned = false ORDER BY created_at ASC")
                     .bind(("jacs_id", jacs_id))
                     .await?;
                 let records: Vec<JacsRecord> = result.take(0)?;
@@ -366,7 +370,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id ORDER BY created_at DESC LIMIT 1")
+                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id AND tombstoned = false ORDER BY created_at DESC LIMIT 1")
                     .bind(("jacs_id", jacs_id))
                     .await?;
                 let records: Vec<JacsRecord> = result.take(0)?;
@@ -449,7 +453,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE jacs_type = $jacs_type ORDER BY created_at DESC LIMIT $limit START $offset")
+                    .query("SELECT * FROM jacs_document WHERE jacs_type = $jacs_type AND tombstoned = false ORDER BY created_at DESC LIMIT $limit START $offset")
                     .bind(("jacs_type", jacs_type_owned))
                     .bind(("limit", limit))
                     .bind(("offset", offset))
@@ -497,7 +501,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
         let records: Vec<JacsRecord> = if let Some(doc_type) = jacs_type_owned {
             self.block_on(async {
                 let query = format!(
-                    "SELECT * FROM jacs_document WHERE file_contents.{} = $value AND jacs_type = $jacs_type ORDER BY created_at DESC LIMIT $limit START $offset",
+                    "SELECT * FROM jacs_document WHERE file_contents.{} = $value AND jacs_type = $jacs_type AND tombstoned = false ORDER BY created_at DESC LIMIT $limit START $offset",
                     field_path_owned
                 );
                 let mut result = self
@@ -514,7 +518,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
         } else {
             self.block_on(async {
                 let query = format!(
-                    "SELECT * FROM jacs_document WHERE file_contents.{} = $value ORDER BY created_at DESC LIMIT $limit START $offset",
+                    "SELECT * FROM jacs_document WHERE file_contents.{} = $value AND tombstoned = false ORDER BY created_at DESC LIMIT $limit START $offset",
                     field_path_owned
                 );
                 let mut result = self
@@ -544,7 +548,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT count() AS count FROM jacs_document WHERE jacs_type = $jacs_type GROUP ALL")
+                    .query("SELECT count() AS count FROM jacs_document WHERE jacs_type = $jacs_type AND tombstoned = false GROUP ALL")
                     .bind(("jacs_type", jacs_type_owned))
                     .await?;
                 let row: Option<CountResult> = result.take(0)?;
@@ -566,7 +570,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
             .block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id ORDER BY created_at ASC")
+                    .query("SELECT * FROM jacs_document WHERE jacs_id = $jacs_id AND tombstoned = false ORDER BY created_at ASC")
                     .bind(("jacs_id", jacs_id_owned))
                     .await?;
                 let records: Vec<JacsRecord> = result.take(0)?;
@@ -600,7 +604,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
             self.block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE agent_id = $agent_id AND jacs_type = $jacs_type ORDER BY created_at DESC LIMIT $limit START $offset")
+                    .query("SELECT * FROM jacs_document WHERE agent_id = $agent_id AND jacs_type = $jacs_type AND tombstoned = false ORDER BY created_at DESC LIMIT $limit START $offset")
                     .bind(("agent_id", agent_id_owned))
                     .bind(("jacs_type", doc_type))
                     .bind(("limit", limit))
@@ -613,7 +617,7 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
             self.block_on(async {
                 let mut result = self
                     .db
-                    .query("SELECT * FROM jacs_document WHERE agent_id = $agent_id ORDER BY created_at DESC LIMIT $limit START $offset")
+                    .query("SELECT * FROM jacs_document WHERE agent_id = $agent_id AND tombstoned = false ORDER BY created_at DESC LIMIT $limit START $offset")
                     .bind(("agent_id", agent_id_owned))
                     .bind(("limit", limit))
                     .bind(("offset", offset))
@@ -691,7 +695,10 @@ impl SearchProvider for SurrealDbStorage {
         }
 
         // Build dynamic WHERE clause for CONTAINS search with optional filters
-        let mut where_parts = vec!["raw_contents CONTAINS $query".to_string()];
+        let mut where_parts = vec![
+            "raw_contents CONTAINS $query".to_string(),
+            "tombstoned = false".to_string(),
+        ];
         if query.jacs_type.is_some() {
             where_parts.push("jacs_type = $jacs_type".to_string());
         }

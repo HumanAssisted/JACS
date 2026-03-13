@@ -18,6 +18,7 @@ use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::testing::make_test_doc;
 use jacs_redb::RedbStorage;
 use serial_test::serial;
+use serde_json::json;
 use tempfile::TempDir;
 
 /// Create a file-based Redb storage in a temp directory.

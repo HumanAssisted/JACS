@@ -56,6 +56,8 @@
 //! - **Signing Gravity**: Documentation emphasizes the sacred nature of signing
 
 
+pub mod advanced;
+pub mod batch;
 pub mod core;
 pub mod diagnostics;
 pub mod types;
@@ -63,21 +65,8 @@ pub use core::SimpleAgent;
 pub use diagnostics::diagnostics;
 pub use types::*;
 
-use crate::agent::SHA256_FIELDNAME;
-use crate::agent::boilerplate::BoilerPlate;
-use crate::agent::document::DocumentTraits;
-use crate::crypt::hash::hash_string;
 use crate::error::JacsError;
-use crate::protocol::canonicalize_json;
-use crate::schema::utils::{ValueExt, check_document_size};
-use serde_json::{Value, json};
-use std::fs;
-use std::path::Path;
-use tracing::info;
 
-// Re-import helpers from core.rs that advanced methods still need
-use core::DEFAULT_PRIVATE_KEY_FILENAME;
-use core::DEFAULT_PUBLIC_KEY_FILENAME;
 // The following imports are used by tests via `use super::*`
 #[allow(unused_imports)]
 use core::resolve_strict;
@@ -85,1110 +74,23 @@ use core::resolve_strict;
 use std::sync::Mutex;
 #[allow(unused_imports)]
 pub(crate) use core::extract_attachments;
-
-// Standalone diagnostics() is defined in diagnostics.rs and re-exported above.
-// Constants, build_agent_document, resolve_strict, CREATE_MUTEX, and
-// extract_attachments are defined in core.rs and imported above.
-
-// =============================================================================
-// SimpleAgent - Advanced methods (instance-based)
-// =============================================================================
-// The SimpleAgent struct and narrow contract methods (is_strict, key_id, create,
-// create_with_params, load, ephemeral, verify_self, sign_message, sign_raw_bytes,
-// get_agent_id, sign_file, verify, verify_with_key, verify_by_id, export_agent,
-// get_public_key, get_public_key_pem, diagnostics, config_path) are defined in
-// core.rs and re-exported above.
-
-impl SimpleAgent {
-
-
-
-
-
-
-    /// Zero-config persistent agent creation.
-    ///
-    /// If a config file already exists at `config_path` (default: `./jacs.config.json`),
-    /// loads the existing agent. Otherwise, creates a new persistent agent with keys
-    /// on disk and a minimal config file.
-    ///
-    /// `JACS_PRIVATE_KEY_PASSWORD` must be set (or provided by caller wrappers).
-    /// Quickstart fails hard if no password is available.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - Agent name to use when creating a new config/identity
-    /// * `domain` - Agent domain to use for DNS/public-key verification workflows
-    /// * `description` - Optional human-readable description for a newly created agent
-    /// * `algorithm` - Signing algorithm (default: "pq2025"). Also: "ed25519", "rsa-pss"
-    /// * `config_path` - Config file path (default: "./jacs.config.json")
-    ///
-    /// # Returns
-    ///
-    /// A `SimpleAgent` with persistent keys on disk, along with `AgentInfo`.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    ///
-    /// let (agent, info) = SimpleAgent::quickstart(
-    ///     "my-agent",
-    ///     "agent.example.com",
-    ///     Some("My JACS agent"),
-    ///     None,
-    ///     None,
-    /// )?;
-    /// let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
-    /// // Keys and config are saved to disk -- the same agent is loaded next time.
-    /// ```
-    #[must_use = "quickstart result must be checked for errors"]
-    pub fn quickstart(
-        name: &str,
-        domain: &str,
-        description: Option<&str>,
-        algorithm: Option<&str>,
-        config_path: Option<&str>,
-    ) -> Result<(Self, AgentInfo), JacsError> {
-        let config = config_path.unwrap_or("./jacs.config.json");
-
-        // If config already exists, load the existing agent
-        if Path::new(config).exists() {
-            info!(
-                "quickstart: found existing config at {}, loading agent",
-                config
-            );
-            let agent = Self::load(Some(config), None)?;
-
-            // Build AgentInfo from the loaded agent
-            let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
-                message: format!("Failed to acquire agent lock: {}", e),
-            })?;
-            let agent_value = inner
-                .get_value()
-                .cloned()
-                .ok_or(JacsError::AgentNotLoaded)?;
-            let agent_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
-            let version = agent_value["jacsVersion"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-            let loaded_name = agent_value
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(name)
-                .to_string();
-            let loaded_domain = agent_value
-                .get("jacsAgentDomain")
-                .and_then(|v| v.as_str())
-                .or_else(|| agent_value.get("domain").and_then(|v| v.as_str()))
-                .unwrap_or(domain)
-                .to_string();
-            let (algo, key_dir, data_dir, private_key_filename, public_key_filename) =
-                if let Some(ref cfg) = inner.config {
-                    let a = cfg
-                        .jacs_agent_key_algorithm()
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_string();
-                    let k = cfg
-                        .jacs_key_directory()
-                        .as_deref()
-                        .unwrap_or("./jacs_keys")
-                        .to_string();
-                    let d = cfg
-                        .jacs_data_directory()
-                        .as_deref()
-                        .unwrap_or("./jacs_data")
-                        .to_string();
-                    let priv_name = cfg
-                        .jacs_agent_private_key_filename()
-                        .as_deref()
-                        .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME)
-                        .to_string();
-                    let pub_name = cfg
-                        .jacs_agent_public_key_filename()
-                        .as_deref()
-                        .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME)
-                        .to_string();
-                    (a, k, d, priv_name, pub_name)
-                } else {
-                    (
-                        String::new(),
-                        "./jacs_keys".to_string(),
-                        "./jacs_data".to_string(),
-                        DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
-                        DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
-                    )
-                };
-            drop(inner);
-
-            let info = AgentInfo {
-                agent_id,
-                name: loaded_name,
-                public_key_path: format!("{}/{}", key_dir, public_key_filename),
-                config_path: config.to_string(),
-                version,
-                algorithm: algo,
-                private_key_path: format!("{}/{}", key_dir, private_key_filename),
-                data_directory: data_dir,
-                key_directory: key_dir,
-                domain: loaded_domain,
-                dns_record: String::new(),
-            };
-
-            return Ok((agent, info));
-        }
-
-        // No existing config -- create a new persistent agent
-        info!(
-            "quickstart: no config at {}, creating new persistent agent",
-            config
-        );
-
-        if name.trim().is_empty() {
-            return Err(JacsError::ConfigError(
-                "Quickstart requires a non-empty agent name.".to_string(),
-            ));
-        }
-        if domain.trim().is_empty() {
-            return Err(JacsError::ConfigError(
-                "Quickstart requires a non-empty domain.".to_string(),
-            ));
-        }
-
-        // Fail hard if no password is available.
-        let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD")
-            .ok()
-            .filter(|pw| !pw.trim().is_empty())
-            .ok_or_else(|| {
-                JacsError::ConfigError(
-                    "Missing private key password. Set JACS_PRIVATE_KEY_PASSWORD \
-                    from your environment or secret manager before calling quickstart()."
-                        .to_string(),
-                )
-            })?;
-
-        // Use create_with_params for full control
-        let algo = match algorithm.unwrap_or("pq2025") {
-            "ed25519" => "ring-Ed25519",
-            "rsa-pss" => "RSA-PSS",
-            "pq2025" => "pq2025",
-            other => other,
-        };
-
-        let params = CreateAgentParams {
-            name: name.to_string(),
-            password,
-            algorithm: algo.to_string(),
-            config_path: config.to_string(),
-            description: description.unwrap_or("").to_string(),
-            domain: domain.to_string(),
-            ..Default::default()
-        };
-
-        Self::create_with_params(params)
-    }
-
-
-    /// Updates the current agent with new data and re-signs it.
-    ///
-    /// This function expects a complete agent document (not partial updates).
-    /// Use `export_agent()` to get the current document, modify it, then pass it here.
-    /// The function will create a new version, re-sign, and re-hash the document.
-    ///
-    /// # Arguments
-    ///
-    /// * `new_agent_data` - Complete agent document as a JSON string
-    ///
-    /// # Returns
-    ///
-    /// The updated and re-signed agent document as a JSON string.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    /// use serde_json::json;
-    ///
-    /// let agent = SimpleAgent::load(None)?;
-    ///
-    /// // Get current agent, modify, and update
-    /// let agent_doc: serde_json::Value = serde_json::from_str(&agent.export_agent()?)?;
-    /// let mut modified = agent_doc.clone();
-    /// modified["jacsAgentType"] = json!("updated-service");
-    /// let updated = agent.update_agent(&modified.to_string())?;
-    /// println!("Agent updated with new version");
-    /// ```
-    #[must_use = "updated agent JSON must be used or stored"]
-    pub fn update_agent(&self, new_agent_data: &str) -> Result<String, JacsError> {
-        // Check document size before processing
-        check_document_size(new_agent_data)?;
-
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
-        agent
-            .update_self(new_agent_data)
-            .map_err(|e| JacsError::Internal {
-                message: format!("Failed to update agent: {}", e),
-            })
-    }
-
-    /// Updates an existing document with new data and re-signs it.
-    ///
-    /// Use `sign_message()` to create a document first, then use this to update it.
-    /// The function will create a new version, re-sign, and re-hash the document.
-    ///
-    /// # Arguments
-    ///
-    /// * `document_id` - The document ID (jacsId) to update
-    /// * `new_data` - The updated document as a JSON string
-    /// * `attachments` - Optional list of file paths to attach
-    /// * `embed` - If true, embed attachment contents
-    ///
-    /// # Returns
-    ///
-    /// A `SignedDocument` with the updated document.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    /// use serde_json::json;
-    ///
-    /// let agent = SimpleAgent::load(None)?;
-    ///
-    /// // Create a document first
-    /// let signed = agent.sign_message(&json!({"status": "pending"}))?;
-    ///
-    /// // Later, update it
-    /// let doc: serde_json::Value = serde_json::from_str(&signed.raw)?;
-    /// let mut modified = doc.clone();
-    /// modified["content"]["status"] = json!("approved");
-    /// let updated = agent.update_document(
-    ///     &signed.document_id,
-    ///     &modified.to_string(),
-    ///     None,
-    ///     None
-    /// )?;
-    /// println!("Document updated with new version");
-    /// ```
-    #[must_use = "updated document must be used or stored"]
-    pub fn update_document(
-        &self,
-        document_id: &str,
-        new_data: &str,
-        attachments: Option<Vec<String>>,
-        embed: Option<bool>,
-    ) -> Result<SignedDocument, JacsError> {
-        // Check document size before processing
-        check_document_size(new_data)?;
-
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
-        let jacs_doc = agent
-            .update_document(document_id, new_data, attachments, embed)
-            .map_err(|e| JacsError::Internal {
-                message: format!("Failed to update document: {}", e),
-            })?;
-
-        SignedDocument::from_jacs_document(jacs_doc, "document")
-    }
-
-
-
-
-
-    /// Signs multiple messages in a batch operation.
-    ///
-    /// # IMPORTANT: Each Signature is Sacred
-    ///
-    /// **Every signature in the batch is an irreversible, permanent commitment.**
-    /// Batch signing is convenient, but each document is independently signed with
-    /// full cryptographic weight. Before batch signing:
-    /// - Review ALL messages in the batch
-    /// - Verify each message represents your intent
-    /// - Understand you are making multiple permanent commitments
-    ///
-    /// This is more efficient than calling `sign_message` repeatedly because it
-    /// amortizes the overhead of acquiring locks and key operations across all
-    /// messages.
-    ///
-    /// # Arguments
-    ///
-    /// * `messages` - A slice of JSON values to sign
-    ///
-    /// # Returns
-    ///
-    /// A vector of `SignedDocument` objects, one for each input message, in the
-    /// same order as the input slice.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if signing any message fails. In case of failure,
-    /// documents created before the failure are still stored but the partial
-    /// results are not returned (all-or-nothing return semantics).
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    /// use serde_json::json;
-    ///
-    /// let agent = SimpleAgent::load(None)?;
-    ///
-    /// // Review ALL messages before batch signing!
-    /// let messages = vec![
-    ///     json!({"action": "approve", "item": 1}),
-    ///     json!({"action": "approve", "item": 2}),
-    ///     json!({"action": "reject", "item": 3}),
-    /// ];
-    ///
-    /// let refs: Vec<&serde_json::Value> = messages.iter().collect();
-    /// let signed_docs = agent.sign_messages_batch(&refs)?;
-    ///
-    /// for doc in &signed_docs {
-    ///     println!("Signed document: {}", doc.document_id);
-    /// }
-    /// ```
-    ///
-    /// # Performance Notes
-    ///
-    /// - The agent lock is acquired once for the entire batch
-    /// - Key decryption overhead is amortized across all messages
-    /// - For very large batches, consider splitting into smaller chunks
-    pub fn sign_messages_batch(
-        &self,
-        messages: &[&Value],
-    ) -> Result<Vec<SignedDocument>, JacsError> {
-        use crate::agent::document::DocumentTraits;
-        use tracing::info;
-
-        if messages.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        info!(batch_size = messages.len(), "Signing batch of messages");
-
-        // Prepare all document JSON strings
-        let doc_strings: Vec<String> = messages
-            .iter()
-            .map(|data| {
-                let doc_content = json!({
-                    "jacsType": "message",
-                    "jacsLevel": "raw",
-                    "content": data
-                });
-                doc_content.to_string()
-            })
-            .collect();
-
-        // Check size of each document before processing
-        for doc_str in &doc_strings {
-            check_document_size(doc_str)?;
-        }
-
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
-        // Convert to slice of &str for the batch API
-        let doc_refs: Vec<&str> = doc_strings.iter().map(|s| s.as_str()).collect();
-
-        // Use the batch document creation API
-        let jacs_docs = agent
-            .create_documents_batch(&doc_refs)
-            .map_err(|e| JacsError::SigningFailed {
-                reason: format!(
-                    "Batch signing failed: {}. Ensure the agent is properly initialized with load() or create() and has valid keys.",
-                    e
-                ),
-            })?;
-
-        // Convert to SignedDocument results
-        let mut results = Vec::with_capacity(jacs_docs.len());
-        for jacs_doc in jacs_docs {
-            results.push(SignedDocument::from_jacs_document(jacs_doc, "document")?);
-        }
-
-        info!(
-            batch_size = results.len(),
-            "Batch message signing completed successfully"
-        );
-
-        Ok(results)
-    }
-
-
-
-    /// Re-encrypts the agent's private key from one password to another.
-    ///
-    /// This reads the encrypted private key file, decrypts with the old password,
-    /// validates the new password, re-encrypts, and writes the updated file.
-    ///
-    /// # Arguments
-    ///
-    /// * `old_password` - The current password protecting the private key
-    /// * `new_password` - The new password (must meet password requirements)
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    ///
-    /// let agent = SimpleAgent::load(None)?;
-    /// agent.reencrypt_key("OldP@ss123!", "NewStr0ng!Pass#2025")?;
-    /// println!("Key re-encrypted successfully");
-    /// ```
-    pub fn reencrypt_key(&self, old_password: &str, new_password: &str) -> Result<(), JacsError> {
-        use crate::crypt::aes_encrypt::reencrypt_private_key;
-
-        // Find the private key file
-        let key_path = if let Some(ref config_path) = self.config_path {
-            // Try to read config to find key directory
-            let config_str =
-                fs::read_to_string(config_path).map_err(|e| JacsError::FileReadFailed {
-                    path: config_path.clone(),
-                    reason: e.to_string(),
-                })?;
-            let config: Value =
-                serde_json::from_str(&config_str).map_err(|e| JacsError::ConfigInvalid {
-                    field: "json".to_string(),
-                    reason: e.to_string(),
-                })?;
-            let key_dir = config["jacs_key_directory"]
-                .as_str()
-                .unwrap_or("./jacs_keys");
-            let key_filename = config["jacs_agent_private_key_filename"]
-                .as_str()
-                .unwrap_or("jacs.private.pem.enc");
-            format!("{}/{}", key_dir, key_filename)
-        } else {
-            "./jacs_keys/jacs.private.pem.enc".to_string()
-        };
-
-        info!("Re-encrypting private key at: {}", key_path);
-
-        // Read encrypted key
-        let encrypted_data = fs::read(&key_path).map_err(|e| JacsError::FileReadFailed {
-            path: key_path.clone(),
-            reason: e.to_string(),
-        })?;
-
-        // Re-encrypt
-        let re_encrypted = reencrypt_private_key(&encrypted_data, old_password, new_password)
-            .map_err(|e| JacsError::CryptoError(format!("Re-encryption failed: {}", e)))?;
-
-        // Write back
-        fs::write(&key_path, &re_encrypted).map_err(|e| JacsError::Internal {
-            message: format!("Failed to write re-encrypted key to '{}': {}", key_path, e),
-        })?;
-
-        info!("Private key re-encrypted successfully");
-        Ok(())
-    }
-
-
-
-
-
-
-
-    /// Returns setup instructions for publishing the agent's DNS record
-    /// and enabling DNSSEC.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to publish the DNS TXT record under
-    /// * `ttl` - TTL in seconds for the DNS record (e.g. 3600)
-    pub fn get_setup_instructions(
-        &self,
-        domain: &str,
-        ttl: u32,
-    ) -> Result<SetupInstructions, JacsError> {
-        use crate::dns::bootstrap::{
-            DigestEncoding, build_dns_record, dnssec_guidance, emit_azure_cli,
-            emit_cloudflare_curl, emit_gcloud_dns, emit_plain_bind, emit_route53_change_batch,
-            tld_requirement_text,
-        };
-
-        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to lock agent: {}", e),
-        })?;
-
-        let agent_value = agent.get_value().cloned().unwrap_or(json!({}));
-        let agent_id = agent_value.get_str_or("jacsId", "");
-        if agent_id.is_empty() {
-            return Err(JacsError::AgentNotLoaded);
-        }
-
-        let pk = agent.get_public_key().map_err(|e| JacsError::Internal {
-            message: format!("Failed to get public key: {}", e),
-        })?;
-        let digest = crate::dns::bootstrap::pubkey_digest_b64(&pk);
-        let rr = build_dns_record(domain, ttl, &agent_id, &digest, DigestEncoding::Base64);
-
-        let dns_record_bind = emit_plain_bind(&rr);
-        let dns_record_value = rr.txt.clone();
-        let dns_owner = rr.owner.clone();
-
-        // Provider commands
-        let mut provider_commands = std::collections::HashMap::new();
-        provider_commands.insert("bind".to_string(), dns_record_bind.clone());
-        provider_commands.insert("route53".to_string(), emit_route53_change_batch(&rr));
-        provider_commands.insert("gcloud".to_string(), emit_gcloud_dns(&rr, "YOUR_ZONE_NAME"));
-        provider_commands.insert(
-            "azure".to_string(),
-            emit_azure_cli(&rr, "YOUR_RG", domain, "_v1.agent.jacs"),
-        );
-        provider_commands.insert(
-            "cloudflare".to_string(),
-            emit_cloudflare_curl(&rr, "YOUR_ZONE_ID"),
-        );
-
-        // DNSSEC guidance per provider
-        let mut dnssec_instructions = std::collections::HashMap::new();
-        for name in &["aws", "cloudflare", "azure", "gcloud"] {
-            dnssec_instructions.insert(name.to_string(), dnssec_guidance(name).to_string());
-        }
-
-        let tld_requirement = tld_requirement_text().to_string();
-
-        // .well-known JSON
-        let well_known = json!({
-            "jacs_agent_id": agent_id,
-            "jacs_public_key_hash": digest,
-            "jacs_dns_record": dns_owner,
-        });
-        let well_known_json = serde_json::to_string_pretty(&well_known).unwrap_or_default();
-
-        // Build summary
-        let summary = format!(
-            "Setup instructions for agent {agent_id} on domain {domain}:\n\
-             \n\
-             1. DNS: Publish the following TXT record:\n\
-             {bind}\n\
-             \n\
-             2. DNSSEC: {dnssec}\n\
-             \n\
-             3. Domain requirement: {tld}\n\
-             \n\
-             4. .well-known: Serve the well-known JSON at /.well-known/jacs-agent.json",
-            agent_id = agent_id,
-            domain = domain,
-            bind = dns_record_bind,
-            dnssec = dnssec_guidance("aws"),
-            tld = tld_requirement,
-        );
-
-        Ok(SetupInstructions {
-            dns_record_bind,
-            dns_record_value,
-            dns_owner,
-            provider_commands,
-            dnssec_instructions,
-            tld_requirement,
-            well_known_json,
-            summary,
-        })
-    }
-
-    /// Verifies multiple signed documents in a batch operation.
-    ///
-    /// This method processes each document sequentially, verifying signatures
-    /// and hashes for each. All documents are processed regardless of individual
-    /// failures, and results are returned for each input document.
-    ///
-    /// # Arguments
-    ///
-    /// * `documents` - A slice of JSON strings, each representing a signed JACS document
-    ///
-    /// # Returns
-    ///
-    /// A vector of `VerificationResult` in the same order as the input documents.
-    /// Each result contains:
-    /// - `valid`: Whether the signature and hash are valid
-    /// - `data`: The extracted content from the document
-    /// - `signer_id`: The ID of the signing agent
-    /// - `errors`: Any error messages if verification failed
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    ///
-    /// let agent = SimpleAgent::load(None)?;
-    ///
-    /// let documents = vec![
-    ///     signed_doc1.as_str(),
-    ///     signed_doc2.as_str(),
-    ///     signed_doc3.as_str(),
-    /// ];
-    ///
-    /// let results = agent.verify_batch(&documents);
-    /// for (i, result) in results.iter().enumerate() {
-    ///     if result.valid {
-    ///         println!("Document {} verified successfully", i);
-    ///     } else {
-    ///         println!("Document {} failed: {:?}", i, result.errors);
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// # Performance Notes
-    ///
-    /// - Verification is sequential; for parallel verification, consider using
-    ///   rayon's `par_iter()` externally or spawning threads
-    /// - Each verification is independent and does not short-circuit on failure
-    /// - The method acquires the agent lock once per document verification
-    #[must_use]
-    pub fn verify_batch(&self, documents: &[&str]) -> Vec<VerificationResult> {
-        documents
-            .iter()
-            .map(|doc| match self.verify(doc) {
-                Ok(result) => result,
-                Err(e) => VerificationResult::failure(e.to_string()),
-            })
-            .collect()
-    }
-
-    // =========================================================================
-    // Agreement Methods — MOVED to jacs::agreements module (Phase 5)
-    // Use jacs::agreements::{create, create_with_options, sign, check}
-    // =========================================================================
-
-    // =========================================================================
-    // A2A Protocol Methods — MOVED to jacs::a2a::simple module (Phase 5)
-    // Use jacs::a2a::simple::{export_agent_card, generate_well_known_documents,
-    //   sign_artifact, verify_artifact}
-    // =========================================================================
-
-    // =========================================================================
-    // Key Rotation
-    // =========================================================================
-
-    /// Rotates the agent's cryptographic keys.
-    ///
-    /// This generates a new keypair, archives the old keys (for filesystem-backed
-    /// agents), creates a new agent version with the new public key, self-signs it,
-    /// and updates the config file.
-    ///
-    /// The old keys remain on disk (archived with a version suffix) so that
-    /// documents signed with the old key can still be verified.
-    ///
-    /// # Returns
-    ///
-    /// A [`RotationResult`] containing the old and new version strings, the new
-    /// public key in PEM format, and the complete self-signed agent JSON.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The agent is not loaded (no `jacsId`)
-    /// - Key generation fails
-    /// - Signing fails
-    /// - Config file cannot be updated
-    ///
-    /// On failure after key archival, the old keys are restored (rollback).
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    ///
-    /// let (agent, _info) = SimpleAgent::create("my-agent", None, None)?;
-    /// let rotation = agent.rotate()?;
-    /// println!("Rotated from {} to {}", rotation.old_version, rotation.new_version);
-    /// ```
-    pub fn rotate(&self) -> Result<RotationResult, JacsError> {
-        use crate::crypt::hash::hash_public_key;
-
-        info!("Starting key rotation");
-
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
-        // 1. Capture pre-rotation state
-        let agent_value = agent
-            .get_value()
-            .cloned()
-            .ok_or(JacsError::AgentNotLoaded)?;
-        let jacs_id = agent_value["jacsId"]
-            .as_str()
-            .ok_or(JacsError::AgentNotLoaded)?
-            .to_string();
-        let old_version = agent_value["jacsVersion"]
-            .as_str()
-            .ok_or_else(|| JacsError::Internal {
-                message: "Agent has no jacsVersion".to_string(),
-            })?
-            .to_string();
-
-        // 2. Delegate to Agent::rotate_self() (archives keys, generates new, signs, verifies)
-        let (new_version, new_public_key, new_doc) =
-            agent.rotate_self().map_err(|e| JacsError::Internal {
-                message: format!("Key rotation failed: {}", e),
-            })?;
-
-        // 3. Save agent document to disk (non-ephemeral only)
-        if !agent.is_ephemeral() {
-            agent.save().map_err(|e| JacsError::Internal {
-                message: format!("Failed to save rotated agent: {}", e),
-            })?;
-        }
-
-        // 4. Update config file with the new version
-        if let Some(ref config_path) = self.config_path {
-            let config_path_p = Path::new(config_path);
-            if config_path_p.exists() {
-                let config_str =
-                    fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
-                        message: format!("Failed to read config for rotation update: {}", e),
-                    })?;
-                let mut config_value: Value =
-                    serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
-                        message: format!("Failed to parse config: {}", e),
-                    })?;
-
-                let new_lookup = format!("{}:{}", jacs_id, new_version);
-                if let Some(obj) = config_value.as_object_mut() {
-                    obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
-                }
-
-                let updated_str = serde_json::to_string_pretty(&config_value).map_err(|e| {
-                    JacsError::Internal {
-                        message: format!("Failed to serialize updated config: {}", e),
-                    }
-                })?;
-                fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to write updated config: {}", e),
-                })?;
-
-                info!(
-                    "Config updated with new version: {}:{}",
-                    jacs_id, new_version
-                );
-            }
-        }
-
-        // 5. Build the PEM string for the new public key
-        // We always encode from the raw bytes since the on-disk public key may
-        // be raw bytes (ring Ed25519) rather than actual PEM text.
-        let new_public_key_pem = crate::crypt::normalize_public_key_pem(&new_public_key);
-        drop(agent); // Release lock — no longer needed
-
-        let new_public_key_hash = hash_public_key(&new_public_key);
-        let signed_agent_json =
-            serde_json::to_string_pretty(&new_doc).map_err(|e| JacsError::Internal {
-                message: format!("Failed to serialize rotated agent: {}", e),
-            })?;
-
-        info!(
-            "Key rotation complete: {} -> {} (id={})",
-            old_version, new_version, jacs_id
-        );
-
-        Ok(RotationResult {
-            jacs_id,
-            old_version,
-            new_version,
-            new_public_key_pem,
-            new_public_key_hash,
-            signed_agent_json,
-        })
-    }
-
-    // =========================================================================
-    // Migration API
-    // =========================================================================
-
-    /// Migrates a legacy agent document that predates a schema change.
-    ///
-    /// Agents created before the `iat` (issued-at timestamp) and `jti` (unique
-    /// nonce) fields were added to the `jacsSignature` schema will fail
-    /// validation on load. This method works around that by:
-    ///
-    /// 1. Reading the raw agent JSON from disk (bypassing schema validation)
-    /// 2. Patching in temporary `iat` and `jti` values if they are missing
-    /// 3. Writing the patched JSON back to disk
-    /// 4. Loading the agent normally (now passes schema validation)
-    /// 5. Calling `update_agent()` to produce a properly re-signed new version
-    /// 6. Saving the new version and updating the config file
-    ///
-    /// This is a static method because the agent cannot be loaded yet (that is
-    /// the whole point of migration).
-    ///
-    /// # Arguments
-    ///
-    /// * `config_path` - Path to the JACS config file (default: `./jacs.config.json`)
-    ///
-    /// # Returns
-    ///
-    /// A [`MigrateResult`] describing what was patched and the new version.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use jacs::simple::SimpleAgent;
-    ///
-    /// let result = SimpleAgent::migrate_agent(None)?;
-    /// println!("Migrated {} -> {}", result.old_version, result.new_version);
-    /// println!("Patched fields: {:?}", result.patched_fields);
-    /// ```
-    pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsError> {
-        let path = config_path.unwrap_or("./jacs.config.json");
-
-        info!("Starting agent migration from config: {}", path);
-
-        if !Path::new(path).exists() {
-            return Err(JacsError::ConfigNotFound {
-                path: path.to_string(),
-            });
-        }
-
-        // Step 1: Load config to find the agent file
-        let config = crate::config::load_config_12factor(Some(path)).map_err(|e| {
-            JacsError::ConfigInvalid {
-                field: "config".to_string(),
-                reason: format!("Could not load configuration from '{}': {}", path, e),
-            }
-        })?;
-
-        let id_and_version = config
-            .jacs_agent_id_and_version()
-            .as_deref()
-            .unwrap_or("")
-            .to_string();
-        if id_and_version.is_empty() {
-            return Err(JacsError::ConfigInvalid {
-                field: "jacs_agent_id_and_version".to_string(),
-                reason: "Agent ID and version not set in config".to_string(),
-            });
-        }
-
-        let data_dir = config
-            .jacs_data_directory()
-            .as_deref()
-            .unwrap_or("jacs_data")
-            .to_string();
-
-        // Step 2: Construct the agent file path (same logic as fs_agent_load)
-        // The path is relative to the config file's parent directory.
-        let config_dir = Path::new(path)
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."));
-
-        let agent_file = if Path::new(&data_dir).is_absolute() {
-            Path::new(&data_dir)
-                .join("agent")
-                .join(format!("{}.json", id_and_version))
-        } else {
-            config_dir
-                .join(&data_dir)
-                .join("agent")
-                .join(format!("{}.json", id_and_version))
-        };
-
-        info!("Migration: reading agent file at {:?}", agent_file);
-
-        if !agent_file.exists() {
-            return Err(JacsError::Internal {
-                message: format!(
-                    "Agent file not found at '{}'. Check jacs_data_directory and jacs_agent_id_and_version in config.",
-                    agent_file.display()
-                ),
-            });
-        }
-
-        // Step 3: Read and parse the raw JSON
-        let raw_json = fs::read_to_string(&agent_file).map_err(|e| JacsError::Internal {
-            message: format!(
-                "Failed to read agent file '{}': {}",
-                agent_file.display(),
-                e
-            ),
-        })?;
-
-        let mut agent_value: Value =
-            serde_json::from_str(&raw_json).map_err(|e| JacsError::Internal {
-                message: format!(
-                    "Failed to parse agent JSON from '{}': {}",
-                    agent_file.display(),
-                    e
-                ),
-            })?;
-
-        // Capture pre-migration version info
-        let jacs_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
-        let old_version = agent_value["jacsVersion"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        if jacs_id.is_empty() || old_version.is_empty() {
-            return Err(JacsError::Internal {
-                message: "Agent document is missing jacsId or jacsVersion".to_string(),
-            });
-        }
-
-        // Step 4: Patch jacsSignature if iat/jti are missing
-        let mut patched_fields: Vec<String> = Vec::new();
-
-        if let Some(sig) = agent_value.get_mut("jacsSignature") {
-            if sig.get("iat").is_none() {
-                let iat = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-                sig["iat"] = json!(iat);
-                patched_fields.push("iat".to_string());
-                info!("Migration: patched missing 'iat' field with {}", iat);
-            }
-
-            if sig.get("jti").is_none() {
-                let jti = uuid::Uuid::now_v7().to_string();
-                sig["jti"] = json!(jti);
-                patched_fields.push("jti".to_string());
-                info!("Migration: patched missing 'jti' field with {}", jti);
-            }
-        } else {
-            return Err(JacsError::Internal {
-                message: "Agent document is missing jacsSignature object".to_string(),
-            });
-        }
-
-        // Step 5: Recompute hash and write patched JSON back to disk (only if changes were made)
-        if !patched_fields.is_empty() {
-            // Recompute jacsSha256: clone doc, remove the hash field, canonicalize, SHA-256.
-            // This mirrors Agent::hash_doc() so the hash gate passes during load.
-            let mut hash_copy = agent_value.clone();
-            if let Some(obj) = hash_copy.as_object_mut() {
-                obj.remove(SHA256_FIELDNAME);
-            }
-            let canonical = canonicalize_json(&hash_copy);
-            let new_hash = hash_string(&canonical);
-            agent_value[SHA256_FIELDNAME] = json!(new_hash);
-            patched_fields.push(SHA256_FIELDNAME.to_string());
-            info!("Migration: recomputed {} after patching", SHA256_FIELDNAME);
-
-            let patched_json =
-                serde_json::to_string_pretty(&agent_value).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to serialize patched agent: {}", e),
-                })?;
-            fs::write(&agent_file, &patched_json).map_err(|e| JacsError::Internal {
-                message: format!(
-                    "Failed to write patched agent to '{}': {}",
-                    agent_file.display(),
-                    e
-                ),
-            })?;
-            info!(
-                "Migration: wrote patched agent to {} (fields: {:?})",
-                agent_file.display(),
-                patched_fields
-            );
-        } else {
-            info!("Migration: no fields needed patching, agent already has iat and jti");
-        }
-
-        // Step 6: Load the agent normally (should now pass schema validation)
-        let simple_agent = Self::load(Some(path), None)?;
-
-        // Step 7: Export current agent doc, then call update_agent to re-sign
-        let agent_doc = simple_agent.export_agent()?;
-        let updated_json = simple_agent.update_agent(&agent_doc)?;
-
-        // Step 8: Parse new version from the updated document
-        let updated_value: Value =
-            serde_json::from_str(&updated_json).map_err(|e| JacsError::Internal {
-                message: format!("Failed to parse updated agent JSON: {}", e),
-            })?;
-        let new_version = updated_value["jacsVersion"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        // Step 9: Save the updated agent to disk
-        {
-            let agent = simple_agent.agent.lock().map_err(|e| JacsError::Internal {
-                message: format!("Failed to acquire agent lock: {}", e),
-            })?;
-            agent.save().map_err(|e| JacsError::Internal {
-                message: format!("Failed to save migrated agent: {}", e),
-            })?;
-        }
-
-        // Step 10: Update config file with the new version (same pattern as rotate())
-        let config_path_p = Path::new(path);
-        if config_path_p.exists() {
-            let config_str =
-                fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to read config for migration update: {}", e),
-                })?;
-            let mut config_value: Value =
-                serde_json::from_str(&config_str).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to parse config: {}", e),
-                })?;
-
-            let new_lookup = format!("{}:{}", jacs_id, new_version);
-            if let Some(obj) = config_value.as_object_mut() {
-                obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
-            }
-
-            let updated_str =
-                serde_json::to_string_pretty(&config_value).map_err(|e| JacsError::Internal {
-                    message: format!("Failed to serialize updated config: {}", e),
-                })?;
-            fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
-                message: format!("Failed to write updated config: {}", e),
-            })?;
-
-            info!(
-                "Migration: config updated with new version {}:{}",
-                jacs_id, new_version
-            );
-        }
-
-        info!(
-            "Agent migration complete: {} -> {} (id={}), patched: {:?}",
-            old_version, new_version, jacs_id, patched_fields
-        );
-
-        Ok(MigrateResult {
-            jacs_id,
-            old_version,
-            new_version,
-            patched_fields,
-        })
-    }
-
-    // =========================================================================
-    // Attestation API — MOVED to jacs::attestation::simple module (Phase 5)
-    // Use jacs::attestation::simple::{create, verify, verify_full, lift,
-    //   create_from_json, lift_from_json, export_dsse}
-    // =========================================================================
-}
+#[allow(unused_imports)]
+use serde_json::{Value, json};
 
 /// Migrates a legacy agent that predates a schema change.
 ///
-/// Convenience wrapper around [`SimpleAgent::migrate_agent()`].
+/// Convenience wrapper around [`advanced::migrate_agent()`].
 /// This is a standalone function (no thread-local state needed) because
 /// the agent cannot be loaded before migration.
 pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsError> {
-    SimpleAgent::migrate_agent(config_path)
+    advanced::migrate_agent(config_path)
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::document::JACSDocument;
+    use crate::agent::document::{JACSDocument, DocumentTraits};
     use serial_test::serial;
 
     #[test]
@@ -1573,7 +475,7 @@ mod tests {
             strict: false,
         };
 
-        let result = agent.get_setup_instructions("example.com", 3600);
+        let result = advanced::get_setup_instructions(&agent, "example.com", 3600);
         assert!(result.is_err(), "should fail without a loaded agent");
     }
 
@@ -1734,7 +636,7 @@ mod tests {
     #[test]
     fn test_export_agent_card() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
-        let card = agent.export_agent_card().unwrap();
+        let card = crate::a2a::simple::export_agent_card(&agent).unwrap();
         assert!(!card.name.is_empty());
         assert!(!card.protocol_versions.is_empty());
         assert_eq!(card.protocol_versions[0], "0.4.0");
@@ -1747,7 +649,7 @@ mod tests {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
         let artifact = r#"{"text": "hello from A2A"}"#;
 
-        let wrapped = agent.wrap_a2a_artifact(artifact, "message", None).unwrap();
+        let wrapped = crate::a2a::simple::wrap_artifact(&agent, artifact, "message", None).unwrap();
 
         // Wrapped should be valid JSON with JACS fields
         let wrapped_value: Value = serde_json::from_str(&wrapped).unwrap();
@@ -1756,7 +658,7 @@ mod tests {
         assert_eq!(wrapped_value["jacsType"], "a2a-message");
 
         // Verify the wrapped artifact
-        let result_json = agent.verify_a2a_artifact(&wrapped).unwrap();
+        let result_json = crate::a2a::simple::verify_artifact(&agent, &wrapped).unwrap();
         let result: Value = serde_json::from_str(&result_json).unwrap();
         assert_eq!(result["valid"], true);
         assert_eq!(result["status"], "SelfSigned");
@@ -1768,13 +670,13 @@ mod tests {
         let artifact = r#"{"data": "test"}"#;
 
         // sign_artifact should produce the same structure as wrap_a2a_artifact
-        let signed = agent.sign_artifact(artifact, "artifact", None).unwrap();
+        let signed = crate::a2a::simple::sign_artifact(&agent, artifact, "artifact", None).unwrap();
         let value: Value = serde_json::from_str(&signed).unwrap();
         assert!(value.get("jacsId").is_some());
         assert_eq!(value["jacsType"], "a2a-artifact");
 
         // And it should verify
-        let result_json = agent.verify_a2a_artifact(&signed).unwrap();
+        let result_json = crate::a2a::simple::verify_artifact(&agent, &signed).unwrap();
         let result: Value = serde_json::from_str(&result_json).unwrap();
         assert_eq!(result["valid"], true);
     }
@@ -1785,14 +687,12 @@ mod tests {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
 
         // Create a first artifact
-        let first = agent
-            .wrap_a2a_artifact(r#"{"step": 1}"#, "task", None)
+        let first = crate::a2a::simple::wrap_artifact(&agent, r#"{"step": 1}"#, "task", None)
             .unwrap();
 
         // Use the first as a parent signature for a second
         let parents = format!("[{}]", first);
-        let second = agent
-            .wrap_a2a_artifact(r#"{"step": 2}"#, "task", Some(&parents))
+        let second = crate::a2a::simple::wrap_artifact(&agent, r#"{"step": 2}"#, "task", Some(&parents))
             .unwrap();
 
         let second_value: Value = serde_json::from_str(&second).unwrap();
@@ -1805,7 +705,7 @@ mod tests {
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
-        let result = agent.wrap_a2a_artifact("not json", "artifact", None);
+        let result = crate::a2a::simple::wrap_artifact(&agent, "not json", "artifact", None);
         assert!(result.is_err());
         match result {
             Err(JacsError::DocumentMalformed { field, .. }) => {
@@ -1818,7 +718,7 @@ mod tests {
     #[test]
     fn test_verify_a2a_artifact_invalid_json() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
-        let result = agent.verify_a2a_artifact("not json");
+        let result = crate::a2a::simple::verify_artifact(&agent, "not json");
         assert!(result.is_err());
         match result {
             Err(JacsError::DocumentMalformed { field, .. }) => {
@@ -1834,8 +734,8 @@ mod tests {
         let (agent, _info) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
         let artifact = r#"{"quantum": "safe"}"#;
 
-        let wrapped = agent.wrap_a2a_artifact(artifact, "artifact", None).unwrap();
-        let result_json = agent.verify_a2a_artifact(&wrapped).unwrap();
+        let wrapped = crate::a2a::simple::wrap_artifact(&agent, artifact, "artifact", None).unwrap();
+        let result_json = crate::a2a::simple::verify_artifact(&agent, &wrapped).unwrap();
         let result: Value = serde_json::from_str(&result_json).unwrap();
         assert_eq!(result["valid"], true);
     }
@@ -1843,7 +743,7 @@ mod tests {
     #[test]
     fn test_export_agent_card_has_jacs_extension() {
         let (agent, _info) = SimpleAgent::ephemeral(None).unwrap();
-        let card = agent.export_agent_card().unwrap();
+        let card = crate::a2a::simple::export_agent_card(&agent).unwrap();
 
         let extensions = card.capabilities.extensions.unwrap();
         assert!(!extensions.is_empty());
@@ -2172,7 +1072,7 @@ mod tests {
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
-        let result = agent.rotate().expect("rotation should succeed");
+        let result = advanced::rotate(&agent).expect("rotation should succeed");
 
         assert_eq!(
             result.jacs_id, original_id,
@@ -2194,7 +1094,7 @@ mod tests {
 
         let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-sign-test");
 
-        let _result = agent.rotate().expect("rotation should succeed");
+        let _result = advanced::rotate(&agent).expect("rotation should succeed");
 
         // Sign a message with the rotated agent's new key
         let signed = agent
@@ -2220,7 +1120,7 @@ mod tests {
 
         let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-result-test");
 
-        let result = agent.rotate().expect("rotation should succeed");
+        let result = advanced::rotate(&agent).expect("rotation should succeed");
 
         // All fields should be non-empty
         assert!(!result.jacs_id.is_empty(), "jacs_id should not be empty");
@@ -2269,7 +1169,7 @@ mod tests {
 
         let (agent, info, _tmp, _guard) = create_persistent_test_agent("rotate-config-test");
 
-        let result = agent.rotate().expect("rotation should succeed");
+        let result = advanced::rotate(&agent).expect("rotation should succeed");
 
         // Read the config (CWD is still temp dir, so relative path works)
         let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
@@ -2289,7 +1189,7 @@ mod tests {
         let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let original_version = info.version.clone();
 
-        let result = agent.rotate().expect("ephemeral rotation should succeed");
+        let result = advanced::rotate(&agent).expect("ephemeral rotation should succeed");
 
         assert_eq!(result.jacs_id, info.agent_id);
         assert_ne!(result.new_version, original_version);
@@ -2326,7 +1226,7 @@ mod tests {
         let old_public_key = agent.get_public_key().expect("get old public key");
 
         // Rotate
-        let _result = agent.rotate().expect("rotation should succeed");
+        let _result = advanced::rotate(&agent).expect("rotation should succeed");
 
         // Verify the pre-rotation doc using the old public key
         let verification = agent
@@ -2354,7 +1254,7 @@ mod tests {
         let signed_v1 = agent.sign_message(&json!({"version": 1})).expect("sign v1");
 
         // Phase 2: Rotate
-        let result = agent.rotate().expect("rotation should succeed");
+        let result = advanced::rotate(&agent).expect("rotation should succeed");
 
         // Phase 3: Sign with new key
         let signed_v2 = agent.sign_message(&json!({"version": 2})).expect("sign v2");
@@ -2409,7 +1309,7 @@ mod tests {
         let original_version = info.version.clone();
 
         // Step 2: rotate keys
-        let rot = agent.rotate().expect("key rotation should succeed");
+        let rot = advanced::rotate(&agent).expect("key rotation should succeed");
 
         // jacsId MUST NOT change
         assert_eq!(
@@ -2525,7 +1425,7 @@ mod tests {
         let v1 = info.version.clone();
 
         // Step 2: rotate keys
-        let rot = agent.rotate().expect("key rotation should succeed");
+        let rot = advanced::rotate(&agent).expect("key rotation should succeed");
         let v2 = rot.new_version.clone();
         assert_eq!(
             rot.jacs_id, original_id,
@@ -2627,7 +1527,7 @@ mod tests {
         let (_agent, info, _tmp, _guard) = create_persistent_test_agent("migrate-current-test");
         let config_path = "./jacs.config.json";
 
-        let result = SimpleAgent::migrate_agent(Some(config_path))
+        let result = advanced::migrate_agent(Some(config_path))
             .expect("migration of current agent should succeed");
 
         assert_eq!(result.jacs_id, info.agent_id);
@@ -2647,7 +1547,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let result = SimpleAgent::migrate_agent(Some("/nonexistent/path/jacs.config.json"));
+        let result = advanced::migrate_agent(Some("/nonexistent/path/jacs.config.json"));
         assert!(result.is_err(), "migrating with missing config should fail");
     }
 
@@ -2698,7 +1598,7 @@ mod tests {
         );
 
         // Now migrate — should patch iat/jti, recompute hash, re-sign
-        let result = SimpleAgent::migrate_agent(Some(config_path))
+        let result = advanced::migrate_agent(Some(config_path))
             .expect("migration of legacy agent should succeed");
 
         assert_eq!(result.jacs_id, info.agent_id, "jacsId must not change");
@@ -2779,7 +1679,7 @@ mod tests {
         fn simple_create_attestation_returns_signed_document() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let result = agent.create_attestation(&subject, &[test_claim()], &[], None, None);
+            let result = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None);
             assert!(
                 result.is_ok(),
                 "create_attestation should succeed: {:?}",
@@ -2797,8 +1697,7 @@ mod tests {
         fn simple_create_attestation_raw_contains_attestation_fields() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = agent
-                .create_attestation(&subject, &[test_claim()], &[], None, None)
+            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
                 .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
@@ -2817,8 +1716,7 @@ mod tests {
         fn simple_verify_attestation_local_valid() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = agent
-                .create_attestation(&subject, &[test_claim()], &[], None, None)
+            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
                 .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
@@ -2828,7 +1726,7 @@ mod tests {
                 doc["jacsVersion"].as_str().unwrap()
             );
 
-            let result = agent.verify_attestation(&key);
+            let result = crate::attestation::simple::verify(&agent, &key);
             assert!(
                 result.is_ok(),
                 "verify_attestation should succeed: {:?}",
@@ -2847,8 +1745,7 @@ mod tests {
         fn simple_verify_attestation_full_valid() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = agent
-                .create_attestation(&subject, &[test_claim()], &[], None, None)
+            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
                 .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
@@ -2858,7 +1755,7 @@ mod tests {
                 doc["jacsVersion"].as_str().unwrap()
             );
 
-            let result = agent.verify_attestation_full(&key);
+            let result = crate::attestation::simple::verify_full(&agent, &key);
             assert!(
                 result.is_ok(),
                 "verify_attestation_full should succeed: {:?}",
@@ -2877,8 +1774,7 @@ mod tests {
         fn simple_verify_attestation_returns_signer_info() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = agent
-                .create_attestation(&subject, &[test_claim()], &[], None, None)
+            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
                 .unwrap();
 
             let doc: Value = serde_json::from_str(&signed.raw).unwrap();
@@ -2888,7 +1784,7 @@ mod tests {
                 doc["jacsVersion"].as_str().unwrap()
             );
 
-            let verification = agent.verify_attestation(&key).unwrap();
+            let verification = crate::attestation::simple::verify(&agent, &key).unwrap();
             assert!(
                 !verification.crypto.signer_id.is_empty(),
                 "should include signer info in crypto result"
@@ -2905,7 +1801,7 @@ mod tests {
 
             // Lift it to an attestation
             let claims = vec![test_claim()];
-            let result = agent.lift_to_attestation(&signed_msg.raw, &claims);
+            let result = crate::attestation::simple::lift(&agent, &signed_msg.raw, &claims);
             assert!(
                 result.is_ok(),
                 "lift_to_attestation should succeed: {:?}",
@@ -2924,7 +1820,7 @@ mod tests {
                 att_doc["jacsVersion"].as_str().unwrap()
             );
 
-            let verification = agent.verify_attestation(&att_key).unwrap();
+            let verification = crate::attestation::simple::verify(&agent, &att_key).unwrap();
             assert!(
                 verification.valid,
                 "lifted attestation should verify: {:?}",
@@ -2940,8 +1836,7 @@ mod tests {
             let signed_msg = agent.sign_message(&msg).unwrap();
             let original_id = signed_msg.document_id.clone();
 
-            let attestation = agent
-                .lift_to_attestation(&signed_msg.raw, &[test_claim()])
+            let attestation = crate::attestation::simple::lift(&agent, &signed_msg.raw, &[test_claim()])
                 .unwrap();
 
             let att_doc: Value = serde_json::from_str(&attestation.raw).unwrap();
@@ -2956,7 +1851,7 @@ mod tests {
         fn simple_lift_unsigned_document_fails() {
             let agent = ephemeral_agent();
             let unsigned = json!({"title": "Not Signed"}).to_string();
-            let result = agent.lift_to_attestation(&unsigned, &[test_claim()]);
+            let result = crate::attestation::simple::lift(&agent, &unsigned, &[test_claim()]);
             assert!(result.is_err(), "lifting unsigned document should fail");
         }
 
@@ -2984,7 +1879,7 @@ mod tests {
                 },
             }];
 
-            let result = agent.create_attestation(&subject, &[test_claim()], &evidence, None, None);
+            let result = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &evidence, None, None);
             assert!(
                 result.is_ok(),
                 "attestation with evidence should succeed: {:?}",
@@ -3003,7 +1898,7 @@ mod tests {
         #[test]
         fn simple_verify_attestation_nonexistent_key_returns_error() {
             let agent = ephemeral_agent();
-            let result = agent.verify_attestation("nonexistent-id:v1");
+            let result = crate::attestation::simple::verify(&agent, "nonexistent-id:v1");
             assert!(
                 result.is_err(),
                 "verifying nonexistent attestation should fail"
@@ -3014,11 +1909,10 @@ mod tests {
         fn simple_export_dsse_produces_valid_envelope() {
             let agent = ephemeral_agent();
             let subject = test_subject();
-            let signed = agent
-                .create_attestation(&subject, &[test_claim()], &[], None, None)
+            let signed = crate::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
                 .unwrap();
 
-            let dsse_json = agent.export_dsse(&signed.raw).unwrap();
+            let dsse_json = crate::attestation::simple::export_dsse(&signed.raw).unwrap();
             let envelope: Value = serde_json::from_str(&dsse_json).unwrap();
 
             assert_eq!(

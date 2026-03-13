@@ -81,7 +81,7 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
 
     std::env::set_current_dir(&tmp).expect("cd to temp");
 
-    let (agent, _info) = SimpleAgent::quickstart(
+    let (agent, _info) = jacs::simple::advanced::quickstart(
         "cross-language-agent",
         "cross-language.example.com",
         Some("Cross-language test agent"),

@@ -8,6 +8,7 @@ use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::testing::make_test_doc as make_doc;
 use jacs_duckdb::DuckDbStorage;
+use serde_json::json;
 
 fn setup() -> DuckDbStorage {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
@@ -75,7 +76,7 @@ fn search_capabilities_report() {
     assert_eq!(
         caps,
         SearchCapabilities {
-            fulltext: true,
+            fulltext: false,
             vector: false,
             hybrid: false,
             field_filter: true,
@@ -235,7 +236,7 @@ fn search_with_keyword() {
 
     assert_eq!(results.results.len(), 1);
     assert_eq!(results.results[0].document.id, "kw-1");
-    assert_eq!(results.method, SearchMethod::FullText);
+    assert_eq!(results.method, SearchMethod::FieldMatch);
     assert!(results.results[0].score > 0.0);
 }
 

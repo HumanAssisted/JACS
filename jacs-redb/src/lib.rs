@@ -9,6 +9,7 @@
 //! - `type_index`: `"type\0id:version"` -> `[]`
 //! - `agent_index`: `"agent_id\0id:version"` -> `[]`
 //! - `version_index`: `"id\0created_at\0version"` -> `[]`
+//! - `tombstone_index`: `"id:version"` -> `[]` (soft-delete markers)
 //!
 //! # Append-Only Model
 //!
@@ -52,6 +53,9 @@ const AGENT_INDEX: TableDefinition<&str, &[u8]> = TableDefinition::new("agent_in
 
 /// Ordering index: `"id\0created_at\0version"` -> empty bytes (for get_versions, get_latest).
 const VERSION_INDEX: TableDefinition<&str, &[u8]> = TableDefinition::new("version_index");
+
+/// Tombstone index: `"id:version"` -> empty bytes (marks soft-deleted documents).
+const TOMBSTONE_INDEX: TableDefinition<&str, &[u8]> = TableDefinition::new("tombstone_index");
 
 /// Redb storage backend for JACS documents.
 pub struct RedbStorage {
@@ -160,6 +164,34 @@ impl RedbStorage {
 
         Ok(keys)
     }
+
+    /// Check whether a document key has been tombstoned (soft-deleted).
+    fn is_tombstoned(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+        let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
+        let table = read_txn.open_table(TOMBSTONE_INDEX);
+        let table = match table {
+            Ok(t) => t,
+            Err(redb::TableError::TableDoesNotExist(_)) => return Ok(false),
+            Err(e) => return Err(db_err_box("open_table", e)),
+        };
+        Ok(table.get(key).map_err(db_err("check_tombstone"))?.is_some())
+    }
+
+    /// Filter out any tombstoned keys from a list.
+    fn filter_tombstoned(&self, keys: Vec<String>) -> Result<Vec<String>, Box<dyn Error>> {
+        let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
+        let table = read_txn.open_table(TOMBSTONE_INDEX);
+        let table = match table {
+            Ok(t) => t,
+            Err(redb::TableError::TableDoesNotExist(_)) => return Ok(keys),
+            Err(e) => return Err(db_err_box("open_table", e)),
+        };
+
+        Ok(keys
+            .into_iter()
+            .filter(|k| !table.get(k.as_str()).ok().flatten().is_some())
+            .collect())
+    }
 }
 
 impl StorageDocumentTraits for RedbStorage {
@@ -227,6 +259,14 @@ impl StorageDocumentTraits for RedbStorage {
     fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
         let (_id, _version) = Self::parse_key(key)?;
 
+        // Check tombstone first — soft-deleted documents appear as "not found"
+        if self.is_tombstoned(key)? {
+            return Err(db_err_box(
+                "get_document",
+                format!("Document not found: {}", key),
+            ));
+        }
+
         let read_txn = self.db.begin_read().map_err(db_err("begin_read"))?;
         let table = read_txn
             .open_table(DOCUMENTS)
@@ -244,69 +284,27 @@ impl StorageDocumentTraits for RedbStorage {
     }
 
     fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+        // Fetch the document first (this also checks it exists and is not already tombstoned)
         let doc = self.get_document(key)?;
 
+        // Soft-delete: add the key to the tombstone index, leave document and indexes intact
         let write_txn = self.db.begin_write().map_err(db_err("begin_write"))?;
-
         {
-            // Remove from primary table
-            let mut doc_table = write_txn
-                .open_table(DOCUMENTS)
-                .map_err(db_err("open_table"))?;
-            doc_table.remove(key).map_err(db_err("remove_document"))?;
-
-            // Remove from type index
-            let mut type_table = write_txn
-                .open_table(TYPE_INDEX)
-                .map_err(db_err("open_type_index"))?;
-            let type_key = format!("{}\0{}", doc.jacs_type, key);
-            let _ = type_table.remove(type_key.as_str());
-
-            // Remove from agent index
-            if let Some(ref aid) = Self::extract_agent_id(&doc.value) {
-                let mut agent_table = write_txn
-                    .open_table(AGENT_INDEX)
-                    .map_err(db_err("open_agent_index"))?;
-                let agent_key = format!("{}\0{}", aid, key);
-                let _ = agent_table.remove(agent_key.as_str());
-            }
-
-            // Remove from version index
-            let mut version_table = write_txn
-                .open_table(VERSION_INDEX)
-                .map_err(db_err("open_version_index"))?;
-
-            let prefix = format!("{}\0", doc.id);
-            let range_end = format!("{}\x01", doc.id);
-            let suffix = format!("\0{}", doc.version);
-
-            let keys_to_remove: Vec<String> = {
-                let iter = version_table
-                    .range(prefix.as_str()..range_end.as_str())
-                    .map_err(db_err("range_scan"))?;
-
-                let mut to_remove = Vec::new();
-                for entry in iter {
-                    let (key_guard, _) = entry.map_err(db_err("iterate"))?;
-                    let vk = key_guard.value().to_string();
-                    if vk.ends_with(&suffix) {
-                        to_remove.push(vk);
-                    }
-                }
-                to_remove
-            };
-
-            for vk in &keys_to_remove {
-                let _ = version_table.remove(vk.as_str());
-            }
+            let mut tombstone_table = write_txn
+                .open_table(TOMBSTONE_INDEX)
+                .map_err(db_err("open_tombstone_index"))?;
+            tombstone_table
+                .insert(key, &[] as &[u8])
+                .map_err(db_err("insert_tombstone"))?;
         }
-
         write_txn.commit().map_err(db_err("commit"))?;
+
         Ok(doc)
     }
 
     fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        self.collect_keys_from_index(TYPE_INDEX, prefix)
+        let keys = self.collect_keys_from_index(TYPE_INDEX, prefix)?;
+        self.filter_tombstoned(keys)
     }
 
     fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
@@ -321,12 +319,16 @@ impl StorageDocumentTraits for RedbStorage {
             Err(e) => return Err(db_err_box("open_table", e)),
         };
 
-        let exists = table.get(key).map_err(db_err("document_exists"))?;
-        Ok(exists.is_some())
+        let exists = table.get(key).map_err(db_err("document_exists"))?.is_some();
+        if exists && self.is_tombstoned(key)? {
+            return Ok(false);
+        }
+        Ok(exists)
     }
 
     fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
-        self.collect_keys_from_index(AGENT_INDEX, agent_id)
+        let keys = self.collect_keys_from_index(AGENT_INDEX, agent_id)?;
+        self.filter_tombstoned(keys)
     }
 
     fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
@@ -357,7 +359,7 @@ impl StorageDocumentTraits for RedbStorage {
             }
         }
 
-        Ok(keys)
+        self.filter_tombstoned(keys)
     }
 
     fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
@@ -429,6 +431,7 @@ impl DatabaseDocumentTraits for RedbStorage {
         offset: usize,
     ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
         let keys = self.collect_keys_from_index(TYPE_INDEX, jacs_type)?;
+        let keys = self.filter_tombstoned(keys)?;
         let mut docs = Vec::new();
         for key in keys.into_iter().skip(offset).take(limit) {
             docs.push(self.get_document(&key)?);
@@ -456,7 +459,13 @@ impl DatabaseDocumentTraits for RedbStorage {
         let iter = doc_table.iter().map_err(db_err("iter"))?;
 
         for entry in iter {
-            let (_, value_guard) = entry.map_err(db_err("iterate"))?;
+            let (key_guard, value_guard) = entry.map_err(db_err("iterate"))?;
+
+            // Skip tombstoned documents
+            if self.is_tombstoned(key_guard.value())? {
+                continue;
+            }
+
             let doc = Self::bytes_to_document(value_guard.value())?;
 
             if let Some(t) = jacs_type {
@@ -488,6 +497,7 @@ impl DatabaseDocumentTraits for RedbStorage {
 
     fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>> {
         let keys = self.collect_keys_from_index(TYPE_INDEX, jacs_type)?;
+        let keys = self.filter_tombstoned(keys)?;
         Ok(keys.len())
     }
 
@@ -512,6 +522,7 @@ impl DatabaseDocumentTraits for RedbStorage {
         offset: usize,
     ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
         let keys = self.collect_keys_from_index(AGENT_INDEX, agent_id)?;
+        let keys = self.filter_tombstoned(keys)?;
         let mut results = Vec::new();
         let mut skipped = 0usize;
 
@@ -554,6 +565,9 @@ impl DatabaseDocumentTraits for RedbStorage {
             let _t = write_txn
                 .open_table(VERSION_INDEX)
                 .map_err(db_err("create_version_index"))?;
+            let _t = write_txn
+                .open_table(TOMBSTONE_INDEX)
+                .map_err(db_err("create_tombstone_index"))?;
         }
 
         write_txn.commit().map_err(db_err("commit_migrations"))?;

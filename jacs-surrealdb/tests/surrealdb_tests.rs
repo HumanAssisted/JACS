@@ -21,6 +21,7 @@ use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::testing::make_test_doc;
 use jacs_surrealdb::SurrealDbStorage;
 use serial_test::serial;
+use serde_json::json;
 
 async fn create_storage() -> SurrealDbStorage {
     let db = SurrealDbStorage::in_memory_async()

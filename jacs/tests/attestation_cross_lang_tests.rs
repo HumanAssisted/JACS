@@ -127,7 +127,7 @@ mod attestation_cross_lang {
         // SAFETY: serial test
         unsafe { std::env::set_current_dir(&tmp).expect("cd to temp") };
 
-        let (agent, _info) = SimpleAgent::quickstart(
+        let (agent, _info) = jacs::simple::advanced::quickstart(
             "attestation-cross-lang-agent",
             "attestation.cross-lang.example.com",
             Some("Cross-language attestation test agent"),
@@ -140,8 +140,7 @@ mod attestation_cross_lang {
         let subject = make_subject();
         let claims = make_claims();
         let evidence = make_evidence();
-        let signed = agent
-            .create_attestation(&subject, &claims, &evidence, None, None)
+        let signed = jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
             .expect("create_attestation should succeed");
 
         // Parse signed attestation for metadata extraction
