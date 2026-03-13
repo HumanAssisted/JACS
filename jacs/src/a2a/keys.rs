@@ -103,13 +103,15 @@ pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsErr
     use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
 
     // Parse PEM-encoded RSA public key
-    let pem_str = std::str::from_utf8(public_key).map_err(|e| JacsError::CryptoError(e.to_string()))?;
+    let pem_str =
+        std::str::from_utf8(public_key).map_err(|e| JacsError::CryptoError(e.to_string()))?;
     let pem = pem::parse(pem_str).map_err(|e| JacsError::CryptoError(e.to_string()))?;
 
     // Try PKCS#1 first; if it fails, fall back to PKCS#8 SubjectPublicKeyInfo
     let rsa_key = match RsaPublicKey::from_pkcs1_der(pem.contents()) {
         Ok(k) => k,
-        Err(_) => RsaPublicKey::from_public_key_der(pem.contents()).map_err(|e| JacsError::CryptoError(e.to_string()))?,
+        Err(_) => RsaPublicKey::from_public_key_der(pem.contents())
+            .map_err(|e| JacsError::CryptoError(e.to_string()))?,
     };
 
     // Extract modulus and exponent

@@ -120,7 +120,8 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
                     .with_endpoint(endpoint)
-                    .build()?;
+                    .build()
+                    .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
 
                 // Create logger provider
                 let logger_provider = SdkLoggerProvider::builder()
@@ -135,7 +136,8 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
                     .with(filter)
                     .with(fmt::layer().with_writer(io::stderr)) // Also log to stderr for debugging
                     .with(otel_layer)
-                    .try_init()?;
+                    .try_init()
+                    .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
                 return Ok(None);
             }
             #[cfg(any(target_arch = "wasm32", not(feature = "otlp-logs")))]

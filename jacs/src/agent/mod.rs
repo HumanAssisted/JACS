@@ -424,7 +424,7 @@ impl Agent {
         #[cfg(feature = "observability-convenience")]
         {
             // Record the agent operation
-            record_agent_operation("load_by_id", &lookup_id, success, duration_ms);
+            record_agent_operation("load_by_id", &lookup_id, success, _duration_ms);
         }
 
         if success {
@@ -953,7 +953,7 @@ impl Agent {
                 let _algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
                 #[cfg(feature = "observability-convenience")]
                 {
-                    record_signature_verification("unknown_agent", false, algorithm);
+                    record_signature_verification("unknown_agent", false, _algorithm);
                 }
 
                 return Err(error_message.into());

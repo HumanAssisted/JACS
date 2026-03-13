@@ -188,7 +188,8 @@ fn init_tracing(config: &TracingConfig) -> Result<(), crate::error::JacsError> {
         .with_http()
         .with_protocol(Protocol::HttpBinary)
         .with_endpoint(endpoint)
-        .build()?;
+        .build()
+        .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
 
     println!("DEBUG: SpanExporter built successfully with blocking client");
 
@@ -236,7 +237,8 @@ fn init_tracing(config: &TracingConfig) -> Result<(), crate::error::JacsError> {
         .with(telemetry)
         .with(tracing_subscriber::fmt::layer());
 
-    tracing::subscriber::set_global_default(subscriber)?;
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
     global::set_tracer_provider(provider);
 
     println!("DEBUG: OpenTelemetry tracing initialized with blocking HTTP client");
