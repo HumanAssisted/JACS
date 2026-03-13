@@ -8,6 +8,17 @@ Cryptographic signatures for AI agent outputs. No server. No account. Three line
 
 > For a higher-level agent framework built on JACS, see [haiai](https://github.com/HumanAssisted/haiai).
 
+## The Simple Contract
+
+JACS has four core operations. Everything else builds on these:
+
+| Operation | What it does |
+|-----------|-------------|
+| **Create** | Generate an agent identity with a cryptographic key pair |
+| **Sign** | Attach a tamper-evident signature to any JSON payload or file |
+| **Verify** | Prove a signed document is authentic and unmodified |
+| **Export** | Share your agent's public key or signed documents with others |
+
 ## Quick Start
 
 ### Password Setup
@@ -39,6 +50,17 @@ const info = await jacs.quickstart({
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+```
+
+### Go
+
+```go
+import jacs "github.com/HumanAssisted/JACS/jacsgo"
+
+jacs.Load(nil)
+signed, _ := jacs.SignMessage(map[string]interface{}{"action": "approve", "amount": 100})
+result, _ := jacs.Verify(signed.Raw)
+fmt.Printf("Valid: %t, Signer: %s\n", result.Valid, result.SignerID)
 ```
 
 ### Rust / CLI
@@ -74,6 +96,22 @@ result = jacs.verify_standalone(signed_json, key_directory="./keys")
 const r = verifyStandalone(signedJson, { keyDirectory: './keys' });
 ```
 
+## Use Cases
+
+JACS is optimized for five scenarios:
+
+**U1. Local Provenance** -- An agent creates, signs, verifies, and exports its identity and documents locally. No server required. This is the baseline JACS promise.
+
+**U2. Trusted Local Memory** -- An agent stores memories, plans, tool audit trails, and configs as signed local documents with searchable metadata and visibility controls (`public`/`private`/`restricted`).
+
+**U3. Public Signed Publishing** -- An agent publishes agent cards, public keys, attestations, and shared artifacts that anyone can verify.
+
+**U4. Platform Workflows** -- A [haiai](https://github.com/HumanAssisted/haiai) client uses the same JACS identity to register with HAI, send signed email, and exchange signed artifacts with platform services.
+
+**U5. Advanced Provenance** -- Multi-agent agreements, A2A provenance chains, attestation, and richer storage backends. These are feature-gated and optional -- they do not define the default onboarding story.
+
+See [USECASES.md](USECASES.md) for detailed scenario walkthroughs.
+
 ## When You DON'T Need JACS
 
 - **Single developer, single service.** Standard logging is fine.
@@ -82,33 +120,93 @@ const r = verifyStandalone(signedJson, { keyDirectory: './keys' });
 
 JACS adds value when data crosses trust boundaries -- between organizations, between services with different operators, or into regulated audit trails.
 
-## Learn More
+## Storage
 
-### Storage
+The default storage backend is **filesystem** (keys and documents on disk). With the `sqlite` feature (enabled by default), documents are also indexed in a local SQLite database for fast queries.
 
-The default storage backend is **filesystem** (keys and documents on disk). For indexed queries, **SQLite** is the recommended second option. Additional backends (DuckDB, Redb, SurrealDB) are available as experimental Cargo feature flags.
+Additional backends are available as separate crates:
 
-### Integrations (Experimental)
+| Backend | Crate | Install |
+|---------|-------|---------|
+| Filesystem | built-in | (always available) |
+| SQLite (sync, default) | built-in (`sqlite` feature) | `cargo add jacs --features sqlite` |
+| SQLite (async, sqlx) | built-in (`sqlx-sqlite` feature) | `cargo add jacs --features sqlx-sqlite` |
+| PostgreSQL | `jacs-postgresql` | `cargo add jacs-postgresql` |
+| DuckDB | `jacs-duckdb` | `cargo add jacs-duckdb` |
+| SurrealDB | `jacs-surrealdb` | `cargo add jacs-surrealdb` |
+| Redb | `jacs-redb` | `cargo add jacs-redb` |
 
-Framework adapters are available but considered experimental:
+All backends implement the `DocumentService` and `SearchProvider` traits. See [Storage Backends](#storage-backends) in the docs for configuration details.
+
+## Document Visibility
+
+Every document has a visibility level that controls access:
+
+| Level | Meaning |
+|-------|---------|
+| `public` | Fully public -- can be shared, listed, and returned to any caller |
+| `private` | Private to the owning agent (default) |
+| `restricted` | Restricted to explicitly named agent IDs or roles |
+
+Visibility is set at document creation and can be changed without re-signing.
+
+## Feature Flags
+
+JACS uses Cargo features to keep the default build minimal:
+
+| Feature | Default | What it enables |
+|---------|---------|----------------|
+| `sqlite` | Yes | Sync SQLite storage backend (rusqlite) |
+| `sqlx-sqlite` | No | Async SQLite storage backend (sqlx + tokio) |
+| `a2a` | No | Agent-to-Agent protocol support |
+| `agreements` | No | Multi-agent agreement signing with quorum and timeouts |
+| `attestation` | No | Evidence-based attestation and DSSE export |
+| `otlp-logs` | No | OpenTelemetry log export |
+| `otlp-metrics` | No | OpenTelemetry metrics export |
+| `otlp-tracing` | No | OpenTelemetry distributed tracing |
+
+## MCP Server
+
+JACS includes a Model Context Protocol (MCP) server for AI tool integration:
+
+```bash
+jacs mcp                    # start with core tools (default)
+jacs mcp --profile full     # start with all tools
+```
+
+**Core profile** (default) -- 7 tool families: state, document, trust, audit, memory, search, key.
+
+**Full profile** -- Core + 4 advanced families: agreements, messaging, a2a, attestation.
+
+Set the profile via `--profile <name>` or `JACS_MCP_PROFILE` environment variable.
+
+## Integrations
+
+Framework adapters for signing AI outputs with zero infrastructure:
 
 | Integration | Import | Status |
 |-------------|--------|--------|
 | Python + LangChain | `from jacs.adapters.langchain import jacs_signing_middleware` | Experimental |
 | Python + CrewAI | `from jacs.adapters.crewai import jacs_guardrail` | Experimental |
 | Python + FastAPI | `from jacs.adapters.fastapi import JacsMiddleware` | Experimental |
+| Python + Anthropic SDK | `from jacs.adapters.anthropic import signed_tool` | Experimental |
 | Node.js + Vercel AI SDK | `require('@hai.ai/jacs/vercel-ai')` | Experimental |
+| Node.js + Express | `require('@hai.ai/jacs/express')` | Experimental |
+| Node.js + LangChain.js | `require('@hai.ai/jacs/langchain')` | Experimental |
 | MCP (Rust, canonical) | `jacs mcp` | Stable |
 | A2A Protocol | `client.get_a2a()` | Experimental |
 | Go bindings | `jacsgo` | Experimental |
 
-### Features
+## Features
 
 - **Post-quantum ready** -- ML-DSA-87 (FIPS-204) is the default algorithm alongside Ed25519 and RSA-PSS.
 - **Cross-language** -- Sign in Rust, verify in Python or Node.js. Tested on every commit.
-- **Multi-agent agreements** -- Quorum signing, timeouts, algorithm requirements.
-- **A2A interoperability** -- Every JACS agent is an A2A agent with zero additional config.
+- **Multi-agent agreements** -- Quorum signing, timeouts, algorithm requirements (feature-gated).
+- **A2A interoperability** -- Every JACS agent is an A2A agent with zero additional config (feature-gated).
 - **Trust policies** -- `open`, `verified` (default), or `strict` modes.
+- **Document visibility** -- `public`, `private`, or `restricted` access control on every document.
+- **Pluggable storage** -- Filesystem, SQLite, PostgreSQL, DuckDB, SurrealDB, Redb via trait-based backends.
+- **MCP integration** -- Full MCP server with core and full tool profiles.
 
 ### Links
 

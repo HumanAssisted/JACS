@@ -167,7 +167,7 @@ For platform-level features (agent registration, key discovery, benchmarking), s
 
 ## Building
 
-Requires the Rust library. From the jacsgo directory:
+The Go bindings use CGo to call the JACS Rust library via FFI. Requires the Rust toolchain to build from source. From the jacsgo directory:
 
 ```bash
 make build

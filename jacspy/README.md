@@ -15,7 +15,7 @@ pip install jacs
 
 ```
 
-Packaging/build metadata is defined in `pyproject.toml` (maturin). `setup.py` is intentionally not used.
+The Python package ships prebuilt native bindings (via maturin) and does not compile Rust during `pip install`. Packaging/build metadata is defined in `pyproject.toml`. `setup.py` is intentionally not used.
 
 To check dependencies for known vulnerabilities when using optional extras, run `pip audit` (or `safety check`).
 

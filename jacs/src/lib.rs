@@ -1,3 +1,51 @@
+//! JACS -- JSON AI Communication Standard.
+//!
+//! Cryptographic signatures for AI agent outputs. Create agent identities,
+//! sign documents, verify provenance, and manage trust -- all locally,
+//! with no server required.
+//!
+//! # Getting Started
+//!
+//! Most users should start with the [`simple`] module, which provides the
+//! [`SimpleAgent`](simple::SimpleAgent) facade -- a clean API for the most
+//! common operations:
+//!
+//! ```rust,ignore
+//! use jacs::simple::SimpleAgent;
+//!
+//! let (agent, info) = SimpleAgent::create("my-agent", None, None)?;
+//! let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
+//! let result = agent.verify(&signed.raw)?;
+//! assert!(result.valid);
+//! ```
+//!
+//! # Architecture
+//!
+//! ```text
+//! simple/           Narrow public API (SimpleAgent facade)
+//! document/         DocumentService trait -- unified CRUD, versioning, search
+//! search/           SearchProvider + EmbeddingProvider traits
+//! storage/          Storage backends (filesystem, SQLite, memory, S3)
+//! agent/            Agent struct, document traits, security
+//! crypt/            Signing, verification, key management
+//! schema/           JSON schema validation
+//! trust/            Trust store and trust levels
+//! dns/              DNS-based key verification
+//! ```
+//!
+//! # Feature Flags
+//!
+//! | Feature | Default | Description |
+//! |---------|---------|-------------|
+//! | `sqlite` | Yes | Sync SQLite backend via rusqlite |
+//! | `sqlx-sqlite` | No | Async SQLite backend via sqlx + tokio |
+//! | `a2a` | No | Agent-to-Agent protocol |
+//! | `agreements` | No | Multi-agent agreement signing |
+//! | `attestation` | No | Evidence-based attestation |
+//! | `otlp-logs` | No | OpenTelemetry log export |
+//! | `otlp-metrics` | No | OpenTelemetry metrics export |
+//! | `otlp-tracing` | No | OpenTelemetry distributed tracing |
+
 use crate::agent::document::DocumentTraits;
 use crate::shared::save_document;
 use tracing::error;
@@ -47,9 +95,8 @@ pub mod agreements;
 #[cfg(feature = "attestation")]
 pub mod attestation;
 
-// #[cfg(feature = "cli")]
 pub mod cli_utils;
-// Re-export error types for convenience
+/// The primary error type for all JACS operations.
 pub use error::JacsError;
 
 // Re-export health check types for convenience
@@ -258,6 +305,10 @@ fn load_path_agent(
     Ok(agent)
 }
 
+/// Load an agent from a file path or default config, with full DNS policy control.
+///
+/// If `agentfile` is `Some`, loads from the given file path.
+/// If `None`, loads from the default config path (`JACS_CONFIG` env var or `./jacs.config.json`).
 pub fn load_agent_with_dns_policy(
     agentfile: Option<String>,
     dns_validate: Option<bool>,
@@ -277,6 +328,9 @@ pub fn load_agent_with_dns_policy(
     }
 }
 
+/// Load an agent from a file path or default config with default DNS policy.
+///
+/// Convenience wrapper around [`load_agent_with_dns_policy`] with all DNS options set to `None`.
 pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, JacsError> {
     load_agent_with_dns_policy(agentfile, None, None, None)
 }
@@ -324,6 +378,10 @@ pub fn create_minimal_blank_agent(
     Ok(agent_value.to_string())
 }
 
+/// Create a signed task document with the given name and description.
+///
+/// The task is signed by the provided agent and persisted to storage.
+/// Returns the validated task JSON string.
 pub fn create_task(
     agent: &mut Agent,
     name: String,
@@ -362,22 +420,8 @@ pub fn create_task(
     }
 }
 
-// todo
+/// Update a task document (placeholder -- not yet implemented).
 pub fn update_task(_: String) -> Result<String, JacsError> {
-    // update document
-    // validate
+    // TODO: implement proper task update logic
     Ok("".to_string())
 }
-
-// lets move these here
-
-/*
-create_config() - Create configuration (missing)
-verify_agent() - Verify agent integrity (missing)
-verify_document() - Verify document integrity (missing)
-verify_signature() - Verify signature (missing)
-update_agent() - Update existing agent (missing)
-update_document() - Update existing document (missing)
-
-
-*/

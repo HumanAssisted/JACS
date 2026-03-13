@@ -16,6 +16,69 @@
 //!
 //! Storage backends implement this trait. JACS core provides a default
 //! filesystem + sqlite implementation.
+//!
+//! # Usage
+//!
+//! ```rust,ignore
+//! use jacs::document::{DocumentService, CreateOptions, DocumentVisibility, ListFilter};
+//! use jacs::search::SearchQuery;
+//!
+//! // Obtain a DocumentService from your storage backend
+//! let service: Box<dyn DocumentService> = /* backend-specific constructor */;
+//!
+//! // Create a document with default options (type="artifact", visibility=private)
+//! let doc = service.create(r#"{"hello": "world"}"#, CreateOptions::default())?;
+//!
+//! // Create a public document with a specific type
+//! let opts = CreateOptions {
+//!     jacs_type: "agentstate".to_string(),
+//!     visibility: DocumentVisibility::Public,
+//!     custom_schema: None,
+//! };
+//! let state_doc = service.create(r#"{"memory": "important"}"#, opts)?;
+//!
+//! // Read by key (id:version)
+//! let fetched = service.get(&format!("{}:{}", doc.id, doc.version))?;
+//!
+//! // Search documents (backend chooses fulltext, vector, or hybrid)
+//! let results = service.search(SearchQuery {
+//!     query: "hello".to_string(),
+//!     ..SearchQuery::default()
+//! })?;
+//!
+//! // List documents with filtering
+//! let summaries = service.list(ListFilter {
+//!     jacs_type: Some("artifact".to_string()),
+//!     ..ListFilter::default()
+//! })?;
+//!
+//! // Change visibility without re-signing
+//! let key = format!("{}:{}", doc.id, doc.version);
+//! service.set_visibility(&key, DocumentVisibility::Public)?;
+//! ```
+//!
+//! # Implementing a Storage Backend
+//!
+//! To create a new storage backend, implement [`DocumentService`] and
+//! optionally [`SearchProvider`](crate::search::SearchProvider):
+//!
+//! ```rust,ignore
+//! use jacs::document::{DocumentService, CreateOptions, UpdateOptions, ListFilter,
+//!     DocumentSummary, DocumentDiff, DocumentVisibility};
+//! use jacs::agent::document::JACSDocument;
+//! use jacs::search::{SearchQuery, SearchResults};
+//! use jacs::error::JacsError;
+//!
+//! struct MyBackend { /* ... */ }
+//!
+//! impl DocumentService for MyBackend {
+//!     fn create(&self, json: &str, options: CreateOptions) -> Result<JACSDocument, JacsError> {
+//!         // Sign the document and persist to your storage
+//!         todo!()
+//!     }
+//!     // ... implement remaining methods
+//! }
+//! ```
 
 pub mod filesystem;
 pub mod types;

@@ -1,3 +1,59 @@
+//! Storage backends for JACS documents.
+//!
+//! This module provides the [`MultiStorage`] abstraction layer and the
+//! [`StorageDocumentTraits`] base trait that all storage backends implement.
+//!
+//! # Built-in Backends
+//!
+//! | Backend | Type | Feature Flag | Description |
+//! |---------|------|-------------|-------------|
+//! | Filesystem | `fs` | (always) | Documents as JSON files on disk. Default. |
+//! | Memory | `memory` | (always) | In-memory store for testing. |
+//! | AWS S3 | `aws` | (always) | Object storage via `object_store` crate. |
+//! | SQLite (sync) | `rusqlite` | `sqlite` (default) | Local indexed storage via rusqlite. |
+//! | SQLite (async) | `sqlite` | `sqlx-sqlite` | Async indexed storage via sqlx + tokio. |
+//!
+//! # External Backend Crates
+//!
+//! These backends have been extracted to standalone crates:
+//!
+//! | Crate | Install | Description |
+//! |-------|---------|-------------|
+//! | [`jacs-postgresql`](https://crates.io/crates/jacs-postgresql) | `cargo add jacs-postgresql` | PostgreSQL with pgvector search |
+//! | [`jacs-surrealdb`](https://crates.io/crates/jacs-surrealdb) | `cargo add jacs-surrealdb` | SurrealDB multi-model backend |
+//! | [`jacs-duckdb`](https://crates.io/crates/jacs-duckdb) | `cargo add jacs-duckdb` | DuckDB analytical queries |
+//! | [`jacs-redb`](https://crates.io/crates/jacs-redb) | `cargo add jacs-redb` | Redb embedded key-value store |
+//!
+//! External crates implement [`StorageDocumentTraits`], [`DatabaseDocumentTraits`],
+//! and [`SearchProvider`](crate::search::SearchProvider).
+//!
+//! # Trait Hierarchy
+//!
+//! ```text
+//! StorageDocumentTraits        (base -- CRUD, list, versions, bulk)
+//!     +-- DatabaseDocumentTraits   (indexed queries -- type, field, agent, pagination)
+//!         +-- SearchProvider       (fulltext/vector/hybrid search -- in crate::search)
+//! ```
+//!
+//! # Usage
+//!
+//! ```rust,ignore
+//! use jacs::storage::{MultiStorage, StorageType, StorageDocumentTraits};
+//!
+//! // Default: filesystem storage rooted in the current directory
+//! let storage = MultiStorage::default_new()?;
+//!
+//! // Or specify a backend type
+//! let memory_storage = MultiStorage::new("memory".to_string())?;
+//!
+//! // With SQLite (requires `sqlite` feature, enabled by default)
+//! #[cfg(feature = "sqlite")]
+//! {
+//!     use jacs::storage::RusqliteStorage;
+//!     // RusqliteStorage provides indexed queries + FTS5 search
+//! }
+//! ```
+
 // use futures_util::stream::stream::StreamExt;
 use crate::storage::jenv::get_required_env_var;
 #[cfg(target_arch = "wasm32")]
@@ -161,6 +217,11 @@ impl ObjectStore for WebLocalStorage {
     }
 }
 
+/// Multi-backend storage abstraction that delegates to filesystem, in-memory, S3, or SQLite.
+///
+/// You pick **one** backend at construction via a storage-type string (`"fs"`, `"memory"`,
+/// `"aws"`, `"sqlite"`, `"rusqlite"`, or `"local"` on wasm32). All file operations are
+/// then routed to that backend through the [`ObjectStore`] trait.
 #[derive(Debug, Clone)]
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
@@ -202,6 +263,7 @@ pub enum StorageType {
 }
 
 impl MultiStorage {
+    /// Strip leading slashes from a path for non-filesystem backends. Returns `"."` if empty.
     pub fn clean_path(path: &str) -> String {
         // Non-filesystem backends use object-store paths, which are always relative.
         let cleaned = path.trim_start_matches('/');
@@ -214,16 +276,19 @@ impl MultiStorage {
         }
     }
 
+    /// Create a new `MultiStorage` with the default filesystem backend.
     pub fn default_new() -> Result<Self, ObjectStoreError> {
         let storage_type = "fs".to_string();
         Self::new(storage_type)
     }
 
+    /// Create a new `MultiStorage` with the given backend type, rooted at the process CWD.
     pub fn new(storage_type: String) -> Result<Self, ObjectStoreError> {
         let absolute_path = std::env::current_dir().unwrap();
         Self::_new(storage_type, absolute_path)
     }
 
+    /// Create a new `MultiStorage` with an explicit base directory for filesystem storage.
     pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
         let mut _s3;
         let mut _local;
@@ -339,6 +404,7 @@ impl MultiStorage {
         ObjectPath::parse(Self::clean_path(path)).map_err(ObjectStoreError::from)
     }
 
+    /// Write `contents` to `path` in all configured storage backends.
     pub fn save_file(&self, path: &str, contents: &[u8]) -> Result<(), ObjectStoreError> {
         let object_path = self.object_path(path)?;
         let mut errors = Vec::new();
@@ -364,6 +430,7 @@ impl MultiStorage {
         }
     }
 
+    /// Read a file from the preferred (or default) storage backend.
     pub fn get_file(
         &self,
         path: &str,
@@ -376,6 +443,7 @@ impl MultiStorage {
         Ok(bytes.to_vec())
     }
 
+    /// Check whether a file exists in the preferred (or default) storage backend.
     pub fn file_exists(
         &self,
         path: &str,
@@ -409,6 +477,7 @@ impl MultiStorage {
         }
     }
 
+    /// List all files under `prefix` in the preferred (or default) storage backend.
     pub fn list(
         &self,
         prefix: &str,
@@ -428,6 +497,7 @@ impl MultiStorage {
         Ok(file_list)
     }
 
+    /// Rename (move) a file across all configured storage backends.
     pub fn rename_file(&self, from: &str, to: &str) -> Result<(), ObjectStoreError> {
         let from_path = self.object_path(from)?;
         let to_path = self.object_path(to)?;
@@ -521,7 +591,9 @@ pub trait StorageDocumentTraits: Send + Sync {
     fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>>;
 }
 
-/// Extension to MultiStorage to add document caching support
+/// Caching wrapper over [`MultiStorage`] that keeps recently-accessed documents in an
+/// in-memory `HashMap`. Thread-safe via `Arc<Mutex<...>>`. Disable caching by passing
+/// `cache_enabled: false` at construction.
 pub struct CachedMultiStorage {
     storage: MultiStorage,
     cache: Arc<Mutex<HashMap<String, JACSDocument>>>,
@@ -529,6 +601,7 @@ pub struct CachedMultiStorage {
 }
 
 impl CachedMultiStorage {
+    /// Wrap an existing `MultiStorage` with an optional document cache.
     pub fn new(storage: MultiStorage, cache_enabled: bool) -> Self {
         Self {
             storage,
@@ -537,6 +610,7 @@ impl CachedMultiStorage {
         }
     }
 
+    /// Evict all entries from the document cache (no-op if caching is disabled).
     pub fn clear_cache(&self) {
         if self.cache_enabled
             && let Ok(mut cache) = self.cache.lock()

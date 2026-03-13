@@ -22,6 +22,42 @@
 //! The [`SearchMethod`] enum in results tells the caller what method was used,
 //! but the query interface is the same regardless.
 //!
+//! # Usage
+//!
+//! ```rust,ignore
+//! use jacs::search::{SearchProvider, SearchQuery, FieldFilter};
+//!
+//! // Obtain a SearchProvider from your storage backend
+//! let provider: &dyn SearchProvider = /* ... */;
+//!
+//! // Check backend capabilities
+//! let caps = provider.capabilities();
+//! println!("Fulltext: {}, Vector: {}", caps.fulltext, caps.vector);
+//!
+//! // Simple keyword search
+//! let results = provider.search(SearchQuery {
+//!     query: "authentication".to_string(),
+//!     limit: 20,
+//!     ..SearchQuery::default()
+//! })?;
+//!
+//! for hit in &results.results {
+//!     println!("Score: {:.2}, ID: {}", hit.score, hit.document.id);
+//! }
+//! println!("Method used: {:?}, Total: {}", results.method, results.total_count);
+//!
+//! // Filter by document type and field
+//! let filtered = provider.search(SearchQuery {
+//!     query: "active".to_string(),
+//!     jacs_type: Some("agentstate".to_string()),
+//!     field_filter: Some(FieldFilter {
+//!         field_path: "status".to_string(),
+//!         value: "active".to_string(),
+//!     }),
+//!     ..SearchQuery::default()
+//! })?;
+//! ```
+//!
 //! # Embedding Design
 //!
 //! JACS core does NOT generate embeddings itself — users bring their own
@@ -252,6 +288,38 @@ impl Default for SearchCapabilities {
 ///
 /// Implement this trait to connect your embedding model (OpenAI, Cohere, local
 /// model, etc.) to a JACS storage backend that supports vector search.
+///
+/// # Usage Pattern
+///
+/// 1. Implement `EmbeddingProvider` for your model
+/// 2. Pass it to a storage backend that supports vector search (e.g., `jacs-postgresql`)
+/// 3. The backend calls [`embed()`](EmbeddingProvider::embed) automatically when
+///    indexing documents and processing search queries
+///
+/// ```rust,ignore
+/// use jacs::search::{EmbeddingProvider, NoopEmbeddingProvider};
+/// use jacs::error::JacsError;
+///
+/// // Example: OpenAI-compatible embedding provider
+/// struct OpenAIEmbedder {
+///     api_key: String,
+///     model: String,
+///     dims: usize,
+/// }
+///
+/// impl EmbeddingProvider for OpenAIEmbedder {
+///     fn embed(&self, content: &str) -> Result<Vec<f64>, JacsError> {
+///         // Call the OpenAI embeddings API and return the vector
+///         todo!("POST to /v1/embeddings with content")
+///     }
+///     fn dimensions(&self) -> usize { self.dims }
+///     fn model_id(&self) -> &str { &self.model }
+/// }
+///
+/// // Use NoopEmbeddingProvider for backends that don't need vector search
+/// let noop = NoopEmbeddingProvider;
+/// assert!(noop.embed("anything").is_err()); // intentionally errors
+/// ```
 pub trait EmbeddingProvider: Send + Sync {
     /// Generate an embedding vector for the given text content.
     ///
