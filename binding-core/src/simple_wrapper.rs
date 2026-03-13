@@ -42,38 +42,52 @@ impl SimpleAgentWrapper {
         let (agent, info) = SimpleAgent::create(name, purpose, key_algorithm)
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to create agent: {}", e)))?;
 
-        let info_json = serde_json::to_string(&info)
-            .map_err(|e| BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e)))?;
+        let info_json = serde_json::to_string(&info).map_err(|e| {
+            BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e))
+        })?;
 
-        Ok((Self { inner: Arc::new(agent) }, info_json))
+        Ok((
+            Self {
+                inner: Arc::new(agent),
+            },
+            info_json,
+        ))
     }
 
     /// Load an existing agent from a config file.
-    pub fn load(
-        config_path: Option<&str>,
-        strict: Option<bool>,
-    ) -> BindingResult<Self> {
+    pub fn load(config_path: Option<&str>, strict: Option<bool>) -> BindingResult<Self> {
         let agent = SimpleAgent::load(config_path, strict)
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
-        Ok(Self { inner: Arc::new(agent) })
+        Ok(Self {
+            inner: Arc::new(agent),
+        })
     }
 
     /// Create an ephemeral (in-memory, throwaway) agent.
     ///
     /// Returns `(wrapper, info_json)`.
     pub fn ephemeral(algorithm: Option<&str>) -> BindingResult<(Self, String)> {
-        let (agent, info) = SimpleAgent::ephemeral(algorithm)
-            .map_err(|e| BindingCoreError::agent_load(format!("Failed to create ephemeral agent: {}", e)))?;
+        let (agent, info) = SimpleAgent::ephemeral(algorithm).map_err(|e| {
+            BindingCoreError::agent_load(format!("Failed to create ephemeral agent: {}", e))
+        })?;
 
-        let info_json = serde_json::to_string(&info)
-            .map_err(|e| BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e)))?;
+        let info_json = serde_json::to_string(&info).map_err(|e| {
+            BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e))
+        })?;
 
-        Ok((Self { inner: Arc::new(agent) }, info_json))
+        Ok((
+            Self {
+                inner: Arc::new(agent),
+            },
+            info_json,
+        ))
     }
 
     /// Wrap an existing `SimpleAgent` in a `SimpleAgentWrapper`.
     pub fn from_agent(agent: SimpleAgent) -> Self {
-        Self { inner: Arc::new(agent) }
+        Self {
+            inner: Arc::new(agent),
+        }
     }
 
     // =========================================================================
@@ -113,18 +127,17 @@ impl SimpleAgentWrapper {
 
     /// Get the public key as a PEM string.
     pub fn get_public_key_pem(&self) -> BindingResult<String> {
-        self.inner
-            .get_public_key_pem()
-            .map_err(|e| BindingCoreError::key_not_found(format!("Failed to get public key PEM: {}", e)))
+        self.inner.get_public_key_pem().map_err(|e| {
+            BindingCoreError::key_not_found(format!("Failed to get public key PEM: {}", e))
+        })
     }
 
     /// Get the public key as base64-encoded raw bytes (FFI-safe).
     pub fn get_public_key_base64(&self) -> BindingResult<String> {
         use base64::Engine;
-        let bytes = self
-            .inner
-            .get_public_key()
-            .map_err(|e| BindingCoreError::key_not_found(format!("Failed to get public key: {}", e)))?;
+        let bytes = self.inner.get_public_key().map_err(|e| {
+            BindingCoreError::key_not_found(format!("Failed to get public key: {}", e))
+        })?;
         Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
     }
 
@@ -139,22 +152,28 @@ impl SimpleAgentWrapper {
 
     /// Verify the agent's own document signature. Returns JSON `VerificationResult`.
     pub fn verify_self(&self) -> BindingResult<String> {
-        let result = self
-            .inner
-            .verify_self()
-            .map_err(|e| BindingCoreError::verification_failed(format!("Verify self failed: {}", e)))?;
-        serde_json::to_string(&result)
-            .map_err(|e| BindingCoreError::serialization_failed(format!("Failed to serialize VerificationResult: {}", e)))
+        let result = self.inner.verify_self().map_err(|e| {
+            BindingCoreError::verification_failed(format!("Verify self failed: {}", e))
+        })?;
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize VerificationResult: {}",
+                e
+            ))
+        })
     }
 
     /// Verify a signed document JSON string. Returns JSON `VerificationResult`.
     pub fn verify_json(&self, signed_document: &str) -> BindingResult<String> {
-        let result = self
-            .inner
-            .verify(signed_document)
-            .map_err(|e| BindingCoreError::verification_failed(format!("Verification failed: {}", e)))?;
-        serde_json::to_string(&result)
-            .map_err(|e| BindingCoreError::serialization_failed(format!("Failed to serialize VerificationResult: {}", e)))
+        let result = self.inner.verify(signed_document).map_err(|e| {
+            BindingCoreError::verification_failed(format!("Verification failed: {}", e))
+        })?;
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize VerificationResult: {}",
+                e
+            ))
+        })
     }
 
     /// Verify a signed document with an explicit public key (base64-encoded).
@@ -167,25 +186,39 @@ impl SimpleAgentWrapper {
         use base64::Engine;
         let key_bytes = base64::engine::general_purpose::STANDARD
             .decode(public_key_base64)
-            .map_err(|e| BindingCoreError::invalid_argument(format!("Invalid base64 public key: {}", e)))?;
+            .map_err(|e| {
+                BindingCoreError::invalid_argument(format!("Invalid base64 public key: {}", e))
+            })?;
 
         let result = self
             .inner
             .verify_with_key(signed_document, key_bytes)
-            .map_err(|e| BindingCoreError::verification_failed(format!("Verification with key failed: {}", e)))?;
-        serde_json::to_string(&result)
-            .map_err(|e| BindingCoreError::serialization_failed(format!("Failed to serialize VerificationResult: {}", e)))
+            .map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Verification with key failed: {}",
+                    e
+                ))
+            })?;
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize VerificationResult: {}",
+                e
+            ))
+        })
     }
 
     /// Verify a stored document by its ID (e.g., "uuid:version").
     /// Returns JSON `VerificationResult`.
     pub fn verify_by_id_json(&self, document_id: &str) -> BindingResult<String> {
-        let result = self
-            .inner
-            .verify_by_id(document_id)
-            .map_err(|e| BindingCoreError::verification_failed(format!("Verify by ID failed: {}", e)))?;
-        serde_json::to_string(&result)
-            .map_err(|e| BindingCoreError::serialization_failed(format!("Failed to serialize VerificationResult: {}", e)))
+        let result = self.inner.verify_by_id(document_id).map_err(|e| {
+            BindingCoreError::verification_failed(format!("Verify by ID failed: {}", e))
+        })?;
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize VerificationResult: {}",
+                e
+            ))
+        })
     }
 
     // =========================================================================
@@ -194,8 +227,9 @@ impl SimpleAgentWrapper {
 
     /// Sign a JSON message string. Returns the signed JACS document JSON.
     pub fn sign_message_json(&self, data_json: &str) -> BindingResult<String> {
-        let value: serde_json::Value = serde_json::from_str(data_json)
-            .map_err(|e| BindingCoreError::invalid_argument(format!("Invalid JSON input: {}", e)))?;
+        let value: serde_json::Value = serde_json::from_str(data_json).map_err(|e| {
+            BindingCoreError::invalid_argument(format!("Invalid JSON input: {}", e))
+        })?;
 
         let signed = self
             .inner
@@ -208,10 +242,9 @@ impl SimpleAgentWrapper {
     /// Sign raw bytes and return the signature as base64 (FFI-safe).
     pub fn sign_raw_bytes_base64(&self, data: &[u8]) -> BindingResult<String> {
         use base64::Engine;
-        let sig_bytes = self
-            .inner
-            .sign_raw_bytes(data)
-            .map_err(|e| BindingCoreError::signing_failed(format!("Sign raw bytes failed: {}", e)))?;
+        let sig_bytes = self.inner.sign_raw_bytes(data).map_err(|e| {
+            BindingCoreError::signing_failed(format!("Sign raw bytes failed: {}", e))
+        })?;
         Ok(base64::engine::general_purpose::STANDARD.encode(&sig_bytes))
     }
 

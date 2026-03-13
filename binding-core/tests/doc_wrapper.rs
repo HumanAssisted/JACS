@@ -31,10 +31,7 @@ impl MockDocumentService {
     }
 
     fn make_doc(id: &str, version: &str, value: Value) -> JACSDocument {
-        let jacs_type = value["jacsType"]
-            .as_str()
-            .unwrap_or("artifact")
-            .to_string();
+        let jacs_type = value["jacsType"].as_str().unwrap_or("artifact").to_string();
         JACSDocument {
             id: id.to_string(),
             version: version.to_string(),
@@ -139,10 +136,7 @@ impl DocumentService for MockDocumentService {
                     key: key.clone(),
                     document_id: parts[0].to_string(),
                     version: parts.get(1).unwrap_or(&"1").to_string(),
-                    jacs_type: v["jacsType"]
-                        .as_str()
-                        .unwrap_or("artifact")
-                        .to_string(),
+                    jacs_type: v["jacsType"].as_str().unwrap_or("artifact").to_string(),
                     visibility: DocumentVisibility::Private,
                     created_at: "2026-03-12T00:00:00Z".to_string(),
                     agent_id: "mock-agent".to_string(),
@@ -159,11 +153,7 @@ impl DocumentService for MockDocumentService {
             .filter(|(k, _)| k.starts_with(&format!("{}:", document_id)))
             .map(|(k, v)| {
                 let parts: Vec<&str> = k.splitn(2, ':').collect();
-                MockDocumentService::make_doc(
-                    parts[0],
-                    parts.get(1).unwrap_or(&"1"),
-                    v.clone(),
-                )
+                MockDocumentService::make_doc(parts[0], parts.get(1).unwrap_or(&"1"), v.clone())
             })
             .collect();
         Ok(versions)
@@ -206,11 +196,7 @@ impl DocumentService for MockDocumentService {
         Ok(DocumentVisibility::Private)
     }
 
-    fn set_visibility(
-        &self,
-        _key: &str,
-        _visibility: DocumentVisibility,
-    ) -> Result<(), JacsError> {
+    fn set_visibility(&self, _key: &str, _visibility: DocumentVisibility) -> Result<(), JacsError> {
         Ok(())
     }
 }
@@ -231,7 +217,11 @@ fn mock_wrapper() -> DocumentServiceWrapper {
 fn test_create_json_returns_signed_document() {
     let wrapper = mock_wrapper();
     let result = wrapper.create_json(r#"{"title": "Test"}"#, None);
-    assert!(result.is_ok(), "create_json should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "create_json should succeed: {:?}",
+        result.err()
+    );
 
     let doc: Value = serde_json::from_str(&result.unwrap()).expect("should be valid JSON");
     assert!(doc.get("jacsId").is_some(), "should have jacsId");
@@ -252,16 +242,18 @@ fn test_create_json_with_options() {
 #[test]
 fn test_get_json_retrieves_created_document() {
     let wrapper = mock_wrapper();
-    let created = wrapper
-        .create_json(r#"{"title": "Test"}"#, None)
-        .unwrap();
+    let created = wrapper.create_json(r#"{"title": "Test"}"#, None).unwrap();
     let doc: Value = serde_json::from_str(&created).unwrap();
     let id = doc["jacsId"].as_str().unwrap();
     let version = doc["jacsVersion"].as_str().unwrap();
     let key = format!("{}:{}", id, version);
 
     let result = wrapper.get_json(&key);
-    assert!(result.is_ok(), "get_json should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "get_json should succeed: {:?}",
+        result.err()
+    );
 
     let fetched: Value = serde_json::from_str(&result.unwrap()).unwrap();
     assert_eq!(fetched["jacsId"], doc["jacsId"]);

@@ -53,7 +53,9 @@ impl DocumentServiceWrapper {
             })?;
 
             let config = agent.config.as_ref().ok_or_else(|| {
-                BindingCoreError::agent_load("Agent has no config — load an agent first".to_string())
+                BindingCoreError::agent_load(
+                    "Agent has no config — load an agent first".to_string(),
+                )
             })?;
 
             let data_dir = config
@@ -75,11 +77,8 @@ impl DocumentServiceWrapper {
             (storage, std::path::PathBuf::from(data_dir))
         };
 
-        let fs_service = jacs::document::FilesystemDocumentService::new(
-            Arc::new(storage),
-            agent_arc,
-            base_dir,
-        );
+        let fs_service =
+            jacs::document::FilesystemDocumentService::new(Arc::new(storage), agent_arc, base_dir);
 
         Ok(Self::new(Box::new(fs_service)))
     }
@@ -92,17 +91,10 @@ impl DocumentServiceWrapper {
     ///
     /// `options_json` is an optional JSON string of `CreateOptions`.
     /// If `None`, defaults are used.
-    pub fn create_json(
-        &self,
-        json: &str,
-        options_json: Option<&str>,
-    ) -> BindingResult<String> {
+    pub fn create_json(&self, json: &str, options_json: Option<&str>) -> BindingResult<String> {
         let options: CreateOptions = match options_json {
             Some(opts) => serde_json::from_str(opts).map_err(|e| {
-                BindingCoreError::invalid_argument(format!(
-                    "Invalid CreateOptions JSON: {}",
-                    e
-                ))
+                BindingCoreError::invalid_argument(format!("Invalid CreateOptions JSON: {}", e))
             })?,
             None => CreateOptions::default(),
         };
@@ -122,10 +114,7 @@ impl DocumentServiceWrapper {
     /// Get a document by key (`id:version`). Returns the document JSON.
     pub fn get_json(&self, key: &str) -> BindingResult<String> {
         let doc = self.inner.get(key).map_err(|e| {
-            BindingCoreError::document_failed(format!(
-                "Failed to get document '{}': {}",
-                key, e
-            ))
+            BindingCoreError::document_failed(format!("Failed to get document '{}': {}", key, e))
         })?;
 
         serde_json::to_string(&doc.value).map_err(|e| {
@@ -164,10 +153,7 @@ impl DocumentServiceWrapper {
     ) -> BindingResult<String> {
         let options: UpdateOptions = match options_json {
             Some(opts) => serde_json::from_str(opts).map_err(|e| {
-                BindingCoreError::invalid_argument(format!(
-                    "Invalid UpdateOptions JSON: {}",
-                    e
-                ))
+                BindingCoreError::invalid_argument(format!("Invalid UpdateOptions JSON: {}", e))
             })?,
             None => UpdateOptions::default(),
         };
@@ -193,10 +179,7 @@ impl DocumentServiceWrapper {
     /// Remove (tombstone) a document. Returns the tombstoned document JSON.
     pub fn remove_json(&self, key: &str) -> BindingResult<String> {
         let doc = self.inner.remove(key).map_err(|e| {
-            BindingCoreError::document_failed(format!(
-                "Failed to remove document '{}': {}",
-                key, e
-            ))
+            BindingCoreError::document_failed(format!("Failed to remove document '{}': {}", key, e))
         })?;
 
         serde_json::to_string(&doc.value).map_err(|e| {
@@ -213,10 +196,7 @@ impl DocumentServiceWrapper {
     pub fn list_json(&self, filter_json: Option<&str>) -> BindingResult<String> {
         let filter: ListFilter = match filter_json {
             Some(f) => serde_json::from_str(f).map_err(|e| {
-                BindingCoreError::invalid_argument(format!(
-                    "Invalid ListFilter JSON: {}",
-                    e
-                ))
+                BindingCoreError::invalid_argument(format!("Invalid ListFilter JSON: {}", e))
             })?,
             None => ListFilter::default(),
         };
@@ -242,10 +222,7 @@ impl DocumentServiceWrapper {
     /// `query_json` is a JSON string of `SearchQuery`.
     pub fn search_json(&self, query_json: &str) -> BindingResult<String> {
         let query: jacs::search::SearchQuery = serde_json::from_str(query_json).map_err(|e| {
-            BindingCoreError::invalid_argument(format!(
-                "Invalid SearchQuery JSON: {}",
-                e
-            ))
+            BindingCoreError::invalid_argument(format!("Invalid SearchQuery JSON: {}", e))
         })?;
 
         let results = self.inner.search(query).map_err(|e| {
@@ -292,10 +269,7 @@ impl DocumentServiceWrapper {
         })?;
 
         serde_json::to_string(&diff).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize diff: {}",
-                e
-            ))
+            BindingCoreError::serialization_failed(format!("Failed to serialize diff: {}", e))
         })
     }
 
@@ -313,10 +287,7 @@ impl DocumentServiceWrapper {
         })?;
 
         serde_json::to_string(&vis).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize visibility: {}",
-                e
-            ))
+            BindingCoreError::serialization_failed(format!("Failed to serialize visibility: {}", e))
         })
     }
 
@@ -324,13 +295,9 @@ impl DocumentServiceWrapper {
     ///
     /// `visibility_json` is a JSON string (e.g., `"public"`, `"private"`,
     /// `{"restricted":["agent-a"]}`).
-    pub fn set_visibility_json(
-        &self,
-        key: &str,
-        visibility_json: &str,
-    ) -> BindingResult<()> {
-        let vis: jacs::document::DocumentVisibility =
-            serde_json::from_str(visibility_json).map_err(|e| {
+    pub fn set_visibility_json(&self, key: &str, visibility_json: &str) -> BindingResult<()> {
+        let vis: jacs::document::DocumentVisibility = serde_json::from_str(visibility_json)
+            .map_err(|e| {
                 BindingCoreError::invalid_argument(format!(
                     "Invalid DocumentVisibility JSON: {}",
                     e
