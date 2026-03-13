@@ -18,8 +18,7 @@ use rmcp::{
 mod support;
 use support::{TEST_PASSWORD, prepare_temp_workspace};
 
-static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> =
-    LazyLock::new(|| tokio::sync::Mutex::new(()));
+static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 type McpClient = RunningService<RoleClient, ()>;
@@ -161,7 +160,11 @@ async fn jacs_search_with_type_filter_restricts_results() -> anyhow::Result<()> 
             }),
         )
         .await?;
-    assert_eq!(result["success"], true, "filtered search failed: {}", result);
+    assert_eq!(
+        result["success"], true,
+        "filtered search failed: {}",
+        result
+    );
 
     s.client.cancellation_token().cancel();
     Ok(())
@@ -195,7 +198,11 @@ async fn jacs_search_pagination_works() -> anyhow::Result<()> {
             }),
         )
         .await?;
-    assert_eq!(result["success"], true, "paginated search failed: {}", result);
+    assert_eq!(
+        result["success"], true,
+        "paginated search failed: {}",
+        result
+    );
     let empty = vec![];
     let results = result["results"].as_array().unwrap_or(&empty);
     assert!(

@@ -51,11 +51,7 @@ fn per_category_tool_counts_match_baseline() {
                 "jacs_memory_update",
             ],
         ),
-        (
-            "key management",
-            1,
-            &["jacs_reencrypt_key"],
-        ),
+        ("key management", 1, &["jacs_reencrypt_key"]),
         ("security audit", 1, &["jacs_audit"]),
         (
             "audit trail",
@@ -85,7 +81,11 @@ fn per_category_tool_counts_match_baseline() {
         (
             "document",
             3,
-            &["jacs_sign_document", "jacs_verify_document", "jacs_create_agent"],
+            &[
+                "jacs_sign_document",
+                "jacs_verify_document",
+                "jacs_create_agent",
+            ],
         ),
         (
             "A2A",
