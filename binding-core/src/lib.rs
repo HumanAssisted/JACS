@@ -1119,7 +1119,6 @@ impl AgentWrapper {
             )),
         }
     }
-
 }
 
 #[cfg(feature = "a2a")]
@@ -1363,7 +1362,6 @@ impl AgentWrapper {
             ))
         })
     }
-
 }
 
 impl AgentWrapper {

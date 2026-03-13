@@ -200,11 +200,9 @@ impl StorageDocumentTraits for SurrealDbStorage {
                 .bind(("tombstoned", false))
                 .await
         })
-        .map_err(|e| {
-            JacsError::DatabaseError {
-                operation: "store_document".to_string(),
-                reason: e.to_string(),
-            }
+        .map_err(|e| JacsError::DatabaseError {
+            operation: "store_document".to_string(),
+            reason: e.to_string(),
         })?;
 
         Ok(())
@@ -234,11 +232,9 @@ impl StorageDocumentTraits for SurrealDbStorage {
         let record = records
             .into_iter()
             .next()
-            .ok_or_else(|| {
-                JacsError::DatabaseError {
-                    operation: "get_document".to_string(),
-                    reason: format!("Document not found: {}", key),
-                }
+            .ok_or_else(|| JacsError::DatabaseError {
+                operation: "get_document".to_string(),
+                reason: format!("Document not found: {}", key),
             })?;
 
         Self::record_to_document(&record)
@@ -386,11 +382,9 @@ impl StorageDocumentTraits for SurrealDbStorage {
         let record = records
             .into_iter()
             .next()
-            .ok_or_else(|| {
-                JacsError::DatabaseError {
-                    operation: "get_latest_document".to_string(),
-                    reason: format!("No documents found with ID: {}", document_id),
-                }
+            .ok_or_else(|| JacsError::DatabaseError {
+                operation: "get_latest_document".to_string(),
+                reason: format!("No documents found with ID: {}", document_id),
             })?;
 
         Self::record_to_document(&record)
@@ -638,11 +632,9 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
 
     fn run_migrations(&self) -> Result<(), JacsError> {
         self.block_on(async { self.db.query(Self::SCHEMA_SQL).await })
-            .map_err(|e| {
-                JacsError::DatabaseError {
-                    operation: "run_migrations".to_string(),
-                    reason: e.to_string(),
-                }
+            .map_err(|e| JacsError::DatabaseError {
+                operation: "run_migrations".to_string(),
+                reason: e.to_string(),
             })?;
 
         Ok(())
@@ -714,7 +706,10 @@ impl SearchProvider for SurrealDbStorage {
         );
         let total_count: usize = self
             .block_on(async {
-                let mut q = self.db.query(&count_sql).bind(("query", query.query.clone()));
+                let mut q = self
+                    .db
+                    .query(&count_sql)
+                    .bind(("query", query.query.clone()));
                 if let Some(ref jacs_type) = query.jacs_type {
                     q = q.bind(("jacs_type", jacs_type.clone()));
                 }
@@ -725,9 +720,7 @@ impl SearchProvider for SurrealDbStorage {
                 let count: Option<CountResult> = result.take(0)?;
                 Ok::<_, surrealdb::Error>(count.map(|c| c.count).unwrap_or(0))
             })
-            .map_err(|e| {
-                JacsError::StorageError(format!("SurrealDB count query failed: {}", e))
-            })?;
+            .map_err(|e| JacsError::StorageError(format!("SurrealDB count query failed: {}", e)))?;
 
         // Results query (with pagination)
         let results_sql = format!(
@@ -783,7 +776,7 @@ impl SearchProvider for SurrealDbStorage {
 
     fn capabilities(&self) -> SearchCapabilities {
         SearchCapabilities {
-            fulltext: false,  // SurrealDB CONTAINS is substring, not true fulltext
+            fulltext: false, // SurrealDB CONTAINS is substring, not true fulltext
             vector: false,
             hybrid: false,
             field_filter: true,

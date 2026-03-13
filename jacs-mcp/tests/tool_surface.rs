@@ -45,11 +45,7 @@ fn per_category_tool_counts_match_baseline() {
             2,
             &["jacs_create_agent", "jacs_reencrypt_key"],
         ),
-        (
-            "audit",
-            1,
-            &["jacs_audit"],
-        ),
+        ("audit", 1, &["jacs_audit"]),
         (
             "messaging",
             4,

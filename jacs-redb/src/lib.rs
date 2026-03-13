@@ -272,13 +272,10 @@ impl StorageDocumentTraits for RedbStorage {
             .open_table(DOCUMENTS)
             .map_err(db_err("open_table"))?;
 
-        let guard =
-            table
-                .get(key)
-                .map_err(db_err("get_document"))?
-                .ok_or_else(|| {
-                    db_err_box("get_document", format!("Document not found: {}", key))
-                })?;
+        let guard = table
+            .get(key)
+            .map_err(db_err("get_document"))?
+            .ok_or_else(|| db_err_box("get_document", format!("Document not found: {}", key)))?;
 
         Self::bytes_to_document(guard.value())
     }
@@ -657,12 +654,20 @@ mod tests {
 
         // Exists
         assert!(storage.document_exists("crud-1:v1").expect("exists check"));
-        assert!(!storage.document_exists("nonexistent:v1").expect("exists check"));
+        assert!(
+            !storage
+                .document_exists("nonexistent:v1")
+                .expect("exists check")
+        );
 
         // Remove
         let removed = storage.remove_document("crud-1:v1").expect("remove failed");
         assert_eq!(removed.id, "crud-1");
-        assert!(!storage.document_exists("crud-1:v1").expect("exists after remove"));
+        assert!(
+            !storage
+                .document_exists("crud-1:v1")
+                .expect("exists after remove")
+        );
     }
 
     #[test]
@@ -696,7 +701,9 @@ mod tests {
         assert_eq!(bob_docs.len(), 1);
 
         // query_by_agent with type filter
-        let alice_agents = storage.query_by_agent("alice", Some("agent"), 100, 0).unwrap();
+        let alice_agents = storage
+            .query_by_agent("alice", Some("agent"), 100, 0)
+            .unwrap();
         assert_eq!(alice_agents.len(), 1);
     }
 

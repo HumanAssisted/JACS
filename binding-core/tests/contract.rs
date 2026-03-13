@@ -67,8 +67,7 @@ fn test_create_agent_via_wrapper_valid_json() {
         .expect("ephemeral should succeed");
 
     // The returned string should be valid JSON with agent info
-    let info: Value =
-        serde_json::from_str(&info_json).expect("ephemeral should return valid JSON");
+    let info: Value = serde_json::from_str(&info_json).expect("ephemeral should return valid JSON");
     assert!(
         info.get("agent_id").is_some(),
         "agent info should have agent_id"
@@ -224,8 +223,7 @@ fn test_export_agent_json_valid() {
 
     assert!(!agent_json.is_empty(), "agent JSON should not be empty");
 
-    let parsed: Value =
-        serde_json::from_str(&agent_json).expect("agent JSON should be valid JSON");
+    let parsed: Value = serde_json::from_str(&agent_json).expect("agent JSON should be valid JSON");
     assert!(
         parsed.get("jacsId").is_some(),
         "agent JSON should have jacsId"
@@ -243,9 +241,7 @@ fn test_export_agent_json_valid() {
 #[test]
 fn test_get_agent_id_non_empty() {
     let wrapper = create_ephemeral_wrapper();
-    let agent_id = wrapper
-        .get_agent_id()
-        .expect("get_agent_id should succeed");
+    let agent_id = wrapper.get_agent_id().expect("get_agent_id should succeed");
     assert!(!agent_id.is_empty(), "agent_id should be non-empty");
 }
 
@@ -278,8 +274,7 @@ fn test_diagnostics_returns_json_with_expected_keys() {
 
     assert!(!diag_str.is_empty(), "diagnostics should not be empty");
 
-    let diag: Value =
-        serde_json::from_str(&diag_str).expect("diagnostics should be valid JSON");
+    let diag: Value = serde_json::from_str(&diag_str).expect("diagnostics should be valid JSON");
 
     assert!(
         diag.get("jacs_version").is_some(),
@@ -304,7 +299,8 @@ fn test_diagnostics_returns_json_with_expected_keys() {
 fn test_diagnostics_standalone_returns_valid_json() {
     let diag_str = jacs_binding_core::diagnostics_standalone();
     assert!(!diag_str.is_empty());
-    let diag: Value = serde_json::from_str(&diag_str).expect("standalone diagnostics should be valid JSON");
+    let diag: Value =
+        serde_json::from_str(&diag_str).expect("standalone diagnostics should be valid JSON");
     assert!(diag.get("jacs_version").is_some());
     assert_eq!(
         diag["agent_loaded"].as_bool(),
@@ -397,7 +393,10 @@ fn test_sign_string_different_data_different_sigs() {
     let wrapper = create_ephemeral_wrapper();
     let sig1 = wrapper.sign_string("message one").unwrap();
     let sig2 = wrapper.sign_string("message two").unwrap();
-    assert_ne!(sig1, sig2, "different messages should produce different signatures");
+    assert_ne!(
+        sig1, sig2,
+        "different messages should produce different signatures"
+    );
 }
 
 // =============================================================================

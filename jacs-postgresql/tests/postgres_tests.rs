@@ -10,15 +10,15 @@
 //! Requirements: Docker must be running on the host.
 
 use jacs::search::{SearchMethod, SearchProvider, SearchQuery};
-use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::storage::StorageDocumentTraits;
+use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::testing::make_test_doc;
 use jacs_postgresql::PostgresStorage;
+use serde_json::json;
 use serial_test::serial;
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
-use serde_json::json;
 
 /// Spin up a fresh PostgreSQL container and return the `PostgresStorage`
 /// connected to it (with migrations already applied) together with the
@@ -350,13 +350,8 @@ async fn test_count_by_type() {
     let (db, _container) = setup_db().await;
 
     for i in 0..4 {
-        db.store_document(&make_test_doc(
-            &format!("cnt-{}", i),
-            "v1",
-            "message",
-            None,
-        ))
-        .unwrap();
+        db.store_document(&make_test_doc(&format!("cnt-{}", i), "v1", "message", None))
+            .unwrap();
     }
     db.store_document(&make_test_doc("cnt-other", "v1", "agent", None))
         .unwrap();
@@ -547,7 +542,10 @@ async fn test_search_capabilities() {
     assert!(caps.fulltext, "PostgreSQL should support fulltext search");
     assert!(!caps.vector, "Vector search is not yet implemented");
     assert!(!caps.hybrid, "Hybrid search is not yet implemented");
-    assert!(caps.field_filter, "PostgreSQL should support field filtering");
+    assert!(
+        caps.field_filter,
+        "PostgreSQL should support field filtering"
+    );
 }
 
 #[tokio::test]

@@ -992,13 +992,14 @@ impl SimpleAgent {
     ///     old_password: Current password
     ///     new_password: New password (must meet password requirements)
     fn reencrypt_key(&self, old_password: &str, new_password: &str) -> PyResult<()> {
-        jacs_core::simple::advanced::reencrypt_key(&self.inner, old_password, new_password)
-            .map_err(|e| {
+        jacs_core::simple::advanced::reencrypt_key(&self.inner, old_password, new_password).map_err(
+            |e| {
                 PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Failed to re-encrypt key: {}",
                     e
                 ))
-            })
+            },
+        )
     }
 
     // =========================================================================
@@ -1027,12 +1028,13 @@ impl SimpleAgent {
     /// Verify an attestation (local tier: crypto + hash only).
     #[cfg(feature = "attestation")]
     fn verify_attestation(&self, document_key: &str) -> PyResult<String> {
-        let result = jacs_core::attestation::simple::verify(&self.inner, document_key).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to verify attestation: {}",
-                e
-            ))
-        })?;
+        let result =
+            jacs_core::attestation::simple::verify(&self.inner, document_key).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to verify attestation: {}",
+                    e
+                ))
+            })?;
         serde_json::to_string(&result).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to serialize result: {}",

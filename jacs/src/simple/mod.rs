@@ -758,47 +758,24 @@ mod tests {
         assert_eq!(extensions[0].uri, crate::a2a::JACS_EXTENSION_URI);
     }
 
-    /// Shared mutex for verify_with_key tests that set global env vars.
-    static VERIFY_WITH_KEY_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// Shared ephemeral agent for read-only sign/verify tests.
+    /// Created once, reused across parallel tests that don't mutate agent state.
+    fn shared_ephemeral() -> &'static (SimpleAgent, AgentInfo) {
+        static AGENT: std::sync::OnceLock<(SimpleAgent, AgentInfo)> = std::sync::OnceLock::new();
+        AGENT.get_or_init(|| {
+            SimpleAgent::ephemeral(Some("ed25519")).expect("shared ephemeral agent")
+        })
+    }
 
-    /// Create a test SimpleAgent with its own temp directory.
-    /// MUST be called while holding `VERIFY_WITH_KEY_MUTEX`.
-    fn create_test_agent_for_verify(name: &str) -> (SimpleAgent, tempfile::TempDir) {
-        let tmp = tempfile::tempdir().expect("create temp dir");
-        let tmp_path = tmp.path().to_string_lossy().to_string();
-
-        let params = CreateAgentParams::builder()
-            .name(name)
-            .password("TestVerify!2026")
-            .algorithm("ring-Ed25519")
-            .domain("test.example.com")
-            .description("Test agent for verify_with_key")
-            .data_directory(&format!("{}/jacs_data", tmp_path))
-            .key_directory(&format!("{}/jacs_keys", tmp_path))
-            .config_path(&format!("{}/jacs.config.json", tmp_path))
-            .build();
-
-        let (agent, _info) = SimpleAgent::create_with_params(params).expect("create test agent");
-
-        unsafe {
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestVerify!2026");
-            std::env::set_var("JACS_KEY_DIRECTORY", format!("{}/jacs_keys", tmp_path));
-            std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem.enc");
-            std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "jacs.public.pem");
-        }
-
-        (agent, tmp)
+    /// Create a fresh ephemeral agent for tests that mutate (rotate/update).
+    fn fresh_ephemeral() -> (SimpleAgent, AgentInfo) {
+        SimpleAgent::ephemeral(Some("ed25519")).expect("fresh ephemeral agent")
     }
 
     #[test]
-    #[serial]
     fn verify_with_key_cross_agent_succeeds() {
-        let _lock = VERIFY_WITH_KEY_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
         // agent_a signs a message
-        let (agent_a, _tmp_a) = create_test_agent_for_verify("agent-a-vwk");
+        let (agent_a, _) = shared_ephemeral();
         let signed = agent_a
             .sign_message(&json!({"msg": "hello from A"}))
             .expect("sign_message should succeed");
@@ -808,7 +785,7 @@ mod tests {
             .expect("get_public_key should succeed");
 
         // agent_b verifies using agent_a's public key
-        let (agent_b, _tmp_b) = create_test_agent_for_verify("agent-b-vwk");
+        let (agent_b, _) = fresh_ephemeral();
         let result = agent_b
             .verify_with_key(&signed.raw, agent_a_pubkey)
             .expect("verify_with_key should succeed");
@@ -822,20 +799,15 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn verify_with_key_wrong_key_fails() {
-        let _lock = VERIFY_WITH_KEY_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
         // agent_a signs a message
-        let (agent_a, _tmp_a) = create_test_agent_for_verify("agent-a-wrong");
+        let (agent_a, _) = fresh_ephemeral();
         let signed = agent_a
             .sign_message(&json!({"msg": "hello from A"}))
             .expect("sign_message should succeed");
 
         // agent_b tries to verify with its OWN key (wrong key)
-        let (agent_b, _tmp_b) = create_test_agent_for_verify("agent-b-wrong");
+        let (agent_b, _) = fresh_ephemeral();
         let agent_b_pubkey = agent_b
             .get_public_key()
             .expect("get_public_key should succeed");
@@ -1070,13 +1042,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_rotate_preserves_jacs_id() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, info, _tmp, _guard) = create_persistent_test_agent("rotate-id-test");
+        let (agent, info) = fresh_ephemeral();
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
@@ -1094,13 +1061,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_rotate_new_key_signs_correctly() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-sign-test");
+        let (agent, _info) = fresh_ephemeral();
 
         let _result = advanced::rotate(&agent).expect("rotation should succeed");
 
@@ -1120,13 +1082,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_rotate_returns_rotation_result() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-result-test");
+        let (agent, _info) = fresh_ephemeral();
 
         let result = advanced::rotate(&agent).expect("rotation should succeed");
 
@@ -1217,13 +1174,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_rotate_old_key_still_verifies_old_doc() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-old-key-test");
+        let (agent, _info) = fresh_ephemeral();
 
         // Sign a document with the original key
         let signed_before = agent
@@ -1249,13 +1201,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_rotate_full_cycle() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("rotate-full-cycle");
+        let (agent, _info) = fresh_ephemeral();
 
         // Phase 1: Sign with original key
         let old_public_key = agent.get_public_key().expect("get old key");
@@ -1306,13 +1253,8 @@ mod tests {
     // =========================================================================
 
     #[test]
-    #[serial]
     fn test_update_lifecycle_rotate_preserves_id_and_creates_new_version() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, info, _tmp, _guard) = create_persistent_test_agent("lifecycle-rotate-test");
+        let (agent, info) = fresh_ephemeral();
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
@@ -1354,13 +1296,8 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_update_lifecycle_metadata_update_preserves_id_and_creates_new_version() {
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, info, _tmp, _guard) = create_persistent_test_agent("lifecycle-metadata-test");
+        let (agent, info) = fresh_ephemeral();
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
@@ -1419,15 +1356,10 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_update_lifecycle_rotate_then_metadata_update() {
         // Full lifecycle: create → rotate keys → update metadata
         // Each step must preserve jacsId and produce a new valid version.
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, info, _tmp, _guard) = create_persistent_test_agent("lifecycle-full-test");
+        let (agent, info) = fresh_ephemeral();
         let original_id = info.agent_id.clone();
         let v1 = info.version.clone();
 
@@ -1496,14 +1428,9 @@ mod tests {
     }
 
     #[test]
-    #[serial]
     fn test_update_agent_must_not_change_jacs_id() {
         // Attempting to change jacsId in an update MUST fail.
-        let _lock = ROTATION_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        let (agent, _info, _tmp, _guard) = create_persistent_test_agent("lifecycle-id-guard-test");
+        let (agent, _info) = fresh_ephemeral();
 
         let exported = agent.export_agent().expect("export");
         let mut doc: Value = serde_json::from_str(&exported).expect("parse");

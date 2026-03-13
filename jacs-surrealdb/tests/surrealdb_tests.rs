@@ -20,8 +20,8 @@ use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::testing::make_test_doc;
 use jacs_surrealdb::SurrealDbStorage;
-use serial_test::serial;
 use serde_json::json;
+use serial_test::serial;
 
 async fn create_storage() -> SurrealDbStorage {
     let db = SurrealDbStorage::in_memory_async()
@@ -125,9 +125,13 @@ async fn test_large_document() {
     let mut doc = make_test_doc("large-1", "v1", "artifact", None);
     doc.value["largeField"] = json!(large_data);
 
-    storage.store_document(&doc).expect("store large doc failed");
+    storage
+        .store_document(&doc)
+        .expect("store large doc failed");
 
-    let retrieved = storage.get_document("large-1:v1").expect("get large doc failed");
+    let retrieved = storage
+        .get_document("large-1:v1")
+        .expect("get large doc failed");
     assert_eq!(
         retrieved.value["largeField"].as_str().unwrap().len(),
         100_000,
@@ -175,16 +179,28 @@ async fn test_compound_id_idempotency() {
 
     let doc = make_test_doc("idem-1", "v1", "agent", None);
 
-    storage.store_document(&doc).expect("First store should succeed");
-    storage.store_document(&doc).expect("Second store should succeed (idempotent)");
-    storage.store_document(&doc).expect("Third store should succeed (idempotent)");
+    storage
+        .store_document(&doc)
+        .expect("First store should succeed");
+    storage
+        .store_document(&doc)
+        .expect("Second store should succeed (idempotent)");
+    storage
+        .store_document(&doc)
+        .expect("Third store should succeed (idempotent)");
 
     let versions = storage
         .get_document_versions("idem-1")
         .expect("get_document_versions failed");
-    assert_eq!(versions.len(), 1, "Compound ID should prevent duplicate rows");
+    assert_eq!(
+        versions.len(),
+        1,
+        "Compound ID should prevent duplicate rows"
+    );
 
-    let count = storage.count_by_type("agent").expect("count_by_type failed");
+    let count = storage
+        .count_by_type("agent")
+        .expect("count_by_type failed");
     assert_eq!(count, 1, "Count should reflect a single document");
 }
 
@@ -209,7 +225,9 @@ async fn test_version_ordering() {
         .store_document(&make_test_doc("order-1", "gamma", "agent", None))
         .unwrap();
 
-    let versions = storage.get_versions("order-1").expect("get_versions failed");
+    let versions = storage
+        .get_versions("order-1")
+        .expect("get_versions failed");
     assert_eq!(versions.len(), 3);
     assert_eq!(versions[0].version, "alpha");
     assert_eq!(versions[1].version, "beta");
@@ -232,8 +250,12 @@ async fn test_special_characters() {
     doc.value["data"] =
         json!("Hello 'world' with \"quotes\" and \nnewlines\tand\ttabs and unicode: \u{1F600}");
 
-    storage.store_document(&doc).expect("store special chars failed");
-    let retrieved = storage.get_document("special-1:v1").expect("get special chars failed");
+    storage
+        .store_document(&doc)
+        .expect("store special chars failed");
+    let retrieved = storage
+        .get_document("special-1:v1")
+        .expect("get special chars failed");
 
     assert_eq!(retrieved.value["data"], doc.value["data"]);
 }
@@ -270,7 +292,10 @@ async fn test_search_capabilities() {
     let storage = create_storage().await;
 
     let caps = storage.capabilities();
-    assert!(!caps.fulltext, "SurrealDB CONTAINS is not true fulltext search");
+    assert!(
+        !caps.fulltext,
+        "SurrealDB CONTAINS is not true fulltext search"
+    );
     assert!(!caps.vector, "Vector search not supported");
     assert!(!caps.hybrid, "Hybrid search not supported");
     assert!(caps.field_filter, "Field filtering is supported");
@@ -320,7 +345,10 @@ async fn test_search_finds_matching_documents() {
         })
         .expect("search should succeed");
 
-    assert!(results.results.len() >= 1, "Should find at least 1 matching document");
+    assert!(
+        results.results.len() >= 1,
+        "Should find at least 1 matching document"
+    );
     assert_eq!(results.results[0].document.id, "search-match-1");
 }
 
@@ -339,7 +367,9 @@ async fn test_bulk_store_and_retrieve() {
         make_test_doc("bulk-3", "v1", "config", None),
     ];
 
-    let keys = storage.store_documents(docs).expect("store_documents failed");
+    let keys = storage
+        .store_documents(docs)
+        .expect("store_documents failed");
     assert_eq!(keys.len(), 3);
 
     let retrieved = storage
@@ -391,7 +421,10 @@ async fn test_query_by_agent() {
 async fn test_invalid_key_format() {
     let storage = create_storage().await;
     let result = storage.get_document("invalid-key-no-colon");
-    assert!(result.is_err(), "get_document with invalid key format should error");
+    assert!(
+        result.is_err(),
+        "get_document with invalid key format should error"
+    );
 }
 
 // =========================================================================

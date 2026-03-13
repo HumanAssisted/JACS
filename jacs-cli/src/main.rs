@@ -1475,14 +1475,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     process::exit(1);
                 }
 
-                jacs::simple::advanced::reencrypt_key(&agent, &old_password, &new_password).map_err(
-                    |e| -> Box<dyn Error> {
+                jacs::simple::advanced::reencrypt_key(&agent, &old_password, &new_password)
+                    .map_err(|e| -> Box<dyn Error> {
                         Box::new(std::io::Error::new(
                             std::io::ErrorKind::Other,
                             format!("Re-encryption failed: {}", e),
                         ))
-                    },
-                )?;
+                    })?;
 
                 println!("Private key re-encrypted successfully.");
             }
@@ -1756,22 +1755,23 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 .map_err(|e| wrap_quickstart_error_with_password_help("Failed to load agent", e))?;
 
                 // Export the Agent Card for display
-                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to export Agent Card: {}", e),
-                    ))
-                })?;
+                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to export Agent Card: {}", e),
+                        ))
+                    },
+                )?;
 
                 // Generate well-known documents via public API
-                let documents =
-                    jacs::a2a::simple::generate_well_known_documents(&agent, None)
-                        .map_err(|e| -> Box<dyn Error> {
-                            Box::new(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Failed to generate well-known documents: {}", e),
-                            ))
-                        })?;
+                let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to generate well-known documents: {}", e),
+                        ))
+                    })?;
 
                 // Build a lookup map: path -> JSON body
                 let mut routes: std::collections::HashMap<String, String> =
@@ -1853,32 +1853,32 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     )))
                 })?;
                 let (agent, info) =
-                    jacs::simple::advanced::quickstart(name, domain, description, algorithm, None).map_err(
-                        |e| {
+                    jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
+                        .map_err(|e| {
                             wrap_quickstart_error_with_password_help(
                                 "Failed to quickstart agent",
                                 e,
                             )
-                        },
-                    )?;
+                        })?;
 
                 // Export the Agent Card
-                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to export Agent Card: {}", e),
-                    ))
-                })?;
+                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to export Agent Card: {}", e),
+                        ))
+                    },
+                )?;
 
                 // Generate well-known documents
-                let documents =
-                    jacs::a2a::simple::generate_well_known_documents(&agent, None)
-                        .map_err(|e| -> Box<dyn Error> {
-                            Box::new(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Failed to generate well-known documents: {}", e),
-                            ))
-                        })?;
+                let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to generate well-known documents: {}", e),
+                        ))
+                    })?;
 
                 // Build route map
                 let mut routes: std::collections::HashMap<String, String> =
@@ -1963,8 +1963,11 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     quickstart_password_bootstrap_help()
                 )))
             })?;
-            let (agent, info) = jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
-                .map_err(|e| wrap_quickstart_error_with_password_help("Quickstart failed", e))?;
+            let (agent, info) =
+                jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
+                    .map_err(|e| {
+                        wrap_quickstart_error_with_password_help("Quickstart failed", e)
+                    })?;
 
             if do_sign {
                 // Sign mode: read JSON, sign it, print signed document
@@ -2048,11 +2051,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         let doc_content = std::fs::read_to_string(doc_path).map_err(|e| {
                             format!("Failed to read document '{}': {}", doc_path, e)
                         })?;
-                        let result =
-                            jacs::attestation::simple::lift(&agent, &doc_content, &claims)
-                                .map_err(|e| {
-                                    format!("Failed to lift document to attestation: {}", e)
-                                })?;
+                        let result = jacs::attestation::simple::lift(&agent, &doc_content, &claims)
+                            .map_err(|e| {
+                                format!("Failed to lift document to attestation: {}", e)
+                            })?;
                         result.raw
                     } else {
                         // Build from scratch: need subject-type, subject-id, subject-digest
@@ -2086,8 +2088,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             },
                         };
 
-                        let result = jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
-                            .map_err(|e| format!("Failed to create attestation: {}", e))?;
+                        let result = jacs::attestation::simple::create(
+                            &agent, &subject, &claims, &evidence, None, None,
+                        )
+                        .map_err(|e| format!("Failed to create attestation: {}", e))?;
                         result.raw
                     };
 

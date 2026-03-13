@@ -51,9 +51,15 @@ fn crud_roundtrip() {
 #[test]
 fn list_documents_by_type() {
     let storage = setup();
-    storage.store_document(&make_doc("lt-1", "v1", "agent", None)).unwrap();
-    storage.store_document(&make_doc("lt-2", "v1", "agent", None)).unwrap();
-    storage.store_document(&make_doc("lt-3", "v1", "config", None)).unwrap();
+    storage
+        .store_document(&make_doc("lt-1", "v1", "agent", None))
+        .unwrap();
+    storage
+        .store_document(&make_doc("lt-2", "v1", "agent", None))
+        .unwrap();
+    storage
+        .store_document(&make_doc("lt-3", "v1", "config", None))
+        .unwrap();
 
     let agents = storage.list_documents("agent").unwrap();
     assert_eq!(agents.len(), 2);
@@ -128,11 +134,17 @@ fn fulltext_search_via_query_by_field() {
 fn version_tracking() {
     let storage = setup();
 
-    storage.store_document(&make_doc("vt-1", "alpha", "agent", None)).unwrap();
+    storage
+        .store_document(&make_doc("vt-1", "alpha", "agent", None))
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(30));
-    storage.store_document(&make_doc("vt-1", "beta", "agent", None)).unwrap();
+    storage
+        .store_document(&make_doc("vt-1", "beta", "agent", None))
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(30));
-    storage.store_document(&make_doc("vt-1", "gamma", "agent", None)).unwrap();
+    storage
+        .store_document(&make_doc("vt-1", "gamma", "agent", None))
+        .unwrap();
 
     // get_document_versions (StorageDocumentTraits) returns keys
     let version_keys = storage.get_document_versions("vt-1").unwrap();
@@ -167,13 +179,17 @@ fn file_based_persistence() {
     {
         let storage = DuckDbStorage::new(&db_path_str).expect("create DuckDB");
         storage.run_migrations().unwrap();
-        storage.store_document(&make_doc("persist-1", "v1", "agent", None)).unwrap();
+        storage
+            .store_document(&make_doc("persist-1", "v1", "agent", None))
+            .unwrap();
     }
 
     // Read with a fresh connection
     {
         let storage = DuckDbStorage::new(&db_path_str).expect("reopen DuckDB");
-        let doc = storage.get_document("persist-1:v1").expect("get from reopened DB");
+        let doc = storage
+            .get_document("persist-1:v1")
+            .expect("get from reopened DB");
         assert_eq!(doc.id, "persist-1");
         assert_eq!(doc.value["data"], "test content");
     }
@@ -243,8 +259,12 @@ fn search_with_keyword() {
 #[test]
 fn search_empty_query_returns_all() {
     let storage = setup();
-    storage.store_document(&make_doc("all-1", "v1", "agent", None)).unwrap();
-    storage.store_document(&make_doc("all-2", "v1", "config", None)).unwrap();
+    storage
+        .store_document(&make_doc("all-1", "v1", "agent", None))
+        .unwrap();
+    storage
+        .store_document(&make_doc("all-2", "v1", "config", None))
+        .unwrap();
 
     let results = storage
         .search(SearchQuery {
@@ -266,9 +286,15 @@ fn search_empty_query_returns_all() {
 #[test]
 fn db_stats_returns_correct_counts() {
     let storage = setup();
-    storage.store_document(&make_doc("ds-1", "v1", "agent", None)).unwrap();
-    storage.store_document(&make_doc("ds-2", "v1", "agent", None)).unwrap();
-    storage.store_document(&make_doc("ds-3", "v1", "config", None)).unwrap();
+    storage
+        .store_document(&make_doc("ds-1", "v1", "agent", None))
+        .unwrap();
+    storage
+        .store_document(&make_doc("ds-2", "v1", "agent", None))
+        .unwrap();
+    storage
+        .store_document(&make_doc("ds-3", "v1", "config", None))
+        .unwrap();
 
     let stats = storage.db_stats().unwrap();
     assert_eq!(stats.len(), 2);
