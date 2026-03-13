@@ -1,4 +1,4 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
 
 //! Conformance tests for the SQLite backend.
 //!

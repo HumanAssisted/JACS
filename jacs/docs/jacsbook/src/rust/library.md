@@ -20,10 +20,14 @@ jacs = { version = "0.3", features = ["cli", "observability"] }
 
 | Feature | Description |
 |---------|-------------|
-| `cli` | CLI utilities and helpers |
-| `observability` | OpenTelemetry logging and metrics |
-| `observability-convenience` | Helper functions for observability |
-| `full` | All features enabled |
+| `sqlite` | Lightweight sync SQLite backend (default) |
+| `sqlx-sqlite` | Async SQLite backend via sqlx (requires tokio) |
+| `otlp-logs` | OTLP log export support |
+| `otlp-metrics` | OTLP metrics export support |
+| `otlp-tracing` | OTLP distributed tracing support |
+| `agreements` | Agreement lifecycle support |
+| `a2a` | Agent-to-Agent protocol support |
+| `attestation` | Attestation support |
 
 ## Core Types
 

@@ -850,10 +850,10 @@ mod lifecycle_fs {
 }
 
 // ============================================================================
-// SQLite backend (requires rusqlite-storage feature)
+// SQLite backend (requires sqlite feature)
 // ============================================================================
 
-#[cfg(feature = "rusqlite-storage")]
+#[cfg(feature = "sqlite")]
 mod sqlite_helpers {
     use super::*;
 
@@ -875,7 +875,7 @@ mod sqlite_helpers {
     }
 }
 
-#[cfg(feature = "rusqlite-storage")]
+#[cfg(feature = "sqlite")]
 mod lifecycle_sqlite {
     use super::*;
 

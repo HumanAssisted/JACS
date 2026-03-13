@@ -186,10 +186,14 @@ jacs = "0.3"
 jacs = { version = "0.3", features = ["cli", "observability"] }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>cli</code></td><td>CLI utilities and helpers</td></tr>
-<tr><td><code>observability</code></td><td>OpenTelemetry logging and metrics</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper functions for observability</td></tr>
-<tr><td><code>full</code></td><td>All features enabled</td></tr>
+<tr><td><code>sqlite</code></td><td>Lightweight sync SQLite backend (default)</td></tr>
+<tr><td><code>sqlx-sqlite</code></td><td>Async SQLite backend via sqlx (requires tokio)</td></tr>
+<tr><td><code>otlp-logs</code></td><td>OTLP log export support</td></tr>
+<tr><td><code>otlp-metrics</code></td><td>OTLP metrics export support</td></tr>
+<tr><td><code>otlp-tracing</code></td><td>OTLP distributed tracing support</td></tr>
+<tr><td><code>agreements</code></td><td>Agreement lifecycle support</td></tr>
+<tr><td><code>a2a</code></td><td>Agent-to-Agent protocol support</td></tr>
+<tr><td><code>attestation</code></td><td>Attestation support</td></tr>
 </tbody></table>
 </div>
 <h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>

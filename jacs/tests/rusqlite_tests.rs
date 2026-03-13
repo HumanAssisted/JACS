@@ -1,4 +1,4 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 
 //! Rusqlite-specific integration tests beyond the conformance suite.
 //!

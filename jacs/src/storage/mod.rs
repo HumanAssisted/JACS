@@ -27,16 +27,16 @@ pub mod database_traits;
 #[cfg(not(target_arch = "wasm32"))]
 pub use database_traits::DatabaseDocumentTraits;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
 pub mod sqlite;
-#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
 pub use sqlite::SqliteStorage;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub mod rusqlite_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub use rusqlite_storage::RusqliteStorage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub use rusqlite_storage::SqliteDocumentService;
 
 // Extracted storage backends (now standalone crates):
@@ -193,10 +193,10 @@ pub enum StorageType {
     #[cfg(target_arch = "wasm32")]
     #[strum(serialize = "local")]
     WebLocal,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
     #[strum(serialize = "sqlite")]
     Sqlite,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
     #[strum(serialize = "rusqlite")]
     Rusqlite,
 }
@@ -467,11 +467,11 @@ impl MultiStorage {
                 .web_local
                 .clone()
                 .expect("web local storage not loaded"),
-            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
             StorageType::Sqlite => {
                 panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
             }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
             StorageType::Rusqlite => {
                 panic!("Rusqlite storage does not use ObjectStore. Use RusqliteStorage directly.")
             } // SurrealDB storage has been extracted to the `jacs-surrealdb` crate.

@@ -1774,8 +1774,11 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 <tr><td><code>otlp-logs</code></td><td>OpenTelemetry Protocol logging backend</td></tr>
 <tr><td><code>otlp-metrics</code></td><td>OpenTelemetry Protocol metrics backend</td></tr>
 <tr><td><code>otlp-tracing</code></td><td>OpenTelemetry Protocol distributed tracing</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper wrappers for metrics and logging</td></tr>
-<tr><td><code>mcp-server</code></td><td>Model Context Protocol server integration surface</td></tr>
+<tr><td><code>sqlite</code></td><td>Lightweight sync SQLite backend (default)</td></tr>
+<tr><td><code>sqlx-sqlite</code></td><td>Async SQLite backend via sqlx (requires tokio)</td></tr>
+<tr><td><code>agreements</code></td><td>Agreement lifecycle support</td></tr>
+<tr><td><code>a2a</code></td><td>Agent-to-Agent protocol support</td></tr>
+<tr><td><code>attestation</code></td><td>Attestation support</td></tr>
 </tbody></table>
 </div>
 <h2 id="platform-support"><a class="header" href="#platform-support">Platform Support</a></h2>
@@ -3156,10 +3159,14 @@ jacs = "0.3"
 jacs = { version = "0.3", features = ["cli", "observability"] }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>cli</code></td><td>CLI utilities and helpers</td></tr>
-<tr><td><code>observability</code></td><td>OpenTelemetry logging and metrics</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper functions for observability</td></tr>
-<tr><td><code>full</code></td><td>All features enabled</td></tr>
+<tr><td><code>sqlite</code></td><td>Lightweight sync SQLite backend (default)</td></tr>
+<tr><td><code>sqlx-sqlite</code></td><td>Async SQLite backend via sqlx (requires tokio)</td></tr>
+<tr><td><code>otlp-logs</code></td><td>OTLP log export support</td></tr>
+<tr><td><code>otlp-metrics</code></td><td>OTLP metrics export support</td></tr>
+<tr><td><code>otlp-tracing</code></td><td>OTLP distributed tracing support</td></tr>
+<tr><td><code>agreements</code></td><td>Agreement lifecycle support</td></tr>
+<tr><td><code>a2a</code></td><td>Agent-to-Agent protocol support</td></tr>
+<tr><td><code>attestation</code></td><td>Attestation support</td></tr>
 </tbody></table>
 </div>
 <h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
@@ -3607,13 +3614,12 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 jacs = { version = "0.3", features = ["observability"] }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>observability</code></td><td>Core observability support</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper functions for recording operations</td></tr>
 <tr><td><code>otlp-logs</code></td><td>OTLP log export support</td></tr>
 <tr><td><code>otlp-metrics</code></td><td>OTLP metrics export support</td></tr>
 <tr><td><code>otlp-tracing</code></td><td>OTLP distributed tracing support</td></tr>
 </tbody></table>
 </div>
+<p>Convenience helpers for recording operations are always available (no feature flag needed).</p>
 <h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick Start</a></h2>
 <h3 id="default-configuration"><a class="header" href="#default-configuration">Default Configuration</a></h3>
 <p>The simplest way to enable observability:</p>
@@ -3786,7 +3792,7 @@ tags.insert("method".to_string(), "verify".to_string());
 record_histogram("jacs_operation_duration_ms", 150.0, Some(tags));
 <span class="boring">}</span></code></pre></pre>
 <h3 id="built-in-metrics"><a class="header" href="#built-in-metrics">Built-in Metrics</a></h3>
-<p>When <code>observability-convenience</code> feature is enabled, JACS automatically records:</p>
+<p>JACS convenience helpers automatically record:</p>
 <ul>
 <li><code>jacs_agent_operations</code> - Count of agent operations</li>
 <li><code>jacs_signature_verifications</code> - Signature verification results</li>
@@ -14908,7 +14914,7 @@ cargo build --features otlp-tracing
 <tr><td><code>otlp-tracing</code></td><td>Distributed tracing (opentelemetry, opentelemetry-otlp, tracing-opentelemetry, tokio)</td></tr>
 </tbody></table>
 </div>
-<p>The <code>observability-convenience</code> feature adds automatic counter/gauge recording for sign and verify operations without pulling in any OTLP dependencies.</p>
+<p>Convenience helpers for automatic counter/gauge recording for sign and verify operations are always available without any feature flag.</p>
 <h2 id="otel-collector-configuration"><a class="header" href="#otel-collector-configuration">OTEL Collector Configuration</a></h2>
 <p>Route JACS events through an OpenTelemetry Collector. This configuration receives OTLP over HTTP, batches events, and exports to common backends.</p>
 <pre><code class="language-yaml"># otel-collector-config.yaml

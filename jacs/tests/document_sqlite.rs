@@ -1,4 +1,4 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 
 //! Integration tests for `SqliteDocumentService` — the `DocumentService` + `SearchProvider`
 //! implementation for rusqlite with FTS5 fulltext search.

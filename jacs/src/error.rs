@@ -631,7 +631,7 @@ impl From<base64::DecodeError> for JacsError {
     }
 }
 
-#[cfg(feature = "sqlite")]
+#[cfg(feature = "sqlx-sqlite")]
 impl From<sqlx::Error> for JacsError {
     fn from(err: sqlx::Error) -> Self {
         JacsError::DatabaseError {

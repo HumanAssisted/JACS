@@ -14,7 +14,7 @@ categories = ["cryptography", "development-tools"]
 
 [features]
 default = ["mcp", "attestation", "core-tools"]
-mcp = ["dep:rmcp", "dep:tokio", "jacs/mcp-server"]
+mcp = ["dep:rmcp", "dep:tokio"]
 attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
 
 # Tool family feature flags (Issue 010 / TASK_039).

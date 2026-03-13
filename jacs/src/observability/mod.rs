@@ -5,7 +5,6 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::{Arc, Mutex};
 use tracing::warn;
 
-#[cfg(feature = "observability-convenience")]
 pub mod convenience;
 pub mod init;
 pub mod logs;

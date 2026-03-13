@@ -25,7 +25,6 @@ use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dns::bootstrap::verify_registry_registration_sync;
 use crate::dns::bootstrap::{pubkey_digest_hex, verify_pubkey_via_dns_or_embedded};
-#[cfg(feature = "observability-convenience")]
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
 use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
@@ -418,14 +417,10 @@ impl Agent {
             .into()
         });
 
-        let _duration_ms = start_time.elapsed().as_millis() as u64;
+        let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
 
-        #[cfg(feature = "observability-convenience")]
-        {
-            // Record the agent operation
-            record_agent_operation("load_by_id", &lookup_id, success, _duration_ms);
-        }
+        record_agent_operation("load_by_id", &lookup_id, success, duration_ms);
 
         if success {
             info!("Successfully loaded agent by ID: {}", lookup_id);
@@ -949,12 +944,8 @@ impl Agent {
                 );
                 error!("{}", error_message);
 
-                let _duration_ms = start_time.elapsed().as_millis() as u64;
-                let _algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
-                #[cfg(feature = "observability-convenience")]
-                {
-                    record_signature_verification("unknown_agent", false, _algorithm);
-                }
+                let algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
+                record_signature_verification("unknown_agent", false, algorithm);
 
                 return Err(error_message.into());
             }
@@ -1045,10 +1036,7 @@ impl Agent {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        #[cfg(feature = "observability-convenience")]
-        {
-            record_signature_verification(agent_id, success, algorithm);
-        }
+        record_signature_verification(agent_id, success, algorithm);
 
         if success {
             info!(
