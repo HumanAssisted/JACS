@@ -3,31 +3,47 @@
 use jacs_binding_core::AgentWrapper;
 use rmcp::ServerHandler;
 
+/// With default features (core-tools), exactly 28 core tools are registered.
 #[test]
-fn canonical_tool_surface_is_stable() {
+fn default_features_register_core_tools() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
-    assert_eq!(tools.len(), 42, "unexpected jacs-mcp tool count");
+    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(4) = 28
+    let expected_core_count = 28;
+
+    // With default features only core tools are registered.
+    // If full-tools is also enabled, advanced tools appear too.
+    #[cfg(not(feature = "full-tools"))]
+    assert_eq!(
+        tools.len(),
+        expected_core_count,
+        "default features should expose exactly {} core tools, got {}",
+        expected_core_count,
+        tools.len()
+    );
+
+    // Core tools must always be present
     assert!(names.contains(&"jacs_sign_state"));
     assert!(names.contains(&"jacs_list_state"));
-    assert!(names.contains(&"jacs_wrap_a2a_artifact"));
-    assert!(names.contains(&"jacs_attest_export_dsse"));
+    assert!(names.contains(&"jacs_sign_document"));
+    assert!(names.contains(&"jacs_trust_agent"));
+    assert!(names.contains(&"jacs_audit"));
+    assert!(names.contains(&"jacs_memory_save"));
+    assert!(names.contains(&"jacs_search"));
+    assert!(names.contains(&"jacs_reencrypt_key"));
 }
 
-/// Per-category tool count snapshot.
+/// Per-category tool count snapshot for core families.
 ///
-/// Categories are defined by the tool name prefix convention. If a tool is
-/// added, removed, or re-categorized, THIS test should fail and must be
-/// updated intentionally. This documents the Phase 0 baseline for
-/// Phase 7's narrowing work (TASK_004 / ARCHITECTURE_UPGRADE.md).
+/// Categories are defined by the tool name prefix convention.
 #[test]
-fn per_category_tool_counts_match_baseline() {
+fn per_category_core_tool_counts() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
-    // Category definitions: (category_label, expected_count, expected_members)
-    let categories: &[(&str, usize, &[&str])] = &[
+    // Core categories only (always present with default features)
+    let core_categories: &[(&str, usize, &[&str])] = &[
         (
             "state",
             6,
@@ -41,68 +57,12 @@ fn per_category_tool_counts_match_baseline() {
             ],
         ),
         (
-            "memory",
-            5,
-            &[
-                "jacs_memory_save",
-                "jacs_memory_recall",
-                "jacs_memory_list",
-                "jacs_memory_forget",
-                "jacs_memory_update",
-            ],
-        ),
-        ("key management", 1, &["jacs_reencrypt_key"]),
-        ("security audit", 1, &["jacs_audit"]),
-        (
-            "audit trail",
-            3,
-            &["jacs_audit_log", "jacs_audit_query", "jacs_audit_export"],
-        ),
-        ("search", 1, &["jacs_search"]),
-        (
-            "messaging",
-            4,
-            &[
-                "jacs_message_send",
-                "jacs_message_update",
-                "jacs_message_agree",
-                "jacs_message_receive",
-            ],
-        ),
-        (
-            "agreements",
-            3,
-            &[
-                "jacs_create_agreement",
-                "jacs_sign_agreement",
-                "jacs_check_agreement",
-            ],
-        ),
-        (
             "document",
             3,
             &[
                 "jacs_sign_document",
                 "jacs_verify_document",
                 "jacs_create_agent",
-            ],
-        ),
-        (
-            "A2A",
-            3,
-            &[
-                "jacs_wrap_a2a_artifact",
-                "jacs_verify_a2a_artifact",
-                "jacs_assess_a2a_agent",
-            ],
-        ),
-        (
-            "A2A discovery / key export",
-            3,
-            &[
-                "jacs_export_agent_card",
-                "jacs_generate_well_known",
-                "jacs_export_agent",
             ],
         ),
         (
@@ -117,19 +77,40 @@ fn per_category_tool_counts_match_baseline() {
             ],
         ),
         (
-            "attestation",
+            "security audit",
+            1,
+            &["jacs_audit"],
+        ),
+        (
+            "audit trail",
+            3,
+            &["jacs_audit_log", "jacs_audit_query", "jacs_audit_export"],
+        ),
+        (
+            "memory",
+            5,
+            &[
+                "jacs_memory_save",
+                "jacs_memory_recall",
+                "jacs_memory_list",
+                "jacs_memory_forget",
+                "jacs_memory_update",
+            ],
+        ),
+        ("search", 1, &["jacs_search"]),
+        (
+            "key management / A2A discovery",
             4,
             &[
-                "jacs_attest_create",
-                "jacs_attest_verify",
-                "jacs_attest_lift",
-                "jacs_attest_export_dsse",
+                "jacs_reencrypt_key",
+                "jacs_export_agent_card",
+                "jacs_generate_well_known",
+                "jacs_export_agent",
             ],
         ),
     ];
 
-    let mut accounted = 0usize;
-    for (category, expected_count, expected_members) in categories {
+    for (category, expected_count, expected_members) in core_categories {
         for member in *expected_members {
             assert!(
                 names.contains(member),
@@ -144,29 +125,18 @@ fn per_category_tool_counts_match_baseline() {
             "category '{}': member list length does not match expected count",
             category,
         );
-        accounted += expected_count;
     }
-
-    // Every tool must be accounted for in exactly one category.
-    assert_eq!(
-        accounted,
-        names.len(),
-        "per-category member count ({}) does not equal total tool count ({}); \
-         a tool was added or removed without updating this snapshot",
-        accounted,
-        names.len(),
-    );
 }
 
-/// Full sorted tool name list snapshot.
-///
-/// This is the most granular snapshot: any tool add/remove/rename causes a
-/// clear diff. Update this list intentionally when the tool surface changes.
+/// Advanced families: only present when their feature flags are enabled.
+#[cfg(feature = "full-tools")]
 #[test]
-fn tool_names_snapshot_is_sorted_and_complete() {
+fn full_tools_registers_all_42() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
     names.sort();
+
+    assert_eq!(tools.len(), 42, "full-tools should expose all 42 tools");
 
     let expected: Vec<&str> = vec![
         "jacs_adopt_state",
@@ -219,6 +189,51 @@ fn tool_names_snapshot_is_sorted_and_complete() {
     );
 }
 
+/// Sorted tool name snapshot for core tools only (default features).
+#[cfg(not(feature = "full-tools"))]
+#[test]
+fn tool_names_snapshot_core_sorted() {
+    let tools = jacs_mcp::JacsMcpServer::tools();
+    let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+    names.sort();
+
+    let expected: Vec<&str> = vec![
+        "jacs_adopt_state",
+        "jacs_audit",
+        "jacs_audit_export",
+        "jacs_audit_log",
+        "jacs_audit_query",
+        "jacs_create_agent",
+        "jacs_export_agent",
+        "jacs_export_agent_card",
+        "jacs_generate_well_known",
+        "jacs_get_trusted_agent",
+        "jacs_is_trusted",
+        "jacs_list_state",
+        "jacs_list_trusted_agents",
+        "jacs_load_state",
+        "jacs_memory_forget",
+        "jacs_memory_list",
+        "jacs_memory_recall",
+        "jacs_memory_save",
+        "jacs_memory_update",
+        "jacs_reencrypt_key",
+        "jacs_search",
+        "jacs_sign_document",
+        "jacs_sign_state",
+        "jacs_trust_agent",
+        "jacs_untrust_agent",
+        "jacs_update_state",
+        "jacs_verify_document",
+        "jacs_verify_state",
+    ];
+
+    assert_eq!(
+        names, expected,
+        "core tool name snapshot mismatch; update expected list if changes are intentional"
+    );
+}
+
 #[test]
 fn server_metadata_identifies_as_jacs_mcp() {
     let server = jacs_mcp::JacsMcpServer::new(AgentWrapper::new());
@@ -232,4 +247,40 @@ fn server_metadata_identifies_as_jacs_mcp() {
             .unwrap_or_default()
             .contains("jacs_sign_state")
     );
+}
+
+/// The active_tools() method respects the runtime profile.
+#[test]
+fn active_tools_respects_profile() {
+    use jacs_mcp::Profile;
+
+    let core_server = jacs_mcp::JacsMcpServer::with_profile(
+        AgentWrapper::new(),
+        Profile::Core,
+    );
+    let core_tools = core_server.active_tools();
+    let core_names: Vec<&str> = core_tools.iter().map(|t| t.name.as_ref()).collect();
+
+    // Core profile should only have core family tools
+    assert!(core_names.contains(&"jacs_sign_state"));
+    assert!(core_names.contains(&"jacs_memory_save"));
+    assert!(core_names.contains(&"jacs_trust_agent"));
+
+    // Advanced tools should not be present in core profile
+    // (regardless of compile-time features)
+    for name in &core_names {
+        // messaging, agreement, a2a, attestation tools should be filtered out
+        assert!(
+            !name.starts_with("jacs_message_"),
+            "core profile should not contain messaging tool: {}",
+            name
+        );
+        assert!(
+            !name.starts_with("jacs_create_agreement")
+                && !name.starts_with("jacs_sign_agreement")
+                && !name.starts_with("jacs_check_agreement"),
+            "core profile should not contain agreement tool: {}",
+            name
+        );
+    }
 }

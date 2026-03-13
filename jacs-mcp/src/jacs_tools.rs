@@ -313,11 +313,16 @@ pub struct JacsMcpServer {
     registration_allowed: bool,
     /// Whether untrusting agents is allowed (from JACS_MCP_ALLOW_UNTRUST env var).
     untrust_allowed: bool,
+    /// Runtime tool profile controlling which tools are registered.
+    profile: crate::profile::Profile,
 }
 
 #[allow(dead_code)]
 impl JacsMcpServer {
-    /// Create a new JACS MCP server with the given agent.
+    /// Create a new JACS MCP server with the given agent and default profile.
+    ///
+    /// The runtime profile is resolved from `JACS_MCP_PROFILE` env var,
+    /// defaulting to `Core`.
     ///
     /// # Arguments
     ///
@@ -327,7 +332,16 @@ impl JacsMcpServer {
     ///
     /// * `JACS_MCP_ALLOW_REGISTRATION` - Set to "true" to enable the jacs_create_agent tool
     /// * `JACS_MCP_ALLOW_UNTRUST` - Set to "true" to enable the jacs_untrust_agent tool
+    /// * `JACS_MCP_PROFILE` - Set to "full" to expose all tools, defaults to "core"
     pub fn new(agent: AgentWrapper) -> Self {
+        let profile = crate::profile::Profile::resolve(None);
+        Self::with_profile(agent, profile)
+    }
+
+    /// Create a new JACS MCP server with an explicit runtime profile.
+    ///
+    /// Use this when the profile has been parsed from a CLI flag.
+    pub fn with_profile(agent: AgentWrapper, profile: crate::profile::Profile) -> Self {
         let registration_allowed = is_registration_allowed();
         let untrust_allowed = is_untrust_allowed();
 
@@ -339,17 +353,34 @@ impl JacsMcpServer {
             );
         }
 
+        tracing::info!(profile = %profile, "Tool profile active");
+
         Self {
             agent: Arc::new(agent),
             tool_router: Self::tool_router(),
             registration_allowed,
             untrust_allowed,
+            profile,
         }
     }
 
-    /// Get the list of available tools for LLM discovery.
+    /// Get the list of all compiled-in tools (ignores runtime profile).
+    ///
+    /// Use this for contract snapshots and tests that need the full surface.
     pub fn tools() -> Vec<Tool> {
         crate::tools::all_tools()
+    }
+
+    /// Get the list of tools for the active runtime profile.
+    ///
+    /// This is what should be advertised to MCP clients.
+    pub fn active_tools(&self) -> Vec<Tool> {
+        self.profile.tools()
+    }
+
+    /// Get a reference to the active runtime profile.
+    pub fn profile(&self) -> &crate::profile::Profile {
+        &self.profile
     }
 }
 
@@ -521,7 +552,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Verify the integrity and authenticity of a signed agent state.
@@ -752,7 +785,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, Some(&doc))
     }
 
     /// Update a previously signed agent state file.
@@ -850,7 +885,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// List signed agent state documents.
@@ -941,7 +978,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Adopt an external file as signed agent state.
@@ -1096,7 +1135,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Create a new JACS agent programmatically.
@@ -1689,7 +1730,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Search across all signed documents using the unified search interface.
@@ -1837,7 +1880,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Create and sign a message document for sending to another agent.
@@ -1949,7 +1994,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Update and re-sign an existing message document with new content.
@@ -2064,7 +2111,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Co-sign (agree to) a received signed message.
@@ -2157,7 +2206,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Verify and extract content from a received signed message.
@@ -2263,7 +2314,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, Some(&doc))
     }
 
     // =========================================================================
@@ -2338,7 +2391,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Co-sign an existing agreement.
@@ -2386,7 +2441,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Check the status of an agreement.
@@ -2608,7 +2665,9 @@ impl JacsMcpServer {
                     message: "Document signed successfully".to_string(),
                     error: None,
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, Some(&content_value))
             }
             Err(e) => {
                 let result = SignDocumentResult {
@@ -2619,7 +2678,9 @@ impl JacsMcpServer {
                     message: "Failed to sign document".to_string(),
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
         }
     }
@@ -2721,7 +2782,9 @@ impl JacsMcpServer {
                     message: "Artifact wrapped with JACS provenance".to_string(),
                     error: None,
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
             Err(e) => {
                 let result = WrapA2aArtifactResult {
@@ -2730,7 +2793,9 @@ impl JacsMcpServer {
                     message: "Failed to wrap artifact".to_string(),
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
         }
     }
@@ -3481,7 +3546,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Search saved memories by query string and optional tag filter.
@@ -3602,7 +3669,10 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        // Memory documents are always private by design.
+        inject_meta(&serialized, None)
     }
 
     /// List all saved memory documents with optional filtering.
@@ -3721,7 +3791,10 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        // Memory documents are always private by design.
+        inject_meta(&serialized, None)
     }
 
     /// Mark a memory document as removed (soft-delete).
@@ -3919,7 +3992,9 @@ impl JacsMcpServer {
                     message: format!("Memory '{}' updated successfully", params.jacs_id),
                     error: None,
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
             Err(e) => {
                 let result = MemoryUpdateResult {
@@ -3928,7 +4003,9 @@ impl JacsMcpServer {
                     message: format!("Failed to update and re-sign '{}'", params.jacs_id),
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
         }
     }
@@ -4012,11 +4089,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tools_list() {
+    fn test_tools_list_core() {
+        // With default features (core-tools), only core families are registered.
         let tools = JacsMcpServer::tools();
-        assert_eq!(tools.len(), 42, "JacsMcpServer should expose 42 tools");
-
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
+
+        // Core families: state(6) + document(3) + trust(5) + audit(4) +
+        // memory(5) + search(1) + key(4) = 28
+        assert_eq!(
+            tools.len(),
+            crate::tools::core_tool_count(),
+            "Default features should expose only core tools"
+        );
+
+        // Spot-check core tools are present
         assert!(names.contains(&"jacs_sign_state"));
         assert!(names.contains(&"jacs_verify_state"));
         assert!(names.contains(&"jacs_load_state"));
@@ -4026,46 +4112,35 @@ mod tests {
         assert!(names.contains(&"jacs_create_agent"));
         assert!(names.contains(&"jacs_reencrypt_key"));
         assert!(names.contains(&"jacs_audit"));
-        // Audit trail tools
         assert!(names.contains(&"jacs_audit_log"));
         assert!(names.contains(&"jacs_audit_query"));
         assert!(names.contains(&"jacs_audit_export"));
-        // Search tools
         assert!(names.contains(&"jacs_search"));
-        assert!(names.contains(&"jacs_message_send"));
-        assert!(names.contains(&"jacs_message_update"));
-        assert!(names.contains(&"jacs_message_agree"));
-        assert!(names.contains(&"jacs_message_receive"));
-        assert!(names.contains(&"jacs_create_agreement"));
-        assert!(names.contains(&"jacs_sign_agreement"));
-        assert!(names.contains(&"jacs_check_agreement"));
         assert!(names.contains(&"jacs_sign_document"));
         assert!(names.contains(&"jacs_verify_document"));
-        // A2A artifact tools
-        assert!(names.contains(&"jacs_wrap_a2a_artifact"));
-        assert!(names.contains(&"jacs_verify_a2a_artifact"));
-        assert!(names.contains(&"jacs_assess_a2a_agent"));
-        // Agent Card & well-known tools
         assert!(names.contains(&"jacs_export_agent_card"));
         assert!(names.contains(&"jacs_generate_well_known"));
         assert!(names.contains(&"jacs_export_agent"));
-        // Trust store tools
         assert!(names.contains(&"jacs_trust_agent"));
         assert!(names.contains(&"jacs_untrust_agent"));
         assert!(names.contains(&"jacs_list_trusted_agents"));
         assert!(names.contains(&"jacs_is_trusted"));
         assert!(names.contains(&"jacs_get_trusted_agent"));
-        // Attestation tools
-        assert!(names.contains(&"jacs_attest_create"));
-        assert!(names.contains(&"jacs_attest_verify"));
-        assert!(names.contains(&"jacs_attest_lift"));
-        assert!(names.contains(&"jacs_attest_export_dsse"));
-        // Memory tools
         assert!(names.contains(&"jacs_memory_save"));
         assert!(names.contains(&"jacs_memory_recall"));
         assert!(names.contains(&"jacs_memory_list"));
         assert!(names.contains(&"jacs_memory_forget"));
         assert!(names.contains(&"jacs_memory_update"));
+
+        // Advanced tools should NOT be present with default features
+        #[cfg(not(feature = "messaging-tools"))]
+        assert!(!names.contains(&"jacs_message_send"));
+        #[cfg(not(feature = "agreement-tools"))]
+        assert!(!names.contains(&"jacs_create_agreement"));
+        #[cfg(not(feature = "a2a-tools"))]
+        assert!(!names.contains(&"jacs_wrap_a2a_artifact"));
+        #[cfg(not(feature = "attestation-tools"))]
+        assert!(!names.contains(&"jacs_attest_create"));
     }
 
     #[test]
@@ -4302,9 +4377,10 @@ mod tests {
         assert!(json.contains("signed_agreement"));
     }
 
+    #[cfg(feature = "agreement-tools")]
     #[test]
     fn test_tool_list_includes_agreement_tools() {
-        // Verify the 3 new agreement tools are in the tool list
+        // Verify the 3 agreement tools are registered when agreement-tools is enabled
         let tools = JacsMcpServer::tools();
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         assert!(

@@ -116,6 +116,15 @@ impl SimpleAgentWrapper {
         }
     }
 
+    /// Get a reference to the inner `SimpleAgent`.
+    ///
+    /// This is intended for advanced operations (attestation, reencrypt, etc.)
+    /// that need direct access to the underlying agent. Language bindings
+    /// should prefer the wrapper methods for the narrow contract.
+    pub fn inner_ref(&self) -> &SimpleAgent {
+        &self.inner
+    }
+
     // =========================================================================
     // Identity / Introspection
     // =========================================================================

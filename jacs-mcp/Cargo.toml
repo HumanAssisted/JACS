@@ -16,14 +16,28 @@ categories = ["cryptography", "development-tools"]
 default = ["mcp", "attestation", "core-tools"]
 mcp = ["dep:rmcp", "dep:tokio", "jacs/mcp-server"]
 attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
+
 # Tool family feature flags (Issue 010 / TASK_039).
 # core-tools enables all standard tool families by default.
-core-tools = ["state-tools", "memory-tools", "key-tools", "audit-tools", "search-tools"]
+core-tools = ["state-tools", "document-tools", "trust-tools", "audit-tools",
+              "memory-tools", "search-tools", "key-tools"]
 state-tools = []
-memory-tools = []
-key-tools = []
+document-tools = []
+trust-tools = []
 audit-tools = []
+memory-tools = []
 search-tools = []
+key-tools = []
+
+# Advanced tool families — require explicit opt-in via feature flag or runtime profile.
+agreement-tools = ["jacs/agreements"]
+messaging-tools = []
+a2a-tools = ["jacs/a2a", "jacs-binding-core/a2a"]
+attestation-tools = ["attestation"]
+
+# Everything: all core + advanced families.
+full-tools = ["core-tools", "agreement-tools", "messaging-tools",
+              "a2a-tools", "attestation-tools"]
 
 [dependencies]
 anyhow = "1"

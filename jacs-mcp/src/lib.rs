@@ -2,6 +2,7 @@ pub mod config;
 #[cfg(feature = "mcp")]
 pub mod contract;
 pub mod jacs_tools;
+pub mod profile;
 #[cfg(feature = "mcp")]
 pub mod server;
 pub mod tools;
@@ -13,5 +14,6 @@ pub use crate::contract::{
     canonical_contract_snapshot,
 };
 pub use crate::jacs_tools::JacsMcpServer;
+pub use crate::profile::Profile;
 #[cfg(feature = "mcp")]
 pub use crate::server::serve_stdio;

@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult};
+use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult, SimpleAgentWrapper};
 use napi::JsObject;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -1158,6 +1158,165 @@ impl JacsAgent {
                 a.export_attestation_dsse(&attestation_json)
             })),
         })
+    }
+}
+
+// =============================================================================
+// JacsSimpleAgent Class - Simplified API using SimpleAgentWrapper
+// =============================================================================
+// This class wraps SimpleAgentWrapper from binding-core, providing the narrow
+// SimpleAgent contract with JSON-in/JSON-out FFI boundary. This ensures all
+// language bindings share the same FFI contract.
+// =============================================================================
+
+/// JacsSimpleAgent is a simplified JACS agent for the narrow contract.
+///
+/// It exposes the same methods as Python's SimpleAgent and Go's simple API,
+/// all backed by `SimpleAgentWrapper` from `jacs-binding-core`.
+#[napi(js_name = "JacsSimpleAgent")]
+pub struct JacsSimpleAgent {
+    inner: SimpleAgentWrapper,
+}
+
+#[napi]
+impl JacsSimpleAgent {
+    /// Create a new agent with persistent identity.
+    /// Returns a JSON string with agent info (agent_id, name, public_key_path, config_path).
+    #[napi(factory, js_name = "create")]
+    pub fn create_agent(
+        name: String,
+        purpose: Option<String>,
+        key_algorithm: Option<String>,
+    ) -> Result<JacsSimpleAgent> {
+        let (wrapper, _info_json) = SimpleAgentWrapper::create(
+            &name,
+            purpose.as_deref(),
+            key_algorithm.as_deref(),
+        )
+        .to_napi()?;
+        Ok(JacsSimpleAgent { inner: wrapper })
+    }
+
+    /// Get the agent info JSON from the last create/ephemeral call.
+    /// Must be called after create() or ephemeral().
+    #[napi(js_name = "getAgentId")]
+    pub fn get_agent_id(&self) -> Result<String> {
+        self.inner.get_agent_id().to_napi()
+    }
+
+    /// Load an existing agent from a config file.
+    #[napi(factory, js_name = "load")]
+    pub fn load_agent(config_path: Option<String>, strict: Option<bool>) -> Result<JacsSimpleAgent> {
+        let wrapper =
+            SimpleAgentWrapper::load(config_path.as_deref(), strict).to_napi()?;
+        Ok(JacsSimpleAgent { inner: wrapper })
+    }
+
+    /// Create an ephemeral (in-memory, throwaway) agent.
+    #[napi(factory, js_name = "ephemeral")]
+    pub fn ephemeral_agent(algorithm: Option<String>) -> Result<JacsSimpleAgent> {
+        let (wrapper, _info_json) =
+            SimpleAgentWrapper::ephemeral(algorithm.as_deref()).to_napi()?;
+        Ok(JacsSimpleAgent { inner: wrapper })
+    }
+
+    /// Create an agent with full programmatic control via JSON parameters.
+    #[napi(factory, js_name = "createWithParams")]
+    pub fn create_with_params(params_json: String) -> Result<JacsSimpleAgent> {
+        let (wrapper, _info_json) =
+            SimpleAgentWrapper::create_with_params(&params_json).to_napi()?;
+        Ok(JacsSimpleAgent { inner: wrapper })
+    }
+
+    /// Whether the agent is in strict mode.
+    #[napi(js_name = "isStrict")]
+    pub fn is_strict(&self) -> bool {
+        self.inner.is_strict()
+    }
+
+    /// Config file path, if loaded from disk.
+    #[napi(js_name = "configPath")]
+    pub fn config_path(&self) -> Option<String> {
+        self.inner.config_path()
+    }
+
+    /// Get the JACS key ID (signing key identifier).
+    #[napi(js_name = "keyId")]
+    pub fn key_id(&self) -> Result<String> {
+        self.inner.key_id().to_napi()
+    }
+
+    /// Export the agent's identity JSON for P2P exchange.
+    #[napi(js_name = "exportAgent")]
+    pub fn export_agent(&self) -> Result<String> {
+        self.inner.export_agent().to_napi()
+    }
+
+    /// Get the public key as a PEM string.
+    #[napi(js_name = "getPublicKeyPem")]
+    pub fn get_public_key_pem(&self) -> Result<String> {
+        self.inner.get_public_key_pem().to_napi()
+    }
+
+    /// Get the public key as base64-encoded raw bytes.
+    #[napi(js_name = "getPublicKeyBase64")]
+    pub fn get_public_key_base64(&self) -> Result<String> {
+        self.inner.get_public_key_base64().to_napi()
+    }
+
+    /// Runtime diagnostic info as a JSON string.
+    #[napi]
+    pub fn diagnostics(&self) -> String {
+        self.inner.diagnostics()
+    }
+
+    /// Verify the agent's own document signature. Returns JSON VerificationResult.
+    #[napi(js_name = "verifySelf")]
+    pub fn verify_self(&self) -> Result<String> {
+        self.inner.verify_self().to_napi()
+    }
+
+    /// Verify a signed document JSON string. Returns JSON VerificationResult.
+    #[napi(js_name = "verify")]
+    pub fn verify_json(&self, signed_document: String) -> Result<String> {
+        self.inner.verify_json(&signed_document).to_napi()
+    }
+
+    /// Verify a signed document with an explicit public key (base64-encoded).
+    /// Returns JSON VerificationResult.
+    #[napi(js_name = "verifyWithKey")]
+    pub fn verify_with_key(&self, signed_document: String, public_key_base64: String) -> Result<String> {
+        self.inner
+            .verify_with_key_json(&signed_document, &public_key_base64)
+            .to_napi()
+    }
+
+    /// Verify a stored document by its ID (e.g., "uuid:version").
+    /// Returns JSON VerificationResult.
+    #[napi(js_name = "verifyById")]
+    pub fn verify_by_id(&self, document_id: String) -> Result<String> {
+        self.inner.verify_by_id_json(&document_id).to_napi()
+    }
+
+    /// Sign a JSON message string. Returns the signed JACS document JSON.
+    #[napi(js_name = "signMessage")]
+    pub fn sign_message(&self, data_json: String) -> Result<String> {
+        self.inner.sign_message_json(&data_json).to_napi()
+    }
+
+    /// Sign raw bytes and return the signature as base64.
+    #[napi(js_name = "signRawBytes")]
+    pub fn sign_raw_bytes(&self, data: Buffer) -> Result<String> {
+        self.inner
+            .sign_raw_bytes_base64(data.as_ref())
+            .to_napi()
+    }
+
+    /// Sign a file with optional content embedding.
+    /// Returns the signed JACS document JSON.
+    #[napi(js_name = "signFile")]
+    pub fn sign_file(&self, file_path: String, embed: bool) -> Result<String> {
+        self.inner.sign_file_json(&file_path, embed).to_napi()
     }
 }
 

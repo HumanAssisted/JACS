@@ -1,6 +1,6 @@
 [package]
 name = "jacs-postgresql"
-version = "0.9.3"
+version = "0.1.0"
 edition = "2024"
 rust-version.workspace = true
 description = "PostgreSQL storage backend for JACS documents"
