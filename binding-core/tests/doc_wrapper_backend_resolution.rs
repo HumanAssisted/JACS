@@ -1,8 +1,8 @@
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs_binding_core::{AgentWrapper, DocumentServiceWrapper};
-use std::fs;
-use serial_test::serial;
 use serde_json::Value;
+use serial_test::serial;
+use std::fs;
 
 const TEST_PASSWORD: &str = "TestP@ss123!#";
 
@@ -25,10 +25,9 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
     let (_agent, _info) =
         SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
 
-    let mut config_json: Value = serde_json::from_str(
-        &fs::read_to_string(&config_path).expect("read generated config"),
-    )
-    .expect("parse generated config");
+    let mut config_json: Value =
+        serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
+            .expect("parse generated config");
     config_json["jacs_default_storage"] = Value::String("rusqlite".to_string());
     fs::write(
         &config_path,

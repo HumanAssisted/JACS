@@ -10,7 +10,10 @@ use std::time::Duration;
 
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs_binding_core::{AgentWrapper, DocumentServiceWrapper};
-use jacs_mcp::{JacsMcpServer, tools::{SearchFieldFilter, SearchParams}};
+use jacs_mcp::{
+    JacsMcpServer,
+    tools::{SearchFieldFilter, SearchParams},
+};
 use rmcp::{
     RoleClient, ServiceExt,
     handler::server::wrapper::Parameters,
@@ -239,12 +242,10 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
     let (_agent, _info) =
         SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
 
-    let mut config_json: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(&config_path).expect("read generated config"),
-    )
-    .expect("parse generated config");
-    config_json["jacs_default_storage"] =
-        serde_json::Value::String("rusqlite".to_string());
+    let mut config_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
+            .expect("parse generated config");
+    config_json["jacs_default_storage"] = serde_json::Value::String("rusqlite".to_string());
     fs::write(
         &config_path,
         serde_json::to_string_pretty(&config_json).expect("serialize config"),
@@ -268,8 +269,14 @@ async fn jacs_search_uses_document_service_backend_method() -> anyhow::Result<()
     let _g = STDIO_LOCK.lock().await;
     let (agent, _tmp) = sqlite_ready_agent();
     let docs = DocumentServiceWrapper::from_agent_wrapper(&agent)?;
-    docs.create_json(r#"{"content":"mcpsqlitesearch needle","category":"keep"}"#, None)?;
-    docs.create_json(r#"{"content":"mcpsqlitesearch needle","category":"drop"}"#, None)?;
+    docs.create_json(
+        r#"{"content":"mcpsqlitesearch needle","category":"keep"}"#,
+        None,
+    )?;
+    docs.create_json(
+        r#"{"content":"mcpsqlitesearch needle","category":"drop"}"#,
+        None,
+    )?;
 
     let server = JacsMcpServer::new(agent);
     let raw = server
@@ -291,7 +298,14 @@ async fn jacs_search_uses_document_service_backend_method() -> anyhow::Result<()
 
     assert_eq!(result["success"], true, "search failed: {}", result);
     assert_eq!(result["search_method"], "fulltext");
-    let results = result["results"].as_array().expect("results should be an array");
-    assert_eq!(results.len(), 1, "field_filter should narrow results: {}", result);
+    let results = result["results"]
+        .as_array()
+        .expect("results should be an array");
+    assert_eq!(
+        results.len(),
+        1,
+        "field_filter should narrow results: {}",
+        result
+    );
     Ok(())
 }
