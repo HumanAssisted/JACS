@@ -39,11 +39,11 @@ pub use rusqlite_storage::RusqliteStorage;
 #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
 pub use rusqlite_storage::SqliteDocumentService;
 
-// SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
-
-// DuckDB storage has been extracted to the `jacs-duckdb` crate.
-
-// Redb storage has been extracted to the `jacs-redb` crate.
+// Extracted storage backends (now standalone crates):
+// - PostgreSQL: `jacs-postgresql`
+// - SurrealDB:  `jacs-surrealdb`
+// - DuckDB:     `jacs-duckdb`
+// - Redb:       `jacs-redb`
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -174,6 +174,14 @@ pub struct MultiStorage {
     storages: Vec<Arc<dyn ObjectStore>>,
 }
 
+/// Storage backend type selector for `MultiStorage`.
+///
+/// Core variants (AWS, FS, Memory, WebLocal) are always available.
+/// SQLite variants require their respective feature flags.
+///
+/// PostgreSQL, SurrealDB, DuckDB, and Redb have been extracted to
+/// standalone crates (`jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`,
+/// `jacs-redb`) and are no longer part of jacs core.
 #[derive(Debug, AsRefStr, Display, EnumString, Clone, PartialEq)]
 pub enum StorageType {
     #[strum(serialize = "aws")]
@@ -191,9 +199,6 @@ pub enum StorageType {
     #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
     #[strum(serialize = "rusqlite")]
     Rusqlite,
-    // SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
-    // DuckDB storage has been extracted to the `jacs-duckdb` crate.
-    // Redb storage has been extracted to the `jacs-redb` crate.
 }
 
 impl MultiStorage {
@@ -483,8 +488,23 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 
-/// Trait for document storage operations
-/// This trait defines methods for storing, retrieving, and querying JACS documents
+/// Base trait for document storage operations (Level 1 in the trait hierarchy).
+///
+/// Provides CRUD, listing, versioning, and bulk operations for JACS documents.
+/// All storage backends (filesystem, in-memory, S3, SQLite, and extracted crates)
+/// implement this trait.
+///
+/// # Trait Hierarchy
+///
+/// ```text
+/// StorageDocumentTraits        (base -- CRUD, list, versions, bulk)
+///     └── DatabaseDocumentTraits   (indexed queries -- type, field, agent, pagination)
+///         └── SearchProvider       (fulltext/vector/hybrid search -- defined in search/)
+/// ```
+///
+/// External backend crates (`jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`,
+/// `jacs-redb`) implement all three levels. Built-in backends (filesystem,
+/// in-memory, S3) implement only `StorageDocumentTraits`.
 pub trait StorageDocumentTraits {
     // Basic document operations
     fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>>;

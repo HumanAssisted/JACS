@@ -1,9 +1,21 @@
-//! Generic database storage traits for JACS documents.
+//! Database storage traits for JACS documents (Level 2 in the trait hierarchy).
 //!
-//! This module defines the `DatabaseDocumentTraits` trait which extends
-//! `StorageDocumentTraits` with query capabilities that only a database
-//! can provide. The trait is backend-agnostic -- implementations exist
-//! for PostgreSQL (reference) with SQLite, DuckDB, and LanceDB planned.
+//! This module defines [`DatabaseDocumentTraits`] which extends
+//! [`StorageDocumentTraits`](super::StorageDocumentTraits) with indexed query
+//! capabilities that only a database backend can provide.
+//!
+//! # Trait Hierarchy
+//!
+//! ```text
+//! StorageDocumentTraits        (base -- CRUD, list, versions, bulk)
+//!     └── DatabaseDocumentTraits   (indexed queries -- type, field, agent, pagination)
+//!         └── SearchProvider       (fulltext/vector/hybrid search -- defined in search/)
+//! ```
+//!
+//! # Implementations
+//!
+//! - **Built-in:** `SqliteStorage` (sqlx), `RusqliteStorage` (rusqlite)
+//! - **Extracted crates:** `jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`, `jacs-redb`
 //!
 //! # Append-Only Model
 //!
@@ -13,15 +25,18 @@
 use crate::agent::document::JACSDocument;
 use std::error::Error;
 
-/// Extended storage trait for database backends.
+/// Extended storage trait for database backends (Level 2).
 ///
-/// Provides query capabilities beyond basic CRUD:
+/// Builds on [`StorageDocumentTraits`](super::StorageDocumentTraits) by adding
+/// indexed query capabilities:
 /// - Type-based queries with pagination
-/// - Field-based JSONB queries
+/// - Field-based JSON/JSONB queries
 /// - Aggregation counts
-/// - Version history
+/// - Version history ordered by creation date
+/// - Agent-scoped queries
 ///
-/// All methods are synchronous. Implementations bridge async internally.
+/// All methods are synchronous. Async implementations bridge internally
+/// (e.g., `tokio::runtime::Handle::block_on`).
 pub trait DatabaseDocumentTraits: Send + Sync {
     /// Query documents by their `jacsType` field with pagination.
     fn query_by_type(

@@ -31,7 +31,8 @@
 use jacs::agent::document::JACSDocument;
 use jacs::error::JacsError;
 use jacs::search::{
-    SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery, SearchResults,
+    FieldFilter, SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery,
+    SearchResults,
 };
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::storage::StorageDocumentTraits;
@@ -386,13 +387,15 @@ impl StorageDocumentTraits for PostgresStorage {
         docs: Vec<JACSDocument>,
     ) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
         let mut errors = Vec::new();
+        let mut keys = Vec::new();
         for doc in &docs {
-            if let Err(e) = self.store_document(doc) {
-                errors.push(e);
+            match self.store_document(doc) {
+                Ok(_) => keys.push(doc.getkey()),
+                Err(e) => errors.push(e),
             }
         }
         if errors.is_empty() {
-            Ok(Vec::new())
+            Ok(keys)
         } else {
             Err(errors)
         }
@@ -626,6 +629,41 @@ impl DatabaseDocumentTraits for PostgresStorage {
 
 impl SearchProvider for PostgresStorage {
     fn search(&self, query: SearchQuery) -> Result<SearchResults, JacsError> {
+        // Handle field_filter queries via query_by_field (exact field match, no FTS)
+        if let Some(FieldFilter {
+            ref field_path,
+            ref value,
+        }) = query.field_filter
+        {
+            let docs = self
+                .query_by_field(
+                    field_path,
+                    value,
+                    query.jacs_type.as_deref(),
+                    query.limit,
+                    query.offset,
+                )
+                .map_err(|e| {
+                    JacsError::StorageError(format!("field_filter search failed: {}", e))
+                })?;
+
+            let total_count = docs.len();
+            let results = docs
+                .into_iter()
+                .map(|doc| SearchHit {
+                    document: doc,
+                    score: 1.0,
+                    matched_fields: vec![field_path.clone()],
+                })
+                .collect();
+
+            return Ok(SearchResults {
+                results,
+                total_count,
+                method: SearchMethod::FieldMatch,
+            });
+        }
+
         if query.query.is_empty() {
             return Ok(SearchResults {
                 results: vec![],
@@ -634,86 +672,111 @@ impl SearchProvider for PostgresStorage {
             });
         }
 
-        // Build the fulltext search query using PostgreSQL tsvector.
-        // Uses plainto_tsquery for natural language query parsing.
-        let (rows, total_count) = if let Some(ref jacs_type) = query.jacs_type {
-            let count: i64 = self
-                .block_on(async {
-                    sqlx::query_scalar::<_, i64>(
-                        "SELECT COUNT(*) FROM jacs_document \
-                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                         AND jacs_type = $2",
-                    )
-                    .bind(&query.query)
-                    .bind(jacs_type)
-                    .fetch_one(&self.pool)
-                    .await
-                })
-                .map_err(|e| JacsError::StorageError(format!("FTS count query failed: {}", e)))?;
+        // Build fulltext search dynamically to support optional jacs_type and agent_id filters.
+        // PostgreSQL tsvector fulltext search with parameterized queries.
+        let has_type = query.jacs_type.is_some();
+        let has_agent = query.agent_id.is_some();
 
-            let rows = self
-                .block_on(async {
-                    sqlx::query(
-                        "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
-                         ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
-                         FROM jacs_document \
-                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                         AND jacs_type = $2 \
-                         ORDER BY rank DESC \
-                         LIMIT $3 OFFSET $4",
-                    )
-                    .bind(&query.query)
-                    .bind(jacs_type)
-                    .bind(query.limit as i64)
-                    .bind(query.offset as i64)
-                    .fetch_all(&self.pool)
-                    .await
-                })
-                .map_err(|e| JacsError::StorageError(format!("FTS search failed: {}", e)))?;
-
-            (rows, count as usize)
-        } else {
-            let count: i64 = self
-                .block_on(async {
-                    sqlx::query_scalar::<_, i64>(
-                        "SELECT COUNT(*) FROM jacs_document \
-                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1)",
-                    )
-                    .bind(&query.query)
-                    .fetch_one(&self.pool)
-                    .await
-                })
-                .map_err(|e| JacsError::StorageError(format!("FTS count query failed: {}", e)))?;
-
-            let rows = self
-                .block_on(async {
-                    sqlx::query(
-                        "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
-                         ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
-                         FROM jacs_document \
-                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
-                         ORDER BY rank DESC \
-                         LIMIT $2 OFFSET $3",
-                    )
-                    .bind(&query.query)
-                    .bind(query.limit as i64)
-                    .bind(query.offset as i64)
-                    .fetch_all(&self.pool)
-                    .await
-                })
-                .map_err(|e| JacsError::StorageError(format!("FTS search failed: {}", e)))?;
-
-            (rows, count as usize)
+        // Build SQL with correct positional parameter indices ($1 = query text)
+        let (count_sql, results_sql) = match (has_type, has_agent) {
+            (true, true) => (
+                "SELECT COUNT(*) FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND jacs_type = $2 AND agent_id = $3"
+                    .to_string(),
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
+                 ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
+                 FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND jacs_type = $2 AND agent_id = $3 \
+                 ORDER BY rank DESC LIMIT $4 OFFSET $5"
+                    .to_string(),
+            ),
+            (true, false) => (
+                "SELECT COUNT(*) FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND jacs_type = $2"
+                    .to_string(),
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
+                 ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
+                 FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND jacs_type = $2 \
+                 ORDER BY rank DESC LIMIT $3 OFFSET $4"
+                    .to_string(),
+            ),
+            (false, true) => (
+                "SELECT COUNT(*) FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND agent_id = $2"
+                    .to_string(),
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
+                 ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
+                 FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 AND agent_id = $2 \
+                 ORDER BY rank DESC LIMIT $3 OFFSET $4"
+                    .to_string(),
+            ),
+            (false, false) => (
+                "SELECT COUNT(*) FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1)"
+                    .to_string(),
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
+                 ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
+                 FROM jacs_document \
+                 WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                 ORDER BY rank DESC LIMIT $2 OFFSET $3"
+                    .to_string(),
+            ),
         };
 
+        // Execute count query
+        let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql).bind(&query.query);
+        if let Some(ref jt) = query.jacs_type {
+            count_q = count_q.bind(jt);
+        }
+        if let Some(ref ai) = query.agent_id {
+            count_q = count_q.bind(ai);
+        }
+        let total_count: i64 = self
+            .block_on(async { count_q.fetch_one(&self.pool).await })
+            .map_err(|e| JacsError::StorageError(format!("FTS count query failed: {}", e)))?;
+
+        // Execute results query
+        let mut results_q = sqlx::query(&results_sql).bind(&query.query);
+        if let Some(ref jt) = query.jacs_type {
+            results_q = results_q.bind(jt);
+        }
+        if let Some(ref ai) = query.agent_id {
+            results_q = results_q.bind(ai);
+        }
+        results_q = results_q
+            .bind(query.limit as i64)
+            .bind(query.offset as i64);
+
+        let rows = self
+            .block_on(async { results_q.fetch_all(&self.pool).await })
+            .map_err(|e| JacsError::StorageError(format!("FTS search failed: {}", e)))?;
+
+        // Collect ranks for relative normalization
+        let ranks: Vec<f32> = rows
+            .iter()
+            .map(|row| row.try_get::<f32, _>("rank").unwrap_or(0.0))
+            .collect();
+        let max_rank = ranks.iter().cloned().fold(f32::MIN, f32::max);
+
         let mut results = Vec::new();
-        for row in &rows {
+        for (row, &rank) in rows.iter().zip(ranks.iter()) {
             let doc = Self::row_to_document(row)
                 .map_err(|e| JacsError::StorageError(format!("Failed to parse row: {}", e)))?;
 
-            let rank: f32 = row.try_get("rank").unwrap_or(0.0);
-            // Normalize rank to 0.0-1.0 range (ts_rank can exceed 1.0).
-            let score = (rank as f64).min(1.0).max(0.0);
+            // Normalize rank relative to max score in result set (preserves ranking fidelity)
+            let score = if max_rank > 0.0 {
+                (rank / max_rank) as f64
+            } else {
+                0.0
+            };
 
             if let Some(min_score) = query.min_score {
                 if score < min_score {
@@ -730,7 +793,7 @@ impl SearchProvider for PostgresStorage {
 
         Ok(SearchResults {
             results,
-            total_count,
+            total_count: total_count as usize,
             method: SearchMethod::FullText,
         })
     }

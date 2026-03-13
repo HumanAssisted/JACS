@@ -9,49 +9,15 @@
 //!
 //! Requirements: Docker must be running on the host.
 
-use jacs::agent::document::JACSDocument;
 use jacs::search::{SearchMethod, SearchProvider, SearchQuery};
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use jacs::storage::StorageDocumentTraits;
+use jacs::testing::make_test_doc;
 use jacs_postgresql::PostgresStorage;
-use serde_json::json;
 use serial_test::serial;
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Create a test document with the given fields.
-/// If `agent_id` is provided, a `jacsSignature` block is attached so that
-/// `store_document` can extract the agent ID column.
-fn make_test_doc(
-    id: &str,
-    version: &str,
-    jacs_type: &str,
-    agent_id: Option<&str>,
-) -> JACSDocument {
-    let mut value = json!({
-        "jacsId": id,
-        "jacsVersion": version,
-        "jacsType": jacs_type,
-        "jacsLevel": "raw",
-        "data": "test content"
-    });
-    if let Some(aid) = agent_id {
-        value["jacsSignature"] = json!({
-            "jacsSignatureAgentId": aid
-        });
-    }
-    JACSDocument {
-        id: id.to_string(),
-        version: version.to_string(),
-        value,
-        jacs_type: jacs_type.to_string(),
-    }
-}
 
 /// Spin up a fresh PostgreSQL container and return the `PostgresStorage`
 /// connected to it (with migrations already applied) together with the

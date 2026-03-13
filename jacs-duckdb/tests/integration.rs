@@ -3,34 +3,11 @@
 //! Tests run against an in-memory DuckDB database — no Docker or external
 //! services required.
 
-use jacs::agent::document::JACSDocument;
 use jacs::search::{FieldFilter, SearchCapabilities, SearchMethod, SearchProvider, SearchQuery};
 use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
+use jacs::testing::make_test_doc as make_doc;
 use jacs_duckdb::DuckDbStorage;
-use serde_json::json;
-
-/// Create a test document with the given fields.
-fn make_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
-    let mut value = json!({
-        "jacsId": id,
-        "jacsVersion": version,
-        "jacsType": jacs_type,
-        "jacsLevel": "raw",
-        "data": "test content"
-    });
-    if let Some(aid) = agent_id {
-        value["jacsSignature"] = json!({
-            "jacsSignatureAgentId": aid
-        });
-    }
-    JACSDocument {
-        id: id.to_string(),
-        version: version.to_string(),
-        value,
-        jacs_type: jacs_type.to_string(),
-    }
-}
 
 fn setup() -> DuckDbStorage {
     let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");

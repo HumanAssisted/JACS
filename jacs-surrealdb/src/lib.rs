@@ -25,7 +25,10 @@
 
 use jacs::agent::document::JACSDocument;
 use jacs::error::JacsError;
-use jacs::search::{SearchCapabilities, SearchProvider, SearchQuery, SearchResults, SearchMethod};
+use jacs::search::{
+    FieldFilter, SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery,
+    SearchResults,
+};
 use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use serde::{Deserialize, Serialize};
@@ -472,6 +475,21 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
+        // Validate field_path to prevent SurrealQL injection.
+        // Only allow alphanumeric characters, dots, and underscores.
+        if !field_path
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '.' || c == '_')
+        {
+            return Err(Box::new(JacsError::DatabaseError {
+                operation: "query_by_field".to_string(),
+                reason: format!(
+                    "Invalid field path: contains disallowed characters: {}",
+                    field_path
+                ),
+            }));
+        }
+
         let value_owned = value.to_string();
         let jacs_type_owned = jacs_type.map(|s| s.to_string());
         let field_path_owned = field_path.to_string();
@@ -629,6 +647,41 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
 
 impl SearchProvider for SurrealDbStorage {
     fn search(&self, query: SearchQuery) -> Result<SearchResults, JacsError> {
+        // Handle field_filter queries via query_by_field (exact field match)
+        if let Some(FieldFilter {
+            ref field_path,
+            ref value,
+        }) = query.field_filter
+        {
+            let docs = self
+                .query_by_field(
+                    field_path,
+                    value,
+                    query.jacs_type.as_deref(),
+                    query.limit,
+                    query.offset,
+                )
+                .map_err(|e| {
+                    JacsError::StorageError(format!("field_filter search failed: {}", e))
+                })?;
+
+            let total_count = docs.len();
+            let results = docs
+                .into_iter()
+                .map(|doc| SearchHit {
+                    document: doc,
+                    score: 1.0,
+                    matched_fields: vec![field_path.clone()],
+                })
+                .collect();
+
+            return Ok(SearchResults {
+                results,
+                total_count,
+                method: SearchMethod::FieldMatch,
+            });
+        }
+
         if query.query.is_empty() {
             return Ok(SearchResults {
                 results: vec![],
@@ -637,48 +690,62 @@ impl SearchProvider for SurrealDbStorage {
             });
         }
 
-        // SurrealDB supports field-level queries via native JSON paths.
-        // Use a CONTAINS-style search on raw_contents for basic fulltext matching.
-        let query_str = query.query.clone();
-        let jacs_type = query.jacs_type.clone();
-        let limit = query.limit;
-        let offset = query.offset;
-
-        let records: Vec<JacsRecord> = if let Some(ref doc_type) = jacs_type {
-            self.block_on(async {
-                let mut result = self
-                    .db
-                    .query(
-                        "SELECT * FROM jacs_document \
-                         WHERE raw_contents CONTAINS $query AND jacs_type = $jacs_type \
-                         ORDER BY created_at DESC LIMIT $limit START $offset",
-                    )
-                    .bind(("query", query_str))
-                    .bind(("jacs_type", doc_type.clone()))
-                    .bind(("limit", limit))
-                    .bind(("offset", offset))
-                    .await?;
-                let records: Vec<JacsRecord> = result.take(0)?;
-                Ok::<_, surrealdb::Error>(records)
-            })
-        } else {
-            self.block_on(async {
-                let mut result = self
-                    .db
-                    .query(
-                        "SELECT * FROM jacs_document \
-                         WHERE raw_contents CONTAINS $query \
-                         ORDER BY created_at DESC LIMIT $limit START $offset",
-                    )
-                    .bind(("query", query_str))
-                    .bind(("limit", limit))
-                    .bind(("offset", offset))
-                    .await?;
-                let records: Vec<JacsRecord> = result.take(0)?;
-                Ok::<_, surrealdb::Error>(records)
-            })
+        // Build dynamic WHERE clause for CONTAINS search with optional filters
+        let mut where_parts = vec!["raw_contents CONTAINS $query".to_string()];
+        if query.jacs_type.is_some() {
+            where_parts.push("jacs_type = $jacs_type".to_string());
         }
-        .map_err(|e| JacsError::StorageError(format!("SurrealDB search failed: {}", e)))?;
+        if query.agent_id.is_some() {
+            where_parts.push("agent_id = $agent_id".to_string());
+        }
+        let where_clause = where_parts.join(" AND ");
+
+        // Count query (pre-pagination total)
+        let count_sql = format!(
+            "SELECT count() AS count FROM jacs_document WHERE {} GROUP ALL",
+            where_clause
+        );
+        let total_count: usize = self
+            .block_on(async {
+                let mut q = self.db.query(&count_sql).bind(("query", query.query.clone()));
+                if let Some(ref jacs_type) = query.jacs_type {
+                    q = q.bind(("jacs_type", jacs_type.clone()));
+                }
+                if let Some(ref agent_id) = query.agent_id {
+                    q = q.bind(("agent_id", agent_id.clone()));
+                }
+                let mut result = q.await?;
+                let count: Option<CountResult> = result.take(0)?;
+                Ok::<_, surrealdb::Error>(count.map(|c| c.count).unwrap_or(0))
+            })
+            .map_err(|e| {
+                JacsError::StorageError(format!("SurrealDB count query failed: {}", e))
+            })?;
+
+        // Results query (with pagination)
+        let results_sql = format!(
+            "SELECT * FROM jacs_document WHERE {} ORDER BY created_at DESC LIMIT $limit START $offset",
+            where_clause
+        );
+        let records: Vec<JacsRecord> = self
+            .block_on(async {
+                let mut q = self
+                    .db
+                    .query(&results_sql)
+                    .bind(("query", query.query.clone()))
+                    .bind(("limit", query.limit))
+                    .bind(("offset", query.offset));
+                if let Some(ref jacs_type) = query.jacs_type {
+                    q = q.bind(("jacs_type", jacs_type.clone()));
+                }
+                if let Some(ref agent_id) = query.agent_id {
+                    q = q.bind(("agent_id", agent_id.clone()));
+                }
+                let mut result = q.await?;
+                let records: Vec<JacsRecord> = result.take(0)?;
+                Ok::<_, surrealdb::Error>(records)
+            })
+            .map_err(|e| JacsError::StorageError(format!("SurrealDB search failed: {}", e)))?;
 
         let mut results = Vec::new();
         for record in &records {
@@ -693,7 +760,7 @@ impl SearchProvider for SurrealDbStorage {
                 }
             }
 
-            results.push(jacs::search::SearchHit {
+            results.push(SearchHit {
                 document: doc,
                 score,
                 matched_fields: vec!["raw_contents".to_string()],
@@ -701,7 +768,7 @@ impl SearchProvider for SurrealDbStorage {
         }
 
         Ok(SearchResults {
-            total_count: results.len(),
+            total_count,
             results,
             method: SearchMethod::FieldMatch,
         })

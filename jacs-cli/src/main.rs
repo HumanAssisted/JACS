@@ -1475,7 +1475,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     process::exit(1);
                 }
 
-                agent.reencrypt_key(&old_password, &new_password).map_err(
+                jacs::simple::advanced::reencrypt_key(&agent, &old_password, &new_password).map_err(
                     |e| -> Box<dyn Error> {
                         Box::new(std::io::Error::new(
                             std::io::ErrorKind::Other,
@@ -1765,8 +1765,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 // Generate well-known documents via public API
                 let documents =
-                    agent
-                        .generate_well_known_documents(None)
+                    jacs::a2a::simple::generate_well_known_documents(&agent, None)
                         .map_err(|e| -> Box<dyn Error> {
                             Box::new(std::io::Error::new(
                                 std::io::ErrorKind::Other,
@@ -1873,8 +1872,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 // Generate well-known documents
                 let documents =
-                    agent
-                        .generate_well_known_documents(None)
+                    jacs::a2a::simple::generate_well_known_documents(&agent, None)
                         .map_err(|e| -> Box<dyn Error> {
                             Box::new(std::io::Error::new(
                                 std::io::ErrorKind::Other,
@@ -2051,8 +2049,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             format!("Failed to read document '{}': {}", doc_path, e)
                         })?;
                         let result =
-                            agent
-                                .lift_to_attestation(&doc_content, &claims)
+                            jacs::attestation::simple::lift(&agent, &doc_content, &claims)
                                 .map_err(|e| {
                                     format!("Failed to lift document to attestation: {}", e)
                                 })?;

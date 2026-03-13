@@ -618,33 +618,7 @@ fn db_err_box(operation: &str, reason: impl std::fmt::Display) -> Box<dyn Error>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    fn make_test_doc(
-        id: &str,
-        version: &str,
-        jacs_type: &str,
-        agent_id: Option<&str>,
-    ) -> JACSDocument {
-        let mut value = json!({
-            "jacsId": id,
-            "jacsVersion": version,
-            "jacsType": jacs_type,
-            "jacsLevel": "raw",
-            "data": "test content"
-        });
-        if let Some(aid) = agent_id {
-            value["jacsSignature"] = json!({
-                "jacsSignatureAgentId": aid
-            });
-        }
-        JACSDocument {
-            id: id.to_string(),
-            version: version.to_string(),
-            value,
-            jacs_type: jacs_type.to_string(),
-        }
-    }
+    use jacs::testing::make_test_doc;
 
     #[test]
     fn test_create_in_memory() {

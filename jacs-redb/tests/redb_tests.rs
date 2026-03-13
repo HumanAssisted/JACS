@@ -13,35 +13,12 @@
 //! cargo test -p jacs-redb -- redb_tests
 //! ```
 
-use jacs::agent::document::JACSDocument;
 use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
+use jacs::testing::make_test_doc;
 use jacs_redb::RedbStorage;
-use serde_json::json;
 use serial_test::serial;
 use tempfile::TempDir;
-
-/// Create a test document with the given fields.
-fn make_test_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
-    let mut value = json!({
-        "jacsId": id,
-        "jacsVersion": version,
-        "jacsType": jacs_type,
-        "jacsLevel": "raw",
-        "data": "test content"
-    });
-    if let Some(aid) = agent_id {
-        value["jacsSignature"] = json!({
-            "jacsSignatureAgentId": aid
-        });
-    }
-    JACSDocument {
-        id: id.to_string(),
-        version: version.to_string(),
-        value,
-        jacs_type: jacs_type.to_string(),
-    }
-}
 
 /// Create a file-based Redb storage in a temp directory.
 fn create_file_redb(tmpdir: &TempDir) -> RedbStorage {

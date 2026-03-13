@@ -1051,7 +1051,29 @@ impl SearchProvider for DuckDbStorage {
             reason: e.to_string(),
         })?;
 
-        let total_count = rows.len();
+        // Pre-pagination total: run a separate COUNT query
+        let count_where = match (&query.jacs_type, &query.agent_id) {
+            (Some(_), Some(_)) => "WHERE file_contents LIKE ? AND jacs_type = ? AND agent_id = ?",
+            (Some(_), None) => "WHERE file_contents LIKE ? AND jacs_type = ?",
+            (None, Some(_)) => "WHERE file_contents LIKE ? AND agent_id = ?",
+            (None, None) => "WHERE file_contents LIKE ?",
+        };
+        let count_sql = format!("SELECT COUNT(*) FROM jacs_document {}", count_where);
+        let mut count_stmt = conn.prepare(&count_sql).map_err(|e| JacsError::DatabaseError {
+            operation: "search_count".to_string(),
+            reason: e.to_string(),
+        })?;
+        let total_count: i64 = match (&query.jacs_type, &query.agent_id) {
+            (Some(jt), Some(ai)) => count_stmt.query_row(params![like_pattern, jt, ai], |row| row.get(0)),
+            (Some(jt), None) => count_stmt.query_row(params![like_pattern, jt], |row| row.get(0)),
+            (None, Some(ai)) => count_stmt.query_row(params![like_pattern, ai], |row| row.get(0)),
+            (None, None) => count_stmt.query_row(params![like_pattern], |row| row.get(0)),
+        }
+        .map_err(|e| JacsError::DatabaseError {
+            operation: "search_count".to_string(),
+            reason: e.to_string(),
+        })?;
+
         let mut results = Vec::new();
         for (jacs_id, jacs_version, jacs_type, raw) in rows {
             let value: Value = serde_json::from_str(&raw).map_err(|e| {
@@ -1089,14 +1111,14 @@ impl SearchProvider for DuckDbStorage {
 
         Ok(SearchResults {
             results,
-            total_count,
-            method: SearchMethod::FullText,
+            total_count: total_count as usize,
+            method: SearchMethod::FieldMatch, // LIKE is substring matching, not true fulltext
         })
     }
 
     fn capabilities(&self) -> SearchCapabilities {
         SearchCapabilities {
-            fulltext: true,
+            fulltext: false, // DuckDB uses LIKE substring matching, not true fulltext search
             vector: false,
             hybrid: false,
             field_filter: true,
@@ -1111,33 +1133,12 @@ impl SearchProvider for DuckDbStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use jacs::testing::make_test_doc as make_doc;
 
     fn setup() -> DuckDbStorage {
         let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
         storage.run_migrations().expect("migrations");
         storage
-    }
-
-    fn make_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
-        let mut value = json!({
-            "jacsId": id,
-            "jacsVersion": version,
-            "jacsType": jacs_type,
-            "jacsLevel": "raw",
-            "data": "test content"
-        });
-        if let Some(aid) = agent_id {
-            value["jacsSignature"] = json!({
-                "jacsSignatureAgentId": aid
-            });
-        }
-        JACSDocument {
-            id: id.to_string(),
-            version: version.to_string(),
-            value,
-            jacs_type: jacs_type.to_string(),
-        }
     }
 
     #[test]
@@ -1270,7 +1271,7 @@ mod tests {
 
         assert_eq!(results.results.len(), 1);
         assert_eq!(results.results[0].document.id, "kw-1");
-        assert_eq!(results.method, SearchMethod::FullText);
+        assert_eq!(results.method, SearchMethod::FieldMatch);
     }
 
     #[test]
