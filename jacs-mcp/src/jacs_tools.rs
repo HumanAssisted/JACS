@@ -2760,6 +2760,573 @@ impl JacsMcpServer {
             .to_string()
         }
     }
+
+    // =========================================================================
+    // Memory Tools
+    // =========================================================================
+
+    /// Save a memory as a cryptographically signed private agentstate document.
+    ///
+    /// Builds an agentstate document with `jacsAgentStateType: "memory"`,
+    /// embeds the content inline, and signs it. No file path required.
+    #[tool(
+        name = "jacs_memory_save",
+        description = "Save a memory as a cryptographically signed private document."
+    )]
+    pub async fn jacs_memory_save(
+        &self,
+        Parameters(params): Parameters<MemorySaveParams>,
+    ) -> String {
+        // Build agentstate document with inline content (no file path).
+        let mut doc = match agentstate_crud::create_agentstate_with_content(
+            "memory",
+            &params.name,
+            &params.content,
+            "text/plain",
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = MemorySaveResult {
+                    success: false,
+                    jacs_document_id: None,
+                    name: params.name,
+                    message: "Failed to create memory document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Set optional fields.
+        if let Some(desc) = &params.description {
+            doc["jacsAgentStateDescription"] = serde_json::json!(desc);
+        }
+
+        if let Some(framework) = &params.framework {
+            if let Err(e) = agentstate_crud::set_agentstate_framework(&mut doc, framework) {
+                let result = MemorySaveResult {
+                    success: false,
+                    jacs_document_id: None,
+                    name: params.name,
+                    message: "Failed to set framework".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        if let Some(tags) = &params.tags {
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            if let Err(e) = agentstate_crud::set_agentstate_tags(&mut doc, tag_refs) {
+                let result = MemorySaveResult {
+                    success: false,
+                    jacs_document_id: None,
+                    name: params.name,
+                    message: "Failed to set tags".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        // Mark origin as "authored" and visibility as private.
+        let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
+        doc["jacsVisibility"] = serde_json::json!("private");
+
+        // Sign and persist the document.
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,       // custom_schema
+            None,       // outputfilename
+            true,       // no_save
+            None,       // attachments
+            Some(true), // embed
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&MemorySaveResult {
+                            success: false,
+                            jacs_document_id: None,
+                            name: params.name,
+                            message: "Failed to determine the signed document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&MemorySaveResult {
+                        success: false,
+                        jacs_document_id: Some(doc_id),
+                        name: params.name,
+                        message: "Failed to persist signed memory document".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+
+                MemorySaveResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    name: params.name,
+                    message: "Memory saved successfully".to_string(),
+                    error: None,
+                }
+            }
+            Err(e) => MemorySaveResult {
+                success: false,
+                jacs_document_id: None,
+                name: params.name,
+                message: "Failed to sign memory document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Search saved memories by query string and optional tag filter.
+    ///
+    /// Iterates over all stored documents, filters to memory-type agentstate
+    /// documents that are not marked as removed, and matches the query against
+    /// the name, content, and description fields.
+    #[tool(
+        name = "jacs_memory_recall",
+        description = "Search saved memories by query string and optional tag filter."
+    )]
+    pub async fn jacs_memory_recall(
+        &self,
+        Parameters(params): Parameters<MemoryRecallParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = MemoryRecallResult {
+                    success: false,
+                    memories: Vec::new(),
+                    total: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let limit = params.limit.unwrap_or(10) as usize;
+        let query_lower = params.query.to_lowercase();
+        let mut matched: Vec<(String, MemoryEntry)> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Filter: must be agentstate with type "memory" and not removed.
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+                continue;
+            }
+            if doc
+                .get("jacsAgentStateRemoved")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                continue;
+            }
+
+            // Filter by tags if specified.
+            let tags = value_string_vec(&doc, "jacsAgentStateTags");
+            if let Some(filter_tags) = params.tags.as_ref() {
+                let doc_tags = tags.clone().unwrap_or_default();
+                if !filter_tags
+                    .iter()
+                    .all(|tag| doc_tags.iter().any(|item| item == tag))
+                {
+                    continue;
+                }
+            }
+
+            // Match query against name, content, and description.
+            let name = value_string(&doc, "jacsAgentStateName").unwrap_or_default();
+            let content = extract_embedded_state_content(&doc).unwrap_or_default();
+            let description = value_string(&doc, "jacsAgentStateDescription").unwrap_or_default();
+
+            let matches = name.to_lowercase().contains(&query_lower)
+                || content.to_lowercase().contains(&query_lower)
+                || description.to_lowercase().contains(&query_lower);
+
+            if !matches {
+                continue;
+            }
+
+            let version_date = value_string(&doc, "jacsVersionDate").unwrap_or_default();
+            let framework = value_string(&doc, "jacsAgentStateFramework");
+
+            matched.push((
+                version_date,
+                MemoryEntry {
+                    jacs_document_id: key,
+                    name,
+                    content: Some(content),
+                    description: value_string(&doc, "jacsAgentStateDescription"),
+                    tags: tags.filter(|items| !items.is_empty()),
+                    framework,
+                },
+            ));
+        }
+
+        // Sort by version date descending (newest first).
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        let total = matched.len();
+        let memories: Vec<MemoryEntry> = matched
+            .into_iter()
+            .take(limit)
+            .map(|(_, entry)| entry)
+            .collect();
+
+        let result = MemoryRecallResult {
+            success: true,
+            memories,
+            total,
+            message: format!(
+                "Found {} memory/memories matching query '{}'",
+                total, params.query
+            ),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// List all saved memory documents with optional filtering.
+    ///
+    /// Similar to `jacs_list_state` but locked to `state_type = "memory"`,
+    /// with pagination support and removal filtering.
+    #[tool(
+        name = "jacs_memory_list",
+        description = "List all saved memory documents with optional filtering and pagination."
+    )]
+    pub async fn jacs_memory_list(
+        &self,
+        Parameters(params): Parameters<MemoryListParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = MemoryListResult {
+                    success: false,
+                    memories: Vec::new(),
+                    total: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let limit = params.limit.unwrap_or(20) as usize;
+        let offset = params.offset.unwrap_or(0) as usize;
+        let mut matched: Vec<(String, MemoryEntry)> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Filter: must be agentstate with type "memory" and not removed.
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+                continue;
+            }
+            if doc
+                .get("jacsAgentStateRemoved")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                continue;
+            }
+
+            // Filter by framework if specified.
+            let framework = value_string(&doc, "jacsAgentStateFramework");
+            if let Some(filter) = params.framework.as_deref()
+                && framework.as_deref() != Some(filter)
+            {
+                continue;
+            }
+
+            // Filter by tags if specified.
+            let tags = value_string_vec(&doc, "jacsAgentStateTags");
+            if let Some(filter_tags) = params.tags.as_ref() {
+                let doc_tags = tags.clone().unwrap_or_default();
+                if !filter_tags
+                    .iter()
+                    .all(|tag| doc_tags.iter().any(|item| item == tag))
+                {
+                    continue;
+                }
+            }
+
+            let name = value_string(&doc, "jacsAgentStateName").unwrap_or_else(|| key.clone());
+            let content = extract_embedded_state_content(&doc);
+            let description = value_string(&doc, "jacsAgentStateDescription");
+            let version_date = value_string(&doc, "jacsVersionDate").unwrap_or_default();
+
+            matched.push((
+                version_date,
+                MemoryEntry {
+                    jacs_document_id: key,
+                    name,
+                    content,
+                    description,
+                    tags: tags.filter(|items| !items.is_empty()),
+                    framework,
+                },
+            ));
+        }
+
+        // Sort by version date descending (newest first).
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        let total = matched.len();
+        let memories: Vec<MemoryEntry> = matched
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, entry)| entry)
+            .collect();
+
+        let result = MemoryListResult {
+            success: true,
+            memories,
+            total,
+            message: format!(
+                "Listed {} memory document(s) (total: {}).",
+                limit.min(total.saturating_sub(offset)),
+                total
+            ),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Mark a memory document as removed (soft-delete).
+    ///
+    /// Loads the document, sets `jacsAgentStateRemoved: true`, and re-signs
+    /// it as a new version. The provenance chain is preserved.
+    #[tool(
+        name = "jacs_memory_forget",
+        description = "Mark a memory document as removed while preserving its provenance chain."
+    )]
+    pub async fn jacs_memory_forget(
+        &self,
+        Parameters(params): Parameters<MemoryForgetParams>,
+    ) -> String {
+        let existing_doc_string = match self.agent.get_document_by_id(&params.jacs_id) {
+            Ok(s) => s,
+            Err(e) => {
+                let result = MemoryForgetResult {
+                    success: false,
+                    jacs_document_id: params.jacs_id,
+                    message: "Failed to load memory document".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut doc = match serde_json::from_str::<serde_json::Value>(&existing_doc_string) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = MemoryForgetResult {
+                    success: false,
+                    jacs_document_id: params.jacs_id,
+                    message: "Memory document is not valid JSON".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Verify this is actually a memory document.
+        if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+            let result = MemoryForgetResult {
+                success: false,
+                jacs_document_id: params.jacs_id,
+                message: "Document is not a memory document".to_string(),
+                error: Some("NOT_A_MEMORY".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Mark as removed.
+        doc["jacsAgentStateRemoved"] = serde_json::json!(true);
+
+        match self
+            .agent
+            .update_document(&params.jacs_id, &doc.to_string(), None, None)
+        {
+            Ok(updated_doc_string) => {
+                let new_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
+                    .ok()
+                    .and_then(|v| extract_document_lookup_key(&v))
+                    .unwrap_or_else(|| params.jacs_id.clone());
+
+                let result = MemoryForgetResult {
+                    success: true,
+                    jacs_document_id: new_id,
+                    message: format!(
+                        "Memory '{}' has been forgotten (provenance preserved)",
+                        params.jacs_id
+                    ),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = MemoryForgetResult {
+                    success: false,
+                    jacs_document_id: params.jacs_id,
+                    message: "Failed to update and re-sign memory document".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Update an existing memory with new content, name, or tags.
+    ///
+    /// Loads the memory document, applies the requested changes, and creates
+    /// a new signed version linked to the previous version.
+    #[tool(
+        name = "jacs_memory_update",
+        description = "Update an existing memory with new content, name, or tags."
+    )]
+    pub async fn jacs_memory_update(
+        &self,
+        Parameters(params): Parameters<MemoryUpdateParams>,
+    ) -> String {
+        let existing_doc_string = match self.agent.get_document_by_id(&params.jacs_id) {
+            Ok(s) => s,
+            Err(e) => {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: format!("Failed to load memory document '{}'", params.jacs_id),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut doc = match serde_json::from_str::<serde_json::Value>(&existing_doc_string) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: format!("Memory document '{}' is not valid JSON", params.jacs_id),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Verify this is actually a memory document.
+        if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+            let result = MemoryUpdateResult {
+                success: false,
+                jacs_document_id: None,
+                message: "Document is not a memory document".to_string(),
+                error: Some("NOT_A_MEMORY".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Apply updates.
+        if let Some(content) = params.content.as_deref() {
+            update_embedded_state_content(&mut doc, content);
+        }
+
+        if let Some(name) = &params.name {
+            doc["jacsAgentStateName"] = serde_json::json!(name);
+        }
+
+        if let Some(tags) = &params.tags {
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            if let Err(e) = agentstate_crud::set_agentstate_tags(&mut doc, tag_refs) {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: "Failed to set tags".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        match self
+            .agent
+            .update_document(&params.jacs_id, &doc.to_string(), None, None)
+        {
+            Ok(updated_doc_string) => {
+                let version_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
+                    .ok()
+                    .and_then(|v| extract_document_lookup_key(&v))
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let result = MemoryUpdateResult {
+                    success: true,
+                    jacs_document_id: Some(version_id),
+                    message: format!("Memory '{}' updated successfully", params.jacs_id),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: format!("Failed to update and re-sign '{}'", params.jacs_id),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
 }
 
 // Implement the tool handler for the server
@@ -2789,6 +3356,11 @@ impl ServerHandler for JacsMcpServer {
                  (verify integrity), jacs_load_state (load with verification), \
                  jacs_update_state (update and re-sign), jacs_list_state (list signed docs), \
                  jacs_adopt_state (adopt external files). \
+                 \
+                 Memory tools: jacs_memory_save (save a memory), jacs_memory_recall \
+                 (search memories by query), jacs_memory_list (list all memories), \
+                 jacs_memory_forget (soft-delete a memory), jacs_memory_update \
+                 (update an existing memory). \
                  \
                  Messaging tools: jacs_message_send (create and sign a message), \
                  jacs_message_update (update and re-sign a message), \
@@ -2831,7 +3403,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = JacsMcpServer::tools();
-        assert_eq!(tools.len(), 33, "JacsMcpServer should expose 33 tools");
+        assert_eq!(tools.len(), 38, "JacsMcpServer should expose 38 tools");
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"jacs_sign_state"));
@@ -2871,6 +3443,12 @@ mod tests {
         assert!(names.contains(&"jacs_attest_verify"));
         assert!(names.contains(&"jacs_attest_lift"));
         assert!(names.contains(&"jacs_attest_export_dsse"));
+        // Memory tools
+        assert!(names.contains(&"jacs_memory_save"));
+        assert!(names.contains(&"jacs_memory_recall"));
+        assert!(names.contains(&"jacs_memory_list"));
+        assert!(names.contains(&"jacs_memory_forget"));
+        assert!(names.contains(&"jacs_memory_update"));
     }
 
     #[test]
