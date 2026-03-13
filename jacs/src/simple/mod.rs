@@ -327,6 +327,7 @@ mod tests {
         assert!(pem.ends_with("-----END PUBLIC KEY-----\n"));
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     fn test_simple_agent_get_public_key_pem_for_pq2025() {
         assert_public_key_pem_for_algorithm("pq2025", "pq2025");

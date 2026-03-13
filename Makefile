@@ -1,6 +1,6 @@
 .PHONY: build-jacs build-jacsbook build-jacsbook-pdf \
-        test test-all test-jacs test-jacs-features test-jacs-cli test-jacs-observability \
-        test-jacs-mcp test-jacs-binding-core \
+        test test-all test-all-pq test-jacs test-jacs-fast test-jacs-features test-jacs-pq test-jacs-cli test-jacs-observability \
+        test-jacs-mcp test-jacs-binding-core test-jacs-binding-core-pq \
         test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
         test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         audit-jacs \
@@ -68,8 +68,15 @@ build-jacsbook-pdf:
 test-jacs:
 	cd jacs && RUST_BACKTRACE=1 cargo test --lib --tests -- --nocapture
 
-test-jacs-features:
+# Fast test run: ed25519 only (no post-quantum keygen)
+test-jacs-fast:
 	RUST_BACKTRACE=1 cargo test -p jacs --features agreements,a2a,attestation --verbose
+
+# Full test run: includes post-quantum algorithm tests (slow keygen)
+test-jacs-pq:
+	RUST_BACKTRACE=1 cargo test -p jacs --features agreements,a2a,attestation,pq-tests --verbose
+
+test-jacs-features: test-jacs-pq
 
 test-jacs-cli:
 	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests --test cli_flags -- --nocapture
@@ -82,6 +89,9 @@ test-jacs-mcp:
 
 test-jacs-binding-core:
 	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --verbose
+
+test-jacs-binding-core-pq:
+	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --features pq-tests --verbose
 
 # Storage backend crates (extracted from jacs core)
 test-jacs-duckdb:
@@ -116,8 +126,11 @@ test-jacsnpm-parallel:
 
 test: test-jacs
 
-# Run all tests: core (with features), CLI, MCP, binding-core, storage backends, Python, Node.js
-test-all: test-jacs-features test-jacs-cli test-jacs-mcp test-jacs-binding-core test-jacs-storage test-jacspy test-jacsnpm
+# Run all tests (fast): ed25519 only, skips slow PQ keygen
+test-all: test-jacs-fast test-jacs-cli test-jacs-mcp test-jacs-binding-core test-jacs-storage test-jacspy test-jacsnpm
+
+# Run all tests (full): includes post-quantum algorithm tests
+test-all-pq: test-jacs-pq test-jacs-cli test-jacs-mcp test-jacs-binding-core-pq test-jacs-storage test-jacspy test-jacsnpm
 
 # Regenerate all canonical cross-language fixtures in sequence.
 # This intentionally mutates tracked fixture files.
@@ -385,12 +398,16 @@ help:
 	@echo ""
 	@echo "TEST:"
 	@echo "  make test                Run Rust library tests (alias for test-jacs)"
-	@echo "  make test-all            Run ALL tests (core, CLI, MCP, bindings, storage, Python, Node)"
+	@echo "  make test-all            Run ALL tests fast (ed25519 only, no PQ keygen)"
+	@echo "  make test-all-pq         Run ALL tests full (includes post-quantum tests)"
 	@echo "  make test-jacs           Run Rust library tests"
-	@echo "  make test-jacs-features  Run Rust tests with feature flags (agreements, a2a, attestation)"
+	@echo "  make test-jacs-fast      Run Rust tests with features, ed25519 only (fast)"
+	@echo "  make test-jacs-pq        Run Rust tests with features + post-quantum tests"
+	@echo "  make test-jacs-features  Alias for test-jacs-pq (full coverage)"
 	@echo "  make test-jacs-cli       Run CLI integration tests"
 	@echo "  make test-jacs-mcp       Run MCP server tests"
-	@echo "  make test-jacs-binding-core  Run binding-core tests"
+	@echo "  make test-jacs-binding-core     Run binding-core tests (ed25519)"
+	@echo "  make test-jacs-binding-core-pq  Run binding-core tests (+ post-quantum)"
 	@echo "  make test-jacs-storage   Run all storage backend tests (duckdb, redb, surrealdb, postgresql)"
 	@echo "  make test-jacs-duckdb    Run DuckDB storage tests"
 	@echo "  make test-jacs-redb      Run Redb storage tests"

@@ -26,8 +26,9 @@ fn ephemeral_ed25519() -> (SimpleAgent, jacs::simple::AgentInfo) {
     SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral(ed25519) should succeed")
 }
 
+#[cfg(feature = "pq-tests")]
 fn ephemeral_default() -> (SimpleAgent, jacs::simple::AgentInfo) {
-    SimpleAgent::ephemeral(None).expect("ephemeral(default/pq2025) should succeed")
+    SimpleAgent::ephemeral(Some("pq2025")).expect("ephemeral(pq2025) should succeed")
 }
 
 // =============================================================================

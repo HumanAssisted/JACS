@@ -81,6 +81,7 @@ mod sign_detached_non_utf8 {
         );
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     fn rejects_non_utf8_message_pq2025() {
         let store = InMemoryKeyStore::new("pq2025");

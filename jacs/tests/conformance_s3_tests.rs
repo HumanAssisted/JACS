@@ -1,4 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "s3-tests"))]
 
 //! Conformance tests for the S3 (MinIO) backend.
 //!

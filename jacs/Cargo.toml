@@ -182,6 +182,9 @@ attestation = []
 # Post-quantum algorithm tests (slow keygen). Omit for fast test runs.
 pq-tests = []
 
+# S3 conformance tests (require Docker/MinIO). Omit for fast test runs.
+s3-tests = []
+
 # Observability backends are gated behind compile-time features.
 # Default is a minimal core: stderr/file logs only, no remote backends.
 # Enable these features to activate OTLP-based backends and pull in deps.

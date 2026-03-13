@@ -221,6 +221,7 @@ fn generate_ed25519_a2a_fixtures() {
     generate_a2a_fixtures("ed25519", "ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 #[serial]
 fn generate_pq2025_a2a_fixtures() {
