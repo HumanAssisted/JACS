@@ -20,7 +20,6 @@ use crate::storage::database_traits::DatabaseDocumentTraits;
 use serde_json::Value;
 use sqlx::Row;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
-use std::error::Error;
 use std::time::Duration;
 use tokio::runtime::Handle;
 
@@ -160,7 +159,7 @@ impl SqliteStorage {
     }
 
     /// Parse a document key in format "id:version" into (id, version).
-    fn parse_key(key: &str) -> Result<(&str, &str), Box<dyn Error>> {
+    fn parse_key(key: &str) -> Result<(&str, &str), JacsError> {
         let parts: Vec<&str> = key.splitn(2, ':').collect();
         if parts.len() != 2 {
             return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());

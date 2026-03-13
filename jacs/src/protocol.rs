@@ -14,12 +14,12 @@
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::crypt::KeyManager;
+use crate::error::JacsError;
 use crate::time_utils::now_rfc3339;
 use base64::Engine;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::error::Error;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -41,7 +41,7 @@ pub fn canonicalize_json(value: &serde_json::Value) -> String {
 ///
 /// This matches the format used by all four HAI SDK language implementations
 /// (Rust, Python, Node, Go).
-pub fn build_auth_header(agent: &mut Agent) -> Result<String, Box<dyn Error>> {
+pub fn build_auth_header(agent: &mut Agent) -> Result<String, JacsError> {
     let jacs_id = agent.get_lookup_id()?;
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -74,7 +74,7 @@ pub fn build_auth_header(agent: &mut Agent) -> Result<String, Box<dyn Error>> {
 ///   }
 /// }
 /// ```
-pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, Box<dyn Error>> {
+pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsError> {
     let jacs_id = agent.get_lookup_id()?;
     let now = now_rfc3339();
     let canonical = canonicalize_json(payload);
@@ -122,7 +122,7 @@ pub fn encode_verify_payload(document: &str) -> String {
 
 /// Decode a URL-safe base64 (no padding) verification payload back to the
 /// original document string.
-pub fn decode_verify_payload(encoded: &str) -> Result<String, Box<dyn Error>> {
+pub fn decode_verify_payload(encoded: &str) -> Result<String, JacsError> {
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(encoded)
         .map_err(|e| format!("decode_verify_payload: invalid base64url: {e}"))?;
@@ -136,7 +136,7 @@ pub fn decode_verify_payload(encoded: &str) -> Result<String, Box<dyn Error>> {
 ///
 /// SDK clients use this to build hosted verification URLs
 /// (e.g. `https://hai.ai/verify/{id}`).
-pub fn extract_document_id(document: &str) -> Result<String, Box<dyn Error>> {
+pub fn extract_document_id(document: &str) -> Result<String, JacsError> {
     let value: Value = serde_json::from_str(document)
         .map_err(|e| format!("extract_document_id: invalid JSON: {e}"))?;
 
@@ -182,7 +182,7 @@ pub fn unwrap_signed_event(
     agent: &Agent,
     event: &Value,
     server_public_keys: &HashMap<String, Vec<u8>>,
-) -> Result<(Value, bool), Box<dyn Error>> {
+) -> Result<(Value, bool), JacsError> {
     // --- Format 1: Canonical JacsDocument {data, jacsSignature} ---
     if let (Some(data), Some(jacs_sig)) = (event.get("data"), event.get("jacsSignature")) {
         let agent_id = jacs_sig

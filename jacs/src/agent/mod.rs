@@ -35,7 +35,6 @@ use loaders::FileLoader;
 use serde_json::{Value, json, to_value};
 use serde_json_canonicalizer::to_string as to_canonical_string;
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
@@ -1424,7 +1423,7 @@ impl Agent {
     pub fn validate_header(
         &mut self,
         json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Value, JacsError> {
         let value = self.schema.validate_header(json)?;
 
         // check hash
@@ -1437,7 +1436,7 @@ impl Agent {
     pub fn validate_agent(
         &mut self,
         json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Value, JacsError> {
         let value = self.schema.validate_agent(json)?;
         //
         // additional validation
@@ -1478,7 +1477,7 @@ impl Agent {
         json: &str,
         create_keys: bool,
         _create_keys_algorithm: Option<&str>,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Value, JacsError> {
         // validate schema json string
         // make sure id and version are empty
         let mut instance = self.schema.create(json)?;

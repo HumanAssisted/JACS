@@ -1,4 +1,5 @@
 use super::constants::RSA_KEY_BITS;
+use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::pkcs8::DecodePublicKey;
@@ -13,14 +14,18 @@ use tracing::{debug, trace, warn};
 
 /// returns public, public_filepath, private, private_filepath
 #[must_use = "generated keys must be stored securely"]
-pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
+pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
     let mut rng = OsRng;
     let private_key = RsaPrivateKey::new(&mut rng, RSA_KEY_BITS)
         .map_err(|e| format!("Failed to generate RSA key: {}", e))?;
     let public_key = RsaPublicKey::from(&private_key);
 
-    let private_key_pem = private_key.to_pkcs8_pem(LineEnding::CRLF)?;
-    let public_key_pem = public_key.to_public_key_pem(LineEnding::CRLF)?;
+    let private_key_pem = private_key
+        .to_pkcs8_pem(LineEnding::CRLF)
+        .map_err(|e| format!("Failed to encode RSA private key to PEM: {}", e))?;
+    let public_key_pem = public_key
+        .to_public_key_pem(LineEnding::CRLF)
+        .map_err(|e| format!("Failed to encode RSA public key to PEM: {}", e))?;
 
     Ok((
         private_key_pem.as_bytes().to_vec(),
@@ -29,13 +34,11 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
 }
 
 #[must_use = "signature must be stored or transmitted"]
-pub fn sign_string(
-    private_key_content: Vec<u8>,
-    data: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+pub fn sign_string(private_key_content: Vec<u8>, data: &str) -> Result<String, JacsError> {
     let private_key_content_converted = std::str::from_utf8(&private_key_content)
         .map_err(|e| format!("Private key is not valid UTF-8: {}", e))?;
-    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_content_converted)?;
+    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_content_converted)
+        .map_err(|e| format!("Failed to parse RSA private key: {}", e))?;
     let signing_key = BlindedSigningKey::<Sha256>::new(private_key);
     let signature = signing_key.sign_with_rng(&mut OsRng, data.as_bytes());
     let signature_bytes = signature.to_bytes();
@@ -53,7 +56,7 @@ pub fn verify_string(
     public_key_content: Vec<u8>,
     data: &str,
     signature_base64: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), JacsError> {
     let public_key_content_converted = std::str::from_utf8(&public_key_content)
         .map_err(|e| format!("Public key is not valid UTF-8: {}", e))?;
 
@@ -62,7 +65,8 @@ pub fn verify_string(
         "Parsing RSA public key"
     );
 
-    let public_key = RsaPublicKey::from_public_key_pem(public_key_content_converted)?;
+    let public_key = RsaPublicKey::from_public_key_pem(public_key_content_converted)
+        .map_err(|e| format!("Failed to parse RSA public key: {}", e))?;
 
     // Updated instantiation of VerifyingKey
     let verifying_key = VerifyingKey::<Sha256>::from(public_key);
@@ -73,8 +77,11 @@ pub fn verify_string(
         "RSA-PSS verification starting"
     );
 
-    let signature_bytes = B64.decode(signature_base64)?;
-    let signature = Signature::try_from(signature_bytes.as_slice())?;
+    let signature_bytes = B64
+        .decode(signature_base64)
+        .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?;
+    let signature = Signature::try_from(signature_bytes.as_slice())
+        .map_err(|e| format!("Invalid RSA signature format: {}", e))?;
 
     let result = verifying_key.verify(data.as_bytes(), &signature);
 
@@ -85,10 +92,10 @@ pub fn verify_string(
         }
         Err(e) => {
             warn!("RSA-PSS signature verification failed");
-            Err(Box::new(std::io::Error::other(format!(
+            Err(JacsError::CryptoError(format!(
                 "Signature verification failed: {}",
                 e
-            ))))
+            )))
         }
     }
 }
@@ -100,14 +107,18 @@ mod tests {
 
     // Use smaller key size for tests to speed up key generation
     // Production code uses RSA_KEY_BITS (4096) but tests use RSA_TEST_KEY_BITS (2048) for speed
-    fn generate_test_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
+    fn generate_test_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         let mut rng = OsRng;
         let private_key = RsaPrivateKey::new(&mut rng, RSA_TEST_KEY_BITS)
             .map_err(|e| format!("Failed to generate RSA key: {}", e))?;
         let public_key = RsaPublicKey::from(&private_key);
 
-        let private_key_pem = private_key.to_pkcs8_pem(LineEnding::CRLF)?;
-        let public_key_pem = public_key.to_public_key_pem(LineEnding::CRLF)?;
+        let private_key_pem = private_key
+            .to_pkcs8_pem(LineEnding::CRLF)
+            .map_err(|e| format!("Failed to encode RSA private key to PEM: {}", e))?;
+        let public_key_pem = public_key
+            .to_public_key_pem(LineEnding::CRLF)
+            .map_err(|e| format!("Failed to encode RSA public key to PEM: {}", e))?;
 
         Ok((
             private_key_pem.as_bytes().to_vec(),

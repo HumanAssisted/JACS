@@ -62,7 +62,7 @@ use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig
 use opentelemetry_sdk::{Resource, logs::SdkLoggerProvider};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std::error::Error>> {
+pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error::JacsError> {
     if !config.enabled {
         return Ok(None);
     }
@@ -130,7 +130,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn init_logs(config: &LogConfig) -> Result<Option<()>, Box<dyn std::error::Error>> {
+pub fn init_logs(config: &LogConfig) -> Result<Option<()>, crate::error::JacsError> {
     if !config.enabled {
         return Ok(None);
     }

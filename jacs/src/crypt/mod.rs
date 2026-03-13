@@ -120,7 +120,7 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 /// - Pq2025 (ML-DSA-87): 2592-byte public keys
 pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
-) -> Result<CryptoSigningAlgorithm, Box<dyn std::error::Error>> {
+) -> Result<CryptoSigningAlgorithm, JacsError> {
     trace!(
         public_key_len = public_key.len(),
         "Detecting algorithm from public key"
@@ -176,8 +176,7 @@ pub fn detect_algorithm_from_public_key(
     );
     Err(JacsError::CryptoError(
         "Could not determine the algorithm from the public key format".to_string(),
-    )
-    .into())
+    ))
 }
 
 /// Detects which algorithm to use based on signature length and other characteristics
@@ -190,15 +189,15 @@ pub fn detect_algorithm_from_signature(
 }
 
 pub trait KeyManager {
-    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>>;
+    fn generate_keys(&mut self) -> Result<(), JacsError>;
+    fn sign_string(&mut self, data: &str) -> Result<String, JacsError>;
     fn verify_string(
         &self,
         data: &str,
         signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+    ) -> Result<(), JacsError>;
 
     /// Signs multiple strings in a batch operation.
     ///
@@ -219,7 +218,7 @@ pub trait KeyManager {
     ///
     /// Returns an error if signing any message fails. In case of failure, no
     /// signatures are returned (all-or-nothing semantics).
-    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>>;
+    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, JacsError>;
 }
 
 impl Agent {
@@ -227,7 +226,7 @@ impl Agent {
     ///
     /// This is the byte-level equivalent of `sign_string`. Used by
     /// the email signing module where the payload is binary.
-    pub fn sign_bytes(&mut self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    pub fn sign_bytes(&mut self, data: &[u8]) -> Result<Vec<u8>, JacsError> {
         let config = self
             .config
             .as_ref()
@@ -282,10 +281,7 @@ impl Agent {
     /// Generate keys using a specific KeyStore implementation.
     /// For ephemeral agents, uses set_keys_raw (no AES encryption).
     /// For persistent agents, uses set_keys (AES-encrypts private key).
-    pub fn generate_keys_with_store(
-        &mut self,
-        ks: &dyn KeyStore,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn generate_keys_with_store(&mut self, ks: &dyn KeyStore) -> Result<(), JacsError> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let key_algorithm = config.get_key_algorithm()?;
         info!(algorithm = %key_algorithm, "Generating new keypair");
@@ -306,11 +302,11 @@ impl Agent {
 
 impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
-    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn generate_keys(&mut self) -> Result<(), JacsError> {
         self.generate_keys_with_store(&FsEncryptedStore)
     }
 
-    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
+    fn sign_string(&mut self, data: &str) -> Result<String, JacsError> {
         let config = self.config.as_ref().ok_or(
             "Document signing failed: agent configuration not initialized. \
             Call load() with a valid config file or create() to initialize the agent first.",
@@ -400,7 +396,7 @@ impl KeyManager for Agent {
         }
     }
 
-    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, JacsError> {
         if messages.is_empty() {
             return Ok(Vec::new());
         }
@@ -506,7 +502,7 @@ impl KeyManager for Agent {
         signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), JacsError> {
         trace!(
             data_len = data.len(),
             signature_len = signature_base64.len(),
@@ -516,13 +512,17 @@ impl KeyManager for Agent {
         );
         let verify_start = std::time::Instant::now();
         // Get the signature bytes for analysis
-        let signature_bytes = STANDARD.decode(signature_base64)?;
+        let signature_bytes = STANDARD
+            .decode(signature_base64)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?;
 
         // Determine the algorithm type
         let algo = match public_key_enc_type {
             Some(ref enc_type) => {
                 debug!(algorithm = %enc_type, "Using explicit algorithm from signature");
-                CryptoSigningAlgorithm::from_str(enc_type)?
+                CryptoSigningAlgorithm::from_str(enc_type).map_err(|_| {
+                    JacsError::CryptoError(format!("Unknown signing algorithm: {}", enc_type))
+                })?
             }
             None => {
                 warn!(
@@ -560,7 +560,12 @@ impl KeyManager for Agent {
                             .ok_or("Agent config not initialized for algorithm fallback")?;
                         let key_algorithm = config.get_key_algorithm()?;
                         debug!(fallback = %key_algorithm, "Using config fallback for algorithm detection");
-                        CryptoSigningAlgorithm::from_str(&key_algorithm)?
+                        CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
+                            JacsError::CryptoError(format!(
+                                "Unknown signing algorithm: {}",
+                                key_algorithm
+                            ))
+                        })?
                     }
                 }
             }

@@ -15,11 +15,9 @@ use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
 use crate::validation::normalize_agent_id;
 use chrono::Utc;
-use serde::ser::StdError;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashSet;
-use std::error::Error;
 use tracing::{debug, info, warn};
 
 /// Options for creating and checking agreements.
@@ -71,7 +69,7 @@ pub trait Agreement {
         question: Option<&str>,
         context: Option<&str>,
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn Error>>;
+    ) -> Result<JACSDocument, JacsError>;
     /// Create an agreement with extended options (timeout, quorum, algorithm constraints).
     fn create_agreement_with_options(
         &mut self,
@@ -81,37 +79,37 @@ pub trait Agreement {
         context: Option<&str>,
         agreement_fieldname: Option<String>,
         options: &AgreementOptions,
-    ) -> Result<JACSDocument, Box<dyn Error>>;
+    ) -> Result<JACSDocument, JacsError>;
     /// given a document id and a list of agents, return an updated document
     fn add_agents_to_agreement(
         &mut self,
         document_key: &str,
         agentids: &[String],
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn Error>>;
+    ) -> Result<JACSDocument, JacsError>;
     /// given a document id and a list of agents, return an updated document
     fn remove_agents_from_agreement(
         &mut self,
         document_key: &str,
         agentids: &[String],
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn Error>>;
+    ) -> Result<JACSDocument, JacsError>;
     /// given a document id sign a document, return an updated document
     fn sign_agreement(
         &mut self,
         document_key: &str,
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn Error>>;
+    ) -> Result<JACSDocument, JacsError>;
     /// given a document, check all agreement signatures
     fn check_agreement(
         &self,
         document_key: &str,
         agreement_fieldname: Option<String>,
-    ) -> Result<String, Box<dyn Error>>;
+    ) -> Result<String, JacsError>;
 
     /* HYGIENE-004: Potentially dead code - verify tests pass before removal
     /// given a document, check all agreement signatures
-    fn has_agreement(&self, document_key: &str) -> Result<bool, Box<dyn Error>>;
+    fn has_agreement(&self, document_key: &str) -> Result<bool, JacsError>;
     */
 
     /// agreements update documents
@@ -119,32 +117,24 @@ pub trait Agreement {
     /// the agreement itself needs it's own hash to track
     /// on a subset of fields
     /// the standard hash detects any changes at all
-    fn agreement_hash(
-        &self,
-        value: Value,
-        agreement_fieldname: &str,
-    ) -> Result<String, Box<dyn Error>>;
+    fn agreement_hash(&self, value: Value, agreement_fieldname: &str) -> Result<String, JacsError>;
 
     /// remove fields that should not be used for agreement signature
     fn trim_fields_for_hashing_and_signing(
         &self,
         value: Value,
         agreement_fieldname: &str,
-    ) -> Result<(String, Vec<String>), Box<dyn Error>>;
+    ) -> Result<(String, Vec<String>), JacsError>;
 
     fn agreement_get_question_and_context(
         &self,
         document_key: &str,
         agreement_fieldname: Option<String>,
-    ) -> Result<(String, String), Box<dyn Error>>;
+    ) -> Result<(String, String), JacsError>;
 }
 
 impl Agreement for Agent {
-    fn agreement_hash(
-        &self,
-        value: Value,
-        agreement_fieldname: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    fn agreement_hash(&self, value: Value, agreement_fieldname: &str) -> Result<String, JacsError> {
         let (values_as_string, _fields) =
             self.trim_fields_for_hashing_and_signing(value, agreement_fieldname)?;
         Ok(hash_string(&values_as_string))
@@ -152,7 +142,7 @@ impl Agreement for Agent {
 
     /* HYGIENE-004: Potentially dead code - verify tests pass before removal
     /// ineffienct because it doesn't pull from the document
-    fn has_agreement(&self, document_key: &str) -> Result<bool, Box<dyn Error>> {
+    fn has_agreement(&self, document_key: &str) -> Result<bool, JacsError> {
         let document = self.get_document(document_key)?;
         let agreement_fieldname_key = AGENT_AGREEMENT_FIELDNAME.to_string();
         let agreement_field = document.value.get(&agreement_fieldname_key);
@@ -167,7 +157,7 @@ impl Agreement for Agent {
         &self,
         value: Value,
         agreement_fieldname: &str,
-    ) -> Result<(String, Vec<String>), Box<dyn Error>> {
+    ) -> Result<(String, Vec<String>), JacsError> {
         let mut new_obj: Value = value.clone();
         new_obj.as_object_mut().map(|obj| {
             obj.remove(DOCUMENT_AGREEMENT_HASH_FIELDNAME);
@@ -195,7 +185,7 @@ impl Agreement for Agent {
         question: Option<&str>,
         context: Option<&str>,
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
+    ) -> Result<JACSDocument, JacsError> {
         self.create_agreement_with_options(
             document_key,
             agentids,
@@ -214,7 +204,7 @@ impl Agreement for Agent {
         context: Option<&str>,
         agreement_fieldname: Option<String>,
         options: &AgreementOptions,
-    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
+    ) -> Result<JACSDocument, JacsError> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -223,17 +213,16 @@ impl Agreement for Agent {
         // Validate quorum
         if let Some(q) = options.quorum {
             if q == 0 {
-                return Err(
-                    JacsError::DocumentError("Quorum must be at least 1".to_string()).into(),
-                );
+                return Err(JacsError::DocumentError(
+                    "Quorum must be at least 1".to_string(),
+                ));
             }
             if q as usize > agentids.len() {
                 return Err(JacsError::DocumentError(format!(
                     "Quorum ({}) cannot exceed the number of agents ({})",
                     q,
                     agentids.len()
-                ))
-                .into());
+                )));
             }
         }
 
@@ -249,8 +238,7 @@ impl Agreement for Agent {
                 return Err(JacsError::DocumentError(format!(
                     "Timeout '{}' is in the past",
                     timeout_str
-                ))
-                .into());
+                )));
             }
         }
 
@@ -260,8 +248,7 @@ impl Agreement for Agent {
                 return Err(JacsError::DocumentError(format!(
                     "Invalid minimumStrength '{}': must be 'classical' or 'post-quantum'",
                     strength
-                ))
-                .into());
+                )));
             }
         }
 
@@ -308,16 +295,14 @@ impl Agreement for Agent {
             return Err(JacsError::DocumentError(format!(
                 "Agreement field hashes don't match for document_key {}",
                 document_key
-            ))
-            .into());
+            )));
         }
 
         if value[SHA256_FIELDNAME] == updated_document.value[SHA256_FIELDNAME] {
             return Err(JacsError::DocumentError(format!(
                 "document hashes should have changed {}",
                 document_key
-            ))
-            .into());
+            )));
         };
 
         let quorum_display = options
@@ -342,7 +327,7 @@ impl Agreement for Agent {
         document_key: &str,
         agentids: &[String],
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
+    ) -> Result<JACSDocument, JacsError> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -366,10 +351,10 @@ impl Agreement for Agent {
                     );
                 }
             } else {
-                return Err("Agreement modification failed: agents field not found".into());
+                return Err("Agreement modification failed: agents field not found");
             }
         } else {
-            return Err("Agreement modification failed: no agreement field present".into());
+            return Err("Agreement modification failed: no agreement field present");
         }
 
         let updated_document =
@@ -383,7 +368,7 @@ impl Agreement for Agent {
         document_key: &str,
         agentids: &[String],
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn StdError + 'static>> {
+    ) -> Result<JACSDocument, JacsError> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -449,7 +434,7 @@ impl Agreement for Agent {
         &mut self,
         document_key: &str,
         agreement_fieldname: Option<String>,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
+    ) -> Result<JACSDocument, JacsError> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(ref key) => key.to_string(),
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -473,8 +458,7 @@ impl Agreement for Agent {
                         return Err(JacsError::DocumentError(format!(
                             "Cannot sign: agreement has expired (deadline was {})",
                             timeout_str
-                        ))
-                        .into());
+                        )));
                     }
                 }
             }
@@ -493,8 +477,7 @@ impl Agreement for Agent {
                         return Err(JacsError::DocumentError(format!(
                             "Cannot sign: agent's algorithm '{}' is not in requiredAlgorithms {:?}",
                             algo, required_algos
-                        ))
-                        .into());
+                        )));
                     }
                 }
                 if let Some(strength) = jacs_agreement
@@ -505,8 +488,7 @@ impl Agreement for Agent {
                         return Err(JacsError::DocumentError(format!(
                             "Cannot sign: agent's algorithm '{}' does not meet minimumStrength '{}'",
                             algo, strength
-                        ))
-                        .into());
+                        )));
                     }
                 }
             }
@@ -610,17 +592,17 @@ impl Agreement for Agent {
         if original_agreement_hash_value != Some(&agreement_hash_value_after) {
             return Err(JacsError::DocumentError(format!(
                 "aborting signature on agreement. field hashes don't match for document_key {} \n {} {}",
-                document_key, original_agreement_hash_value.expect("original_agreement_hash_value"), agreement_hash_value_after
-            ))
-            .into());
+                document_key,
+                original_agreement_hash_value.expect("original_agreement_hash_value"),
+                agreement_hash_value_after
+            )));
         }
 
         if pre_update_hash == updated_document.value[SHA256_FIELDNAME] {
             return Err(JacsError::DocumentError(format!(
                 "document hashes should have changed {}",
                 document_key
-            ))
-            .into());
+            )));
         };
 
         // Compute signature counts for structured logging
@@ -675,7 +657,7 @@ impl Agreement for Agent {
         &self,
         document_key: &str,
         agreement_fieldname: Option<String>,
-    ) -> Result<(String, String), Box<dyn Error>> {
+    ) -> Result<(String, String), JacsError> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -689,7 +671,7 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("Agreement verification failed: agreement hashes do not match".into());
+            return Err("Agreement verification failed: agreement hashes do not match");
         }
 
         if let Some(jacs_agreement) = document.value.get(agreement_fieldname_key) {
@@ -717,7 +699,7 @@ impl Agreement for Agent {
         &self,
         document_key: &str,
         agreement_fieldname: Option<String>,
-    ) -> Result<String, Box<dyn StdError + 'static>> {
+    ) -> Result<String, JacsError> {
         let agreement_fieldname_key: String = match agreement_fieldname {
             Some(ref key) => key.to_string(),
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -732,7 +714,7 @@ impl Agreement for Agent {
         let calculated_agreement_hash_value =
             self.agreement_hash(document.value.clone(), &agreement_fieldname_key)?;
         if original_agreement_hash_value != calculated_agreement_hash_value {
-            return Err("Agreement verification failed: agreement hashes do not match".into());
+            return Err("Agreement verification failed: agreement hashes do not match");
         }
 
         let jacs_agreement = document
@@ -753,8 +735,7 @@ impl Agreement for Agent {
                     return Err(JacsError::DocumentError(format!(
                         "Agreement has expired: deadline was {}",
                         timeout_str
-                    ))
-                    .into());
+                    )));
                 }
             }
         }
@@ -788,8 +769,7 @@ impl Agreement for Agent {
                 return Err(JacsError::DocumentError(format!(
                     "Quorum not met: need {} signatures, have {} (unsigned: {:?})",
                     q, signed_count, unsigned
-                ))
-                .into());
+                )));
             }
         } else {
             // Original behavior: all agents must sign
@@ -797,8 +777,7 @@ impl Agreement for Agent {
                 return Err(JacsError::DocumentError(format!(
                     "not all agents have signed: {:?} {:?}",
                     unsigned, jacs_agreement
-                ))
-                .into());
+                )));
             }
         }
 
@@ -834,8 +813,7 @@ impl Agreement for Agent {
                         return Err(JacsError::DocumentError(format!(
                             "Signature from {} uses algorithm '{}' which is not in requiredAlgorithms {:?}",
                             agent_id_and_version, public_key_enc_type, algos
-                        ))
-                        .into());
+                        )));
                     }
                 }
                 if let Some(strength) = minimum_strength {
@@ -843,8 +821,7 @@ impl Agreement for Agent {
                         return Err(JacsError::DocumentError(format!(
                             "Signature from {} uses algorithm '{}' which does not meet minimumStrength '{}'",
                             agent_id_and_version, public_key_enc_type, strength
-                        ))
-                        .into());
+                        )));
                     }
                 }
 
@@ -858,8 +835,7 @@ impl Agreement for Agent {
                     return Err(JacsError::CryptoError(format!(
                         "wrong public key for {} , {}",
                         agent_id_and_version, noted_hash
-                    ))
-                    .into());
+                    )));
                 }
                 debug!(
                     "testing agreement sig agent_id_and_version {} {} {} ",

@@ -23,7 +23,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt;
 use std::io::Read;
 use std::path::Path;
@@ -52,7 +51,7 @@ impl JACSDocument {
         &self.value
     }
 
-    pub fn getschema(&self) -> Result<String, Box<dyn Error>> {
+    pub fn getschema(&self) -> Result<String, JacsError> {
         let schemafield = "$schema";
         if let Some(schema) = self.value.get(schemafield)
             && let Some(schema_str) = schema.as_str()
@@ -63,7 +62,7 @@ impl JACSDocument {
     }
 
     /// use this to get the name of the
-    pub fn getshortschema(&self) -> Result<String, Box<dyn Error>> {
+    pub fn getshortschema(&self) -> Result<String, JacsError> {
         let longschema = self.getschema()?;
         let re = Regex::new(r"/([^/]+)\.schema\.json$")
             .map_err(|e| format!("Invalid regex pattern: {}", e))?;
@@ -79,7 +78,7 @@ impl JACSDocument {
     pub fn agreement_unsigned_agents(
         &self,
         agreement_fieldname: Option<String>,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
+    ) -> Result<Vec<String>, JacsError> {
         let all_requested_agents = self.agreement_requested_agents(agreement_fieldname.clone())?;
         let all_agreement_signed_agents = self.agreement_signed_agents(agreement_fieldname)?;
 
@@ -115,7 +114,7 @@ impl JACSDocument {
     pub fn agreement_requested_agents(
         &self,
         agreement_fieldname: Option<String>,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
+    ) -> Result<Vec<String>, JacsError> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -133,7 +132,7 @@ impl JACSDocument {
         Err("Agreement lookup failed: no agreement or agents in agreement".into())
     }
 
-    pub fn signing_agent(&self) -> Result<String, Box<dyn Error>> {
+    pub fn signing_agent(&self) -> Result<String, JacsError> {
         let value: &serde_json::Value = &self.value;
         if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
             // Use ok_or_else for better error message if agentID is missing or not a string
@@ -147,7 +146,7 @@ impl JACSDocument {
         Err("Agreement lookup failed: no agreement or signatures in agreement".into())
     }
 
-    pub fn signing_agent_str(&self) -> Result<&str, Box<dyn Error>> {
+    pub fn signing_agent_str(&self) -> Result<&str, JacsError> {
         let value: &serde_json::Value = &self.value;
         if let Some(jacs_signature) = value.get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME) {
             return Ok(jacs_signature
@@ -162,7 +161,7 @@ impl JACSDocument {
     pub fn agreement_signed_agents(
         &self,
         agreement_fieldname: Option<String>,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
+    ) -> Result<Vec<String>, JacsError> {
         let agreement_fieldname_key = match agreement_fieldname {
             Some(key) => key,
             _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -204,11 +203,8 @@ pub trait DocumentTraits {
         fields: Option<&[String]>,
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
-    ) -> Result<(), Box<dyn Error>>;
-    fn archive_old_version(
-        &mut self,
-        original_document: &JACSDocument,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<(), JacsError>;
+    fn archive_old_version(&mut self, original_document: &JACSDocument) -> Result<(), JacsError>;
     fn validate_document_with_custom_schema(
         &self,
         schema_path: &str,
@@ -219,34 +215,23 @@ pub trait DocumentTraits {
         json: &str,
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
-    ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>>;
+    ) -> Result<JACSDocument, JacsError>;
     fn load_all(
         &mut self,
         store: bool,
         load_only_recent: bool,
-    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>>;
-    fn load_document(&mut self, document_string: &str) -> Result<JACSDocument, Box<dyn Error>>;
-    fn remove_document(&mut self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>>;
-    fn copy_document(&mut self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>>;
-    fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>>;
-    fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>>;
-    fn get_document(&self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>>;
+    ) -> Result<Vec<JACSDocument>, Vec<JacsError>>;
+    fn load_document(&mut self, document_string: &str) -> Result<JACSDocument, JacsError>;
+    fn remove_document(&mut self, document_key: &str) -> Result<JACSDocument, JacsError>;
+    fn copy_document(&mut self, document_key: &str) -> Result<JACSDocument, JacsError>;
+    fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, JacsError>;
+    fn hash_doc(&self, doc: &Value) -> Result<String, JacsError>;
+    fn get_document(&self, document_key: &str) -> Result<JACSDocument, JacsError>;
     fn get_document_keys(&mut self) -> Vec<String>;
-    fn get_document_signature_date(&mut self, document_key: &str)
-    -> Result<String, Box<dyn Error>>;
-    fn get_document_signature_agent_id(
-        &mut self,
-        document_key: &str,
-    ) -> Result<String, Box<dyn Error>>;
-    fn verify_external_document_signature(
-        &mut self,
-        document_key: &str,
-    ) -> Result<(), Box<dyn Error>>;
-    fn diff_json_strings(
-        &self,
-        json1: &str,
-        json2: &str,
-    ) -> Result<(String, String), Box<dyn Error>>;
+    fn get_document_signature_date(&mut self, document_key: &str) -> Result<String, JacsError>;
+    fn get_document_signature_agent_id(&mut self, document_key: &str) -> Result<String, JacsError>;
+    fn verify_external_document_signature(&mut self, document_key: &str) -> Result<(), JacsError>;
+    fn diff_json_strings(&self, json1: &str, json2: &str) -> Result<(String, String), JacsError>;
     /// export_embedded if there is embedded files recreate them, default false
     fn save_document(
         &mut self,
@@ -254,20 +239,20 @@ pub trait DocumentTraits {
         output_filename: Option<String>,
         export_embedded: Option<bool>,
         extract_only: Option<bool>,
-    ) -> Result<(), Box<dyn Error>>;
+    ) -> Result<(), JacsError>;
     fn update_document(
         &mut self,
         document_key: &str,
         new_document_string: &str,
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
-    ) -> Result<JACSDocument, Box<dyn Error>>;
+    ) -> Result<JACSDocument, JacsError>;
     fn create_file_json(
         &mut self,
         filepath: &str,
         embed: bool,
-    ) -> Result<serde_json::Value, Box<dyn Error>>;
-    fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>>;
+    ) -> Result<serde_json::Value, JacsError>;
+    fn verify_document_files(&mut self, document: &Value) -> Result<(), JacsError>;
     /// util function for parsing arguments for attachments
     fn parse_attachement_arg(&mut self, attachments: Option<&str>) -> Option<Vec<String>>;
     fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String);
@@ -294,7 +279,7 @@ pub trait DocumentTraits {
     fn create_documents_batch(
         &mut self,
         documents: &[&str],
-    ) -> Result<Vec<JACSDocument>, Box<dyn std::error::Error + 'static>>;
+    ) -> Result<Vec<JACSDocument>, JacsError>;
 }
 
 impl DocumentTraits for Agent {
@@ -332,7 +317,7 @@ impl DocumentTraits for Agent {
         &mut self,
         filepath: &str,
         embed: bool,
-    ) -> Result<serde_json::Value, Box<dyn Error>> {
+    ) -> Result<serde_json::Value, JacsError> {
         // Get the file contents as base64
         let base64_contents = self.fs_get_document_content(filepath.to_string())?;
 
@@ -369,7 +354,7 @@ impl DocumentTraits for Agent {
         Ok(file_json)
     }
 
-    fn verify_document_files(&mut self, document: &Value) -> Result<(), Box<dyn Error>> {
+    fn verify_document_files(&mut self, document: &Value) -> Result<(), JacsError> {
         // Check if the "files" field exists
         if let Some(files_array) = document.get("jacsFiles").and_then(|files| files.as_array()) {
             // Iterate over each file object
@@ -425,7 +410,7 @@ impl DocumentTraits for Agent {
         json: &str,
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
-    ) -> Result<JACSDocument, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<JACSDocument, JacsError> {
         let mut instance = self.schema.create(json)?;
 
         if let Some(attachment_list) = attachments {
@@ -461,7 +446,7 @@ impl DocumentTraits for Agent {
         self.store_jacs_document(&instance)
     }
 
-    fn load_document(&mut self, document_string: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn load_document(&mut self, document_string: &str) -> Result<JACSDocument, JacsError> {
         match &self.validate_header(document_string) {
             Ok(value) => self.store_jacs_document(value),
             Err(e) => {
@@ -475,8 +460,8 @@ impl DocumentTraits for Agent {
         &mut self,
         store: bool,
         load_only_recent: bool,
-    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
-        let mut errors: Vec<Box<dyn Error>> = Vec::new();
+    ) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
+        let mut errors: Vec<JacsError> = Vec::new();
         let mut documents: Vec<JACSDocument> = Vec::new();
         let mut doc_strings = self.fs_docs_load_all()?;
         let mut most_recent_docs = HashMap::new();
@@ -538,7 +523,7 @@ impl DocumentTraits for Agent {
         Ok(documents)
     }
 
-    fn hash_doc(&self, doc: &Value) -> Result<String, Box<dyn Error>> {
+    fn hash_doc(&self, doc: &Value) -> Result<String, JacsError> {
         let mut doc_copy = doc.clone();
         doc_copy
             .as_object_mut()
@@ -547,7 +532,7 @@ impl DocumentTraits for Agent {
         Ok(hash_string(&doc_string))
     }
 
-    fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, Box<dyn Error>> {
+    fn store_jacs_document(&mut self, value: &Value) -> Result<JACSDocument, JacsError> {
         // Use ok_or_else for mandatory fields with actionable error messages
         let id = value
             .get_str("jacsId")
@@ -590,12 +575,12 @@ impl DocumentTraits for Agent {
         Ok(doc)
     }
 
-    fn get_document(&self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, document_key: &str) -> Result<JACSDocument, JacsError> {
         // Use storage to retrieve the document
         Ok(self.storage.get_document(document_key)?)
     }
 
-    fn remove_document(&mut self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&mut self, document_key: &str) -> Result<JACSDocument, JacsError> {
         // Use storage to remove and archive the document
         Ok(self.storage.remove_document(document_key)?)
     }
@@ -617,7 +602,7 @@ impl DocumentTraits for Agent {
         new_document_string: &str,
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
+    ) -> Result<JACSDocument, JacsError> {
         // check that old document is found
         let mut new_document: Value = self.schema.validate_header(new_document_string)?;
         let original_document = self.get_document(document_key)?;
@@ -740,10 +725,7 @@ impl DocumentTraits for Agent {
         self.store_jacs_document(&new_document)
     }
 
-    fn archive_old_version(
-        &mut self,
-        original_document: &JACSDocument,
-    ) -> Result<(), Box<dyn Error>> {
+    fn archive_old_version(&mut self, original_document: &JACSDocument) -> Result<(), JacsError> {
         let lookup_key = original_document.getkey();
         // Use storage to remove/archive the document
         self.storage.remove_document(&lookup_key)?;
@@ -751,7 +733,7 @@ impl DocumentTraits for Agent {
     }
 
     /// copys document without modifications
-    fn copy_document(&mut self, document_key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn copy_document(&mut self, document_key: &str) -> Result<JACSDocument, JacsError> {
         let original_document = self.get_document(document_key)?;
         let mut value = original_document.value;
         let new_version = Uuid::new_v4().to_string();
@@ -776,7 +758,7 @@ impl DocumentTraits for Agent {
         output_filename: Option<String>,
         export_embedded: Option<bool>,
         extract_only: Option<bool>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), JacsError> {
         let original_document = self.get_document(document_key)?;
         let document_string: String = serde_json::to_string_pretty(&original_document.value)?;
 
@@ -833,10 +815,7 @@ impl DocumentTraits for Agent {
         Ok(())
     }
 
-    fn verify_external_document_signature(
-        &mut self,
-        document_key: &str,
-    ) -> Result<(), Box<dyn Error>> {
+    fn verify_external_document_signature(&mut self, document_key: &str) -> Result<(), JacsError> {
         let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
@@ -867,7 +846,7 @@ impl DocumentTraits for Agent {
             document_key, resolution_order
         );
 
-        let mut last_error: Option<Box<dyn Error>> = None;
+        let mut last_error: Option<JacsError> = None;
         let mut public_key: Option<Vec<u8>> = None;
         let mut public_key_enc_type: Option<String> = None;
 
@@ -994,10 +973,7 @@ impl DocumentTraits for Agent {
         )
     }
 
-    fn get_document_signature_agent_id(
-        &mut self,
-        document_key: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    fn get_document_signature_agent_id(&mut self, document_key: &str) -> Result<String, JacsError> {
         let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
@@ -1017,10 +993,7 @@ impl DocumentTraits for Agent {
         Ok(agent_id_version)
     }
 
-    fn get_document_signature_date(
-        &mut self,
-        document_key: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    fn get_document_signature_date(&mut self, document_key: &str) -> Result<String, JacsError> {
         let document = self.get_document(document_key)?;
         let json_value = document.getvalue();
         let signature_key_from = &DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string();
@@ -1039,7 +1012,7 @@ impl DocumentTraits for Agent {
         fields: Option<&[String]>,
         public_key: Option<Vec<u8>>,
         public_key_enc_type: Option<String>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), JacsError> {
         // check that public key exists
         let document = self.get_document(document_key)?;
         let document_value = document.getvalue();
@@ -1112,11 +1085,7 @@ impl DocumentTraits for Agent {
     }
 
     /// Function to diff two JSON strings and print the differences.
-    fn diff_json_strings(
-        &self,
-        json1: &str,
-        json2: &str,
-    ) -> Result<(String, String), Box<dyn Error>> {
+    fn diff_json_strings(&self, json1: &str, json2: &str) -> Result<(String, String), JacsError> {
         let changeset = Changeset::new(json1, json2, "\n");
         let mut same = String::new();
         let mut diffs = String::new();
@@ -1153,7 +1122,7 @@ impl DocumentTraits for Agent {
     fn create_documents_batch(
         &mut self,
         documents: &[&str],
-    ) -> Result<Vec<JACSDocument>, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Vec<JACSDocument>, JacsError> {
         use tracing::info;
 
         if documents.is_empty() {

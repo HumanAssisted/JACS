@@ -176,7 +176,7 @@ pub fn local_data_dir() -> PathBuf {
 /// Ensures a directory exists, creating it if necessary.
 ///
 /// Returns the path if successful, or an error if creation fails.
-pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, Box<dyn std::error::Error>> {
+pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, crate::error::JacsError> {
     if !path.exists() {
         std::fs::create_dir_all(path).map_err(|e| {
             let suggestion = match e.kind() {

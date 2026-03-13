@@ -6,13 +6,13 @@ use crate::a2a::{
 };
 use crate::agent::Agent;
 use crate::crypt::{supported_pq_algorithms, supported_verification_algorithms};
+use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::error::Error;
 
 /// Export a JACS agent as an A2A Agent Card (v0.4.0)
-pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, Box<dyn Error>> {
+pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, JacsError> {
     let agent_value = agent.get_value().ok_or("Agent value not loaded")?;
 
     // Extract basic agent information
@@ -92,7 +92,7 @@ pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, Box<dyn Error>> {
 }
 
 /// Convert JACS services to A2A skills (v0.4.0)
-fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, Box<dyn Error>> {
+fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, JacsError> {
     let mut skills = Vec::new();
 
     if let Some(services) = agent_value.get("jacsServices").and_then(|v| v.as_array()) {
@@ -167,7 +167,7 @@ fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, Bo
 }
 
 /// Create JACS extension for A2A capabilities (v0.4.0)
-fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, Box<dyn Error>> {
+fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, JacsError> {
     let key_algorithm = agent.get_key_algorithm().ok_or("Key algorithm not set")?;
 
     let is_pqc = key_algorithm.contains("pq2025");

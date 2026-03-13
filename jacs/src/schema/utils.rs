@@ -260,7 +260,7 @@ pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
     "https://hai.ai/schemas/attestation/v1/attestation.schema.json" => "attestation" ,
 };
 
-pub fn get_short_name(jacs_document: &Value) -> Result<String, Box<dyn Error>> {
+pub fn get_short_name(jacs_document: &Value) -> Result<String, JacsError> {
     let id: String = jacs_document
         .get_str("$id")
         .unwrap_or((&"document").to_string());
@@ -463,30 +463,41 @@ impl Retrieve for EmbeddedSchemaResolver {
 ///
 /// Not available in WASM builds.
 #[cfg(not(target_arch = "wasm32"))]
-fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
+fn get_remote_schema(url: &str) -> Result<Arc<Value>, JacsError> {
     // Check if the URL is from an allowed domain
     is_schema_url_allowed(url)?;
 
     let accept_invalid = should_accept_invalid_certs();
     let client = reqwest::blocking::Client::builder()
         .danger_accept_invalid_certs(accept_invalid)
-        .build()?;
+        .build()
+        .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
 
-    let response = client.get(url).send()?;
+    let response = client.get(url).send().map_err(|e| {
+        JacsError::NetworkError(format!("Failed to fetch schema from {}: {}", url, e))
+    })?;
 
     if response.status().is_success() {
-        let schema_value: Value = response.json()?;
+        let schema_value: Value = response.json().map_err(|e| {
+            JacsError::SchemaError(format!("Failed to parse schema JSON from {}: {}", url, e))
+        })?;
         Ok(Arc::new(schema_value))
     } else {
-        Err(JacsError::SchemaError(format!("Failed to get schema from URL {}", url)).into())
+        Err(JacsError::SchemaError(format!(
+            "Failed to get schema from URL {}",
+            url
+        )))
     }
 }
 
 /// Disabled version of remote schema fetching for WASM targets.
 /// Always returns an error indicating remote schemas are not supported.
 #[cfg(target_arch = "wasm32")]
-fn get_remote_schema(url: &str) -> Result<Arc<Value>, Box<dyn Error>> {
-    Err(JacsError::SchemaError(format!("Remote URL schemas disabled in WASM: {}", url)).into())
+fn get_remote_schema(url: &str) -> Result<Arc<Value>, JacsError> {
+    Err(JacsError::SchemaError(format!(
+        "Remote URL schemas disabled in WASM: {}",
+        url
+    )))
 }
 
 /// Build a normalized absolute path for access checks.
@@ -618,7 +629,7 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
 /// - Filesystem access is disabled by default (opt-in via `JACS_ALLOW_FILESYSTEM_SCHEMAS`)
 /// - Path traversal (`..`) is blocked for filesystem paths
 /// - TLS certificate validation is enabled by default (can be relaxed for development)
-pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
+pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, JacsError> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
     let path = rawpath.strip_prefix('/').unwrap_or(rawpath);
     let cache_key = schema_cache_key(path);
@@ -641,9 +652,10 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
             } else {
                 return Err(JacsError::SchemaError(format!(
                     "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
-                    path, relative_path, DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
-                ))
-                .into());
+                    path,
+                    relative_path,
+                    DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
+                )));
             }
         } else {
             // get_remote_schema already checks the domain allowlist
@@ -653,16 +665,26 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, Box<dyn Error>> {
         // Filesystem path - check security restrictions
         check_filesystem_schema_access(path)?;
 
-        let storage = MultiStorage::default_new()?;
-        if storage.file_exists(path, None)? {
-            let schema_json = String::from_utf8(storage.get_file(path, None)?)?;
+        let storage = MultiStorage::default_new()
+            .map_err(|e| JacsError::SchemaError(format!("Failed to initialize storage: {}", e)))?;
+        if storage.file_exists(path, None).map_err(|e| {
+            JacsError::SchemaError(format!("Failed to check schema file existence: {}", e))
+        })? {
+            let file_bytes = storage.get_file(path, None).map_err(|e| {
+                JacsError::SchemaError(format!("Failed to read schema file '{}': {}", path, e))
+            })?;
+            let schema_json = String::from_utf8(file_bytes).map_err(|e| {
+                JacsError::SchemaError(format!(
+                    "Schema file '{}' contains invalid UTF-8: {}",
+                    path, e
+                ))
+            })?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;
             Arc::new(schema_value)
         } else {
             return Err(JacsError::FileNotFound {
                 path: path.to_string(),
-            }
-            .into());
+            });
         }
     };
 

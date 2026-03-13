@@ -35,7 +35,7 @@ static TEST_METRICS_RECORDER_HANDLE: Mutex<Option<Arc<Mutex<Vec<metrics::Capture
 #[allow(clippy::type_complexity)]
 pub fn init_observability(
     config: ObservabilityConfig,
-) -> Result<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>, Box<dyn std::error::Error>> {
+) -> Result<Option<Arc<Mutex<Vec<metrics::CapturedMetric>>>>, crate::error::JacsError> {
     if let Ok(mut stored_config) = CONFIG.lock() {
         *stored_config = Some(config.clone());
     } else {
@@ -154,7 +154,7 @@ pub fn flush_observability() {
 }
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-tracing"))]
-fn init_tracing(config: &TracingConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn init_tracing(config: &TracingConfig) -> Result<(), crate::error::JacsError> {
     use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
     use opentelemetry_sdk::{
         Resource,

@@ -22,7 +22,6 @@ use crate::storage::StorageDocumentTraits;
 use crate::storage::database_traits::DatabaseDocumentTraits;
 use rusqlite::{Connection, params};
 use serde_json::Value;
-use std::error::Error;
 use std::sync::Mutex;
 
 /// Rusqlite storage backend for JACS documents.
@@ -67,7 +66,7 @@ impl RusqliteStorage {
     }
 
     /// Parse a document key in format "id:version" into (id, version).
-    fn parse_key(key: &str) -> Result<(&str, &str), Box<dyn Error>> {
+    fn parse_key(key: &str) -> Result<(&str, &str), JacsError> {
         let parts: Vec<&str> = key.splitn(2, ':').collect();
         if parts.len() != 2 {
             return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());

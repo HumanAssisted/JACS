@@ -1,7 +1,7 @@
 pub mod create;
 pub mod document;
+use crate::error::JacsError;
 use crate::storage::MultiStorage;
-use std::error::Error;
 use std::path::Path;
 
 /// Read a password from a file, checking that the file has secure permissions.
@@ -43,7 +43,7 @@ pub fn default_set_file_list(
     filename: Option<&String>,
     directory: Option<&String>,
     attachments: Option<&str>,
-) -> Result<Vec<String>, Box<dyn Error>> {
+) -> Result<Vec<String>, JacsError> {
     let storage: MultiStorage = get_storage_default_for_cli()?;
     set_file_list(&storage, filename, directory, attachments)
 }
@@ -53,7 +53,7 @@ fn set_file_list(
     filename: Option<&String>,
     directory: Option<&String>,
     attachments: Option<&str>,
-) -> Result<Vec<String>, Box<dyn Error>> {
+) -> Result<Vec<String>, JacsError> {
     if let Some(file) = filename {
         // If filename is provided, return it as a single item list.
         // The caller will attempt fs::read_to_string on this local path.
@@ -78,7 +78,7 @@ fn set_file_list(
     }
 }
 
-pub fn get_storage_default_for_cli() -> Result<MultiStorage, Box<dyn Error>> {
+pub fn get_storage_default_for_cli() -> Result<MultiStorage, JacsError> {
     let storage: Option<MultiStorage> =
         Some(MultiStorage::default_new().expect("Failed to initialize storage"));
     if let Some(storage) = storage {

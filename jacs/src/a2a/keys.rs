@@ -5,7 +5,6 @@ use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::error::Error;
 use tracing::info;
 
 /// JWK (JSON Web Key) structure
@@ -42,7 +41,7 @@ pub struct DualKeyPair {
 pub fn create_jwk_keys(
     jacs_algorithm: Option<&str>,
     a2a_algorithm: Option<&str>,
-) -> Result<DualKeyPair, Box<dyn Error>> {
+) -> Result<DualKeyPair, JacsError> {
     // Default algorithms
     let jacs_alg = jacs_algorithm.unwrap_or("pq2025");
     let a2a_alg = a2a_algorithm.unwrap_or("rsa");
@@ -99,7 +98,7 @@ pub fn create_jwk_keys(
 }
 
 /// Export RSA public key as JWK
-pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn Error>> {
+pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsError> {
     use rsa::traits::PublicKeyParts;
     use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
 
@@ -137,7 +136,7 @@ pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn
 }
 
 /// Export ECDSA public key as JWK
-pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box<dyn Error>> {
+pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsError> {
     let key_bytes = match public_key.len() {
         32 => public_key.to_vec(),
         _ => {
@@ -163,11 +162,7 @@ pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Box
 }
 
 /// Export a public key as JWK based on algorithm
-pub fn export_as_jwk(
-    public_key: &[u8],
-    algorithm: &str,
-    key_id: &str,
-) -> Result<Jwk, Box<dyn Error>> {
+pub fn export_as_jwk(public_key: &[u8], algorithm: &str, key_id: &str) -> Result<Jwk, JacsError> {
     match algorithm {
         "rsa" => export_rsa_as_jwk(public_key, key_id),
         "ring-Ed25519" => export_ed25519_as_jwk(public_key, key_id),
@@ -192,7 +187,7 @@ pub fn sign_jws(
     private_key: &[u8],
     algorithm: &str,
     key_id: &str,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     // Create JWS header
     let header = json!({
         "alg": match algorithm {
@@ -259,11 +254,7 @@ pub fn sign_jws(
 /// # Returns
 ///
 /// `Ok(payload_bytes)` if the signature is valid, or an error if verification fails.
-pub fn verify_jws(
-    jws: &str,
-    public_key: &[u8],
-    algorithm: &str,
-) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u8>, JacsError> {
     let parts: Vec<&str> = jws.split('.').collect();
     if parts.len() != 3 {
         return Err(JacsError::CryptoError(format!(

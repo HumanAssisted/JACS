@@ -10,11 +10,11 @@ use crate::agent::{
 };
 use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::crypt::{KeyManager, hash::hash_public_key};
+use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::error::Error;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -180,7 +180,7 @@ pub fn wrap_artifact_with_provenance(
     artifact: Value,
     artifact_type: &str,
     parent_signatures: Option<Vec<Value>>,
-) -> Result<Value, Box<dyn Error>> {
+) -> Result<Value, JacsError> {
     // Create a JACS header for the artifact
     let artifact_id = Uuid::new_v4().to_string();
     let artifact_version = Uuid::new_v4().to_string();
@@ -218,7 +218,7 @@ pub fn wrap_a2a_artifact_with_provenance(
     agent: &mut Agent,
     artifact: &A2AArtifact,
     parent_signatures: Option<Vec<Value>>,
-) -> Result<Value, Box<dyn Error>> {
+) -> Result<Value, JacsError> {
     let artifact_value = serde_json::to_value(artifact)?;
     wrap_artifact_with_provenance(agent, artifact_value, "artifact", parent_signatures)
 }
@@ -228,7 +228,7 @@ pub fn wrap_a2a_message_with_provenance(
     agent: &mut Agent,
     message: &A2AMessage,
     parent_signatures: Option<Vec<Value>>,
-) -> Result<Value, Box<dyn Error>> {
+) -> Result<Value, JacsError> {
     let message_value = serde_json::to_value(message)?;
     wrap_artifact_with_provenance(agent, message_value, "message", parent_signatures)
 }
@@ -250,7 +250,7 @@ pub fn wrap_a2a_message_with_provenance(
 pub fn verify_wrapped_artifact(
     agent: &Agent,
     wrapped_artifact: &Value,
-) -> Result<VerificationResult, Box<dyn Error>> {
+) -> Result<VerificationResult, JacsError> {
     // First verify the hash
     if let Err(e) = agent.verify_hash(wrapped_artifact) {
         return Ok(VerificationResult {
@@ -388,7 +388,7 @@ pub fn verify_wrapped_artifact_with_policy(
     wrapped_artifact: &Value,
     remote_card: &super::AgentCard,
     policy: super::trust::A2ATrustPolicy,
-) -> Result<VerificationResult, Box<dyn Error>> {
+) -> Result<VerificationResult, JacsError> {
     use super::trust::assess_a2a_agent;
 
     // First perform the trust assessment
@@ -446,7 +446,7 @@ pub fn verify_wrapped_artifact_with_policy(
 fn verify_parent_signatures(
     agent: &Agent,
     wrapped_artifact: &Value,
-) -> Result<(bool, Vec<ParentVerificationResult>), Box<dyn Error>> {
+) -> Result<(bool, Vec<ParentVerificationResult>), JacsError> {
     let parents = match wrapped_artifact.get("jacsParentSignatures") {
         Some(Value::Array(arr)) => arr,
         Some(_) => return Err("Invalid jacsParentSignatures: must be an array".into()),
@@ -550,7 +550,7 @@ pub struct VerificationResult {
 }
 
 /// Create a chain of custody document for multi-agent workflows
-pub fn create_chain_of_custody(artifacts: Vec<Value>) -> Result<Value, Box<dyn Error>> {
+pub fn create_chain_of_custody(artifacts: Vec<Value>) -> Result<Value, JacsError> {
     let mut chain = Vec::new();
 
     for artifact in artifacts {

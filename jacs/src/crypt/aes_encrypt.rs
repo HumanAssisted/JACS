@@ -197,7 +197,7 @@ fn count_character_classes(password: &str) -> usize {
 /// - No excessive character repetition (4+ same chars in a row)
 /// - No long sequential patterns (5+ ascending/descending chars)
 /// - At least 2 different character classes (recommended)
-fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn validate_password(password: &str) -> Result<(), JacsError> {
     let trimmed = password.trim();
 
     if trimmed.is_empty() {
@@ -284,7 +284,7 @@ fn validate_password(password: &str) -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Returns `Ok(())` if the password is acceptable, or `Err` with a detailed message
 /// explaining which rule failed and the full requirements.
-pub fn check_password_strength(password: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn check_password_strength(password: &str) -> Result<(), JacsError> {
     validate_password(password)
 }
 
@@ -315,7 +315,7 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
 /// The password (from `JACS_PRIVATE_KEY_PASSWORD` environment variable) must:
 /// - Be at least 8 characters long
 /// - Not be empty or whitespace-only
-pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, JacsError> {
     // Password is required and must be non-empty
     let password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
 
@@ -371,9 +371,7 @@ pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
     since = "0.6.0",
     note = "Use decrypt_private_key_secure() which returns ZeroizingVec for automatic memory zeroization"
 )]
-pub fn decrypt_private_key(
-    encrypted_key_with_salt_and_nonce: &[u8],
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn decrypt_private_key(encrypted_key_with_salt_and_nonce: &[u8]) -> Result<Vec<u8>, JacsError> {
     // Delegate to secure version and extract the inner Vec
     // Note: This loses the zeroization guarantee, but maintains API compatibility
     let secure = decrypt_private_key_secure(encrypted_key_with_salt_and_nonce)?;
@@ -405,7 +403,7 @@ pub fn decrypt_private_key(
 /// - The derived encryption key is also zeroized after use
 pub fn decrypt_private_key_secure(
     encrypted_key_with_salt_and_nonce: &[u8],
-) -> Result<ZeroizingVec, Box<dyn std::error::Error>> {
+) -> Result<ZeroizingVec, JacsError> {
     // Password is required and must be non-empty
     // Note: We don't validate password strength during decryption because:
     // 1. The password must match whatever was used during encryption
@@ -471,10 +469,7 @@ pub fn decrypt_private_key_secure(
 ///
 /// This is useful for re-encryption workflows where both old and new passwords
 /// are provided as parameters.
-pub fn decrypt_with_password(
-    encrypted_data: &[u8],
-    password: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn decrypt_with_password(encrypted_data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
     if encrypted_data.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
             "Encrypted data too short: expected at least {} bytes, got {} bytes.",
@@ -512,10 +507,7 @@ pub fn decrypt_with_password(
 }
 
 /// Encrypt data with an explicit password (no env var dependency).
-pub fn encrypt_with_password(
-    data: &[u8],
-    password: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+pub fn encrypt_with_password(data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
     validate_password(password)?;
 
     let mut salt = [0u8; PBKDF2_SALT_SIZE];
@@ -553,7 +545,7 @@ pub fn reencrypt_private_key(
     encrypted_data: &[u8],
     old_password: &str,
     new_password: &str,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, JacsError> {
     // Decrypt with old password
     let plaintext = decrypt_with_password(encrypted_data, old_password)?;
 
