@@ -11,11 +11,11 @@
 //! # Filesystem tests only (always available)
 //! cargo test --test document_lifecycle -- lifecycle_fs
 //!
-//! # SQLite tests only (requires rusqlite-storage feature)
-//! cargo test --features rusqlite-storage --test document_lifecycle -- lifecycle_sqlite
+//! # SQLite tests only (requires sqlite feature)
+//! cargo test --features sqlite --test document_lifecycle -- lifecycle_sqlite
 //!
 //! # Both backends
-//! cargo test --features rusqlite-storage --test document_lifecycle
+//! cargo test --features sqlite --test document_lifecycle
 //! ```
 
 use jacs::document::DocumentService;
@@ -230,7 +230,7 @@ macro_rules! lifecycle_test_suite {
             svc.set_visibility(&doc.getkey(), DocumentVisibility::Public)
                 .expect("set_visibility");
 
-            // Filesystem creates a new version; SQLite updates in-place.
+            // Both backends create a successor version via update().
             // Test latest version for backend-agnostic verification.
             let latest = svc.get_latest(&doc.id).expect("get_latest");
             assert_eq!(
@@ -901,9 +901,17 @@ macro_rules! lifecycle_test_suite {
             let svc = b.create_service();
 
             let list = svc.list(ListFilter::default()).expect("list should succeed on empty store");
-            // The list might not be empty if there's an agent doc, but it should not error.
-            // For a truly fresh service, we just assert it doesn't panic/error.
-            let _ = list; // success is that list() didn't return Err
+            // The list should be empty or contain at most an agent doc.
+            // No user documents have been created, so filter those out.
+            let non_agent_docs: Vec<_> = list
+                .iter()
+                .filter(|s| s.jacs_type != "agent")
+                .collect();
+            assert!(
+                non_agent_docs.is_empty(),
+                "fresh service should have no non-agent documents, found {}",
+                non_agent_docs.len()
+            );
         }
 
         // ================================================================
@@ -912,7 +920,7 @@ macro_rules! lifecycle_test_suite {
 
         $(#[$serial_attr])*
         #[test]
-        fn verify_on_read_rejects_tampered_stored_document() {
+        fn verify_on_read_succeeds_for_untampered_document() {
             // Baseline assertion: create a document, then get() succeeds,
             // proving that verify-on-read runs and passes on an untampered doc.
             let b = backend();
@@ -1269,4 +1277,125 @@ mod lifecycle_sqlite {
     use serial_test::serial;
 
     lifecycle_test_suite!(sqlite_helpers::SqliteBackend, serial);
+}
+
+// ============================================================================
+// Cross-backend error-shape parity (ISSUE 003)
+// Runs the same failing operations on both FS and SQLite and asserts that
+// both produce the same error variant (discriminant).
+// ============================================================================
+
+#[cfg(feature = "sqlite")]
+mod error_parity {
+    use super::*;
+    use serial_test::serial;
+
+    /// Extract the variant name from a JacsError's Debug representation.
+    fn error_variant_name(err: &jacs::error::JacsError) -> String {
+        let debug = format!("{:?}", err);
+        // Debug format is "VariantName(..." or "VariantName { ..."
+        debug
+            .split(|c: char| c == '(' || c == '{' || c == ' ')
+            .next()
+            .unwrap_or("Unknown")
+            .to_string()
+    }
+
+    #[test]
+    #[serial]
+    fn get_nonexistent_returns_same_error_class_across_backends() {
+        let fs_backend = fs_helpers::FsBackend;
+        let sqlite_backend = sqlite_helpers::SqliteBackend;
+
+        let fs_svc = fs_backend.create_service();
+        let sqlite_svc = sqlite_backend.create_service();
+
+        let fs_err = fs_svc
+            .get("nonexistent-parity-test:v1")
+            .expect_err("fs get nonexistent should fail");
+        let sqlite_err = sqlite_svc
+            .get("nonexistent-parity-test:v1")
+            .expect_err("sqlite get nonexistent should fail");
+
+        let fs_variant = error_variant_name(&fs_err);
+        let sqlite_variant = error_variant_name(&sqlite_err);
+
+        assert_eq!(
+            std::mem::discriminant(&fs_err),
+            std::mem::discriminant(&sqlite_err),
+            "get(nonexistent) should produce the same error variant: fs={} vs sqlite={}",
+            fs_variant,
+            sqlite_variant
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn remove_nonexistent_returns_same_error_class_across_backends() {
+        let fs_backend = fs_helpers::FsBackend;
+        let sqlite_backend = sqlite_helpers::SqliteBackend;
+
+        let fs_svc = fs_backend.create_service();
+        let sqlite_svc = sqlite_backend.create_service();
+
+        let fs_err = fs_svc
+            .remove("nonexistent-parity-rm:v1")
+            .expect_err("fs remove nonexistent should fail");
+        let sqlite_err = sqlite_svc
+            .remove("nonexistent-parity-rm:v1")
+            .expect_err("sqlite remove nonexistent should fail");
+
+        let fs_variant = error_variant_name(&fs_err);
+        let sqlite_variant = error_variant_name(&sqlite_err);
+
+        assert_eq!(
+            std::mem::discriminant(&fs_err),
+            std::mem::discriminant(&sqlite_err),
+            "remove(nonexistent) should produce the same error variant: fs={} vs sqlite={}",
+            fs_variant,
+            sqlite_variant
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn update_nonexistent_returns_same_error_class_across_backends() {
+        let fs_backend = fs_helpers::FsBackend;
+        let sqlite_backend = sqlite_helpers::SqliteBackend;
+
+        let fs_svc = fs_backend.create_service();
+        let sqlite_svc = sqlite_backend.create_service();
+
+        let update_json = fs_backend.make_update_json(
+            "nonexistent-parity-upd",
+            "v1",
+            r#""content":"should fail""#,
+        );
+
+        let fs_err = fs_svc
+            .update(
+                "nonexistent-parity-upd",
+                &update_json,
+                UpdateOptions::default(),
+            )
+            .expect_err("fs update nonexistent should fail");
+        let sqlite_err = sqlite_svc
+            .update(
+                "nonexistent-parity-upd",
+                &update_json,
+                UpdateOptions::default(),
+            )
+            .expect_err("sqlite update nonexistent should fail");
+
+        let fs_variant = error_variant_name(&fs_err);
+        let sqlite_variant = error_variant_name(&sqlite_err);
+
+        assert_eq!(
+            std::mem::discriminant(&fs_err),
+            std::mem::discriminant(&sqlite_err),
+            "update(nonexistent) should produce the same error variant: fs={} vs sqlite={}",
+            fs_variant,
+            sqlite_variant
+        );
+    }
 }

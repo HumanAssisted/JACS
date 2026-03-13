@@ -79,6 +79,13 @@ pub fn resolve(input: &str) -> Result<BackendConfig, JacsError> {
     // Plain label (no "://" scheme)
     if !input.contains("://") {
         let label = input.to_lowercase();
+        if !PLAIN_LABELS.contains(&label.as_str()) {
+            return Err(JacsError::ConfigError(format!(
+                "Unknown storage backend '{}'. Supported labels: {}",
+                label,
+                PLAIN_LABELS.join(", ")
+            )));
+        }
         return Ok(BackendConfig {
             backend_type: label,
             path: None,
@@ -337,5 +344,44 @@ mod tests {
     fn unknown_scheme_http_returns_error() {
         let result = resolve("http://example.com/storage");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn unknown_plain_label_returns_error() {
+        let result = resolve("typo_storage");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("typo_storage"),
+            "error should mention the bad label: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("Supported labels"),
+            "error should list supported labels: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn debug_masks_password() {
+        let creds = ConnectionCredentials {
+            username: Some("admin".to_string()),
+            password: Some("super_secret".to_string()),
+            host: Some("db.example.com".to_string()),
+            port: Some(5432),
+            database: Some("mydb".to_string()),
+        };
+        let debug_output = format!("{:?}", creds);
+        assert!(
+            !debug_output.contains("super_secret"),
+            "Debug output must not contain password: {}",
+            debug_output
+        );
+        assert!(
+            debug_output.contains("***"),
+            "Debug output should contain masked password: {}",
+            debug_output
+        );
     }
 }
