@@ -1365,8 +1365,7 @@ mod tests {
             "failureDescription": "Updated failure"
         }]);
 
-        let updated_json = agent
-            .update_agent(&doc.to_string())
+        let updated_json = advanced::update_agent(&agent, &doc.to_string())
             .expect("metadata update should succeed");
 
         // Parse the updated doc
@@ -1453,8 +1452,7 @@ mod tests {
             "failureDescription": "Fails"
         }]);
 
-        let updated_json = agent
-            .update_agent(&doc.to_string())
+        let updated_json = advanced::update_agent(&agent, &doc.to_string())
             .expect("metadata update after rotation should succeed");
         let updated_doc: Value = serde_json::from_str(&updated_json).expect("parse updated");
         let v3 = updated_doc["jacsVersion"].as_str().unwrap().to_string();
@@ -1504,7 +1502,7 @@ mod tests {
         // Try to change jacsId
         doc["jacsId"] = json!("00000000-0000-0000-0000-000000000000");
 
-        let result = agent.update_agent(&doc.to_string());
+        let result = advanced::update_agent(&agent, &doc.to_string());
         assert!(
             result.is_err(),
             "updating with a different jacsId MUST fail"

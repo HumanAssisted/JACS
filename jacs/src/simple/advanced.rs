@@ -506,7 +506,7 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
 
     // Step 7: Export current agent doc, then call update_agent to re-sign
     let agent_doc = simple_agent.export_agent()?;
-    let updated_json = simple_agent.update_agent(&agent_doc)?;
+    let updated_json = update_agent(&simple_agent, &agent_doc)?;
 
     // Step 8: Parse new version from the updated document
     let updated_value: Value =
@@ -755,4 +755,50 @@ pub fn quickstart(
     };
 
     SimpleAgent::create_with_params(params)
+}
+
+/// Updates the agent's own document with new data and re-signs it.
+///
+/// # Arguments
+///
+/// * `agent` - The SimpleAgent to update
+/// * `new_agent_data` - JSON string with the updated agent data
+pub fn update_agent(agent: &SimpleAgent, new_agent_data: &str) -> Result<String, JacsError> {
+    use crate::schema::utils::check_document_size;
+    check_document_size(new_agent_data)?;
+
+    let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+        message: format!("Failed to acquire agent lock: {}", e),
+    })?;
+
+    inner
+        .update_self(new_agent_data)
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to update agent: {}", e),
+        })
+}
+
+/// Updates an existing document with new data and re-signs it.
+#[must_use = "updated document must be used or stored"]
+pub fn update_document(
+    agent: &SimpleAgent,
+    document_id: &str,
+    new_data: &str,
+    attachments: Option<Vec<String>>,
+    embed: Option<bool>,
+) -> Result<SignedDocument, JacsError> {
+    use crate::schema::utils::check_document_size;
+    check_document_size(new_data)?;
+
+    let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+        message: format!("Failed to acquire agent lock: {}", e),
+    })?;
+
+    let jacs_doc = inner
+        .update_document(document_id, new_data, attachments, embed)
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to update document: {}", e),
+        })?;
+
+    SignedDocument::from_jacs_document(jacs_doc, "document")
 }
