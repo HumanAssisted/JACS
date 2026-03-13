@@ -88,7 +88,16 @@ trait TestBackend {
 
 #[allow(unused_macros)]
 macro_rules! lifecycle_test_suite {
+    // Non-serial variant (used by SQLite)
     ($backend:expr) => {
+        lifecycle_test_suite!(@impl $backend,);
+    };
+    // Serial variant (used by filesystem — needs #[serial] for env var mutation)
+    ($backend:expr, serial) => {
+        lifecycle_test_suite!(@impl $backend, #[serial]);
+    };
+    // Internal implementation rule — $($serial_attr)* is either empty or #[serial]
+    (@impl $backend:expr, $(#[$serial_attr:meta])*) => {
         fn backend() -> &'static dyn TestBackend {
             // Leak a static reference so tests can reference it.
             // This is fine for tests — the process exits after tests complete.
@@ -97,6 +106,7 @@ macro_rules! lifecycle_test_suite {
             BACKEND.get_or_init(|| Box::new($backend)).as_ref()
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn full_lifecycle_create_update_versions_diff() {
             let b = backend();
@@ -168,12 +178,13 @@ macro_rules! lifecycle_test_suite {
             assert!(diff.additions > 0 || diff.deletions > 0);
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn create_document_with_each_canonical_kind() {
             let b = backend();
             let svc = b.create_service();
 
-            for kind in &["agent", "artifact", "agentstate", "message"] {
+            for kind in &["agent", "artifact", "agentstate", "message", "task", "commitment", "todo"] {
                 let json = if b.needs_jacs_headers() {
                     let id = next_id("kind");
                     format!(
@@ -200,6 +211,7 @@ macro_rules! lifecycle_test_suite {
             }
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn visibility_model_private_to_public() {
             let b = backend();
@@ -229,6 +241,7 @@ macro_rules! lifecycle_test_suite {
             );
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn batch_create_multiple_documents() {
             let b = backend();
@@ -249,6 +262,7 @@ macro_rules! lifecycle_test_suite {
             }
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn remove_tombstones_document_excluded_from_list() {
             let b = backend();
@@ -267,8 +281,11 @@ macro_rules! lifecycle_test_suite {
             let list = svc.list(ListFilter::default()).expect("list");
             let other_found = list.iter().any(|s| s.document_id == other.id);
             assert!(other_found, "other document should still be in list");
+            let removed_found = list.iter().any(|s| s.document_id == v1.id);
+            assert!(!removed_found, "removed document should NOT be in list");
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn search_finds_document_by_content() {
             let b = backend();
@@ -296,6 +313,7 @@ macro_rules! lifecycle_test_suite {
             assert_eq!(results.method, b.expected_search_method());
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn search_by_jacs_type_filter() {
             let b = backend();
@@ -336,6 +354,7 @@ macro_rules! lifecycle_test_suite {
             }
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn search_by_agent_id_filter() {
             let b = backend();
@@ -348,10 +367,10 @@ macro_rules! lifecycle_test_suite {
             .unwrap();
 
             let list = svc.list(ListFilter::default()).expect("list");
-            if list.is_empty() { return; }
+            assert!(!list.is_empty(), "list should not be empty after creating a document");
 
             let agent_id = &list[0].agent_id;
-            if agent_id.is_empty() { return; }
+            assert!(!agent_id.is_empty(), "agent_id should not be empty — backend must populate agent_id");
 
             let results = svc
                 .search(SearchQuery {
@@ -364,6 +383,7 @@ macro_rules! lifecycle_test_suite {
             assert!(!results.results.is_empty());
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn search_pagination_offset_and_limit() {
             let b = backend();
@@ -409,6 +429,7 @@ macro_rules! lifecycle_test_suite {
             assert!(page3.results.len() <= 2);
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn search_with_min_score_filter() {
             let b = backend();
@@ -430,13 +451,14 @@ macro_rules! lifecycle_test_suite {
 
             for hit in &results.results {
                 assert!(
-                    hit.score >= 0.5 || hit.score == 0.0,
-                    "score should be >= 0.5 or 0.0, got {}",
+                    hit.score >= 0.5,
+                    "score should be >= min_score 0.5, got {}",
                     hit.score
                 );
             }
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn state_tools_map_to_document_api() {
             let b = backend();
@@ -503,6 +525,13 @@ macro_rules! lifecycle_test_suite {
             }
             assert!(!state_list.is_empty());
 
+            // jacs_verify_state -> verify_document(key)
+            // NOTE: DocumentService does not yet expose a verify() method.
+            // The PRD Section 3.2.3 maps jacs_verify_state to verify_document(key),
+            // but this has not been added to the trait. When it is, add:
+            //   svc.verify(&state_doc.getkey()).expect("verify_state");
+            // Tracked by ARCHITECTURE_UPGRADE_ISSUE_025.
+
             // jacs_adopt_state -> create(kind="agentstate", source=external)
             let adopt_json = if b.needs_jacs_headers() {
                 let id = next_id("adopt");
@@ -527,6 +556,7 @@ macro_rules! lifecycle_test_suite {
             assert_eq!(adopted.jacs_type, "agentstate");
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn append_only_old_version_still_accessible() {
             let b = backend();
@@ -553,6 +583,7 @@ macro_rules! lifecycle_test_suite {
             assert_eq!(svc.get(&v2.getkey()).unwrap().version, v2.version);
         }
 
+        $(#[$serial_attr])*
         #[test]
         fn list_with_type_and_visibility_filters() {
             let b = backend();
@@ -614,6 +645,94 @@ macro_rules! lifecycle_test_suite {
             }
             assert!(!filtered.is_empty());
         }
+
+        $(#[$serial_attr])*
+        #[test]
+        fn update_without_visibility_inherits_existing() {
+            let b = backend();
+            let svc = b.create_service();
+
+            // Create a Public document
+            let doc = svc
+                .create(
+                    &b.make_json(r#""content":"visibility inheritance test""#),
+                    CreateOptions {
+                        visibility: DocumentVisibility::Public,
+                        ..CreateOptions::default()
+                    },
+                )
+                .expect("create public doc");
+
+            assert_eq!(
+                svc.visibility(&doc.getkey()).unwrap(),
+                DocumentVisibility::Public
+            );
+
+            // Update without specifying visibility — should inherit Public
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let updated = svc
+                .update(
+                    &doc.id,
+                    &b.make_update_json(&doc.id, &doc.version, r#""content":"updated content""#),
+                    UpdateOptions::default(), // visibility: None
+                )
+                .expect("update");
+
+            let latest = svc.get_latest(&doc.id).expect("get_latest");
+            assert_eq!(
+                svc.visibility(&latest.getkey()).unwrap(),
+                DocumentVisibility::Public,
+                "visibility should be inherited as Public, not reset to Private"
+            );
+        }
+
+        $(#[$serial_attr])*
+        #[test]
+        fn restricted_visibility_crud_lifecycle() {
+            let b = backend();
+            let svc = b.create_service();
+
+            // 1. Create a document with Restricted visibility
+            let principals = vec!["agent-a".to_string(), "agent-b".to_string()];
+            let doc = svc
+                .create(
+                    &b.make_json(r#""content":"restricted visibility test""#),
+                    CreateOptions {
+                        visibility: DocumentVisibility::Restricted(principals.clone()),
+                        ..CreateOptions::default()
+                    },
+                )
+                .expect("create restricted doc");
+
+            // 2. Read it back and verify visibility
+            let vis = svc.visibility(&doc.getkey()).expect("get visibility");
+            match vis {
+                DocumentVisibility::Restricted(ref p) => {
+                    assert_eq!(p, &principals, "principals should match");
+                }
+                other => panic!("Expected Restricted, got {:?}", other),
+            }
+
+            // 3. List with Restricted visibility filter
+            let list = svc
+                .list(ListFilter {
+                    visibility: Some(DocumentVisibility::Restricted(principals.clone())),
+                    ..ListFilter::default()
+                })
+                .expect("list restricted");
+            let found = list.iter().any(|s| s.document_id == doc.id);
+            assert!(found, "restricted document should appear in filtered list");
+
+            // 4. Change visibility from Restricted to Public
+            svc.set_visibility(&doc.getkey(), DocumentVisibility::Public)
+                .expect("set_visibility to Public");
+            let latest = svc.get_latest(&doc.id).expect("get_latest");
+            assert_eq!(
+                svc.visibility(&latest.getkey()).unwrap(),
+                DocumentVisibility::Public,
+                "visibility should be Public after change from Restricted"
+            );
+        }
     };
 }
 
@@ -626,21 +745,26 @@ mod fs_helpers {
     use jacs::document::filesystem::FilesystemDocumentService;
     use jacs::simple::{CreateAgentParams, SimpleAgent};
     use std::cell::RefCell;
-    use std::sync::{Arc, Mutex};
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex, OnceLock};
     use tempfile::TempDir;
 
     const TEST_PASSWORD: &str = "TestP@ss123!#";
 
-    // Thread-local to hold TempDir alive during filesystem tests.
-    thread_local! {
-        pub static FS_TMP: RefCell<Option<TempDir>> = RefCell::new(None);
+    /// Cached agent artifacts: key directory and config path.
+    /// Created once via OnceLock, reused across all FS tests to avoid
+    /// re-generating Ed25519 keys (~35-40s) for every single test.
+    struct CachedAgent {
+        key_dir: PathBuf,
+        config_path: PathBuf,
+        _tempdir: TempDir, // held alive for the process lifetime
     }
 
-    pub struct FsBackend;
+    static CACHED_AGENT: OnceLock<CachedAgent> = OnceLock::new();
 
-    impl TestBackend for FsBackend {
-        fn create_service(&self) -> Box<dyn DocumentService> {
-            let tmp = TempDir::new().expect("create tempdir");
+    fn get_or_create_cached_agent() -> &'static CachedAgent {
+        CACHED_AGENT.get_or_init(|| {
+            let tmp = TempDir::new().expect("create agent tempdir");
             let data_dir = tmp.path().join("jacs_data");
             let key_dir = tmp.path().join("jacs_keys");
             let config_path = tmp.path().join("jacs.config.json");
@@ -659,10 +783,33 @@ mod fs_helpers {
             let (_agent, _info) =
                 SimpleAgent::create_with_params(params).expect("create_with_params");
 
+            CachedAgent {
+                key_dir,
+                config_path,
+                _tempdir: tmp,
+            }
+        })
+    }
+
+    // Thread-local to hold per-test TempDir alive during filesystem tests.
+    thread_local! {
+        pub static FS_TMP: RefCell<Option<TempDir>> = RefCell::new(None);
+    }
+
+    pub struct FsBackend;
+
+    impl TestBackend for FsBackend {
+        fn create_service(&self) -> Box<dyn DocumentService> {
+            let cached = get_or_create_cached_agent();
+
+            // Each test gets a fresh data directory for document isolation.
+            let tmp = TempDir::new().expect("create test tempdir");
+            let data_dir = tmp.path().join("jacs_data");
+
             unsafe {
                 std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
                 std::env::set_var("JACS_DATA_DIRECTORY", data_dir.to_str().unwrap());
-                std::env::set_var("JACS_KEY_DIRECTORY", key_dir.to_str().unwrap());
+                std::env::set_var("JACS_KEY_DIRECTORY", cached.key_dir.to_str().unwrap());
             }
 
             let storage =
@@ -671,7 +818,7 @@ mod fs_helpers {
 
             let mut fs_agent = jacs::get_empty_agent();
             fs_agent
-                .load_by_config(config_path.to_str().unwrap().to_string())
+                .load_by_config(cached.config_path.to_str().unwrap().to_string())
                 .expect("load agent by config");
 
             let service = FilesystemDocumentService::new(
@@ -702,220 +849,7 @@ mod lifecycle_fs {
     use super::*;
     use serial_test::serial;
 
-    fn backend() -> &'static dyn TestBackend {
-        static BACKEND: std::sync::OnceLock<fs_helpers::FsBackend> = std::sync::OnceLock::new();
-        BACKEND.get_or_init(|| fs_helpers::FsBackend)
-    }
-
-    #[test]
-    #[serial]
-    fn full_lifecycle_create_update_versions_diff() {
-        let b = backend();
-        let svc = b.create_service();
-
-        let v1 = svc
-            .create(
-                &b.make_json(r#""content":"initial lifecycle content""#),
-                CreateOptions { jacs_type: "artifact".to_string(), ..CreateOptions::default() },
-            )
-            .expect("create v1");
-        assert!(!v1.id.is_empty());
-        assert!(!v1.version.is_empty());
-
-        let v2 = svc
-            .update(&v1.id, &b.make_update_json(&v1.id, &v1.version, r#""content":"first update""#), UpdateOptions::default())
-            .expect("update to v2");
-        assert_eq!(v2.id, v1.id);
-        assert_ne!(v2.version, v1.version);
-
-        let v3 = svc
-            .update(&v1.id, &b.make_update_json(&v1.id, &v2.version, r#""content":"second update""#), UpdateOptions::default())
-            .expect("update to v3");
-        assert_eq!(v3.id, v1.id);
-        assert_ne!(v3.version, v2.version);
-
-        let versions = svc.versions(&v1.id).expect("versions");
-        assert!(versions.len() >= 3, "expected >= 3 versions, got {}", versions.len());
-        for v in &versions { assert_eq!(v.id, v1.id); }
-
-        let latest = svc.get_latest(&v1.id).expect("get_latest");
-        assert_eq!(latest.version, v3.version);
-
-        let diff = svc.diff(&v1.getkey(), &v3.getkey()).expect("diff");
-        assert_eq!(diff.key_a, v1.getkey());
-        assert_eq!(diff.key_b, v3.getkey());
-        assert!(diff.additions > 0 || diff.deletions > 0);
-    }
-
-    #[test]
-    #[serial]
-    fn create_document_with_each_canonical_kind() {
-        let b = backend();
-        let svc = b.create_service();
-        for kind in &["agent", "artifact", "agentstate", "message"] {
-            let doc = svc.create(
-                &format!(r#"{{"content":"doc of kind {}"}}"#, kind),
-                CreateOptions { jacs_type: kind.to_string(), ..CreateOptions::default() },
-            ).unwrap_or_else(|e| panic!("create {} failed: {}", kind, e));
-            assert_eq!(doc.jacs_type, *kind);
-            assert_eq!(svc.get(&doc.getkey()).unwrap().jacs_type, *kind);
-        }
-    }
-
-    #[test]
-    #[serial]
-    fn visibility_model_private_to_public() {
-        let b = backend();
-        let svc = b.create_service();
-        let doc = svc.create(&b.make_json(r#""content":"vis test""#), CreateOptions { visibility: DocumentVisibility::Private, ..CreateOptions::default() }).unwrap();
-        assert_eq!(svc.visibility(&doc.getkey()).unwrap(), DocumentVisibility::Private);
-        svc.set_visibility(&doc.getkey(), DocumentVisibility::Public).unwrap();
-        let latest = svc.get_latest(&doc.id).unwrap();
-        assert_eq!(svc.visibility(&latest.getkey()).unwrap(), DocumentVisibility::Public);
-    }
-
-    #[test]
-    #[serial]
-    fn batch_create_multiple_documents() {
-        let b = backend();
-        let svc = b.create_service();
-        let j1 = b.make_json(r#""content":"batch 1""#);
-        let j2 = b.make_json(r#""content":"batch 2""#);
-        let j3 = b.make_json(r#""content":"batch 3""#);
-        let created = svc.create_batch(&[&*j1, &*j2, &*j3], CreateOptions::default()).unwrap();
-        assert_eq!(created.len(), 3);
-        for d in &created { svc.get(&d.getkey()).unwrap(); }
-    }
-
-    #[test]
-    #[serial]
-    fn remove_tombstones_document_excluded_from_list() {
-        let b = backend();
-        let svc = b.create_service();
-        let v1 = svc.create(&b.make_json(r#""content":"to remove""#), CreateOptions::default()).unwrap();
-        let other = svc.create(&b.make_json(r#""content":"keep me""#), CreateOptions::default()).unwrap();
-        svc.remove(&v1.getkey()).unwrap();
-        let list = svc.list(ListFilter::default()).unwrap();
-        assert!(list.iter().any(|s| s.document_id == other.id));
-    }
-
-    #[test]
-    #[serial]
-    fn search_finds_document_by_content() {
-        let b = backend();
-        let svc = b.create_service();
-        svc.create(&b.make_json(r#""content":"quantum entanglement theory""#), CreateOptions::default()).unwrap();
-        svc.create(&b.make_json(r#""content":"classical mechanics overview""#), CreateOptions::default()).unwrap();
-        let r = svc.search(SearchQuery { query: "quantum".into(), ..SearchQuery::default() }).unwrap();
-        assert!(!r.results.is_empty());
-        assert_eq!(r.method, SearchMethod::FieldMatch);
-    }
-
-    #[test]
-    #[serial]
-    fn search_by_jacs_type_filter() {
-        let b = backend();
-        let svc = b.create_service();
-        svc.create(&b.make_json(r#""content":"type filter test""#), CreateOptions { jacs_type: "artifact".into(), ..CreateOptions::default() }).unwrap();
-        svc.create(&b.make_json(r#""content":"type filter test""#), CreateOptions { jacs_type: "message".into(), ..CreateOptions::default() }).unwrap();
-        svc.create(&b.make_json(r#""content":"type filter test""#), CreateOptions { jacs_type: "artifact".into(), ..CreateOptions::default() }).unwrap();
-        let r = svc.search(SearchQuery { query: "filter".into(), jacs_type: Some("artifact".into()), ..SearchQuery::default() }).unwrap();
-        assert_eq!(r.results.len(), 2, "expected 2 artifacts, got {}", r.results.len());
-        for h in &r.results { assert_eq!(h.document.jacs_type, "artifact"); }
-    }
-
-    #[test]
-    #[serial]
-    fn search_by_agent_id_filter() {
-        let b = backend();
-        let svc = b.create_service();
-        svc.create(&b.make_json(r#""content":"agent filter test""#), CreateOptions::default()).unwrap();
-        let list = svc.list(ListFilter::default()).unwrap();
-        if list.is_empty() { return; }
-        let aid = &list[0].agent_id;
-        if aid.is_empty() { return; }
-        let r = svc.search(SearchQuery { query: "agent filter".into(), agent_id: Some(aid.clone()), ..SearchQuery::default() }).unwrap();
-        assert!(!r.results.is_empty());
-    }
-
-    #[test]
-    #[serial]
-    fn search_pagination_offset_and_limit() {
-        let b = backend();
-        let svc = b.create_service();
-        for i in 0..5 {
-            svc.create(&b.make_json(&format!(r#""content":"pagination test item {}""#, i)), CreateOptions::default()).unwrap();
-        }
-        let p1 = svc.search(SearchQuery { query: "pagination".into(), limit: 2, offset: 0, ..SearchQuery::default() }).unwrap();
-        assert_eq!(p1.results.len(), 2);
-        assert!(p1.total_count >= 5, "total_count >= 5, got {}", p1.total_count);
-        let p2 = svc.search(SearchQuery { query: "pagination".into(), limit: 2, offset: 2, ..SearchQuery::default() }).unwrap();
-        assert_eq!(p2.results.len(), 2);
-    }
-
-    #[test]
-    #[serial]
-    fn search_with_min_score_filter() {
-        let b = backend();
-        let svc = b.create_service();
-        svc.create(&b.make_json(r#""content":"min score relevance test""#), CreateOptions::default()).unwrap();
-        let r = svc.search(SearchQuery { query: "relevance".into(), min_score: Some(0.5), ..SearchQuery::default() }).unwrap();
-        for h in &r.results { assert!(h.score >= 0.5 || h.score == 0.0, "bad score: {}", h.score); }
-    }
-
-    #[test]
-    #[serial]
-    fn state_tools_map_to_document_api() {
-        let b = backend();
-        let svc = b.create_service();
-
-        let state_doc = svc.create(
-            r#"{"memory":"agent state data","plan":"step 1"}"#,
-            CreateOptions { jacs_type: "agentstate".into(), visibility: DocumentVisibility::Private, ..CreateOptions::default() },
-        ).unwrap();
-        assert_eq!(state_doc.jacs_type, "agentstate");
-
-        assert_eq!(svc.get(&state_doc.getkey()).unwrap().id, state_doc.id);
-
-        let updated = svc.update(&state_doc.id, r#"{"memory":"updated state","plan":"step 2"}"#, UpdateOptions::default()).unwrap();
-        assert_eq!(updated.id, state_doc.id);
-        assert_ne!(updated.version, state_doc.version);
-
-        svc.create(r#"{"content":"not state"}"#, CreateOptions { jacs_type: "artifact".into(), ..CreateOptions::default() }).unwrap();
-        let sl = svc.list(ListFilter { jacs_type: Some("agentstate".into()), ..ListFilter::default() }).unwrap();
-        for s in &sl { assert_eq!(s.jacs_type, "agentstate"); }
-        assert!(!sl.is_empty());
-
-        let adopted = svc.create(
-            r#"{"memory":"adopted from external","source":"agent-xyz"}"#,
-            CreateOptions { jacs_type: "agentstate".into(), visibility: DocumentVisibility::Private, ..CreateOptions::default() },
-        ).unwrap();
-        assert_eq!(adopted.jacs_type, "agentstate");
-    }
-
-    #[test]
-    #[serial]
-    fn append_only_old_version_still_accessible() {
-        let b = backend();
-        let svc = b.create_service();
-        let v1 = svc.create(&b.make_json(r#""content":"version one""#), CreateOptions::default()).unwrap();
-        let v2 = svc.update(&v1.id, &b.make_update_json(&v1.id, &v1.version, r#""content":"version two""#), UpdateOptions::default()).unwrap();
-        assert_eq!(svc.get(&v1.getkey()).unwrap().version, v1.version);
-        assert_eq!(svc.get(&v2.getkey()).unwrap().version, v2.version);
-    }
-
-    #[test]
-    #[serial]
-    fn list_with_type_and_visibility_filters() {
-        let b = backend();
-        let svc = b.create_service();
-        svc.create(&b.make_json(r#""content":"public artifact""#), CreateOptions { jacs_type: "artifact".into(), visibility: DocumentVisibility::Public, ..CreateOptions::default() }).unwrap();
-        svc.create(&b.make_json(r#""content":"private artifact""#), CreateOptions { jacs_type: "artifact".into(), visibility: DocumentVisibility::Private, ..CreateOptions::default() }).unwrap();
-        svc.create(&b.make_json(r#""content":"public message""#), CreateOptions { jacs_type: "message".into(), visibility: DocumentVisibility::Public, ..CreateOptions::default() }).unwrap();
-        let f = svc.list(ListFilter { jacs_type: Some("artifact".into()), visibility: Some(DocumentVisibility::Public), ..ListFilter::default() }).unwrap();
-        for s in &f { assert_eq!(s.jacs_type, "artifact"); assert_eq!(s.visibility, DocumentVisibility::Public); }
-        assert!(!f.is_empty());
-    }
+    lifecycle_test_suite!(fs_helpers::FsBackend, serial);
 }
 
 // ============================================================================

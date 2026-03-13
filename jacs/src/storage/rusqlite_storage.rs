@@ -1239,9 +1239,15 @@ impl DocumentService for SqliteDocumentService {
             jacs_type,
         };
 
-        let visibility = options
-            .visibility
-            .unwrap_or(DocumentVisibility::Private);
+        let visibility = match options.visibility {
+            Some(vis) => vis,
+            None => {
+                // Inherit visibility from the existing document (consistent with filesystem backend).
+                // Falls back to Private if the existing document's visibility can't be read.
+                self.visibility(&_existing.getkey())
+                    .unwrap_or(DocumentVisibility::Private)
+            }
+        };
 
         self.store_and_index(&doc, &visibility)?;
         Ok(doc)
