@@ -1,6 +1,6 @@
 [package]
 name = "jacs-mcp"
-version = "0.9.3"
+version = "0.9.4"
 edition = "2024"
 rust-version = "1.93"
 description = "MCP server for JACS: data provenance and cryptographic signing of agent state"
@@ -45,8 +45,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 rmcp = { version = "0.12", features = ["client", "server", "transport-io", "transport-child-process", "macros"], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"], optional = true }
-jacs = { version = "0.9.3", path = "../jacs", default-features = true }
-jacs-binding-core = { version = "0.9.3", path = "../binding-core", features = ["a2a"] }
+jacs = { version = "0.9.4", path = "../jacs", default-features = true }
+jacs-binding-core = { version = "0.9.4", path = "../binding-core", features = ["a2a"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1.0"
