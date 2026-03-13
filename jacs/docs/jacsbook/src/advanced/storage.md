@@ -227,8 +227,8 @@ This backend is behind a compile-time feature flag and requires the `database` C
 # Build with database support
 cargo build --features database
 
-# Run tests with database support (requires Docker for testcontainers)
-cargo test --features database-tests
+# Run tests with database support (PostgreSQL is now in the jacs-postgresql crate)
+cargo test -p jacs-postgresql
 ```
 
 ### Configuration

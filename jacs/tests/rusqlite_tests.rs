@@ -1,4 +1,4 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-tests"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
 
 //! Rusqlite-specific integration tests beyond the conformance suite.
 //!
@@ -11,7 +11,7 @@
 //! - JSON field queries via json_extract()
 //!
 //! ```sh
-//! cargo test --features rusqlite-tests -- rusqlite_tests
+//! cargo test --features rusqlite-storage -- rusqlite_tests
 //! ```
 
 use jacs::agent::document::JACSDocument;

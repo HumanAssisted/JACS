@@ -1,17 +1,17 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "s3-tests"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "docker"))]
 
 //! Conformance tests for the S3 (MinIO) backend.
 //!
 //! These tests require Docker (testcontainers) to spin up a MinIO instance.
 //!
 //! ```sh
-//! cargo test --features s3-tests -- conformance_s3
+//! cargo test --features docker -- conformance_s3
 //! ```
 //!
 //! Or use docker-compose:
 //! ```sh
 //! docker compose -f docker-compose.test.yml up -d
-//! cargo test --features s3-tests -- conformance_s3
+//! cargo test --features docker -- conformance_s3
 //! ```
 
 mod conformance;

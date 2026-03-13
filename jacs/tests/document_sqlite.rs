@@ -1,4 +1,4 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-tests"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
 
 //! Integration tests for `SqliteDocumentService` — the `DocumentService` + `SearchProvider`
 //! implementation for rusqlite with FTS5 fulltext search.
@@ -17,7 +17,7 @@
 //! - visibility get/set
 //!
 //! ```sh
-//! cargo test --features rusqlite-tests -- document_sqlite
+//! cargo test --features rusqlite-storage -- document_sqlite
 //! ```
 
 use jacs::document::DocumentService;

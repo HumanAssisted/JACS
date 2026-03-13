@@ -1,4 +1,4 @@
-#![cfg(feature = "attestation-tests")]
+#![cfg(feature = "attestation")]
 
 //! Tests for evidence adapter registry wiring.
 //!

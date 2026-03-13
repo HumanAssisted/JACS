@@ -11,11 +11,11 @@
 //! # Filesystem tests only (always available)
 //! cargo test --test document_lifecycle -- lifecycle_fs
 //!
-//! # SQLite tests only (requires rusqlite-tests feature)
-//! cargo test --features rusqlite-tests --test document_lifecycle -- lifecycle_sqlite
+//! # SQLite tests only (requires rusqlite-storage feature)
+//! cargo test --features rusqlite-storage --test document_lifecycle -- lifecycle_sqlite
 //!
 //! # Both backends
-//! cargo test --features rusqlite-tests --test document_lifecycle
+//! cargo test --features rusqlite-storage --test document_lifecycle
 //! ```
 
 use jacs::document::DocumentService;
@@ -850,10 +850,10 @@ mod lifecycle_fs {
 }
 
 // ============================================================================
-// SQLite backend (requires rusqlite-tests feature)
+// SQLite backend (requires rusqlite-storage feature)
 // ============================================================================
 
-#[cfg(feature = "rusqlite-tests")]
+#[cfg(feature = "rusqlite-storage")]
 mod sqlite_helpers {
     use super::*;
 
@@ -875,7 +875,7 @@ mod sqlite_helpers {
     }
 }
 
-#[cfg(feature = "rusqlite-tests")]
+#[cfg(feature = "rusqlite-storage")]
 mod lifecycle_sqlite {
     use super::*;
 

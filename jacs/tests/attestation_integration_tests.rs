@@ -1,4 +1,4 @@
-#![cfg(feature = "attestation-tests")]
+#![cfg(feature = "attestation")]
 
 //! Integration tests for the attestation feature.
 //!

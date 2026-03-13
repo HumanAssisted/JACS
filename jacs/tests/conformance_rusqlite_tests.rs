@@ -1,11 +1,11 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-tests"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
 
 //! Conformance tests for the rusqlite backend.
 //!
 //! These tests run without Docker using an in-memory SQLite database.
 //!
 //! ```sh
-//! cargo test --features rusqlite-tests -- conformance_rusqlite
+//! cargo test --features rusqlite-storage -- conformance_rusqlite
 //! ```
 
 mod conformance;

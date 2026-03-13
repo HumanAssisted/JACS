@@ -11755,8 +11755,8 @@ doc = agent.create_document(json.dumps({
 <pre><code class="language-bash"># Build with database support
 cargo build --features database
 
-# Run tests with database support (requires Docker for testcontainers)
-cargo test --features database-tests
+# Run tests with database support (PostgreSQL is now in the jacs-postgresql crate)
+cargo test -p jacs-postgresql
 </code></pre>
 <h3 id="configuration-15"><a class="header" href="#configuration-15">Configuration</a></h3>
 <pre><code class="language-json">{

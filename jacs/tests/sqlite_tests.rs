@@ -1,4 +1,4 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite-tests"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 
 //! SQLite-specific integration tests beyond the conformance suite.
 //!
@@ -10,7 +10,7 @@
 //! - Raw contents preservation
 //!
 //! ```sh
-//! cargo test --features sqlite-tests -- sqlite_tests
+//! cargo test --features sqlite -- sqlite_tests
 //! ```
 
 use jacs::agent::document::JACSDocument;

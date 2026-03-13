@@ -1,11 +1,11 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite-tests"))]
+#![cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 
 //! Conformance tests for the SQLite backend.
 //!
 //! These tests run without Docker using an in-memory SQLite database.
 //!
 //! ```sh
-//! cargo test --features sqlite-tests -- conformance_sqlite
+//! cargo test --features sqlite -- conformance_sqlite
 //! ```
 
 mod conformance;

@@ -165,27 +165,19 @@ observability-convenience = []
 mcp-server = []
 
 # PostgreSQL storage backend has been extracted to the `jacs-postgresql` crate.
-# The `database` and `database-tests` features are no longer available here.
 
 # SQLite storage backend
 sqlite = ["dep:sqlx", "dep:tokio", "sqlx/sqlite"]
-# SQLite integration tests
-sqlite-tests = ["sqlite"]
-# S3/MinIO integration tests (requires Docker or MinIO)
-s3-tests = []
 
 # rusqlite storage backend (sync SQLite, no tokio needed)
 rusqlite-storage = ["dep:rusqlite"]
-rusqlite-tests = ["rusqlite-storage"]
 
 # SurrealDB storage backend has been extracted to the `jacs-surrealdb` crate.
-# The `surrealdb-storage` and `surrealdb-tests` features are no longer available here.
-
 # DuckDB storage backend has been extracted to the `jacs-duckdb` crate.
-# The `duckdb-storage` and `duckdb-tests` features are no longer available here.
-
 # Redb storage backend has been extracted to the `jacs-redb` crate.
-# The `redb-storage` and `redb-tests` features are no longer available here.
+
+# Gate for tests requiring Docker infrastructure (e.g., S3/MinIO via testcontainers)
+docker = []
 
 # A2A protocol (zero new deps)
 a2a = []
@@ -195,7 +187,6 @@ agreements = []
 
 # Attestation (zero new deps)
 attestation = []
-attestation-tests = ["attestation"]
 # Future stubs:
 attestation-jwt = ["attestation"]
 attestation-tlsnotary = ["attestation"]
