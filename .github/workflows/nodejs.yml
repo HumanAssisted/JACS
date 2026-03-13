@@ -20,6 +20,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+concurrency:
+  group: node-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-jacsnpm:
     name: Test jacsnpm (${{ matrix.os }})
@@ -35,12 +39,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: jacsnpm/package-lock.json
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Install dependencies
         working-directory: jacsnpm
