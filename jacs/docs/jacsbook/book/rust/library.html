@@ -542,9 +542,14 @@ let storage = MultiStorage::new("fs".to_string())?;
 // In-memory storage
 let storage = MultiStorage::new("memory".to_string())?;
 
-// S3 storage
-let storage = MultiStorage::new("s3".to_string())?;
+// AWS object storage
+let storage = MultiStorage::new("aws".to_string())?;
 <span class="boring">}</span></code></pre></pre>
+<p>For signed document CRUD/search, prefer the unified <code>DocumentService</code> surface:</p>
+<pre><code class="language-rust ignore">use jacs::document::service_from_agent;
+
+let docs = service_from_agent(agent_handle)?;
+// `fs` and `rusqlite` currently resolve in JACS core.</code></pre>
 <h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
 <p>JACS functions return <code>Result&lt;T, Box&lt;dyn Error&gt;&gt;</code>:</p>
 <pre><pre class="playground"><code class="language-rust">use jacs::get_empty_agent;

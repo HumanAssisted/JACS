@@ -71,4 +71,4 @@ The MCP server uses stdio transport only (no HTTP) for security.
 - [MCP Integration](https://humanassisted.github.io/JACS/integrations/mcp.html)
 - [JACS core library on crates.io](https://crates.io/crates/jacs)
 
-v0.9.3 | [Apache 2.0 with Common Clause](../LICENSE)
+v0.9.4 | [Apache 2.0 with Common Clause](../LICENSE)

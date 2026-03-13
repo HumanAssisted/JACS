@@ -305,12 +305,18 @@ export JACS_DEFAULT_STORAGE="fs"
   "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h3 id="s3-storage"><a class="header" href="#s3-storage">S3 Storage</a></h3>
+<h3 id="local-indexed-sqlite"><a class="header" href="#local-indexed-sqlite">Local Indexed SQLite</a></h3>
 <pre><code class="language-json">{
-  "jacs_default_storage": "s3"
+  "jacs_default_storage": "rusqlite"
 }
 </code></pre>
-<p>S3 credentials are read from standard AWS environment variables.</p>
+<p>Use <code>rusqlite</code> when you want local full-text search and the upgraded <code>DocumentService</code> behavior in bindings and MCP.</p>
+<h3 id="aws-storage"><a class="header" href="#aws-storage">AWS Storage</a></h3>
+<pre><code class="language-json">{
+  "jacs_default_storage": "aws"
+}
+</code></pre>
+<p>AWS credentials are read from standard AWS environment variables.</p>
 <h3 id="memory-storage-testing"><a class="header" href="#memory-storage-testing">Memory Storage (Testing)</a></h3>
 <pre><code class="language-json">{
   "jacs_default_storage": "memory"

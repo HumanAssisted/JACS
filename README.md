@@ -122,21 +122,27 @@ JACS adds value when data crosses trust boundaries -- between organizations, bet
 
 ## Storage
 
-The default storage backend is **filesystem** (keys and documents on disk). With the `sqlite` feature (enabled by default), documents are also indexed in a local SQLite database for fast queries.
+The default storage backend is **filesystem**: signed documents live as JSON on disk under `jacs_data/`. For indexed local search, set `jacs_default_storage` to `"rusqlite"` and JACS stores document rows in `jacs_data/jacs_documents.sqlite3`.
+
+`DocumentService` storage in JACS core currently guarantees:
+
+- Every read verifies the stored JACS document before returning it.
+- Every create and update verifies the signed document before persisting it.
+- If an update payload modifies an already-signed JACS document without re-signing it, the write fails.
 
 Additional backends are available as separate crates:
 
 | Backend | Crate | Install |
 |---------|-------|---------|
 | Filesystem | built-in | (always available) |
-| SQLite (sync, default) | built-in (`sqlite` feature) | `cargo add jacs --features sqlite` |
+| Local indexed SQLite (`rusqlite`) | built-in (`sqlite` feature, default) | `cargo add jacs --features sqlite` |
 | SQLite (async, sqlx) | built-in (`sqlx-sqlite` feature) | `cargo add jacs --features sqlx-sqlite` |
 | PostgreSQL | `jacs-postgresql` | `cargo add jacs-postgresql` |
 | DuckDB | `jacs-duckdb` | `cargo add jacs-duckdb` |
 | SurrealDB | `jacs-surrealdb` | `cargo add jacs-surrealdb` |
 | Redb | `jacs-redb` | `cargo add jacs-redb` |
 
-All backends implement the `DocumentService` and `SearchProvider` traits. See [Storage Backends](#storage-backends) in the docs for configuration details.
+JACS core resolves the unified `DocumentService` for `fs` and `rusqlite`. Extracted backend crates expose the same traits in their own packages. See [Storage Backends](https://humanassisted.github.io/JACS/advanced/storage.html) for current configuration details.
 
 ## Document Visibility
 
@@ -148,7 +154,7 @@ Every document has a visibility level that controls access:
 | `private` | Private to the owning agent (default) |
 | `restricted` | Restricted to explicitly named agent IDs or roles |
 
-Visibility is set at document creation and can be changed without re-signing.
+Visibility is part of signed document state. Changing it creates a new signed version.
 
 ## Feature Flags
 
@@ -218,4 +224,4 @@ Framework adapters for signing AI outputs with zero infrastructure:
 
 ---
 
-v0.9.3 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
+v0.9.4 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)

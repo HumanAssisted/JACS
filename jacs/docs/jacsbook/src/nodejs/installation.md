@@ -171,14 +171,23 @@ Configure storage in `jacs.config.json`:
 }
 ```
 
-### S3 Storage
+### Local Indexed SQLite
 ```json
 {
-  "jacs_default_storage": "s3"
+  "jacs_default_storage": "rusqlite"
 }
 ```
 
-S3 credentials are read from standard AWS environment variables.
+Use `rusqlite` when you want local full-text search and the upgraded `DocumentService` behavior in bindings and MCP.
+
+### AWS Storage
+```json
+{
+  "jacs_default_storage": "aws"
+}
+```
+
+AWS credentials are read from standard AWS environment variables.
 
 ### Memory Storage (Testing)
 ```json

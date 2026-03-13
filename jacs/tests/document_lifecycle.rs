@@ -583,6 +583,31 @@ macro_rules! lifecycle_test_suite {
 
         $(#[$serial_attr])*
         #[test]
+        fn update_rejects_tampered_signed_document_without_resigning() {
+            let b = backend();
+            let svc = b.create_service();
+
+            let original = svc
+                .create(
+                    &b.make_json(r#""content":"signed content""#),
+                    CreateOptions::default(),
+                )
+                .expect("create");
+
+            let mut tampered = original.value.clone();
+            tampered["content"] = serde_json::json!("tampered without resigning");
+            let tampered_json =
+                serde_json::to_string(&tampered).expect("serialize tampered document");
+
+            let result = svc.update(&original.id, &tampered_json, UpdateOptions::default());
+            assert!(
+                result.is_err(),
+                "update should reject tampered signed input without re-signing"
+            );
+        }
+
+        $(#[$serial_attr])*
+        #[test]
         fn list_with_type_and_visibility_filters() {
             let b = backend();
             let svc = b.create_service();
@@ -806,8 +831,6 @@ mod fs_helpers {
 
             unsafe {
                 std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
-                std::env::set_var("JACS_DATA_DIRECTORY", data_dir.to_str().unwrap());
-                std::env::set_var("JACS_KEY_DIRECTORY", cached.key_dir.to_str().unwrap());
             }
 
             let storage = jacs::storage::MultiStorage::_new("fs".to_string(), data_dir.clone())
@@ -856,17 +879,74 @@ mod lifecycle_fs {
 #[cfg(feature = "sqlite")]
 mod sqlite_helpers {
     use super::*;
+    use jacs::simple::{CreateAgentParams, SimpleAgent};
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex, OnceLock};
+    use tempfile::TempDir;
+
+    const TEST_PASSWORD: &str = "TestP@ss123!#";
+
+    struct CachedAgent {
+        key_dir: PathBuf,
+        config_path: PathBuf,
+        _tempdir: TempDir,
+    }
+
+    static CACHED_AGENT: OnceLock<CachedAgent> = OnceLock::new();
+
+    fn get_or_create_cached_agent() -> &'static CachedAgent {
+        CACHED_AGENT.get_or_init(|| {
+            let tmp = TempDir::new().expect("create sqlite agent tempdir");
+            let data_dir = tmp.path().join("jacs_data");
+            let key_dir = tmp.path().join("jacs_keys");
+            let config_path = tmp.path().join("jacs.config.json");
+
+            let params = CreateAgentParams::builder()
+                .name("sqlite-lifecycle-test-agent")
+                .password(TEST_PASSWORD)
+                .algorithm("ring-Ed25519")
+                .data_directory(data_dir.to_str().unwrap())
+                .key_directory(key_dir.to_str().unwrap())
+                .config_path(config_path.to_str().unwrap())
+                .default_storage("fs")
+                .description("Test agent for sqlite lifecycle integration tests")
+                .build();
+
+            let (_agent, _info) =
+                SimpleAgent::create_with_params(params).expect("create_with_params");
+
+            CachedAgent {
+                key_dir,
+                config_path,
+                _tempdir: tmp,
+            }
+        })
+    }
 
     pub struct SqliteBackend;
 
     impl TestBackend for SqliteBackend {
         fn create_service(&self) -> Box<dyn DocumentService> {
             use jacs::storage::SqliteDocumentService;
-            Box::new(SqliteDocumentService::in_memory().expect("in-memory SQLite"))
+            let cached = get_or_create_cached_agent();
+
+            unsafe {
+                std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+            }
+
+            let mut agent = jacs::get_empty_agent();
+            agent
+                .load_by_config(cached.config_path.to_str().unwrap().to_string())
+                .expect("load sqlite lifecycle agent");
+
+            Box::new(
+                SqliteDocumentService::in_memory_with_agent(Arc::new(Mutex::new(agent)))
+                    .expect("in-memory SQLite"),
+            )
         }
 
         fn needs_jacs_headers(&self) -> bool {
-            true
+            false
         }
 
         fn expected_search_method(&self) -> SearchMethod {
@@ -878,6 +958,7 @@ mod sqlite_helpers {
 #[cfg(feature = "sqlite")]
 mod lifecycle_sqlite {
     use super::*;
+    use serial_test::serial;
 
-    lifecycle_test_suite!(sqlite_helpers::SqliteBackend);
+    lifecycle_test_suite!(sqlite_helpers::SqliteBackend, serial);
 }

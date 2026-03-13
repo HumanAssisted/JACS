@@ -18,6 +18,7 @@
 //! - Adjusting the `#[tool_router]` / `#[tool_handler]` macros from rmcp
 //!   to support handlers spread across multiple modules.
 
+use jacs::document::DocumentService;
 use jacs::schema::agentstate_crud;
 use jacs::validation::require_relative_path_safe;
 use jacs_binding_core::AgentWrapper;
@@ -307,6 +308,8 @@ fn is_leap(y: i64) -> bool {
 pub struct JacsMcpServer {
     /// The local agent identity.
     agent: Arc<AgentWrapper>,
+    /// Unified document service resolved from the loaded agent config.
+    document_service: Option<Arc<dyn DocumentService>>,
     /// Tool router for MCP tool dispatch.
     tool_router: ToolRouter<Self>,
     /// Whether agent creation is allowed (from JACS_MCP_ALLOW_REGISTRATION env var).
@@ -344,6 +347,13 @@ impl JacsMcpServer {
     pub fn with_profile(agent: AgentWrapper, profile: crate::profile::Profile) -> Self {
         let registration_allowed = is_registration_allowed();
         let untrust_allowed = is_untrust_allowed();
+        let document_service = match jacs::document::service_from_agent(agent.inner_arc()) {
+            Ok(service) => Some(service),
+            Err(err) => {
+                tracing::warn!("Document service unavailable for MCP server: {}", err);
+                None
+            }
+        };
 
         if registration_allowed {
             tracing::info!("Agent creation is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
@@ -357,6 +367,7 @@ impl JacsMcpServer {
 
         Self {
             agent: Arc::new(agent),
+            document_service,
             tool_router: Self::tool_router(),
             registration_allowed,
             untrust_allowed,
@@ -1735,148 +1746,97 @@ impl JacsMcpServer {
         inject_meta(&serialized, None)
     }
 
-    /// Search across all signed documents using the unified search interface.
-    ///
-    /// Iterates over all stored documents, matches the query against document
-    /// content, names, and types. Supports optional filtering by JACS document type
-    /// and pagination.
-    ///
-    /// TODO(Issue 015 / tech debt): This manually iterates documents via
-    /// `list_document_keys()` + `get_document_by_id()` with naive substring
-    /// matching. Should delegate to `SearchProvider::search()` from
-    /// `jacs::search::mod.rs` once it is wired into `AgentWrapper`. That would
-    /// also enable the missing `SearchQuery` fields (agent_id, field_filter,
-    /// min_score) and automatic method selection (fulltext/vector/hybrid).
+    /// Search across all signed documents using the configured document service.
     #[tool(
         name = "jacs_search",
         description = "Search across all signed documents using the unified search interface."
     )]
     pub async fn jacs_search(&self, Parameters(params): Parameters<SearchParams>) -> String {
-        let keys = match self.agent.list_document_keys() {
-            Ok(keys) => keys,
-            Err(e) => {
+        let Some(service) = self.document_service.as_ref() else {
+            let result = SearchResult {
+                success: false,
+                results: Vec::new(),
+                total: 0,
+                search_method: None,
+                message: "Document service is not available for the configured storage backend"
+                    .to_string(),
+                error: Some("document_service_unavailable".to_string()),
+            };
+            let serialized =
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return inject_meta(&serialized, None);
+        };
+
+        let query_text = params.query.clone();
+        let query = jacs::search::SearchQuery {
+            query: params.query,
+            jacs_type: params.jacs_type,
+            agent_id: params.agent_id,
+            field_filter: params.field_filter.map(|filter| jacs::search::FieldFilter {
+                field_path: filter.field_path,
+                value: filter.value,
+            }),
+            limit: params.limit.unwrap_or(20) as usize,
+            offset: params.offset.unwrap_or(0) as usize,
+            min_score: params.min_score,
+        };
+
+        let search_results = match service.search(query) {
+            Ok(results) => results,
+            Err(err) => {
                 let result = SearchResult {
                     success: false,
                     results: Vec::new(),
                     total: 0,
-                    search_method: Some("fulltext".to_string()),
-                    message: "Failed to enumerate stored documents".to_string(),
-                    error: Some(e.to_string()),
+                    search_method: None,
+                    message: "Search failed".to_string(),
+                    error: Some(err.to_string()),
                 };
-                return serde_json::to_string_pretty(&result)
+                let serialized = serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
+                return inject_meta(&serialized, None);
             }
         };
 
-        let limit = params.limit.unwrap_or(20) as usize;
-        let offset = params.offset.unwrap_or(0) as usize;
-        let query_lower = params.query.to_lowercase();
-        let mut matched: Vec<(f64, String, SearchResultEntry)> = Vec::new();
+        let search_method = match search_results.method {
+            jacs::search::SearchMethod::FullText => "fulltext",
+            jacs::search::SearchMethod::Vector => "vector",
+            jacs::search::SearchMethod::Hybrid => "hybrid",
+            jacs::search::SearchMethod::FieldMatch => "field_match",
+            jacs::search::SearchMethod::Unsupported => "unsupported",
+        }
+        .to_string();
 
-        for key in keys {
-            let doc_string = match self.agent.get_document_by_id(&key) {
-                Ok(doc) => doc,
-                Err(_) => continue,
-            };
-            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
-                Ok(doc) => doc,
-                Err(_) => continue,
-            };
+        let results = search_results
+            .results
+            .into_iter()
+            .map(|hit| {
+                let doc = &hit.document.value;
+                let name = value_string(doc, "jacsAgentStateName")
+                    .or_else(|| value_string(doc, "jacsName"))
+                    .or_else(|| value_string(doc, "name"));
+                let snippet = extract_embedded_state_content(doc)
+                    .or_else(|| value_string(doc, "jacsDescription"))
+                    .or_else(|| value_string(doc, "content"));
 
-            // Determine the JACS document type.
-            let jacs_type = value_string(&doc, "jacsType");
-
-            // Apply type filter if specified.
-            if let Some(ref filter_type) = params.jacs_type {
-                if jacs_type.as_deref() != Some(filter_type.as_str()) {
-                    continue;
-                }
-            }
-
-            // Gather searchable text from the document.
-            let name = value_string(&doc, "jacsAgentStateName")
-                .or_else(|| value_string(&doc, "jacsName"))
-                .or_else(|| value_string(&doc, "name"));
-            let description = value_string(&doc, "jacsAgentStateDescription")
-                .or_else(|| value_string(&doc, "jacsDescription"));
-            let content = extract_embedded_state_content(&doc);
-
-            let name_lower = name.as_deref().unwrap_or("").to_lowercase();
-            let desc_lower = description.as_deref().unwrap_or("").to_lowercase();
-            let content_lower = content.as_deref().unwrap_or("").to_lowercase();
-            let type_lower = jacs_type.as_deref().unwrap_or("").to_lowercase();
-
-            // Score the match: name matches are worth more than content matches.
-            let mut score = 0.0_f64;
-            if name_lower.contains(&query_lower) {
-                score += 10.0;
-            }
-            if type_lower.contains(&query_lower) {
-                score += 5.0;
-            }
-            if desc_lower.contains(&query_lower) {
-                score += 3.0;
-            }
-            if content_lower.contains(&query_lower) {
-                score += 1.0;
-            }
-
-            if score == 0.0 {
-                continue;
-            }
-
-            // Build a snippet from the first matching field.
-            let snippet = if content_lower.contains(&query_lower) {
-                // Find the match position and extract a window around it.
-                if let Some(pos) = content_lower.find(&query_lower) {
-                    let content_ref = content.as_deref().unwrap_or("");
-                    let start = pos.saturating_sub(40);
-                    let end = (pos + query_lower.len() + 40).min(content_ref.len());
-                    Some(format!("...{}...", &content_ref[start..end]))
-                } else {
-                    None
-                }
-            } else if desc_lower.contains(&query_lower) {
-                description.clone()
-            } else {
-                name.clone()
-            };
-
-            matched.push((
-                score,
-                key.clone(),
                 SearchResultEntry {
-                    jacs_document_id: key,
-                    jacs_type: jacs_type.clone(),
+                    jacs_document_id: hit.document.getkey(),
+                    jacs_type: Some(hit.document.jacs_type.clone()),
                     name,
                     snippet,
-                    score: Some(score),
-                    search_method: Some("fulltext".to_string()),
-                },
-            ));
-        }
+                    score: Some(hit.score),
+                    search_method: Some(search_method.clone()),
+                }
+            })
+            .collect::<Vec<_>>();
 
-        // Sort by score descending, then by document ID for stability.
-        matched.sort_by(|a, b| {
-            b.0.partial_cmp(&a.0)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.1.cmp(&b.1))
-        });
-
-        let total = matched.len();
-        let results: Vec<SearchResultEntry> = matched
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .map(|(_, _, entry)| entry)
-            .collect();
-
+        let total = search_results.total_count;
         let result = SearchResult {
             success: true,
             results,
             total,
-            search_method: Some("fulltext".to_string()),
-            message: format!("Found {} documents matching '{}'", total, params.query),
+            search_method: Some(search_method),
+            message: format!("Found {} documents matching '{}'", total, query_text),
             error: None,
         };
 

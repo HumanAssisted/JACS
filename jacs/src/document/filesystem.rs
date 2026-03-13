@@ -23,9 +23,12 @@ use tracing::warn;
 
 use crate::agent::Agent;
 use crate::agent::document::{DocumentTraits, JACSDocument};
-use crate::document::DocumentService;
 use crate::document::types::{
     CreateOptions, DocumentDiff, DocumentSummary, DocumentVisibility, ListFilter, UpdateOptions,
+};
+use crate::document::{
+    DocumentService, has_signed_document_headers, verify_document_value_with_agent,
+    verify_document_with_agent,
 };
 use crate::error::JacsError;
 use crate::search::{
@@ -203,6 +206,8 @@ impl DocumentService for FilesystemDocumentService {
             .create_document_and_load(&doc_string, None, None)
             .map_err(|e| JacsError::DocumentError(format!("Failed to create document: {}", e)))?;
 
+        verify_document_with_agent(&mut agent, &jacs_doc)?;
+
         // Store in filesystem
         self.storage
             .store_document(&jacs_doc)
@@ -212,9 +217,15 @@ impl DocumentService for FilesystemDocumentService {
     }
 
     fn get(&self, key: &str) -> Result<JACSDocument, JacsError> {
-        self.storage.get_document(key).map_err(|e| {
+        let doc = self.storage.get_document(key).map_err(|e| {
             JacsError::StorageError(format!("Failed to get document '{}': {}", key, e))
-        })
+        })?;
+
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        verify_document_with_agent(&mut agent, &doc)?;
+        Ok(doc)
     }
 
     fn get_latest(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
@@ -271,6 +282,14 @@ impl DocumentService for FilesystemDocumentService {
         let mut value: serde_json::Value =
             serde_json::from_str(new_json).map_err(|e| JacsError::DocumentError(e.to_string()))?;
 
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+
+        if has_signed_document_headers(&value) {
+            verify_document_value_with_agent(&mut agent, &value)?;
+        }
+
         if let Some(obj) = value.as_object_mut() {
             // Must match the current document's ID and version for update_document
             obj.insert(
@@ -324,10 +343,6 @@ impl DocumentService for FilesystemDocumentService {
             serde_json::to_string(&value).map_err(|e| JacsError::DocumentError(e.to_string()))?;
 
         // Use Agent::update_document to create a new version with the same ID
-        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-
         // First, load the current document into the Agent's in-memory store
         // so update_document can find it
         let _ = agent.load_document(
@@ -338,6 +353,8 @@ impl DocumentService for FilesystemDocumentService {
         let new_doc = agent
             .update_document(&current_key, &doc_string, None, None)
             .map_err(|e| JacsError::DocumentError(format!("Failed to update document: {}", e)))?;
+
+        verify_document_with_agent(&mut agent, &new_doc)?;
 
         // Store the new version on the filesystem
         self.storage.store_document(&new_doc).map_err(|e| {

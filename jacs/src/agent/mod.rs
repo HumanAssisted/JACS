@@ -451,7 +451,8 @@ impl Agent {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        let storage_root = if storage_type == "fs" {
+        let uses_filesystem_paths = matches!(storage_type.as_str(), "fs" | "rusqlite" | "sqlite");
+        let storage_root = if uses_filesystem_paths {
             let config_dir = std::path::Path::new(&path)
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
@@ -556,7 +557,12 @@ impl Agent {
         };
 
         self.config = Some(config);
-        self.storage = MultiStorage::_new(storage_type.clone(), storage_root).map_err(|e| {
+        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
+            "fs".to_string()
+        } else {
+            storage_type.clone()
+        };
+        self.storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
             format!(
                 "load_by_config failed: Could not initialize storage type '{}' (from config '{}'): {}",
                 storage_type, path, e
@@ -609,7 +615,12 @@ impl Agent {
             .as_ref()
             .and_then(|c| c.jacs_default_storage().clone())
             .unwrap_or_else(|| "fs".to_string());
-        self.storage = MultiStorage::_new(storage_type, root)?;
+        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
+            "fs".to_string()
+        } else {
+            storage_type
+        };
+        self.storage = MultiStorage::_new(file_storage_type, root)?;
         Ok(())
     }
 

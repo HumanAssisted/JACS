@@ -43,42 +43,10 @@ impl DocumentServiceWrapper {
     /// load an agent, then create a document service from it.
     pub fn from_agent_wrapper(wrapper: &crate::AgentWrapper) -> BindingResult<Self> {
         let agent_arc = wrapper.inner_arc();
-
-        // Extract storage and data directory from the agent's config.
-        let (storage, base_dir) = {
-            let agent = agent_arc.lock().map_err(|e| {
-                BindingCoreError::lock_failed(format!("Failed to lock agent: {}", e))
-            })?;
-
-            let config = agent.config.as_ref().ok_or_else(|| {
-                BindingCoreError::agent_load(
-                    "Agent has no config — load an agent first".to_string(),
-                )
-            })?;
-
-            let data_dir = config
-                .jacs_data_directory()
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| "./jacs_data".to_string());
-
-            let storage_type = config
-                .jacs_default_storage()
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| "fs".to_string());
-
-            let storage = jacs::storage::MultiStorage::new(storage_type).map_err(|e| {
-                BindingCoreError::generic(format!("Failed to create storage: {}", e))
-            })?;
-
-            (storage, std::path::PathBuf::from(data_dir))
-        };
-
-        let fs_service =
-            jacs::document::FilesystemDocumentService::new(Arc::new(storage), agent_arc, base_dir);
-
-        Ok(Self::new(Box::new(fs_service)))
+        let service = jacs::document::service_from_agent(agent_arc).map_err(|e| {
+            BindingCoreError::document_failed(format!("Failed to resolve document service: {}", e))
+        })?;
+        Ok(Self::from_arc(service))
     }
 
     // =========================================================================

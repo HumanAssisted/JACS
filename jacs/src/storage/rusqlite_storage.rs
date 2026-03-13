@@ -16,13 +16,17 @@
 //!
 //! This module requires the `rusqlite-storage` feature flag and is excluded from WASM.
 
-use crate::agent::document::JACSDocument;
+use crate::agent::Agent;
+use crate::agent::document::{DocumentTraits, JACSDocument};
+use crate::document::{
+    has_signed_document_headers, verify_document_value_with_agent, verify_document_with_agent,
+};
 use crate::error::JacsError;
 use crate::storage::StorageDocumentTraits;
 use crate::storage::database_traits::DatabaseDocumentTraits;
 use rusqlite::{Connection, params};
 use serde_json::Value;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Rusqlite storage backend for JACS documents.
 ///
@@ -812,11 +816,20 @@ use crate::search::{
 /// (tombstone) — it never deletes rows. `list()` excludes removed documents.
 pub struct SqliteDocumentService {
     conn: Mutex<Connection>,
+    agent: Arc<Mutex<Agent>>,
 }
 
 impl SqliteDocumentService {
     /// Create a new SqliteDocumentService connected to the given SQLite database file.
     pub fn new(database_path: &str) -> Result<Self, JacsError> {
+        Self::with_agent(
+            database_path,
+            Arc::new(Mutex::new(crate::get_empty_agent())),
+        )
+    }
+
+    /// Create a new SqliteDocumentService with an explicit signing/verifying agent.
+    pub fn with_agent(database_path: &str, agent: Arc<Mutex<Agent>>) -> Result<Self, JacsError> {
         let conn = Connection::open(database_path).map_err(|e| JacsError::DatabaseError {
             operation: "connect".to_string(),
             reason: e.to_string(),
@@ -828,6 +841,7 @@ impl SqliteDocumentService {
             })?;
         let svc = Self {
             conn: Mutex::new(conn),
+            agent,
         };
         svc.run_migrations()?;
         Ok(svc)
@@ -835,12 +849,18 @@ impl SqliteDocumentService {
 
     /// Create an in-memory SQLite database (useful for tests).
     pub fn in_memory() -> Result<Self, JacsError> {
+        Self::in_memory_with_agent(Arc::new(Mutex::new(crate::get_empty_agent())))
+    }
+
+    /// Create an in-memory SQLite database with an explicit signing/verifying agent.
+    pub fn in_memory_with_agent(agent: Arc<Mutex<Agent>>) -> Result<Self, JacsError> {
         let conn = Connection::open_in_memory().map_err(|e| JacsError::DatabaseError {
             operation: "connect".to_string(),
             reason: e.to_string(),
         })?;
         let svc = Self {
             conn: Mutex::new(conn),
+            agent,
         };
         svc.run_migrations()?;
         Ok(svc)
@@ -950,7 +970,7 @@ impl SqliteDocumentService {
         let agent_id = doc
             .value
             .get("jacsSignature")
-            .and_then(|s| s.get("jacsSignatureAgentId"))
+            .and_then(|s| s.get("agentID").or_else(|| s.get("jacsSignatureAgentId")))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -1022,31 +1042,38 @@ impl SqliteDocumentService {
             jacs_type,
         })
     }
+
+    fn lock_agent(&self, operation: &str) -> Result<std::sync::MutexGuard<'_, Agent>, JacsError> {
+        self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to lock agent for {}: {}", operation, e),
+        })
+    }
 }
 
 impl DocumentService for SqliteDocumentService {
     fn create(&self, json: &str, options: CreateOptions) -> Result<JACSDocument, JacsError> {
-        let value: Value = serde_json::from_str(json)
+        let mut value: Value = serde_json::from_str(json)
             .map_err(|e| JacsError::DocumentError(format!("Invalid JSON: {}", e)))?;
 
-        let id = value
-            .get("jacsId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| JacsError::DocumentError("Missing jacsId field".to_string()))?
-            .to_string();
-        let version = value
-            .get("jacsVersion")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| JacsError::DocumentError("Missing jacsVersion field".to_string()))?
-            .to_string();
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("jacsType".to_string(), serde_json::json!(options.jacs_type));
+            obj.insert("jacsLevel".to_string(), serde_json::json!("artifact"));
+            let vis_value = serde_json::to_value(&options.visibility).map_err(|e| {
+                JacsError::DocumentError(format!("Failed to serialize visibility: {}", e))
+            })?;
+            obj.insert("jacsVisibility".to_string(), vis_value);
+        }
 
-        let doc = JACSDocument {
-            id,
-            version,
-            value,
-            jacs_type: options.jacs_type.clone(),
-        };
+        let doc_string = serde_json::to_string(&value).map_err(|e| {
+            JacsError::DocumentError(format!("Failed to serialize document payload: {}", e))
+        })?;
 
+        let mut agent = self.lock_agent("create")?;
+        let doc = agent
+            .create_document_and_load(&doc_string, None, None)
+            .map_err(|e| JacsError::DocumentError(format!("Failed to create document: {}", e)))?;
+
+        verify_document_with_agent(&mut agent, &doc)?;
         self.store_and_index(&doc, &options.visibility)?;
         Ok(doc)
     }
@@ -1080,7 +1107,10 @@ impl DocumentService for SqliteDocumentService {
 
         match rows.next() {
             Some(Ok((jacs_id, jacs_version, jacs_type, raw))) => {
-                Self::doc_from_row(jacs_id, jacs_version, jacs_type, raw)
+                let doc = Self::doc_from_row(jacs_id, jacs_version, jacs_type, raw)?;
+                let mut agent = self.lock_agent("get")?;
+                verify_document_with_agent(&mut agent, &doc)?;
+                Ok(doc)
             }
             Some(Err(e)) => Err(JacsError::DatabaseError {
                 operation: "get".to_string(),
@@ -1121,7 +1151,10 @@ impl DocumentService for SqliteDocumentService {
 
         match rows.next() {
             Some(Ok((jacs_id, jacs_version, jacs_type, raw))) => {
-                Self::doc_from_row(jacs_id, jacs_version, jacs_type, raw)
+                let doc = Self::doc_from_row(jacs_id, jacs_version, jacs_type, raw)?;
+                let mut agent = self.lock_agent("get_latest")?;
+                verify_document_with_agent(&mut agent, &doc)?;
+                Ok(doc)
             }
             Some(Err(e)) => Err(JacsError::DatabaseError {
                 operation: "get_latest".to_string(),
@@ -1140,41 +1173,79 @@ impl DocumentService for SqliteDocumentService {
         new_json: &str,
         options: UpdateOptions,
     ) -> Result<JACSDocument, JacsError> {
-        // Verify the original document exists
-        let _existing = self.get_latest(document_id)?;
+        let current = self.get_latest(document_id)?;
+        let current_key = current.getkey();
 
-        let value: Value = serde_json::from_str(new_json)
+        let mut value: Value = serde_json::from_str(new_json)
             .map_err(|e| JacsError::DocumentError(format!("Invalid JSON: {}", e)))?;
 
-        let version = value
-            .get("jacsVersion")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| JacsError::DocumentError("Missing jacsVersion in update".to_string()))?
-            .to_string();
-
-        let jacs_type = value
-            .get("jacsType")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&_existing.jacs_type)
-            .to_string();
-
-        let doc = JACSDocument {
-            id: document_id.to_string(),
-            version,
-            value,
-            jacs_type,
-        };
+        let mut agent = self.lock_agent("update")?;
+        if has_signed_document_headers(&value) {
+            verify_document_value_with_agent(&mut agent, &value)?;
+        }
 
         let visibility = match options.visibility {
             Some(vis) => vis,
-            None => {
-                // Inherit visibility from the existing document (consistent with filesystem backend).
-                // Falls back to Private if the existing document's visibility can't be read.
-                self.visibility(&_existing.getkey())
-                    .unwrap_or(DocumentVisibility::Private)
-            }
+            None => current
+                .value
+                .get("jacsVisibility")
+                .cloned()
+                .and_then(|raw| serde_json::from_value(raw).ok())
+                .unwrap_or(DocumentVisibility::Private),
         };
 
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert(
+                "jacsId".to_string(),
+                current
+                    .value
+                    .get("jacsId")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!(document_id)),
+            );
+            obj.insert(
+                "jacsVersion".to_string(),
+                current
+                    .value
+                    .get("jacsVersion")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!(current.version)),
+            );
+            obj.insert("jacsType".to_string(), serde_json::json!(current.jacs_type));
+            obj.insert("jacsLevel".to_string(), serde_json::json!("artifact"));
+            let vis_value = serde_json::to_value(&visibility).map_err(|e| {
+                JacsError::DocumentError(format!("Failed to serialize visibility: {}", e))
+            })?;
+            obj.insert("jacsVisibility".to_string(), vis_value);
+
+            for field in &[
+                "$schema",
+                "jacsOriginalVersion",
+                "jacsOriginalDate",
+                "jacsSha256",
+                "jacsSignature",
+                "jacsVersionDate",
+            ] {
+                if let Some(existing) = current.value.get(*field) {
+                    obj.entry((*field).to_string()).or_insert(existing.clone());
+                }
+            }
+        }
+
+        let new_doc_string = serde_json::to_string(&value).map_err(|e| {
+            JacsError::DocumentError(format!("Failed to serialize updated document: {}", e))
+        })?;
+
+        let _ = agent.load_document(
+            &serde_json::to_string(&current.value)
+                .map_err(|e| JacsError::DocumentError(e.to_string()))?,
+        );
+
+        let doc = agent
+            .update_document(&current_key, &new_doc_string, None, None)
+            .map_err(|e| JacsError::DocumentError(format!("Failed to update document: {}", e)))?;
+
+        verify_document_with_agent(&mut agent, &doc)?;
         self.store_and_index(&doc, &visibility)?;
         Ok(doc)
     }
@@ -1261,7 +1332,7 @@ impl DocumentService for SqliteDocumentService {
                 reason: e.to_string(),
             })?;
 
-        let mut summaries = Vec::new();
+        let mut row_data = Vec::new();
         for row in rows {
             let (jacs_id, jacs_version, jacs_type, agent_id, visibility_str, created_at) = row
                 .map_err(|e| JacsError::DatabaseError {
@@ -1271,15 +1342,30 @@ impl DocumentService for SqliteDocumentService {
 
             let visibility: DocumentVisibility =
                 serde_json::from_str(&visibility_str).unwrap_or(DocumentVisibility::Private);
+            row_data.push((
+                format!("{}:{}", jacs_id, jacs_version),
+                jacs_id,
+                jacs_version,
+                jacs_type,
+                visibility,
+                created_at,
+                agent_id.unwrap_or_default(),
+            ));
+        }
+        drop(stmt);
+        drop(conn);
 
+        let mut summaries = Vec::new();
+        for (key, jacs_id, jacs_version, jacs_type, visibility, created_at, agent_id) in row_data {
+            let _ = self.get(&key)?;
             summaries.push(DocumentSummary {
-                key: format!("{}:{}", jacs_id, jacs_version),
+                key,
                 document_id: jacs_id,
                 version: jacs_version,
                 jacs_type,
                 visibility,
                 created_at,
-                agent_id: agent_id.unwrap_or_default(),
+                agent_id,
             });
         }
 
@@ -1313,13 +1399,16 @@ impl DocumentService for SqliteDocumentService {
             })?;
 
         let mut docs = Vec::new();
+        let mut agent = self.lock_agent("versions")?;
         for row in rows {
             let (jacs_id, jacs_version, jacs_type, raw) =
                 row.map_err(|e| JacsError::DatabaseError {
                     operation: "versions".to_string(),
                     reason: e.to_string(),
                 })?;
-            docs.push(Self::doc_from_row(jacs_id, jacs_version, jacs_type, raw)?);
+            let doc = Self::doc_from_row(jacs_id, jacs_version, jacs_type, raw)?;
+            verify_document_with_agent(&mut agent, &doc)?;
+            docs.push(doc);
         }
         Ok(docs)
     }
@@ -1375,171 +1464,53 @@ impl DocumentService for SqliteDocumentService {
         documents: &[&str],
         options: CreateOptions,
     ) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
-        let conn = self.conn.lock().map_err(|e| {
-            vec![JacsError::DatabaseError {
-                operation: "create_batch".to_string(),
-                reason: format!("Lock poisoned: {}", e),
-            }]
-        })?;
-
-        // Use a transaction for atomicity
-        conn.execute_batch("BEGIN TRANSACTION").map_err(|e| {
-            vec![JacsError::DatabaseError {
-                operation: "create_batch".to_string(),
-                reason: format!("Failed to begin transaction: {}", e),
-            }]
-        })?;
-
         let mut created = Vec::new();
         let mut errors = Vec::new();
-
         for json_str in documents {
-            let value: Value = match serde_json::from_str(json_str) {
-                Ok(v) => v,
-                Err(e) => {
-                    errors.push(JacsError::DocumentError(format!("Invalid JSON: {}", e)));
-                    continue;
-                }
-            };
-
-            let id = match value.get("jacsId").and_then(|v| v.as_str()) {
-                Some(s) => s.to_string(),
-                None => {
-                    errors.push(JacsError::DocumentError("Missing jacsId".to_string()));
-                    continue;
-                }
-            };
-            let version = match value.get("jacsVersion").and_then(|v| v.as_str()) {
-                Some(s) => s.to_string(),
-                None => {
-                    errors.push(JacsError::DocumentError("Missing jacsVersion".to_string()));
-                    continue;
-                }
-            };
-
-            let doc = JACSDocument {
-                id,
-                version,
-                value,
-                jacs_type: options.jacs_type.clone(),
-            };
-
-            let raw_json = serde_json::to_string_pretty(&doc.value).unwrap_or_default();
-            let file_contents_json = serde_json::to_string(&doc.value).unwrap_or_default();
-            let agent_id = doc
-                .value
-                .get("jacsSignature")
-                .and_then(|s| s.get("jacsSignatureAgentId"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let visibility_str = serde_json::to_string(&options.visibility)
-                .unwrap_or_else(|_| "\"private\"".to_string());
-
-            if let Err(e) = conn.execute(
-                r#"INSERT INTO jacs_document
-                   (jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, visibility)
-                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
-                params![
-                    doc.id,
-                    doc.version,
-                    agent_id,
-                    doc.jacs_type,
-                    raw_json,
-                    file_contents_json,
-                    visibility_str,
-                ],
-            ) {
-                let reason = e.to_string();
-                if reason.contains("UNIQUE constraint") {
-                    errors.push(JacsError::DocumentError(format!(
-                        "Document already exists: {}:{}",
-                        doc.id, doc.version
-                    )));
-                } else {
-                    errors.push(JacsError::DatabaseError {
-                        operation: "create_batch".to_string(),
-                        reason,
-                    });
-                }
-                continue;
+            match self.create(json_str, options.clone()) {
+                Ok(doc) => created.push(doc),
+                Err(err) => errors.push(err),
             }
-
-            // Update FTS5 index — propagate errors instead of silently swallowing
-            if let Err(e) = conn.execute(
-                r#"INSERT INTO documents_fts(rowid, raw_contents, jacs_type, agent_id)
-                   SELECT rowid, raw_contents, jacs_type, COALESCE(agent_id, '')
-                   FROM jacs_document
-                   WHERE jacs_id = ?1 AND jacs_version = ?2"#,
-                params![doc.id, doc.version],
-            ) {
-                errors.push(JacsError::DatabaseError {
-                    operation: "create_batch_fts".to_string(),
-                    reason: e.to_string(),
-                });
-                continue;
-            }
-
-            created.push(doc);
         }
 
         if !errors.is_empty() {
-            let _ = conn.execute_batch("ROLLBACK");
             return Err(errors);
         }
-
-        conn.execute_batch("COMMIT").map_err(|e| {
-            vec![JacsError::DatabaseError {
-                operation: "create_batch".to_string(),
-                reason: format!("Failed to commit transaction: {}", e),
-            }]
-        })?;
-
         Ok(created)
     }
 
     fn visibility(&self, key: &str) -> Result<DocumentVisibility, JacsError> {
-        let (id, version) = Self::parse_key(key)?;
-        let conn = self.lock_conn("visibility")?;
-
-        let vis_str: String = conn
-            .query_row(
-                "SELECT visibility FROM jacs_document WHERE jacs_id = ?1 AND jacs_version = ?2",
-                params![id, version],
-                |row| row.get(0),
-            )
-            .map_err(|e| JacsError::DatabaseError {
-                operation: "visibility".to_string(),
-                reason: e.to_string(),
-            })?;
-
-        serde_json::from_str(&vis_str)
-            .map_err(|e| JacsError::DocumentError(format!("Failed to parse visibility: {}", e)))
+        let doc = self.get(key)?;
+        Ok(doc
+            .value
+            .get("jacsVisibility")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|e| JacsError::DocumentError(format!("Failed to parse visibility: {}", e)))?
+            .unwrap_or(DocumentVisibility::Private))
     }
 
     fn set_visibility(&self, key: &str, visibility: DocumentVisibility) -> Result<(), JacsError> {
-        let (id, version) = Self::parse_key(key)?;
-        let vis_str = serde_json::to_string(&visibility).map_err(|e| {
-            JacsError::DocumentError(format!("Failed to serialize visibility: {}", e))
-        })?;
-
-        let conn = self.lock_conn("set_visibility")?;
-        let updated = conn
-            .execute(
-                "UPDATE jacs_document SET visibility = ?1 WHERE jacs_id = ?2 AND jacs_version = ?3",
-                params![vis_str, id, version],
-            )
-            .map_err(|e| JacsError::DatabaseError {
-                operation: "set_visibility".to_string(),
-                reason: e.to_string(),
+        let doc = self.get(key)?;
+        let mut new_value = doc.value.clone();
+        if let Some(obj) = new_value.as_object_mut() {
+            let vis_value = serde_json::to_value(&visibility).map_err(|e| {
+                JacsError::DocumentError(format!("Failed to serialize visibility: {}", e))
             })?;
-
-        if updated == 0 {
-            return Err(JacsError::DocumentError(format!(
-                "Document not found: {}",
-                key
-            )));
+            obj.insert("jacsVisibility".to_string(), vis_value);
         }
-
+        let new_json = serde_json::to_string(&new_value).map_err(|e| {
+            JacsError::DocumentError(format!("Failed to serialize updated visibility: {}", e))
+        })?;
+        self.update(
+            &doc.id,
+            &new_json,
+            UpdateOptions {
+                visibility: Some(visibility),
+                ..UpdateOptions::default()
+            },
+        )?;
         Ok(())
     }
 }
@@ -1683,6 +1654,7 @@ impl SearchProvider for SqliteDocumentService {
             })?;
 
         let mut hits = Vec::new();
+        let mut agent = self.lock_agent("search")?;
         for row in rows {
             let (jacs_id, jacs_version, jacs_type, raw, rank) =
                 row.map_err(|e| JacsError::DatabaseError {
@@ -1691,6 +1663,7 @@ impl SearchProvider for SqliteDocumentService {
                 })?;
 
             let doc = Self::doc_from_row(jacs_id, jacs_version, jacs_type, raw)?;
+            verify_document_with_agent(&mut agent, &doc)?;
             // FTS5 rank is negative (lower = better). Normalize to 0.0-1.0 scale.
             let score = if has_fts_query {
                 1.0 / (1.0 + rank.abs())

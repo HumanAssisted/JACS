@@ -8,8 +8,12 @@ use std::process::Stdio;
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use jacs::simple::{CreateAgentParams, SimpleAgent};
+use jacs_binding_core::{AgentWrapper, DocumentServiceWrapper};
+use jacs_mcp::{JacsMcpServer, tools::{SearchFieldFilter, SearchParams}};
 use rmcp::{
     RoleClient, ServiceExt,
+    handler::server::wrapper::Parameters,
     model::CallToolRequestParam,
     service::RunningService,
     transport::{ConfigureCommandExt, TokioChildProcess},
@@ -213,5 +217,81 @@ async fn jacs_search_pagination_works() -> anyhow::Result<()> {
     );
 
     s.client.cancellation_token().cancel();
+    Ok(())
+}
+
+fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
+    let tmp = tempfile::TempDir::new().expect("create tempdir");
+    let data_dir = tmp.path().join("jacs_data");
+    let key_dir = tmp.path().join("jacs_keys");
+    let config_path = tmp.path().join("jacs.config.json");
+
+    let params = CreateAgentParams::builder()
+        .name("mcp-search-sqlite")
+        .password(TEST_PASSWORD)
+        .algorithm("ring-Ed25519")
+        .data_directory(data_dir.to_str().unwrap())
+        .key_directory(key_dir.to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .default_storage("fs")
+        .build();
+
+    let (_agent, _info) =
+        SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
+
+    let mut config_json: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&config_path).expect("read generated config"),
+    )
+    .expect("parse generated config");
+    config_json["jacs_default_storage"] =
+        serde_json::Value::String("rusqlite".to_string());
+    fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&config_json).expect("serialize config"),
+    )
+    .expect("write updated config");
+
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    }
+
+    let wrapper = AgentWrapper::new();
+    wrapper
+        .load(config_path.to_string_lossy().into_owned())
+        .expect("agent load should succeed");
+
+    (wrapper, tmp)
+}
+
+#[tokio::test]
+async fn jacs_search_uses_document_service_backend_method() -> anyhow::Result<()> {
+    let _g = STDIO_LOCK.lock().await;
+    let (agent, _tmp) = sqlite_ready_agent();
+    let docs = DocumentServiceWrapper::from_agent_wrapper(&agent)?;
+    docs.create_json(r#"{"content":"mcpsqlitesearch needle","category":"keep"}"#, None)?;
+    docs.create_json(r#"{"content":"mcpsqlitesearch needle","category":"drop"}"#, None)?;
+
+    let server = JacsMcpServer::new(agent);
+    let raw = server
+        .jacs_search(Parameters(SearchParams {
+            query: "needle".to_string(),
+            jacs_type: None,
+            agent_id: None,
+            field_filter: Some(SearchFieldFilter {
+                field_path: "category".to_string(),
+                value: "keep".to_string(),
+            }),
+            limit: Some(10),
+            offset: Some(0),
+            min_score: None,
+        }))
+        .await;
+    let result: serde_json::Value =
+        serde_json::from_str(&raw).expect("search result should be valid JSON");
+
+    assert_eq!(result["success"], true, "search failed: {}", result);
+    assert_eq!(result["search_method"], "fulltext");
+    let results = result["results"].as_array().expect("results should be an array");
+    assert_eq!(results.len(), 1, "field_filter should narrow results: {}", result);
     Ok(())
 }

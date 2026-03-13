@@ -10,13 +10,17 @@ use super::schema_map;
 // Request/Response Types
 // =============================================================================
 
+/// Field-level filter accepted by the MCP search tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchFieldFilter {
+    /// JSON field path (for example: `category` or `metadata.status`).
+    pub field_path: String,
+
+    /// Exact value the field must match.
+    pub value: String,
+}
+
 /// Parameters for the unified search tool.
-///
-/// TODO(Issue 015): This should accept all `SearchQuery` fields from
-/// `jacs::search::SearchQuery` (agent_id, field_filter, min_score) and
-/// delegate to `SearchProvider::search()` instead of the manual iteration
-/// in `jacs_tools.rs`. Deferred because `SearchProvider` is not yet wired
-/// into `AgentWrapper`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchParams {
     /// Search query string.
@@ -29,6 +33,14 @@ pub struct SearchParams {
     )]
     pub jacs_type: Option<String>,
 
+    /// Optional filter by signing agent ID.
+    #[schemars(description = "Optional filter by signing agent ID")]
+    pub agent_id: Option<String>,
+
+    /// Optional exact-match filter on a JSON field.
+    #[schemars(description = "Optional JSON field filter for exact matches")]
+    pub field_filter: Option<SearchFieldFilter>,
+
     /// Max results (default: 20).
     #[schemars(description = "Maximum number of results to return (default: 20)")]
     pub limit: Option<u32>,
@@ -36,6 +48,10 @@ pub struct SearchParams {
     /// Pagination offset.
     #[schemars(description = "Pagination offset (default: 0)")]
     pub offset: Option<u32>,
+
+    /// Optional minimum score threshold.
+    #[schemars(description = "Optional minimum score threshold between 0.0 and 1.0")]
+    pub min_score: Option<f64>,
 }
 
 /// A single search result entry.
