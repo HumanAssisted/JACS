@@ -2039,13 +2039,11 @@ fn clear_last_simple_error() {
 /// Returns null if no error has occurred. Caller must free with jacs_free_string.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_last_error() -> *mut c_char {
-    LAST_SIMPLE_ERROR.with(|cell| {
-        match cell.borrow().as_ref() {
-            Some(msg) => CString::new(msg.as_str())
-                .map(|c| c.into_raw())
-                .unwrap_or(ptr::null_mut()),
-            None => ptr::null_mut(),
-        }
+    LAST_SIMPLE_ERROR.with(|cell| match cell.borrow().as_ref() {
+        Some(msg) => CString::new(msg.as_str())
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        None => ptr::null_mut(),
     })
 }
 

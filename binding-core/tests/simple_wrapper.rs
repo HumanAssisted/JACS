@@ -6,6 +6,7 @@
 
 use jacs_binding_core::SimpleAgentWrapper;
 use serde_json::Value;
+use serial_test::serial;
 
 // =============================================================================
 // Helper
@@ -22,6 +23,7 @@ fn ephemeral_wrapper() -> SimpleAgentWrapper {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_create_returns_wrapper_and_info_json() {
     let tmp = tempfile::TempDir::new().unwrap();
     let original_dir = std::env::current_dir().unwrap();
@@ -64,6 +66,7 @@ fn test_create_returns_wrapper_and_info_json() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_load_roundtrips_with_create() {
     // Use unique key filenames to avoid env var pollution from parallel tests.
     let tmp = tempfile::TempDir::new().unwrap();

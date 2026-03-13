@@ -1506,9 +1506,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 process::exit(0);
             }
             _ => {
-                let profile_str = mcp_matches
-                    .get_one::<String>("profile")
-                    .map(|s| s.as_str());
+                let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
                 let profile = jacs_mcp::Profile::resolve(profile_str);
                 let agent = jacs_mcp::load_agent_from_config_env()?;
                 let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);
