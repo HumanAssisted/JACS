@@ -4,6 +4,11 @@
 //! tool definitions for one tool family. The `all_tools()` function
 //! combines tools from every family into a single `Vec<Tool>`.
 
+// Each sub-module exports a `tools()` fn that is called via qualified paths
+// (e.g. `state::tools()`). The glob re-exports below are for types only,
+// so the `tools` name collision is intentional and harmless.
+#![allow(ambiguous_glob_reexports)]
+
 pub mod a2a;
 pub mod agreements;
 pub mod attestation;
@@ -15,6 +20,9 @@ pub mod state;
 pub mod trust;
 
 // Re-export all types so callers can use `tools::SignStateParams` etc.
+// Each module also exports a `tools()` fn, but those are called via qualified
+// paths (e.g. `state::tools()`), so the glob ambiguity is harmless.
+#[allow(ambiguous_glob_reexports)]
 pub use a2a::*;
 pub use agreements::*;
 pub use attestation::*;
@@ -25,7 +33,6 @@ pub use messaging::*;
 pub use state::*;
 pub use trust::*;
 
-use crate::jacs_tools::JacsMcpServer;
 use rmcp::model::Tool;
 
 /// Combine tool definitions from all families into one list.

@@ -4,6 +4,7 @@ pub mod contract;
 pub mod jacs_tools;
 #[cfg(feature = "mcp")]
 pub mod server;
+pub mod tools;
 
 pub use crate::config::{load_agent_from_config_env, load_agent_from_config_path};
 #[cfg(feature = "mcp")]

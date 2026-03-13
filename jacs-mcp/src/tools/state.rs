@@ -4,8 +4,6 @@ use rmcp::model::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::jacs_tools::JacsMcpServer;
-
 // =============================================================================
 // Helper: schema generation
 // =============================================================================

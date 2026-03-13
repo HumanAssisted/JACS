@@ -23,6 +23,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
+pub mod doc_wrapper;
+pub mod simple_wrapper;
+
+pub use doc_wrapper::DocumentServiceWrapper;
+pub use simple_wrapper::SimpleAgentWrapper;
+pub use simple_wrapper::sign_message_json;
 
 /// Error type for binding core operations.
 ///
@@ -258,6 +264,14 @@ impl AgentWrapper {
     /// with binding-core's attestation methods.
     pub fn from_inner(inner: Arc<Mutex<Agent>>) -> Self {
         Self { inner }
+    }
+
+    /// Get the inner `Arc<Mutex<Agent>>`.
+    ///
+    /// Used to share the agent handle with `DocumentServiceWrapper` and other
+    /// components that need direct access to the underlying agent.
+    pub fn inner_arc(&self) -> Arc<Mutex<Agent>> {
+        Arc::clone(&self.inner)
     }
 
     /// Get a locked reference to the inner agent.
@@ -2686,6 +2700,7 @@ mod tests {
         assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidArgument);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card_unloaded_agent_error() {
         let wrapper = AgentWrapper::new();
