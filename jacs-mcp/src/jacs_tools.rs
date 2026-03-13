@@ -1251,6 +1251,570 @@ impl JacsMcpServer {
         }
     }
 
+    /// Record an audit trail event as a signed agentstate document with type "hook".
+    ///
+    /// Builds an agentstate document containing the action, target, details, and tags,
+    /// then signs and persists it. All audit entries are private and use the "hook" state type.
+    #[tool(
+        name = "jacs_audit_log",
+        description = "Record a tool-use, data-access, or other event as a cryptographically signed audit trail entry."
+    )]
+    pub async fn jacs_audit_log(&self, Parameters(params): Parameters<AuditLogParams>) -> String {
+        // Build the audit entry content as JSON.
+        let timestamp = format_iso8601(std::time::SystemTime::now());
+        let mut content_obj = serde_json::json!({
+            "action": params.action,
+            "timestamp": timestamp,
+        });
+        if let Some(ref target) = params.target {
+            content_obj["target"] = serde_json::json!(target);
+        }
+        if let Some(ref details) = params.details {
+            content_obj["details"] = serde_json::json!(details);
+        }
+        if let Some(ref tags) = params.tags {
+            content_obj["tags"] = serde_json::json!(tags);
+        }
+
+        let content_str = serde_json::to_string_pretty(&content_obj).unwrap_or_default();
+
+        // Create an agentstate document with inline content.
+        let name = format!("audit_{}_{}", params.action, &timestamp[..10]);
+        let mut doc = match agentstate_crud::create_agentstate_with_content(
+            "hook",
+            &name,
+            &content_str,
+            "application/json",
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = AuditLogResult {
+                    success: false,
+                    jacs_document_id: None,
+                    action: params.action,
+                    message: "Failed to create audit entry document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Set tags if provided.
+        if let Some(tags) = &params.tags {
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            let _ = agentstate_crud::set_agentstate_tags(&mut doc, tag_refs);
+        }
+
+        // Always private, origin "authored".
+        let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
+        doc["jacsVisibility"] = serde_json::json!("private");
+
+        // Sign and persist.
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,       // custom_schema
+            None,       // outputfilename
+            true,       // no_save
+            None,       // attachments
+            Some(true), // embed
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&AuditLogResult {
+                            success: false,
+                            jacs_document_id: None,
+                            action: params.action,
+                            message: "Failed to determine the signed document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&AuditLogResult {
+                        success: false,
+                        jacs_document_id: Some(doc_id),
+                        action: params.action,
+                        message: "Failed to persist signed audit entry".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+
+                AuditLogResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    action: params.action,
+                    message: "Audit entry recorded successfully".to_string(),
+                    error: None,
+                }
+            }
+            Err(e) => AuditLogResult {
+                success: false,
+                jacs_document_id: None,
+                action: params.action,
+                message: "Failed to sign audit entry document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Query the audit trail by action type, target, and/or time range.
+    ///
+    /// Iterates over all stored documents, filters to hook-type agentstate
+    /// documents, and applies optional action/target/time filters.
+    #[tool(
+        name = "jacs_audit_query",
+        description = "Search the audit trail by action type, target, and/or time range."
+    )]
+    pub async fn jacs_audit_query(
+        &self,
+        Parameters(params): Parameters<AuditQueryParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = AuditQueryResult {
+                    success: false,
+                    entries: Vec::new(),
+                    total: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let limit = params.limit.unwrap_or(50) as usize;
+        let offset = params.offset.unwrap_or(0) as usize;
+        let mut matched: Vec<(String, AuditQueryEntry)> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Must be agentstate with type "hook".
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("hook") {
+                continue;
+            }
+
+            // Parse the embedded audit content.
+            let content_str = extract_embedded_state_content(&doc).unwrap_or_default();
+            let content: serde_json::Value =
+                serde_json::from_str(&content_str).unwrap_or(serde_json::Value::Null);
+
+            let action = content
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let target = content
+                .get("target")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let timestamp = content
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let details = content
+                .get("details")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+
+            // Apply filters.
+            if let Some(ref filter_action) = params.action {
+                if action != *filter_action {
+                    continue;
+                }
+            }
+            if let Some(ref filter_target) = params.target {
+                match target.as_deref() {
+                    Some(t) if t == filter_target.as_str() => {}
+                    _ => continue,
+                }
+            }
+            if let Some(ref start) = params.start_time {
+                if timestamp.as_str() < start.as_str() {
+                    continue;
+                }
+            }
+            if let Some(ref end) = params.end_time {
+                if timestamp.as_str() > end.as_str() {
+                    continue;
+                }
+            }
+
+            matched.push((
+                timestamp.clone(),
+                AuditQueryEntry {
+                    jacs_document_id: key,
+                    action,
+                    target,
+                    timestamp,
+                    details,
+                },
+            ));
+        }
+
+        // Sort by timestamp descending (newest first).
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        let total = matched.len();
+        let entries: Vec<AuditQueryEntry> = matched
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, entry)| entry)
+            .collect();
+
+        let result = AuditQueryResult {
+            success: true,
+            entries,
+            total,
+            message: format!("Found {} audit entries", total),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Export audit trail entries for a time period as a signed JACS document.
+    ///
+    /// Queries all hook-type agentstate documents within the time range,
+    /// collects them into a JSON array, wraps in a new JACS document, and signs it.
+    #[tool(
+        name = "jacs_audit_export",
+        description = "Export audit trail entries for a time period as a single signed JACS document."
+    )]
+    pub async fn jacs_audit_export(
+        &self,
+        Parameters(params): Parameters<AuditExportParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = AuditExportResult {
+                    success: false,
+                    signed_bundle: None,
+                    entry_count: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut entries: Vec<serde_json::Value> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Must be agentstate with type "hook".
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("hook") {
+                continue;
+            }
+
+            // Parse the embedded audit content for time filtering.
+            let content_str = extract_embedded_state_content(&doc).unwrap_or_default();
+            let content: serde_json::Value =
+                serde_json::from_str(&content_str).unwrap_or(serde_json::Value::Null);
+
+            let timestamp = content
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let action = content.get("action").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Apply time range filter.
+            if timestamp < params.start_time.as_str() {
+                continue;
+            }
+            if timestamp > params.end_time.as_str() {
+                continue;
+            }
+
+            // Apply optional action filter.
+            if let Some(ref filter_action) = params.action {
+                if action != filter_action.as_str() {
+                    continue;
+                }
+            }
+
+            entries.push(content);
+        }
+
+        let entry_count = entries.len();
+
+        // Wrap entries into a single bundle document.
+        let bundle_content = serde_json::json!({
+            "audit_export": true,
+            "start_time": params.start_time,
+            "end_time": params.end_time,
+            "entry_count": entry_count,
+            "entries": entries,
+        });
+        let bundle_str = serde_json::to_string_pretty(&bundle_content).unwrap_or_default();
+
+        let name = format!(
+            "audit_export_{}_to_{}",
+            &params.start_time[..10.min(params.start_time.len())],
+            &params.end_time[..10.min(params.end_time.len())]
+        );
+
+        let mut doc = match agentstate_crud::create_agentstate_with_content(
+            "hook",
+            &name,
+            &bundle_str,
+            "application/json",
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = AuditExportResult {
+                    success: false,
+                    signed_bundle: None,
+                    entry_count,
+                    message: "Failed to create audit export document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
+        doc["jacsVisibility"] = serde_json::json!("private");
+
+        // Sign and persist.
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,       // custom_schema
+            None,       // outputfilename
+            true,       // no_save
+            None,       // attachments
+            Some(true), // embed
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&AuditExportResult {
+                            success: false,
+                            signed_bundle: None,
+                            entry_count,
+                            message: "Failed to determine the signed document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&AuditExportResult {
+                        success: false,
+                        signed_bundle: Some(signed_doc_string),
+                        entry_count,
+                        message: "Audit export signed but failed to persist".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+
+                AuditExportResult {
+                    success: true,
+                    signed_bundle: Some(doc_id),
+                    entry_count,
+                    message: format!("Exported {} audit entries as signed bundle", entry_count),
+                    error: None,
+                }
+            }
+            Err(e) => AuditExportResult {
+                success: false,
+                signed_bundle: None,
+                entry_count,
+                message: "Failed to sign audit export document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Search across all signed documents using the unified search interface.
+    ///
+    /// Iterates over all stored documents, matches the query against document
+    /// content, names, and types. Supports optional filtering by JACS document type
+    /// and pagination.
+    #[tool(
+        name = "jacs_search",
+        description = "Search across all signed documents using the unified search interface."
+    )]
+    pub async fn jacs_search(&self, Parameters(params): Parameters<SearchParams>) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = SearchResult {
+                    success: false,
+                    results: Vec::new(),
+                    total: 0,
+                    search_method: Some("fulltext".to_string()),
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let limit = params.limit.unwrap_or(20) as usize;
+        let offset = params.offset.unwrap_or(0) as usize;
+        let query_lower = params.query.to_lowercase();
+        let mut matched: Vec<(f64, String, SearchResultEntry)> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Determine the JACS document type.
+            let jacs_type = value_string(&doc, "jacsType");
+
+            // Apply type filter if specified.
+            if let Some(ref filter_type) = params.jacs_type {
+                if jacs_type.as_deref() != Some(filter_type.as_str()) {
+                    continue;
+                }
+            }
+
+            // Gather searchable text from the document.
+            let name = value_string(&doc, "jacsAgentStateName")
+                .or_else(|| value_string(&doc, "jacsName"))
+                .or_else(|| value_string(&doc, "name"));
+            let description = value_string(&doc, "jacsAgentStateDescription")
+                .or_else(|| value_string(&doc, "jacsDescription"));
+            let content = extract_embedded_state_content(&doc);
+
+            let name_lower = name.as_deref().unwrap_or("").to_lowercase();
+            let desc_lower = description.as_deref().unwrap_or("").to_lowercase();
+            let content_lower = content.as_deref().unwrap_or("").to_lowercase();
+            let type_lower = jacs_type.as_deref().unwrap_or("").to_lowercase();
+
+            // Score the match: name matches are worth more than content matches.
+            let mut score = 0.0_f64;
+            if name_lower.contains(&query_lower) {
+                score += 10.0;
+            }
+            if type_lower.contains(&query_lower) {
+                score += 5.0;
+            }
+            if desc_lower.contains(&query_lower) {
+                score += 3.0;
+            }
+            if content_lower.contains(&query_lower) {
+                score += 1.0;
+            }
+
+            if score == 0.0 {
+                continue;
+            }
+
+            // Build a snippet from the first matching field.
+            let snippet = if content_lower.contains(&query_lower) {
+                // Find the match position and extract a window around it.
+                if let Some(pos) = content_lower.find(&query_lower) {
+                    let content_ref = content.as_deref().unwrap_or("");
+                    let start = pos.saturating_sub(40);
+                    let end = (pos + query_lower.len() + 40).min(content_ref.len());
+                    Some(format!("...{}...", &content_ref[start..end]))
+                } else {
+                    None
+                }
+            } else if desc_lower.contains(&query_lower) {
+                description.clone()
+            } else {
+                name.clone()
+            };
+
+            matched.push((
+                score,
+                key.clone(),
+                SearchResultEntry {
+                    jacs_document_id: key,
+                    jacs_type: jacs_type.clone(),
+                    name,
+                    snippet,
+                    score: Some(score),
+                    search_method: Some("fulltext".to_string()),
+                },
+            ));
+        }
+
+        // Sort by score descending, then by document ID for stability.
+        matched.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.1.cmp(&b.1))
+        });
+
+        let total = matched.len();
+        let results: Vec<SearchResultEntry> = matched
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, _, entry)| entry)
+            .collect();
+
+        let result = SearchResult {
+            success: true,
+            results,
+            total,
+            search_method: Some("fulltext".to_string()),
+            message: format!("Found {} documents matching '{}'", total, params.query),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
     /// Create and sign a message document for sending to another agent.
     ///
     /// Builds a JSON message envelope with sender/recipient IDs, content, timestamp,
@@ -3389,7 +3953,13 @@ impl ServerHandler for JacsMcpServer {
                  jacs_attest_lift (lift signed document into attestation), \
                  jacs_attest_export_dsse (export attestation as DSSE envelope). \
                  \
-                 Security: jacs_audit (read-only security audit and health checks)."
+                 Security: jacs_audit (read-only security audit and health checks). \
+                 \
+                 Audit trail: jacs_audit_log (record events as signed audit entries), \
+                 jacs_audit_query (search audit trail by action, target, time range), \
+                 jacs_audit_export (export audit trail as signed bundle). \
+                 \
+                 Search: jacs_search (unified search across all signed documents)."
                     .to_string(),
             ),
         }
@@ -3403,7 +3973,7 @@ mod tests {
     #[test]
     fn test_tools_list() {
         let tools = JacsMcpServer::tools();
-        assert_eq!(tools.len(), 38, "JacsMcpServer should expose 38 tools");
+        assert_eq!(tools.len(), 42, "JacsMcpServer should expose 42 tools");
 
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
         assert!(names.contains(&"jacs_sign_state"));
@@ -3415,6 +3985,12 @@ mod tests {
         assert!(names.contains(&"jacs_create_agent"));
         assert!(names.contains(&"jacs_reencrypt_key"));
         assert!(names.contains(&"jacs_audit"));
+        // Audit trail tools
+        assert!(names.contains(&"jacs_audit_log"));
+        assert!(names.contains(&"jacs_audit_query"));
+        assert!(names.contains(&"jacs_audit_export"));
+        // Search tools
+        assert!(names.contains(&"jacs_search"));
         assert!(names.contains(&"jacs_message_send"));
         assert!(names.contains(&"jacs_message_update"));
         assert!(names.contains(&"jacs_message_agree"));
