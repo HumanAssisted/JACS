@@ -1,4 +1,9 @@
-.PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
+.PHONY: build-jacs build-jacsbook build-jacsbook-pdf \
+        test test-all test-jacs test-jacs-features test-jacs-cli test-jacs-observability \
+        test-jacs-mcp test-jacs-binding-core \
+        test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
+        test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
+        audit-jacs \
         publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-cli release-all release-everything release-delete-tags \
         retry-jacspy retry-jacsnpm retry-cli \
@@ -63,15 +68,39 @@ build-jacsbook-pdf:
 test-jacs:
 	cd jacs && RUST_BACKTRACE=1 cargo test --lib --tests -- --nocapture
 
-audit-jacs:
-	@command -v cargo-audit >/dev/null 2>&1 || (echo "cargo-audit is required. Install with: cargo install cargo-audit --locked --version 0.22.1"; exit 1)
-	cargo audit --ignore RUSTSEC-2023-0071
+test-jacs-features:
+	RUST_BACKTRACE=1 cargo test -p jacs --features agreements,a2a,attestation --verbose
 
 test-jacs-cli:
 	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests --test cli_flags -- --nocapture
 
 test-jacs-observability:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features "observability-convenience otlp-logs otlp-metrics otlp-tracing" --test observability_tests --test observability_oltp_meter -- --nocapture
+
+test-jacs-mcp:
+	RUST_BACKTRACE=1 cargo test -p jacs-mcp --verbose
+
+test-jacs-binding-core:
+	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --verbose
+
+# Storage backend crates (extracted from jacs core)
+test-jacs-duckdb:
+	RUST_BACKTRACE=1 cargo test -p jacs-duckdb --verbose
+
+test-jacs-redb:
+	RUST_BACKTRACE=1 cargo test -p jacs-redb --verbose
+
+test-jacs-surrealdb:
+	RUST_BACKTRACE=1 cargo test -p jacs-surrealdb --verbose
+
+test-jacs-postgresql:
+	RUST_BACKTRACE=1 cargo test -p jacs-postgresql --verbose
+
+test-jacs-storage: test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql
+
+audit-jacs:
+	@command -v cargo-audit >/dev/null 2>&1 || (echo "cargo-audit is required. Install with: cargo install cargo-audit --locked --version 0.22.1"; exit 1)
+	cargo audit --ignore RUSTSEC-2023-0071
 
 test-jacspy:
 	cd jacspy && maturin develop && python -m pytest tests/ -v
@@ -86,6 +115,9 @@ test-jacsnpm-parallel:
 	cd jacsnpm && npm run test:parallel
 
 test: test-jacs
+
+# Run all tests: core (with features), CLI, MCP, binding-core, storage backends, Python, Node.js
+test-all: test-jacs-features test-jacs-cli test-jacs-mcp test-jacs-binding-core test-jacs-storage test-jacspy test-jacsnpm
 
 # Regenerate all canonical cross-language fixtures in sequence.
 # This intentionally mutates tracked fixture files.
@@ -352,12 +384,22 @@ help:
 	@echo "  make build-jacsbook-pdf  Generate single PDF book at docs/jacsbook.pdf"
 	@echo ""
 	@echo "TEST:"
-	@echo "  make test            Run all tests (alias for test-jacs)"
-	@echo "  make test-jacs       Run Rust library tests"
-	@echo "  make audit-jacs      Run cargo-audit (required security gate)"
-	@echo "  make test-jacs-cli   Run CLI integration tests"
-	@echo "  make test-jacspy     Run Python binding tests"
-	@echo "  make test-jacsnpm    Run Node.js binding tests"
+	@echo "  make test                Run Rust library tests (alias for test-jacs)"
+	@echo "  make test-all            Run ALL tests (core, CLI, MCP, bindings, storage, Python, Node)"
+	@echo "  make test-jacs           Run Rust library tests"
+	@echo "  make test-jacs-features  Run Rust tests with feature flags (agreements, a2a, attestation)"
+	@echo "  make test-jacs-cli       Run CLI integration tests"
+	@echo "  make test-jacs-mcp       Run MCP server tests"
+	@echo "  make test-jacs-binding-core  Run binding-core tests"
+	@echo "  make test-jacs-storage   Run all storage backend tests (duckdb, redb, surrealdb, postgresql)"
+	@echo "  make test-jacs-duckdb    Run DuckDB storage tests"
+	@echo "  make test-jacs-redb      Run Redb storage tests"
+	@echo "  make test-jacs-surrealdb Run SurrealDB storage tests"
+	@echo "  make test-jacs-postgresql Run PostgreSQL storage tests"
+	@echo "  make test-jacs-observability Run observability tests"
+	@echo "  make audit-jacs          Run cargo-audit (required security gate)"
+	@echo "  make test-jacspy         Run Python binding tests"
+	@echo "  make test-jacsnpm        Run Node.js binding tests"
 	@echo "  make regen-cross-lang-fixtures  Regenerate Rust->Python->Node fixtures"
 	@echo ""
 	@echo "GIT HOOKS:"
