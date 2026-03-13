@@ -72,7 +72,9 @@ pub struct MemorySaveResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemoryRecallParams {
     /// Search query to match against memory name, content, and description.
-    #[schemars(description = "Search query to match against memory name, content, and description")]
+    #[schemars(
+        description = "Search query to match against memory name, content, and description"
+    )]
     pub query: String,
 
     /// Optional tag filter (memories must have all specified tags).

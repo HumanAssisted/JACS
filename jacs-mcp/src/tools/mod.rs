@@ -12,6 +12,7 @@ pub mod document;
 pub mod key;
 pub mod memory;
 pub mod messaging;
+pub mod search;
 pub mod state;
 pub mod trust;
 
@@ -31,7 +32,11 @@ pub use document::*;
 #[allow(ambiguous_glob_reexports)]
 pub use key::*;
 #[allow(ambiguous_glob_reexports)]
+pub use memory::*;
+#[allow(ambiguous_glob_reexports)]
 pub use messaging::*;
+#[allow(ambiguous_glob_reexports)]
+pub use search::*;
 #[allow(ambiguous_glob_reexports)]
 pub use state::*;
 #[allow(ambiguous_glob_reexports)]
@@ -46,8 +51,10 @@ use rmcp::model::Tool;
 pub fn all_tools() -> Vec<Tool> {
     let mut tools = Vec::new();
     tools.extend(state::tools());
+    tools.extend(memory::tools());
     tools.extend(key::tools());
     tools.extend(audit::tools());
+    tools.extend(search::tools());
     tools.extend(messaging::tools());
     tools.extend(agreements::tools());
     tools.extend(document::tools());
