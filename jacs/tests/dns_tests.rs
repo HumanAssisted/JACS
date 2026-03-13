@@ -98,7 +98,12 @@ fn test_verify_pubkey_via_embedded_fallback() {
         false,
     )
     .unwrap_err();
-    assert!(err.contains("embedded fingerprint mismatch"));
+    let err_msg = err.to_string();
+    assert!(
+        err_msg.contains("embedded fingerprint mismatch"),
+        "Expected embedded fingerprint mismatch error, got: {}",
+        err_msg
+    );
 }
 
 #[test]

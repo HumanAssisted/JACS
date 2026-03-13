@@ -934,7 +934,7 @@ impl Agent {
                     strict,
                 ) {
                     error!("public key identity check failed: {}", e);
-                    return Err(e.into());
+                    return Err(e);
                 }
             } else if required {
                 return Err("DNS validation failed: domain required but not configured".into());
@@ -985,9 +985,8 @@ impl Agent {
                     );
                     return Err(JacsError::VerificationClaimFailed {
                         claim: verification_claim.unwrap_or_default(),
-                        reason: e,
-                    }
-                    .into());
+                        reason: e.to_string(),
+                    });
                 }
             }
         }

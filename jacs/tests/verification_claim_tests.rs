@@ -112,10 +112,11 @@ fn test_verified_enforces_strict_dns() {
         res.is_err(),
         "Verified agents should fail when strict DNS lookup fails without fallback"
     );
-    let err_msg = res.unwrap_err();
+    let err_msg = res.unwrap_err().to_string();
     assert!(
         err_msg.contains("DNSSEC") || err_msg.contains("DNS"),
-        "Error should indicate DNS/DNSSEC failure"
+        "Error should indicate DNS/DNSSEC failure, got: {}",
+        err_msg
     );
 }
 

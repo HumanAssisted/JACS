@@ -1,4 +1,5 @@
 use crate::crypt::hash::{hash_bytes_raw, hash_public_key};
+use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +58,7 @@ pub fn build_agent_dns_txt(agent_id: &str, digest: &str, enc: DigestEncoding) ->
     )
 }
 
-pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, String> {
+pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, JacsError> {
     let parts: Vec<&str> = txt.split(';').map(|s| s.trim()).collect();
     let mut map = std::collections::HashMap::new();
     for p in parts {
@@ -68,22 +69,31 @@ pub fn parse_agent_txt(txt: &str) -> Result<AgentTxtFields, String> {
             map.insert(k.trim().to_string(), v.trim().to_string());
         }
     }
-    let v = map.get("v").cloned().ok_or("Missing v field")?;
+    let missing = |field: &str| JacsError::DnsRecordInvalid {
+        domain: String::new(),
+        reason: format!("Missing {} field in TXT record", field),
+    };
+    let v = map.get("v").cloned().ok_or_else(|| missing("v"))?;
     let jacs_agent_id = map
         .get("jacs_agent_id")
         .cloned()
-        .ok_or("Missing jacs_agent_id field")?;
-    let alg = map.get("alg").cloned().ok_or("Missing alg field")?;
-    let enc_val = map.get("enc").cloned().ok_or("Missing enc field")?;
+        .ok_or_else(|| missing("jacs_agent_id"))?;
+    let alg = map.get("alg").cloned().ok_or_else(|| missing("alg"))?;
+    let enc_val = map.get("enc").cloned().ok_or_else(|| missing("enc"))?;
     let enc = match enc_val.as_str() {
         "base64" => DigestEncoding::Base64,
         "hex" => DigestEncoding::Hex,
-        _ => return Err(format!("Unsupported encoding: {}", enc_val)),
+        _ => {
+            return Err(JacsError::DnsRecordInvalid {
+                domain: String::new(),
+                reason: format!("Unsupported encoding: {}", enc_val),
+            });
+        }
     };
     let digest = map
         .get("jac_public_key_hash")
         .cloned()
-        .ok_or("Missing jac_public_key_hash field")?;
+        .ok_or_else(|| missing("jac_public_key_hash"))?;
     Ok(AgentTxtFields {
         v,
         jacs_agent_id,
@@ -174,46 +184,62 @@ pub fn emit_cloudflare_curl(rr: &DnsRecord, zone_id_hint: &str) -> String {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn resolve_txt_dnssec(owner: &str) -> Result<String, String> {
+pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
     let mut opts = ResolverOpts::default();
     opts.validate = true;
-    let resolver = Resolver::new(ResolverConfig::default(), opts)
-        .map_err(|e| format!("Resolver init failed: {e}"))?;
+    let resolver =
+        Resolver::new(ResolverConfig::default(), opts).map_err(|e| JacsError::DnsLookupFailed {
+            domain: owner.to_string(),
+            reason: format!("Resolver init failed: {e}"),
+        })?;
     let resp = resolver
         .txt_lookup(owner)
-        .map_err(|e| format!("DNS lookup failed: {e}"))?;
+        .map_err(|e| JacsError::DnsLookupFailed {
+            domain: owner.to_string(),
+            reason: format!("DNS lookup failed: {e}"),
+        })?;
     let mut s = String::new();
     for rr in resp.iter() {
         for part in rr.txt_data() {
-            s.push_str(
-                &String::from_utf8(part.to_vec())
-                    .map_err(|e| format!("UTF-8 decode failed: {e}"))?,
-            );
+            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
+                JacsError::DnsRecordInvalid {
+                    domain: owner.to_string(),
+                    reason: format!("UTF-8 decode failed: {e}"),
+                }
+            })?);
         }
     }
     Ok(s)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn resolve_txt_insecure(owner: &str) -> Result<String, String> {
+pub fn resolve_txt_insecure(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
     let mut opts = ResolverOpts::default();
     opts.validate = false; // allow unsigned answers
-    let resolver = Resolver::new(ResolverConfig::default(), opts)
-        .map_err(|e| format!("Resolver init failed: {e}"))?;
+    let resolver =
+        Resolver::new(ResolverConfig::default(), opts).map_err(|e| JacsError::DnsLookupFailed {
+            domain: owner.to_string(),
+            reason: format!("Resolver init failed: {e}"),
+        })?;
     let resp = resolver
         .txt_lookup(owner)
-        .map_err(|e| format!("DNS lookup failed: {e}"))?;
+        .map_err(|e| JacsError::DnsLookupFailed {
+            domain: owner.to_string(),
+            reason: format!("DNS lookup failed: {e}"),
+        })?;
     let mut s = String::new();
     for rr in resp.iter() {
         for part in rr.txt_data() {
-            s.push_str(
-                &String::from_utf8(part.to_vec())
-                    .map_err(|e| format!("UTF-8 decode failed: {e}"))?,
-            );
+            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
+                JacsError::DnsRecordInvalid {
+                    domain: owner.to_string(),
+                    reason: format!("UTF-8 decode failed: {e}"),
+                }
+            })?);
         }
     }
     Ok(s)
@@ -225,7 +251,7 @@ pub fn verify_pubkey_via_dns_or_embedded(
     jacs_agent_domain: Option<&str>,
     embedded_fingerprint: Option<&str>,
     strict_dns: bool,
-) -> Result<(), String> {
+) -> Result<(), JacsError> {
     let local_b64 = pubkey_digest_b64(agent_public_key);
     let local_hex = pubkey_digest_hex(agent_public_key);
 
@@ -240,10 +266,16 @@ pub fn verify_pubkey_via_dns_or_embedded(
             Ok(txt) => {
                 let f = parse_agent_txt(&txt)?;
                 if f.v != "jacs" {
-                    return Err(format!("Unexpected v field: {}", f.v));
+                    return Err(JacsError::DnsRecordInvalid {
+                        domain: domain.to_string(),
+                        reason: format!("Unexpected v field: {}", f.v),
+                    });
                 }
                 if f.jacs_agent_id != agent_id {
-                    return Err("Agent ID mismatch".to_string());
+                    return Err(JacsError::DnsRecordInvalid {
+                        domain: domain.to_string(),
+                        reason: "Agent ID mismatch".to_string(),
+                    });
                 }
                 let ok = match f.enc {
                     DigestEncoding::Base64 => f.digest == local_b64,
@@ -252,10 +284,11 @@ pub fn verify_pubkey_via_dns_or_embedded(
                 if ok {
                     return Ok(());
                 } else {
-                    return Err(
-                        "DNS fingerprint mismatch: digest does not match local public key"
+                    return Err(JacsError::DnsRecordInvalid {
+                        domain: domain.to_string(),
+                        reason: "DNS fingerprint mismatch: digest does not match local public key"
                             .to_string(),
-                    );
+                    });
                 }
             }
             Err(_e) => {
@@ -269,22 +302,25 @@ pub fn verify_pubkey_via_dns_or_embedded(
                     {
                         return Ok(());
                     }
-                    return Err(
-                        "Embedded fingerprint mismatch: does not match local public key"
+                    return Err(JacsError::DnsRecordInvalid {
+                        domain: domain.to_string(),
+                        reason: "Embedded fingerprint mismatch: does not match local public key"
                             .to_string(),
-                    );
+                    });
                 }
                 // Neither DNS nor embedded available
                 if strict_dns {
-                    return Err(format!(
-                        "Strict DNSSEC validation failed for {}: TXT not authenticated. Enable DNSSEC and publish DS at registrar",
-                        owner
-                    ));
+                    return Err(JacsError::DnsLookupFailed {
+                        domain: domain.to_string(),
+                        reason: format!(
+                            "Strict DNSSEC validation failed for {}: TXT not authenticated. Enable DNSSEC and publish DS at registrar",
+                            owner
+                        ),
+                    });
                 } else {
-                    return Err(format!(
-                        "DNS TXT lookup failed for {}: record missing or not yet propagated",
-                        owner
-                    ));
+                    return Err(JacsError::DnsRecordMissing {
+                        domain: domain.to_string(),
+                    });
                 }
             }
         }
@@ -298,13 +334,16 @@ pub fn verify_pubkey_via_dns_or_embedded(
         {
             return Ok(());
         }
-        return Err(
-            "embedded fingerprint mismatch (embedded present but does not match local public key)"
-                .to_string(),
-        );
+        return Err(JacsError::SignatureVerificationFailed {
+            reason:
+                "embedded fingerprint mismatch (embedded present but does not match local public key)"
+                    .to_string(),
+        });
     }
 
-    Err("DNS TXT lookup required: domain configured or provide embedded fingerprint".to_string())
+    Err(JacsError::DnsRecordMissing {
+        domain: "unknown".to_string(),
+    })
 }
 
 // =============================================================================
@@ -354,7 +393,7 @@ struct RegistryApiResponse {
 /// # Returns
 ///
 /// * `Ok(RegistryRegistration)` - Agent is registered and public key matches
-/// * `Err(String)` - Verification failed with reason
+/// * `Err(JacsError)` - Verification failed with reason
 ///
 /// # Environment Variables
 ///
@@ -387,30 +426,33 @@ struct RegistryApiResponse {
 pub fn verify_registry_registration_sync(
     agent_id: &str,
     public_key_hash: &str,
-) -> Result<RegistryRegistration, String> {
+) -> Result<RegistryRegistration, JacsError> {
     // Validate agent_id is a valid UUID to prevent URL path traversal
     uuid::Uuid::parse_str(agent_id).map_err(|e| {
-        format!(
+        JacsError::ValidationError(format!(
             "Invalid agent_id '{}' for registry registration: must be a valid UUID. {}",
             agent_id, e
-        )
+        ))
     })?;
 
     // Registry API endpoint for agent verification
     let api_url = std::env::var("JACS_REGISTRY_URL").map_err(|_| {
-        "No registry URL configured. Set JACS_REGISTRY_URL to enable registry verification."
-            .to_string()
+        JacsError::ConfigError(
+            "No registry URL configured. Set JACS_REGISTRY_URL to enable registry verification."
+                .to_string(),
+        )
     })?;
-    let parsed = url::Url::parse(&api_url)
-        .map_err(|e| format!("Invalid JACS_REGISTRY_URL '{}': {}", api_url, e))?;
+    let parsed = url::Url::parse(&api_url).map_err(|e| {
+        JacsError::ConfigError(format!("Invalid JACS_REGISTRY_URL '{}': {}", api_url, e))
+    })?;
     let host = parsed.host_str().unwrap_or_default();
     let http_localhost = parsed.scheme() == "http"
         && (host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1");
     if parsed.scheme() != "https" && !http_localhost {
-        return Err(format!(
+        return Err(JacsError::ConfigError(format!(
             "JACS_REGISTRY_URL must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
             api_url
-        ));
+        )));
     }
     let url = format!("{}/v1/agents/{}", api_url.trim_end_matches('/'), agent_id);
 
@@ -418,7 +460,7 @@ pub fn verify_registry_registration_sync(
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .map_err(|e| JacsError::NetworkError(format!("Failed to build HTTP client: {}", e)))?;
 
     // Make request to registry API
     let response = client
@@ -426,52 +468,58 @@ pub fn verify_registry_registration_sync(
         .header("Accept", "application/json")
         .send()
         .map_err(|e| {
-            format!(
+            JacsError::NetworkError(format!(
                 "Registry verification failed: unable to reach API at {}: {}",
                 url, e
-            )
+            ))
         })?;
 
     // Check response status
     if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Err(format!(
-            "Agent '{}' is not registered with the registry. \
-            Agents claiming 'verified-registry' must be registered with a JACS registry.",
-            agent_id
-        ));
+        return Err(JacsError::RegistrationFailed {
+            reason: format!(
+                "Agent '{}' is not registered with the registry. \
+                Agents claiming 'verified-registry' must be registered with a JACS registry.",
+                agent_id
+            ),
+        });
     }
 
     if !response.status().is_success() {
-        return Err(format!(
+        return Err(JacsError::NetworkError(format!(
             "Registry API returned error status {}: agent verification failed",
             response.status()
-        ));
+        )));
     }
 
     // Parse response
-    let api_response: RegistryApiResponse = response
-        .json()
-        .map_err(|e| format!("Failed to parse registry API response: {}", e))?;
+    let api_response: RegistryApiResponse = response.json().map_err(|e| {
+        JacsError::NetworkError(format!("Failed to parse registry API response: {}", e))
+    })?;
 
     // Verify the agent is actually verified
     if !api_response.verified {
-        return Err(format!(
-            "Agent '{}' is registered with the registry but not yet verified. \
-            Complete the verification process with your registry provider.",
-            agent_id
-        ));
+        return Err(JacsError::RegistrationFailed {
+            reason: format!(
+                "Agent '{}' is registered with the registry but not yet verified. \
+                Complete the verification process with your registry provider.",
+                agent_id
+            ),
+        });
     }
 
     // Verify public key hash matches
     let registered_hash = api_response.public_key_hash.as_deref().unwrap_or("");
     if !registered_hash.eq_ignore_ascii_case(public_key_hash) {
-        return Err(format!(
-            "Public key mismatch: agent '{}' is registered with the registry \
-            but with a different public key. Expected hash '{}', got '{}'",
-            agent_id,
-            &public_key_hash[..public_key_hash.len().min(16)],
-            &registered_hash[..registered_hash.len().min(16)]
-        ));
+        return Err(JacsError::RegistrationFailed {
+            reason: format!(
+                "Public key mismatch: agent '{}' is registered with the registry \
+                but with a different public key. Expected hash '{}', got '{}'",
+                agent_id,
+                &public_key_hash[..public_key_hash.len().min(16)],
+                &registered_hash[..registered_hash.len().min(16)]
+            ),
+        });
     }
 
     Ok(RegistryRegistration {
@@ -537,13 +585,22 @@ pub struct DnsVerificationResult {
 /// `Ok(DnsVerificationResult)` with match status. Never returns `Err` for DNS failures;
 /// those are reported via `verified: false` in the result.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn verify_agent_dns(agent_json: &str, domain: &str) -> Result<DnsVerificationResult, String> {
+pub fn verify_agent_dns(
+    agent_json: &str,
+    domain: &str,
+) -> Result<DnsVerificationResult, JacsError> {
     let parsed: serde_json::Value =
-        serde_json::from_str(agent_json).map_err(|e| format!("Invalid agent JSON: {}", e))?;
+        serde_json::from_str(agent_json).map_err(|e| JacsError::DocumentMalformed {
+            field: "agent_json".to_string(),
+            reason: format!("Invalid agent JSON: {}", e),
+        })?;
 
     let sig = parsed
         .get("jacsSignature")
-        .ok_or("Missing jacsSignature in agent document")?;
+        .ok_or_else(|| JacsError::DocumentMalformed {
+            field: "jacsSignature".to_string(),
+            reason: "Missing jacsSignature in agent document".to_string(),
+        })?;
     let agent_id = sig
         .get("agentID")
         .and_then(|v| v.as_str())
@@ -643,14 +700,24 @@ mod tests {
     fn test_verify_agent_dns_invalid_json() {
         let result = verify_agent_dns("not json", "example.com");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid agent JSON"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Invalid agent JSON"),
+            "Expected 'Invalid agent JSON', got: {}",
+            err_msg
+        );
     }
 
     #[test]
     fn test_verify_agent_dns_missing_signature() {
         let result = verify_agent_dns(r#"{"hello":"world"}"#, "example.com");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Missing jacsSignature"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("jacsSignature"),
+            "Expected 'jacsSignature' mention, got: {}",
+            err_msg
+        );
     }
 
     #[test]
@@ -782,11 +849,11 @@ mod tests {
         let result =
             verify_registry_registration_sync("550e8400-e29b-41d4-a716-446655440000", "some-hash");
         assert!(result.is_err(), "Should fail without JACS_REGISTRY_URL");
-        let err = result.unwrap_err();
+        let err_msg = result.unwrap_err().to_string();
         assert!(
-            err.contains("JACS_REGISTRY_URL"),
+            err_msg.contains("JACS_REGISTRY_URL"),
             "Error should mention JACS_REGISTRY_URL, got: {}",
-            err
+            err_msg
         );
 
         // Cleanup

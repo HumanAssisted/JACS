@@ -30,10 +30,11 @@
 //!
 //! ```rust,ignore
 //! use jacs::search::EmbeddingProvider;
+//! use jacs::error::JacsError;
 //!
 //! struct MyEmbedder;
 //! impl EmbeddingProvider for MyEmbedder {
-//!     fn embed(&self, content: &str) -> Result<Vec<f64>, Box<dyn std::error::Error + Send + Sync>> {
+//!     fn embed(&self, content: &str) -> Result<Vec<f64>, JacsError> {
 //!         Ok(vec![0.1, 0.2, 0.3])
 //!     }
 //!     fn dimensions(&self) -> usize { 3 }
@@ -44,7 +45,6 @@
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 
 // =============================================================================
 // SearchProvider Trait
@@ -56,9 +56,6 @@ use std::error::Error;
 /// this trait. Backends without native search support should implement
 /// `capabilities()` returning all `false` and `search()` returning
 /// `Err(JacsError::SearchError("search not supported".into()))`.
-///
-/// NOTE: `JacsError::SearchError` is planned (Task 057). Until then,
-/// use `JacsError::StorageError` as a temporary substitute.
 ///
 /// # Object Safety
 ///
@@ -260,7 +257,7 @@ pub trait EmbeddingProvider: Send + Sync {
     ///
     /// Returns a vector of f64 values representing the embedding.
     /// The length of the returned vector must match [`Self::dimensions()`].
-    fn embed(&self, content: &str) -> Result<Vec<f64>, Box<dyn Error + Send + Sync>>;
+    fn embed(&self, content: &str) -> Result<Vec<f64>, JacsError>;
 
     /// Embedding dimensionality (e.g., 1536 for text-embedding-3-small).
     ///
@@ -282,13 +279,13 @@ pub trait EmbeddingProvider: Send + Sync {
 pub struct NoopEmbeddingProvider;
 
 impl EmbeddingProvider for NoopEmbeddingProvider {
-    fn embed(&self, _content: &str) -> Result<Vec<f64>, Box<dyn Error + Send + Sync>> {
-        Err(
+    fn embed(&self, _content: &str) -> Result<Vec<f64>, JacsError> {
+        Err(JacsError::SearchError(
             "Embedding not configured: no EmbeddingProvider was supplied. \
              To use vector search, provide an EmbeddingProvider implementation \
              when configuring your storage backend."
-                .into(),
-        )
+                .to_string(),
+        ))
     }
 
     fn dimensions(&self) -> usize {
@@ -532,7 +529,7 @@ mod tests {
     }
 
     impl EmbeddingProvider for MockEmbeddingProvider {
-        fn embed(&self, _content: &str) -> Result<Vec<f64>, Box<dyn Error + Send + Sync>> {
+        fn embed(&self, _content: &str) -> Result<Vec<f64>, JacsError> {
             Ok(vec![0.1; self.dims])
         }
 
