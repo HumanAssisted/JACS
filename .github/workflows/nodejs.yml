@@ -67,6 +67,10 @@ jobs:
         working-directory: jacsnpm
         run: npm run test:ci
 
+      - name: Run parity tests (binding contract conformance)
+        working-directory: jacsnpm
+        run: node --test tests/test_parity.js
+
       - name: Smoke test quickstart example
         working-directory: jacsnpm
         env:

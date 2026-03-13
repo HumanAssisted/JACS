@@ -9,12 +9,13 @@ Parity guarantees:
   1. Structural parity   -- signed documents contain required field names/types
   2. Roundtrip parity     -- sign -> verify succeeds for all fixture inputs
   3. Cross-algorithm      -- ed25519 and pq2025 produce structurally identical output
-  4. Identity parity      -- agent_id, key_id, PEM, base64, export, diagnostics, verify_self
-  5. Error parity         -- all bindings reject the same invalid inputs
+  4. Identity parity      -- agent_id, key_id, PEM, base64, export, diagnostics, verify_self, config_path
+  5. Error parity         -- all bindings reject the same invalid inputs (incl. verify_with_key)
   6. Sign raw bytes       -- sign_string returns valid base64
   7. Sign file            -- sign_file produces verifiable documents
   8. Verification result  -- verification output contains required fields
-  9. create_agent parity  -- programmatic agent creation is functional
+  9. Verify with key      -- verify_with_key succeeds with explicit public key
+ 10. create_agent parity  -- programmatic agent creation is functional
 
 Note: Exact crypto output bytes differ per invocation (nonce/randomness),
 so we verify structure and verifiability, not byte-equality.
@@ -277,6 +278,14 @@ class TestParityIdentityMethods:
             f"[{algo}] ephemeral agent should not be strict"
         )
 
+    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    def test_config_path(self, algo: str) -> None:
+        agent = _ephemeral(algo)
+        cp = agent.config_path()
+        assert cp is None, (
+            f"[{algo}] ephemeral agent should have no config_path"
+        )
+
 
 # ===========================================================================
 # 5. Sign raw bytes (sign_string) parity
@@ -425,6 +434,13 @@ class TestParityErrors:
         with pytest.raises(RuntimeError):
             agent.verify_by_id("not-a-valid-id")
 
+    def test_verify_with_key_rejects_invalid_base64(self) -> None:
+        """Mirrors test_parity_verify_with_key_rejects_invalid_base64 in Rust."""
+        agent = _ephemeral("ed25519")
+        signed = agent.sign_message({"test": 1})
+        with pytest.raises(RuntimeError):
+            agent.verify_with_key(signed["raw"], "not-valid-base64!!!")
+
 
 # ===========================================================================
 # 8. Verification result structure parity
@@ -450,7 +466,32 @@ class TestParityVerificationResultStructure:
 
 
 # ===========================================================================
-# 9. create_agent parity (mirrors test_parity_create_with_params)
+# 9. Verify with explicit key parity
+# ===========================================================================
+
+
+class TestParityVerifyWithKey:
+    """Mirrors test_parity_verify_with_key_{ed25519,pq2025} in Rust."""
+
+    @pytest.mark.parametrize("algo", ["ed25519", "pq2025"])
+    def test_verify_with_explicit_key(
+        self, algo: str, sign_message_inputs: list[dict]
+    ) -> None:
+        agent = _ephemeral(algo)
+        key_b64 = agent.get_public_key_base64()
+        # Use the first fixture input (simple_message)
+        data = sign_message_inputs[0]["data"]
+        signed = agent.sign_message(data)
+
+        result = agent.verify_with_key(signed["raw"], key_b64)
+        assert result["valid"] is True, (
+            f"[{algo}] verify with explicit key should succeed, "
+            f"errors={result.get('errors')}"
+        )
+
+
+# ===========================================================================
+# 10. create_agent parity (mirrors test_parity_create_with_params)
 # ===========================================================================
 
 
@@ -501,7 +542,7 @@ class TestParityCreateAgent:
 
 
 # ===========================================================================
-# 10. Ephemeral info dict parity
+# 11. Ephemeral info dict parity
 # ===========================================================================
 
 
