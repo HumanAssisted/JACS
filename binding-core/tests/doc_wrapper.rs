@@ -379,3 +379,136 @@ fn test_get_nonexistent_returns_error() {
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().kind, ErrorKind::DocumentFailed);
 }
+
+// =============================================================================
+// get_latest_json
+// =============================================================================
+
+#[test]
+fn test_get_latest_json() {
+    let wrapper = mock_wrapper();
+    let created = wrapper
+        .create_json(r#"{"title": "Latest Test"}"#, None)
+        .unwrap();
+    let doc: Value = serde_json::from_str(&created).unwrap();
+    let id = doc["jacsId"].as_str().unwrap();
+
+    let result = wrapper.get_latest_json(id);
+    assert!(
+        result.is_ok(),
+        "get_latest_json should succeed: {:?}",
+        result.err()
+    );
+
+    let latest: Value = serde_json::from_str(&result.unwrap()).unwrap();
+    assert_eq!(latest["jacsId"].as_str().unwrap(), id);
+}
+
+#[test]
+fn test_get_latest_json_not_found() {
+    let wrapper = mock_wrapper();
+    let result = wrapper.get_latest_json("nonexistent");
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind, ErrorKind::DocumentFailed);
+}
+
+// =============================================================================
+// versions_json
+// =============================================================================
+
+#[test]
+fn test_versions_json() {
+    let wrapper = mock_wrapper();
+    let created = wrapper
+        .create_json(r#"{"title": "V1"}"#, None)
+        .unwrap();
+    let doc: Value = serde_json::from_str(&created).unwrap();
+    let id = doc["jacsId"].as_str().unwrap();
+
+    // Create a second version via update
+    wrapper.update_json(id, r#"{"title": "V2"}"#, None).unwrap();
+
+    let result = wrapper.versions_json(id);
+    assert!(
+        result.is_ok(),
+        "versions_json should succeed: {:?}",
+        result.err()
+    );
+
+    let versions: Vec<Value> = serde_json::from_str(&result.unwrap()).unwrap();
+    assert_eq!(versions.len(), 2, "should have 2 versions");
+}
+
+#[test]
+fn test_versions_json_empty() {
+    let wrapper = mock_wrapper();
+    let result = wrapper.versions_json("nonexistent");
+    assert!(result.is_ok(), "versions_json for missing doc returns empty list");
+    let versions: Vec<Value> = serde_json::from_str(&result.unwrap()).unwrap();
+    assert!(versions.is_empty());
+}
+
+// =============================================================================
+// diff_json
+// =============================================================================
+
+#[test]
+fn test_diff_json() {
+    let wrapper = mock_wrapper();
+    let result = wrapper.diff_json("doc-1:1", "doc-1:2");
+    assert!(
+        result.is_ok(),
+        "diff_json should succeed: {:?}",
+        result.err()
+    );
+
+    let diff: Value = serde_json::from_str(&result.unwrap()).unwrap();
+    assert!(
+        diff.get("diff_text").is_some(),
+        "diff should have diff_text field"
+    );
+    assert_eq!(diff["key_a"].as_str().unwrap(), "doc-1:1");
+    assert_eq!(diff["key_b"].as_str().unwrap(), "doc-1:2");
+}
+
+// =============================================================================
+// visibility_json
+// =============================================================================
+
+#[test]
+fn test_visibility_json() {
+    let wrapper = mock_wrapper();
+    let result = wrapper.visibility_json("doc-1:1");
+    assert!(
+        result.is_ok(),
+        "visibility_json should succeed: {:?}",
+        result.err()
+    );
+
+    let vis: Value = serde_json::from_str(&result.unwrap()).unwrap();
+    // MockDocumentService returns Private
+    assert_eq!(vis.as_str().unwrap_or(""), "private");
+}
+
+// =============================================================================
+// set_visibility_json
+// =============================================================================
+
+#[test]
+fn test_set_visibility_json() {
+    let wrapper = mock_wrapper();
+    let result = wrapper.set_visibility_json("doc-1:1", r#""public""#);
+    assert!(
+        result.is_ok(),
+        "set_visibility_json should succeed: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_set_visibility_json_invalid_visibility() {
+    let wrapper = mock_wrapper();
+    let result = wrapper.set_visibility_json("doc-1:1", "not valid json");
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidArgument);
+}

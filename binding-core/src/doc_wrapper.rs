@@ -20,10 +20,8 @@ pub struct DocumentServiceWrapper {
 
 // Compile-time proof of thread safety.
 const _: () = {
-    fn assert_send_sync<T: Send + Sync>() {}
-    fn check() {
-        assert_send_sync::<DocumentServiceWrapper>();
-    }
+    fn _assert<T: Send + Sync>() {}
+    let _ = _assert::<DocumentServiceWrapper>;
 };
 
 impl DocumentServiceWrapper {

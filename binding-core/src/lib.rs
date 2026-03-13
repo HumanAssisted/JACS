@@ -29,6 +29,7 @@ pub mod simple_wrapper;
 pub use doc_wrapper::DocumentServiceWrapper;
 pub use simple_wrapper::SimpleAgentWrapper;
 pub use simple_wrapper::sign_message_json;
+pub use simple_wrapper::verify_json;
 
 /// Error type for binding core operations.
 ///

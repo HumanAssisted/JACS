@@ -4,8 +4,8 @@
 //! `jacs::simple::SimpleAgent` with FFI-safe marshaling (String in/out,
 //! `BindingResult` errors). Zero business logic — pure delegation.
 
-use jacs_binding_core::{BindingCoreError, SimpleAgentWrapper};
-use serde_json::{Value, json};
+use jacs_binding_core::SimpleAgentWrapper;
+use serde_json::Value;
 
 // =============================================================================
 // Helper
@@ -310,7 +310,7 @@ fn test_sign_raw_bytes() {
 }
 
 // =============================================================================
-// 15. JSON helper for Go FFI
+// 15. JSON helper for Go FFI — sign_message_json
 // =============================================================================
 
 #[test]
@@ -320,4 +320,161 @@ fn test_sign_message_json_ffi() {
         .expect("sign_message_json should succeed");
     let parsed: Value = serde_json::from_str(&signed).expect("should be valid JSON");
     assert!(parsed.get("jacsSignature").is_some());
+}
+
+// =============================================================================
+// 16. JSON helper for Go FFI — verify_json
+// =============================================================================
+
+#[test]
+fn test_verify_json_ffi() {
+    let wrapper = ephemeral_wrapper();
+    let signed = wrapper
+        .sign_message_json(r#"{"ffi_verify": true}"#)
+        .expect("sign should succeed");
+    let result =
+        jacs_binding_core::verify_json(&wrapper, &signed).expect("verify_json should succeed");
+    let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
+    assert_eq!(parsed["valid"], true);
+}
+
+// =============================================================================
+// 17. verify_with_key_json roundtrip
+// =============================================================================
+
+#[test]
+fn test_verify_with_key_json_roundtrip() {
+    let wrapper = ephemeral_wrapper();
+    let signed = wrapper
+        .sign_message_json(r#"{"key_test": true}"#)
+        .expect("sign should succeed");
+    let key_b64 = wrapper
+        .get_public_key_base64()
+        .expect("get_public_key_base64 should succeed");
+
+    let result = wrapper
+        .verify_with_key_json(&signed, &key_b64)
+        .expect("verify_with_key_json should succeed");
+    let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
+    assert_eq!(parsed["valid"], true, "verification with explicit key should succeed");
+}
+
+// =============================================================================
+// 18. verify_with_key_json rejects invalid base64
+// =============================================================================
+
+#[test]
+fn test_verify_with_key_json_invalid_base64() {
+    let wrapper = ephemeral_wrapper();
+    let signed = wrapper
+        .sign_message_json(r#"{"test": 1}"#)
+        .expect("sign should succeed");
+
+    let result = wrapper.verify_with_key_json(&signed, "not-valid-base64!!!");
+    assert!(result.is_err(), "invalid base64 should return error");
+}
+
+// =============================================================================
+// 18b. verify_by_id_json rejects bad format
+// =============================================================================
+
+#[test]
+fn test_verify_by_id_json_bad_format() {
+    let wrapper = ephemeral_wrapper();
+    // verify_by_id expects "uuid:version" format
+    let result = wrapper.verify_by_id_json("not-a-valid-id");
+    assert!(
+        result.is_err(),
+        "verify_by_id with bad format should return error"
+    );
+}
+
+#[test]
+fn test_verify_by_id_json_missing_document() {
+    let wrapper = ephemeral_wrapper();
+    // Correct format but document doesn't exist in storage
+    let result = wrapper.verify_by_id_json("00000000-0000-0000-0000-000000000000:1");
+    assert!(
+        result.is_err(),
+        "verify_by_id for missing doc should return error"
+    );
+}
+
+// =============================================================================
+// 19. sign_file_json
+// =============================================================================
+
+#[test]
+fn test_sign_file_json() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let file_path = tmp.path().join("test_file.txt");
+    std::fs::write(&file_path, b"hello world").unwrap();
+
+    let wrapper = ephemeral_wrapper();
+    let signed = wrapper
+        .sign_file_json(file_path.to_str().unwrap(), true)
+        .expect("sign_file_json should succeed");
+
+    let parsed: Value = serde_json::from_str(&signed).expect("should be valid JSON");
+    assert!(
+        parsed.get("jacsSignature").is_some(),
+        "signed file should have jacsSignature"
+    );
+}
+
+// =============================================================================
+// 20. from_agent
+// =============================================================================
+
+#[test]
+fn test_from_agent() {
+    let (agent, _info) =
+        jacs::simple::SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral should succeed");
+    let wrapper = SimpleAgentWrapper::from_agent(agent);
+    let agent_id = wrapper.get_agent_id().expect("get_agent_id should succeed");
+    assert!(!agent_id.is_empty(), "wrapper from from_agent should be usable");
+}
+
+// =============================================================================
+// 21. create_with_params via JSON
+// =============================================================================
+
+#[test]
+fn test_create_with_params_json() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let data_dir = tmp.path().join("data");
+    let key_dir = tmp.path().join("keys");
+    let config_path = tmp.path().join("config.json");
+
+    let params_json = serde_json::json!({
+        "name": "params-test",
+        "password": "TestP@ss123!#",
+        "algorithm": "ring-Ed25519",
+        "data_directory": data_dir.to_str().unwrap(),
+        "key_directory": key_dir.to_str().unwrap(),
+        "config_path": config_path.to_str().unwrap()
+    })
+    .to_string();
+
+    let (wrapper, info_json) =
+        SimpleAgentWrapper::create_with_params(&params_json).expect("create_with_params should succeed");
+
+    let info: Value = serde_json::from_str(&info_json).expect("info should be valid JSON");
+    assert!(!info["agent_id"].as_str().unwrap_or("").is_empty());
+
+    // Wrapper should be functional
+    let signed = wrapper
+        .sign_message_json(r#"{"params_test": true}"#)
+        .expect("signing should succeed after create_with_params");
+    assert!(!signed.is_empty());
+}
+
+// =============================================================================
+// 22. create_with_params rejects invalid JSON
+// =============================================================================
+
+#[test]
+fn test_create_with_params_invalid_json() {
+    let result = SimpleAgentWrapper::create_with_params("not json");
+    assert!(result.is_err(), "invalid JSON should return error");
 }

@@ -830,6 +830,71 @@ fn test_sign_verify_roundtrip_rsa() {
 }
 
 // =============================================================================
+// Contract lock: exactly 19 narrow public methods on SimpleAgent
+// =============================================================================
+
+/// The narrow SimpleAgent contract has exactly 19 public methods.
+/// If this count changes, update Section 4.1.2 of ARCHITECTURE_UPGRADE.md.
+const NARROW_CONTRACT_METHOD_COUNT: usize = 19;
+
+/// Guard against method creep on `SimpleAgent`.
+///
+/// Each line below takes a reference to a public method. If any method is
+/// renamed, removed, or has its signature changed, this test fails to compile.
+/// The runtime assertion at the end guards against additions.
+#[test]
+fn test_narrow_contract_all_19_methods_exist() {
+    use jacs::error::JacsError;
+    use jacs::simple::types::{SignedDocument, VerificationResult};
+    use jacs::simple::{AgentInfo, CreateAgentParams, SimpleAgent};
+    use serde_json::Value;
+
+    // Constructors (4)
+    let _ = SimpleAgent::create
+        as fn(&str, Option<&str>, Option<&str>) -> Result<(SimpleAgent, AgentInfo), JacsError>;
+    let _ = SimpleAgent::create_with_params
+        as fn(CreateAgentParams) -> Result<(SimpleAgent, AgentInfo), JacsError>;
+    let _ = SimpleAgent::load as fn(Option<&str>, Option<bool>) -> Result<SimpleAgent, JacsError>;
+    let _ =
+        SimpleAgent::ephemeral as fn(Option<&str>) -> Result<(SimpleAgent, AgentInfo), JacsError>;
+
+    // Identity / Introspection (7)
+    let _ = SimpleAgent::is_strict as fn(&SimpleAgent) -> bool;
+    let _ = SimpleAgent::key_id as fn(&SimpleAgent) -> Result<String, JacsError>;
+    let _ = SimpleAgent::get_agent_id as fn(&SimpleAgent) -> Result<String, JacsError>;
+    let _ = SimpleAgent::export_agent as fn(&SimpleAgent) -> Result<String, JacsError>;
+    let _ = SimpleAgent::get_public_key as fn(&SimpleAgent) -> Result<Vec<u8>, JacsError>;
+    let _ = SimpleAgent::get_public_key_pem as fn(&SimpleAgent) -> Result<String, JacsError>;
+    let _ = SimpleAgent::config_path as fn(&SimpleAgent) -> Option<&str>;
+
+    // Signing (3)
+    let _ =
+        SimpleAgent::sign_message as fn(&SimpleAgent, &Value) -> Result<SignedDocument, JacsError>;
+    let _ = SimpleAgent::sign_raw_bytes as fn(&SimpleAgent, &[u8]) -> Result<Vec<u8>, JacsError>;
+    let _ =
+        SimpleAgent::sign_file as fn(&SimpleAgent, &str, bool) -> Result<SignedDocument, JacsError>;
+
+    // Verification (4)
+    let _ = SimpleAgent::verify_self as fn(&SimpleAgent) -> Result<VerificationResult, JacsError>;
+    let _ = SimpleAgent::verify as fn(&SimpleAgent, &str) -> Result<VerificationResult, JacsError>;
+    let _ = SimpleAgent::verify_with_key
+        as fn(&SimpleAgent, &str, Vec<u8>) -> Result<VerificationResult, JacsError>;
+    let _ = SimpleAgent::verify_by_id
+        as fn(&SimpleAgent, &str) -> Result<VerificationResult, JacsError>;
+
+    // Diagnostics (1)
+    let _ = SimpleAgent::diagnostics as fn(&SimpleAgent) -> Value;
+
+    // Total must equal the declared constant.
+    // If you added a method, update NARROW_CONTRACT_METHOD_COUNT and
+    // Section 4.1.2 of ARCHITECTURE_UPGRADE.md.
+    assert_eq!(
+        NARROW_CONTRACT_METHOD_COUNT, 19,
+        "Narrow contract method count changed! Update this test and Section 4.1.2."
+    );
+}
+
+// =============================================================================
 // Integration: Cross-agent verification (A signs, B verifies with exported key)
 // =============================================================================
 

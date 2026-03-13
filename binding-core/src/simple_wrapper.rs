@@ -19,10 +19,8 @@ pub struct SimpleAgentWrapper {
 
 // Compile-time proof of thread safety.
 const _: () = {
-    fn assert_send_sync<T: Send + Sync>() {}
-    fn check() {
-        assert_send_sync::<SimpleAgentWrapper>();
-    }
+    fn _assert<T: Send + Sync>() {}
+    let _ = _assert::<SimpleAgentWrapper>;
 };
 
 impl SimpleAgentWrapper {
@@ -69,6 +67,37 @@ impl SimpleAgentWrapper {
     pub fn ephemeral(algorithm: Option<&str>) -> BindingResult<(Self, String)> {
         let (agent, info) = SimpleAgent::ephemeral(algorithm).map_err(|e| {
             BindingCoreError::agent_load(format!("Failed to create ephemeral agent: {}", e))
+        })?;
+
+        let info_json = serde_json::to_string(&info).map_err(|e| {
+            BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e))
+        })?;
+
+        Ok((
+            Self {
+                inner: Arc::new(agent),
+            },
+            info_json,
+        ))
+    }
+
+    /// Create an agent with full programmatic control via JSON parameters.
+    ///
+    /// `params_json` is a JSON string of [`CreateAgentParams`] fields.
+    /// The `storage` field is skipped during deserialization (use builder for that).
+    /// Returns `(wrapper, info_json)` where `info_json` is a serialized
+    /// [`jacs::simple::AgentInfo`].
+    pub fn create_with_params(params_json: &str) -> BindingResult<(Self, String)> {
+        let params: jacs::simple::CreateAgentParams =
+            serde_json::from_str(params_json).map_err(|e| {
+                BindingCoreError::invalid_argument(format!(
+                    "Invalid CreateAgentParams JSON: {}",
+                    e
+                ))
+            })?;
+
+        let (agent, info) = SimpleAgent::create_with_params(params).map_err(|e| {
+            BindingCoreError::agent_load(format!("Failed to create agent with params: {}", e))
         })?;
 
         let info_json = serde_json::to_string(&info).map_err(|e| {
