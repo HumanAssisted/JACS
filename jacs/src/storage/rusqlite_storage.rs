@@ -9,12 +9,20 @@
 //!
 //! Document content is immutable once stored. New versions create new rows
 //! keyed by `(jacs_id, jacs_version)`. No UPDATE operations on signed content.
-//! The `visibility` column is storage-level metadata and may be updated
-//! in place without creating a new version (see `set_visibility()`).
+//!
+//! # Visibility
+//!
+//! There are two code paths:
+//! - **`DocumentService` path** (via `SqliteDocumentService` with an agent):
+//!   `set_visibility()` routes through `update()`, creating a **successor version**
+//!   with a new signature. This is the normal usage path.
+//! - **`StorageDocumentTraits` path** (raw storage, no agent):
+//!   `set_visibility()` updates only the `visibility` column in-place without
+//!   creating a new version. This path is used internally and does not re-sign.
 //!
 //! # Feature Gate
 //!
-//! This module requires the `rusqlite-storage` feature flag and is excluded from WASM.
+//! This module requires the `sqlite` feature flag and is excluded from WASM.
 
 use crate::agent::Agent;
 use crate::agent::document::{DocumentTraits, JACSDocument};
@@ -1493,13 +1501,16 @@ impl DocumentService for SqliteDocumentService {
 
     fn set_visibility(&self, key: &str, visibility: DocumentVisibility) -> Result<(), JacsError> {
         let doc = self.get(key)?;
+
+        // Strip signed headers so update() won't try to verify the old
+        // signature against modified content. update() will re-add all
+        // JACS headers and re-sign the document.
         let mut new_value = doc.value.clone();
         if let Some(obj) = new_value.as_object_mut() {
-            let vis_value = serde_json::to_value(&visibility).map_err(|e| {
-                JacsError::DocumentError(format!("Failed to serialize visibility: {}", e))
-            })?;
-            obj.insert("jacsVisibility".to_string(), vis_value);
+            obj.remove("jacsSignature");
+            obj.remove("jacsSha256");
         }
+
         let new_json = serde_json::to_string(&new_value).map_err(|e| {
             JacsError::DocumentError(format!("Failed to serialize updated visibility: {}", e))
         })?;

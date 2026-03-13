@@ -666,6 +666,10 @@ fn visibility_get_and_set() {
 }
 
 #[test]
+#[ignore = "Pre-existing failure: uses SqliteDocumentService::in_memory() with empty agent (no keys). \
+            DocumentService::set_visibility() calls update() which requires a loaded agent for signing. \
+            The correct behavior (set_visibility creates successor version) is tested in \
+            document_lifecycle.rs::set_visibility_creates_successor_version via the cross-backend macro."]
 fn set_visibility_is_in_place_update_no_new_version() {
     let svc = create_service();
 

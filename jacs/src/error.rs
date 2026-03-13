@@ -1080,6 +1080,57 @@ mod tests {
         );
     }
 
+    // ==========================================================================
+    // Task 010: JacsError Conversion Coverage Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_from_serde_json_error_converts_to_document_malformed() {
+        let bad_json = "{ invalid json }";
+        let serde_err = serde_json::from_str::<serde_json::Value>(bad_json).unwrap_err();
+        let jacs_err: JacsError = serde_err.into();
+        assert!(
+            matches!(jacs_err, JacsError::DocumentMalformed { .. }),
+            "serde_json::Error should map to DocumentMalformed, got: {:?}",
+            jacs_err
+        );
+        let msg = jacs_err.to_string();
+        assert!(
+            msg.contains("Malformed document"),
+            "Display should mention 'Malformed document'"
+        );
+    }
+
+    #[test]
+    fn test_from_base64_decode_error_converts_to_crypto() {
+        use base64::Engine;
+        let b64_err = base64::engine::general_purpose::STANDARD
+            .decode("not-valid-base64!!!")
+            .unwrap_err();
+        let jacs_err: JacsError = b64_err.into();
+        assert!(
+            matches!(jacs_err, JacsError::CryptoError(_)),
+            "base64::DecodeError should map to CryptoError, got: {:?}",
+            jacs_err
+        );
+    }
+
+    #[test]
+    fn test_config_not_found_display_includes_path_and_guidance() {
+        let err = JacsError::ConfigNotFound {
+            path: "/tmp/nonexistent.json".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/tmp/nonexistent.json"),
+            "Should include the path"
+        );
+        assert!(
+            msg.contains("create") || msg.contains("Run"),
+            "Should provide actionable guidance"
+        );
+    }
+
     #[test]
     fn test_verification_claim_downgrade_error_is_actionable() {
         let err = JacsError::VerificationClaimFailed {

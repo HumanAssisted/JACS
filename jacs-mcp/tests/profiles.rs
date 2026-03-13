@@ -258,6 +258,67 @@ fn server_with_profile_stores_and_uses_profile() {
     assert_eq!(full_server.profile(), &Profile::Full);
 }
 
+// =========================================================================
+// Task 007: Specific profile filtering verification tests
+// =========================================================================
+
+/// Core profile must exclude agreement and messaging tool names.
+#[test]
+fn core_profile_excludes_agreement_tools() {
+    let core = Profile::Core;
+    let tools = core.tools();
+    let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+
+    for name in &names {
+        assert!(
+            !name.starts_with("jacs_agreement") && !name.starts_with("jacs_create_agreement")
+                && !name.starts_with("jacs_sign_agreement") && !name.starts_with("jacs_check_agreement"),
+            "Core profile should not contain agreement tool '{}'",
+            name
+        );
+        assert!(
+            !name.starts_with("jacs_message_"),
+            "Core profile should not contain messaging tool '{}'",
+            name
+        );
+    }
+}
+
+/// Full profile must include all compiled-in tools.
+#[test]
+fn full_profile_includes_all_tools() {
+    let full = Profile::Full;
+    let full_tools = full.tools();
+    let all = jacs_mcp::tools::all_classified_tools();
+
+    assert_eq!(
+        full_tools.len(),
+        all.len(),
+        "Full profile should include all compiled-in tools"
+    );
+}
+
+/// Core profile must include search and state tools.
+#[test]
+fn core_profile_includes_search_and_state_tools() {
+    let core = Profile::Core;
+    let tools = core.tools();
+    let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+
+    assert!(
+        names.contains(&"jacs_search"),
+        "Core profile should contain jacs_search"
+    );
+    assert!(
+        names.contains(&"jacs_sign_state"),
+        "Core profile should contain jacs_sign_state"
+    );
+    assert!(
+        names.contains(&"jacs_load_state"),
+        "Core profile should contain jacs_load_state"
+    );
+}
+
 /// `JacsMcpServer::tools()` (static) always returns all compiled-in tools,
 /// while `active_tools()` (instance) respects the profile.
 #[test]

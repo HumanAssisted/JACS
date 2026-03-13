@@ -602,6 +602,15 @@ impl Agent {
         self.storage = storage;
     }
 
+    /// Returns a reference to the agent's internal storage backend.
+    ///
+    /// This is primarily used by [`service_from_agent`](crate::document::service_from_agent)
+    /// to reuse the correctly-rooted `MultiStorage` that `load_by_config` set up,
+    /// rather than creating a new one with a potentially-relative base directory.
+    pub fn storage_ref(&self) -> &MultiStorage {
+        &self.storage
+    }
+
     /// Replace the internal storage with one rooted at `root`.
     ///
     /// This is used by `verify_document_standalone` so that absolute

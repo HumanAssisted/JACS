@@ -309,3 +309,54 @@ async fn jacs_search_uses_document_service_backend_method() -> anyhow::Result<()
     );
     Ok(())
 }
+
+// =========================================================================
+// Task 005: MCP graceful degradation when document_service is None
+// =========================================================================
+
+/// When the MCP server has no document_service (e.g. unsupported storage backend),
+/// `jacs_search` returns a JSON response with `success: false` and
+/// `error: "document_service_unavailable"`.
+#[tokio::test]
+async fn jacs_search_returns_error_when_no_document_service() {
+    // Create an agent with FS storage, then patch config to "memory"
+    // (which service_from_agent doesn't wire) so document_service = None.
+    let (agent, _tmp) = sqlite_ready_agent();
+
+    // Patch the config's jacs_default_storage to "memory"
+    {
+        let agent_arc = agent.inner_arc();
+        let mut guard = agent_arc.lock().unwrap();
+        if let Some(ref mut config) = guard.config {
+            let mut val = serde_json::to_value(&*config).unwrap();
+            val["jacs_default_storage"] = serde_json::json!("memory");
+            *config = serde_json::from_value(val).unwrap();
+        }
+    }
+
+    let server = JacsMcpServer::new(agent);
+
+    let raw = server
+        .jacs_search(Parameters(SearchParams {
+            query: "anything".to_string(),
+            jacs_type: None,
+            agent_id: None,
+            field_filter: None,
+            limit: Some(10),
+            offset: Some(0),
+            min_score: None,
+        }))
+        .await;
+
+    let result: serde_json::Value =
+        serde_json::from_str(&raw).expect("response should be valid JSON");
+    assert_eq!(
+        result["success"], false,
+        "search with no document_service should return success: false"
+    );
+    assert_eq!(
+        result["error"], "document_service_unavailable",
+        "error code should be document_service_unavailable: {}",
+        result
+    );
+}

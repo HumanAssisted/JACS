@@ -235,6 +235,34 @@ fn inject_meta_handles_empty_json_object() {
 }
 
 // ============================================================================
+// Task 008: inject_meta coverage tests
+// ============================================================================
+
+#[test]
+fn inject_meta_adds_metadata_to_success_response() {
+    let result = json!({"success": true, "message": "Document signed"});
+    let result_str = serde_json::to_string_pretty(&result).unwrap();
+    let injected = inject_meta(&result_str, None);
+    let parsed: Value = serde_json::from_str(&injected).unwrap();
+
+    assert!(parsed.get("_jacs_meta").is_some(), "_jacs_meta must be present on success response");
+    assert_eq!(parsed["_jacs_meta"]["visibility"].as_str().unwrap(), "private");
+    assert!(parsed["_jacs_meta"]["hint"].as_str().is_some());
+}
+
+#[test]
+fn inject_meta_adds_metadata_to_error_response() {
+    let result = json!({"success": false, "error": "document_not_found", "message": "Document not found"});
+    let result_str = serde_json::to_string_pretty(&result).unwrap();
+    let injected = inject_meta(&result_str, None);
+    let parsed: Value = serde_json::from_str(&injected).unwrap();
+
+    assert!(parsed.get("_jacs_meta").is_some(), "_jacs_meta must be present on error response");
+    assert_eq!(parsed["success"], false, "original error fields preserved");
+    assert_eq!(parsed["error"], "document_not_found");
+}
+
+// ============================================================================
 // Visibility as_str roundtrip
 // ============================================================================
 

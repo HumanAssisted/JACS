@@ -294,8 +294,19 @@ impl MultiStorage {
         let mut _local;
         let mut _memory: Option<Arc<InMemory>>;
 
-        let default_storage: StorageType = StorageType::from_str(&storage_type)
-            .unwrap_or_else(|_| panic!("storage_type {} is not known", storage_type));
+        let default_storage: StorageType =
+            StorageType::from_str(&storage_type).map_err(|_| ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(format!(
+                    "Unknown storage type '{}'. Supported types: fs, memory, aws{}",
+                    storage_type,
+                    if cfg!(all(not(target_arch = "wasm32"), feature = "sqlite")) {
+                        ", rusqlite, sqlite"
+                    } else {
+                        ""
+                    }
+                ))),
+            })?;
 
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
@@ -437,7 +448,7 @@ impl MultiStorage {
         preference: Option<StorageType>,
     ) -> Result<Vec<u8>, ObjectStoreError> {
         let object_path = self.object_path(path)?;
-        let storage = self.get_read_storage(preference);
+        let storage = self.get_read_storage(preference)?;
         let get_result = block_on(storage.get(&object_path))?;
         let bytes = block_on(get_result.bytes())?;
         Ok(bytes.to_vec())
@@ -450,7 +461,7 @@ impl MultiStorage {
         preference: Option<StorageType>,
     ) -> Result<bool, ObjectStoreError> {
         let object_path = self.object_path(path)?;
-        let storage = self.get_read_storage(preference);
+        let storage = self.get_read_storage(preference)?;
 
         // --- Debugging Start ---
         let current_process_cwd =
@@ -484,7 +495,7 @@ impl MultiStorage {
         preference: Option<StorageType>,
     ) -> Result<Vec<String>, ObjectStoreError> {
         let mut file_list = Vec::new();
-        let object_store = self.get_read_storage(preference);
+        let object_store = self.get_read_storage(preference)?;
         let prefix_path = self.object_path(prefix)?;
         let mut list_stream = object_store.list(Some(&prefix_path));
 
@@ -522,31 +533,64 @@ impl MultiStorage {
         }
     }
 
-    fn get_read_storage(&self, preference: Option<StorageType>) -> Arc<dyn ObjectStore> {
+    fn get_read_storage(
+        &self,
+        preference: Option<StorageType>,
+    ) -> Result<Arc<dyn ObjectStore>, ObjectStoreError> {
         let selected = match preference {
             Some(pref) => pref,
             _ => self.default_storage.clone(),
         };
 
         match selected {
-            StorageType::AWS => self.aws.clone().expect("aws storage not loaded"),
-            StorageType::FS => self.fs.clone().expect("filesystem storage not loaded"),
-            StorageType::Memory => self.memory.clone().expect("memory storage not loaded"),
-            #[cfg(target_arch = "wasm32")]
-            StorageType::WebLocal => self
-                .web_local
+            StorageType::AWS => self
+                .aws
                 .clone()
-                .expect("web local storage not loaded"),
-            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
-            StorageType::Sqlite => {
-                panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
+                .map(|a| a as Arc<dyn ObjectStore>)
+                .ok_or_else(|| ObjectStoreError::Generic {
+                    store: "MultiStorage",
+                    source: Box::new(std::io::Error::other("AWS storage not loaded")),
+                }),
+            StorageType::FS => self
+                .fs
+                .clone()
+                .map(|f| f as Arc<dyn ObjectStore>)
+                .ok_or_else(|| ObjectStoreError::Generic {
+                    store: "MultiStorage",
+                    source: Box::new(std::io::Error::other("Filesystem storage not loaded")),
+                }),
+            StorageType::Memory => self
+                .memory
+                .clone()
+                .map(|m| m as Arc<dyn ObjectStore>)
+                .ok_or_else(|| ObjectStoreError::Generic {
+                    store: "MultiStorage",
+                    source: Box::new(std::io::Error::other("Memory storage not loaded")),
+                }),
+            #[cfg(target_arch = "wasm32")]
+            StorageType::WebLocal => {
+                self.web_local
+                    .clone()
+                    .ok_or_else(|| ObjectStoreError::Generic {
+                        store: "MultiStorage",
+                        source: Box::new(std::io::Error::other("Web local storage not loaded")),
+                    })
             }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
+            StorageType::Sqlite => Err(ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(
+                    "SQLite storage does not use ObjectStore. Use SqliteStorage or DocumentService directly.",
+                )),
+            }),
             #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
-            StorageType::Rusqlite => {
-                panic!("Rusqlite storage does not use ObjectStore. Use RusqliteStorage directly.")
-            } // SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
-              // DuckDB storage has been extracted to the `jacs-duckdb` crate.
-              // Redb storage has been extracted to the `jacs-redb` crate.
+            StorageType::Rusqlite => Err(ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(
+                    "Rusqlite storage does not use ObjectStore. Use SqliteDocumentService directly.",
+                )),
+            }),
+            // SurrealDB, DuckDB, Redb have been extracted to standalone crates.
         }
     }
 }

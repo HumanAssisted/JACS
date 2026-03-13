@@ -14,6 +14,27 @@
 //! | **Update** | Create a successor version linked to the prior version (new signature, new version ID) |
 //! | **Delete** | Tombstone, revoke visibility, or remove from a storage index — never destroys signed provenance |
 //!
+//! # Core Invariants
+//!
+//! All `DocumentService` implementations must uphold two invariants:
+//!
+//! - **Verify-on-write**: `create()` and `update()` must sign the document and
+//!   verify the signature before persisting. A tampered payload must be rejected
+//!   before it reaches storage.
+//! - **Verify-on-read**: `get()` and `get_latest()` must verify the stored
+//!   document's signature before returning it. A document that fails verification
+//!   (e.g., corrupted at rest) must return an error, not silent bad data.
+//!
+//! Both built-in backends (filesystem and SQLite) enforce these invariants
+//! via shared helpers that resolve-and-verify on read and sign-and-verify
+//! on write.
+//!
+//! # Visibility
+//!
+//! Both built-in backends route `set_visibility()` through `update()`, which
+//! creates a **successor version** with the new visibility and re-signs it.
+//! This preserves provenance — the original version is never mutated.
+//!
 //! Storage backends implement this trait. JACS core provides a default
 //! filesystem + sqlite implementation.
 //!
@@ -52,7 +73,7 @@
 //!     ..ListFilter::default()
 //! })?;
 //!
-//! // Change visibility without re-signing
+//! // Change visibility (creates a successor version with re-signing)
 //! let key = format!("{}:{}", doc.id, doc.version);
 //! service.set_visibility(&key, DocumentVisibility::Public)?;
 //! ```
@@ -60,7 +81,21 @@
 //! # Implementing a Storage Backend
 //!
 //! To create a new storage backend, implement [`DocumentService`] and
-//! optionally [`SearchProvider`](crate::search::SearchProvider):
+//! optionally [`SearchProvider`](crate::search::SearchProvider).
+//!
+//! Your implementation **must** uphold the core invariants:
+//!
+//! 1. **`create()` and `update()`** must sign the document and verify the
+//!    signature before persisting. A tampered payload must be rejected.
+//! 2. **`get()` and `get_latest()`** must verify the stored document's
+//!    signature before returning. A document that fails verification must
+//!    produce an error.
+//! 3. **`set_visibility()`** should strip old signature fields and route
+//!    through `update()` so that visibility changes create a signed successor
+//!    version rather than mutating a signed document in place.
+//!
+//! See [`FilesystemDocumentService`] and the SQLite backend in
+//! `storage::rusqlite_storage` for reference implementations.
 //!
 //! ```rust,ignore
 //! use jacs::document::{DocumentService, CreateOptions, UpdateOptions, ListFilter,
@@ -73,13 +108,16 @@
 //!
 //! impl DocumentService for MyBackend {
 //!     fn create(&self, json: &str, options: CreateOptions) -> Result<JACSDocument, JacsError> {
-//!         // Sign the document and persist to your storage
+//!         // 1. Sign the document with the agent
+//!         // 2. Verify the signature
+//!         // 3. Persist to storage
 //!         todo!()
 //!     }
 //!     // ... implement remaining methods
 //! }
 //! ```
 
+pub mod backend_resolver;
 pub mod filesystem;
 pub mod types;
 
@@ -96,7 +134,6 @@ use crate::agent::{DOCUMENT_AGENT_SIGNATURE_FIELDNAME, SHA256_FIELDNAME};
 use crate::config::{KeyResolutionSource, get_key_resolution_order};
 use crate::error::JacsError;
 use crate::search::{SearchQuery, SearchResults};
-use crate::storage::MultiStorage;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
@@ -253,7 +290,7 @@ pub fn sqlite_database_path(base_dir: &Path) -> PathBuf {
 }
 
 pub fn service_from_agent(agent: Arc<Mutex<Agent>>) -> Result<Arc<dyn DocumentService>, JacsError> {
-    let (storage_type, base_dir) = {
+    let (storage_input, base_dir, agent_storage) = {
         let agent_guard = agent.lock().map_err(|e| JacsError::Internal {
             message: format!("Failed to acquire agent lock: {}", e),
         })?;
@@ -276,45 +313,64 @@ pub fn service_from_agent(agent: Arc<Mutex<Agent>>) -> Result<Arc<dyn DocumentSe
             .cloned()
             .unwrap_or_else(|| "fs".to_string());
 
-        (storage, PathBuf::from(data_dir))
+        // Clone the agent's pre-configured MultiStorage so that the FS
+        // backend reuses the correctly-rooted store that `load_by_config`
+        // set up (the config may contain relative data directories that are
+        // only meaningful relative to the config file's parent directory).
+        let agent_storage = agent_guard.storage_ref().clone();
+
+        (storage, PathBuf::from(data_dir), agent_storage)
     };
 
-    match storage_type.as_str() {
-        "fs" => {
-            let storage = MultiStorage::_new(storage_type, base_dir.clone())
-                .map_err(|e| JacsError::StorageError(e.to_string()))?;
-            Ok(Arc::new(FilesystemDocumentService::new(
-                Arc::new(storage),
-                agent,
-                base_dir,
-            )))
-        }
+    // Resolve the storage input through the backend resolver.
+    // This handles both plain labels ("fs", "sqlite") and connection strings
+    // ("sqlite:///path/to/db", "postgres://user:pass@host/db").
+    let backend_config = backend_resolver::resolve(&storage_input)?;
+    let redacted = backend_resolver::redact_connection_string(&storage_input);
+    debug!(
+        "Resolved storage backend: {} (from '{}')",
+        backend_config.backend_type, redacted
+    );
+
+    match backend_config.backend_type.as_str() {
+        "fs" => Ok(Arc::new(FilesystemDocumentService::new(
+            Arc::new(agent_storage),
+            agent,
+            base_dir,
+        ))),
         #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
         "rusqlite" | "sqlite" => {
-            if let Some(parent) = base_dir.parent()
-                && !parent.as_os_str().is_empty()
-            {
-                std::fs::create_dir_all(parent).map_err(|e| {
+            // If the resolver extracted a path from a connection string, use that.
+            // Otherwise fall back to the default sqlite database path.
+            let db_path = if let Some(ref path) = backend_config.path {
+                PathBuf::from(path)
+            } else {
+                if let Some(parent) = base_dir.parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        JacsError::StorageError(format!(
+                            "Failed to create sqlite parent directory '{}': {}",
+                            parent.display(),
+                            e
+                        ))
+                    })?;
+                }
+                std::fs::create_dir_all(&base_dir).map_err(|e| {
                     JacsError::StorageError(format!(
-                        "Failed to create sqlite parent directory '{}': {}",
-                        parent.display(),
+                        "Failed to create data directory '{}': {}",
+                        base_dir.display(),
                         e
                     ))
                 })?;
-            }
-            std::fs::create_dir_all(&base_dir).map_err(|e| {
-                JacsError::StorageError(format!(
-                    "Failed to create data directory '{}': {}",
-                    base_dir.display(),
-                    e
-                ))
-            })?;
-            let db_path = sqlite_database_path(&base_dir);
+                sqlite_database_path(&base_dir)
+            };
             let service = SqliteDocumentService::with_agent(&db_path.to_string_lossy(), agent)?;
             Ok(Arc::new(service))
         }
         unsupported => Err(JacsError::StorageError(format!(
-            "DocumentService is not yet wired for storage backend '{}'",
+            "DocumentService is not yet wired for storage backend '{}'. \
+             Supported backends: fs, sqlite, rusqlite",
             unsupported
         ))),
     }
@@ -325,6 +381,16 @@ pub fn service_from_agent(agent: Arc<Mutex<Agent>>) -> Result<Arc<dyn DocumentSe
 /// JACS core provides a default filesystem + sqlite implementation.
 /// All methods enforce append-only provenance semantics: "update" creates
 /// a successor version, "remove" tombstones — nothing is ever destroyed.
+///
+/// # Core Invariants
+///
+/// Implementations **must** enforce:
+/// - **Verify-on-write**: `create()` and `update()` sign the document and
+///   verify the signature before persisting.
+/// - **Verify-on-read**: `get()` and `get_latest()` verify the stored
+///   document's signature before returning it.
+///
+/// See the module-level docs for details.
 ///
 /// # Object Safety
 ///
@@ -415,12 +481,15 @@ pub trait DocumentService: Send + Sync {
 
     /// Set the visibility level of a document.
     ///
-    /// Visibility is storage-level metadata (a separate database column),
-    /// not part of the signed document payload. Changing visibility updates
-    /// the metadata in place without creating a new document version.
-    /// This is intentional: visibility is an access-control hint that can
-    /// be changed without re-signing, which would require the agent's
-    /// private key.
+    /// Both built-in backends (filesystem and SQLite with agent) route this
+    /// through `update()`, which creates a **successor version** with the
+    /// new visibility. The document is re-signed as part of the update.
+    ///
+    /// Backend-specific behavior:
+    /// - **Filesystem**: creates a successor version via `update()`.
+    /// - **SQLite with agent**: creates a successor version via `update()`.
+    /// - **SQLite raw storage** (no agent, `StorageDocumentTraits` path):
+    ///   updates the visibility column in-place without creating a new version.
     fn set_visibility(&self, key: &str, visibility: DocumentVisibility) -> Result<(), JacsError>;
 }
 

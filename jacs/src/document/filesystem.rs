@@ -622,12 +622,13 @@ impl DocumentService for FilesystemDocumentService {
         let doc = self.get(key)?;
         let document_id = Self::document_id_from_key(key);
 
-        // Create a new version with updated visibility
+        // Strip signed headers so update() won't try to verify the old
+        // signature against modified content. update() will re-add all
+        // JACS headers and re-sign the document.
         let mut new_value = doc.value.clone();
         if let Some(obj) = new_value.as_object_mut() {
-            let vis_value = serde_json::to_value(&visibility)
-                .map_err(|e| JacsError::DocumentError(e.to_string()))?;
-            obj.insert("jacsVisibility".to_string(), vis_value);
+            obj.remove("jacsSignature");
+            obj.remove("jacsSha256");
         }
 
         let new_json = serde_json::to_string(&new_value)

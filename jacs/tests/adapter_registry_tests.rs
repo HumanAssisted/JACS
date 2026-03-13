@@ -13,9 +13,9 @@ use jacs::attestation::AttestationTraits;
 use jacs::attestation::adapters::EvidenceAdapter;
 use jacs::attestation::digest::compute_digest_set_bytes;
 use jacs::attestation::types::*;
+use jacs::error::JacsError;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -100,7 +100,7 @@ impl EvidenceAdapter for MockAdapter {
         &self,
         raw: &[u8],
         _metadata: &Value,
-    ) -> Result<(Vec<Claim>, EvidenceRef), Box<dyn Error>> {
+    ) -> Result<(Vec<Claim>, EvidenceRef), JacsError> {
         let digests = compute_digest_set_bytes(raw);
         let claims = vec![Claim {
             name: format!("{}-claim", self.kind_str),
@@ -133,7 +133,7 @@ impl EvidenceAdapter for MockAdapter {
     fn verify_evidence(
         &self,
         evidence: &EvidenceRef,
-    ) -> Result<EvidenceVerificationResult, Box<dyn Error>> {
+    ) -> Result<EvidenceVerificationResult, JacsError> {
         self.was_called.store(true, Ordering::SeqCst);
         let digest_valid = if let Some(ref data) = evidence.embedded_data {
             let raw = match data {
