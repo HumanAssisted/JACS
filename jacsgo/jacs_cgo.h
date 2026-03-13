@@ -37,6 +37,9 @@ char* jacs_agent_export_attestation_dsse(JacsAgentHandle handle, const char* att
 // ============================================================================
 typedef void* SimpleAgentHandle;
 
+// Error handling
+char* jacs_simple_last_error(void);
+
 // Constructors
 SimpleAgentHandle jacs_simple_create(const char* name, const char* purpose, const char* key_algorithm, char** info_json_out);
 SimpleAgentHandle jacs_simple_load(const char* config_path, int strict);
@@ -52,11 +55,14 @@ char* jacs_simple_export_agent(SimpleAgentHandle handle);
 char* jacs_simple_get_public_key_pem(SimpleAgentHandle handle);
 char* jacs_simple_get_public_key_base64(SimpleAgentHandle handle);
 char* jacs_simple_diagnostics(SimpleAgentHandle handle);
+char* jacs_simple_config_path(SimpleAgentHandle handle);
 
 // Verification
 char* jacs_simple_verify_self(SimpleAgentHandle handle);
 char* jacs_simple_verify_json(SimpleAgentHandle handle, const char* signed_document);
 char* jacs_simple_verify_by_id(SimpleAgentHandle handle, const char* document_id);
+
+char* jacs_simple_verify_with_key(SimpleAgentHandle handle, const char* signed_document, const char* public_key_base64);
 
 // Signing
 char* jacs_simple_sign_message(SimpleAgentHandle handle, const char* data_json);

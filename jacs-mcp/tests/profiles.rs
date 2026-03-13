@@ -212,11 +212,19 @@ fn runtime_env_var_and_default_resolution() {
     // Test 1: Env var sets profile
     unsafe { std::env::set_var("JACS_MCP_PROFILE", "full") };
     let profile = Profile::resolve(None);
-    assert_eq!(profile, Profile::Full, "env var 'full' should resolve to Full");
+    assert_eq!(
+        profile,
+        Profile::Full,
+        "env var 'full' should resolve to Full"
+    );
 
     // Test 2: CLI overrides env var
     let profile = Profile::resolve(Some("core"));
-    assert_eq!(profile, Profile::Core, "CLI 'core' should override env var 'full'");
+    assert_eq!(
+        profile,
+        Profile::Core,
+        "CLI 'core' should override env var 'full'"
+    );
 
     // Test 3: When env var is removed, default to Core
     unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
@@ -226,7 +234,11 @@ fn runtime_env_var_and_default_resolution() {
     // Test 4: Empty env var defaults to Core
     unsafe { std::env::set_var("JACS_MCP_PROFILE", "") };
     let profile = Profile::resolve(None);
-    assert_eq!(profile, Profile::Core, "empty env var should default to Core");
+    assert_eq!(
+        profile,
+        Profile::Core,
+        "empty env var should default to Core"
+    );
 
     // Cleanup
     unsafe { std::env::remove_var("JACS_MCP_PROFILE") };

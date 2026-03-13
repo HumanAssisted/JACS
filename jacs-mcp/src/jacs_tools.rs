@@ -24,7 +24,7 @@ use jacs_binding_core::AgentWrapper;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability};
-use rmcp::{ServerHandler, tool, tool_handler, tool_router};
+use rmcp::{ServerHandler, tool, tool_router};
 use sha2::{Digest, Sha256};
 
 use crate::tools::*;
@@ -4011,8 +4011,13 @@ impl JacsMcpServer {
     }
 }
 
-// Implement the tool handler for the server
-#[tool_handler(router = self.tool_router)]
+// Implement the tool handler for the server.
+//
+// We intentionally do NOT use #[tool_handler(router = ...)] here because
+// the macro generates list_tools/call_tool that expose ALL compiled-in tools,
+// ignoring the runtime profile. Instead we manually implement list_tools to
+// return only profile-filtered tools, and call_tool to reject tools outside
+// the active profile before delegating to the router.
 impl ServerHandler for JacsMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -4081,6 +4086,49 @@ impl ServerHandler for JacsMcpServer {
                     .to_string(),
             ),
         }
+    }
+
+    /// Return only the tools that belong to the active runtime profile.
+    ///
+    /// This replaces the `#[tool_handler]`-generated `list_tools` which would
+    /// expose ALL compiled-in tools regardless of the profile.
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, rmcp::model::ErrorData> {
+        Ok(rmcp::model::ListToolsResult {
+            tools: self.active_tools(),
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    /// Dispatch a tool call, but only if the tool is in the active profile.
+    ///
+    /// Tools outside the active profile are rejected with a descriptive error
+    /// rather than being silently executed.
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParam,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::model::ErrorData> {
+        // Check that the requested tool is in the active profile.
+        let active = self.active_tools();
+        let tool_allowed = active.iter().any(|t| t.name == request.name);
+        if !tool_allowed {
+            return Err(rmcp::model::ErrorData::invalid_params(
+                format!(
+                    "Tool '{}' is not available in the '{}' profile. \
+                     Use --profile full or set JACS_MCP_PROFILE=full to access all tools.",
+                    request.name,
+                    self.profile().as_str(),
+                ),
+                None,
+            ));
+        }
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
     }
 }
 

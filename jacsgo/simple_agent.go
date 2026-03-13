@@ -31,6 +31,17 @@ type JacsSimpleAgent struct {
 	handle C.SimpleAgentHandle
 }
 
+// simpleLastError retrieves the last error message from the Rust FFI layer.
+// Returns a detailed error if available, otherwise returns the fallback message.
+func simpleLastError(fallback string) error {
+	errPtr := C.jacs_simple_last_error()
+	if errPtr != nil {
+		defer C.jacs_free_string(errPtr)
+		return errors.New(C.GoString(errPtr))
+	}
+	return errors.New(fallback)
+}
+
 // NewSimpleAgent creates a new agent with persistent identity.
 // Returns the agent and AgentInfo metadata.
 func NewSimpleAgent(name string, purpose, keyAlgorithm *string) (*JacsSimpleAgent, *AgentInfo, error) {
@@ -50,7 +61,7 @@ func NewSimpleAgent(name string, purpose, keyAlgorithm *string) (*JacsSimpleAgen
 	var cInfoOut *C.char
 	handle := C.jacs_simple_create(cName, cPurpose, cAlgo, &cInfoOut)
 	if handle == nil {
-		return nil, nil, errors.New("failed to create simple agent")
+		return nil, nil, simpleLastError("failed to create simple agent")
 	}
 
 	var info AgentInfo
@@ -88,7 +99,7 @@ func LoadSimpleAgent(configPath *string, strict *bool) (*JacsSimpleAgent, error)
 
 	handle := C.jacs_simple_load(cPath, strictVal)
 	if handle == nil {
-		return nil, errors.New("failed to load simple agent")
+		return nil, simpleLastError("failed to load simple agent")
 	}
 
 	return &JacsSimpleAgent{handle: handle}, nil
@@ -106,7 +117,7 @@ func EphemeralSimpleAgent(algorithm *string) (*JacsSimpleAgent, *AgentInfo, erro
 	var cInfoOut *C.char
 	handle := C.jacs_simple_ephemeral(cAlgo, &cInfoOut)
 	if handle == nil {
-		return nil, nil, errors.New("failed to create ephemeral simple agent")
+		return nil, nil, simpleLastError("failed to create ephemeral simple agent")
 	}
 
 	var info AgentInfo
@@ -128,7 +139,7 @@ func CreateSimpleAgentWithParams(paramsJSON string) (*JacsSimpleAgent, *AgentInf
 	var cInfoOut *C.char
 	handle := C.jacs_simple_create_with_params(cParams, &cInfoOut)
 	if handle == nil {
-		return nil, nil, errors.New("failed to create simple agent with params")
+		return nil, nil, simpleLastError("failed to create simple agent with params")
 	}
 
 	var info AgentInfo
@@ -160,7 +171,7 @@ func (a *JacsSimpleAgent) GetAgentID() (string, error) {
 	}
 	result := C.jacs_simple_get_agent_id(a.handle)
 	if result == nil {
-		return "", errors.New("failed to get agent ID")
+		return "", simpleLastError("failed to get agent ID")
 	}
 	defer C.jacs_free_string(result)
 	return C.GoString(result), nil
@@ -173,7 +184,7 @@ func (a *JacsSimpleAgent) KeyID() (string, error) {
 	}
 	result := C.jacs_simple_key_id(a.handle)
 	if result == nil {
-		return "", errors.New("failed to get key ID")
+		return "", simpleLastError("failed to get key ID")
 	}
 	defer C.jacs_free_string(result)
 	return C.GoString(result), nil
@@ -194,7 +205,7 @@ func (a *JacsSimpleAgent) ExportAgent() (string, error) {
 	}
 	result := C.jacs_simple_export_agent(a.handle)
 	if result == nil {
-		return "", errors.New("failed to export agent")
+		return "", simpleLastError("failed to export agent")
 	}
 	defer C.jacs_free_string(result)
 	return C.GoString(result), nil
@@ -207,7 +218,7 @@ func (a *JacsSimpleAgent) GetPublicKeyPEM() (string, error) {
 	}
 	result := C.jacs_simple_get_public_key_pem(a.handle)
 	if result == nil {
-		return "", errors.New("failed to get public key PEM")
+		return "", simpleLastError("failed to get public key PEM")
 	}
 	defer C.jacs_free_string(result)
 	return C.GoString(result), nil
@@ -220,10 +231,24 @@ func (a *JacsSimpleAgent) GetPublicKeyBase64() (string, error) {
 	}
 	result := C.jacs_simple_get_public_key_base64(a.handle)
 	if result == nil {
-		return "", errors.New("failed to get public key base64")
+		return "", simpleLastError("failed to get public key base64")
 	}
 	defer C.jacs_free_string(result)
 	return C.GoString(result), nil
+}
+
+// ConfigPath returns the config file path, or nil if ephemeral/not loaded from disk.
+func (a *JacsSimpleAgent) ConfigPath() *string {
+	if a.handle == nil {
+		return nil
+	}
+	result := C.jacs_simple_config_path(a.handle)
+	if result == nil {
+		return nil
+	}
+	defer C.jacs_free_string(result)
+	s := C.GoString(result)
+	return &s
 }
 
 // Diagnostics returns runtime diagnostic info as a JSON string.
@@ -251,7 +276,7 @@ func (a *JacsSimpleAgent) VerifySelf() (*VerificationResult, error) {
 	}
 	result := C.jacs_simple_verify_self(a.handle)
 	if result == nil {
-		return nil, errors.New("failed to verify self")
+		return nil, simpleLastError("failed to verify self")
 	}
 	defer C.jacs_free_string(result)
 
@@ -274,7 +299,7 @@ func (a *JacsSimpleAgent) Verify(signedDocument string) (*VerificationResult, er
 
 	result := C.jacs_simple_verify_json(a.handle, cDoc)
 	if result == nil {
-		return nil, errors.New("failed to verify document")
+		return nil, simpleLastError("failed to verify document")
 	}
 	defer C.jacs_free_string(result)
 
@@ -297,7 +322,32 @@ func (a *JacsSimpleAgent) VerifyByID(documentID string) (*VerificationResult, er
 
 	result := C.jacs_simple_verify_by_id(a.handle, cID)
 	if result == nil {
-		return nil, errors.New("failed to verify document by ID")
+		return nil, simpleLastError("failed to verify document by ID")
+	}
+	defer C.jacs_free_string(result)
+
+	resultStr := C.GoString(result)
+	var vr VerificationResult
+	if err := json.Unmarshal([]byte(resultStr), &vr); err != nil {
+		return nil, err
+	}
+	return &vr, nil
+}
+
+// VerifyWithKey verifies a signed document with an explicit public key (base64-encoded).
+// Returns a VerificationResult.
+func (a *JacsSimpleAgent) VerifyWithKey(signedDocument, publicKeyBase64 string) (*VerificationResult, error) {
+	if a.handle == nil {
+		return nil, errors.New("JacsSimpleAgent is closed")
+	}
+	cDoc := C.CString(signedDocument)
+	defer C.free(unsafe.Pointer(cDoc))
+	cKey := C.CString(publicKeyBase64)
+	defer C.free(unsafe.Pointer(cKey))
+
+	result := C.jacs_simple_verify_with_key(a.handle, cDoc, cKey)
+	if result == nil {
+		return nil, simpleLastError("failed to verify with key")
 	}
 	defer C.jacs_free_string(result)
 
@@ -330,7 +380,7 @@ func (a *JacsSimpleAgent) SignMessage(data interface{}) (*SignedDocument, error)
 
 	result := C.jacs_simple_sign_message(a.handle, cData)
 	if result == nil {
-		return nil, errors.New("failed to sign message")
+		return nil, simpleLastError("failed to sign message")
 	}
 	defer C.jacs_free_string(result)
 
@@ -362,7 +412,7 @@ func (a *JacsSimpleAgent) SignRawBytes(data []byte) (string, error) {
 	cData := (*C.uint8_t)(unsafe.Pointer(&data[0]))
 	result := C.jacs_simple_sign_raw_bytes(a.handle, cData, C.size_t(len(data)))
 	if result == nil {
-		return "", errors.New("failed to sign raw bytes")
+		return "", simpleLastError("failed to sign raw bytes")
 	}
 	defer C.jacs_free_string(result)
 	return C.GoString(result), nil
@@ -384,7 +434,7 @@ func (a *JacsSimpleAgent) SignFile(filePath string, embed bool) (*SignedDocument
 
 	result := C.jacs_simple_sign_file(a.handle, cPath, embedVal)
 	if result == nil {
-		return nil, errors.New("failed to sign file")
+		return nil, simpleLastError("failed to sign file")
 	}
 	defer C.jacs_free_string(result)
 

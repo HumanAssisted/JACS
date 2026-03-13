@@ -758,6 +758,14 @@ impl SimpleAgent {
         self.inner.is_strict()
     }
 
+    /// Config file path, if loaded from disk.
+    ///
+    /// Returns:
+    ///     The config file path as a string, or None if ephemeral/not loaded from disk
+    fn config_path(&self) -> Option<String> {
+        self.inner.config_path()
+    }
+
     /// Verify the loaded agent's own integrity.
     ///
     /// Returns:
@@ -1120,6 +1128,59 @@ impl SimpleAgent {
                 e
             ))
         })?;
+
+        let result: serde_json::Value = serde_json::from_str(&result_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to parse verification result: {}",
+                e
+            ))
+        })?;
+
+        let dict = pyo3::types::PyDict::new(py);
+        dict.set_item("valid", result["valid"].as_bool().unwrap_or(false))?;
+        dict.set_item("signer_id", result["signer_id"].as_str().unwrap_or(""))?;
+        dict.set_item("timestamp", result["timestamp"].as_str().unwrap_or(""))?;
+        let errors: Vec<String> = result["errors"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        dict.set_item("errors", errors)?;
+        let data_value = result
+            .get("data")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let py_data = conversion_utils::value_to_pyobject(py, &data_value)?;
+        dict.set_item("data", py_data)?;
+        Ok(dict.into())
+    }
+
+    /// Verify a signed document with an explicit public key (base64-encoded).
+    ///
+    /// Args:
+    ///     signed_document: JSON string of the signed document
+    ///     public_key_base64: Base64-encoded public key bytes
+    ///
+    /// Returns:
+    ///     dict with valid, data, signer_id, timestamp, attachments, errors
+    fn verify_with_key(
+        &self,
+        py: Python,
+        signed_document: &str,
+        public_key_base64: &str,
+    ) -> PyResult<PyObject> {
+        let result_json = self
+            .inner
+            .verify_with_key_json(signed_document, public_key_base64)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to verify with key: {}",
+                    e
+                ))
+            })?;
 
         let result: serde_json::Value = serde_json::from_str(&result_json).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
