@@ -1756,7 +1756,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 .map_err(|e| wrap_quickstart_error_with_password_help("Failed to load agent", e))?;
 
                 // Export the Agent Card for display
-                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
+                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(|e| -> Box<dyn Error> {
                     Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         format!("Failed to export Agent Card: {}", e),
@@ -1864,7 +1864,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     )?;
 
                 // Export the Agent Card
-                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
+                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(|e| -> Box<dyn Error> {
                     Box::new(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         format!("Failed to export Agent Card: {}", e),

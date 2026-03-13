@@ -130,7 +130,7 @@ serial_test = "3.2.0"
 futures = "0.3"
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
 testcontainers = "0.26"
-testcontainers-modules = { version = "0.14", features = ["postgres", "minio"] }
+testcontainers-modules = { version = "0.14", features = ["minio"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls"] }
 
 [lib]
@@ -144,17 +144,14 @@ object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "ht
 # Post-quantum 2025 standards (ML-DSA and ML-KEM)
 fips203 = "0.4.3"
 fips204 = "0.4.3"
-# Database storage (optional, behind "database" feature)
+# SQLite storage via sqlx (optional). PostgreSQL has been extracted to jacs-postgresql.
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls"], optional = true }
 # rusqlite (sync SQLite bindings, optional -- lightweight alternative to sqlx SQLite)
 # Kept aligned with sqlx's libsqlite3-sys to avoid links conflicts.
 rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
-# SurrealDB (multi-model embedded DB, optional)
-surrealdb = { version = "3.0.2", default-features = false, features = ["kv-mem"], optional = true }
-# DuckDB (analytics DB with JSON support, optional — links to C++ DuckDB)
-duckdb = { version = "1.4", features = ["bundled", "json"], optional = true }
-# Redb (pure-Rust embedded KV store, optional)
-redb = { version = "3.1", optional = true }
+# SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
+# DuckDB storage has been extracted to the `jacs-duckdb` crate.
+# Redb storage has been extracted to the `jacs-redb` crate.
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
@@ -167,10 +164,8 @@ observability-convenience = []
 # Server integration surfaces (no deps by default; used by sibling binaries)
 mcp-server = []
 
-# Database storage backend (PostgreSQL via sqlx)
-database = ["dep:sqlx", "dep:tokio", "sqlx/postgres"]
-# Database integration tests (requires Docker or local PostgreSQL)
-database-tests = ["database"]
+# PostgreSQL storage backend has been extracted to the `jacs-postgresql` crate.
+# The `database` and `database-tests` features are no longer available here.
 
 # SQLite storage backend
 sqlite = ["dep:sqlx", "dep:tokio", "sqlx/sqlite"]
@@ -183,17 +178,20 @@ s3-tests = []
 rusqlite-storage = ["dep:rusqlite"]
 rusqlite-tests = ["rusqlite-storage"]
 
-# SurrealDB storage backend (multi-model embedded)
-surrealdb-storage = ["dep:surrealdb", "dep:tokio"]
-surrealdb-tests = ["surrealdb-storage"]
+# SurrealDB storage backend has been extracted to the `jacs-surrealdb` crate.
+# The `surrealdb-storage` and `surrealdb-tests` features are no longer available here.
 
-# DuckDB storage backend (analytics DB with JSON)
-duckdb-storage = ["dep:duckdb"]
-duckdb-tests = ["duckdb-storage"]
+# DuckDB storage backend has been extracted to the `jacs-duckdb` crate.
+# The `duckdb-storage` and `duckdb-tests` features are no longer available here.
 
-# Redb storage backend (pure-Rust KV store)
-redb-storage = ["dep:redb"]
-redb-tests = ["redb-storage"]
+# Redb storage backend has been extracted to the `jacs-redb` crate.
+# The `redb-storage` and `redb-tests` features are no longer available here.
+
+# A2A protocol (zero new deps)
+a2a = []
+
+# Agreements (zero new deps)
+agreements = []
 
 # Attestation (zero new deps)
 attestation = []

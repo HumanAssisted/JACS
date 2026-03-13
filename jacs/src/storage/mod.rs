@@ -19,34 +19,12 @@ use tracing::debug;
 
 pub mod jenv;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-pub mod database;
-#[cfg(all(
-    not(target_arch = "wasm32"),
-    any(
-        feature = "database",
-        feature = "sqlite",
-        feature = "rusqlite-storage",
-        feature = "surrealdb-storage",
-        feature = "duckdb-storage",
-        feature = "redb-storage"
-    )
-))]
+// Database trait definitions are always available (no feature gate) so external
+// storage backend crates (jacs-postgresql, jacs-surrealdb, etc.) can implement
+// them without pulling in any storage-specific dependencies.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod database_traits;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-pub use database::DatabaseStorage;
-#[cfg(all(
-    not(target_arch = "wasm32"),
-    any(
-        feature = "database",
-        feature = "sqlite",
-        feature = "rusqlite-storage",
-        feature = "surrealdb-storage",
-        feature = "duckdb-storage",
-        feature = "redb-storage"
-    )
-))]
+#[cfg(not(target_arch = "wasm32"))]
 pub use database_traits::DatabaseDocumentTraits;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
@@ -61,20 +39,11 @@ pub use rusqlite_storage::RusqliteStorage;
 #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
 pub use rusqlite_storage::SqliteDocumentService;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-pub mod surrealdb_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-pub use surrealdb_storage::SurrealDbStorage;
+// SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-pub mod duckdb_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-pub use duckdb_storage::DuckDbStorage;
+// DuckDB storage has been extracted to the `jacs-duckdb` crate.
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-pub mod redb_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-pub use redb_storage::RedbStorage;
+// Redb storage has been extracted to the `jacs-redb` crate.
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -216,24 +185,15 @@ pub enum StorageType {
     #[cfg(target_arch = "wasm32")]
     #[strum(serialize = "local")]
     WebLocal,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-    #[strum(serialize = "database")]
-    Database,
     #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
     #[strum(serialize = "sqlite")]
     Sqlite,
     #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
     #[strum(serialize = "rusqlite")]
     Rusqlite,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-    #[strum(serialize = "surrealdb")]
-    SurrealDb,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-    #[strum(serialize = "duckdb")]
-    DuckDb,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-    #[strum(serialize = "redb")]
-    Redb,
+    // SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
+    // DuckDB storage has been extracted to the `jacs-duckdb` crate.
+    // Redb storage has been extracted to the `jacs-redb` crate.
 }
 
 impl MultiStorage {
@@ -502,10 +462,6 @@ impl MultiStorage {
                 .web_local
                 .clone()
                 .expect("web local storage not loaded"),
-            #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-            StorageType::Database => {
-                panic!("Database storage does not use ObjectStore. Use DatabaseStorage directly.")
-            }
             #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
             StorageType::Sqlite => {
                 panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
@@ -514,18 +470,9 @@ impl MultiStorage {
             StorageType::Rusqlite => {
                 panic!("Rusqlite storage does not use ObjectStore. Use RusqliteStorage directly.")
             }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-            StorageType::SurrealDb => {
-                panic!("SurrealDB storage does not use ObjectStore. Use SurrealDbStorage directly.")
-            }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-            StorageType::DuckDb => {
-                panic!("DuckDB storage does not use ObjectStore. Use DuckDbStorage directly.")
-            }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-            StorageType::Redb => {
-                panic!("Redb storage does not use ObjectStore. Use RedbStorage directly.")
-            }
+            // SurrealDB storage has been extracted to the `jacs-surrealdb` crate.
+            // DuckDB storage has been extracted to the `jacs-duckdb` crate.
+            // Redb storage has been extracted to the `jacs-redb` crate.
         }
     }
 }

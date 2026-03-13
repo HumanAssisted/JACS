@@ -1,5 +1,3 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "redb-tests"))]
-
 //! Redb-specific integration tests beyond the conformance suite.
 //!
 //! Tests cover:
@@ -12,13 +10,13 @@
 //! - Concurrent reads (transaction isolation)
 //!
 //! ```sh
-//! cargo test --features redb-tests -- redb_tests
+//! cargo test -p jacs-redb -- redb_tests
 //! ```
 
 use jacs::agent::document::JACSDocument;
 use jacs::storage::StorageDocumentTraits;
 use jacs::storage::database_traits::DatabaseDocumentTraits;
-use jacs::storage::redb_storage::RedbStorage;
+use jacs_redb::RedbStorage;
 use serde_json::json;
 use serial_test::serial;
 use tempfile::TempDir;

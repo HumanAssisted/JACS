@@ -36,9 +36,13 @@ pub mod shared;
 pub mod shutdown;
 pub mod simple;
 pub mod storage;
+pub mod testing;
 pub mod time_utils;
 pub mod trust;
 pub mod validation;
+
+#[cfg(feature = "agreements")]
+pub mod agreements;
 
 #[cfg(feature = "attestation")]
 pub mod attestation;

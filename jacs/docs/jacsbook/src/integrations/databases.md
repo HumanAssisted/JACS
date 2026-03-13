@@ -13,7 +13,7 @@ Current Rust feature flags include:
 - `rusqlite-storage`
 - `duckdb-storage`
 - `surrealdb-storage`
-- `redb-storage`
+- `jacs-redb` (standalone crate)
 
 ## What To Do In Practice
 

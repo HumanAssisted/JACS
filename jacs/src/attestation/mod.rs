@@ -8,6 +8,7 @@ pub mod create;
 pub mod digest;
 pub mod dsse;
 pub mod migration;
+pub mod simple;
 pub mod types;
 pub mod verify;
 

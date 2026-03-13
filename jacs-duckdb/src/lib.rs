@@ -1,22 +1,51 @@
-//! DuckDB database storage backend for JACS documents.
+//! DuckDB storage backend for JACS documents.
 //!
-//! Uses VARCHAR columns for JSON storage with `json_extract_string()` for queries.
-//! - `raw_contents` (VARCHAR): Preserves exact JSON bytes for signature verification
-//! - `file_contents` (VARCHAR): JSON stored as text, queried via `json_extract_string()`
+//! This crate provides an in-process DuckDB storage implementation for the
+//! JACS document system. It implements [`StorageDocumentTraits`],
+//! [`DatabaseDocumentTraits`], and [`SearchProvider`] from the `jacs` crate.
+//!
+//! # Table Schema
+//!
+//! Documents are stored in a single `jacs_document` table with columns:
+//! - `jacs_id` (VARCHAR, PK part 1) — stable document identifier
+//! - `jacs_version` (VARCHAR, PK part 2) — version identifier
+//! - `agent_id` (VARCHAR, nullable) — signing agent, extracted from `jacsSignature`
+//! - `jacs_type` (VARCHAR) — document type (e.g., "agent", "config", "artifact")
+//! - `raw_contents` (VARCHAR) — pretty-printed JSON for signature verification
+//! - `file_contents` (VARCHAR) — compact JSON for `json_extract_string()` queries
+//! - `created_at` (TIMESTAMP) — insertion timestamp
 //!
 //! # Append-Only Model
 //!
 //! Documents are immutable once stored. New versions create new rows
 //! keyed by `(jacs_id, jacs_version)`. No UPDATE operations on existing rows.
+//! `INSERT OR IGNORE` provides idempotent writes.
 //!
-//! # Feature Gate
+//! # Search Capabilities
 //!
-//! This module requires the `duckdb-storage` feature flag and is excluded from WASM.
+//! This backend supports fulltext search via DuckDB's `json_extract_string()`
+//! for field-based queries, and `LIKE` for keyword search across JSON content.
+//! Vector search is not supported.
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use jacs_duckdb::DuckDbStorage;
+//! use jacs::storage::database_traits::DatabaseDocumentTraits;
+//!
+//! let storage = DuckDbStorage::in_memory().expect("create in-memory DuckDB");
+//! storage.run_migrations().expect("create tables");
+//! ```
 
-use crate::agent::document::JACSDocument;
-use crate::error::JacsError;
-use crate::storage::StorageDocumentTraits;
-use crate::storage::database_traits::DatabaseDocumentTraits;
+use jacs::agent::document::JACSDocument;
+use jacs::error::JacsError;
+use jacs::search::{
+    FieldFilter, SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery,
+    SearchResults,
+};
+use jacs::storage::StorageDocumentTraits;
+use jacs::storage::database_traits::DatabaseDocumentTraits;
+
 use duckdb::{Connection, params};
 use serde_json::Value;
 use std::error::Error;
@@ -26,6 +55,8 @@ use std::sync::Mutex;
 ///
 /// Wraps a `duckdb::Connection` in a `Mutex` for thread safety (`Send + Sync`).
 /// All operations are synchronous — no tokio runtime required.
+///
+/// DuckDB runs fully in-process. No external server or Docker is needed.
 pub struct DuckDbStorage {
     conn: Mutex<Connection>,
 }
@@ -86,7 +117,52 @@ impl DuckDbStorage {
         "CREATE INDEX IF NOT EXISTS idx_jacs_document_agent ON jacs_document (agent_id)",
         "CREATE INDEX IF NOT EXISTS idx_jacs_document_created ON jacs_document (created_at DESC)",
     ];
+
+    /// Return aggregate statistics: count of documents grouped by `jacs_type`.
+    ///
+    /// Inspired by the `db_stats()` pattern from `libhai/src/io/quack.rs`.
+    pub fn db_stats(&self) -> Result<Vec<(i64, String)>, Box<dyn Error>> {
+        let conn = self.conn.lock().map_err(|e| -> Box<dyn Error> {
+            Box::new(JacsError::DatabaseError {
+                operation: "db_stats".to_string(),
+                reason: format!("Lock poisoned: {}", e),
+            })
+        })?;
+
+        let mut stmt = conn
+            .prepare("SELECT count(*) as count, jacs_type FROM jacs_document GROUP BY jacs_type")
+            .map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "db_stats".to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
+
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "db_stats".to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row.map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "db_stats".to_string(),
+                    reason: e.to_string(),
+                })
+            })?);
+        }
+        Ok(results)
+    }
 }
+
+// =============================================================================
+// StorageDocumentTraits
+// =============================================================================
 
 impl StorageDocumentTraits for DuckDbStorage {
     fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
@@ -460,6 +536,10 @@ impl StorageDocumentTraits for DuckDbStorage {
         }
     }
 }
+
+// =============================================================================
+// DatabaseDocumentTraits
+// =============================================================================
 
 impl DatabaseDocumentTraits for DuckDbStorage {
     fn query_by_type(
@@ -846,5 +926,473 @@ impl DatabaseDocumentTraits for DuckDbStorage {
         }
 
         Ok(())
+    }
+}
+
+// =============================================================================
+// SearchProvider
+// =============================================================================
+
+impl SearchProvider for DuckDbStorage {
+    fn search(&self, query: SearchQuery) -> Result<SearchResults, JacsError> {
+        // If a field filter is provided, use json_extract_string for exact match
+        if let Some(FieldFilter { field_path, value }) = &query.field_filter {
+            let docs = self
+                .query_by_field(
+                    field_path,
+                    value,
+                    query.jacs_type.as_deref(),
+                    query.limit,
+                    query.offset,
+                )
+                .map_err(|e| JacsError::DatabaseError {
+                    operation: "search".to_string(),
+                    reason: e.to_string(),
+                })?;
+
+            let total_count = docs.len();
+            let results = docs
+                .into_iter()
+                .map(|doc| SearchHit {
+                    document: doc,
+                    score: 1.0,
+                    matched_fields: vec![field_path.clone()],
+                })
+                .collect();
+
+            return Ok(SearchResults {
+                results,
+                total_count,
+                method: SearchMethod::FieldMatch,
+            });
+        }
+
+        // For keyword queries, use LIKE on file_contents
+        let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
+            operation: "search".to_string(),
+            reason: format!("Lock poisoned: {}", e),
+        })?;
+
+        let like_pattern = format!("%{}%", query.query);
+
+        let (sql, param_count) = match (&query.jacs_type, &query.agent_id) {
+            (Some(_), Some(_)) => (
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND jacs_type = ? AND agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                5,
+            ),
+            (Some(_), None) => (
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND jacs_type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                4,
+            ),
+            (None, Some(_)) => (
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? AND agent_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                4,
+            ),
+            (None, None) => (
+                "SELECT jacs_id, jacs_version, jacs_type, raw_contents FROM jacs_document WHERE file_contents LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                3,
+            ),
+        };
+
+        let mut stmt = conn.prepare(sql).map_err(|e| JacsError::DatabaseError {
+            operation: "search".to_string(),
+            reason: e.to_string(),
+        })?;
+
+        // Build dynamic parameter list based on which filters are active
+        let limit_i64 = query.limit as i64;
+        let offset_i64 = query.offset as i64;
+
+        let rows_result: Result<Vec<(String, String, String, String)>, _> = match param_count {
+            5 => {
+                let jt = query.jacs_type.as_deref().unwrap();
+                let ai = query.agent_id.as_deref().unwrap();
+                stmt.query_map(
+                    params![like_pattern, jt, ai, limit_i64, offset_i64],
+                    |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                    },
+                )
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            }
+            4 if query.jacs_type.is_some() => {
+                let jt = query.jacs_type.as_deref().unwrap();
+                stmt.query_map(
+                    params![like_pattern, jt, limit_i64, offset_i64],
+                    |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                    },
+                )
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            }
+            4 => {
+                let ai = query.agent_id.as_deref().unwrap();
+                stmt.query_map(
+                    params![like_pattern, ai, limit_i64, offset_i64],
+                    |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                    },
+                )
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            }
+            _ => {
+                stmt.query_map(
+                    params![like_pattern, limit_i64, offset_i64],
+                    |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                    },
+                )
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            }
+        };
+
+        let rows = rows_result.map_err(|e| JacsError::DatabaseError {
+            operation: "search".to_string(),
+            reason: e.to_string(),
+        })?;
+
+        let total_count = rows.len();
+        let mut results = Vec::new();
+        for (jacs_id, jacs_version, jacs_type, raw) in rows {
+            let value: Value = serde_json::from_str(&raw).map_err(|e| {
+                JacsError::DatabaseError {
+                    operation: "search".to_string(),
+                    reason: format!("JSON parse error: {}", e),
+                }
+            })?;
+
+            let score = if query.query.is_empty() {
+                1.0
+            } else {
+                // Simple relevance: count occurrences of query in raw content
+                let count = raw.matches(&query.query).count();
+                (count as f64 / (count as f64 + 1.0)).min(1.0)
+            };
+
+            if let Some(min_score) = query.min_score {
+                if score < min_score {
+                    continue;
+                }
+            }
+
+            results.push(SearchHit {
+                document: JACSDocument {
+                    id: jacs_id,
+                    version: jacs_version,
+                    value,
+                    jacs_type,
+                },
+                score,
+                matched_fields: vec!["file_contents".to_string()],
+            });
+        }
+
+        Ok(SearchResults {
+            results,
+            total_count,
+            method: SearchMethod::FullText,
+        })
+    }
+
+    fn capabilities(&self) -> SearchCapabilities {
+        SearchCapabilities {
+            fulltext: true,
+            vector: false,
+            hybrid: false,
+            field_filter: true,
+        }
+    }
+}
+
+// =============================================================================
+// Unit Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn setup() -> DuckDbStorage {
+        let storage = DuckDbStorage::in_memory().expect("in-memory DuckDB");
+        storage.run_migrations().expect("migrations");
+        storage
+    }
+
+    fn make_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
+        let mut value = json!({
+            "jacsId": id,
+            "jacsVersion": version,
+            "jacsType": jacs_type,
+            "jacsLevel": "raw",
+            "data": "test content"
+        });
+        if let Some(aid) = agent_id {
+            value["jacsSignature"] = json!({
+                "jacsSignatureAgentId": aid
+            });
+        }
+        JACSDocument {
+            id: id.to_string(),
+            version: version.to_string(),
+            value,
+            jacs_type: jacs_type.to_string(),
+        }
+    }
+
+    #[test]
+    fn store_and_retrieve() {
+        let storage = setup();
+        let doc = make_doc("doc-1", "v1", "agent", Some("agent-1"));
+        storage.store_document(&doc).expect("store");
+        let got = storage.get_document("doc-1:v1").expect("get");
+        assert_eq!(got.id, "doc-1");
+        assert_eq!(got.version, "v1");
+        assert_eq!(got.jacs_type, "agent");
+        assert_eq!(got.value["data"], "test content");
+    }
+
+    #[test]
+    fn document_not_found() {
+        let storage = setup();
+        assert!(storage.get_document("missing:v1").is_err());
+    }
+
+    #[test]
+    fn document_exists_check() {
+        let storage = setup();
+        let doc = make_doc("exists-1", "v1", "config", None);
+        storage.store_document(&doc).unwrap();
+        assert!(storage.document_exists("exists-1:v1").unwrap());
+        assert!(!storage.document_exists("nope:v1").unwrap());
+    }
+
+    #[test]
+    fn remove_document_returns_doc() {
+        let storage = setup();
+        let doc = make_doc("rm-1", "v1", "config", None);
+        storage.store_document(&doc).unwrap();
+        let removed = storage.remove_document("rm-1:v1").unwrap();
+        assert_eq!(removed.id, "rm-1");
+        assert!(!storage.document_exists("rm-1:v1").unwrap());
+    }
+
+    #[test]
+    fn list_documents_by_type() {
+        let storage = setup();
+        storage.store_document(&make_doc("ls-1", "v1", "agent", None)).unwrap();
+        storage.store_document(&make_doc("ls-2", "v1", "agent", None)).unwrap();
+        storage.store_document(&make_doc("ls-3", "v1", "config", None)).unwrap();
+
+        let agents = storage.list_documents("agent").unwrap();
+        assert_eq!(agents.len(), 2);
+    }
+
+    #[test]
+    fn version_tracking() {
+        let storage = setup();
+        storage.store_document(&make_doc("ver-1", "alpha", "agent", None)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        storage.store_document(&make_doc("ver-1", "beta", "agent", None)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        storage.store_document(&make_doc("ver-1", "gamma", "agent", None)).unwrap();
+
+        let versions = storage.get_document_versions("ver-1").unwrap();
+        assert_eq!(versions.len(), 3);
+
+        let db_versions = storage.get_versions("ver-1").unwrap();
+        assert_eq!(db_versions.len(), 3);
+        assert_eq!(db_versions[0].version, "alpha");
+        assert_eq!(db_versions[2].version, "gamma");
+
+        let latest = storage.get_latest_document("ver-1").unwrap();
+        assert_eq!(latest.version, "gamma");
+    }
+
+    #[test]
+    fn search_capabilities_reports_correctly() {
+        let storage = setup();
+        let caps = storage.capabilities();
+        assert!(caps.fulltext);
+        assert!(!caps.vector);
+        assert!(!caps.hybrid);
+        assert!(caps.field_filter);
+    }
+
+    #[test]
+    fn search_by_field_filter() {
+        let storage = setup();
+        let mut doc = make_doc("sf-1", "v1", "config", None);
+        doc.value["status"] = json!("active");
+        storage.store_document(&doc).unwrap();
+
+        let mut doc2 = make_doc("sf-2", "v1", "config", None);
+        doc2.value["status"] = json!("inactive");
+        storage.store_document(&doc2).unwrap();
+
+        let results = storage
+            .search(SearchQuery {
+                query: String::new(),
+                field_filter: Some(FieldFilter {
+                    field_path: "status".to_string(),
+                    value: "active".to_string(),
+                }),
+                limit: 10,
+                offset: 0,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].document.id, "sf-1");
+        assert_eq!(results.method, SearchMethod::FieldMatch);
+    }
+
+    #[test]
+    fn search_by_keyword() {
+        let storage = setup();
+        let mut doc = make_doc("kw-1", "v1", "artifact", None);
+        doc.value["description"] = json!("authentication middleware implementation");
+        storage.store_document(&doc).unwrap();
+
+        let mut doc2 = make_doc("kw-2", "v1", "artifact", None);
+        doc2.value["description"] = json!("database migration script");
+        storage.store_document(&doc2).unwrap();
+
+        let results = storage
+            .search(SearchQuery {
+                query: "authentication".to_string(),
+                limit: 10,
+                offset: 0,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].document.id, "kw-1");
+        assert_eq!(results.method, SearchMethod::FullText);
+    }
+
+    #[test]
+    fn db_stats_returns_type_counts() {
+        let storage = setup();
+        storage.store_document(&make_doc("st-1", "v1", "agent", None)).unwrap();
+        storage.store_document(&make_doc("st-2", "v1", "agent", None)).unwrap();
+        storage.store_document(&make_doc("st-3", "v1", "config", None)).unwrap();
+
+        let stats = storage.db_stats().unwrap();
+        assert_eq!(stats.len(), 2);
+        // Find agent count
+        let agent_stat = stats.iter().find(|(_, t)| t == "agent").unwrap();
+        assert_eq!(agent_stat.0, 2);
+    }
+
+    #[test]
+    fn idempotent_store() {
+        let storage = setup();
+        let doc = make_doc("idem-1", "v1", "agent", None);
+        storage.store_document(&doc).unwrap();
+        storage.store_document(&doc).unwrap(); // INSERT OR IGNORE
+        let versions = storage.get_document_versions("idem-1").unwrap();
+        assert_eq!(versions.len(), 1);
+    }
+
+    #[test]
+    fn invalid_key_format() {
+        let storage = setup();
+        assert!(storage.get_document("no-colon-here").is_err());
+    }
+
+    #[test]
+    fn merge_returns_error() {
+        let storage = setup();
+        assert!(storage.merge_documents("x", "v1", "v2").is_err());
+    }
+
+    #[test]
+    fn bulk_store_and_get() {
+        let storage = setup();
+        let docs = vec![
+            make_doc("bulk-1", "v1", "agent", None),
+            make_doc("bulk-2", "v1", "config", None),
+        ];
+        let keys = storage.store_documents(docs).unwrap();
+        assert_eq!(keys.len(), 2);
+
+        let retrieved = storage.get_documents(keys).unwrap();
+        assert_eq!(retrieved.len(), 2);
+    }
+
+    #[test]
+    fn query_by_agent() {
+        let storage = setup();
+        storage.store_document(&make_doc("qa-1", "v1", "agent", Some("alice"))).unwrap();
+        storage.store_document(&make_doc("qa-2", "v1", "config", Some("alice"))).unwrap();
+        storage.store_document(&make_doc("qa-3", "v1", "agent", Some("bob"))).unwrap();
+
+        let alice_all = storage.query_by_agent("alice", None, 100, 0).unwrap();
+        assert_eq!(alice_all.len(), 2);
+
+        let alice_agents = storage.query_by_agent("alice", Some("agent"), 100, 0).unwrap();
+        assert_eq!(alice_agents.len(), 1);
+
+        let agent_keys = storage.get_documents_by_agent("alice").unwrap();
+        assert_eq!(agent_keys.len(), 2);
+    }
+
+    #[test]
+    fn count_by_type_accuracy() {
+        let storage = setup();
+        assert_eq!(storage.count_by_type("widget").unwrap(), 0);
+        for i in 0..5 {
+            storage.store_document(&make_doc(&format!("cnt-{}", i), "v1", "widget", None)).unwrap();
+        }
+        assert_eq!(storage.count_by_type("widget").unwrap(), 5);
+        storage.remove_document("cnt-2:v1").unwrap();
+        assert_eq!(storage.count_by_type("widget").unwrap(), 4);
+    }
+
+    #[test]
+    fn special_characters_roundtrip() {
+        let storage = setup();
+        let mut doc = make_doc("special-1", "v1", "agent", None);
+        doc.value["data"] =
+            json!("Hello 'world' with \"quotes\" and \nnewlines\tand\ttabs and unicode: \u{1F600}");
+        storage.store_document(&doc).unwrap();
+        let got = storage.get_document("special-1:v1").unwrap();
+        assert_eq!(got.value["data"], doc.value["data"]);
+    }
+
+    #[test]
+    fn large_document_handling() {
+        let storage = setup();
+        let large_data = "x".repeat(100_000);
+        let mut doc = make_doc("large-1", "v1", "artifact", None);
+        doc.value["largeField"] = json!(large_data);
+        storage.store_document(&doc).unwrap();
+        let got = storage.get_document("large-1:v1").unwrap();
+        assert_eq!(got.value["largeField"].as_str().unwrap().len(), 100_000);
+    }
+
+    #[test]
+    fn query_by_type_with_pagination() {
+        let storage = setup();
+        for i in 0..5 {
+            storage
+                .store_document(&make_doc(&format!("pag-{}", i), "v1", "task", None))
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let page1 = storage.query_by_type("task", 3, 0).unwrap();
+        assert_eq!(page1.len(), 3);
+        let page2 = storage.query_by_type("task", 3, 3).unwrap();
+        assert_eq!(page2.len(), 2);
+    }
+
+    #[test]
+    fn migrations_are_idempotent() {
+        let storage = setup();
+        // Already ran in setup; run again
+        storage.run_migrations().expect("second run_migrations should not error");
     }
 }

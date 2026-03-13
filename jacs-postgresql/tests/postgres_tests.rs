@@ -1,20 +1,19 @@
-#![cfg(all(not(target_arch = "wasm32"), feature = "database-tests"))]
-
-//! Integration tests for the PostgreSQL database storage backend.
+//! Integration tests for the PostgreSQL storage backend.
 //!
 //! These tests use testcontainers to spin up an ephemeral PostgreSQL instance
 //! per test. Run with:
 //!
 //! ```sh
-//! cargo test --features database-tests -- database
+//! cargo test -p jacs-postgresql
 //! ```
 //!
 //! Requirements: Docker must be running on the host.
 
 use jacs::agent::document::JACSDocument;
-use jacs::storage::StorageDocumentTraits;
-use jacs::storage::database::DatabaseStorage;
+use jacs::search::{SearchMethod, SearchProvider, SearchQuery};
 use jacs::storage::database_traits::DatabaseDocumentTraits;
+use jacs::storage::StorageDocumentTraits;
+use jacs_postgresql::PostgresStorage;
 use serde_json::json;
 use serial_test::serial;
 use testcontainers::ContainerAsync;
@@ -28,7 +27,12 @@ use testcontainers_modules::postgres::Postgres;
 /// Create a test document with the given fields.
 /// If `agent_id` is provided, a `jacsSignature` block is attached so that
 /// `store_document` can extract the agent ID column.
-fn make_test_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str>) -> JACSDocument {
+fn make_test_doc(
+    id: &str,
+    version: &str,
+    jacs_type: &str,
+    agent_id: Option<&str>,
+) -> JACSDocument {
     let mut value = json!({
         "jacsId": id,
         "jacsVersion": version,
@@ -49,11 +53,11 @@ fn make_test_doc(id: &str, version: &str, jacs_type: &str, agent_id: Option<&str
     }
 }
 
-/// Spin up a fresh PostgreSQL container and return the `DatabaseStorage`
+/// Spin up a fresh PostgreSQL container and return the `PostgresStorage`
 /// connected to it (with migrations already applied) together with the
 /// container handle. The container is kept alive as long as the returned
 /// `ContainerAsync` is held.
-async fn setup_db() -> (DatabaseStorage, ContainerAsync<Postgres>) {
+async fn setup_db() -> (PostgresStorage, ContainerAsync<Postgres>) {
     let container = Postgres::default()
         .start()
         .await
@@ -69,8 +73,8 @@ async fn setup_db() -> (DatabaseStorage, ContainerAsync<Postgres>) {
         host_port
     );
 
-    let db = DatabaseStorage::new(&database_url, Some(5), Some(1), Some(30))
-        .expect("Failed to create DatabaseStorage");
+    let db = PostgresStorage::new(&database_url, Some(5), Some(1), Some(30))
+        .expect("Failed to create PostgresStorage");
 
     db.run_migrations()
         .expect("Failed to run database migrations");
@@ -79,12 +83,12 @@ async fn setup_db() -> (DatabaseStorage, ContainerAsync<Postgres>) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// StorageDocumentTraits Tests
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[serial]
-async fn test_database_connection_and_migration() {
+async fn test_connection_and_migration() {
     let (db, _container) = setup_db().await;
 
     // Verify the table exists by counting rows (should be zero in a fresh db).
@@ -120,14 +124,7 @@ async fn test_store_and_retrieve_document() {
 async fn test_raw_contents_preserves_json() {
     let (db, _container) = setup_db().await;
 
-    // Build a document whose JSON value has specific formatting traits that
-    // JSONB normalization would remove (key ordering, integer vs float).
-    // The raw_contents TEXT column should preserve the exact serialized form.
     let doc = make_test_doc("preserve-1", "v1", "artifact", None);
-
-    // The store_document implementation uses serde_json::to_string_pretty to
-    // serialize into raw_contents. After round-tripping through the database
-    // the value should deserialize back to an identical serde_json::Value.
     let expected_value = doc.value.clone();
 
     db.store_document(&doc).expect("store_document failed");
@@ -136,8 +133,6 @@ async fn test_raw_contents_preserves_json() {
         .get_document("preserve-1:v1")
         .expect("get_document failed");
 
-    // The value is reconstructed from raw_contents (TEXT), not file_contents
-    // (JSONB). Ensure field-level equality which proves the raw path was used.
     assert_eq!(
         retrieved.value, expected_value,
         "Round-tripped value must match the original exactly"
@@ -172,7 +167,6 @@ async fn test_remove_document() {
     let doc = make_test_doc("remove-1", "v1", "config", None);
     db.store_document(&doc).expect("store_document failed");
 
-    // Verify it exists first.
     assert!(db.document_exists("remove-1:v1").unwrap());
 
     let removed = db
@@ -180,13 +174,11 @@ async fn test_remove_document() {
         .expect("remove_document failed");
     assert_eq!(removed.id, "remove-1");
 
-    // Verify it is gone.
     assert!(
         !db.document_exists("remove-1:v1").unwrap(),
         "Document should no longer exist after removal"
     );
 
-    // Attempting to get it should error.
     assert!(
         db.get_document("remove-1:v1").is_err(),
         "get_document on removed key should return Err"
@@ -198,7 +190,6 @@ async fn test_remove_document() {
 async fn test_list_documents_by_type() {
     let (db, _container) = setup_db().await;
 
-    // Store documents of different types.
     db.store_document(&make_test_doc("list-a1", "v1", "agent", None))
         .unwrap();
     db.store_document(&make_test_doc("list-a2", "v1", "agent", None))
@@ -232,11 +223,9 @@ async fn test_append_only_same_key() {
     let doc = make_test_doc("dup-1", "v1", "agent", None);
     db.store_document(&doc).expect("First store should succeed");
 
-    // Storing the same (id, version) again should silently do nothing.
     db.store_document(&doc)
         .expect("Second store (DO NOTHING) should not error");
 
-    // Verify only one copy exists.
     let versions = db
         .get_document_versions("dup-1")
         .expect("get_document_versions failed");
@@ -264,7 +253,6 @@ async fn test_multiple_versions() {
         .expect("get_document_versions failed");
     assert_eq!(versions.len(), 3, "Should have 3 versions");
 
-    // Each key should reference the same document ID with different versions.
     for key in &versions {
         assert!(
             key.starts_with("mv-1:"),
@@ -273,7 +261,6 @@ async fn test_multiple_versions() {
         );
     }
 
-    // Verify we can retrieve each individually.
     for v in ["v1", "v2", "v3"] {
         let key = format!("mv-1:{}", v);
         let doc = db.get_document(&key).unwrap();
@@ -286,10 +273,6 @@ async fn test_multiple_versions() {
 async fn test_get_latest_document() {
     let (db, _container) = setup_db().await;
 
-    // Insert versions with small delays to ensure different created_at timestamps
-    // (PostgreSQL NOW() has microsecond precision; sequential inserts within the
-    // same transaction could theoretically share a timestamp, so we insert them
-    // one at a time with a tiny sleep).
     db.store_document(&make_test_doc("lat-1", "v1", "agent", None))
         .unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -310,39 +293,37 @@ async fn test_get_latest_document() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// DatabaseDocumentTraits Tests
+// ---------------------------------------------------------------------------
+
 #[tokio::test]
 #[serial]
 async fn test_query_by_type_with_pagination() {
     let (db, _container) = setup_db().await;
 
-    // Store 7 documents of type "task".
     for i in 0..7 {
         let id = format!("pag-{}", i);
         db.store_document(&make_test_doc(&id, "v1", "task", None))
             .unwrap();
-        // Small delay to guarantee ordering by created_at.
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
 
-    // Page 1: limit 3, offset 0.
     let page1 = db
         .query_by_type("task", 3, 0)
         .expect("query_by_type page1 failed");
     assert_eq!(page1.len(), 3, "Page 1 should have 3 results");
 
-    // Page 2: limit 3, offset 3.
     let page2 = db
         .query_by_type("task", 3, 3)
         .expect("query_by_type page2 failed");
     assert_eq!(page2.len(), 3, "Page 2 should have 3 results");
 
-    // Page 3: limit 3, offset 6 (only 1 remaining).
     let page3 = db
         .query_by_type("task", 3, 6)
         .expect("query_by_type page3 failed");
     assert_eq!(page3.len(), 1, "Page 3 should have 1 result");
 
-    // Verify no overlap between pages.
     let all_ids: Vec<String> = page1
         .iter()
         .chain(page2.iter())
@@ -364,7 +345,6 @@ async fn test_query_by_type_with_pagination() {
 async fn test_query_by_field() {
     let (db, _container) = setup_db().await;
 
-    // Store documents with a distinguishing top-level field.
     let mut doc_a = make_test_doc("field-a", "v1", "config", None);
     doc_a.value["status"] = json!("active");
     db.store_document(&doc_a).unwrap();
@@ -377,13 +357,11 @@ async fn test_query_by_field() {
     doc_c.value["status"] = json!("active");
     db.store_document(&doc_c).unwrap();
 
-    // Query by field value without type filter.
     let active_docs = db
         .query_by_field("status", "active", None, 100, 0)
         .expect("query_by_field failed");
     assert_eq!(active_docs.len(), 2, "Should find 2 active documents");
 
-    // Query by field value with type filter.
     let active_configs = db
         .query_by_field("status", "active", Some("config"), 100, 0)
         .expect("query_by_field with type failed");
@@ -393,7 +371,6 @@ async fn test_query_by_field() {
         "Should find 2 active config documents"
     );
 
-    // Query for a value that does not exist.
     let missing = db
         .query_by_field("status", "archived", None, 100, 0)
         .expect("query_by_field for missing value failed");
@@ -406,8 +383,13 @@ async fn test_count_by_type() {
     let (db, _container) = setup_db().await;
 
     for i in 0..4 {
-        db.store_document(&make_test_doc(&format!("cnt-{}", i), "v1", "message", None))
-            .unwrap();
+        db.store_document(&make_test_doc(
+            &format!("cnt-{}", i),
+            "v1",
+            "message",
+            None,
+        ))
+        .unwrap();
     }
     db.store_document(&make_test_doc("cnt-other", "v1", "agent", None))
         .unwrap();
@@ -436,25 +418,21 @@ async fn test_query_by_agent() {
     db.store_document(&make_test_doc("ag-3", "v1", "agent", Some("bob")))
         .unwrap();
 
-    // Query all documents by alice (no type filter).
     let alice_all = db
         .query_by_agent("alice", None, 100, 0)
         .expect("query_by_agent failed");
     assert_eq!(alice_all.len(), 2, "Alice should have 2 documents total");
 
-    // Query alice's documents filtered to "agent" type.
     let alice_agents = db
         .query_by_agent("alice", Some("agent"), 100, 0)
         .expect("query_by_agent with type failed");
     assert_eq!(alice_agents.len(), 1, "Alice should have 1 agent document");
 
-    // Query bob.
     let bob_all = db
         .query_by_agent("bob", None, 100, 0)
         .expect("query_by_agent failed");
     assert_eq!(bob_all.len(), 1, "Bob should have 1 document");
 
-    // Also test the StorageDocumentTraits variant.
     let alice_keys = db
         .get_documents_by_agent("alice")
         .expect("get_documents_by_agent failed");
@@ -517,13 +495,11 @@ async fn test_get_versions_returns_full_documents() {
     db.store_document(&make_test_doc("gv-1", "v2", "agent", Some("agent-x")))
         .unwrap();
 
-    // DatabaseDocumentTraits::get_versions returns full JACSDocument objects.
     let versions = db.get_versions("gv-1").expect("get_versions failed");
     assert_eq!(versions.len(), 2);
     assert_eq!(versions[0].version, "v1", "Ordered by created_at ASC");
     assert_eq!(versions[1].version, "v2");
 
-    // Verify the documents are fully populated.
     assert_eq!(versions[0].jacs_type, "agent");
     assert_eq!(
         versions[0].value["jacsSignature"]["jacsSignatureAgentId"],
@@ -542,8 +518,6 @@ async fn test_get_latest_trait_method() {
     db.store_document(&make_test_doc("gl-1", "v2", "config", None))
         .unwrap();
 
-    // Use the DatabaseDocumentTraits::get_latest (which delegates to
-    // StorageDocumentTraits::get_latest_document).
     let latest = db.get_latest("gl-1").expect("get_latest failed");
     assert_eq!(latest.version, "v2");
 }
@@ -553,7 +527,6 @@ async fn test_get_latest_trait_method() {
 async fn test_get_document_invalid_key_format() {
     let (db, _container) = setup_db().await;
 
-    // Keys must be in "id:version" format.
     let result = db.get_document("invalid-key-no-colon");
     assert!(
         result.is_err(),
@@ -566,7 +539,6 @@ async fn test_get_document_invalid_key_format() {
 async fn test_store_documents_partial_idempotency() {
     let (db, _container) = setup_db().await;
 
-    // Store a batch where one document already exists.
     let first = make_test_doc("batch-dup", "v1", "agent", None);
     db.store_document(&first).unwrap();
 
@@ -575,14 +547,107 @@ async fn test_store_documents_partial_idempotency() {
         make_test_doc("batch-new", "v1", "agent", None), // new
     ];
 
-    // store_documents should succeed -- the duplicate is silently ignored.
     db.store_documents(batch)
         .expect("store_documents with duplicate should not error");
 
-    // Verify both documents exist (the duplicate did not cause a second row).
     assert!(db.document_exists("batch-dup:v1").unwrap());
     assert!(db.document_exists("batch-new:v1").unwrap());
 
     let versions = db.get_document_versions("batch-dup").unwrap();
     assert_eq!(versions.len(), 1, "Duplicate should not create extra row");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_migrations_idempotent() {
+    let (db, _container) = setup_db().await;
+
+    // run_migrations was already called by setup_db; calling again should not error.
+    db.run_migrations()
+        .expect("Second run_migrations should not error");
+}
+
+// ---------------------------------------------------------------------------
+// SearchProvider Tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[serial]
+async fn test_search_capabilities() {
+    let (db, _container) = setup_db().await;
+
+    let caps = db.capabilities();
+    assert!(caps.fulltext, "PostgreSQL should support fulltext search");
+    assert!(!caps.vector, "Vector search is not yet implemented");
+    assert!(!caps.hybrid, "Hybrid search is not yet implemented");
+    assert!(caps.field_filter, "PostgreSQL should support field filtering");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_search_empty_query_returns_empty() {
+    let (db, _container) = setup_db().await;
+
+    let query = SearchQuery {
+        query: String::new(),
+        ..SearchQuery::default()
+    };
+
+    let results = db.search(query).expect("search should not error");
+    assert_eq!(results.results.len(), 0);
+    assert_eq!(results.total_count, 0);
+    assert_eq!(results.method, SearchMethod::FullText);
+}
+
+#[tokio::test]
+#[serial]
+async fn test_search_fulltext_returns_results() {
+    let (db, _container) = setup_db().await;
+
+    // Store documents with distinct content for fulltext search.
+    let mut doc1 = make_test_doc("fts-1", "v1", "artifact", None);
+    doc1.value["content"] = json!("authentication middleware security");
+    db.store_document(&doc1).unwrap();
+
+    let mut doc2 = make_test_doc("fts-2", "v1", "artifact", None);
+    doc2.value["content"] = json!("database migration schema");
+    db.store_document(&doc2).unwrap();
+
+    let query = SearchQuery {
+        query: "authentication".to_string(),
+        ..SearchQuery::default()
+    };
+
+    let results = db.search(query).expect("search should not error");
+    assert_eq!(results.method, SearchMethod::FullText);
+    assert!(
+        results.total_count >= 1,
+        "Should find at least 1 document matching 'authentication'"
+    );
+}
+
+#[tokio::test]
+#[serial]
+async fn test_search_with_type_filter() {
+    let (db, _container) = setup_db().await;
+
+    let mut doc1 = make_test_doc("fts-type-1", "v1", "artifact", None);
+    doc1.value["content"] = json!("authentication security");
+    db.store_document(&doc1).unwrap();
+
+    let mut doc2 = make_test_doc("fts-type-2", "v1", "config", None);
+    doc2.value["content"] = json!("authentication settings");
+    db.store_document(&doc2).unwrap();
+
+    let query = SearchQuery {
+        query: "authentication".to_string(),
+        jacs_type: Some("artifact".to_string()),
+        ..SearchQuery::default()
+    };
+
+    let results = db.search(query).expect("search should not error");
+    // All results should be of type "artifact".
+    for hit in &results.results {
+        assert_eq!(hit.document.jacs_type, "artifact");
+    }
 }

@@ -1,38 +1,56 @@
 //! Redb embedded key-value storage backend for JACS documents.
 //!
-//! Uses pure-Rust redb with manual secondary index tables:
-//! - `documents`: primary store, `"id:version"` → JSON bytes
-//! - `type_index`: `"type\0id:version"` → `[]`
-//! - `agent_index`: `"agent_id\0id:version"` → `[]`
-//! - `version_index`: `"id\0created_at\0version"` → `[]`
+//! This crate provides a pure-Rust embedded KV storage backend for JACS
+//! documents using [redb](https://docs.rs/redb). No C bindings, no external
+//! services required.
+//!
+//! Uses manual secondary index tables:
+//! - `documents`: primary store, `"id:version"` -> JSON bytes
+//! - `type_index`: `"type\0id:version"` -> `[]`
+//! - `agent_index`: `"agent_id\0id:version"` -> `[]`
+//! - `version_index`: `"id\0created_at\0version"` -> `[]`
 //!
 //! # Append-Only Model
 //!
 //! Documents are immutable once stored. New versions create new entries
 //! keyed by `(id, version)`. Idempotent inserts skip if key exists.
 //!
-//! # Feature Gate
+//! # Search
 //!
-//! This module requires the `redb-storage` feature flag and is excluded from WASM.
+//! Redb has no native fulltext or vector search. The [`SearchProvider`]
+//! implementation reports all capabilities as `false` and returns
+//! `Err(JacsError::StorageError(...))` from `search()`.
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! use jacs_redb::RedbStorage;
+//! use jacs::storage::StorageDocumentTraits;
+//! use jacs::storage::database_traits::DatabaseDocumentTraits;
+//!
+//! let storage = RedbStorage::in_memory().expect("create in-memory redb");
+//! storage.run_migrations().expect("run migrations");
+//! ```
 
-use crate::agent::document::JACSDocument;
-use crate::error::JacsError;
-use crate::storage::StorageDocumentTraits;
-use crate::storage::database_traits::DatabaseDocumentTraits;
+use jacs::agent::document::JACSDocument;
+use jacs::error::JacsError;
+use jacs::search::{SearchCapabilities, SearchProvider, SearchQuery, SearchResults};
+use jacs::storage::StorageDocumentTraits;
+use jacs::storage::database_traits::DatabaseDocumentTraits;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde_json::Value;
 use std::error::Error;
 
-/// Primary table: `"id:version"` → serialized JACSDocument JSON bytes.
+/// Primary table: `"id:version"` -> serialized JACSDocument JSON bytes.
 const DOCUMENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("documents");
 
-/// Secondary index: `"type\0id:version"` → empty bytes (for query_by_type).
+/// Secondary index: `"type\0id:version"` -> empty bytes (for query_by_type).
 const TYPE_INDEX: TableDefinition<&str, &[u8]> = TableDefinition::new("type_index");
 
-/// Secondary index: `"agent_id\0id:version"` → empty bytes (for query_by_agent).
+/// Secondary index: `"agent_id\0id:version"` -> empty bytes (for query_by_agent).
 const AGENT_INDEX: TableDefinition<&str, &[u8]> = TableDefinition::new("agent_index");
 
-/// Ordering index: `"id\0created_at\0version"` → empty bytes (for get_versions, get_latest).
+/// Ordering index: `"id\0created_at\0version"` -> empty bytes (for get_versions, get_latest).
 const VERSION_INDEX: TableDefinition<&str, &[u8]> = TableDefinition::new("version_index");
 
 /// Redb storage backend for JACS documents.
@@ -544,6 +562,28 @@ impl DatabaseDocumentTraits for RedbStorage {
     }
 }
 
+// =============================================================================
+// SearchProvider implementation (no-op — Redb has no native search)
+// =============================================================================
+
+impl SearchProvider for RedbStorage {
+    /// Redb does not support search. Returns an error indicating search is not supported.
+    fn search(&self, _query: SearchQuery) -> Result<SearchResults, JacsError> {
+        Err(JacsError::StorageError(
+            "search not supported by redb backend".to_string(),
+        ))
+    }
+
+    /// Reports that no search capabilities are available.
+    fn capabilities(&self) -> SearchCapabilities {
+        SearchCapabilities::none()
+    }
+}
+
+// =============================================================================
+// Helper functions
+// =============================================================================
+
 /// Traverse a JSON value by a dot-separated field path.
 fn get_nested_field<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     let mut current = value;
@@ -569,4 +609,130 @@ fn db_err_box(operation: &str, reason: impl std::fmt::Display) -> Box<dyn Error>
         operation: operation.to_string(),
         reason: reason.to_string(),
     })
+}
+
+// =============================================================================
+// Unit tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn make_test_doc(
+        id: &str,
+        version: &str,
+        jacs_type: &str,
+        agent_id: Option<&str>,
+    ) -> JACSDocument {
+        let mut value = json!({
+            "jacsId": id,
+            "jacsVersion": version,
+            "jacsType": jacs_type,
+            "jacsLevel": "raw",
+            "data": "test content"
+        });
+        if let Some(aid) = agent_id {
+            value["jacsSignature"] = json!({
+                "jacsSignatureAgentId": aid
+            });
+        }
+        JACSDocument {
+            id: id.to_string(),
+            version: version.to_string(),
+            value,
+            jacs_type: jacs_type.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_create_in_memory() {
+        let storage = RedbStorage::in_memory().expect("create in-memory redb");
+        storage.run_migrations().expect("run migrations");
+    }
+
+    #[test]
+    fn test_crud_roundtrip() {
+        let storage = RedbStorage::in_memory().expect("create in-memory redb");
+        storage.run_migrations().expect("run migrations");
+
+        let doc = make_test_doc("crud-1", "v1", "agent", Some("alice"));
+        storage.store_document(&doc).expect("store failed");
+
+        // Read
+        let retrieved = storage.get_document("crud-1:v1").expect("get failed");
+        assert_eq!(retrieved.id, "crud-1");
+        assert_eq!(retrieved.version, "v1");
+        assert_eq!(retrieved.jacs_type, "agent");
+        assert_eq!(retrieved.value["data"], "test content");
+
+        // Exists
+        assert!(storage.document_exists("crud-1:v1").expect("exists check"));
+        assert!(!storage.document_exists("nonexistent:v1").expect("exists check"));
+
+        // Remove
+        let removed = storage.remove_document("crud-1:v1").expect("remove failed");
+        assert_eq!(removed.id, "crud-1");
+        assert!(!storage.document_exists("crud-1:v1").expect("exists after remove"));
+    }
+
+    #[test]
+    fn test_database_document_traits_queries() {
+        let storage = RedbStorage::in_memory().expect("create in-memory redb");
+        storage.run_migrations().expect("run migrations");
+
+        storage
+            .store_document(&make_test_doc("dbt-1", "v1", "agent", Some("alice")))
+            .unwrap();
+        storage
+            .store_document(&make_test_doc("dbt-2", "v1", "config", Some("alice")))
+            .unwrap();
+        storage
+            .store_document(&make_test_doc("dbt-3", "v1", "agent", Some("bob")))
+            .unwrap();
+
+        // query_by_type
+        let agents = storage.query_by_type("agent", 100, 0).unwrap();
+        assert_eq!(agents.len(), 2);
+
+        // count_by_type
+        assert_eq!(storage.count_by_type("agent").unwrap(), 2);
+        assert_eq!(storage.count_by_type("config").unwrap(), 1);
+
+        // query_by_agent
+        let alice_docs = storage.query_by_agent("alice", None, 100, 0).unwrap();
+        assert_eq!(alice_docs.len(), 2);
+
+        let bob_docs = storage.query_by_agent("bob", None, 100, 0).unwrap();
+        assert_eq!(bob_docs.len(), 1);
+
+        // query_by_agent with type filter
+        let alice_agents = storage.query_by_agent("alice", Some("agent"), 100, 0).unwrap();
+        assert_eq!(alice_agents.len(), 1);
+    }
+
+    #[test]
+    fn test_search_provider_capabilities_all_false() {
+        let storage = RedbStorage::in_memory().expect("create in-memory redb");
+        let caps = storage.capabilities();
+        assert!(!caps.fulltext);
+        assert!(!caps.vector);
+        assert!(!caps.hybrid);
+        assert!(!caps.field_filter);
+    }
+
+    #[test]
+    fn test_search_provider_search_returns_error() {
+        let storage = RedbStorage::in_memory().expect("create in-memory redb");
+        let query = SearchQuery::default();
+        let result = storage.search(query);
+        assert!(result.is_err(), "search() should return an error for redb");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("not supported"),
+            "Error should mention 'not supported', got: {}",
+            err_msg
+        );
+    }
 }

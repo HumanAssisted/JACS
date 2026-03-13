@@ -1,5 +1,8 @@
 //! SurrealDB storage backend for JACS documents.
 //!
+//! Provides a standalone `SurrealDbStorage` type that implements JACS core's
+//! `StorageDocumentTraits` and `DatabaseDocumentTraits`.
+//!
 //! Uses SurrealDB's native JSON support with SCHEMAFULL tables.
 //! - `raw_contents` (string): Preserves exact JSON bytes for signature verification
 //! - `file_contents` (object): Native JSON stored as SurrealDB object, queried via field paths
@@ -10,19 +13,27 @@
 //! keyed by compound record ID `jacs_document:[jacs_id, jacs_version]`.
 //! Compound IDs give natural idempotency — repeated inserts are no-ops.
 //!
-//! # Feature Gate
+//! # Example
 //!
-//! This module requires the `surrealdb-storage` feature flag and is excluded from WASM.
+//! ```rust,ignore
+//! use jacs_surrealdb::SurrealDbStorage;
+//! use jacs::storage::database_traits::DatabaseDocumentTraits;
+//!
+//! let storage = SurrealDbStorage::in_memory_async().await?;
+//! storage.run_migrations()?;
+//! ```
 
-use crate::agent::document::JACSDocument;
-use crate::error::JacsError;
-use crate::storage::StorageDocumentTraits;
-use crate::storage::database_traits::DatabaseDocumentTraits;
+use jacs::agent::document::JACSDocument;
+use jacs::error::JacsError;
+use jacs::search::{SearchCapabilities, SearchProvider, SearchQuery, SearchResults, SearchMethod};
+use jacs::storage::StorageDocumentTraits;
+use jacs::storage::database_traits::DatabaseDocumentTraits;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::error::Error;
 use surrealdb::Surreal;
 use surrealdb::engine::local::Mem;
+use surrealdb::types::SurrealValue;
 use tokio::runtime::Handle;
 
 /// SurrealDB storage backend for JACS documents.
@@ -32,7 +43,7 @@ pub struct SurrealDbStorage {
 }
 
 /// Internal record type for SurrealDB serialization/deserialization.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SurrealValue)]
 struct JacsRecord {
     jacs_id: String,
     jacs_version: String,
@@ -44,7 +55,7 @@ struct JacsRecord {
 }
 
 /// Helper for deserializing COUNT ... GROUP ALL results.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, SurrealValue)]
 struct CountResult {
     count: usize,
 }
@@ -133,7 +144,7 @@ impl SurrealDbStorage {
         DEFINE FIELD IF NOT EXISTS agent_id ON TABLE jacs_document TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS jacs_type ON TABLE jacs_document TYPE string;
         DEFINE FIELD IF NOT EXISTS raw_contents ON TABLE jacs_document TYPE string;
-        DEFINE FIELD IF NOT EXISTS file_contents ON TABLE jacs_document FLEXIBLE TYPE object;
+        DEFINE FIELD IF NOT EXISTS file_contents ON TABLE jacs_document TYPE object FLEXIBLE;
         DEFINE FIELD IF NOT EXISTS created_at ON TABLE jacs_document TYPE string;
         DEFINE INDEX IF NOT EXISTS idx_jacs_type ON TABLE jacs_document COLUMNS jacs_type;
         DEFINE INDEX IF NOT EXISTS idx_agent_id ON TABLE jacs_document COLUMNS agent_id;
@@ -160,7 +171,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
         self.block_on(async {
             let sql = r#"
                 INSERT INTO jacs_document {
-                    id: type::thing('jacs_document', [$jacs_id, $jacs_version]),
+                    id: type::record('jacs_document', [$jacs_id, $jacs_version]),
                     jacs_id: $jacs_id,
                     jacs_version: $jacs_version,
                     agent_id: $agent_id,
@@ -613,5 +624,95 @@ impl DatabaseDocumentTraits for SurrealDbStorage {
             })?;
 
         Ok(())
+    }
+}
+
+impl SearchProvider for SurrealDbStorage {
+    fn search(&self, query: SearchQuery) -> Result<SearchResults, JacsError> {
+        if query.query.is_empty() {
+            return Ok(SearchResults {
+                results: vec![],
+                total_count: 0,
+                method: SearchMethod::FieldMatch,
+            });
+        }
+
+        // SurrealDB supports field-level queries via native JSON paths.
+        // Use a CONTAINS-style search on raw_contents for basic fulltext matching.
+        let query_str = query.query.clone();
+        let jacs_type = query.jacs_type.clone();
+        let limit = query.limit;
+        let offset = query.offset;
+
+        let records: Vec<JacsRecord> = if let Some(ref doc_type) = jacs_type {
+            self.block_on(async {
+                let mut result = self
+                    .db
+                    .query(
+                        "SELECT * FROM jacs_document \
+                         WHERE raw_contents CONTAINS $query AND jacs_type = $jacs_type \
+                         ORDER BY created_at DESC LIMIT $limit START $offset",
+                    )
+                    .bind(("query", query_str))
+                    .bind(("jacs_type", doc_type.clone()))
+                    .bind(("limit", limit))
+                    .bind(("offset", offset))
+                    .await?;
+                let records: Vec<JacsRecord> = result.take(0)?;
+                Ok::<_, surrealdb::Error>(records)
+            })
+        } else {
+            self.block_on(async {
+                let mut result = self
+                    .db
+                    .query(
+                        "SELECT * FROM jacs_document \
+                         WHERE raw_contents CONTAINS $query \
+                         ORDER BY created_at DESC LIMIT $limit START $offset",
+                    )
+                    .bind(("query", query_str))
+                    .bind(("limit", limit))
+                    .bind(("offset", offset))
+                    .await?;
+                let records: Vec<JacsRecord> = result.take(0)?;
+                Ok::<_, surrealdb::Error>(records)
+            })
+        }
+        .map_err(|e| JacsError::StorageError(format!("SurrealDB search failed: {}", e)))?;
+
+        let mut results = Vec::new();
+        for record in &records {
+            let doc = Self::record_to_document(record)
+                .map_err(|e| JacsError::StorageError(format!("Failed to parse record: {}", e)))?;
+
+            let score = 1.0; // SurrealDB CONTAINS is boolean; no native ranking score
+
+            if let Some(min_score) = query.min_score {
+                if score < min_score {
+                    continue;
+                }
+            }
+
+            results.push(jacs::search::SearchHit {
+                document: doc,
+                score,
+                matched_fields: vec!["raw_contents".to_string()],
+            });
+        }
+
+        Ok(SearchResults {
+            total_count: results.len(),
+            results,
+            method: SearchMethod::FieldMatch,
+        })
+    }
+
+    fn capabilities(&self) -> SearchCapabilities {
+        SearchCapabilities {
+            fulltext: false,  // SurrealDB CONTAINS is substring, not true fulltext
+            vector: false,
+            hybrid: false,
+            field_filter: true,
+        }
     }
 }

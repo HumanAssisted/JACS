@@ -1,6 +1,14 @@
-//! PostgreSQL database storage backend for JACS documents.
+//! PostgreSQL storage backend for JACS documents.
 //!
-//! Uses TEXT + JSONB dual-column strategy:
+//! This crate provides `PostgresStorage`, a PostgreSQL-backed implementation of
+//! JACS storage traits:
+//! - [`StorageDocumentTraits`] -- basic document CRUD
+//! - [`DatabaseDocumentTraits`] -- database-specific query capabilities
+//! - [`SearchProvider`] -- fulltext search via PostgreSQL tsvector
+//!
+//! # Dual-Column Strategy
+//!
+//! Uses TEXT + JSONB dual-column storage:
 //! - `raw_contents` (TEXT): Preserves exact JSON bytes for signature verification
 //! - `file_contents` (JSONB): Enables efficient queries and indexing
 //!
@@ -9,29 +17,44 @@
 //! Documents are immutable once stored. New versions create new rows
 //! keyed by `(jacs_id, jacs_version)`. No UPDATE operations on existing rows.
 //!
-//! # Feature Gate
+//! # Usage
 //!
-//! This module requires the `database` feature flag and is excluded from WASM.
+//! ```rust,ignore
+//! use jacs_postgresql::PostgresStorage;
+//! use jacs::storage::StorageDocumentTraits;
+//! use jacs::storage::DatabaseDocumentTraits;
+//!
+//! let storage = PostgresStorage::new(&database_url, None, None, None)?;
+//! storage.run_migrations()?;
+//! ```
 
-use crate::agent::document::JACSDocument;
-use crate::error::JacsError;
-use crate::storage::StorageDocumentTraits;
-use crate::storage::database_traits::DatabaseDocumentTraits;
+use jacs::agent::document::JACSDocument;
+use jacs::error::JacsError;
+use jacs::search::{
+    SearchCapabilities, SearchHit, SearchMethod, SearchProvider, SearchQuery, SearchResults,
+};
+use jacs::storage::database_traits::DatabaseDocumentTraits;
+use jacs::storage::StorageDocumentTraits;
 use serde_json::Value;
-use sqlx::Row;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
+use sqlx::Row;
 use std::error::Error;
 use std::time::Duration;
 use tokio::runtime::Handle;
 
 /// PostgreSQL storage backend for JACS documents.
-pub struct DatabaseStorage {
+///
+/// Implements [`StorageDocumentTraits`], [`DatabaseDocumentTraits`], and
+/// [`SearchProvider`]. Supports fulltext search via PostgreSQL tsvector.
+/// Vector search (pgvector) is not yet implemented but the capability
+/// reporting is prepared for it.
+pub struct PostgresStorage {
     pool: PgPool,
     handle: Handle,
 }
 
-impl DatabaseStorage {
-    /// Create a new DatabaseStorage connected to the given PostgreSQL URL.
+impl PostgresStorage {
+    /// Create a new PostgresStorage connected to the given PostgreSQL URL.
     ///
     /// Pool settings:
     /// - `max_connections`: Maximum pool size (default 10)
@@ -68,7 +91,7 @@ impl DatabaseStorage {
         Ok(Self { pool, handle })
     }
 
-    /// Create a DatabaseStorage from an existing pool and handle (for testing).
+    /// Create a PostgresStorage from an existing pool and handle (for testing).
     pub fn with_pool(pool: PgPool, handle: Handle) -> Self {
         Self { pool, handle }
     }
@@ -87,7 +110,9 @@ impl DatabaseStorage {
     fn parse_key(key: &str) -> Result<(&str, &str), Box<dyn Error>> {
         let parts: Vec<&str> = key.splitn(2, ':').collect();
         if parts.len() != 2 {
-            return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());
+            return Err(
+                format!("Invalid document key '{}': expected 'id:version'", key).into(),
+            );
         }
         Ok((parts[0], parts[1]))
     }
@@ -130,9 +155,16 @@ impl DatabaseStorage {
         "CREATE INDEX IF NOT EXISTS idx_jacs_document_agent ON jacs_document (agent_id)",
         "CREATE INDEX IF NOT EXISTS idx_jacs_document_created ON jacs_document (created_at DESC)",
     ];
+
+    /// SQL for fulltext search index (tsvector).
+    const CREATE_FTS_INDEX_SQL: &str = r#"
+        CREATE INDEX IF NOT EXISTS idx_jacs_document_fts
+        ON jacs_document
+        USING GIN (to_tsvector('english', raw_contents))
+    "#;
 }
 
-impl StorageDocumentTraits for DatabaseStorage {
+impl StorageDocumentTraits for PostgresStorage {
     fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let jsonb_value = &doc.value;
@@ -173,7 +205,8 @@ impl StorageDocumentTraits for DatabaseStorage {
 
         let row = self.block_on(async {
             sqlx::query(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                 FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2",
             )
             .bind(id)
             .bind(version)
@@ -214,7 +247,8 @@ impl StorageDocumentTraits for DatabaseStorage {
     fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let rows = self.block_on(async {
             sqlx::query(
-                "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_type = $1 ORDER BY created_at DESC",
+                "SELECT jacs_id, jacs_version FROM jacs_document \
+                 WHERE jacs_type = $1 ORDER BY created_at DESC",
             )
             .bind(prefix)
             .fetch_all(&self.pool)
@@ -240,21 +274,23 @@ impl StorageDocumentTraits for DatabaseStorage {
     fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
         let (id, version) = Self::parse_key(key)?;
 
-        let exists: bool = self.block_on(async {
-            sqlx::query_scalar::<_, bool>(
-                "SELECT EXISTS(SELECT 1 FROM jacs_document WHERE jacs_id = $1 AND jacs_version = $2)",
-            )
-            .bind(id)
-            .bind(version)
-            .fetch_one(&self.pool)
-            .await
-        })
-        .map_err(|e| -> Box<dyn Error> {
-            Box::new(JacsError::DatabaseError {
-                operation: "document_exists".to_string(),
-                reason: e.to_string(),
+        let exists: bool = self
+            .block_on(async {
+                sqlx::query_scalar::<_, bool>(
+                    "SELECT EXISTS(SELECT 1 FROM jacs_document \
+                     WHERE jacs_id = $1 AND jacs_version = $2)",
+                )
+                .bind(id)
+                .bind(version)
+                .fetch_one(&self.pool)
+                .await
             })
-        })?;
+            .map_err(|e| -> Box<dyn Error> {
+                Box::new(JacsError::DatabaseError {
+                    operation: "document_exists".to_string(),
+                    reason: e.to_string(),
+                })
+            })?;
 
         Ok(exists)
     }
@@ -262,7 +298,8 @@ impl StorageDocumentTraits for DatabaseStorage {
     fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let rows = self.block_on(async {
             sqlx::query(
-                "SELECT jacs_id, jacs_version FROM jacs_document WHERE agent_id = $1 ORDER BY created_at DESC",
+                "SELECT jacs_id, jacs_version FROM jacs_document \
+                 WHERE agent_id = $1 ORDER BY created_at DESC",
             )
             .bind(agent_id)
             .fetch_all(&self.pool)
@@ -288,7 +325,8 @@ impl StorageDocumentTraits for DatabaseStorage {
     fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
         let rows = self.block_on(async {
             sqlx::query(
-                "SELECT jacs_id, jacs_version FROM jacs_document WHERE jacs_id = $1 ORDER BY created_at ASC",
+                "SELECT jacs_id, jacs_version FROM jacs_document \
+                 WHERE jacs_id = $1 ORDER BY created_at ASC",
             )
             .bind(document_id)
             .fetch_all(&self.pool)
@@ -314,7 +352,8 @@ impl StorageDocumentTraits for DatabaseStorage {
     fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
         let row = self.block_on(async {
             sqlx::query(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = $1 ORDER BY created_at DESC LIMIT 1",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                 FROM jacs_document WHERE jacs_id = $1 ORDER BY created_at DESC LIMIT 1",
             )
             .bind(document_id)
             .fetch_one(&self.pool)
@@ -342,7 +381,10 @@ impl StorageDocumentTraits for DatabaseStorage {
         }))
     }
 
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(
+        &self,
+        docs: Vec<JACSDocument>,
+    ) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
         let mut errors = Vec::new();
         for doc in &docs {
             if let Err(e) = self.store_document(doc) {
@@ -356,7 +398,10 @@ impl StorageDocumentTraits for DatabaseStorage {
         }
     }
 
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(
+        &self,
+        keys: Vec<String>,
+    ) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
         let mut docs = Vec::new();
         let mut errors = Vec::new();
         for key in &keys {
@@ -373,7 +418,7 @@ impl StorageDocumentTraits for DatabaseStorage {
     }
 }
 
-impl DatabaseDocumentTraits for DatabaseStorage {
+impl DatabaseDocumentTraits for PostgresStorage {
     fn query_by_type(
         &self,
         jacs_type: &str,
@@ -382,7 +427,9 @@ impl DatabaseDocumentTraits for DatabaseStorage {
     ) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
         let rows = self.block_on(async {
             sqlx::query(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_type = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                 FROM jacs_document WHERE jacs_type = $1 \
+                 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
             )
             .bind(jacs_type)
             .bind(limit as i64)
@@ -411,7 +458,9 @@ impl DatabaseDocumentTraits for DatabaseStorage {
         let rows = if let Some(doc_type) = jacs_type {
             self.block_on(async {
                 sqlx::query(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE file_contents->>$1 = $2 AND jacs_type = $3 ORDER BY created_at DESC LIMIT $4 OFFSET $5",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                     FROM jacs_document WHERE file_contents->>$1 = $2 AND jacs_type = $3 \
+                     ORDER BY created_at DESC LIMIT $4 OFFSET $5",
                 )
                 .bind(field_path)
                 .bind(value)
@@ -424,7 +473,9 @@ impl DatabaseDocumentTraits for DatabaseStorage {
         } else {
             self.block_on(async {
                 sqlx::query(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE file_contents->>$1 = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                     FROM jacs_document WHERE file_contents->>$1 = $2 \
+                     ORDER BY created_at DESC LIMIT $3 OFFSET $4",
                 )
                 .bind(field_path)
                 .bind(value)
@@ -467,7 +518,8 @@ impl DatabaseDocumentTraits for DatabaseStorage {
     fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>> {
         let rows = self.block_on(async {
             sqlx::query(
-                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE jacs_id = $1 ORDER BY created_at ASC",
+                "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                 FROM jacs_document WHERE jacs_id = $1 ORDER BY created_at ASC",
             )
             .bind(jacs_id)
             .fetch_all(&self.pool)
@@ -497,7 +549,9 @@ impl DatabaseDocumentTraits for DatabaseStorage {
         let rows = if let Some(doc_type) = jacs_type {
             self.block_on(async {
                 sqlx::query(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = $1 AND jacs_type = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                     FROM jacs_document WHERE agent_id = $1 AND jacs_type = $2 \
+                     ORDER BY created_at DESC LIMIT $3 OFFSET $4",
                 )
                 .bind(agent_id)
                 .bind(doc_type)
@@ -509,7 +563,9 @@ impl DatabaseDocumentTraits for DatabaseStorage {
         } else {
             self.block_on(async {
                 sqlx::query(
-                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents FROM jacs_document WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                    "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents \
+                     FROM jacs_document WHERE agent_id = $1 \
+                     ORDER BY created_at DESC LIMIT $2 OFFSET $3",
                 )
                 .bind(agent_id)
                 .bind(limit as i64)
@@ -551,6 +607,179 @@ impl DatabaseDocumentTraits for DatabaseStorage {
                 })?;
         }
 
+        // Create fulltext search index for tsvector-based search.
+        self.block_on(async {
+            sqlx::query(Self::CREATE_FTS_INDEX_SQL)
+                .execute(&self.pool)
+                .await
+        })
+        .map_err(|e| -> Box<dyn Error> {
+            Box::new(JacsError::DatabaseError {
+                operation: "run_migrations".to_string(),
+                reason: format!("Failed to create FTS index: {}", e),
+            })
+        })?;
+
         Ok(())
+    }
+}
+
+impl SearchProvider for PostgresStorage {
+    fn search(&self, query: SearchQuery) -> Result<SearchResults, JacsError> {
+        if query.query.is_empty() {
+            return Ok(SearchResults {
+                results: vec![],
+                total_count: 0,
+                method: SearchMethod::FullText,
+            });
+        }
+
+        // Build the fulltext search query using PostgreSQL tsvector.
+        // Uses plainto_tsquery for natural language query parsing.
+        let (rows, total_count) = if let Some(ref jacs_type) = query.jacs_type {
+            let count: i64 = self
+                .block_on(async {
+                    sqlx::query_scalar::<_, i64>(
+                        "SELECT COUNT(*) FROM jacs_document \
+                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                         AND jacs_type = $2",
+                    )
+                    .bind(&query.query)
+                    .bind(jacs_type)
+                    .fetch_one(&self.pool)
+                    .await
+                })
+                .map_err(|e| JacsError::StorageError(format!("FTS count query failed: {}", e)))?;
+
+            let rows = self
+                .block_on(async {
+                    sqlx::query(
+                        "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
+                         ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
+                         FROM jacs_document \
+                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                         AND jacs_type = $2 \
+                         ORDER BY rank DESC \
+                         LIMIT $3 OFFSET $4",
+                    )
+                    .bind(&query.query)
+                    .bind(jacs_type)
+                    .bind(query.limit as i64)
+                    .bind(query.offset as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                })
+                .map_err(|e| JacsError::StorageError(format!("FTS search failed: {}", e)))?;
+
+            (rows, count as usize)
+        } else {
+            let count: i64 = self
+                .block_on(async {
+                    sqlx::query_scalar::<_, i64>(
+                        "SELECT COUNT(*) FROM jacs_document \
+                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1)",
+                    )
+                    .bind(&query.query)
+                    .fetch_one(&self.pool)
+                    .await
+                })
+                .map_err(|e| JacsError::StorageError(format!("FTS count query failed: {}", e)))?;
+
+            let rows = self
+                .block_on(async {
+                    sqlx::query(
+                        "SELECT jacs_id, jacs_version, agent_id, jacs_type, raw_contents, file_contents, \
+                         ts_rank(to_tsvector('english', raw_contents), plainto_tsquery('english', $1)) AS rank \
+                         FROM jacs_document \
+                         WHERE to_tsvector('english', raw_contents) @@ plainto_tsquery('english', $1) \
+                         ORDER BY rank DESC \
+                         LIMIT $2 OFFSET $3",
+                    )
+                    .bind(&query.query)
+                    .bind(query.limit as i64)
+                    .bind(query.offset as i64)
+                    .fetch_all(&self.pool)
+                    .await
+                })
+                .map_err(|e| JacsError::StorageError(format!("FTS search failed: {}", e)))?;
+
+            (rows, count as usize)
+        };
+
+        let mut results = Vec::new();
+        for row in &rows {
+            let doc = Self::row_to_document(row)
+                .map_err(|e| JacsError::StorageError(format!("Failed to parse row: {}", e)))?;
+
+            let rank: f32 = row.try_get("rank").unwrap_or(0.0);
+            // Normalize rank to 0.0-1.0 range (ts_rank can exceed 1.0).
+            let score = (rank as f64).min(1.0).max(0.0);
+
+            if let Some(min_score) = query.min_score {
+                if score < min_score {
+                    continue;
+                }
+            }
+
+            results.push(SearchHit {
+                document: doc,
+                score,
+                matched_fields: vec!["raw_contents".to_string()],
+            });
+        }
+
+        Ok(SearchResults {
+            results,
+            total_count,
+            method: SearchMethod::FullText,
+        })
+    }
+
+    fn capabilities(&self) -> SearchCapabilities {
+        SearchCapabilities {
+            fulltext: true,
+            vector: false,
+            hybrid: false,
+            field_filter: true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capabilities_reports_fulltext_true_vector_false() {
+        let caps = SearchCapabilities {
+            fulltext: true,
+            vector: false,
+            hybrid: false,
+            field_filter: true,
+        };
+        assert!(caps.fulltext);
+        assert!(!caps.vector);
+        assert!(!caps.hybrid);
+        assert!(caps.field_filter);
+    }
+
+    #[test]
+    fn parse_key_valid() {
+        let (id, version) = PostgresStorage::parse_key("doc-1:v1").unwrap();
+        assert_eq!(id, "doc-1");
+        assert_eq!(version, "v1");
+    }
+
+    #[test]
+    fn parse_key_invalid() {
+        let result = PostgresStorage::parse_key("invalid-key-no-colon");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_key_with_colons_in_version() {
+        let (id, version) = PostgresStorage::parse_key("doc-1:v1:extra").unwrap();
+        assert_eq!(id, "doc-1");
+        assert_eq!(version, "v1:extra");
     }
 }

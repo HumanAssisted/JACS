@@ -12,7 +12,7 @@ JACS supports multiple storage backends for persisting documents and agents. Thi
 | PostgreSQL | `database` | PostgreSQL with JSONB queries (requires `database` feature) |
 | Rusqlite | `rusqlite` | Embedded SQLite (requires `rusqlite-storage` feature) |
 | DuckDB | `duckdb` | Embedded analytical DB (requires `duckdb-storage` feature) |
-| Redb | `redb` | Pure-Rust embedded KV (requires `redb-storage` feature) |
+| Redb | `redb` | Pure-Rust embedded KV (standalone `jacs-redb` crate) |
 | SurrealDB | `surrealdb` | Multi-model DB with SurrealQL (requires `surrealdb-storage` feature) |
 
 ## Configuration
@@ -362,13 +362,12 @@ cargo test --features duckdb-storage-tests
 
 **When to use:** You need analytical queries or columnar storage over signed documents.
 
-### Redb (`redb-storage`)
+### Redb (`jacs-redb` crate)
 
-Pure-Rust embedded key-value store. No C dependencies.
+Pure-Rust embedded key-value store. No C dependencies. Extracted to the standalone `jacs-redb` crate.
 
 ```bash
-cargo build --features redb-storage
-cargo test --features redb-storage-tests
+cargo test -p jacs-redb
 ```
 
 **When to use:** You want the simplest embedded backend with zero non-Rust dependencies.
