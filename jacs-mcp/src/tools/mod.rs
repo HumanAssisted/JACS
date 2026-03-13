@@ -15,32 +15,27 @@ pub mod messaging;
 pub mod search;
 pub mod state;
 pub mod trust;
+pub mod types;
 
 // Re-export all types so callers can use `tools::SignStateParams` etc.
-// Each sub-module also exports a `tools()` fn that is called via qualified
-// paths (e.g. `state::tools()`), so the name collision is harmless.
+// Types from state, memory, audit, and agreements are in types.rs.
+// Other family modules define their types inline and are re-exported here.
 #[allow(ambiguous_glob_reexports)]
 pub use a2a::*;
 #[allow(ambiguous_glob_reexports)]
-pub use agreements::*;
-#[allow(ambiguous_glob_reexports)]
 pub use attestation::*;
-#[allow(ambiguous_glob_reexports)]
-pub use audit::*;
 #[allow(ambiguous_glob_reexports)]
 pub use document::*;
 #[allow(ambiguous_glob_reexports)]
 pub use key::*;
 #[allow(ambiguous_glob_reexports)]
-pub use memory::*;
-#[allow(ambiguous_glob_reexports)]
 pub use messaging::*;
 #[allow(ambiguous_glob_reexports)]
 pub use search::*;
 #[allow(ambiguous_glob_reexports)]
-pub use state::*;
-#[allow(ambiguous_glob_reexports)]
 pub use trust::*;
+#[allow(ambiguous_glob_reexports)]
+pub use types::*;
 
 use rmcp::model::Tool;
 use schemars::JsonSchema;

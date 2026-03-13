@@ -11,6 +11,12 @@ use super::schema_map;
 // =============================================================================
 
 /// Parameters for the unified search tool.
+///
+/// TODO(Issue 015): This should accept all `SearchQuery` fields from
+/// `jacs::search::SearchQuery` (agent_id, field_filter, min_score) and
+/// delegate to `SearchProvider::search()` instead of the manual iteration
+/// in `jacs_tools.rs`. Deferred because `SearchProvider` is not yet wired
+/// into `AgentWrapper`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchParams {
     /// Search query string.

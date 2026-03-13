@@ -2,6 +2,21 @@
 //!
 //! This module provides MCP tools for agent state signing, verification,
 //! messaging, agreements, A2A interoperability, and trust store management.
+//!
+//! ## Tech Debt (Issue 017)
+//!
+//! This file contains all 42 tool handler implementations in a single 4400+
+//! line monolith. TASK_038 split **type definitions and tool registration**
+//! into per-family modules under `tools/`, but the actual handler methods
+//! remain here.
+//!
+//! A future refactoring should move handler methods into their respective
+//! `tools/*.rs` modules (e.g., `tools::memory::handle_memory_save()`),
+//! leaving only the `JacsMcpServer` struct, `ServerHandler` impl, and
+//! shared helper functions in this file. This will require either:
+//! - A facade pattern where `jacs_tools.rs` delegates to module functions, or
+//! - Adjusting the `#[tool_router]` / `#[tool_handler]` macros from rmcp
+//!   to support handlers spread across multiple modules.
 
 use jacs::schema::agentstate_crud;
 use jacs::validation::require_relative_path_safe;
@@ -1682,6 +1697,13 @@ impl JacsMcpServer {
     /// Iterates over all stored documents, matches the query against document
     /// content, names, and types. Supports optional filtering by JACS document type
     /// and pagination.
+    ///
+    /// TODO(Issue 015 / tech debt): This manually iterates documents via
+    /// `list_document_keys()` + `get_document_by_id()` with naive substring
+    /// matching. Should delegate to `SearchProvider::search()` from
+    /// `jacs::search::mod.rs` once it is wired into `AgentWrapper`. That would
+    /// also enable the missing `SearchQuery` fields (agent_id, field_filter,
+    /// min_score) and automatic method selection (fulltext/vector/hybrid).
     #[tool(
         name = "jacs_search",
         description = "Search across all signed documents using the unified search interface."

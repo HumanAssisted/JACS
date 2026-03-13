@@ -328,7 +328,7 @@
       "description": "Check the status of an agreement: how many agents have signed, whether quorum is met, whether it has expired, and which agents still need to sign. Use this to decide whether an agreement is complete and ready to act on.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Parameters for checking agreement status.\n\nUse this to see how many agents have signed, whether quorum is met,\nand whether the agreement has expired.",
+        "description": "Parameters for checking agreement status.",
         "properties": {
           "agreement_fieldname": {
             "description": "Custom agreement field name (default: 'jacsAgreement')",
@@ -410,10 +410,10 @@
     },
     {
       "name": "jacs_create_agreement",
-      "description": "Create a multi-party cryptographic agreement. Use this when multiple agents need to formally agree on something — like approving a deployment, authorizing a data transfer, or ratifying a decision. You specify which agents must sign, an optional quorum (e.g., 2-of-3), a timeout deadline, and algorithm constraints. Returns a signed agreement document to pass to other agents for co-signing.",
+      "description": "Create a multi-party cryptographic agreement. Use this when multiple agents need to formally agree on something -- like approving a deployment, authorizing a data transfer, or ratifying a decision. You specify which agents must sign, an optional quorum (e.g., 2-of-3), a timeout deadline, and algorithm constraints. Returns a signed agreement document to pass to other agents for co-signing.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Parameters for creating a multi-party agreement.\n\nAn agreement is a document that multiple agents must sign. Use this when agents\nneed to formally commit to a shared decision — for example, approving a deployment,\nauthorizing a data transfer, or reaching consensus on a proposal.",
+        "description": "Parameters for creating a multi-party agreement.",
         "properties": {
           "agent_ids": {
             "description": "List of agent IDs (UUIDs) that are parties to this agreement",
@@ -962,7 +962,7 @@
       "description": "Search across all signed documents using the unified search interface. Supports fulltext search with optional filtering by document type. Results include relevance scores and matching snippets. The search method (fulltext, vector, or hybrid) is chosen automatically based on the storage backend.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Parameters for the unified search tool.",
+        "description": "Parameters for the unified search tool.\n\nTODO(Issue 015): This should accept all `SearchQuery` fields from\n`jacs::search::SearchQuery` (agent_id, field_filter, min_score) and\ndelegate to `SearchProvider::search()` instead of the manual iteration\nin `jacs_tools.rs`. Deferred because `SearchProvider` is not yet wired\ninto `AgentWrapper`.",
         "properties": {
           "jacs_type": {
             "description": "Optional filter by JACS document type (e.g., 'agentstate', 'message', 'agreement')",
@@ -1006,7 +1006,7 @@
       "description": "Co-sign an existing agreement. Use this after receiving an agreement document from another agent. Your cryptographic signature is added to the agreement. The updated document can then be passed to the next signer or checked for completion.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "description": "Parameters for signing an existing agreement.\n\nUse this after receiving an agreement document from another agent.\nYour agent will cryptographically co-sign it, adding your signature\nto the agreement's signature list.",
+        "description": "Parameters for signing an existing agreement.",
         "properties": {
           "agreement_fieldname": {
             "description": "Custom agreement field name (default: 'jacsAgreement')",
