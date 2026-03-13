@@ -2282,6 +2282,7 @@ mod ephemeral_tests {
         let _ = std::fs::remove_dir_all(&temp);
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     fn test_ephemeral_pq2025() {
         let mut agent = Agent::ephemeral("pq2025").unwrap();
