@@ -90,10 +90,7 @@ impl SimpleAgentWrapper {
     pub fn create_with_params(params_json: &str) -> BindingResult<(Self, String)> {
         let params: jacs::simple::CreateAgentParams =
             serde_json::from_str(params_json).map_err(|e| {
-                BindingCoreError::invalid_argument(format!(
-                    "Invalid CreateAgentParams JSON: {}",
-                    e
-                ))
+                BindingCoreError::invalid_argument(format!("Invalid CreateAgentParams JSON: {}", e))
             })?;
 
         let (agent, info) = SimpleAgent::create_with_params(params).map_err(|e| {

@@ -419,9 +419,7 @@ fn test_get_latest_json_not_found() {
 #[test]
 fn test_versions_json() {
     let wrapper = mock_wrapper();
-    let created = wrapper
-        .create_json(r#"{"title": "V1"}"#, None)
-        .unwrap();
+    let created = wrapper.create_json(r#"{"title": "V1"}"#, None).unwrap();
     let doc: Value = serde_json::from_str(&created).unwrap();
     let id = doc["jacsId"].as_str().unwrap();
 
@@ -443,7 +441,10 @@ fn test_versions_json() {
 fn test_versions_json_empty() {
     let wrapper = mock_wrapper();
     let result = wrapper.versions_json("nonexistent");
-    assert!(result.is_ok(), "versions_json for missing doc returns empty list");
+    assert!(
+        result.is_ok(),
+        "versions_json for missing doc returns empty list"
+    );
     let versions: Vec<Value> = serde_json::from_str(&result.unwrap()).unwrap();
     assert!(versions.is_empty());
 }

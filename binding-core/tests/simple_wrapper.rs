@@ -356,7 +356,10 @@ fn test_verify_with_key_json_roundtrip() {
         .verify_with_key_json(&signed, &key_b64)
         .expect("verify_with_key_json should succeed");
     let parsed: Value = serde_json::from_str(&result).expect("should be valid JSON");
-    assert_eq!(parsed["valid"], true, "verification with explicit key should succeed");
+    assert_eq!(
+        parsed["valid"], true,
+        "verification with explicit key should succeed"
+    );
 }
 
 // =============================================================================
@@ -432,7 +435,10 @@ fn test_from_agent() {
         jacs::simple::SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral should succeed");
     let wrapper = SimpleAgentWrapper::from_agent(agent);
     let agent_id = wrapper.get_agent_id().expect("get_agent_id should succeed");
-    assert!(!agent_id.is_empty(), "wrapper from from_agent should be usable");
+    assert!(
+        !agent_id.is_empty(),
+        "wrapper from from_agent should be usable"
+    );
 }
 
 // =============================================================================
@@ -456,8 +462,8 @@ fn test_create_with_params_json() {
     })
     .to_string();
 
-    let (wrapper, info_json) =
-        SimpleAgentWrapper::create_with_params(&params_json).expect("create_with_params should succeed");
+    let (wrapper, info_json) = SimpleAgentWrapper::create_with_params(&params_json)
+        .expect("create_with_params should succeed");
 
     let info: Value = serde_json::from_str(&info_json).expect("info should be valid JSON");
     assert!(!info["agent_id"].as_str().unwrap_or("").is_empty());
