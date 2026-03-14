@@ -42,7 +42,8 @@ JACSGO_VERSION := $(shell grep '^version' jacsgo/lib/Cargo.toml | head -1 | sed 
 
 # Fast Rust lane for the core crate: exclude dedicated CLI, interop, observability,
 # and PQ-only binaries so the default PR path stays bounded.
-JACS_FAST_TEST_BINS := $(shell cd jacs/tests && find . -maxdepth 1 -name '*.rs' -print | sed 's#^\./##; s#\.rs$$##' | grep -v -E '^(a2a_cross_language_tests|attestation_cross_lang_tests|cli_flags|cli_tests|cross_language_tests|observability_oltp_meter|observability_tests|pq2025_tests|pq_tests)$$' | sort)
+JACS_TEST_BINS := $(basename $(notdir $(shell find jacs/tests -maxdepth 1 -name '*.rs' -print | sort)))
+JACS_FAST_TEST_BINS := $(filter-out a2a_cross_language_tests attestation_cross_lang_tests cli_flags cli_tests cross_language_tests observability_oltp_meter observability_tests pq2025_tests pq_tests,$(JACS_TEST_BINS))
 
 # ============================================================================
 # BUILD
