@@ -23,7 +23,7 @@ attestation = ["jacs/attestation"]
 
 [dependencies]
 jacs = { version = "0.9.4", path = "../jacs" }
-jacs-mcp = { version = "0.9.4", path = "../jacs-mcp", features = ["mcp"], optional = true }
+jacs-mcp = { version = "0.9.4", path = "../jacs-mcp", features = ["mcp", "full-tools"], optional = true }
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
 rpassword = "7.3.1"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
