@@ -2,9 +2,23 @@ name: Python (jacs)
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["main"]
+    paths:
+      - "jacspy/**"
+      - "jacs/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/python.yml"
   pull_request:
-    branches: [ "master" ]
+    branches: ["main"]
+    paths:
+      - "jacspy/**"
+      - "jacs/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/python.yml"
   workflow_dispatch: # Allows manual triggering
 
 env:

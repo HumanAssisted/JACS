@@ -666,7 +666,9 @@ impl AgentWrapper {
             })?;
 
         // Also store in the documents/ index so list_document_keys() finds it.
-        let _ = agent.storage_ref().store_document(&doc);
+        if let Err(e) = agent.storage_ref().store_document(&doc) {
+            tracing::warn!("Failed to store document in index: {}", e);
+        }
 
         Ok(document_key)
     }

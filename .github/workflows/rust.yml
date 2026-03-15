@@ -150,54 +150,8 @@ jobs:
       - name: Run binding-core tests
         run: make test-jacs-binding-core
 
-  quick-jacs-mcp:
-    name: Quick jacs-mcp (ubuntu)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.93"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build jacs-cli (required by jacs-mcp integration tests)
-        run: cargo build -p jacs-cli
-
-      - name: Run jacs-mcp tests
-        run: make test-jacs-mcp
-
-  quick-jacs-mcp-minimal:
-    name: Quick jacs-mcp (mcp feature only)
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.93"
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run jacs-mcp tests (without attestation)
-        run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+  # NOTE: jacs-mcp tests run in components.yml (with full-tools).
+  # Removed duplicate quick-jacs-mcp and quick-jacs-mcp-minimal jobs.
 
   backend-inprocess:
     name: ${{ matrix.package }} (ubuntu)

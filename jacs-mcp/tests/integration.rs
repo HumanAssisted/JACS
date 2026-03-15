@@ -191,7 +191,7 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
         .await?;
     let doc_id = signed["jacs_document_id"]
         .as_str()
-        .expect("sign_state jacs_document_id");
+        .unwrap_or_else(|| panic!("sign_state jacs_document_id missing from response: {}", signed));
     assert_ne!(doc_id, "unknown");
     assert!(
         doc_id.contains(':'),
