@@ -173,7 +173,7 @@ fn load_agent_with_cli_dns_policy(
 ) -> Result<Agent, Box<dyn Error>> {
     let (dns_validate, dns_required, dns_strict) =
         resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
-    load_agent_with_dns_policy(agent_file, dns_validate, dns_required, dns_strict)
+    Ok(load_agent_with_dns_policy(agent_file, dns_validate, dns_required, dns_strict)?)
 }
 
 fn wrap_quickstart_error_with_password_help(

@@ -77,8 +77,8 @@ impl PostgresStorage {
             ),
         })?;
 
-        let pool = handle
-            .block_on(async {
+        let pool = tokio::task::block_in_place(|| {
+            handle.block_on(async {
                 PgPoolOptions::new()
                     .max_connections(max_connections.unwrap_or(10))
                     .min_connections(min_connections.unwrap_or(1))
@@ -86,6 +86,7 @@ impl PostgresStorage {
                     .connect(database_url)
                     .await
             })
+        })
             .map_err(|e| JacsError::DatabaseError {
                 operation: "connect".to_string(),
                 reason: e.to_string(),
@@ -105,8 +106,11 @@ impl PostgresStorage {
     }
 
     /// Helper to run async sqlx operations synchronously.
+    ///
+    /// Uses `block_in_place` so this is safe to call from within a tokio
+    /// multi-threaded runtime (e.g. from `#[tokio::test]`).
     fn block_on<F: std::future::Future>(&self, f: F) -> F::Output {
-        self.handle.block_on(f)
+        tokio::task::block_in_place(|| self.handle.block_on(f))
     }
 
     /// Parse a document key in format "id:version" into (id, version).
