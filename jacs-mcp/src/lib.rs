@@ -41,6 +41,8 @@
 //! JACS_MCP_PROFILE=full jacs mcp
 //! ```
 
+#![allow(ambiguous_glob_imports)]
+
 pub mod config;
 #[cfg(feature = "mcp")]
 pub mod contract;
