@@ -94,7 +94,14 @@
           "properties": {
             "frequency": {
               "type": "string",
-              "enum": ["daily", "weekly", "biweekly", "monthly", "quarterly", "yearly"],
+              "enum": [
+                "daily",
+                "weekly",
+                "biweekly",
+                "monthly",
+                "quarterly",
+                "yearly"
+              ],
               "description": "How often the commitment recurs."
             },
             "interval": {
@@ -103,7 +110,10 @@
               "description": "Number of frequency units between occurrences."
             }
           },
-          "required": ["frequency", "interval"],
+          "required": [
+            "frequency",
+            "interval"
+          ],
           "hai": "agent"
         },
         "jacsCommitmentOwner": {

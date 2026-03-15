@@ -16,6 +16,7 @@ Example:
 import json
 import logging
 import os
+from contextlib import contextmanager
 from typing import Any, List, Optional, Union
 
 from .types import (
@@ -71,6 +72,65 @@ def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
     if os.path.isabs(candidate):
         return candidate
     return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
+
+
+def _resolve_create_directories(
+    config_path: str,
+    data_directory: str = "./jacs_data",
+    key_directory: str = "./jacs_keys",
+) -> tuple[str, str]:
+    config_dir = os.path.dirname(os.path.abspath(config_path))
+    cwd = os.path.abspath(os.getcwd())
+    if config_dir != cwd:
+        if data_directory == "./jacs_data":
+            data_directory = os.path.join(config_dir, "jacs_data")
+        if key_directory == "./jacs_keys":
+            key_directory = os.path.join(config_dir, "jacs_keys")
+    return data_directory, key_directory
+
+
+def _read_saved_password(config_path: str) -> str:
+    try:
+        resolved_config_path = os.path.abspath(config_path)
+        with open(resolved_config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        key_dir = _resolve_config_relative_path(
+            resolved_config_path, config.get("jacs_key_directory", "./jacs_keys")
+        )
+        password_path = os.path.join(key_dir, ".jacs_password")
+        if not os.path.exists(password_path):
+            return ""
+        with open(password_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def _resolve_private_key_password(
+    config_path: Optional[str] = None, explicit_password: Optional[str] = None
+) -> str:
+    if explicit_password:
+        return explicit_password
+    env_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
+    if env_password:
+        return env_password
+    if config_path:
+        return _read_saved_password(config_path)
+    return ""
+
+
+@contextmanager
+def _temporary_private_key_password(password: Optional[str]):
+    previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
+    try:
+        if password:
+            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
+        yield
+    finally:
+        if previous_password is None:
+            os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
+        else:
+            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password
 
 
 def _read_document_by_id(document_id: str, agent_info: Optional[AgentInfo]) -> Optional[dict]:
@@ -164,6 +224,7 @@ class JacsClient:
         self._strict = _resolve_strict(strict)
         self._agent: _JacsAgent = _JacsAgent()
         self._agent_info: Optional[AgentInfo] = None
+        self._private_key_password: Optional[str] = None
 
         if config_path is not None:
             self._load_from_config(config_path)
@@ -202,6 +263,8 @@ class JacsClient:
             instance._load_from_config(cfg_path)
             return instance
 
+        data_dir, key_dir = _resolve_create_directories(cfg_path)
+
         # Create a new persistent agent via SimpleAgent
         password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
         if not password:
@@ -218,36 +281,27 @@ class JacsClient:
             )
             persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
             if persist_password:
-                keys_dir = "./jacs_keys"
-                os.makedirs(keys_dir, exist_ok=True)
-                pw_path = os.path.join(keys_dir, ".jacs_password")
+                os.makedirs(key_dir, exist_ok=True)
+                pw_path = os.path.join(key_dir, ".jacs_password")
                 with open(pw_path, "w", encoding="utf-8") as f:
                     f.write(password)
                 os.chmod(pw_path, 0o600)
-            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
 
         algo = algorithm or "pq2025"
         _SimpleAgent.create_agent(
             name=name,
             password=password,
             algorithm=algo,
-            data_directory="./jacs_data",
-            key_directory="./jacs_keys",
+            data_directory=data_dir,
+            key_directory=key_dir,
             config_path=cfg_path,
             description=description or "",
             domain=domain,
             default_storage="fs",
         )
 
-        prev_pw = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
-        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
-        try:
-            instance._load_from_config(cfg_path)
-        finally:
-            if prev_pw is None:
-                os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
-            else:
-                os.environ["JACS_PRIVATE_KEY_PASSWORD"] = prev_pw
+        instance._private_key_password = password
+        instance._load_from_config(cfg_path, password=password)
 
         return instance
 
@@ -263,6 +317,7 @@ class JacsClient:
         """
         instance = cls.__new__(cls)
         instance._strict = _resolve_strict(strict)
+        instance._private_key_password = None
 
         native_agent, info_dict = _SimpleAgent.ephemeral(algorithm)
         # Wrap the SimpleAgent in an _EphemeralAgentAdapter so the
@@ -289,14 +344,18 @@ class JacsClient:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _load_from_config(self, config_path: str) -> None:
+    def _load_from_config(self, config_path: str, password: Optional[str] = None) -> None:
         if not os.path.exists(config_path):
             raise ConfigError(
                 f"Config file not found: {config_path}\n"
                 "Run 'jacs create' or call jacs.create() to create a new agent."
             )
 
-        self._agent.load(config_path)
+        self._private_key_password = (
+            _resolve_private_key_password(config_path, password) or None
+        )
+        with _temporary_private_key_password(self._private_key_password):
+            self._agent.load(config_path)
 
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -338,6 +397,10 @@ class JacsClient:
             raise AgentNotLoadedError("No agent loaded on this JacsClient instance.")
         return self._agent
 
+    def _call_with_password(self, func, *args, **kwargs):
+        with _temporary_private_key_password(self._private_key_password):
+            return func(*args, **kwargs)
+
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
@@ -373,6 +436,7 @@ class JacsClient:
         no longer usable until re-initialised."""
         self._agent = None  # type: ignore[assignment]
         self._agent_info = None
+        self._private_key_password = None
 
     # ------------------------------------------------------------------
     # Signing
@@ -385,7 +449,8 @@ class JacsClient:
             doc_json = json.dumps(
                 {"jacsDocument": {"type": "message", "content": data}}
             )
-            result = agent.create_document(
+            result = self._call_with_password(
+                agent.create_document,
                 document_string=doc_json,
                 custom_schema=None,
                 outputfilename=None,
@@ -411,7 +476,8 @@ class JacsClient:
                     }
                 }
             )
-            result = agent.create_document(
+            result = self._call_with_password(
+                agent.create_document,
                 document_string=doc_json,
                 custom_schema=None,
                 outputfilename=None,
@@ -479,7 +545,10 @@ class JacsClient:
             )
         try:
             is_valid = agent.verify_document_by_id(doc_id)
-            doc_data = _read_document_by_id(doc_id, self._agent_info)
+            doc_json = agent.get_document_by_id(doc_id)
+            doc_data = json.loads(doc_json) if doc_json else None
+            if not isinstance(doc_data, dict):
+                doc_data = None
             signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
             return VerificationResult(
                 valid=is_valid,
@@ -545,7 +614,8 @@ class JacsClient:
 
         try:
             if has_options:
-                result = agent.create_agreement_with_options(
+                result = self._call_with_password(
+                    agent.create_agreement_with_options,
                     doc_str,
                     agent_ids,
                     question=question,
@@ -557,7 +627,8 @@ class JacsClient:
                     minimum_strength=minimum_strength,
                 )
             else:
-                result = agent.create_agreement(
+                result = self._call_with_password(
+                    agent.create_agreement,
                     doc_str,
                     agent_ids,
                     question,
@@ -583,7 +654,9 @@ class JacsClient:
             doc_str = document
 
         try:
-            result = agent.sign_agreement(doc_str, agreement_fieldname)
+            result = self._call_with_password(
+                agent.sign_agreement, doc_str, agreement_fieldname
+            )
             return _parse_signed_document(result)
         except Exception as e:
             raise JacsError(f"Failed to sign agreement: {e}")
@@ -651,7 +724,7 @@ class JacsClient:
         agent = self._require_agent()
         data_string = json.dumps(data) if isinstance(data, dict) else data
         try:
-            return agent.update_agent(data_string)
+            return self._call_with_password(agent.update_agent, data_string)
         except Exception as e:
             raise JacsError(f"Failed to update agent: {e}")
 
@@ -666,7 +739,9 @@ class JacsClient:
         agent = self._require_agent()
         data_string = json.dumps(data) if isinstance(data, dict) else data
         try:
-            result = agent.update_document(doc_id, data_string, attachments, embed)
+            result = self._call_with_password(
+                agent.update_document, doc_id, data_string, attachments, embed
+            )
             return _parse_signed_document(result)
         except Exception as e:
             raise JacsError(f"Failed to update document: {e}")
@@ -817,7 +892,9 @@ class JacsClient:
             params["policyContext"] = policy_context
 
         try:
-            result = agent.create_attestation(json.dumps(params))
+            result = self._call_with_password(
+                agent.create_attestation, json.dumps(params)
+            )
             return _parse_signed_document(result)
         except Exception as e:
             raise JacsError(f"Failed to create attestation: {e}")
@@ -838,6 +915,8 @@ class JacsClient:
 
         Returns:
             Dict with valid, crypto, evidence, chain, errors fields.
+            Nested protocol objects preserve their canonical camelCase JSON
+            field names (for example ``signatureValid`` and ``hashValid``).
         """
         agent = self._require_agent()
         data = json.loads(attestation_json)
@@ -874,7 +953,9 @@ class JacsClient:
             doc_str = signed_document
         claims_json = json.dumps(claims)
         try:
-            result = agent.lift_to_attestation(doc_str, claims_json)
+            result = self._call_with_password(
+                agent.lift_to_attestation, doc_str, claims_json
+            )
             return _parse_signed_document(result)
         except Exception as e:
             raise JacsError(f"Failed to lift to attestation: {e}")
@@ -890,7 +971,9 @@ class JacsClient:
         """
         agent = self._require_agent()
         try:
-            result = agent.export_attestation_dsse(attestation_json)
+            result = self._call_with_password(
+                agent.export_attestation_dsse, attestation_json
+            )
             return json.loads(result)
         except Exception as e:
             raise JacsError(f"Failed to export DSSE: {e}")

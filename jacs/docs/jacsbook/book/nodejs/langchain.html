@@ -190,7 +190,7 @@ const client = await JacsClient.quickstart({
 const jacsTools = createJacsTools({ client });
 const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 </code></pre>
-<p>The tool set includes:</p>
+<p>The tool set includes 14 tools:</p>
 <ul>
 <li><code>jacs_sign</code></li>
 <li><code>jacs_verify</code></li>
@@ -199,8 +199,11 @@ const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 <li><code>jacs_check_agreement</code></li>
 <li><code>jacs_verify_self</code></li>
 <li><code>jacs_trust_agent</code></li>
+<li><code>jacs_trust_agent_with_key</code></li>
 <li><code>jacs_list_trusted</code></li>
 <li><code>jacs_is_trusted</code></li>
+<li><code>jacs_share_public_key</code></li>
+<li><code>jacs_share_agent</code></li>
 <li><code>jacs_audit</code></li>
 <li><code>jacs_agent_info</code></li>
 </ul>

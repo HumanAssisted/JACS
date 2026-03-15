@@ -190,13 +190,12 @@
 jacs = { version = "0.3", features = ["observability"] }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>observability</code></td><td>Core observability support</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper functions for recording operations</td></tr>
 <tr><td><code>otlp-logs</code></td><td>OTLP log export support</td></tr>
 <tr><td><code>otlp-metrics</code></td><td>OTLP metrics export support</td></tr>
 <tr><td><code>otlp-tracing</code></td><td>OTLP distributed tracing support</td></tr>
 </tbody></table>
 </div>
+<p>Convenience helpers for recording operations are always available (no feature flag needed).</p>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <h3 id="default-configuration"><a class="header" href="#default-configuration">Default Configuration</a></h3>
 <p>The simplest way to enable observability:</p>
@@ -369,7 +368,7 @@ tags.insert("method".to_string(), "verify".to_string());
 record_histogram("jacs_operation_duration_ms", 150.0, Some(tags));
 <span class="boring">}</span></code></pre></pre>
 <h3 id="built-in-metrics"><a class="header" href="#built-in-metrics">Built-in Metrics</a></h3>
-<p>When <code>observability-convenience</code> feature is enabled, JACS automatically records:</p>
+<p>JACS convenience helpers automatically record:</p>
 <ul>
 <li><code>jacs_agent_operations</code> - Count of agent operations</li>
 <li><code>jacs_signature_verifications</code> - Signature verification results</li>

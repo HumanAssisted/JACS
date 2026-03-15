@@ -199,10 +199,10 @@ import { JacsAgent } from '@hai.ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
 
-// Test basic functionality
+// Test basic functionality (async API)
 try {
   const agent = new JacsAgent();
-  agent.load('./jacs.config.json');
+  await agent.load('./jacs.config.json');
   console.log('Agent loaded successfully!');
 } catch (error) {
   console.error('Error loading agent:', error);
@@ -212,26 +212,21 @@ try {
 <pre><code class="language-bash">node test.js
 </code></pre>
 <h2 id="package-structure"><a class="header" href="#package-structure">Package Structure</a></h2>
-<p>The <code>@hai.ai/jacs</code> package includes several modules:</p>
-<h3 id="core-module-haiaijacs"><a class="header" href="#core-module-haiaijacs">Core Module (<code>@hai.ai/jacs</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsAgent,
-  JacsConfig,
-  JacsDocument,
-  JacsError
-} from '@hai.ai/jacs';
+<p>The <code>@hai.ai/jacs</code> package exposes these entry points:</p>
+<h3 id="core-and-simple-api"><a class="header" href="#core-and-simple-api">Core and simple API</a></h3>
+<pre><code class="language-javascript">import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
+import * as jacs from '@hai.ai/jacs/simple';  // quickstart, load, signMessage, verify, etc.
 </code></pre>
-<h3 id="mcp-integration-haiaijacsmcp"><a class="header" href="#mcp-integration-haiaijacsmcp">MCP Integration (<code>@hai.ai/jacs/mcp</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsMcpServer,
-  createJacsMiddleware 
-} from '@hai.ai/jacs/mcp';
+<h3 id="instance-based-client-recommended-for-new-code"><a class="header" href="#instance-based-client-recommended-for-new-code">Instance-based client (recommended for new code)</a></h3>
+<pre><code class="language-javascript">import { JacsClient } from '@hai.ai/jacs/client';
 </code></pre>
-<h3 id="http-server-haiaijacshttp"><a class="header" href="#http-server-haiaijacshttp">HTTP Server (<code>@hai.ai/jacs/http</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsHttpServer,
-  createJacsRouter 
-} from '@hai.ai/jacs/http';
+<h3 id="mcp-haiaijacsmcp"><a class="header" href="#mcp-haiaijacsmcp">MCP (<code>@hai.ai/jacs/mcp</code>)</a></h3>
+<pre><code class="language-javascript">import { createJACSTransportProxy, createJACSTransportProxyAsync, registerJacsTools } from '@hai.ai/jacs/mcp';
+</code></pre>
+<h3 id="http--framework-adapters"><a class="header" href="#http--framework-adapters">HTTP / framework adapters</a></h3>
+<pre><code class="language-javascript">import { jacsMiddleware } from '@hai.ai/jacs/express';
+import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
+import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai.ai/jacs/http';  // legacy
 </code></pre>
 <h2 id="typescript-support"><a class="header" href="#typescript-support">TypeScript Support</a></h2>
 <p>The package includes full TypeScript definitions:</p>
@@ -240,8 +235,8 @@ try {
 // Create an agent instance
 const agent: JacsAgent = new JacsAgent();
 
-// Load configuration from file
-agent.load('./jacs.config.json');
+// Load configuration from file (async)
+await agent.load('./jacs.config.json');
 
 // Use utility functions
 const hash: string = hashString('some data');
@@ -306,12 +301,18 @@ export JACS_DEFAULT_STORAGE="fs"
   "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h3 id="s3-storage"><a class="header" href="#s3-storage">S3 Storage</a></h3>
+<h3 id="local-indexed-sqlite"><a class="header" href="#local-indexed-sqlite">Local Indexed SQLite</a></h3>
 <pre><code class="language-json">{
-  "jacs_default_storage": "s3"
+  "jacs_default_storage": "rusqlite"
 }
 </code></pre>
-<p>S3 credentials are read from standard AWS environment variables.</p>
+<p>Use <code>rusqlite</code> when you want local full-text search and the upgraded <code>DocumentService</code> behavior in bindings and MCP.</p>
+<h3 id="aws-storage"><a class="header" href="#aws-storage">AWS Storage</a></h3>
+<pre><code class="language-json">{
+  "jacs_default_storage": "aws"
+}
+</code></pre>
+<p>AWS credentials are read from standard AWS environment variables.</p>
 <h3 id="memory-storage-testing"><a class="header" href="#memory-storage-testing">Memory Storage (Testing)</a></h3>
 <pre><code class="language-json">{
   "jacs_default_storage": "memory"
@@ -383,24 +384,23 @@ export JACS_DEFAULT_STORAGE="fs"
 <pre><code class="language-javascript">// src/app.js
 import { JacsAgent } from '@hai.ai/jacs';
 
-// Create and load agent
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
+async function main() {
+  const agent = new JacsAgent();
+  await agent.load('./jacs.config.json');
 
-// Create a document
-const documentJson = JSON.stringify({
-  title: "My First Document",
-  content: "Hello from Node.js!"
-});
+  const documentJson = JSON.stringify({
+    title: "My First Document",
+    content: "Hello from Node.js!"
+  });
 
-const signedDoc = agent.createDocument(documentJson);
-console.log('Document created:', signedDoc);
+  const signedDoc = await agent.createDocument(documentJson);
+  console.log('Document created:', signedDoc);
 
-// Verify the document
-const isValid = agent.verifyDocument(signedDoc);
-console.log('Document valid:', isValid);
-
-console.log('JACS agent ready!');
+  const isValid = await agent.verifyDocument(signedDoc);
+  console.log('Document valid:', isValid);
+  console.log('JACS agent ready!');
+}
+main().catch(console.error);
 </code></pre>
 <h2 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h2>
 <h3 id="module-not-found"><a class="header" href="#module-not-found">Module Not Found</a></h3>

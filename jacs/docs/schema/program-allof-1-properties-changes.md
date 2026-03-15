@@ -1,7 +1,7 @@
 # Untitled array in Program Schema
 
 ```txt
-https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/changes
+https://hai.ai/schemas/program/v1/program.schema.json#/allOf/1/properties/changes
 ```
 
 What changes were made to the plan along the way and why.

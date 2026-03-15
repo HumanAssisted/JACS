@@ -1,0 +1,10 @@
+{
+  "agent_id": "99729515-b039-47f3-a4db-2f94243d60b6",
+  "algorithm": "RSA-PSS",
+  "document_id": "c6dac712-642b-4ae7-a73f-e752d95a6688",
+  "generated_by": "rust",
+  "jacs_version": "0.9.3",
+  "public_key_hash": "3ee1fdb7d0a7ba564a1207814e150307fd4b313db7f2255cc932e1047cb74dd8",
+  "signing_algorithm": "RSA-PSS",
+  "timestamp": "2026-03-12T04:03:45.669269+00:00"
+}

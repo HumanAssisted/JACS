@@ -212,7 +212,7 @@
 <ul>
 <li>Deepest feature surface</li>
 <li>CLI plus library APIs</li>
-<li>Best fit when you want a ready-made MCP server via <code>jacs-mcp</code></li>
+<li>Best fit when you want a ready-made MCP server via <code>jacs mcp</code></li>
 </ul>
 <h3 id="python-jacs"><a class="header" href="#python-jacs">Python (<code>jacs</code>)</a></h3>
 <ul>
@@ -230,7 +230,7 @@
 </ul>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <h3 id="rust-cli"><a class="header" href="#rust-cli">Rust CLI</a></h3>
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 jacs quickstart --name my-agent --domain my-agent.example.com
 </code></pre>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
@@ -412,7 +412,7 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 <tr><td>Cross-organization agent discovery and signed artifact exchange</td><td><a href="getting-started/../integrations/a2a.html">A2A Interoperability</a></td><td>MCP is not enough for this boundary</td></tr>
 <tr><td>Signed HTTP APIs without adopting MCP</td><td><a href="getting-started/../python/adapters.html">Python Framework Adapters</a>, <a href="getting-started/../nodejs/express.html">Express</a>, <a href="getting-started/../nodejs/koa.html">Koa</a></td><td>Sign requests or responses at the web layer</td></tr>
 <tr><td>Multi-party approval or quorum workflows</td><td><a href="getting-started/multi-agent-agreement.html">Multi-Agent Agreements</a></td><td>Agreements are the right primitive, not just one-off signatures</td></tr>
-<tr><td>Direct signing from scripts, jobs, or services</td><td><a href="getting-started/quick-start.html">Quick Start</a>, <a href="getting-started/../python/basic-usage.html">Python Basic Usage</a>, <a href="getting-started/../nodejs/basic-usage.html">Node Basic Usage</a></td><td>Start from sign/verify before adding framework layers</td></tr>
+<tr><td>Direct signing from scripts, jobs, or services</td><td><a href="getting-started/quick-start.html">Quick Start</a>, <a href="getting-started/../python/basic-usage.html">Python Basic Usage</a>, <a href="getting-started/../nodejs/basic-usage.html">Node Basic Usage</a>, <a href="getting-started/../go/installation.html">Go Installation</a></td><td>Start from sign/verify before adding framework layers</td></tr>
 </tbody></table>
 </div>
 <h2 id="when-you-probably-do-not-need-jacs"><a class="header" href="#when-you-probably-do-not-need-jacs">When You Probably Do Not Need JACS</a></h2>
@@ -857,7 +857,7 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 <input type="radio" id="tab-rust" name="tab-group">
 <label for="tab-rust">Rust CLI</label>
 <div class="content">
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <pre><code class="language-bash"># Info mode -- prints agent ID and algorithm
 jacs quickstart --name my-agent --domain my-agent.example.com
@@ -879,15 +879,10 @@ jacs quickstart --name my-agent --domain my-agent.example.com --sign --file myda
 <pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
 brew install jacs
 </code></pre>
-<h3 id="mcp-quick-start-rust-cli"><a class="header" href="#mcp-quick-start-rust-cli">MCP quick start (Rust CLI)</a></h3>
-<pre><code class="language-bash"># Install platform-matched jacs-mcp binary
-jacs mcp install
-
-# Run stdio MCP server
-jacs mcp run
-
-# Optional fallback if you want cargo-based install
-jacs mcp install --from-cargo
+<h3 id="mcp-server-rust-cli"><a class="header" href="#mcp-server-rust-cli">MCP server (Rust CLI)</a></h3>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
 <p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart(...)</code> already creates a persistent agent.</p>
@@ -897,7 +892,7 @@ jacs mcp install --from-cargo
 <label for="adv-rust">Rust CLI</label>
 <div class="content">
 <h3 id="install"><a class="header" href="#install">Install</a></h3>
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <h3 id="initialize"><a class="header" href="#initialize">Initialize</a></h3>
 <pre><code class="language-bash"># Create configuration and agent in one step
@@ -1731,7 +1726,7 @@ cd jacsnpm &amp;&amp; npm run build
 </code></pre>
 <h2 id="installing-the-cli"><a class="header" href="#installing-the-cli">Installing the CLI</a></h2>
 <h3 id="from-cratesio-recommended"><a class="header" href="#from-cratesio-recommended">From crates.io (Recommended)</a></h3>
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <h3 id="from-homebrew-macos"><a class="header" href="#from-homebrew-macos">From Homebrew (macOS)</a></h3>
 <pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
@@ -1739,18 +1734,16 @@ brew install jacs
 </code></pre>
 <h3 id="from-source"><a class="header" href="#from-source">From Source</a></h3>
 <pre><code class="language-bash">git clone https://github.com/HumanAssisted/JACS
-cd JACS/jacs
-cargo install --path . --features cli
+cd JACS
+cargo install --path jacs-cli
 </code></pre>
 <h3 id="verify-installation"><a class="header" href="#verify-installation">Verify Installation</a></h3>
 <pre><code class="language-bash">jacs --help
 </code></pre>
-<h3 id="installrun-mcp-server-via-cli"><a class="header" href="#installrun-mcp-server-via-cli">Install/Run MCP Server via CLI</a></h3>
-<pre><code class="language-bash"># Install jacs-mcp from platform prebuilt release assets (default)
-jacs mcp install
-
-# Run stdio MCP server
-jacs mcp run
+<h3 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h3>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="using-as-a-library"><a class="header" href="#using-as-a-library">Using as a Library</a></h2>
 <p>Add JACS to your <code>Cargo.toml</code>:</p>
@@ -1777,12 +1770,15 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 </code></pre>
 <h3 id="available-features"><a class="header" href="#available-features">Available Features</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>cli</code></td><td>Enables CLI binary build with clap and ratatui</td></tr>
+<tr><td><code>cli</code></td><td><em>(Deprecated -- use <code>cargo install jacs-cli</code> instead)</em></td></tr>
 <tr><td><code>otlp-logs</code></td><td>OpenTelemetry Protocol logging backend</td></tr>
 <tr><td><code>otlp-metrics</code></td><td>OpenTelemetry Protocol metrics backend</td></tr>
 <tr><td><code>otlp-tracing</code></td><td>OpenTelemetry Protocol distributed tracing</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper wrappers for metrics and logging</td></tr>
-<tr><td><code>mcp-server</code></td><td>Model Context Protocol server integration surface</td></tr>
+<tr><td><code>sqlite</code></td><td>Lightweight sync SQLite backend (default)</td></tr>
+<tr><td><code>sqlx-sqlite</code></td><td>Async SQLite backend via sqlx (requires tokio)</td></tr>
+<tr><td><code>agreements</code></td><td>Agreement lifecycle support</td></tr>
+<tr><td><code>a2a</code></td><td>Agent-to-Agent protocol support</td></tr>
+<tr><td><code>attestation</code></td><td>Attestation support</td></tr>
 </tbody></table>
 </div>
 <h2 id="platform-support"><a class="header" href="#platform-support">Platform Support</a></h2>
@@ -1880,7 +1876,7 @@ jacs task --help
 <tr><td><code>jacs agent</code></td><td>Manage agents</td></tr>
 <tr><td><code>jacs document</code></td><td>Manage documents</td></tr>
 <tr><td><code>jacs task</code></td><td>Manage tasks</td></tr>
-<tr><td><code>jacs mcp</code></td><td>Install and run the Rust MCP server</td></tr>
+<tr><td><code>jacs mcp</code></td><td>Start the built-in MCP server (stdio transport)</td></tr>
 </tbody></table>
 </div>
 <h2 id="initialization"><a class="header" href="#initialization">Initialization</a></h2>
@@ -1894,17 +1890,10 @@ jacs init
 <li>Generates cryptographic keys</li>
 <li>Creates an initial agent document</li>
 </ol>
-<h2 id="mcp-commands"><a class="header" href="#mcp-commands">MCP Commands</a></h2>
-<h3 id="install-mcp-server"><a class="header" href="#install-mcp-server">Install MCP Server</a></h3>
-<pre><code class="language-bash"># Install jacs-mcp from prebuilt platform assets (defaults to matching CLI version)
-jacs mcp install
-</code></pre>
-<h3 id="run-mcp-server"><a class="header" href="#run-mcp-server">Run MCP Server</a></h3>
-<pre><code class="language-bash"># Start stdio MCP server
-jacs mcp run
-
-# Run a custom binary path
-jacs mcp run --bin /path/to/jacs-mcp
+<h2 id="mcp-server-1"><a class="header" href="#mcp-server-1">MCP Server</a></h2>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="configuration-commands"><a class="header" href="#configuration-commands">Configuration Commands</a></h2>
 <h3 id="create-configuration"><a class="header" href="#create-configuration">Create Configuration</a></h3>
@@ -3170,10 +3159,14 @@ jacs = "0.3"
 jacs = { version = "0.3", features = ["cli", "observability"] }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>cli</code></td><td>CLI utilities and helpers</td></tr>
-<tr><td><code>observability</code></td><td>OpenTelemetry logging and metrics</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper functions for observability</td></tr>
-<tr><td><code>full</code></td><td>All features enabled</td></tr>
+<tr><td><code>sqlite</code></td><td>Lightweight sync SQLite backend (default)</td></tr>
+<tr><td><code>sqlx-sqlite</code></td><td>Async SQLite backend via sqlx (requires tokio)</td></tr>
+<tr><td><code>otlp-logs</code></td><td>OTLP log export support</td></tr>
+<tr><td><code>otlp-metrics</code></td><td>OTLP metrics export support</td></tr>
+<tr><td><code>otlp-tracing</code></td><td>OTLP distributed tracing support</td></tr>
+<tr><td><code>agreements</code></td><td>Agreement lifecycle support</td></tr>
+<tr><td><code>a2a</code></td><td>Agent-to-Agent protocol support</td></tr>
+<tr><td><code>attestation</code></td><td>Attestation support</td></tr>
 </tbody></table>
 </div>
 <h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
@@ -3522,9 +3515,14 @@ let storage = MultiStorage::new("fs".to_string())?;
 // In-memory storage
 let storage = MultiStorage::new("memory".to_string())?;
 
-// S3 storage
-let storage = MultiStorage::new("s3".to_string())?;
+// AWS object storage
+let storage = MultiStorage::new("aws".to_string())?;
 <span class="boring">}</span></code></pre></pre>
+<p>For signed document CRUD/search, prefer the unified <code>DocumentService</code> surface:</p>
+<pre><code class="language-rust ignore">use jacs::document::service_from_agent;
+
+let docs = service_from_agent(agent_handle)?;
+// `fs` and `rusqlite` currently resolve in JACS core.</code></pre>
 <h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
 <p>JACS functions return <code>Result&lt;T, Box&lt;dyn Error&gt;&gt;</code>:</p>
 <pre><pre class="playground"><code class="language-rust">use jacs::get_empty_agent;
@@ -3621,13 +3619,12 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 jacs = { version = "0.3", features = ["observability"] }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>observability</code></td><td>Core observability support</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper functions for recording operations</td></tr>
 <tr><td><code>otlp-logs</code></td><td>OTLP log export support</td></tr>
 <tr><td><code>otlp-metrics</code></td><td>OTLP metrics export support</td></tr>
 <tr><td><code>otlp-tracing</code></td><td>OTLP distributed tracing support</td></tr>
 </tbody></table>
 </div>
+<p>Convenience helpers for recording operations are always available (no feature flag needed).</p>
 <h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick Start</a></h2>
 <h3 id="default-configuration"><a class="header" href="#default-configuration">Default Configuration</a></h3>
 <p>The simplest way to enable observability:</p>
@@ -3800,7 +3797,7 @@ tags.insert("method".to_string(), "verify".to_string());
 record_histogram("jacs_operation_duration_ms", 150.0, Some(tags));
 <span class="boring">}</span></code></pre></pre>
 <h3 id="built-in-metrics"><a class="header" href="#built-in-metrics">Built-in Metrics</a></h3>
-<p>When <code>observability-convenience</code> feature is enabled, JACS automatically records:</p>
+<p>JACS convenience helpers automatically record:</p>
 <ul>
 <li><code>jacs_agent_operations</code> - Count of agent operations</li>
 <li><code>jacs_signature_verifications</code> - Signature verification results</li>
@@ -4088,10 +4085,10 @@ import { JacsAgent } from '@hai.ai/jacs';
 
 console.log('JACS Node.js bindings loaded successfully!');
 
-// Test basic functionality
+// Test basic functionality (async API)
 try {
   const agent = new JacsAgent();
-  agent.load('./jacs.config.json');
+  await agent.load('./jacs.config.json');
   console.log('Agent loaded successfully!');
 } catch (error) {
   console.error('Error loading agent:', error);
@@ -4101,26 +4098,21 @@ try {
 <pre><code class="language-bash">node test.js
 </code></pre>
 <h2 id="package-structure"><a class="header" href="#package-structure">Package Structure</a></h2>
-<p>The <code>@hai.ai/jacs</code> package includes several modules:</p>
-<h3 id="core-module-haiaijacs"><a class="header" href="#core-module-haiaijacs">Core Module (<code>@hai.ai/jacs</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsAgent,
-  JacsConfig,
-  JacsDocument,
-  JacsError
-} from '@hai.ai/jacs';
+<p>The <code>@hai.ai/jacs</code> package exposes these entry points:</p>
+<h3 id="core-and-simple-api"><a class="header" href="#core-and-simple-api">Core and simple API</a></h3>
+<pre><code class="language-javascript">import { JacsAgent, hashString, createConfig } from '@hai.ai/jacs';
+import * as jacs from '@hai.ai/jacs/simple';  // quickstart, load, signMessage, verify, etc.
 </code></pre>
-<h3 id="mcp-integration-haiaijacsmcp"><a class="header" href="#mcp-integration-haiaijacsmcp">MCP Integration (<code>@hai.ai/jacs/mcp</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsMcpServer,
-  createJacsMiddleware 
-} from '@hai.ai/jacs/mcp';
+<h3 id="instance-based-client-recommended-for-new-code"><a class="header" href="#instance-based-client-recommended-for-new-code">Instance-based client (recommended for new code)</a></h3>
+<pre><code class="language-javascript">import { JacsClient } from '@hai.ai/jacs/client';
 </code></pre>
-<h3 id="http-server-haiaijacshttp"><a class="header" href="#http-server-haiaijacshttp">HTTP Server (<code>@hai.ai/jacs/http</code>)</a></h3>
-<pre><code class="language-javascript">import { 
-  JacsHttpServer,
-  createJacsRouter 
-} from '@hai.ai/jacs/http';
+<h3 id="mcp-haiaijacsmcp"><a class="header" href="#mcp-haiaijacsmcp">MCP (<code>@hai.ai/jacs/mcp</code>)</a></h3>
+<pre><code class="language-javascript">import { createJACSTransportProxy, createJACSTransportProxyAsync, registerJacsTools } from '@hai.ai/jacs/mcp';
+</code></pre>
+<h3 id="http--framework-adapters"><a class="header" href="#http--framework-adapters">HTTP / framework adapters</a></h3>
+<pre><code class="language-javascript">import { jacsMiddleware } from '@hai.ai/jacs/express';
+import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
+import { JACSExpressMiddleware, JACSKoaMiddleware } from '@hai.ai/jacs/http';  // legacy
 </code></pre>
 <h2 id="typescript-support"><a class="header" href="#typescript-support">TypeScript Support</a></h2>
 <p>The package includes full TypeScript definitions:</p>
@@ -4129,8 +4121,8 @@ try {
 // Create an agent instance
 const agent: JacsAgent = new JacsAgent();
 
-// Load configuration from file
-agent.load('./jacs.config.json');
+// Load configuration from file (async)
+await agent.load('./jacs.config.json');
 
 // Use utility functions
 const hash: string = hashString('some data');
@@ -4195,12 +4187,18 @@ export JACS_DEFAULT_STORAGE="fs"
   "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h3 id="s3-storage"><a class="header" href="#s3-storage">S3 Storage</a></h3>
+<h3 id="local-indexed-sqlite"><a class="header" href="#local-indexed-sqlite">Local Indexed SQLite</a></h3>
 <pre><code class="language-json">{
-  "jacs_default_storage": "s3"
+  "jacs_default_storage": "rusqlite"
 }
 </code></pre>
-<p>S3 credentials are read from standard AWS environment variables.</p>
+<p>Use <code>rusqlite</code> when you want local full-text search and the upgraded <code>DocumentService</code> behavior in bindings and MCP.</p>
+<h3 id="aws-storage"><a class="header" href="#aws-storage">AWS Storage</a></h3>
+<pre><code class="language-json">{
+  "jacs_default_storage": "aws"
+}
+</code></pre>
+<p>AWS credentials are read from standard AWS environment variables.</p>
 <h3 id="memory-storage-testing"><a class="header" href="#memory-storage-testing">Memory Storage (Testing)</a></h3>
 <pre><code class="language-json">{
   "jacs_default_storage": "memory"
@@ -4272,24 +4270,23 @@ export JACS_DEFAULT_STORAGE="fs"
 <pre><code class="language-javascript">// src/app.js
 import { JacsAgent } from '@hai.ai/jacs';
 
-// Create and load agent
-const agent = new JacsAgent();
-agent.load('./jacs.config.json');
+async function main() {
+  const agent = new JacsAgent();
+  await agent.load('./jacs.config.json');
 
-// Create a document
-const documentJson = JSON.stringify({
-  title: "My First Document",
-  content: "Hello from Node.js!"
-});
+  const documentJson = JSON.stringify({
+    title: "My First Document",
+    content: "Hello from Node.js!"
+  });
 
-const signedDoc = agent.createDocument(documentJson);
-console.log('Document created:', signedDoc);
+  const signedDoc = await agent.createDocument(documentJson);
+  console.log('Document created:', signedDoc);
 
-// Verify the document
-const isValid = agent.verifyDocument(signedDoc);
-console.log('Document valid:', isValid);
-
-console.log('JACS agent ready!');
+  const isValid = await agent.verifyDocument(signedDoc);
+  console.log('Document valid:', isValid);
+  console.log('JACS agent ready!');
+}
+main().catch(console.error);
 </code></pre>
 <h2 id="common-issues"><a class="header" href="#common-issues">Common Issues</a></h2>
 <h3 id="module-not-found"><a class="header" href="#module-not-found">Module Not Found</a></h3>
@@ -5207,7 +5204,7 @@ const client = await JacsClient.quickstart({
 const jacsTools = createJacsTools({ client });
 const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 </code></pre>
-<p>The tool set includes:</p>
+<p>The tool set includes 14 tools:</p>
 <ul>
 <li><code>jacs_sign</code></li>
 <li><code>jacs_verify</code></li>
@@ -5216,8 +5213,11 @@ const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 <li><code>jacs_check_agreement</code></li>
 <li><code>jacs_verify_self</code></li>
 <li><code>jacs_trust_agent</code></li>
+<li><code>jacs_trust_agent_with_key</code></li>
 <li><code>jacs_list_trusted</code></li>
 <li><code>jacs_is_trusted</code></li>
+<li><code>jacs_share_public_key</code></li>
+<li><code>jacs_share_agent</code></li>
 <li><code>jacs_audit</code></li>
 <li><code>jacs_agent_info</code></li>
 </ul>
@@ -6507,6 +6507,7 @@ const doc = agent.createDocumentSync(JSON.stringify({ data: 'test' }));
 <h3 id="using-pip"><a class="header" href="#using-pip">Using pip</a></h3>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
+<p>For framework adapters (LangChain, FastAPI, CrewAI, Anthropic, etc.) use optional extras, e.g. <code>pip install jacs[langchain]</code>, <code>jacs[fastapi]</code>, or <code>jacs[all]</code>. Optional: <code>jacs[langgraph]</code>, <code>jacs[ws]</code>. See <a href="python/adapters.html">Framework Adapters</a> and the package <code>pyproject.toml</code>.</p>
 <h3 id="using-conda"><a class="header" href="#using-conda">Using conda</a></h3>
 <pre><code class="language-bash">conda install -c conda-forge jacs
 </code></pre>
@@ -6529,16 +6530,20 @@ pip install -e .
 <p>Create a simple test to verify everything is working:</p>
 <pre><code class="language-python"># test.py
 import jacs
-
 print('JACS Python bindings loaded successfully!')
 
-# Test basic functionality
-try:
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-    print('Agent loaded successfully!')
-except Exception as error:
-    print(f'Error loading agent: {error}')
+# Quick check (no config file; in-memory agent)
+from jacs.client import JacsClient
+client = JacsClient.ephemeral()
+signed = client.sign_message({"hello": "jacs"})
+result = client.verify(signed.raw_json)
+print('Sign &amp; verify OK:', result.valid)
+</code></pre>
+<p>Or with an existing config file:</p>
+<pre><code class="language-python">import jacs
+agent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
+print('Agent loaded successfully!')
 </code></pre>
 <p>Run the test:</p>
 <pre><code class="language-bash">python test.py
@@ -6620,12 +6625,18 @@ export JACS_DEFAULT_STORAGE="fs"
   "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h3 id="s3-storage-1"><a class="header" href="#s3-storage-1">S3 Storage</a></h3>
+<h3 id="local-indexed-sqlite-1"><a class="header" href="#local-indexed-sqlite-1">Local Indexed SQLite</a></h3>
 <pre><code class="language-json">{
-  "jacs_default_storage": "s3"
+  "jacs_default_storage": "rusqlite"
 }
 </code></pre>
-<p>S3 credentials are read from standard AWS environment variables.</p>
+<p>Use <code>rusqlite</code> when you want local full-text search and the upgraded <code>DocumentService</code> behavior in bindings and MCP.</p>
+<h3 id="aws-storage-1"><a class="header" href="#aws-storage-1">AWS Storage</a></h3>
+<pre><code class="language-json">{
+  "jacs_default_storage": "aws"
+}
+</code></pre>
+<p>AWS credentials are read from standard AWS environment variables.</p>
 <h3 id="memory-storage-testing-1"><a class="header" href="#memory-storage-testing-1">Memory Storage (Testing)</a></h3>
 <pre><code class="language-json">{
   "jacs_default_storage": "memory"
@@ -6680,7 +6691,7 @@ export JACS_DEFAULT_STORAGE="fs"
     └── test_jacs.py
 </code></pre>
 <h3 id="requirementstxt-setup"><a class="header" href="#requirementstxt-setup">Requirements.txt Setup</a></h3>
-<pre><code>jacs&gt;=0.1.0
+<pre><code>jacs&gt;=0.9.0
 fastapi&gt;=0.100.0  # For FastMCP integration
 uvicorn&gt;=0.23.0   # For ASGI server
 pydantic&gt;=2.0.0   # For data validation
@@ -6928,11 +6939,12 @@ info = jacs.quickstart(
 )
 </code></pre>
 <hr />
-<h3 id="loadconfig_pathnone"><a class="header" href="#loadconfig_pathnone">load(config_path=None)</a></h3>
+<h3 id="loadconfig_pathnone-strictnone"><a class="header" href="#loadconfig_pathnone-strictnone">load(config_path=None, strict=None)</a></h3>
 <p>Load a persistent agent from a configuration file. Use this instead of <code>quickstart(name=..., domain=..., ...)</code> when you want to load a specific config file explicitly.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
 <li><code>config_path</code> (str, optional): Path to jacs.config.json (default: "./jacs.config.json")</li>
+<li><code>strict</code> (bool, optional): If True, verification failures raise; if None, uses <code>JACS_STRICT_MODE</code> env var</li>
 </ul>
 <p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
 <p><strong>Raises:</strong> <code>JacsError</code> if config not found or invalid</p>
@@ -7008,7 +7020,7 @@ embedded = jacs.sign_file("contract.pdf", embed=True)
 <p>Verify a signed document and extract its content.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
-<li><code>signed_document</code> (str): The JSON string of the signed document</li>
+<li><code>signed_document</code> (str|dict|SignedDocument): The signed document as JSON string, dict, or SignedDocument</li>
 </ul>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
 <p><strong>Raises:</strong> <code>AgentNotLoadedError</code> if no agent is loaded</p>
@@ -7025,6 +7037,16 @@ else:
 <p>Verify a signed document <strong>without</strong> loading an agent. Use when you only need to verify (e.g. a lightweight API).</p>
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
+<h3 id="verify_by_iddocument_id"><a class="header" href="#verify_by_iddocument_id">verify_by_id(document_id)</a></h3>
+<p>Verify a document by its storage ID (<code>uuid:version</code>) without passing the full JSON. Requires the document to be stored locally (e.g. in the agent's data directory).</p>
+<p><strong>Parameters:</strong> <code>document_id</code> (str): Document ID in format <code>"uuid:version"</code></p>
+<p><strong>Returns:</strong> <code>VerificationResult</code></p>
+<hr />
+<h3 id="reencrypt_keyold_password-new_password"><a class="header" href="#reencrypt_keyold_password-new_password">reencrypt_key(old_password, new_password)</a></h3>
+<p>Re-encrypt the loaded agent's private key with a new password.</p>
+<p><strong>Parameters:</strong> <code>old_password</code> (str), <code>new_password</code> (str)</p>
+<p><strong>Raises:</strong> <code>AgentNotLoadedError</code> if no agent loaded; <code>JacsError</code> if password is wrong</p>
 <hr />
 <h3 id="auditconfig_pathnone-recent_nnone"><a class="header" href="#auditconfig_pathnone-recent_nnone">audit(config_path=None, recent_n=None)</a></h3>
 <p>Run a read-only security audit and health checks. Returns a dict with <code>risks</code>, <code>health_checks</code>, <code>summary</code>, and <code>overall_status</code>. Does not require a loaded agent; does not modify state.</p>
@@ -7150,9 +7172,9 @@ class VerificationResult:
 class Attachment:
     filename: str       # Original filename
     mime_type: str      # MIME type
-    hash: str           # SHA-256 hash
-    embedded: bool      # True if content is embedded
-    content: Optional[bytes] = None  # Embedded content (if available)
+    content_hash: str   # SHA-256 hash of file content
+    content: Optional[str] = None  # Base64-encoded content (if embedded)
+    size_bytes: int = 0 # Size of the original file
 </code></pre>
 <h3 id="exceptions"><a class="header" href="#exceptions">Exceptions</a></h3>
 <pre><code class="language-python">class JacsError(Exception):
@@ -7283,7 +7305,7 @@ if not result.valid:
 <li><a href="python/mcp.html">MCP Integration</a> - Model Context Protocol</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h1>
-<p>This chapter covers fundamental JACS operations in Python, including agent initialization, document creation, signing, and verification.</p>
+<p>This chapter covers fundamental JACS operations in Python. For quick signing and verification, start with the <strong><a href="python/simple-api.html">Simplified API</a></strong> (<code>jacs.simple</code>) or <strong>JacsClient</strong>; the sections below use the <code>JacsAgent</code> class directly for fine-grained control.</p>
 <h2 id="initializing-an-agent-1"><a class="header" href="#initializing-an-agent-1">Initializing an Agent</a></h2>
 <h3 id="create-and-load-agent-1"><a class="header" href="#create-and-load-agent-1">Create and Load Agent</a></h3>
 <pre><code class="language-python">import jacs
@@ -7746,6 +7768,7 @@ pip install jacs[fastapi]
 pip install jacs[crewai]
 pip install jacs[anthropic]
 </code></pre>
+<p>Optional: <code>jacs[langgraph]</code> (LangGraph ToolNode), <code>jacs[ws]</code> (WebSockets). See <code>pyproject.toml</code> for the full list.</p>
 <h2 id="langchain--langgraph"><a class="header" href="#langchain--langgraph">LangChain / LangGraph</a></h2>
 <p>This is the smallest JACS path if your model already lives in LangChain.</p>
 <h3 id="langchain-middleware"><a class="header" href="#langchain-middleware">LangChain middleware</a></h3>
@@ -7835,6 +7858,7 @@ def get_weather(location: str) -&gt; str:
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="api-reference-4"><a class="header" href="#api-reference-4">API Reference</a></h1>
 <p>Complete API documentation for the <code>jacs</code> Python package.</p>
+<p>For most use cases, the <strong><a href="python/simple-api.html">Simplified API</a></strong> (<code>jacs.simple</code>) and <strong><a href="python/simple-api.html">JacsClient</a></strong> (instance-based, multiple agents) are recommended. This page documents the lower-level <code>JacsAgent</code> class and module-level functions.</p>
 <h2 id="installation-5"><a class="header" href="#installation-5">Installation</a></h2>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
@@ -8294,12 +8318,13 @@ for t in threads:
 <div style="break-before: page; page-break-before: always;"></div><h1 id="go-jacsgo-installation-and-quick-start"><a class="header" href="#go-jacsgo-installation-and-quick-start">Go (<code>jacsgo</code>) Installation and Quick Start</a></h1>
 <p><code>jacsgo</code> provides Go bindings for signing and verifying JACS documents in services, APIs, and agent runtimes.</p>
 <blockquote>
-<p>Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage.</p>
+<p>Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For full MCP surface use the Rust <code>jacs-mcp</code> server; the Go MCP examples in the repo are demo code.</p>
 </blockquote>
 <h2 id="install-5"><a class="header" href="#install-5">Install</a></h2>
 <pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
 </code></pre>
 <h2 id="minimal-sign--verify"><a class="header" href="#minimal-sign--verify">Minimal Sign + Verify</a></h2>
+<p>Create an agent first (CLI: <code>jacs create --name my-agent</code>, or programmatically with <code>jacs.Create()</code> and <code>JACS_PRIVATE_KEY_PASSWORD</code>). Then:</p>
 <pre><code class="language-go">package main
 
 import (
@@ -8310,9 +8335,9 @@ import (
 )
 
 func main() {
-	configPath := "./jacs.config.json"
-	if err := jacs.Load(&amp;configPath); err != nil {
-		log.Fatal("initialize an agent first (for example with `jacs init`)")
+	// Load agent: nil = default ./jacs.config.json
+	if err := jacs.Load(nil); err != nil {
+		log.Fatal("create an agent first: jacs create --name my-agent")
 	}
 
 	signed, err := jacs.SignMessage(map[string]interface{}{
@@ -8331,6 +8356,10 @@ func main() {
 	fmt.Printf("Valid: %t signer=%s\n", result.Valid, result.SignerID)
 }
 </code></pre>
+<h2 id="programmatic-agent-creation"><a class="header" href="#programmatic-agent-creation">Programmatic agent creation</a></h2>
+<p>Use <code>jacs.Create(name, &amp;jacs.CreateAgentOptions{...})</code>. Password must be set in options or via <code>JACS_PRIVATE_KEY_PASSWORD</code>. See the <a href="https://github.com/HumanAssisted/JACS/tree/main/jacsgo">jacsgo README</a> for the full API table and options.</p>
+<h2 id="concurrent-use"><a class="header" href="#concurrent-use">Concurrent use</a></h2>
+<p>For multiple agents in one process, use <code>NewJacsAgent()</code>, then <code>agent.Load(path)</code> and agent methods; call <code>agent.Close()</code> when done. Attestation, A2A (agent cards, trust policy), and protocol helpers are available on <code>JacsAgent</code> and as package-level wrappers (see godoc or the jacsgo README).</p>
 <h2 id="common-go-use-cases"><a class="header" href="#common-go-use-cases">Common Go Use Cases</a></h2>
 <ul>
 <li>Sign outbound API/MCP payloads before crossing trust boundaries</li>
@@ -11570,450 +11599,108 @@ const client = await JacsClient.quickstart({
 <li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). Use <code>pq2025</code> for new agents and verification hints.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="storage-backends-3"><a class="header" href="#storage-backends-3">Storage Backends</a></h1>
-<p>JACS supports multiple storage backends for persisting documents and agents. This flexibility allows deployment in various environments from local development to cloud infrastructure.</p>
-<h2 id="available-backends"><a class="header" href="#available-backends">Available Backends</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Config Value</th><th>Description</th></tr></thead><tbody>
-<tr><td>Filesystem</td><td><code>fs</code></td><td>Local file storage (default)</td></tr>
-<tr><td>AWS S3</td><td><code>aws</code></td><td>Amazon S3 object storage</td></tr>
-<tr><td>HAI Cloud</td><td><code>hai</code></td><td>HTTP object store via <code>HAI_STORAGE_URL</code></td></tr>
-<tr><td>PostgreSQL</td><td><code>database</code></td><td>PostgreSQL with JSONB queries (requires <code>database</code> feature)</td></tr>
-<tr><td>Rusqlite</td><td><code>rusqlite</code></td><td>Embedded SQLite (requires <code>rusqlite-storage</code> feature)</td></tr>
-<tr><td>DuckDB</td><td><code>duckdb</code></td><td>Embedded analytical DB (requires <code>duckdb-storage</code> feature)</td></tr>
-<tr><td>Redb</td><td><code>redb</code></td><td>Pure-Rust embedded KV (requires <code>redb-storage</code> feature)</td></tr>
-<tr><td>SurrealDB</td><td><code>surrealdb</code></td><td>Multi-model DB with SurrealQL (requires <code>surrealdb-storage</code> feature)</td></tr>
+<p>JACS has two storage layers today:</p>
+<ul>
+<li>Low-level file/object storage via <code>MultiStorage</code></li>
+<li>Signed document CRUD/search via <code>DocumentService</code></li>
+</ul>
+<p>Those are related, but they are not identical. The most important rule is the signed-document contract:</p>
+<ul>
+<li>Every <code>DocumentService</code> read verifies the stored JACS document before returning it.</li>
+<li>Every <code>create()</code> and <code>update()</code> verifies the signed document before persisting it.</li>
+<li>If an update payload changes an already-signed JACS document without re-signing it, the write fails.</li>
+<li>Visibility changes create a new signed version instead of mutating metadata in place.</li>
+</ul>
+<h2 id="built-in-core-backends"><a class="header" href="#built-in-core-backends">Built-in Core Backends</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Config Value</th><th>Core Surface</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Filesystem</td><td><code>fs</code></td><td><code>MultiStorage</code> + <code>DocumentService</code></td><td>Default. Signed JSON files on disk.</td></tr>
+<tr><td>Local indexed SQLite</td><td><code>rusqlite</code></td><td><code>DocumentService</code> + <code>SearchProvider</code></td><td>Stores signed documents in a local SQLite DB with FTS search.</td></tr>
+<tr><td>AWS object storage</td><td><code>aws</code></td><td><code>MultiStorage</code></td><td>Object-store backend.</td></tr>
+<tr><td>Memory</td><td><code>memory</code></td><td><code>MultiStorage</code></td><td>Non-persistent, useful for tests and temporary flows.</td></tr>
+<tr><td>Browser local storage</td><td><code>local</code></td><td><code>MultiStorage</code></td><td>WASM-only.</td></tr>
 </tbody></table>
 </div>
-<h2 id="configuration-11"><a class="header" href="#configuration-11">Configuration</a></h2>
-<p>Set the storage backend in your configuration:</p>
+<p>For local indexed document search in JACS core, use <code>rusqlite</code>.</p>
+<h2 id="filesystem-fs"><a class="header" href="#filesystem-fs">Filesystem (<code>fs</code>)</a></h2>
+<p>Filesystem is the default signed-document backend.</p>
 <pre><code class="language-json">{
   "jacs_default_storage": "fs",
-  "jacs_data_directory": "./jacs_data"
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h2 id="filesystem-storage-fs"><a class="header" href="#filesystem-storage-fs">Filesystem Storage (fs)</a></h2>
-<p>The default storage backend, storing documents as JSON files on the local filesystem.</p>
-<h3 id="configuration-12"><a class="header" href="#configuration-12">Configuration</a></h3>
+<p>Typical layout:</p>
+<pre><code class="language-text">jacs_data/
+├── agent/
+│   └── {agent-id}:{agent-version}.json
+└── documents/
+    ├── {document-id}:{version}.json
+    └── archive/
+</code></pre>
+<p>Use filesystem when you want the simplest possible deployment, inspectable files, and no local database dependency.</p>
+<h2 id="local-indexed-sqlite-rusqlite"><a class="header" href="#local-indexed-sqlite-rusqlite">Local Indexed SQLite (<code>rusqlite</code>)</a></h2>
+<p><code>rusqlite</code> is the built-in indexed document backend used by the upgraded bindings and MCP search path.</p>
 <pre><code class="language-json">{
-  "jacs_default_storage": "fs",
-  "jacs_data_directory": "./jacs_data"
+  "jacs_default_storage": "rusqlite",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h3 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h3>
-<pre><code>jacs_data/
-├── agents/
-│   └── {agent-id}/
-│       └── {version-id}.json
-├── documents/
-│   └── {document-id}/
-│       └── {version-id}.json
-└── files/
-    └── {attachment-hash}
-</code></pre>
-<h3 id="use-cases-5"><a class="header" href="#use-cases-5">Use Cases</a></h3>
+<p>With this setting:</p>
 <ul>
-<li>Local development</li>
-<li>Single-server deployments</li>
-<li>Testing and prototyping</li>
-<li>Air-gapped environments</li>
+<li>Signed documents are stored in <code>./jacs_data/jacs_documents.sqlite3</code></li>
+<li>Full-text search comes from SQLite FTS</li>
+<li><code>DocumentService</code> reads and writes enforce verification</li>
+<li>Updating visibility creates a new signed successor version</li>
 </ul>
-<h3 id="advantages"><a class="header" href="#advantages">Advantages</a></h3>
-<ul>
-<li>Simple setup</li>
-<li>No network dependencies</li>
-<li>Fast local access</li>
-<li>Easy backup and migration</li>
-</ul>
-<h3 id="considerations-3"><a class="header" href="#considerations-3">Considerations</a></h3>
-<ul>
-<li>Not suitable for distributed systems</li>
-<li>Limited by local disk space</li>
-<li>Single point of failure</li>
-</ul>
-<h3 id="example-4"><a class="header" href="#example-4">Example</a></h3>
-<pre><code class="language-python">import jacs
-import json
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')  # Using filesystem storage
-
-# Documents are saved to jacs_data/documents/
-doc = agent.create_document(json.dumps({
-    'title': 'My Document'
-}))
-# Saved to: jacs_data/documents/{doc-id}/{version-id}.json
-</code></pre>
-<h2 id="aws-s3-storage-aws"><a class="header" href="#aws-s3-storage-aws">AWS S3 Storage (aws)</a></h2>
-<p>Cloud object storage using Amazon S3.</p>
-<h3 id="configuration-13"><a class="header" href="#configuration-13">Configuration</a></h3>
+<p>Use <code>rusqlite</code> when you want local full-text search, filtered document queries, and a single-machine deployment.</p>
+<h2 id="aws-aws"><a class="header" href="#aws-aws">AWS (<code>aws</code>)</a></h2>
+<p>AWS support is an object-store backend for lower-level storage operations.</p>
 <pre><code class="language-json">{
-  "jacs_default_storage": "aws",
-  "jacs_data_directory": "s3://my-jacs-bucket/data"
+  "jacs_default_storage": "aws"
 }
 </code></pre>
-<h3 id="environment-variables-6"><a class="header" href="#environment-variables-6">Environment Variables</a></h3>
-<pre><code class="language-bash">export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-export AWS_REGION="us-east-1"
+<p>Required environment variables:</p>
+<pre><code class="language-bash">export JACS_ENABLE_AWS_BUCKET_NAME="my-jacs-bucket"
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_REGION="us-west-2"
 </code></pre>
-<h3 id="bucket-structure"><a class="header" href="#bucket-structure">Bucket Structure</a></h3>
-<pre><code>my-jacs-bucket/
-├── data/
-│   ├── agents/
-│   │   └── {agent-id}/
-│   │       └── {version-id}.json
-│   ├── documents/
-│   │   └── {document-id}/
-│   │       └── {version-id}.json
-│   └── files/
-│       └── {attachment-hash}
-</code></pre>
-<h3 id="use-cases-6"><a class="header" href="#use-cases-6">Use Cases</a></h3>
-<ul>
-<li>Production deployments</li>
-<li>Distributed systems</li>
-<li>High availability requirements</li>
-<li>Large document volumes</li>
-</ul>
-<h3 id="advantages-1"><a class="header" href="#advantages-1">Advantages</a></h3>
-<ul>
-<li>Scalable storage</li>
-<li>High durability (99.999999999%)</li>
-<li>Geographic redundancy</li>
-<li>Built-in versioning support</li>
-</ul>
-<h3 id="considerations-4"><a class="header" href="#considerations-4">Considerations</a></h3>
-<ul>
-<li>Requires AWS account</li>
-<li>Network latency</li>
-<li>Storage costs</li>
-<li>IAM configuration needed</li>
-</ul>
-<h3 id="iam-policy"><a class="header" href="#iam-policy">IAM Policy</a></h3>
-<p>Minimum required permissions:</p>
+<p>Use <code>aws</code> when you need remote object storage. If you also need a richer signed-document query surface, use one of the database-focused crates below.</p>
+<h2 id="memory-memory"><a class="header" href="#memory-memory">Memory (<code>memory</code>)</a></h2>
+<p>Memory storage is non-persistent:</p>
 <pre><code class="language-json">{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::my-jacs-bucket",
-        "arn:aws:s3:::my-jacs-bucket/*"
-      ]
-    }
-  ]
+  "jacs_default_storage": "memory"
 }
 </code></pre>
-<h3 id="example-5"><a class="header" href="#example-5">Example</a></h3>
-<pre><code class="language-python">import jacs
-import json
-import os
-
-# Set AWS credentials
-os.environ['AWS_ACCESS_KEY_ID'] = 'your-key'
-os.environ['AWS_SECRET_ACCESS_KEY'] = 'your-secret'
-os.environ['AWS_REGION'] = 'us-east-1'
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.s3.config.json')
-
-# Documents are saved to S3
-doc = agent.create_document(json.dumps({
-    'title': 'Cloud Document'
-}))
-</code></pre>
-<h2 id="hai-cloud-storage-hai"><a class="header" href="#hai-cloud-storage-hai">HAI Cloud Storage (hai)</a></h2>
-<p>HTTP object store pointed at <code>HAI_STORAGE_URL</code>. This backend uses <code>object_store::http::HttpStore</code> under the hood — it is a generic HTTP store, not a managed platform.</p>
-<p>For HAI platform registration, attestation, and key discovery, use the separate <a href="https://github.com/HumanAssisted/haisdk">haisdk</a> package.</p>
-<h3 id="configuration-14"><a class="header" href="#configuration-14">Configuration</a></h3>
-<pre><code class="language-json">{
-  "jacs_default_storage": "hai"
-}
-</code></pre>
-<pre><code class="language-bash">export HAI_STORAGE_URL="https://storage.hai.ai/v1"
-</code></pre>
-<h3 id="use-cases-7"><a class="header" href="#use-cases-7">Use Cases</a></h3>
+<p>Use it for tests, temporary operations, and ephemeral agent flows.</p>
+<h2 id="extracted-backend-crates"><a class="header" href="#extracted-backend-crates">Extracted Backend Crates</a></h2>
+<p>Several richer database backends now live outside the JACS core crate:</p>
 <ul>
-<li>Remote document storage via HTTP</li>
-<li>Integration with HAI storage endpoints</li>
+<li><code>jacs-postgresql</code></li>
+<li><code>jacs-duckdb</code></li>
+<li><code>jacs-redb</code></li>
+<li><code>jacs-surrealdb</code></li>
 </ul>
-<h2 id="postgresql-database-storage-database"><a class="header" href="#postgresql-database-storage-database">PostgreSQL Database Storage (database)</a></h2>
-<p>The <code>database</code> storage backend stores JACS documents in PostgreSQL, enabling JSONB queries, pagination, and agent-based lookups while preserving cryptographic signatures.</p>
-<p>This backend is behind a compile-time feature flag and requires the <code>database</code> Cargo feature to be enabled.</p>
-<h3 id="compile-time-setup"><a class="header" href="#compile-time-setup">Compile-Time Setup</a></h3>
-<pre><code class="language-bash"># Build with database support
-cargo build --features database
-
-# Run tests with database support (requires Docker for testcontainers)
-cargo test --features database-tests
-</code></pre>
-<h3 id="configuration-15"><a class="header" href="#configuration-15">Configuration</a></h3>
-<pre><code class="language-json">{
-  "jacs_default_storage": "database"
-}
-</code></pre>
-<p>Environment variables (12-Factor compliant):</p>
-<pre><code class="language-bash">export JACS_DATABASE_URL="postgres://user:password@localhost:5432/jacs"
-export JACS_DATABASE_MAX_CONNECTIONS=10       # optional, default 10
-export JACS_DATABASE_MIN_CONNECTIONS=1        # optional, default 1
-export JACS_DATABASE_CONNECT_TIMEOUT_SECS=30  # optional, default 30
-</code></pre>
-<h3 id="how-it-works-3"><a class="header" href="#how-it-works-3">How It Works</a></h3>
-<p>JACS uses a <strong>TEXT + JSONB dual-column</strong> strategy:</p>
-<ul>
-<li><strong><code>raw_contents</code> (TEXT)</strong>: Stores the exact JSON bytes as-is. This is used when retrieving documents to preserve cryptographic signatures (PostgreSQL JSONB normalizes key ordering, which would break signatures).</li>
-<li><strong><code>file_contents</code> (JSONB)</strong>: Stores the same document as JSONB for efficient queries, field extraction, and indexing.</li>
-</ul>
-<h3 id="table-schema"><a class="header" href="#table-schema">Table Schema</a></h3>
-<pre><code class="language-sql">CREATE TABLE jacs_document (
-    jacs_id TEXT NOT NULL,
-    jacs_version TEXT NOT NULL,
-    agent_id TEXT,
-    jacs_type TEXT NOT NULL,
-    raw_contents TEXT NOT NULL,
-    file_contents JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (jacs_id, jacs_version)
-);
-</code></pre>
-<h3 id="append-only-model"><a class="header" href="#append-only-model">Append-Only Model</a></h3>
-<p>Documents are <strong>immutable once stored</strong>. New versions create new rows keyed by <code>(jacs_id, jacs_version)</code>. There are no UPDATE operations on existing rows. Inserting a duplicate <code>(jacs_id, jacs_version)</code> is silently ignored (<code>ON CONFLICT DO NOTHING</code>).</p>
-<h3 id="query-capabilities"><a class="header" href="#query-capabilities">Query Capabilities</a></h3>
-<p>The database backend provides additional query methods beyond basic CRUD:</p>
-<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>query_by_type(type, limit, offset)</code></td><td>Paginated queries by document type</td></tr>
-<tr><td><code>query_by_field(field, value, type, limit, offset)</code></td><td>JSONB field queries</td></tr>
-<tr><td><code>count_by_type(type)</code></td><td>Count documents by type</td></tr>
-<tr><td><code>get_versions(id)</code></td><td>All versions of a document</td></tr>
-<tr><td><code>get_latest(id)</code></td><td>Most recent version</td></tr>
-<tr><td><code>query_by_agent(agent_id, type, limit, offset)</code></td><td>Documents by signing agent</td></tr>
+<p>These crates implement the same storage/search traits in their own packages. They are not built-in <code>jacs_default_storage</code> values for the core crate.</p>
+<h2 id="choosing-a-backend"><a class="header" href="#choosing-a-backend">Choosing a Backend</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommendation</th></tr></thead><tbody>
+<tr><td>Default local usage</td><td><code>fs</code></td></tr>
+<tr><td>Local search + filtering</td><td><code>rusqlite</code></td></tr>
+<tr><td>Ephemeral tests</td><td><code>memory</code></td></tr>
+<tr><td>Remote object storage</td><td><code>aws</code></td></tr>
+<tr><td>Postgres / vector / multi-model needs</td><td>Use an extracted backend crate</td></tr>
 </tbody></table>
 </div>
-<h3 id="rust-api-example"><a class="header" href="#rust-api-example">Rust API Example</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use jacs::storage::{DatabaseStorage, DatabaseDocumentTraits, StorageDocumentTraits};
-
-// Create storage (requires tokio runtime)
-let storage = DatabaseStorage::new(
-    "postgres://localhost/jacs",
-    Some(10),  // max connections
-    Some(1),   // min connections
-    Some(30),  // timeout seconds
-)?;
-
-// Run migrations (creates table + indexes)
-storage.run_migrations()?;
-
-// Store a document
-storage.store_document(&amp;doc)?;
-
-// Query by type with pagination
-let commitments = storage.query_by_type("commitment", 10, 0)?;
-
-// Query by JSONB field
-let active = storage.query_by_field(
-    "jacsCommitmentStatus", "active", Some("commitment"), 10, 0
-)?;
-
-// Get latest version
-let latest = storage.get_latest("some-document-id")?;
-<span class="boring">}</span></code></pre></pre>
-<h3 id="security-note"><a class="header" href="#security-note">Security Note</a></h3>
-<p>Even when using database storage, <strong>keys are always loaded from the filesystem or keyservers</strong> -- never from the database or configuration providers. The database stores only signed documents.</p>
-<h3 id="use-cases-8"><a class="header" href="#use-cases-8">Use Cases</a></h3>
-<ul>
-<li>Production deployments requiring complex queries</li>
-<li>Multi-agent systems with shared document visibility</li>
-<li>Applications needing pagination and aggregation</li>
-<li>Environments where JSONB indexing provides significant query performance</li>
-</ul>
-<h3 id="considerations-5"><a class="header" href="#considerations-5">Considerations</a></h3>
-<ul>
-<li>Requires PostgreSQL 14+</li>
-<li>Requires tokio runtime (not available in WASM)</li>
-<li>Compile-time feature flag (<code>database</code>)</li>
-<li>Network dependency on PostgreSQL server</li>
-</ul>
-<h2 id="embedded-database-backends"><a class="header" href="#embedded-database-backends">Embedded Database Backends</a></h2>
-<p>Four lightweight embedded database backends are available behind feature flags. None require an external server.</p>
-<h3 id="rusqlite-rusqlite-storage"><a class="header" href="#rusqlite-rusqlite-storage">Rusqlite (<code>rusqlite-storage</code>)</a></h3>
-<p>Embedded SQLite via rusqlite with WAL mode enabled. Pinned to rusqlite v0.31.</p>
-<pre><code class="language-bash">cargo build --features rusqlite-storage
-cargo test --features rusqlite-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You want SQL queries on a single-file database with no external dependencies.</p>
-<h3 id="duckdb-duckdb-storage"><a class="header" href="#duckdb-duckdb-storage">DuckDB (<code>duckdb-storage</code>)</a></h3>
-<p>Embedded analytical database with JSON path queries.</p>
-<pre><code class="language-bash">cargo build --features duckdb-storage
-cargo test --features duckdb-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You need analytical queries or columnar storage over signed documents.</p>
-<h3 id="redb-redb-storage"><a class="header" href="#redb-redb-storage">Redb (<code>redb-storage</code>)</a></h3>
-<p>Pure-Rust embedded key-value store. No C dependencies.</p>
-<pre><code class="language-bash">cargo build --features redb-storage
-cargo test --features redb-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You want the simplest embedded backend with zero non-Rust dependencies.</p>
-<h3 id="surrealdb-surrealdb-storage"><a class="header" href="#surrealdb-surrealdb-storage">SurrealDB (<code>surrealdb-storage</code>)</a></h3>
-<p>Multi-model database with SurrealQL. Uses <code>kv-mem</code> for in-memory mode.</p>
-<pre><code class="language-bash">cargo build --features surrealdb-storage
-cargo test --features surrealdb-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You want a multi-model query language or plan to scale to a SurrealDB cluster later.</p>
-<h2 id="in-memory-storage"><a class="header" href="#in-memory-storage">In-Memory Storage</a></h2>
-<p>For testing and temporary operations, documents can be created without saving:</p>
-<pre><code class="language-python"># Create document without saving
-doc = agent.create_document(
-    json.dumps({'temp': 'data'}),
-    no_save=True  # Don't persist
-)
-</code></pre>
-<pre><code class="language-javascript">const doc = agent.createDocument(
-  JSON.stringify({ temp: 'data' }),
-  null,  // custom_schema
-  null,  // output_filename
-  true   // no_save = true
-);
-</code></pre>
-<h2 id="storage-selection-guide"><a class="header" href="#storage-selection-guide">Storage Selection Guide</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Backend</th></tr></thead><tbody>
-<tr><td>Development</td><td><code>fs</code></td></tr>
-<tr><td>Single server</td><td><code>fs</code></td></tr>
-<tr><td>Complex queries needed</td><td><code>database</code></td></tr>
-<tr><td>Multi-agent with shared queries</td><td><code>database</code></td></tr>
-<tr><td>Cloud deployment</td><td><code>aws</code></td></tr>
-<tr><td>High availability</td><td><code>aws</code></td></tr>
-<tr><td>Multi-organization</td><td><code>hai</code></td></tr>
-<tr><td>Embedded SQL queries</td><td><code>rusqlite</code></td></tr>
-<tr><td>Analytical queries</td><td><code>duckdb</code></td></tr>
-<tr><td>Zero C-dep embedded KV</td><td><code>redb</code></td></tr>
-<tr><td>Multi-model queries</td><td><code>surrealdb</code></td></tr>
-<tr><td>Testing</td><td>In-memory (no_save)</td></tr>
-</tbody></table>
-</div>
-<h2 id="file-storage"><a class="header" href="#file-storage">File Storage</a></h2>
-<h3 id="embedded-files"><a class="header" href="#embedded-files">Embedded Files</a></h3>
-<p>Files can be embedded directly in documents:</p>
-<pre><code class="language-python">doc = agent.create_document(
-    json.dumps({'report': 'Monthly Report'}),
-    attachments='./report.pdf',
-    embed=True
-)
-</code></pre>
-<p>The file contents are base64-encoded and stored in <code>jacsFiles</code>.</p>
-<h3 id="external-files"><a class="header" href="#external-files">External Files</a></h3>
-<p>Or reference files without embedding:</p>
-<pre><code class="language-python">doc = agent.create_document(
-    json.dumps({'report': 'Monthly Report'}),
-    attachments='./report.pdf',
-    embed=False
-)
-</code></pre>
-<p>Only the file path and hash are stored. The file must be available when the document is accessed.</p>
-<h2 id="data-migration"><a class="header" href="#data-migration">Data Migration</a></h2>
-<h3 id="filesystem-to-s3"><a class="header" href="#filesystem-to-s3">Filesystem to S3</a></h3>
-<pre><code class="language-python">import jacs
-import json
-import os
-
-# Load from filesystem
-fs_agent = jacs.JacsAgent()
-fs_agent.load('./jacs.fs.config.json')
-
-# Read all documents
-# (implementation depends on your document tracking)
-
-# Configure S3
-s3_agent = jacs.JacsAgent()
-s3_agent.load('./jacs.s3.config.json')
-
-# Re-create documents in S3
-for doc_json in documents:
-    doc = json.loads(doc_json)
-    # Remove existing signatures for re-signing
-    del doc['jacsSignature']
-    del doc['jacsSha256']
-    s3_agent.create_document(json.dumps(doc))
-</code></pre>
-<h3 id="exportimport"><a class="header" href="#exportimport">Export/Import</a></h3>
-<p>For manual migration:</p>
-<pre><code class="language-bash"># Export from filesystem
-tar -czf jacs_backup.tar.gz ./jacs_data
-
-# Import to new location
-tar -xzf jacs_backup.tar.gz -C /new/location
-</code></pre>
-<h2 id="backup-and-recovery"><a class="header" href="#backup-and-recovery">Backup and Recovery</a></h2>
-<h3 id="filesystem-backup"><a class="header" href="#filesystem-backup">Filesystem Backup</a></h3>
-<pre><code class="language-bash"># Regular backups
-rsync -av ./jacs_data/ /backup/jacs_data/
-
-# Or with timestamp
-tar -czf jacs_backup_$(date +%Y%m%d).tar.gz ./jacs_data
-</code></pre>
-<h3 id="s3-backup"><a class="header" href="#s3-backup">S3 Backup</a></h3>
-<p>Enable S3 versioning for automatic backups:</p>
-<pre><code class="language-bash">aws s3api put-bucket-versioning \
-    --bucket my-jacs-bucket \
-    --versioning-configuration Status=Enabled
-</code></pre>
-<h3 id="cross-region-replication"><a class="header" href="#cross-region-replication">Cross-Region Replication</a></h3>
-<p>For disaster recovery with S3:</p>
-<pre><code class="language-bash">aws s3api put-bucket-replication \
-    --bucket my-jacs-bucket \
-    --replication-configuration file://replication.json
-</code></pre>
-<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
-<h3 id="filesystem"><a class="header" href="#filesystem">Filesystem</a></h3>
-<ul>
-<li>Use SSD storage</li>
-<li>Consider separate disk for jacs_data</li>
-<li>Enable filesystem caching</li>
-</ul>
-<h3 id="s3"><a class="header" href="#s3">S3</a></h3>
-<ul>
-<li>Use regional endpoints</li>
-<li>Enable transfer acceleration for global access</li>
-<li>Consider S3 Intelligent-Tiering for cost optimization</li>
-</ul>
-<h3 id="caching-1"><a class="header" href="#caching-1">Caching</a></h3>
-<p>Implement application-level caching for frequently accessed documents:</p>
-<pre><code class="language-python">import functools
-
-@functools.lru_cache(maxsize=100)
-def get_document(doc_id, version_id):
-    return agent.get_document(f"{doc_id}:{version_id}")
-</code></pre>
-<h2 id="security-considerations-6"><a class="header" href="#security-considerations-6">Security Considerations</a></h2>
-<h3 id="filesystem-1"><a class="header" href="#filesystem-1">Filesystem</a></h3>
-<pre><code class="language-bash"># Restrict permissions
-chmod 700 ./jacs_data
-chmod 600 ./jacs_data/**/*.json
-</code></pre>
-<h3 id="s3-1"><a class="header" href="#s3-1">S3</a></h3>
-<ul>
-<li>Enable encryption at rest (SSE-S3 or SSE-KMS)</li>
-<li>Use VPC endpoints for private access</li>
-<li>Enable access logging</li>
-<li>Configure bucket policies carefully</li>
-</ul>
-<pre><code class="language-json">{
-  "jacs_data_directory": "s3://my-jacs-bucket/data",
-  "aws_s3_encryption": "AES256"
-}
-</code></pre>
-<h2 id="see-also-16"><a class="header" href="#see-also-16">See Also</a></h2>
-<ul>
-<li><a href="advanced/../schemas/configuration.html">Configuration</a> - Storage configuration options</li>
-<li><a href="advanced/security.html">Security Model</a> - Storage security</li>
-<li><a href="advanced/../getting-started/quickstart.html">Quick Start</a> - Initial setup</li>
-</ul>
+<h2 id="migration-notes"><a class="header" href="#migration-notes">Migration Notes</a></h2>
+<p>Switching backends does not migrate data automatically.</p>
+<p>When you change <code>jacs_default_storage</code>:</p>
+<ol>
+<li>Export the signed documents you need to keep.</li>
+<li>Update the config value.</li>
+<li>Create/import the new backend’s data store.</li>
+<li>Re-run verification on imported documents as part of migration validation.</li>
+</ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="custom-schemas"><a class="header" href="#custom-schemas">Custom Schemas</a></h1>
 <p>JACS allows you to define custom document schemas that extend the base header schema, enabling type-safe, validated documents for your specific use cases.</p>
 <h2 id="overview-11"><a class="header" href="#overview-11">Overview</a></h2>
@@ -12494,7 +12181,7 @@ try {
 <li>Migrate existing documents</li>
 <li>Deprecate old version</li>
 </ol>
-<h2 id="see-also-17"><a class="header" href="#see-also-17">See Also</a></h2>
+<h2 id="see-also-16"><a class="header" href="#see-also-16">See Also</a></h2>
 <ul>
 <li><a href="advanced/../schemas/overview.html">JSON Schemas Overview</a> - Built-in schemas</li>
 <li><a href="advanced/../schemas/document.html">Document Schema</a> - Header fields</li>
@@ -12502,7 +12189,7 @@ try {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="trust-store-operations"><a class="header" href="#trust-store-operations">Trust Store Operations</a></h1>
 <p>The JACS trust store is a local directory of agent public keys and metadata that your agent has explicitly chosen to trust. It enables offline signature verification without a central authority -- once you trust an agent, you can verify its signatures without network access.</p>
-<h2 id="how-it-works-4"><a class="header" href="#how-it-works-4">How it works</a></h2>
+<h2 id="how-it-works-3"><a class="header" href="#how-it-works-3">How it works</a></h2>
 <p>When you add an agent to your trust store, JACS:</p>
 <ol>
 <li>Parses the agent's JSON document</li>
@@ -12614,7 +12301,7 @@ app.use(jacsMiddleware({ client }));
 <p>Both approaches use the same keys, the same signatures, and the same verification. The difference is who calls <code>sign()</code> -- you, or the framework.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="dns-trust-anchoring"><a class="header" href="#dns-trust-anchoring">DNS Trust Anchoring</a></h1>
 <p>JACS uses DNS TXT records to anchor agent identity to domain names, providing a decentralized trust layer that does not require a central certificate authority. This page explains the trust model, configuration levels, and known limitations.</p>
-<h2 id="how-it-works-5"><a class="header" href="#how-it-works-5">How It Works</a></h2>
+<h2 id="how-it-works-4"><a class="header" href="#how-it-works-4">How It Works</a></h2>
 <p>When an agent has <code>jacsAgentDomain</code> set, JACS publishes a TXT record at <code>_v1.agent.jacs.&lt;domain&gt;</code> containing a fingerprint of the agent's public key. During verification, JACS resolves this record and compares the fingerprint against the agent's actual key material.</p>
 <p>The TXT record format:</p>
 <pre><code>v=hai.ai; id=&lt;agent-uuid&gt;; alg=sha256; enc=base64; fp=&lt;digest&gt;
@@ -12667,7 +12354,7 @@ app.use(jacsMiddleware({ client }));
 </tbody></table>
 </div>
 <p>For production cross-organization deployments, use <code>--require-dns</code> at minimum. Enable DNSSEC on your domain and use <code>--require-strict-dns</code> when the infrastructure supports it.</p>
-<h2 id="see-also-18"><a class="header" href="#see-also-18">See Also</a></h2>
+<h2 id="see-also-17"><a class="header" href="#see-also-17">See Also</a></h2>
 <ul>
 <li><a href="advanced/../rust/dns.html">DNS-Based Verification</a> -- setup guide with provider-specific instructions</li>
 <li><a href="advanced/security.html">Security Model</a> -- broader security architecture</li>
@@ -12702,7 +12389,7 @@ app.use(jacsMiddleware({ client }));
 <p><strong>What happened:</strong> <code>sign_agreement</code> succeeded but <code>save()</code> was never called -- for example, a storage backend failure or process interruption before persistence.</p>
 <p><strong>Error message:</strong> None. This is not an error. After <code>sign_agreement</code> returns successfully, the signed document is immediately retrievable and verifiable from in-memory storage.</p>
 <p><strong>What to do:</strong> Retry the <code>save()</code> call to persist to disk. The in-memory state is consistent: you can retrieve the document with <code>get_document</code>, verify it with <code>check_agreement</code>, serialize it, and transfer it to other agents for additional signatures -- all without saving first.</p>
-<h2 id="see-also-19"><a class="header" href="#see-also-19">See Also</a></h2>
+<h2 id="see-also-18"><a class="header" href="#see-also-18">See Also</a></h2>
 <ul>
 <li><a href="advanced/../rust/agreements.html">Creating and Using Agreements</a> - Agreement creation and signing workflow</li>
 <li><a href="advanced/security.html">Security Model</a> - Overall security architecture</li>
@@ -13452,7 +13139,7 @@ def test_large_document():
 
     assert test_agent.verify_document(corrupted) is False
 </code></pre>
-<h2 id="see-also-20"><a class="header" href="#see-also-20">See Also</a></h2>
+<h2 id="see-also-19"><a class="header" href="#see-also-19">See Also</a></h2>
 <ul>
 <li><a href="advanced/../python/api.html">Python API Reference</a> - API documentation</li>
 <li><a href="advanced/../nodejs/api.html">Node.js API Reference</a> - API documentation</li>
@@ -13463,7 +13150,7 @@ def test_large_document():
 <h2 id="choose-the-mcp-path"><a class="header" href="#choose-the-mcp-path">Choose The MCP Path</a></h2>
 <p>There are three supported ways to use JACS with MCP today:</p>
 <ol>
-<li><strong>Run <code>jacs-mcp</code></strong> when you want a ready-made MCP server with the broadest tool surface.</li>
+<li><strong>Run <code>jacs mcp</code></strong> when you want a ready-made MCP server with the broadest tool surface.</li>
 <li><strong>Wrap an existing MCP transport</strong> when you already have an MCP server or client and want signed JSON-RPC.</li>
 <li><strong>Register JACS as MCP tools</strong> when you want the model to call signing, verification, agreement, A2A, or trust operations directly.</li>
 </ol>
@@ -13480,12 +13167,12 @@ def test_large_document():
 <li><strong>Unsigned fallback is off by default.</strong> Both Python and Node fail closed unless you explicitly allow unsigned fallback.</li>
 <li><strong>Node has two factories.</strong> <code>createJACSTransportProxy()</code> takes a loaded <code>JacsClient</code> or <code>JacsAgent</code>; <code>createJACSTransportProxyAsync()</code> is the config-path variant.</li>
 </ul>
-<h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs-mcp</code></a></h2>
-<p>If you do not already have a custom MCP server, this is the shortest route:</p>
-<pre><code class="language-bash">jacs mcp install
-jacs mcp run
+<h2 id="1-ready-made-server-jacs-mcp"><a class="header" href="#1-ready-made-server-jacs-mcp">1. Ready-Made Server: <code>jacs mcp</code></a></h2>
+<p>Install the unified binary and start the MCP server:</p>
+<pre><code class="language-bash">cargo install jacs-cli
+jacs mcp
 </code></pre>
-<p><code>jacs-mcp</code> is the most complete MCP surface in the repo. It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
+<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
 <h3 id="python-5"><a class="header" href="#python-5">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
@@ -13564,7 +13251,7 @@ const client = await JacsClient.quickstart({
 
 registerJacsTools(server, client);
 </code></pre>
-<p>The Node tool set is intentionally smaller than <code>jacs-mcp</code>. Use <code>jacs-mcp</code> when you need the largest supported MCP surface.</p>
+<p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
 <h2 id="example-paths-in-this-repo-2"><a class="header" href="#example-paths-in-this-repo-2">Example Paths In This Repo</a></h2>
 <ul>
 <li><code>jacs-mcp/README.md</code></li>
@@ -14903,7 +14590,7 @@ cargo build --features otlp-tracing
 <tr><td><code>otlp-tracing</code></td><td>Distributed tracing (opentelemetry, opentelemetry-otlp, tracing-opentelemetry, tokio)</td></tr>
 </tbody></table>
 </div>
-<p>The <code>observability-convenience</code> feature adds automatic counter/gauge recording for sign and verify operations without pulling in any OTLP dependencies.</p>
+<p>Convenience helpers for automatic counter/gauge recording for sign and verify operations are always available without any feature flag.</p>
 <h2 id="otel-collector-configuration"><a class="header" href="#otel-collector-configuration">OTEL Collector Configuration</a></h2>
 <p>Route JACS events through an OpenTelemetry Collector. This configuration receives OTLP over HTTP, batches events, and exports to common backends.</p>
 <pre><code class="language-yaml"># otel-collector-config.yaml
@@ -15318,7 +15005,7 @@ const signed = await jacs.signMessage({
 </code></pre>
 <h2 id="when-not-to-buffer"><a class="header" href="#when-not-to-buffer">When NOT to Buffer</a></h2>
 <p>The buffer-then-sign pattern assumes the full content fits in memory. This is always true for LLM text responses. If you need to sign very large data (multi-GB files, video streams), use <code>sign_file</code> instead, which hashes the file on disk without loading it into memory.</p>
-<h2 id="see-also-21"><a class="header" href="#see-also-21">See Also</a></h2>
+<h2 id="see-also-20"><a class="header" href="#see-also-20">See Also</a></h2>
 <ul>
 <li><a href="guides/../nodejs/vercel-ai.html">Vercel AI SDK Adapter</a></li>
 <li><a href="guides/../python/adapters.html">LangChain Adapters</a></li>
@@ -15808,7 +15495,7 @@ sign_document() {
 # Usage
 sign_document "invoice.json" "signed-invoice.json" || exit 1
 </code></pre>
-<h2 id="see-also-22"><a class="header" href="#see-also-22">See Also</a></h2>
+<h2 id="see-also-21"><a class="header" href="#see-also-21">See Also</a></h2>
 <ul>
 <li><a href="examples/../reference/cli-commands.html">CLI Command Reference</a> - Complete command reference</li>
 <li><a href="examples/../reference/configuration.html">Configuration Reference</a> - Configuration options</li>
@@ -16057,26 +15744,28 @@ async function main() {
 main().catch(console.error);
 </code></pre>
 <h2 id="mcp-integration-2"><a class="header" href="#mcp-integration-2">MCP Integration</a></h2>
-<h3 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h3>
+<h3 id="mcp-server-2"><a class="header" href="#mcp-server-2">MCP Server</a></h3>
 <pre><code class="language-javascript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
-
-const JACS_CONFIG = "./jacs.server.config.json";
 
 async function main() {
   console.error("JACS MCP Server starting...");
 
-  // Create transport with JACS encryption
+  const client = await JacsClient.quickstart({
+    name: 'jacs-demo-server',
+    domain: 'mcp.local',
+  });
+
   const baseTransport = new StdioServerTransport();
   const secureTransport = createJACSTransportProxy(
     baseTransport,
-    JACS_CONFIG,
+    client,
     "server"
   );
 
-  // Create MCP server
   const server = new McpServer({
     name: "jacs-demo-server",
     version: "1.0.0"
@@ -16135,14 +15824,17 @@ main().catch(err =&gt; {
 <h3 id="mcp-client"><a class="header" href="#mcp-client">MCP Client</a></h3>
 <pre><code class="language-javascript">import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
-
-const JACS_CONFIG = "./jacs.client.config.json";
 
 async function main() {
   console.log("JACS MCP Client starting...");
 
-  // Connect to server
+  const client = await JacsClient.quickstart({
+    name: 'jacs-demo-client',
+    domain: 'mcp.local',
+  });
+
   const baseTransport = new StdioClientTransport({
     command: 'node',
     args: ['mcp-server.js']
@@ -16150,39 +15842,39 @@ async function main() {
 
   const secureTransport = createJACSTransportProxy(
     baseTransport,
-    JACS_CONFIG,
+    client,
     "client"
   );
 
-  const client = new Client({
+  const mcpClient = new Client({
     name: "jacs-demo-client",
     version: "1.0.0"
   }, {
     capabilities: { tools: {} }
   });
 
-  await client.connect(secureTransport);
+  await mcpClient.connect(secureTransport);
   console.log("Connected to JACS MCP Server");
 
   // List tools
-  const tools = await client.listTools();
+  const tools = await mcpClient.listTools();
   console.log("Available tools:", tools.tools.map(t =&gt; t.name));
 
   // Call echo
-  const echoResult = await client.callTool({
+  const echoResult = await mcpClient.callTool({
     name: "echo",
     arguments: { message: "Hello, JACS!" }
   });
   console.log("Echo:", echoResult.content[0].text);
 
   // Call calculate
-  const calcResult = await client.callTool({
+  const calcResult = await mcpClient.callTool({
     name: "calculate",
     arguments: { operation: "multiply", a: 6, b: 7 }
   });
   console.log("Calculate:", calcResult.content[0].text);
 
-  await client.close();
+  await mcpClient.close();
   console.log("Done!");
 }
 
@@ -16538,7 +16230,7 @@ describe('JACS Document Operations', () =&gt; {
   });
 });
 </code></pre>
-<h2 id="see-also-23"><a class="header" href="#see-also-23">See Also</a></h2>
+<h2 id="see-also-22"><a class="header" href="#see-also-22">See Also</a></h2>
 <ul>
 <li><a href="examples/../nodejs/installation.html">Node.js Installation</a> - Setup guide</li>
 <li><a href="examples/../nodejs/api.html">Node.js API Reference</a> - Complete API documentation</li>
@@ -17332,7 +17024,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Unexpected error: {e}")
 </code></pre>
-<h2 id="see-also-24"><a class="header" href="#see-also-24">See Also</a></h2>
+<h2 id="see-also-23"><a class="header" href="#see-also-23">See Also</a></h2>
 <ul>
 <li><a href="examples/../python/installation.html">Python Installation</a> - Setup guide</li>
 <li><a href="examples/../python/api.html">Python API Reference</a> - Complete API documentation</li>
@@ -17712,7 +17404,7 @@ jacs document verify -f document.json -s schema.json
 <li><code>2</code> - Verification failure (hash mismatch, invalid signature, etc.)</li>
 <li><code>3</code> - Schema validation failure</li>
 </ul>
-<h2 id="environment-variables-7"><a class="header" href="#environment-variables-7">Environment Variables</a></h2>
+<h2 id="environment-variables-6"><a class="header" href="#environment-variables-6">Environment Variables</a></h2>
 <ul>
 <li><code>JACS_CONFIG_PATH</code> - Override default configuration file location</li>
 <li><code>JACS_DATA_DIR</code> - Override default data directory location</li>
@@ -18043,15 +17735,16 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <p>The <code>jacs_default_storage</code> field determines where JACS stores agent data, documents, and keys. This is a critical configuration that affects how your data is persisted and accessed.</p>
 <h3 id="available-storage-backends"><a class="header" href="#available-storage-backends">Available Storage Backends</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Value</th><th>Description</th><th>Use Case</th></tr></thead><tbody>
-<tr><td><strong>Filesystem</strong></td><td><code>"fs"</code></td><td>Local file system storage</td><td>Development, single-node deployments</td></tr>
-<tr><td><strong>AWS S3</strong></td><td><code>"aws"</code></td><td>Amazon S3 object storage</td><td>Production, cloud deployments</td></tr>
-<tr><td><strong>HAI Remote</strong></td><td><code>"hai"</code></td><td>HAI.ai remote storage service</td><td>HAI.ai platform integration</td></tr>
-<tr><td><strong>Memory</strong></td><td><code>"memory"</code></td><td>In-memory storage (non-persistent)</td><td>Testing, temporary data</td></tr>
+<tr><td><strong>Filesystem</strong></td><td><code>"fs"</code></td><td>Signed JSON documents on local disk</td><td>Default, development, single-node deployments</td></tr>
+<tr><td><strong>Local Indexed SQLite</strong></td><td><code>"rusqlite"</code></td><td>Signed documents in SQLite with FTS search</td><td>Local search, bindings, MCP</td></tr>
+<tr><td><strong>AWS S3</strong></td><td><code>"aws"</code></td><td>Amazon S3 object storage</td><td>Remote object storage</td></tr>
+<tr><td><strong>Memory</strong></td><td><code>"memory"</code></td><td>In-memory object storage (non-persistent)</td><td>Testing, temporary data</td></tr>
 <tr><td><strong>Web Local</strong></td><td><code>"local"</code></td><td>Browser local storage (WASM only)</td><td>Web applications</td></tr>
 </tbody></table>
 </div>
+<p>For local indexed document search in JACS core, use <code>"rusqlite"</code>. Additional database backends such as PostgreSQL, DuckDB, Redb, and SurrealDB live in separate crates and are <strong>not</strong> core <code>jacs_default_storage</code> values.</p>
 <h3 id="backend-specific-configuration"><a class="header" href="#backend-specific-configuration">Backend-Specific Configuration</a></h3>
-<h4 id="filesystem-storage-fs-1"><a class="header" href="#filesystem-storage-fs-1">Filesystem Storage (<code>"fs"</code>)</a></h4>
+<h4 id="filesystem-storage-fs"><a class="header" href="#filesystem-storage-fs">Filesystem Storage (<code>"fs"</code>)</a></h4>
 <pre><code class="language-json">{
   "jacs_default_storage": "fs",
   "jacs_data_directory": "./jacs_data",
@@ -18061,7 +17754,17 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <p><strong>Requirements:</strong> None - works out of the box
 <strong>Data location:</strong> Local directories as specified in config
 <strong>Best for:</strong> Development, local testing, single-machine deployments</p>
-<h4 id="aws-s3-storage-aws-1"><a class="header" href="#aws-s3-storage-aws-1">AWS S3 Storage (<code>"aws"</code>)</a></h4>
+<h4 id="local-indexed-sqlite-rusqlite-1"><a class="header" href="#local-indexed-sqlite-rusqlite-1">Local Indexed SQLite (<code>"rusqlite"</code>)</a></h4>
+<pre><code class="language-json">{
+  "jacs_default_storage": "rusqlite",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
+}
+</code></pre>
+<p><strong>Requirements:</strong> Built with the default <code>sqlite</code> Cargo feature
+<strong>Database path:</strong> <code>&lt;jacs_data_directory&gt;/jacs_documents.sqlite3</code>
+<strong>Best for:</strong> Local full-text search, MCP/binding document operations, single-machine deployments that want indexed reads</p>
+<h4 id="aws-s3-storage-aws"><a class="header" href="#aws-s3-storage-aws">AWS S3 Storage (<code>"aws"</code>)</a></h4>
 <pre><code class="language-json">{
   "jacs_default_storage": "aws"
 }
@@ -18074,17 +17777,6 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <li><code>AWS_REGION</code> - AWS region (optional, defaults to us-east-1)</li>
 </ul>
 <p><strong>Best for:</strong> Production deployments, distributed systems, cloud-native applications</p>
-<h4 id="hai-remote-storage-hai"><a class="header" href="#hai-remote-storage-hai">HAI Remote Storage (<code>"hai"</code>)</a></h4>
-<pre><code class="language-json">{
-  "jacs_default_storage": "hai"
-}
-</code></pre>
-<p><strong>Required Environment Variables:</strong></p>
-<ul>
-<li><code>HAI_STORAGE_URL</code> - HAI.ai storage service endpoint</li>
-</ul>
-<p>This is an HTTP object store backend. Full HAI platform workflows (registration, attestation, key discovery) require the separate <a href="https://github.com/HumanAssisted/haisdk">haisdk</a> package.</p>
-<p><strong>Best for:</strong> Remote document storage via HTTP</p>
 <h4 id="memory-storage-memory"><a class="header" href="#memory-storage-memory">Memory Storage (<code>"memory"</code>)</a></h4>
 <pre><code class="language-json">{
   "jacs_default_storage": "memory"
@@ -18095,10 +17787,17 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <strong>Best for:</strong> Unit testing, temporary operations, development scenarios</p>
 <h3 id="storage-behavior"><a class="header" href="#storage-behavior">Storage Behavior</a></h3>
 <ul>
-<li><strong>Agent data</strong> (agent definitions, signatures) are stored using the configured backend</li>
-<li><strong>Documents</strong> are stored using the configured backend</li>
-<li><strong>Cryptographic keys</strong> are stored using the configured backend</li>
-<li><strong>Observability data</strong> (logs, metrics) can use separate storage via observability configuration</li>
+<li><strong>Filesystem (<code>fs</code>)</strong> stores signed documents as JSON files under <code>jacs_data/documents/</code>.</li>
+<li><strong>Rusqlite (<code>rusqlite</code>)</strong> stores signed documents in <code>jacs_data/jacs_documents.sqlite3</code> and is the indexed <code>DocumentService</code> path used by bindings and MCP.</li>
+<li><strong>Agent files and keys</strong> remain path-based assets under <code>jacs_data/</code> and <code>jacs_keys/</code>.</li>
+<li><strong>Observability data</strong> (logs, metrics) can use separate storage via observability configuration.</li>
+</ul>
+<h3 id="documentservice-guarantees"><a class="header" href="#documentservice-guarantees">DocumentService Guarantees</a></h3>
+<ul>
+<li>Every <code>DocumentService</code> read verifies the stored JACS document before returning it.</li>
+<li>Every <code>create()</code> and <code>update()</code> verifies the signed document before persisting it.</li>
+<li>If an update payload changes a signed JACS document without re-signing it, the write fails.</li>
+<li>Visibility changes create a new signed version instead of mutating metadata in place.</li>
 </ul>
 <h3 id="configuration-examples"><a class="header" href="#configuration-examples">Configuration Examples</a></h3>
 <p><strong>Development Setup (Filesystem)</strong></p>
@@ -18119,18 +17818,10 @@ export AWS_ACCESS_KEY_ID="AKIA..."
 export AWS_SECRET_ACCESS_KEY="..."
 export AWS_REGION="us-west-2"
 </code></pre>
-<p><strong>HAI Platform Integration</strong></p>
-<pre><code class="language-json">{
-  "jacs_default_storage": "hai"
-}
-</code></pre>
-<p>With environment variable:</p>
-<pre><code class="language-bash">export HAI_STORAGE_URL="https://storage.hai.ai/v1"
-</code></pre>
-<h3 id="security-considerations-7"><a class="header" href="#security-considerations-7">Security Considerations</a></h3>
+<h3 id="security-considerations-6"><a class="header" href="#security-considerations-6">Security Considerations</a></h3>
 <ul>
 <li><strong>AWS S3</strong>: Ensure proper IAM permissions for bucket access</li>
-<li><strong>HAI Remote</strong>: Secure the <code>HAI_STORAGE_URL</code> endpoint and any required authentication</li>
+<li><strong>Rusqlite</strong>: Protect the local database file with the same filesystem permissions you use for other signed artifacts</li>
 <li><strong>Filesystem</strong>: Ensure proper file system permissions for data and key directories</li>
 <li><strong>Keys</strong>: Regardless of storage backend, always set <code>JACS_PRIVATE_KEY_PASSWORD</code> for key encryption</li>
 </ul>
@@ -18428,7 +18119,7 @@ jacs agent verify -v
 echo '{"test": true}' &gt; test.json
 jacs document create -f test.json -v
 </code></pre>
-<h2 id="see-also-25"><a class="header" href="#see-also-25">See Also</a></h2>
+<h2 id="see-also-24"><a class="header" href="#see-also-24">See Also</a></h2>
 <ul>
 <li><a href="reference/configuration.html">Configuration Reference</a> - Configuration options</li>
 <li><a href="reference/cli-commands.html">CLI Command Reference</a> - CLI usage</li>
@@ -18709,7 +18400,7 @@ done
 <tr><td>1</td><td>Failure (create: error creating attestation; verify: attestation invalid or error)</td></tr>
 </tbody></table>
 </div>
-<h2 id="environment-variables-8"><a class="header" href="#environment-variables-8">Environment Variables</a></h2>
+<h2 id="environment-variables-7"><a class="header" href="#environment-variables-7">Environment Variables</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>JACS_PRIVATE_KEY_PASSWORD</code></td><td>Password for the agent's private key</td></tr>
 <tr><td><code>JACS_MAX_DERIVATION_DEPTH</code></td><td>Override maximum derivation chain depth (default: 10)</td></tr>
@@ -18718,7 +18409,7 @@ done
 <tr><td><code>JACS_AGENT_ID_AND_VERSION</code></td><td>Agent identity for signing</td></tr>
 </tbody></table>
 </div>
-<h2 id="see-also-26"><a class="header" href="#see-also-26">See Also</a></h2>
+<h2 id="see-also-25"><a class="header" href="#see-also-25">See Also</a></h2>
 <ul>
 <li><a href="reference/../guides/sign-vs-attest.html">Sign vs. Attest Decision Guide</a></li>
 <li><a href="reference/../guides/attestation-tutorial.html">Attestation Tutorial</a></li>
@@ -18804,7 +18495,7 @@ const signed = jacs.signMessageSync({ action: 'approve' });
 <li><strong>V8-thread-only methods</strong> (<code>signRequest</code>, <code>verifyResponse</code>, <code>verifyResponseWithAgentId</code>) need no changes</li>
 </ol>
 <h2 id="migrating-from-051-to-052"><a class="header" href="#migrating-from-051-to-052">Migrating from 0.5.1 to 0.5.2</a></h2>
-<h3 id="migration-notes"><a class="header" href="#migration-notes">Migration Notes</a></h3>
+<h3 id="migration-notes-1"><a class="header" href="#migration-notes-1">Migration Notes</a></h3>
 <p><strong>PBKDF2 Iteration Count</strong>: New key encryptions use 600,000 iterations (up from 100,000). Existing encrypted keys are decrypted automatically via fallback. To upgrade existing keys, re-encrypt them:</p>
 <pre><code class="language-bash"># Re-generate keys to use the new iteration count
 jacs keygen
@@ -19279,7 +18970,7 @@ jacs document verify -d ./jacs_data/documents/
 </code></pre>
 </li>
 </ol>
-<h2 id="see-also-27"><a class="header" href="#see-also-27">See Also</a></h2>
+<h2 id="see-also-26"><a class="header" href="#see-also-26">See Also</a></h2>
 <ul>
 <li><a href="reference/configuration.html">Configuration Reference</a> - Configuration options</li>
 <li><a href="reference/../advanced/crypto.html">Cryptographic Algorithms</a> - Algorithm details</li>

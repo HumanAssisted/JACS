@@ -1,3 +1,4 @@
+use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use ring::{
     error::{KeyRejected, Unspecified},
@@ -9,12 +10,13 @@ use std::fmt;
 use tracing::{debug, trace, warn};
 
 #[must_use = "generated keys must be stored securely"]
-pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>> {
+pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
     trace!("Generating Ed25519 keypair");
     let rng = rand::SystemRandom::new();
-    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng).map_err(RingError)?;
-    let key_pair =
-        signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref()).map_err(KeyRejectedError)?;
+    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng)
+        .map_err(|e| JacsError::CryptoError(RingError(e).to_string()))?;
+    let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref())
+        .map_err(|e| JacsError::CryptoError(KeyRejectedError(e).to_string()))?;
     let public_key = key_pair.public_key().as_ref().to_vec();
     let private_key = pkcs8_bytes.as_ref().to_vec();
     debug!(
@@ -26,9 +28,10 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), Box<dyn std::error::Error>>
 }
 
 #[must_use = "signature must be stored or transmitted"]
-pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, Box<dyn Error>> {
+pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, JacsError> {
     trace!(data_len = data.len(), "Ed25519 signing starting");
-    let key_pair = signature::Ed25519KeyPair::from_pkcs8(&secret_key).map_err(KeyRejectedError)?;
+    let key_pair = signature::Ed25519KeyPair::from_pkcs8(&secret_key)
+        .map_err(|e| JacsError::CryptoError(KeyRejectedError(e).to_string()))?;
     let signature = key_pair.sign(data.as_bytes());
     let signature_bytes = signature.as_ref();
     let signature_base64 = STANDARD.encode(signature_bytes);
@@ -44,13 +47,15 @@ pub fn verify_string(
     public_key: Vec<u8>,
     data: &str,
     signature_base64: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     trace!(
         data_len = data.len(),
         public_key_len = public_key.len(),
         "Ed25519 verification starting"
     );
-    let signature_bytes = STANDARD.decode(signature_base64)?;
+    let signature_bytes = STANDARD
+        .decode(signature_base64)
+        .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?;
     let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);
     match public_key.verify(data.as_bytes(), &signature_bytes) {
         Ok(()) => {
@@ -59,7 +64,7 @@ pub fn verify_string(
         }
         Err(e) => {
             warn!("Ed25519 signature verification failed");
-            Err(RingError(e).into())
+            Err(JacsError::from(RingError(e).to_string()))
         }
     }
 }

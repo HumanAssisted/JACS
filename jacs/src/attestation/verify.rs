@@ -11,8 +11,8 @@ use crate::agent::{Agent, DOCUMENT_AGENT_SIGNATURE_FIELDNAME};
 use crate::attestation::digest::compute_digest_set_bytes;
 use crate::attestation::types::*;
 use crate::crypt::hash::hash_string;
+use crate::error::JacsError;
 use serde_json::Value;
-use std::error::Error;
 use tracing::info;
 
 /// Maximum derivation chain depth. Configurable via `JACS_MAX_DERIVATION_DEPTH` env var.
@@ -26,7 +26,7 @@ fn max_derivation_depth() -> u32 {
 /// Parse a simple ISO 8601 duration string into seconds.
 /// Supports: PnY, PnM (months), PnD, PTnH, PTnM (minutes), PTnS and combinations.
 /// Uses standard approximations: 1 year = 365.25 days, 1 month = 30.44 days.
-pub fn parse_iso8601_duration_secs(duration: &str) -> Result<i64, Box<dyn Error>> {
+pub fn parse_iso8601_duration_secs(duration: &str) -> Result<i64, JacsError> {
     if !duration.starts_with('P') {
         return Err(format!(
             "Invalid ISO 8601 duration: must start with 'P': '{}'",
@@ -108,7 +108,7 @@ pub fn parse_iso8601_duration_secs(duration: &str) -> Result<i64, Box<dyn Error>
 }
 
 /// Verify the hash of a document by recomputing it.
-fn verify_document_hash(doc_value: &Value) -> Result<bool, Box<dyn Error>> {
+fn verify_document_hash(doc_value: &Value) -> Result<bool, JacsError> {
     let stored_hash = doc_value
         .get("jacsSha256")
         .and_then(|v| v.as_str())
@@ -123,7 +123,7 @@ fn verify_document_hash(doc_value: &Value) -> Result<bool, Box<dyn Error>> {
 }
 
 /// Verify the crypto signature of a document. Returns Ok(()) on success, Err on failure.
-fn verify_document_crypto(agent: &Agent, doc_value: &Value) -> Result<(), Box<dyn Error>> {
+fn verify_document_crypto(agent: &Agent, doc_value: &Value) -> Result<(), JacsError> {
     let public_key = agent.get_public_key()?;
     agent.signature_verification_procedure(
         doc_value,
@@ -182,7 +182,7 @@ fn verify_evidence_ref(evidence: &EvidenceRef) -> EvidenceVerificationResult {
 }
 
 /// Check evidence freshness against a max age duration.
-fn check_evidence_freshness(collected_at: &str, max_age_iso: &str) -> Result<bool, Box<dyn Error>> {
+fn check_evidence_freshness(collected_at: &str, max_age_iso: &str) -> Result<bool, JacsError> {
     let max_age_secs = parse_iso8601_duration_secs(max_age_iso)?;
     let collected = chrono::DateTime::parse_from_rfc3339(collected_at)
         .map_err(|e| format!("Invalid collectedAt timestamp '{}': {}", collected_at, e))?;
@@ -202,7 +202,7 @@ impl Agent {
     pub fn verify_attestation_local_impl(
         &self,
         document_key: &str,
-    ) -> Result<AttestationVerificationResult, Box<dyn Error>> {
+    ) -> Result<AttestationVerificationResult, JacsError> {
         let document = self.get_document(document_key)?;
         let doc_value = document.getvalue();
 
@@ -264,7 +264,7 @@ impl Agent {
     pub fn verify_attestation_full_impl(
         &self,
         document_key: &str,
-    ) -> Result<AttestationVerificationResult, Box<dyn Error>> {
+    ) -> Result<AttestationVerificationResult, JacsError> {
         let document = self.get_document(document_key)?;
         let doc_value = document.getvalue().clone();
 
@@ -422,7 +422,7 @@ impl Agent {
         doc_value: &Value,
         current_depth: u32,
         max_depth: u32,
-    ) -> Result<ChainVerificationResult, Box<dyn Error>> {
+    ) -> Result<ChainVerificationResult, JacsError> {
         if current_depth >= max_depth {
             return Err(format!(
                 "Derivation chain depth {} exceeds maximum {} (set JACS_MAX_DERIVATION_DEPTH to increase)",
@@ -540,7 +540,7 @@ impl super::AttestationTraits for Agent {
         evidence: &[EvidenceRef],
         derivation: Option<&Derivation>,
         policy_context: Option<&PolicyContext>,
-    ) -> Result<crate::agent::document::JACSDocument, Box<dyn Error>> {
+    ) -> Result<crate::agent::document::JACSDocument, JacsError> {
         // Delegate to create.rs implementation
         crate::attestation::create::create_attestation_impl(
             self,
@@ -555,14 +555,14 @@ impl super::AttestationTraits for Agent {
     fn verify_attestation_local(
         &self,
         document_key: &str,
-    ) -> Result<AttestationVerificationResult, Box<dyn Error>> {
+    ) -> Result<AttestationVerificationResult, JacsError> {
         self.verify_attestation_local_impl(document_key)
     }
 
     fn verify_attestation_full(
         &self,
         document_key: &str,
-    ) -> Result<AttestationVerificationResult, Box<dyn Error>> {
+    ) -> Result<AttestationVerificationResult, JacsError> {
         self.verify_attestation_full_impl(document_key)
     }
 }

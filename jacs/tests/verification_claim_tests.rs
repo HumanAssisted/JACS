@@ -5,7 +5,7 @@
 //! - `unverified` (default): Relaxed settings allowed
 //! - `verified`: Requires domain, strict DNS, strict TLS
 //! - `verified-registry`: Above + registry verification
-//! - `verified-hai.ai`: Legacy alias for `verified-registry`
+//! - `verified-hai.ai`: DEPRECATED alias for `verified-registry` (will be removed next major version)
 //!
 //! The principle is: "If you claim it, you must prove it."
 
@@ -112,10 +112,11 @@ fn test_verified_enforces_strict_dns() {
         res.is_err(),
         "Verified agents should fail when strict DNS lookup fails without fallback"
     );
-    let err_msg = res.unwrap_err();
+    let err_msg = res.unwrap_err().to_string();
     assert!(
         err_msg.contains("DNSSEC") || err_msg.contains("DNS"),
-        "Error should indicate DNS/DNSSEC failure"
+        "Error should indicate DNS/DNSSEC failure, got: {}",
+        err_msg
     );
 }
 

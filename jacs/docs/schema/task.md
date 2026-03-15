@@ -1,7 +1,7 @@
 # Task Schema
 
 ```txt
-https://hai.ai/schemas/task/v1/task-schema.json
+https://hai.ai/schemas/task/v1/task.schema.json
 ```
 
 General schema for stateful resources.
@@ -16,6 +16,6 @@ merged type ([Task](task.md))
 
 all of
 
-* [Header](task-allof-header.md "check type definition")
+* [Header](todo-allof-header.md "check type definition")
 
 * [Untitled object in Task](task-allof-1.md "check type definition")

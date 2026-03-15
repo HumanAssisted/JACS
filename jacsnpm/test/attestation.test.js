@@ -145,8 +145,8 @@ describe('Attestation', function () {
 
         const result = await client.verifyAttestation(signed.raw);
         expect(result).to.have.property('valid', true);
-        expect(result.crypto).to.have.property('signature_valid', true);
-        expect(result.crypto).to.have.property('hash_valid', true);
+        expect(result.crypto).to.have.property('signatureValid', true);
+        expect(result.crypto).to.have.property('hashValid', true);
       },
     );
   });

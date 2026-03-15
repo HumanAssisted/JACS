@@ -5,7 +5,6 @@ use predicates::prelude::*; // Used for writing assertions
 use std::env;
 use std::fs::{self, File}; // Add fs for file operations
 use std::io::Write; // Add Write trait
-use std::path::Path;
 // use std::sync::Once;
 use jacs::storage::MultiStorage;
 use std::{
@@ -146,25 +145,14 @@ fn test_cli_version_subcommand() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
-    // Save the original working directory at the start of the test
-    let original_cwd = std::env::current_dir()?;
-    println!("Original working directory: {:?}", original_cwd);
-
     println!(">>> Starting test_cli_script_flow execution <<<");
     let data_dir_string = "jacs_data";
     let key_dir_string = "jacs_keys";
 
     // 1. Setup Scratch Directory and Paths
     println!("Setting up scratch directory...");
-    let scratch_dir = original_cwd.join("tests").join("scratch");
-
-    // Clean up any existing files from previous test runs
-    if scratch_dir.exists() {
-        println!("Cleaning existing scratch directory");
-        let _ = fs::remove_dir_all(&scratch_dir);
-    }
-
-    fs::create_dir_all(&scratch_dir)?;
+    let scratch = tempfile::tempdir()?;
+    let scratch_dir = scratch.path().to_path_buf();
     println!(
         "Scratch directory created successfully at: {}",
         scratch_dir.display()
@@ -179,13 +167,6 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     fs::create_dir_all(&data_dir)?;
     fs::create_dir_all(&key_dir)?;
-
-    // Change to the scratch directory
-    std::env::set_current_dir(&scratch_dir)?;
-    println!(
-        "Changed working directory to scratch dir: {:?}",
-        std::env::current_dir()?
-    );
 
     // --- Run `config create` Interactively (Simulated) ---
     println!("Running: config create (simulated interaction)");
@@ -258,12 +239,12 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     // After config create completes:
     println!("Created jacs.config.json contents:");
-    let config_contents = std::fs::read_to_string(scratch_dir.join("jacs.config.json"))?;
+    let config_contents = std::fs::read_to_string(&config_path)?;
     println!("{}", config_contents);
 
     // Add debugging to check key files
     println!("\n=== Checking Key Files After Config Create ===");
-    println!("Current dir: {:?}", std::env::current_dir()?);
+    println!("Scratch dir: {}", scratch_dir.display());
     println!("Key dir exists: {}", key_dir.exists());
     if key_dir.exists() {
         println!("Contents of key directory:");
@@ -438,13 +419,12 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
 
     // Debug key directory
     println!("\n=== EXTENSIVE KEY DEBUGGING ===");
-    let config_path = "jacs.config.json";
-    let config_content = fs::read_to_string(config_path)?;
+    let config_content = fs::read_to_string(&config_path)?;
     println!("Config file content:\n{}", config_content);
 
-    println!("Current directory: {:?}", std::env::current_dir()?);
-    println!("Listing contents of current directory:");
-    for entry in fs::read_dir(".")? {
+    println!("Scratch directory: {}", scratch_dir.display());
+    println!("Listing contents of scratch directory:");
+    for entry in fs::read_dir(&scratch_dir)? {
         let entry = entry?;
         println!("  {:?}", entry.path());
     }
@@ -454,10 +434,11 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         .as_str()
         .unwrap_or("./jacs_keys");
     println!("Key directory from config: {}", key_dir_from_config);
+    let key_dir_from_config_path = scratch_dir.join(key_dir_from_config);
 
-    if Path::new(key_dir_from_config).exists() {
+    if key_dir_from_config_path.exists() {
         println!("Key directory from config exists. Contents:");
-        for entry in fs::read_dir(key_dir_from_config)? {
+        for entry in fs::read_dir(&key_dir_from_config_path)? {
             let entry = entry?;
             println!("  {:?}", entry.path());
         }
@@ -465,42 +446,41 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
         println!("Key directory from config DOES NOT EXIST!");
     }
 
-    let full_private_key_path = format!(
-        "{}/{}",
-        key_dir_from_config,
+    let full_private_key_path = key_dir_from_config_path.join(
         config["jacs_agent_private_key_filename"]
             .as_str()
-            .unwrap_or("jacs.private.pem.enc")
+            .unwrap_or("jacs.private.pem.enc"),
     );
-    let full_public_key_path = format!(
-        "{}/{}",
-        key_dir_from_config,
+    let full_public_key_path = key_dir_from_config_path.join(
         config["jacs_agent_public_key_filename"]
             .as_str()
-            .unwrap_or("jacs.public.pem")
+            .unwrap_or("jacs.public.pem"),
     );
 
     println!(
         "Full private key path from config: {}",
-        full_private_key_path
+        full_private_key_path.display()
     );
     println!(
         "Private key exists at full path: {}",
-        Path::new(&full_private_key_path).exists()
+        full_private_key_path.exists()
     );
 
-    println!("Full public key path from config: {}", full_public_key_path);
+    println!(
+        "Full public key path from config: {}",
+        full_public_key_path.display()
+    );
     println!(
         "Public key exists at full path: {}",
-        Path::new(&full_public_key_path).exists()
+        full_public_key_path.exists()
     );
 
-    if !Path::new(key_dir_from_config).exists() {
+    if !key_dir_from_config_path.exists() {
         println!(
             "Creating key directory from config: {}",
-            key_dir_from_config
+            key_dir_from_config_path.display()
         );
-        fs::create_dir_all(key_dir_from_config)?;
+        fs::create_dir_all(&key_dir_from_config_path)?;
     }
     println!("=== END EXTENSIVE KEY DEBUGGING ===\n");
 
@@ -508,37 +488,41 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let storage = MultiStorage::new("fs".to_string())?;
 
     println!("Listing all files in key directory:");
-    if Path::new(key_dir_string).exists() {
-        for entry in fs::read_dir(key_dir_string)? {
+    if key_dir.exists() {
+        for entry in fs::read_dir(&key_dir)? {
             println!("  Found: {:?}", entry?.path());
         }
     } else {
         println!("  Key directory doesn't exist!");
     }
 
-    let priv_key = format!("{}/jacs.private.pem.enc", key_dir_string);
-    let pub_key = format!("{}/jacs.public.pem", key_dir_string);
+    let priv_key = key_dir.join("jacs.private.pem.enc");
+    let pub_key = key_dir.join("jacs.public.pem");
 
-    println!("Checking for private key at: {}", priv_key);
-    let priv_exists = storage.file_exists(&priv_key, None)?;
+    println!("Checking for private key at: {}", priv_key.display());
+    let priv_exists = storage.file_exists(priv_key.to_string_lossy().as_ref(), None)?;
     println!("Private key exists (according to storage): {}", priv_exists);
 
-    println!("Checking for public key at: {}", pub_key);
-    let pub_exists = storage.file_exists(&pub_key, None)?;
+    println!("Checking for public key at: {}", pub_key.display());
+    let pub_exists = storage.file_exists(pub_key.to_string_lossy().as_ref(), None)?;
     println!("Public key exists (according to storage): {}", pub_exists);
 
-    let priv_exists_fs = Path::new(&priv_key).exists();
-    let pub_exists_fs = Path::new(&pub_key).exists();
+    let priv_exists_fs = priv_key.exists();
+    let pub_exists_fs = pub_key.exists();
 
     println!("Private key exists (filesystem): {}", priv_exists_fs);
     println!("Public key exists (filesystem): {}", pub_exists_fs);
 
-    assert!(priv_exists_fs, "Private key missing at {}", priv_key);
-    assert!(pub_exists_fs, "Public key missing at {}", pub_key);
+    assert!(
+        priv_exists_fs,
+        "Private key missing at {}",
+        priv_key.display()
+    );
+    assert!(pub_exists_fs, "Public key missing at {}", pub_key.display());
 
     // Check agent directory
-    let agent_dir_path = format!("{}/agent", data_dir_string);
-    println!("--- Checking contents of: {} ---", agent_dir_path);
+    let agent_dir_path = data_dir.join("agent");
+    println!("--- Checking contents of: {} ---", agent_dir_path.display());
     match std::fs::read_dir(&agent_dir_path) {
         Ok(entries) => {
             for entry in entries {
@@ -548,15 +532,19 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        Err(e) => println!("Could not read directory {}: {}", agent_dir_path, e),
+        Err(e) => println!(
+            "Could not read directory {}: {}",
+            agent_dir_path.display(),
+            e
+        ),
     }
     println!("-------------------------------------------");
 
-    let agent_file_path = format!("{}/agent/{}.json", data_dir_string, agent_id);
+    let agent_file_path = agent_dir_path.join(format!("{}.json", agent_id));
     assert!(
-        Path::new(&agent_file_path).exists(),
+        agent_file_path.exists(),
         "Agent file missing: {}",
-        agent_file_path
+        agent_file_path.display()
     );
 
     // jacs agent verify
@@ -573,43 +561,32 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     println!("Running: document tests ");
 
     // Get fixtures paths using centralized helper
-    // Note: fixtures_raw_dir() works from the original cwd, but we've changed to scratch dir
-    // So we use relative path here since we're in tests/scratch and fixtures is at tests/fixtures
-    let fixtures_raw = Path::new("../fixtures/raw").to_path_buf();
-    println!("Using fixtures raw directory at: {:?}", fixtures_raw);
-    let src_ddl = fixtures_raw.join("favorite-fruit.json");
-    let src_mobius = fixtures_raw.join("mobius.jpeg");
+    let src_ddl = utils::raw_fixture("favorite-fruit.json");
+    let src_mobius = utils::raw_fixture("mobius.jpeg");
 
-    let dst_ddl = format!("{}/fruit.json", data_dir_string);
-    let dst_mobius = format!("{}/mobius.jpeg", data_dir_string);
+    let dst_ddl = data_dir.join("fruit.json");
+    let dst_mobius = data_dir.join("mobius.jpeg");
 
     println!("Attempting to copy:");
     println!("From: {:?}", src_ddl);
-    println!("To: {}", dst_ddl);
+    println!("To: {}", dst_ddl.display());
     println!("And from: {:?}", src_mobius);
-    println!("To: {}", dst_mobius);
+    println!("To: {}", dst_mobius.display());
 
     // Check if source files exist
     println!("Source ddi exists: {}", src_ddl.exists());
     println!("Source mobius exists: {}", src_mobius.exists());
 
     // Copy the files (this should work now that we're using a fixed directory structure)
-    std::fs::copy(&src_ddl, Path::new(&dst_ddl))?;
-    std::fs::copy(&src_mobius, Path::new(&dst_mobius))?;
+    std::fs::copy(&src_ddl, &dst_ddl)?;
+    std::fs::copy(&src_mobius, &dst_mobius)?;
 
     println!("Files copied successfully");
-    println!("Destination ddl exists: {}", Path::new(&dst_ddl).exists());
-    println!(
-        "Destination mobius exists: {}",
-        Path::new(&dst_mobius).exists()
-    );
+    println!("Destination ddl exists: {}", dst_ddl.exists());
+    println!("Destination mobius exists: {}", dst_mobius.exists());
 
     // Continue with the rest of the test as before...
     // (The rest of the test doesn't need to change)
-
-    // At the end of the test, restore original directory
-    std::env::set_current_dir(&original_cwd)?;
-    println!("Restored original working directory at end of test");
 
     Ok(())
 }

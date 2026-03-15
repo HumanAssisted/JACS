@@ -1,5 +1,4 @@
 use crate::error::JacsError;
-use std::error::Error;
 use std::fmt;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -14,7 +13,7 @@ use std::os::unix::fs::PermissionsExt;
 /// Set secure file permissions on key files (Unix only)
 /// Private keys get 0600 (owner read/write), directories get 0700 (owner rwx)
 #[cfg(unix)]
-fn set_secure_permissions(path: &str, is_directory: bool) -> Result<(), Box<dyn Error>> {
+fn set_secure_permissions(path: &str, is_directory: bool) -> Result<(), JacsError> {
     use std::fs;
     use std::path::Path;
 
@@ -34,7 +33,7 @@ fn set_secure_permissions(path: &str, is_directory: bool) -> Result<(), Box<dyn 
 ///
 /// Uses `create_new(true)` to avoid overwriting existing files or following
 /// symlink targets.
-fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), JacsError> {
     let path_obj = std::path::Path::new(path);
 
     if let Some(parent) = path_obj.parent() {
@@ -57,7 +56,7 @@ fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), Box<dy
 
 /// No-op on non-Unix systems
 #[cfg(not(unix))]
-fn set_secure_permissions(_path: &str, _is_directory: bool) -> Result<(), Box<dyn Error>> {
+fn set_secure_permissions(_path: &str, _is_directory: bool) -> Result<(), JacsError> {
     Ok(())
 }
 
@@ -80,15 +79,15 @@ pub struct KeySpec {
 }
 
 pub trait KeyStore: Send + Sync + fmt::Debug {
-    fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>>;
-    fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>>;
-    fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError>;
+    fn load_private(&self) -> Result<Vec<u8>, JacsError>;
+    fn load_public(&self) -> Result<Vec<u8>, JacsError>;
     fn sign_detached(
         &self,
         _private_key: &[u8],
         _message: &[u8],
         algorithm: &str,
-    ) -> Result<Vec<u8>, Box<dyn Error>>;
+    ) -> Result<Vec<u8>, JacsError>;
 
     /// Rotate keys: archive the current keypair with a version suffix and generate
     /// a new keypair at the standard paths. Returns `(new_private_key, new_public_key)`.
@@ -100,11 +99,7 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
     /// In-memory stores simply regenerate keys (no archival step).
     ///
     /// Backends that do not support rotation return an error via this default impl.
-    fn rotate(
-        &self,
-        _old_version: &str,
-        _spec: &KeySpec,
-    ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+    fn rotate(&self, _old_version: &str, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         Err("rotate() not implemented for this key backend".into())
     }
 }
@@ -114,7 +109,7 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
 /// Returns `Ok(())` if the password is available, or an error describing what
 /// the user needs to do. This is the single policy-enforcement point used by
 /// `save_private_key` to ensure keys are never written unencrypted.
-pub fn require_encryption_password() -> Result<(), Box<dyn Error>> {
+pub fn require_encryption_password() -> Result<(), JacsError> {
     let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default();
     if password.trim().is_empty() {
         return Err(
@@ -140,7 +135,7 @@ use tracing::debug;
 #[derive(Debug)]
 pub struct FsEncryptedStore;
 impl FsEncryptedStore {
-    fn storage_for_key_dir(key_dir: &str) -> Result<MultiStorage, Box<dyn Error>> {
+    fn storage_for_key_dir(key_dir: &str) -> Result<MultiStorage, JacsError> {
         let root = if std::path::Path::new(key_dir).is_absolute() {
             std::path::PathBuf::from("/")
         } else {
@@ -156,10 +151,13 @@ impl FsEncryptedStore {
     }
 
     /// Compute the current on-disk paths for the private and public key files.
-    fn key_paths() -> Result<(String, String, String), Box<dyn Error>> {
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
+    fn key_paths() -> Result<(String, String, String), JacsError> {
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
+        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
+        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
         let final_priv_path = if !priv_path.ends_with(".enc") {
@@ -211,7 +209,7 @@ impl FsEncryptedStore {
 }
 
 impl KeyStore for FsEncryptedStore {
-    fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+    fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         debug!(
             algorithm = %spec.algorithm,
             "FsEncryptedStore::generate called"
@@ -236,15 +234,19 @@ impl KeyStore for FsEncryptedStore {
             pub_len = pub_key.len(),
             "FsEncryptedStore::generate keys created"
         );
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
         let storage = Self::storage_for_key_dir(&key_dir)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
+        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
+        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
 
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
 
-        let _password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
+        let _password =
+            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
         let enc = encrypt_private_key(&priv_key).map_err(|e| {
             format!(
                 "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
@@ -278,13 +280,16 @@ impl KeyStore for FsEncryptedStore {
         Ok((priv_key, pub_key))
     }
 
-    fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+    fn load_private(&self) -> Result<Vec<u8>, JacsError> {
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
         let storage = Self::storage_for_key_dir(&key_dir)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)?;
+        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let enc_path = format!("{}.enc", priv_path);
-        let _password = get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true)?;
+        let _password =
+            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
 
         let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
             storage.get_file(&enc_path, None).map_err(|e2| {
@@ -313,10 +318,12 @@ impl KeyStore for FsEncryptedStore {
         Ok(decrypted.as_slice().to_vec())
     }
 
-    fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let key_dir = get_required_env_var("JACS_KEY_DIRECTORY", true)?;
+    fn load_public(&self) -> Result<Vec<u8>, JacsError> {
+        let key_dir =
+            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
         let storage = Self::storage_for_key_dir(&key_dir)?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)?;
+        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
+            .map_err(|e| e.to_string())?;
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
         let bytes = storage.get_file(&pub_path, None).map_err(|e| {
             format!(
@@ -333,7 +340,7 @@ impl KeyStore for FsEncryptedStore {
         private_key: &[u8],
         message: &[u8],
         algorithm: &str,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<Vec<u8>, JacsError> {
         let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -365,14 +372,12 @@ impl KeyStore for FsEncryptedStore {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
-        Ok(STANDARD.decode(sig_b64)?)
+        Ok(STANDARD
+            .decode(sig_b64)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?)
     }
 
-    fn rotate(
-        &self,
-        old_version: &str,
-        spec: &KeySpec,
-    ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+    fn rotate(&self, old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         debug!(
             old_version = %old_version,
             algorithm = %spec.algorithm,
@@ -422,13 +427,13 @@ macro_rules! unimplemented_store {
         #[derive(Debug)]
         pub struct $name;
         impl KeyStore for $name {
-            fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+            fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
-            fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+            fn load_private(&self) -> Result<Vec<u8>, JacsError> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
-            fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+            fn load_public(&self) -> Result<Vec<u8>, JacsError> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
             fn sign_detached(
@@ -436,7 +441,7 @@ macro_rules! unimplemented_store {
                 _private_key: &[u8],
                 _message: &[u8],
                 _algorithm: &str,
-            ) -> Result<Vec<u8>, Box<dyn Error>> {
+            ) -> Result<Vec<u8>, JacsError> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
         }
@@ -493,7 +498,7 @@ impl Drop for InMemoryKeyStore {
 }
 
 impl KeyStore for InMemoryKeyStore {
-    fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+    fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -517,7 +522,7 @@ impl KeyStore for InMemoryKeyStore {
         Ok((priv_key, pub_key))
     }
 
-    fn load_private(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn load_private(&self) -> Result<Vec<u8>, JacsError> {
         self.private_key
             .lock()
             .unwrap()
@@ -525,7 +530,7 @@ impl KeyStore for InMemoryKeyStore {
             .ok_or_else(|| "InMemoryKeyStore: no private key generated yet".into())
     }
 
-    fn load_public(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn load_public(&self) -> Result<Vec<u8>, JacsError> {
         self.public_key
             .lock()
             .unwrap()
@@ -538,7 +543,7 @@ impl KeyStore for InMemoryKeyStore {
         private_key: &[u8],
         message: &[u8],
         algorithm: &str,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<Vec<u8>, JacsError> {
         let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -570,14 +575,12 @@ impl KeyStore for InMemoryKeyStore {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
-        Ok(STANDARD.decode(sig_b64)?)
+        Ok(STANDARD
+            .decode(sig_b64)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?)
     }
 
-    fn rotate(
-        &self,
-        _old_version: &str,
-        spec: &KeySpec,
-    ) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+    fn rotate(&self, _old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         // In-memory stores have no files to archive — just regenerate.
         self.generate(spec)
     }

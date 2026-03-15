@@ -175,450 +175,108 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="storage-backends"><a class="header" href="#storage-backends">Storage Backends</a></h1>
-<p>JACS supports multiple storage backends for persisting documents and agents. This flexibility allows deployment in various environments from local development to cloud infrastructure.</p>
-<h2 id="available-backends"><a class="header" href="#available-backends">Available Backends</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Config Value</th><th>Description</th></tr></thead><tbody>
-<tr><td>Filesystem</td><td><code>fs</code></td><td>Local file storage (default)</td></tr>
-<tr><td>AWS S3</td><td><code>aws</code></td><td>Amazon S3 object storage</td></tr>
-<tr><td>HAI Cloud</td><td><code>hai</code></td><td>HTTP object store via <code>HAI_STORAGE_URL</code></td></tr>
-<tr><td>PostgreSQL</td><td><code>database</code></td><td>PostgreSQL with JSONB queries (requires <code>database</code> feature)</td></tr>
-<tr><td>Rusqlite</td><td><code>rusqlite</code></td><td>Embedded SQLite (requires <code>rusqlite-storage</code> feature)</td></tr>
-<tr><td>DuckDB</td><td><code>duckdb</code></td><td>Embedded analytical DB (requires <code>duckdb-storage</code> feature)</td></tr>
-<tr><td>Redb</td><td><code>redb</code></td><td>Pure-Rust embedded KV (requires <code>redb-storage</code> feature)</td></tr>
-<tr><td>SurrealDB</td><td><code>surrealdb</code></td><td>Multi-model DB with SurrealQL (requires <code>surrealdb-storage</code> feature)</td></tr>
+<p>JACS has two storage layers today:</p>
+<ul>
+<li>Low-level file/object storage via <code>MultiStorage</code></li>
+<li>Signed document CRUD/search via <code>DocumentService</code></li>
+</ul>
+<p>Those are related, but they are not identical. The most important rule is the signed-document contract:</p>
+<ul>
+<li>Every <code>DocumentService</code> read verifies the stored JACS document before returning it.</li>
+<li>Every <code>create()</code> and <code>update()</code> verifies the signed document before persisting it.</li>
+<li>If an update payload changes an already-signed JACS document without re-signing it, the write fails.</li>
+<li>Visibility changes create a new signed version instead of mutating metadata in place.</li>
+</ul>
+<h2 id="built-in-core-backends"><a class="header" href="#built-in-core-backends">Built-in Core Backends</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Config Value</th><th>Core Surface</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Filesystem</td><td><code>fs</code></td><td><code>MultiStorage</code> + <code>DocumentService</code></td><td>Default. Signed JSON files on disk.</td></tr>
+<tr><td>Local indexed SQLite</td><td><code>rusqlite</code></td><td><code>DocumentService</code> + <code>SearchProvider</code></td><td>Stores signed documents in a local SQLite DB with FTS search.</td></tr>
+<tr><td>AWS object storage</td><td><code>aws</code></td><td><code>MultiStorage</code></td><td>Object-store backend.</td></tr>
+<tr><td>Memory</td><td><code>memory</code></td><td><code>MultiStorage</code></td><td>Non-persistent, useful for tests and temporary flows.</td></tr>
+<tr><td>Browser local storage</td><td><code>local</code></td><td><code>MultiStorage</code></td><td>WASM-only.</td></tr>
 </tbody></table>
 </div>
-<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
-<p>Set the storage backend in your configuration:</p>
+<p>For local indexed document search in JACS core, use <code>rusqlite</code>.</p>
+<h2 id="filesystem-fs"><a class="header" href="#filesystem-fs">Filesystem (<code>fs</code>)</a></h2>
+<p>Filesystem is the default signed-document backend.</p>
 <pre><code class="language-json">{
   "jacs_default_storage": "fs",
-  "jacs_data_directory": "./jacs_data"
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h2 id="filesystem-storage-fs"><a class="header" href="#filesystem-storage-fs">Filesystem Storage (fs)</a></h2>
-<p>The default storage backend, storing documents as JSON files on the local filesystem.</p>
-<h3 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h3>
+<p>Typical layout:</p>
+<pre><code class="language-text">jacs_data/
+├── agent/
+│   └── {agent-id}:{agent-version}.json
+└── documents/
+    ├── {document-id}:{version}.json
+    └── archive/
+</code></pre>
+<p>Use filesystem when you want the simplest possible deployment, inspectable files, and no local database dependency.</p>
+<h2 id="local-indexed-sqlite-rusqlite"><a class="header" href="#local-indexed-sqlite-rusqlite">Local Indexed SQLite (<code>rusqlite</code>)</a></h2>
+<p><code>rusqlite</code> is the built-in indexed document backend used by the upgraded bindings and MCP search path.</p>
 <pre><code class="language-json">{
-  "jacs_default_storage": "fs",
-  "jacs_data_directory": "./jacs_data"
+  "jacs_default_storage": "rusqlite",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
 }
 </code></pre>
-<h3 id="directory-structure"><a class="header" href="#directory-structure">Directory Structure</a></h3>
-<pre><code>jacs_data/
-├── agents/
-│   └── {agent-id}/
-│       └── {version-id}.json
-├── documents/
-│   └── {document-id}/
-│       └── {version-id}.json
-└── files/
-    └── {attachment-hash}
-</code></pre>
-<h3 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h3>
+<p>With this setting:</p>
 <ul>
-<li>Local development</li>
-<li>Single-server deployments</li>
-<li>Testing and prototyping</li>
-<li>Air-gapped environments</li>
+<li>Signed documents are stored in <code>./jacs_data/jacs_documents.sqlite3</code></li>
+<li>Full-text search comes from SQLite FTS</li>
+<li><code>DocumentService</code> reads and writes enforce verification</li>
+<li>Updating visibility creates a new signed successor version</li>
 </ul>
-<h3 id="advantages"><a class="header" href="#advantages">Advantages</a></h3>
-<ul>
-<li>Simple setup</li>
-<li>No network dependencies</li>
-<li>Fast local access</li>
-<li>Easy backup and migration</li>
-</ul>
-<h3 id="considerations"><a class="header" href="#considerations">Considerations</a></h3>
-<ul>
-<li>Not suitable for distributed systems</li>
-<li>Limited by local disk space</li>
-<li>Single point of failure</li>
-</ul>
-<h3 id="example"><a class="header" href="#example">Example</a></h3>
-<pre><code class="language-python">import jacs
-import json
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.config.json')  # Using filesystem storage
-
-# Documents are saved to jacs_data/documents/
-doc = agent.create_document(json.dumps({
-    'title': 'My Document'
-}))
-# Saved to: jacs_data/documents/{doc-id}/{version-id}.json
-</code></pre>
-<h2 id="aws-s3-storage-aws"><a class="header" href="#aws-s3-storage-aws">AWS S3 Storage (aws)</a></h2>
-<p>Cloud object storage using Amazon S3.</p>
-<h3 id="configuration-2"><a class="header" href="#configuration-2">Configuration</a></h3>
+<p>Use <code>rusqlite</code> when you want local full-text search, filtered document queries, and a single-machine deployment.</p>
+<h2 id="aws-aws"><a class="header" href="#aws-aws">AWS (<code>aws</code>)</a></h2>
+<p>AWS support is an object-store backend for lower-level storage operations.</p>
 <pre><code class="language-json">{
-  "jacs_default_storage": "aws",
-  "jacs_data_directory": "s3://my-jacs-bucket/data"
+  "jacs_default_storage": "aws"
 }
 </code></pre>
-<h3 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h3>
-<pre><code class="language-bash">export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-export AWS_REGION="us-east-1"
+<p>Required environment variables:</p>
+<pre><code class="language-bash">export JACS_ENABLE_AWS_BUCKET_NAME="my-jacs-bucket"
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_REGION="us-west-2"
 </code></pre>
-<h3 id="bucket-structure"><a class="header" href="#bucket-structure">Bucket Structure</a></h3>
-<pre><code>my-jacs-bucket/
-├── data/
-│   ├── agents/
-│   │   └── {agent-id}/
-│   │       └── {version-id}.json
-│   ├── documents/
-│   │   └── {document-id}/
-│   │       └── {version-id}.json
-│   └── files/
-│       └── {attachment-hash}
-</code></pre>
-<h3 id="use-cases-1"><a class="header" href="#use-cases-1">Use Cases</a></h3>
-<ul>
-<li>Production deployments</li>
-<li>Distributed systems</li>
-<li>High availability requirements</li>
-<li>Large document volumes</li>
-</ul>
-<h3 id="advantages-1"><a class="header" href="#advantages-1">Advantages</a></h3>
-<ul>
-<li>Scalable storage</li>
-<li>High durability (99.999999999%)</li>
-<li>Geographic redundancy</li>
-<li>Built-in versioning support</li>
-</ul>
-<h3 id="considerations-1"><a class="header" href="#considerations-1">Considerations</a></h3>
-<ul>
-<li>Requires AWS account</li>
-<li>Network latency</li>
-<li>Storage costs</li>
-<li>IAM configuration needed</li>
-</ul>
-<h3 id="iam-policy"><a class="header" href="#iam-policy">IAM Policy</a></h3>
-<p>Minimum required permissions:</p>
+<p>Use <code>aws</code> when you need remote object storage. If you also need a richer signed-document query surface, use one of the database-focused crates below.</p>
+<h2 id="memory-memory"><a class="header" href="#memory-memory">Memory (<code>memory</code>)</a></h2>
+<p>Memory storage is non-persistent:</p>
 <pre><code class="language-json">{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::my-jacs-bucket",
-        "arn:aws:s3:::my-jacs-bucket/*"
-      ]
-    }
-  ]
+  "jacs_default_storage": "memory"
 }
 </code></pre>
-<h3 id="example-1"><a class="header" href="#example-1">Example</a></h3>
-<pre><code class="language-python">import jacs
-import json
-import os
-
-# Set AWS credentials
-os.environ['AWS_ACCESS_KEY_ID'] = 'your-key'
-os.environ['AWS_SECRET_ACCESS_KEY'] = 'your-secret'
-os.environ['AWS_REGION'] = 'us-east-1'
-
-agent = jacs.JacsAgent()
-agent.load('./jacs.s3.config.json')
-
-# Documents are saved to S3
-doc = agent.create_document(json.dumps({
-    'title': 'Cloud Document'
-}))
-</code></pre>
-<h2 id="hai-cloud-storage-hai"><a class="header" href="#hai-cloud-storage-hai">HAI Cloud Storage (hai)</a></h2>
-<p>HTTP object store pointed at <code>HAI_STORAGE_URL</code>. This backend uses <code>object_store::http::HttpStore</code> under the hood — it is a generic HTTP store, not a managed platform.</p>
-<p>For HAI platform registration, attestation, and key discovery, use the separate <a href="https://github.com/HumanAssisted/haisdk">haisdk</a> package.</p>
-<h3 id="configuration-3"><a class="header" href="#configuration-3">Configuration</a></h3>
-<pre><code class="language-json">{
-  "jacs_default_storage": "hai"
-}
-</code></pre>
-<pre><code class="language-bash">export HAI_STORAGE_URL="https://storage.hai.ai/v1"
-</code></pre>
-<h3 id="use-cases-2"><a class="header" href="#use-cases-2">Use Cases</a></h3>
+<p>Use it for tests, temporary operations, and ephemeral agent flows.</p>
+<h2 id="extracted-backend-crates"><a class="header" href="#extracted-backend-crates">Extracted Backend Crates</a></h2>
+<p>Several richer database backends now live outside the JACS core crate:</p>
 <ul>
-<li>Remote document storage via HTTP</li>
-<li>Integration with HAI storage endpoints</li>
+<li><code>jacs-postgresql</code></li>
+<li><code>jacs-duckdb</code></li>
+<li><code>jacs-redb</code></li>
+<li><code>jacs-surrealdb</code></li>
 </ul>
-<h2 id="postgresql-database-storage-database"><a class="header" href="#postgresql-database-storage-database">PostgreSQL Database Storage (database)</a></h2>
-<p>The <code>database</code> storage backend stores JACS documents in PostgreSQL, enabling JSONB queries, pagination, and agent-based lookups while preserving cryptographic signatures.</p>
-<p>This backend is behind a compile-time feature flag and requires the <code>database</code> Cargo feature to be enabled.</p>
-<h3 id="compile-time-setup"><a class="header" href="#compile-time-setup">Compile-Time Setup</a></h3>
-<pre><code class="language-bash"># Build with database support
-cargo build --features database
-
-# Run tests with database support (requires Docker for testcontainers)
-cargo test --features database-tests
-</code></pre>
-<h3 id="configuration-4"><a class="header" href="#configuration-4">Configuration</a></h3>
-<pre><code class="language-json">{
-  "jacs_default_storage": "database"
-}
-</code></pre>
-<p>Environment variables (12-Factor compliant):</p>
-<pre><code class="language-bash">export JACS_DATABASE_URL="postgres://user:password@localhost:5432/jacs"
-export JACS_DATABASE_MAX_CONNECTIONS=10       # optional, default 10
-export JACS_DATABASE_MIN_CONNECTIONS=1        # optional, default 1
-export JACS_DATABASE_CONNECT_TIMEOUT_SECS=30  # optional, default 30
-</code></pre>
-<h3 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h3>
-<p>JACS uses a <strong>TEXT + JSONB dual-column</strong> strategy:</p>
-<ul>
-<li><strong><code>raw_contents</code> (TEXT)</strong>: Stores the exact JSON bytes as-is. This is used when retrieving documents to preserve cryptographic signatures (PostgreSQL JSONB normalizes key ordering, which would break signatures).</li>
-<li><strong><code>file_contents</code> (JSONB)</strong>: Stores the same document as JSONB for efficient queries, field extraction, and indexing.</li>
-</ul>
-<h3 id="table-schema"><a class="header" href="#table-schema">Table Schema</a></h3>
-<pre><code class="language-sql">CREATE TABLE jacs_document (
-    jacs_id TEXT NOT NULL,
-    jacs_version TEXT NOT NULL,
-    agent_id TEXT,
-    jacs_type TEXT NOT NULL,
-    raw_contents TEXT NOT NULL,
-    file_contents JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (jacs_id, jacs_version)
-);
-</code></pre>
-<h3 id="append-only-model"><a class="header" href="#append-only-model">Append-Only Model</a></h3>
-<p>Documents are <strong>immutable once stored</strong>. New versions create new rows keyed by <code>(jacs_id, jacs_version)</code>. There are no UPDATE operations on existing rows. Inserting a duplicate <code>(jacs_id, jacs_version)</code> is silently ignored (<code>ON CONFLICT DO NOTHING</code>).</p>
-<h3 id="query-capabilities"><a class="header" href="#query-capabilities">Query Capabilities</a></h3>
-<p>The database backend provides additional query methods beyond basic CRUD:</p>
-<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>query_by_type(type, limit, offset)</code></td><td>Paginated queries by document type</td></tr>
-<tr><td><code>query_by_field(field, value, type, limit, offset)</code></td><td>JSONB field queries</td></tr>
-<tr><td><code>count_by_type(type)</code></td><td>Count documents by type</td></tr>
-<tr><td><code>get_versions(id)</code></td><td>All versions of a document</td></tr>
-<tr><td><code>get_latest(id)</code></td><td>Most recent version</td></tr>
-<tr><td><code>query_by_agent(agent_id, type, limit, offset)</code></td><td>Documents by signing agent</td></tr>
+<p>These crates implement the same storage/search traits in their own packages. They are not built-in <code>jacs_default_storage</code> values for the core crate.</p>
+<h2 id="choosing-a-backend"><a class="header" href="#choosing-a-backend">Choosing a Backend</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommendation</th></tr></thead><tbody>
+<tr><td>Default local usage</td><td><code>fs</code></td></tr>
+<tr><td>Local search + filtering</td><td><code>rusqlite</code></td></tr>
+<tr><td>Ephemeral tests</td><td><code>memory</code></td></tr>
+<tr><td>Remote object storage</td><td><code>aws</code></td></tr>
+<tr><td>Postgres / vector / multi-model needs</td><td>Use an extracted backend crate</td></tr>
 </tbody></table>
 </div>
-<h3 id="rust-api-example"><a class="header" href="#rust-api-example">Rust API Example</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use jacs::storage::{DatabaseStorage, DatabaseDocumentTraits, StorageDocumentTraits};
-
-// Create storage (requires tokio runtime)
-let storage = DatabaseStorage::new(
-    "postgres://localhost/jacs",
-    Some(10),  // max connections
-    Some(1),   // min connections
-    Some(30),  // timeout seconds
-)?;
-
-// Run migrations (creates table + indexes)
-storage.run_migrations()?;
-
-// Store a document
-storage.store_document(&amp;doc)?;
-
-// Query by type with pagination
-let commitments = storage.query_by_type("commitment", 10, 0)?;
-
-// Query by JSONB field
-let active = storage.query_by_field(
-    "jacsCommitmentStatus", "active", Some("commitment"), 10, 0
-)?;
-
-// Get latest version
-let latest = storage.get_latest("some-document-id")?;
-<span class="boring">}</span></code></pre></pre>
-<h3 id="security-note"><a class="header" href="#security-note">Security Note</a></h3>
-<p>Even when using database storage, <strong>keys are always loaded from the filesystem or keyservers</strong> -- never from the database or configuration providers. The database stores only signed documents.</p>
-<h3 id="use-cases-3"><a class="header" href="#use-cases-3">Use Cases</a></h3>
-<ul>
-<li>Production deployments requiring complex queries</li>
-<li>Multi-agent systems with shared document visibility</li>
-<li>Applications needing pagination and aggregation</li>
-<li>Environments where JSONB indexing provides significant query performance</li>
-</ul>
-<h3 id="considerations-2"><a class="header" href="#considerations-2">Considerations</a></h3>
-<ul>
-<li>Requires PostgreSQL 14+</li>
-<li>Requires tokio runtime (not available in WASM)</li>
-<li>Compile-time feature flag (<code>database</code>)</li>
-<li>Network dependency on PostgreSQL server</li>
-</ul>
-<h2 id="embedded-database-backends"><a class="header" href="#embedded-database-backends">Embedded Database Backends</a></h2>
-<p>Four lightweight embedded database backends are available behind feature flags. None require an external server.</p>
-<h3 id="rusqlite-rusqlite-storage"><a class="header" href="#rusqlite-rusqlite-storage">Rusqlite (<code>rusqlite-storage</code>)</a></h3>
-<p>Embedded SQLite via rusqlite with WAL mode enabled. Pinned to rusqlite v0.31.</p>
-<pre><code class="language-bash">cargo build --features rusqlite-storage
-cargo test --features rusqlite-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You want SQL queries on a single-file database with no external dependencies.</p>
-<h3 id="duckdb-duckdb-storage"><a class="header" href="#duckdb-duckdb-storage">DuckDB (<code>duckdb-storage</code>)</a></h3>
-<p>Embedded analytical database with JSON path queries.</p>
-<pre><code class="language-bash">cargo build --features duckdb-storage
-cargo test --features duckdb-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You need analytical queries or columnar storage over signed documents.</p>
-<h3 id="redb-redb-storage"><a class="header" href="#redb-redb-storage">Redb (<code>redb-storage</code>)</a></h3>
-<p>Pure-Rust embedded key-value store. No C dependencies.</p>
-<pre><code class="language-bash">cargo build --features redb-storage
-cargo test --features redb-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You want the simplest embedded backend with zero non-Rust dependencies.</p>
-<h3 id="surrealdb-surrealdb-storage"><a class="header" href="#surrealdb-surrealdb-storage">SurrealDB (<code>surrealdb-storage</code>)</a></h3>
-<p>Multi-model database with SurrealQL. Uses <code>kv-mem</code> for in-memory mode.</p>
-<pre><code class="language-bash">cargo build --features surrealdb-storage
-cargo test --features surrealdb-storage-tests
-</code></pre>
-<p><strong>When to use:</strong> You want a multi-model query language or plan to scale to a SurrealDB cluster later.</p>
-<h2 id="in-memory-storage"><a class="header" href="#in-memory-storage">In-Memory Storage</a></h2>
-<p>For testing and temporary operations, documents can be created without saving:</p>
-<pre><code class="language-python"># Create document without saving
-doc = agent.create_document(
-    json.dumps({'temp': 'data'}),
-    no_save=True  # Don't persist
-)
-</code></pre>
-<pre><code class="language-javascript">const doc = agent.createDocument(
-  JSON.stringify({ temp: 'data' }),
-  null,  // custom_schema
-  null,  // output_filename
-  true   // no_save = true
-);
-</code></pre>
-<h2 id="storage-selection-guide"><a class="header" href="#storage-selection-guide">Storage Selection Guide</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Backend</th></tr></thead><tbody>
-<tr><td>Development</td><td><code>fs</code></td></tr>
-<tr><td>Single server</td><td><code>fs</code></td></tr>
-<tr><td>Complex queries needed</td><td><code>database</code></td></tr>
-<tr><td>Multi-agent with shared queries</td><td><code>database</code></td></tr>
-<tr><td>Cloud deployment</td><td><code>aws</code></td></tr>
-<tr><td>High availability</td><td><code>aws</code></td></tr>
-<tr><td>Multi-organization</td><td><code>hai</code></td></tr>
-<tr><td>Embedded SQL queries</td><td><code>rusqlite</code></td></tr>
-<tr><td>Analytical queries</td><td><code>duckdb</code></td></tr>
-<tr><td>Zero C-dep embedded KV</td><td><code>redb</code></td></tr>
-<tr><td>Multi-model queries</td><td><code>surrealdb</code></td></tr>
-<tr><td>Testing</td><td>In-memory (no_save)</td></tr>
-</tbody></table>
-</div>
-<h2 id="file-storage"><a class="header" href="#file-storage">File Storage</a></h2>
-<h3 id="embedded-files"><a class="header" href="#embedded-files">Embedded Files</a></h3>
-<p>Files can be embedded directly in documents:</p>
-<pre><code class="language-python">doc = agent.create_document(
-    json.dumps({'report': 'Monthly Report'}),
-    attachments='./report.pdf',
-    embed=True
-)
-</code></pre>
-<p>The file contents are base64-encoded and stored in <code>jacsFiles</code>.</p>
-<h3 id="external-files"><a class="header" href="#external-files">External Files</a></h3>
-<p>Or reference files without embedding:</p>
-<pre><code class="language-python">doc = agent.create_document(
-    json.dumps({'report': 'Monthly Report'}),
-    attachments='./report.pdf',
-    embed=False
-)
-</code></pre>
-<p>Only the file path and hash are stored. The file must be available when the document is accessed.</p>
-<h2 id="data-migration"><a class="header" href="#data-migration">Data Migration</a></h2>
-<h3 id="filesystem-to-s3"><a class="header" href="#filesystem-to-s3">Filesystem to S3</a></h3>
-<pre><code class="language-python">import jacs
-import json
-import os
-
-# Load from filesystem
-fs_agent = jacs.JacsAgent()
-fs_agent.load('./jacs.fs.config.json')
-
-# Read all documents
-# (implementation depends on your document tracking)
-
-# Configure S3
-s3_agent = jacs.JacsAgent()
-s3_agent.load('./jacs.s3.config.json')
-
-# Re-create documents in S3
-for doc_json in documents:
-    doc = json.loads(doc_json)
-    # Remove existing signatures for re-signing
-    del doc['jacsSignature']
-    del doc['jacsSha256']
-    s3_agent.create_document(json.dumps(doc))
-</code></pre>
-<h3 id="exportimport"><a class="header" href="#exportimport">Export/Import</a></h3>
-<p>For manual migration:</p>
-<pre><code class="language-bash"># Export from filesystem
-tar -czf jacs_backup.tar.gz ./jacs_data
-
-# Import to new location
-tar -xzf jacs_backup.tar.gz -C /new/location
-</code></pre>
-<h2 id="backup-and-recovery"><a class="header" href="#backup-and-recovery">Backup and Recovery</a></h2>
-<h3 id="filesystem-backup"><a class="header" href="#filesystem-backup">Filesystem Backup</a></h3>
-<pre><code class="language-bash"># Regular backups
-rsync -av ./jacs_data/ /backup/jacs_data/
-
-# Or with timestamp
-tar -czf jacs_backup_$(date +%Y%m%d).tar.gz ./jacs_data
-</code></pre>
-<h3 id="s3-backup"><a class="header" href="#s3-backup">S3 Backup</a></h3>
-<p>Enable S3 versioning for automatic backups:</p>
-<pre><code class="language-bash">aws s3api put-bucket-versioning \
-    --bucket my-jacs-bucket \
-    --versioning-configuration Status=Enabled
-</code></pre>
-<h3 id="cross-region-replication"><a class="header" href="#cross-region-replication">Cross-Region Replication</a></h3>
-<p>For disaster recovery with S3:</p>
-<pre><code class="language-bash">aws s3api put-bucket-replication \
-    --bucket my-jacs-bucket \
-    --replication-configuration file://replication.json
-</code></pre>
-<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
-<h3 id="filesystem"><a class="header" href="#filesystem">Filesystem</a></h3>
-<ul>
-<li>Use SSD storage</li>
-<li>Consider separate disk for jacs_data</li>
-<li>Enable filesystem caching</li>
-</ul>
-<h3 id="s3"><a class="header" href="#s3">S3</a></h3>
-<ul>
-<li>Use regional endpoints</li>
-<li>Enable transfer acceleration for global access</li>
-<li>Consider S3 Intelligent-Tiering for cost optimization</li>
-</ul>
-<h3 id="caching"><a class="header" href="#caching">Caching</a></h3>
-<p>Implement application-level caching for frequently accessed documents:</p>
-<pre><code class="language-python">import functools
-
-@functools.lru_cache(maxsize=100)
-def get_document(doc_id, version_id):
-    return agent.get_document(f"{doc_id}:{version_id}")
-</code></pre>
-<h2 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h2>
-<h3 id="filesystem-1"><a class="header" href="#filesystem-1">Filesystem</a></h3>
-<pre><code class="language-bash"># Restrict permissions
-chmod 700 ./jacs_data
-chmod 600 ./jacs_data/**/*.json
-</code></pre>
-<h3 id="s3-1"><a class="header" href="#s3-1">S3</a></h3>
-<ul>
-<li>Enable encryption at rest (SSE-S3 or SSE-KMS)</li>
-<li>Use VPC endpoints for private access</li>
-<li>Enable access logging</li>
-<li>Configure bucket policies carefully</li>
-</ul>
-<pre><code class="language-json">{
-  "jacs_data_directory": "s3://my-jacs-bucket/data",
-  "aws_s3_encryption": "AES256"
-}
-</code></pre>
-<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
-<ul>
-<li><a href="../schemas/configuration.html">Configuration</a> - Storage configuration options</li>
-<li><a href="security.html">Security Model</a> - Storage security</li>
-<li><a href="../getting-started/quickstart.html">Quick Start</a> - Initial setup</li>
-</ul>
+<h2 id="migration-notes"><a class="header" href="#migration-notes">Migration Notes</a></h2>
+<p>Switching backends does not migrate data automatically.</p>
+<p>When you change <code>jacs_default_storage</code>:</p>
+<ol>
+<li>Export the signed documents you need to keep.</li>
+<li>Update the config value.</li>
+<li>Create/import the new backend’s data store.</li>
+<li>Re-run verification on imported documents as part of migration validation.</li>
+</ol>
 
                     </main>
 

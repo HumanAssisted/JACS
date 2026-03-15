@@ -83,8 +83,8 @@ class TestSimpleAgentAttestation:
         result_json = agent.verify_attestation(doc_key)
         result = json.loads(result_json)
         assert result["valid"] is True
-        assert result["crypto"]["signature_valid"] is True
-        assert result["crypto"]["hash_valid"] is True
+        assert result["crypto"]["signatureValid"] is True
+        assert result["crypto"]["hashValid"] is True
 
     def test_verify_attestation_full(self):
         """Create then full-verify. Evidence list should be present."""

@@ -15,7 +15,7 @@ pip install jacs
 
 ```
 
-Packaging/build metadata is defined in `pyproject.toml` (maturin). `setup.py` is intentionally not used.
+The Python package ships prebuilt native bindings (via maturin) and does not compile Rust during `pip install`. Packaging/build metadata is defined in `pyproject.toml`. `setup.py` is intentionally not used.
 
 To check dependencies for known vulnerabilities when using optional extras, run `pip audit` (or `safety check`).
 
@@ -87,6 +87,8 @@ The simplified API provides these core operations:
 | `verify_by_id()` | Verify a document by its storage ID (`uuid:version`) |
 | `get_dns_record()` | Get DNS TXT record line for the agent |
 | `get_well_known_json()` | Get well-known JSON for `/.well-known/jacs-pubkey.json` |
+| `export_agent()` | Export agent JSON for sharing |
+| `get_public_key()` | Get the agent's public key (e.g. for DNS) |
 | `reencrypt_key()` | Re-encrypt the private key with a new password |
 | `trust_agent()` | Add an agent to the local trust store |
 | `list_trusted_agents()` | List all trusted agent IDs |
@@ -439,6 +441,8 @@ pip install jacs[a2a-server]   # A2A server with serve() (FastAPI + uvicorn)
 # With MCP support
 pip install jacs[mcp]
 
+# Optional: jacs[langgraph] (LangGraph ToolNode), jacs[ws] (WebSockets). See pyproject.toml.
+
 ```
 
 ## Examples
@@ -474,7 +478,7 @@ uv run python -m pytest tests/ -v
 | `make setup` | Install dev dependencies with uv |
 | `make dev` | Build Rust extension for development |
 | `make test` | Run all tests |
-| `make check-imports` | Verify all imports work |
+| `make check-imports` | Verify core imports (also checks optional jacs.hai / HaiClient if installed) |
 
 ## Documentation
 

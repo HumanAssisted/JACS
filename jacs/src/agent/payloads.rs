@@ -1,10 +1,10 @@
 use crate::agent::Agent;
 use crate::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 use crate::agent::document::DocumentTraits;
+use crate::error::JacsError;
 use crate::replay;
 use chrono;
 use serde_json::Value;
-use std::error::Error;
 // use crate::agent::{AGENT_REGISTRATION_SIGNATURE_FIELDNAME, AGENT_SIGNATURE_FIELDNAME, Agent};
 // use crate::crypt::KeyManager;
 // use crate::crypt::hash::hash_string as jacs_hash_string;
@@ -16,23 +16,23 @@ There should be no versions of a payload
 */
 
 pub trait PayloadTraits {
-    fn sign_payload(&mut self, document: Value) -> Result<String, Box<dyn Error>>;
+    fn sign_payload(&mut self, document: Value) -> Result<String, JacsError>;
 
     fn verify_payload(
         &mut self,
         document_string: String,
         max_replay_time_delta: Option<u64>,
-    ) -> Result<Value, Box<dyn Error>>;
+    ) -> Result<Value, JacsError>;
 
     fn verify_payload_with_agent_id(
         &mut self,
         document_string: String,
         max_replay_time_delta: Option<u64>,
-    ) -> Result<(Value, String), Box<dyn Error>>;
+    ) -> Result<(Value, String), JacsError>;
 }
 
 impl PayloadTraits for Agent {
-    fn sign_payload(&mut self, jacs_payload: Value) -> Result<String, Box<dyn Error>> {
+    fn sign_payload(&mut self, jacs_payload: Value) -> Result<String, JacsError> {
         let wrapper_value = serde_json::json!({
             "jacs_payload": jacs_payload
         });
@@ -59,7 +59,7 @@ impl PayloadTraits for Agent {
         &mut self,
         document_string: String,
         max_replay_time_delta: Option<u64>,
-    ) -> Result<Value, Box<dyn Error>> {
+    ) -> Result<Value, JacsError> {
         let (payload, _) =
             self.verify_payload_with_agent_id(document_string, max_replay_time_delta)?;
         Ok(payload.clone())
@@ -69,7 +69,7 @@ impl PayloadTraits for Agent {
         &mut self,
         document_string: String,
         max_replay_time_delta_seconds: Option<u64>,
-    ) -> Result<(Value, String), Box<dyn Error>> {
+    ) -> Result<(Value, String), JacsError> {
         let doc = self.load_document(&document_string)?;
         let document_key = doc.getkey();
         let value = doc.getvalue();
@@ -78,7 +78,9 @@ impl PayloadTraits for Agent {
 
         let payload = value
             .get("jacs_payload")
-            .ok_or_else(|| Box::<dyn Error>::from("'jacs_payload' field not found"))?;
+            .ok_or_else(|| JacsError::Internal {
+                message: "'jacs_payload' field not found".to_string(),
+            })?;
         let date = self.get_document_signature_date(&document_key)?;
         let agent_id = self.get_document_signature_agent_id(&document_key)?;
 
@@ -87,19 +89,28 @@ impl PayloadTraits for Agent {
         let max_replay_seconds =
             max_replay_time_delta_seconds.unwrap_or_else(replay::payload_replay_window_seconds);
         let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| JacsError::Internal {
+                message: e.to_string(),
+            })?
             .as_secs();
 
         // Parse ISO date string to timestamp
-        let date_timestamp = chrono::DateTime::parse_from_rfc3339(&date)?.timestamp() as u64;
+        let date_timestamp = chrono::DateTime::parse_from_rfc3339(&date)
+            .map_err(|e| JacsError::Internal {
+                message: e.to_string(),
+            })?
+            .timestamp() as u64;
 
         // Check if signature is too old
         if current_time > date_timestamp && current_time - date_timestamp > max_replay_seconds {
-            return Err(Box::<dyn Error>::from(format!(
-                "Signature too old: {} seconds (max allowed: {})",
-                current_time - date_timestamp,
-                max_replay_seconds
-            )));
+            return Err(JacsError::Internal {
+                message: format!(
+                    "Signature too old: {} seconds (max allowed: {})",
+                    current_time - date_timestamp,
+                    max_replay_seconds
+                ),
+            });
         }
 
         let jti = value
@@ -108,10 +119,10 @@ impl PayloadTraits for Agent {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|nonce| !nonce.is_empty())
-            .ok_or_else(|| {
-                Box::<dyn Error>::from("Missing or invalid 'jacsSignature.jti' in payload document")
+            .ok_or_else(|| JacsError::Internal {
+                message: "Missing or invalid 'jacsSignature.jti' in payload document".to_string(),
             })?;
-        replay::check_and_store_nonce(&agent_id, jti).map_err(Box::<dyn Error>::from)?;
+        replay::check_and_store_nonce(&agent_id, jti)?;
 
         Ok((payload.clone(), agent_id))
     }

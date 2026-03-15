@@ -1,4 +1,9 @@
-.PHONY: build-jacs build-jacsbook build-jacsbook-pdf test test-jacs audit-jacs test-jacs-cli test-jacs-observability test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
+.PHONY: build-jacs build-jacsbook build-jacsbook-pdf \
+        test test-all test-all-pq test-rust-pr test-bindings-fast test-rust-slow test-jacs test-jacs-fast test-jacs-features test-jacs-pq test-jacs-cli test-jacs-cross-language test-jacs-observability \
+        test-jacs-mcp test-jacs-binding-core test-jacs-binding-core-pq \
+        test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
+        test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
+        audit-jacs \
         publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
         release-jacs release-jacspy release-jacsnpm release-cli release-all release-everything release-delete-tags \
         retry-jacspy retry-jacsnpm retry-cli \
@@ -35,6 +40,11 @@ JACSNPM_RUST_VERSION := $(shell grep '^version' jacsnpm/Cargo.toml | head -1 | s
 # Go FFI Rust library version (from jacsgo/lib/Cargo.toml)
 JACSGO_VERSION := $(shell grep '^version' jacsgo/lib/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
+# Fast Rust lane for the core crate: exclude dedicated CLI, interop, observability,
+# and PQ-only binaries so the default PR path stays bounded.
+JACS_TEST_BINS := $(basename $(notdir $(shell find jacs/tests -maxdepth 1 -name '*.rs' -print | sort)))
+JACS_FAST_TEST_BINS := $(filter-out a2a_cross_language_tests attestation_cross_lang_tests cli_flags cli_tests cross_language_tests observability_oltp_meter observability_tests pq2025_tests pq_tests,$(JACS_TEST_BINS))
+
 # ============================================================================
 # BUILD
 # ============================================================================
@@ -61,17 +71,55 @@ build-jacsbook-pdf:
 # ============================================================================
 
 test-jacs:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features cli -- --nocapture
+	cd jacs && RUST_BACKTRACE=1 cargo test --lib --tests -- --nocapture
+
+# Fast test run: ed25519 only (no post-quantum keygen)
+test-jacs-fast:
+	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib $(foreach test,$(JACS_FAST_TEST_BINS),--test $(test)) -- --nocapture
+
+# Full test run: includes post-quantum algorithm tests (slow keygen)
+test-jacs-pq:
+	RUST_BACKTRACE=1 cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
+
+test-jacs-features: test-jacs-pq
+
+test-jacs-cli:
+	cargo build -p jacs-cli
+	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests --test cli_flags -- --nocapture
+
+test-jacs-cross-language:
+	cd jacs && RUST_BACKTRACE=1 cargo test --features "agreements a2a attestation" --test cross_language_tests --test a2a_cross_language_tests --test attestation_cross_lang_tests -- --nocapture
+
+test-jacs-observability:
+	cd jacs && RUST_BACKTRACE=1 cargo test --features "observability-convenience otlp-logs otlp-metrics otlp-tracing" --test observability_tests --test observability_oltp_meter -- --nocapture
+
+test-jacs-mcp:
+	RUST_BACKTRACE=1 cargo test -p jacs-mcp --lib --tests --verbose
+
+test-jacs-binding-core:
+	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --lib --tests --verbose
+
+test-jacs-binding-core-pq:
+	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
+
+# Storage backend crates (extracted from jacs core)
+test-jacs-duckdb:
+	RUST_BACKTRACE=1 cargo test -p jacs-duckdb --lib --tests --verbose
+
+test-jacs-redb:
+	RUST_BACKTRACE=1 cargo test -p jacs-redb --lib --tests --verbose
+
+test-jacs-surrealdb:
+	RUST_BACKTRACE=1 cargo test -p jacs-surrealdb --lib --tests --verbose
+
+test-jacs-postgresql:
+	RUST_BACKTRACE=1 cargo test -p jacs-postgresql --lib --tests --verbose
+
+test-jacs-storage: test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql
 
 audit-jacs:
 	@command -v cargo-audit >/dev/null 2>&1 || (echo "cargo-audit is required. Install with: cargo install cargo-audit --locked --version 0.22.1"; exit 1)
 	cargo audit --ignore RUSTSEC-2023-0071
-
-test-jacs-cli:
-	cd jacs && RUST_BACKTRACE=1 cargo test --features cli --test cli_tests -- --nocapture
-
-test-jacs-observability:
-	RUST_BACKTRACE=1 cargo test --features "cli observability-convenience otlp-logs otlp-metrics otlp-tracing" --test observability_tests --test observability_oltp_meter -- --nocapture
 
 test-jacspy:
 	cd jacspy && maturin develop && python -m pytest tests/ -v
@@ -86,6 +134,20 @@ test-jacsnpm-parallel:
 	cd jacsnpm && npm run test:parallel
 
 test: test-jacs
+
+# Default PR suite: fast Rust lanes plus parallel binding runners.
+test-rust-pr: test-jacs-fast test-jacs-cli test-jacs-binding-core test-jacs-mcp
+
+test-bindings-fast: test-jacspy-parallel test-jacsnpm-parallel
+
+# Slower Rust compatibility and infrastructure suites.
+test-rust-slow: test-jacs-storage test-jacs-cross-language test-jacs-observability
+
+# Run the default fast suite used for everyday PR validation.
+test-all: test-rust-pr test-bindings-fast
+
+# Run the extended suite: slow Rust lanes plus post-quantum coverage.
+test-all-pq: test-all test-rust-slow test-jacs-pq test-jacs-binding-core-pq
 
 # Regenerate all canonical cross-language fixtures in sequence.
 # This intentionally mutates tracked fixture files.
@@ -352,12 +414,30 @@ help:
 	@echo "  make build-jacsbook-pdf  Generate single PDF book at docs/jacsbook.pdf"
 	@echo ""
 	@echo "TEST:"
-	@echo "  make test            Run all tests (alias for test-jacs)"
-	@echo "  make test-jacs       Run Rust library tests"
-	@echo "  make audit-jacs      Run cargo-audit (required security gate)"
-	@echo "  make test-jacs-cli   Run CLI integration tests"
-	@echo "  make test-jacspy     Run Python binding tests"
-	@echo "  make test-jacsnpm    Run Node.js binding tests"
+	@echo "  make test                Run Rust library tests (alias for test-jacs)"
+	@echo "  make test-all            Run the default fast PR suite"
+	@echo "  make test-all-pq         Run the extended suite (slow Rust lanes + post-quantum)"
+	@echo "  make test-rust-pr        Run the default fast Rust lanes"
+	@echo "  make test-bindings-fast  Run Python and Node bindings with their parallel runners"
+	@echo "  make test-rust-slow      Run storage, cross-language, and observability suites"
+	@echo "  make test-jacs           Run Rust library tests"
+	@echo "  make test-jacs-fast      Run Rust tests with features, ed25519 only (fast)"
+	@echo "  make test-jacs-pq        Run Rust tests with features + post-quantum tests"
+	@echo "  make test-jacs-features  Alias for test-jacs-pq (full coverage)"
+	@echo "  make test-jacs-cli       Run CLI integration tests"
+	@echo "  make test-jacs-cross-language Run Rust cross-language and fixture-interop tests"
+	@echo "  make test-jacs-mcp       Run MCP server tests"
+	@echo "  make test-jacs-binding-core     Run binding-core tests (ed25519)"
+	@echo "  make test-jacs-binding-core-pq  Run binding-core tests (+ post-quantum)"
+	@echo "  make test-jacs-storage   Run all storage backend tests (duckdb, redb, surrealdb, postgresql)"
+	@echo "  make test-jacs-duckdb    Run DuckDB storage tests"
+	@echo "  make test-jacs-redb      Run Redb storage tests"
+	@echo "  make test-jacs-surrealdb Run SurrealDB storage tests"
+	@echo "  make test-jacs-postgresql Run PostgreSQL storage tests"
+	@echo "  make test-jacs-observability Run observability tests"
+	@echo "  make audit-jacs          Run cargo-audit (required security gate)"
+	@echo "  make test-jacspy         Run Python binding tests"
+	@echo "  make test-jacsnpm        Run Node.js binding tests"
 	@echo "  make regen-cross-lang-fixtures  Regenerate Rust->Python->Node fixtures"
 	@echo ""
 	@echo "GIT HOOKS:"

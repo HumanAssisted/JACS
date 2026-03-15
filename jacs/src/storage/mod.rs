@@ -1,3 +1,59 @@
+//! Storage backends for JACS documents.
+//!
+//! This module provides the [`MultiStorage`] abstraction layer and the
+//! [`StorageDocumentTraits`] base trait that all storage backends implement.
+//!
+//! # Built-in Backends
+//!
+//! | Backend | Type | Feature Flag | Description |
+//! |---------|------|-------------|-------------|
+//! | Filesystem | `fs` | (always) | Documents as JSON files on disk. Default. |
+//! | Memory | `memory` | (always) | In-memory store for testing. |
+//! | AWS S3 | `aws` | (always) | Object storage via `object_store` crate. |
+//! | SQLite (sync) | `rusqlite` | `sqlite` (default) | Local indexed storage via rusqlite. |
+//! | SQLite (async) | `sqlite` | `sqlx-sqlite` | Async indexed storage via sqlx + tokio. |
+//!
+//! # External Backend Crates
+//!
+//! These backends have been extracted to standalone crates:
+//!
+//! | Crate | Install | Description |
+//! |-------|---------|-------------|
+//! | [`jacs-postgresql`](https://crates.io/crates/jacs-postgresql) | `cargo add jacs-postgresql` | PostgreSQL with pgvector search |
+//! | [`jacs-surrealdb`](https://crates.io/crates/jacs-surrealdb) | `cargo add jacs-surrealdb` | SurrealDB multi-model backend |
+//! | [`jacs-duckdb`](https://crates.io/crates/jacs-duckdb) | `cargo add jacs-duckdb` | DuckDB analytical queries |
+//! | [`jacs-redb`](https://crates.io/crates/jacs-redb) | `cargo add jacs-redb` | Redb embedded key-value store |
+//!
+//! External crates implement [`StorageDocumentTraits`], [`DatabaseDocumentTraits`],
+//! and [`SearchProvider`](crate::search::SearchProvider).
+//!
+//! # Trait Hierarchy
+//!
+//! ```text
+//! StorageDocumentTraits        (base -- CRUD, list, versions, bulk)
+//!     +-- DatabaseDocumentTraits   (indexed queries -- type, field, agent, pagination)
+//!         +-- SearchProvider       (fulltext/vector/hybrid search -- in crate::search)
+//! ```
+//!
+//! # Usage
+//!
+//! ```rust,ignore
+//! use jacs::storage::{MultiStorage, StorageType, StorageDocumentTraits};
+//!
+//! // Default: filesystem storage rooted in the current directory
+//! let storage = MultiStorage::default_new()?;
+//!
+//! // Or specify a backend type
+//! let memory_storage = MultiStorage::new("memory".to_string())?;
+//!
+//! // With SQLite (requires `sqlite` feature, enabled by default)
+//! #[cfg(feature = "sqlite")]
+//! {
+//!     use jacs::storage::RusqliteStorage;
+//!     // RusqliteStorage provides indexed queries + FTS5 search
+//! }
+//! ```
+
 // use futures_util::stream::stream::StreamExt;
 use crate::storage::jenv::get_required_env_var;
 #[cfg(target_arch = "wasm32")]
@@ -7,7 +63,6 @@ use futures_util::StreamExt;
 use object_store::{
     Error as ObjectStoreError, ObjectStore, PutPayload,
     aws::{AmazonS3, AmazonS3Builder},
-    http::{HttpBuilder, HttpStore},
     local::LocalFileSystem,
     memory::InMemory,
     path::Path as ObjectPath,
@@ -17,64 +72,34 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use strum_macros::{AsRefStr, Display, EnumString};
 use tracing::debug;
-use url::Url;
 
 pub mod jenv;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-pub mod database;
-#[cfg(all(
-    not(target_arch = "wasm32"),
-    any(
-        feature = "database",
-        feature = "sqlite",
-        feature = "rusqlite-storage",
-        feature = "surrealdb-storage",
-        feature = "duckdb-storage",
-        feature = "redb-storage"
-    )
-))]
+// Database trait definitions are always available (no feature gate) so external
+// storage backend crates (jacs-postgresql, jacs-surrealdb, etc.) can implement
+// them without pulling in any storage-specific dependencies.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod database_traits;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-pub use database::DatabaseStorage;
-#[cfg(all(
-    not(target_arch = "wasm32"),
-    any(
-        feature = "database",
-        feature = "sqlite",
-        feature = "rusqlite-storage",
-        feature = "surrealdb-storage",
-        feature = "duckdb-storage",
-        feature = "redb-storage"
-    )
-))]
+#[cfg(not(target_arch = "wasm32"))]
 pub use database_traits::DatabaseDocumentTraits;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
 pub mod sqlite;
-#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
 pub use sqlite::SqliteStorage;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub mod rusqlite_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
 pub use rusqlite_storage::RusqliteStorage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+pub use rusqlite_storage::SqliteDocumentService;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-pub mod surrealdb_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-pub use surrealdb_storage::SurrealDbStorage;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-pub mod duckdb_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-pub use duckdb_storage::DuckDbStorage;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-pub mod redb_storage;
-#[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-pub use redb_storage::RedbStorage;
+// Extracted storage backends (now standalone crates):
+// - PostgreSQL: `jacs-postgresql`
+// - SurrealDB:  `jacs-surrealdb`
+// - DuckDB:     `jacs-duckdb`
+// - Redb:       `jacs-redb`
 
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
@@ -192,55 +217,55 @@ impl ObjectStore for WebLocalStorage {
     }
 }
 
+/// Multi-backend storage abstraction that delegates to filesystem, in-memory, S3, or SQLite.
+///
+/// You pick **one** backend at construction via a storage-type string (`"fs"`, `"memory"`,
+/// `"aws"`, `"sqlite"`, `"rusqlite"`, or `"local"` on wasm32). All file operations are
+/// then routed to that backend through the [`ObjectStore`] trait.
 #[derive(Debug, Clone)]
 pub struct MultiStorage {
     aws: Option<Arc<AmazonS3>>,
     fs: Option<Arc<LocalFileSystem>>,
-    hai_ai: Option<Arc<HttpStore>>,
     memory: Option<Arc<InMemory>>,
     #[cfg(target_arch = "wasm32")]
     web_local: Option<Arc<WebLocalStorage>>,
     default_storage: StorageType,
+    #[cfg(not(target_arch = "wasm32"))]
+    filesystem_base_dir: Option<PathBuf>,
     storages: Vec<Arc<dyn ObjectStore>>,
 }
 
+/// Storage backend type selector for `MultiStorage`.
+///
+/// Core variants (AWS, FS, Memory, WebLocal) are always available.
+/// SQLite variants require their respective feature flags.
+///
+/// PostgreSQL, SurrealDB, DuckDB, and Redb have been extracted to
+/// standalone crates (`jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`,
+/// `jacs-redb`) and are no longer part of jacs core.
 #[derive(Debug, AsRefStr, Display, EnumString, Clone, PartialEq)]
 pub enum StorageType {
     #[strum(serialize = "aws")]
     AWS,
     #[strum(serialize = "fs")]
     FS,
-    #[strum(serialize = "hai")]
-    HAI,
     #[strum(serialize = "memory")]
     Memory,
     #[cfg(target_arch = "wasm32")]
     #[strum(serialize = "local")]
     WebLocal,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-    #[strum(serialize = "database")]
-    Database,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
     #[strum(serialize = "sqlite")]
     Sqlite,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
     #[strum(serialize = "rusqlite")]
     Rusqlite,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-    #[strum(serialize = "surrealdb")]
-    SurrealDb,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-    #[strum(serialize = "duckdb")]
-    DuckDb,
-    #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-    #[strum(serialize = "redb")]
-    Redb,
 }
 
 impl MultiStorage {
+    /// Strip leading slashes from a path for non-filesystem backends. Returns `"."` if empty.
     pub fn clean_path(path: &str) -> String {
-        // Remove any leading slashes to ensure consistent path format
-        // and convert absolute paths to relative
+        // Non-filesystem backends use object-store paths, which are always relative.
         let cleaned = path.trim_start_matches('/');
 
         // If path is empty after cleaning, return "." to indicate current directory
@@ -251,24 +276,37 @@ impl MultiStorage {
         }
     }
 
+    /// Create a new `MultiStorage` with the default filesystem backend.
     pub fn default_new() -> Result<Self, ObjectStoreError> {
         let storage_type = "fs".to_string();
         Self::new(storage_type)
     }
 
+    /// Create a new `MultiStorage` with the given backend type, rooted at the process CWD.
     pub fn new(storage_type: String) -> Result<Self, ObjectStoreError> {
         let absolute_path = std::env::current_dir().unwrap();
         Self::_new(storage_type, absolute_path)
     }
 
+    /// Create a new `MultiStorage` with an explicit base directory for filesystem storage.
     pub fn _new(storage_type: String, absolute_path: PathBuf) -> Result<Self, ObjectStoreError> {
         let mut _s3;
-        let mut _http;
         let mut _local;
         let mut _memory: Option<Arc<InMemory>>;
 
-        let default_storage: StorageType = StorageType::from_str(&storage_type)
-            .unwrap_or_else(|_| panic!("storage_type {} is not known", storage_type));
+        let default_storage: StorageType =
+            StorageType::from_str(&storage_type).map_err(|_| ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(format!(
+                    "Unknown storage type '{}'. Supported types: fs, memory, aws{}",
+                    storage_type,
+                    if cfg!(all(not(target_arch = "wasm32"), feature = "sqlite")) {
+                        ", rusqlite, sqlite"
+                    } else {
+                        ""
+                    }
+                ))),
+            })?;
 
         let mut storages: Vec<Arc<dyn ObjectStore>> = Vec::new();
 
@@ -291,23 +329,13 @@ impl MultiStorage {
             _s3 = None;
         }
 
-        // Check HAI storage
-        if default_storage == StorageType::HAI {
-            let http_url = get_required_env_var("HAI_STORAGE_URL", true)
-                .expect("HAI_STORAGE_URL must be set when JACS_ENABLE_HAI_STORAGE is enabled");
-            let url_obj = Url::parse(&http_url).unwrap();
-            let http = HttpBuilder::new().with_url(url_obj).build()?;
-            let tmphttp = Arc::new(http);
-            _http = Some(tmphttp.clone());
-            storages.push(tmphttp);
-        } else {
-            _http = None;
-        }
+        let is_fs = default_storage == StorageType::FS;
 
         // Check filesystem storage
-        if default_storage == StorageType::FS {
-            // get the curent local absolute path
-            let local: LocalFileSystem = LocalFileSystem::new_with_prefix(absolute_path)?;
+        if is_fs {
+            // Use the filesystem root so callers can mix relative paths (resolved below
+            // against the startup CWD) and true absolute paths from config files.
+            let local: LocalFileSystem = LocalFileSystem::new();
             let tmplocal = Arc::new(local);
             _local = Some(tmplocal.clone());
             storages.push(tmplocal);
@@ -336,7 +364,7 @@ impl MultiStorage {
         };
 
         #[cfg(target_arch = "wasm32")]
-        if _local.is_none() && _http.is_none() && _s3.is_none() && web_local.is_none() {
+        if _local.is_none() && _s3.is_none() && web_local.is_none() {
             return Err(ObjectStoreError::Generic {
                 store: "MultiStorage",
                 source: Box::new(std::io::Error::new(
@@ -349,18 +377,47 @@ impl MultiStorage {
         Ok(Self {
             aws: _s3,
             fs: _local,
-            hai_ai: _http,
             memory,
             #[cfg(target_arch = "wasm32")]
             web_local,
             default_storage,
+            #[cfg(not(target_arch = "wasm32"))]
+            filesystem_base_dir: is_fs.then_some(absolute_path),
             storages,
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn object_path(&self, path: &str) -> Result<ObjectPath, ObjectStoreError> {
+        if self.default_storage == StorageType::FS {
+            let raw = PathBuf::from(path);
+            let absolute = if raw.is_absolute() {
+                raw
+            } else {
+                self.filesystem_base_dir
+                    .as_ref()
+                    .map(|base| base.join(raw))
+                    .ok_or_else(|| ObjectStoreError::Generic {
+                        store: "MultiStorage",
+                        source: Box::new(std::io::Error::other(
+                            "filesystem base directory missing for fs storage",
+                        )),
+                    })?
+            };
+            return ObjectPath::from_absolute_path(absolute).map_err(ObjectStoreError::from);
+        }
+
+        ObjectPath::parse(Self::clean_path(path)).map_err(ObjectStoreError::from)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn object_path(&self, path: &str) -> Result<ObjectPath, ObjectStoreError> {
+        ObjectPath::parse(Self::clean_path(path)).map_err(ObjectStoreError::from)
+    }
+
+    /// Write `contents` to `path` in all configured storage backends.
     pub fn save_file(&self, path: &str, contents: &[u8]) -> Result<(), ObjectStoreError> {
-        let clean = Self::clean_path(path);
-        let object_path = ObjectPath::parse(&clean)?;
+        let object_path = self.object_path(path)?;
         let mut errors = Vec::new();
         let contents_vec = contents.to_vec();
         let contents_payload = PutPayload::from(contents_vec);
@@ -384,34 +441,34 @@ impl MultiStorage {
         }
     }
 
+    /// Read a file from the preferred (or default) storage backend.
     pub fn get_file(
         &self,
         path: &str,
         preference: Option<StorageType>,
     ) -> Result<Vec<u8>, ObjectStoreError> {
-        let clean = Self::clean_path(path);
-        let object_path = ObjectPath::parse(&clean)?;
-        let storage = self.get_read_storage(preference);
+        let object_path = self.object_path(path)?;
+        let storage = self.get_read_storage(preference)?;
         let get_result = block_on(storage.get(&object_path))?;
         let bytes = block_on(get_result.bytes())?;
         Ok(bytes.to_vec())
     }
 
+    /// Check whether a file exists in the preferred (or default) storage backend.
     pub fn file_exists(
         &self,
         path: &str,
         preference: Option<StorageType>,
     ) -> Result<bool, ObjectStoreError> {
-        let clean = Self::clean_path(path);
-        let object_path = ObjectPath::parse(&clean)?;
-        let storage = self.get_read_storage(preference);
+        let object_path = self.object_path(path)?;
+        let storage = self.get_read_storage(preference)?;
 
         // --- Debugging Start ---
         let current_process_cwd =
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("unknown_cwd"));
         debug!(
-            "[MultiStorage::file_exists DEBUG]\n  - Input Path: '{}'\n  - Clean Path: '{}'\n  - Object Path: '{}'\n  - Process CWD: {:?}\n  - Attempting storage.head...",
-            path, clean, object_path, current_process_cwd
+            "[MultiStorage::file_exists DEBUG]\n  - Input Path: '{}'\n  - Object Path: '{}'\n  - Process CWD: {:?}\n  - Attempting storage.head...",
+            path, object_path, current_process_cwd
         );
         // --- Debugging End ---
 
@@ -431,15 +488,15 @@ impl MultiStorage {
         }
     }
 
+    /// List all files under `prefix` in the preferred (or default) storage backend.
     pub fn list(
         &self,
         prefix: &str,
         preference: Option<StorageType>,
     ) -> Result<Vec<String>, ObjectStoreError> {
         let mut file_list = Vec::new();
-        let object_store = self.get_read_storage(preference);
-        let clean = Self::clean_path(prefix);
-        let prefix_path = ObjectPath::parse(&clean)?;
+        let object_store = self.get_read_storage(preference)?;
+        let prefix_path = self.object_path(prefix)?;
         let mut list_stream = object_store.list(Some(&prefix_path));
 
         while let Some(meta) = block_on(list_stream.next()) {
@@ -451,9 +508,10 @@ impl MultiStorage {
         Ok(file_list)
     }
 
+    /// Rename (move) a file across all configured storage backends.
     pub fn rename_file(&self, from: &str, to: &str) -> Result<(), ObjectStoreError> {
-        let from_path = ObjectPath::parse(Self::clean_path(from))?;
-        let to_path = ObjectPath::parse(Self::clean_path(to))?;
+        let from_path = self.object_path(from)?;
+        let to_path = self.object_path(to)?;
         let mut errors = Vec::new();
 
         for storage in &self.storages {
@@ -475,46 +533,64 @@ impl MultiStorage {
         }
     }
 
-    fn get_read_storage(&self, preference: Option<StorageType>) -> Arc<dyn ObjectStore> {
+    fn get_read_storage(
+        &self,
+        preference: Option<StorageType>,
+    ) -> Result<Arc<dyn ObjectStore>, ObjectStoreError> {
         let selected = match preference {
             Some(pref) => pref,
             _ => self.default_storage.clone(),
         };
 
         match selected {
-            StorageType::AWS => self.aws.clone().expect("aws storage not loaded"),
-            StorageType::FS => self.fs.clone().expect("filesystem storage not loaded"),
-            StorageType::HAI => self.hai_ai.clone().expect("hai storage not loaded"),
-            StorageType::Memory => self.memory.clone().expect("memory storage not loaded"),
-            #[cfg(target_arch = "wasm32")]
-            StorageType::WebLocal => self
-                .web_local
+            StorageType::AWS => self
+                .aws
                 .clone()
-                .expect("web local storage not loaded"),
-            #[cfg(all(not(target_arch = "wasm32"), feature = "database"))]
-            StorageType::Database => {
-                panic!("Database storage does not use ObjectStore. Use DatabaseStorage directly.")
+                .map(|a| a as Arc<dyn ObjectStore>)
+                .ok_or_else(|| ObjectStoreError::Generic {
+                    store: "MultiStorage",
+                    source: Box::new(std::io::Error::other("AWS storage not loaded")),
+                }),
+            StorageType::FS => self
+                .fs
+                .clone()
+                .map(|f| f as Arc<dyn ObjectStore>)
+                .ok_or_else(|| ObjectStoreError::Generic {
+                    store: "MultiStorage",
+                    source: Box::new(std::io::Error::other("Filesystem storage not loaded")),
+                }),
+            StorageType::Memory => self
+                .memory
+                .clone()
+                .map(|m| m as Arc<dyn ObjectStore>)
+                .ok_or_else(|| ObjectStoreError::Generic {
+                    store: "MultiStorage",
+                    source: Box::new(std::io::Error::other("Memory storage not loaded")),
+                }),
+            #[cfg(target_arch = "wasm32")]
+            StorageType::WebLocal => {
+                self.web_local
+                    .clone()
+                    .ok_or_else(|| ObjectStoreError::Generic {
+                        store: "MultiStorage",
+                        source: Box::new(std::io::Error::other("Web local storage not loaded")),
+                    })
             }
+            #[cfg(all(not(target_arch = "wasm32"), feature = "sqlx-sqlite"))]
+            StorageType::Sqlite => Err(ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(
+                    "SQLite storage does not use ObjectStore. Use SqliteStorage or DocumentService directly.",
+                )),
+            }),
             #[cfg(all(not(target_arch = "wasm32"), feature = "sqlite"))]
-            StorageType::Sqlite => {
-                panic!("SQLite storage does not use ObjectStore. Use SqliteStorage directly.")
-            }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "rusqlite-storage"))]
-            StorageType::Rusqlite => {
-                panic!("Rusqlite storage does not use ObjectStore. Use RusqliteStorage directly.")
-            }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "surrealdb-storage"))]
-            StorageType::SurrealDb => {
-                panic!("SurrealDB storage does not use ObjectStore. Use SurrealDbStorage directly.")
-            }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "duckdb-storage"))]
-            StorageType::DuckDb => {
-                panic!("DuckDB storage does not use ObjectStore. Use DuckDbStorage directly.")
-            }
-            #[cfg(all(not(target_arch = "wasm32"), feature = "redb-storage"))]
-            StorageType::Redb => {
-                panic!("Redb storage does not use ObjectStore. Use RedbStorage directly.")
-            }
+            StorageType::Rusqlite => Err(ObjectStoreError::Generic {
+                store: "MultiStorage",
+                source: Box::new(std::io::Error::other(
+                    "Rusqlite storage does not use ObjectStore. Use SqliteDocumentService directly.",
+                )),
+            }),
+            // SurrealDB, DuckDB, Redb have been extracted to standalone crates.
         }
     }
 }
@@ -523,35 +599,45 @@ use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::error::Error;
-
-/// Trait for document storage operations
-/// This trait defines methods for storing, retrieving, and querying JACS documents
-pub trait StorageDocumentTraits {
+/// Base trait for document storage operations (Level 1 in the trait hierarchy).
+///
+/// Provides CRUD, listing, versioning, and bulk operations for JACS documents.
+/// All storage backends (filesystem, in-memory, S3, SQLite, and extracted crates)
+/// implement this trait.
+///
+/// # Trait Hierarchy
+///
+/// ```text
+/// StorageDocumentTraits        (base -- CRUD, list, versions, bulk)
+///     └── DatabaseDocumentTraits   (indexed queries -- type, field, agent, pagination)
+///         └── SearchProvider       (fulltext/vector/hybrid search -- defined in search/)
+/// ```
+///
+/// External backend crates (`jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`,
+/// `jacs-redb`) implement all three levels. Built-in backends (filesystem,
+/// in-memory, S3) implement only `StorageDocumentTraits`.
+pub trait StorageDocumentTraits: Send + Sync {
     // Basic document operations
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>>;
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>>;
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>>;
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>>;
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>>;
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError>;
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError>;
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError>;
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError>;
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError>;
 
     // Advanced query operations (placeholders for now)
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>>;
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>>;
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>>;
-    fn merge_documents(
-        &self,
-        doc_id: &str,
-        v1: &str,
-        v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>>;
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError>;
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError>;
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError>;
+    fn merge_documents(&self, doc_id: &str, v1: &str, v2: &str) -> Result<JACSDocument, JacsError>;
 
     // Bulk operations
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>>;
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>>;
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>>;
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>>;
 }
 
-/// Extension to MultiStorage to add document caching support
+/// Caching wrapper over [`MultiStorage`] that keeps recently-accessed documents in an
+/// in-memory `HashMap`. Thread-safe via `Arc<Mutex<...>>`. Disable caching by passing
+/// `cache_enabled: false` at construction.
 pub struct CachedMultiStorage {
     storage: MultiStorage,
     cache: Arc<Mutex<HashMap<String, JACSDocument>>>,
@@ -559,6 +645,7 @@ pub struct CachedMultiStorage {
 }
 
 impl CachedMultiStorage {
+    /// Wrap an existing `MultiStorage` with an optional document cache.
     pub fn new(storage: MultiStorage, cache_enabled: bool) -> Self {
         Self {
             storage,
@@ -567,6 +654,7 @@ impl CachedMultiStorage {
         }
     }
 
+    /// Evict all entries from the document cache (no-op if caching is disabled).
     pub fn clear_cache(&self) {
         if self.cache_enabled
             && let Ok(mut cache) = self.cache.lock()
@@ -577,18 +665,21 @@ impl CachedMultiStorage {
 }
 
 impl StorageDocumentTraits for MultiStorage {
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let key = doc.getkey();
         let path = format!("documents/{}.json", key);
         let json_string = serde_json::to_string_pretty(&doc.value)?;
         self.save_file(&path, json_string.as_bytes())
-            .map_err(|e| Box::new(e) as Box<dyn Error>)
+            .map_err(|e| JacsError::StorageError(e.to_string()))
     }
 
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let path = format!("documents/{}.json", key);
-        let contents = self.get_file(&path, None)?;
-        let json_string = String::from_utf8(contents)?;
+        let contents = self
+            .get_file(&path, None)
+            .map_err(|e| JacsError::StorageError(e.to_string()))?;
+        let json_string = String::from_utf8(contents)
+            .map_err(|e| JacsError::StorageError(format!("Invalid UTF-8 in document: {}", e)))?;
         let value: Value = serde_json::from_str(&json_string)?;
 
         // Extract required fields from the JSON value
@@ -616,7 +707,7 @@ impl StorageDocumentTraits for MultiStorage {
         })
     }
 
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         // First get the document before removing
         let doc = self.get_document(key)?;
 
@@ -625,19 +716,22 @@ impl StorageDocumentTraits for MultiStorage {
         let archive_path = format!("documents/archive/{}.json", key);
 
         // Move the object so the primary key no longer resolves after removal.
-        self.rename_file(&old_path, &archive_path)?;
+        self.rename_file(&old_path, &archive_path)
+            .map_err(|e| JacsError::StorageError(e.to_string()))?;
 
         Ok(doc)
     }
 
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError> {
         let search_prefix = if prefix.is_empty() {
             "documents/".to_string()
         } else {
             format!("documents/{}", prefix)
         };
 
-        let files = self.list(&search_prefix, None)?;
+        let files = self
+            .list(&search_prefix, None)
+            .map_err(|e| JacsError::StorageError(e.to_string()))?;
 
         // Extract document keys from file paths
         let mut document_keys = Vec::new();
@@ -655,13 +749,13 @@ impl StorageDocumentTraits for MultiStorage {
         Ok(document_keys)
     }
 
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError> {
         let path = format!("documents/{}.json", key);
         self.file_exists(&path, None)
-            .map_err(|e| Box::new(e) as Box<dyn Error>)
+            .map_err(|e| JacsError::StorageError(e.to_string()))
     }
 
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError> {
         // List all documents and filter by agent_id
         let all_docs = self.list_documents("")?;
         let mut agent_docs = Vec::new();
@@ -678,7 +772,7 @@ impl StorageDocumentTraits for MultiStorage {
         Ok(agent_docs)
     }
 
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError> {
         // List all documents with this ID prefix
         let all_docs = self.list_documents("")?;
         let mut versions = Vec::new();
@@ -692,15 +786,14 @@ impl StorageDocumentTraits for MultiStorage {
         Ok(versions)
     }
 
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
         let versions = self.get_document_versions(document_id)?;
 
         if versions.is_empty() {
             return Err(JacsError::DocumentError(format!(
                 "No documents found with ID: {}",
                 document_id
-            ))
-            .into());
+            )));
         }
 
         // Select deterministically by latest `jacsVersionDate` (RFC3339), falling back to key.
@@ -727,7 +820,7 @@ impl StorageDocumentTraits for MultiStorage {
         }
 
         latest_doc.ok_or_else(|| {
-            JacsError::DocumentError(format!("No documents found with ID: {}", document_id)).into()
+            JacsError::DocumentError(format!("No documents found with ID: {}", document_id))
         })
     }
 
@@ -736,13 +829,13 @@ impl StorageDocumentTraits for MultiStorage {
         _doc_id: &str,
         _v1: &str,
         _v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
+    ) -> Result<JACSDocument, JacsError> {
         // Placeholder implementation
         // TODO: Implement proper document merging logic
         Err("Document merging not yet implemented: feature pending".into())
     }
 
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
         let mut stored_keys = Vec::new();
         let mut errors = Vec::new();
 
@@ -761,7 +854,7 @@ impl StorageDocumentTraits for MultiStorage {
         }
     }
 
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
         let mut documents = Vec::new();
         let mut errors = Vec::new();
 
@@ -781,7 +874,7 @@ impl StorageDocumentTraits for MultiStorage {
 }
 
 impl StorageDocumentTraits for CachedMultiStorage {
-    fn store_document(&self, doc: &JACSDocument) -> Result<(), Box<dyn Error>> {
+    fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         // Store in underlying storage
         self.storage.store_document(doc)?;
 
@@ -795,7 +888,7 @@ impl StorageDocumentTraits for CachedMultiStorage {
         Ok(())
     }
 
-    fn get_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         // Check cache first if enabled
         if self.cache_enabled
             && let Ok(cache) = self.cache.lock()
@@ -817,7 +910,7 @@ impl StorageDocumentTraits for CachedMultiStorage {
         Ok(doc)
     }
 
-    fn remove_document(&self, key: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
         let doc = self.storage.remove_document(key)?;
 
         // Remove from cache if enabled
@@ -831,11 +924,11 @@ impl StorageDocumentTraits for CachedMultiStorage {
     }
 
     // Delegate other methods to underlying storage
-    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn list_documents(&self, prefix: &str) -> Result<Vec<String>, JacsError> {
         self.storage.list_documents(prefix)
     }
 
-    fn document_exists(&self, key: &str) -> Result<bool, Box<dyn Error>> {
+    fn document_exists(&self, key: &str) -> Result<bool, JacsError> {
         // Check cache first
         if self.cache_enabled
             && let Ok(cache) = self.cache.lock()
@@ -846,28 +939,23 @@ impl StorageDocumentTraits for CachedMultiStorage {
         self.storage.document_exists(key)
     }
 
-    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_documents_by_agent(&self, agent_id: &str) -> Result<Vec<String>, JacsError> {
         self.storage.get_documents_by_agent(agent_id)
     }
 
-    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    fn get_document_versions(&self, document_id: &str) -> Result<Vec<String>, JacsError> {
         self.storage.get_document_versions(document_id)
     }
 
-    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, Box<dyn Error>> {
+    fn get_latest_document(&self, document_id: &str) -> Result<JACSDocument, JacsError> {
         self.storage.get_latest_document(document_id)
     }
 
-    fn merge_documents(
-        &self,
-        doc_id: &str,
-        v1: &str,
-        v2: &str,
-    ) -> Result<JACSDocument, Box<dyn Error>> {
+    fn merge_documents(&self, doc_id: &str, v1: &str, v2: &str) -> Result<JACSDocument, JacsError> {
         self.storage.merge_documents(doc_id, v1, v2)
     }
 
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
         let result = self.storage.store_documents(docs.clone())?;
 
         // Update cache if enabled
@@ -882,7 +970,7 @@ impl StorageDocumentTraits for CachedMultiStorage {
         Ok(result)
     }
 
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<Box<dyn Error>>> {
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
         self.storage.get_documents(keys)
     }
 }
@@ -893,6 +981,24 @@ mod tests {
     use super::StorageDocumentTraits;
     use crate::agent::document::JACSDocument;
     use serde_json::json;
+    use serial_test::serial;
+    use std::path::PathBuf;
+
+    struct CwdGuard {
+        original: PathBuf,
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.original).expect("restore cwd");
+        }
+    }
+
+    fn chdir_guard(target: &std::path::Path) -> CwdGuard {
+        let original = std::env::current_dir().expect("current cwd");
+        std::env::set_current_dir(target).expect("set cwd");
+        CwdGuard { original }
+    }
 
     #[test]
     fn rename_file_moves_content_and_removes_source() {
@@ -938,6 +1044,64 @@ mod tests {
         let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
         let result = storage.rename_file("missing/source.txt", "dest/path.txt");
         assert!(result.is_err(), "renaming a missing source should fail");
+    }
+
+    #[test]
+    #[serial]
+    fn fs_storage_supports_absolute_paths() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _cwd = chdir_guard(temp.path());
+        let storage = MultiStorage::new("fs".to_string()).expect("fs storage");
+        let absolute_path = temp.path().join("nested").join("absolute.txt");
+
+        storage
+            .save_file(absolute_path.to_string_lossy().as_ref(), b"absolute")
+            .expect("save absolute path");
+
+        assert_eq!(
+            std::fs::read(&absolute_path).expect("read saved absolute file"),
+            b"absolute"
+        );
+        assert_eq!(
+            storage
+                .get_file(absolute_path.to_string_lossy().as_ref(), None)
+                .expect("load absolute path"),
+            b"absolute"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn fs_storage_resolves_relative_paths_against_creation_cwd() {
+        let home = tempfile::tempdir().expect("home tempdir");
+        let elsewhere = tempfile::tempdir().expect("elsewhere tempdir");
+        let _cwd = chdir_guard(home.path());
+        let storage = MultiStorage::new("fs".to_string()).expect("fs storage");
+
+        std::env::set_current_dir(elsewhere.path()).expect("move cwd after storage creation");
+        storage
+            .save_file("relative/path.txt", b"stable")
+            .expect("save relative path");
+
+        assert_eq!(
+            std::fs::read(home.path().join("relative").join("path.txt"))
+                .expect("read file under original cwd"),
+            b"stable"
+        );
+        assert!(
+            !elsewhere.path().join("relative").join("path.txt").exists(),
+            "relative writes must stay rooted to the storage creation cwd"
+        );
+    }
+
+    #[test]
+    fn hai_storage_type_is_rejected() {
+        use super::StorageType;
+        use std::str::FromStr;
+        assert!(
+            StorageType::from_str("hai").is_err(),
+            "\"hai\" should not be accepted as a storage type"
+        );
     }
 
     #[test]

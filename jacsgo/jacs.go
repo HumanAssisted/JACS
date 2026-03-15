@@ -9,8 +9,6 @@ package jacs
 #include <stdint.h>
 
 // JacsAgent handle API - Recommended for concurrent usage
-typedef void* JacsAgentHandle;
-
 #include "jacs_cgo.h"
 JacsAgentHandle jacs_agent_new();
 void jacs_agent_free(JacsAgentHandle handle);

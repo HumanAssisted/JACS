@@ -1,7 +1,7 @@
 # Untitled string in Program Schema
 
 ```txt
-https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/taskID
+https://hai.ai/schemas/program/v1/program.schema.json#/allOf/1/properties/taskID
 ```
 
 task being processed, a description can be found there.

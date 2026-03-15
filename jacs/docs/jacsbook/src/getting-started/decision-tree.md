@@ -13,7 +13,7 @@ Choose the smallest supported integration that matches your deployment.
 | Cross-organization agent discovery and signed artifact exchange | [A2A Interoperability](../integrations/a2a.md) | MCP is not enough for this boundary |
 | Signed HTTP APIs without adopting MCP | [Python Framework Adapters](../python/adapters.md), [Express](../nodejs/express.md), [Koa](../nodejs/koa.md) | Sign requests or responses at the web layer |
 | Multi-party approval or quorum workflows | [Multi-Agent Agreements](multi-agent-agreement.md) | Agreements are the right primitive, not just one-off signatures |
-| Direct signing from scripts, jobs, or services | [Quick Start](quick-start.md), [Python Basic Usage](../python/basic-usage.md), [Node Basic Usage](../nodejs/basic-usage.md) | Start from sign/verify before adding framework layers |
+| Direct signing from scripts, jobs, or services | [Quick Start](quick-start.md), [Python Basic Usage](../python/basic-usage.md), [Node Basic Usage](../nodejs/basic-usage.md), [Go Installation](../go/installation.md) | Start from sign/verify before adding framework layers |
 
 ## When You Probably Do Not Need JACS
 

@@ -6,7 +6,6 @@ use crate::agent::agreement::Agreement;
 use crate::agent::document::DocumentTraits;
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
-use std::error::Error;
 use tracing::{debug, info};
 
 pub fn document_create(
@@ -17,7 +16,7 @@ pub fn document_create(
     no_save: bool,
     attachments: Option<&str>,
     embed: Option<bool>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let attachment_links = agent.parse_attachement_arg(attachments);
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
@@ -27,8 +26,9 @@ pub fn document_create(
     // let loading_filename_string = loading_filename.to_string();
     let export_embedded = None;
     let extract_only = None;
-    let docresult =
-        agent.create_document_and_load(document_string, attachment_links.clone(), embed);
+    let docresult = agent
+        .create_document_and_load(document_string, attachment_links.clone(), embed)
+        .map_err(Into::into);
     if !no_save {
         save_document(
             agent,
@@ -55,12 +55,12 @@ pub fn document_load_and_save(
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
     load_only: bool,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
         agent.load_custom_schemas(&schemas)?;
     }
-    let docresult = agent.load_document(document_string);
+    let docresult = agent.load_document(document_string).map_err(Into::into);
     if !load_only {
         save_document(
             agent,
@@ -89,7 +89,7 @@ fn create_task_start(
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
     load_only: bool,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let _ = agent.schema.validate_task(document_string)?;
 
     document_add_agreement(
@@ -120,7 +120,7 @@ fn create_task_complete(
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
     load_only: bool,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let _ = agent.schema.validate_task(document_string)?;
     document_add_agreement(
         agent,
@@ -146,7 +146,7 @@ fn agree_task_start(
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
     load_only: bool,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let _ = agent.schema.validate_task(document_string)?;
     document_sign_agreement(
         agent,
@@ -169,7 +169,7 @@ fn agree_task_complete(
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
     load_only: bool,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let _ = agent.schema.validate_task(document_string)?;
     document_sign_agreement(
         agent,
@@ -188,7 +188,7 @@ fn check_task_complete(
     agent: &mut Agent,
     document_string: &str,
     custom_schema: Option<String>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let _ = agent.schema.validate_task(document_string)?;
     document_check_agreement(
         agent,
@@ -203,7 +203,7 @@ fn check_task_start(
     agent: &mut Agent,
     document_string: &str,
     custom_schema: Option<String>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let _ = agent.schema.validate_task(document_string)?;
     document_check_agreement(
         agent,
@@ -219,7 +219,7 @@ pub fn document_check_agreement(
     document_string: &str,
     custom_schema: Option<String>,
     agreement_fieldname: Option<String>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     if let Some(ref schema_file) = custom_schema {
         let schemas = [schema_file.clone()];
         agent.load_custom_schemas(&schemas)?;
@@ -261,7 +261,7 @@ pub fn document_sign_agreement(
     extract_only: Option<bool>,
     load_only: bool,
     agreement_fieldname: Option<String>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -302,7 +302,7 @@ pub fn document_add_agreement(
     extract_only: Option<bool>,
     load_only: bool,
     agreement_fieldname: Option<String>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let _agreement_fieldname_key = match agreement_fieldname {
         Some(ref key) => key.to_string(),
         _ => AGENT_AGREEMENT_FIELDNAME.to_string(),
@@ -342,12 +342,12 @@ pub fn document_add_agreement(
 /// helper function
 pub fn save_document(
     agent: &mut Agent,
-    docresult: Result<JACSDocument, Box<dyn Error>>,
+    docresult: Result<JACSDocument, JacsError>,
     custom_schema: Option<String>,
     save_filename: Option<String>,
     export_embedded: Option<bool>,
     extract_only: Option<bool>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     match docresult {
         Ok(ref document) => {
             let document_key = document.getkey();

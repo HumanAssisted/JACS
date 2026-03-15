@@ -17,8 +17,26 @@ fn embedders_can_construct_server_in_process() -> anyhow::Result<()> {
     let tools = jacs_mcp::JacsMcpServer::tools();
 
     assert_eq!(info.server_info.name, "jacs-mcp");
-    assert!(tools.iter().any(|tool| tool.name.as_ref() == "jacs_list_state"));
-    assert!(tools.iter().any(|tool| tool.name.as_ref() == "jacs_attest_create"));
+    // Core tool should always be present with default features
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "jacs_list_state")
+    );
+    // Attestation tools require the attestation-tools feature
+    #[cfg(feature = "attestation-tools")]
+    assert!(
+        tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "jacs_attest_create")
+    );
+    #[cfg(not(feature = "attestation-tools"))]
+    assert!(
+        !tools
+            .iter()
+            .any(|tool| tool.name.as_ref() == "jacs_attest_create"),
+        "jacs_attest_create should not be registered without attestation-tools feature"
+    );
 
     cleanup_workspace(&workspace);
     Ok(())

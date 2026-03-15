@@ -124,6 +124,8 @@ export declare class JacsAgent {
   diagnostics(): string
   /** Verify a document by ID (sync, blocks event loop). */
   verifyDocumentByIdSync(documentId: string): boolean
+  /** Load a document by ID from storage (sync, blocks event loop). */
+  getDocumentByIdSync(documentId: string): string
   /** Re-encrypt the agent's private key (sync, blocks event loop). */
   reencryptKeySync(oldPassword: string, newPassword: string): void
   /**
@@ -175,6 +177,8 @@ export declare class JacsAgent {
   getSetupInstructions(domain: string, ttl?: number | undefined | null): Promise<string>
   /** Verify a document looked up by ID from storage. */
   verifyDocumentById(documentId: string): Promise<boolean>
+  /** Load a document by ID from storage. */
+  getDocumentById(documentId: string): Promise<string>
   /** Re-encrypt the agent's private key with a new password. */
   reencryptKey(oldPassword: string, newPassword: string): Promise<void>
   /** Export this agent as an A2A Agent Card (sync, blocks event loop). */
@@ -201,6 +205,34 @@ export declare class JacsAgent {
   verifyA2aArtifactWithPolicy(wrappedJson: string, agentCardJson: string, policy: string): Promise<string>
   /** Assess a remote agent's trust level based on its Agent Card and a policy. */
   assessA2aAgent(agentCardJson: string, policy: string): Promise<string>
+  /** Build a JACS auth header for HTTP requests (sync, blocks event loop). */
+  buildAuthHeaderSync(): string
+  /** Deterministically serialize JSON per RFC 8785 / JCS (sync, blocks event loop). */
+  canonicalizeJsonSync(jsonString: string): string
+  /** Sign a response payload, returning a signed envelope JSON (sync, blocks event loop). */
+  signResponseSync(payloadJson: string): string
+  /** Encode a document as URL-safe base64 for verification (sync). */
+  encodeVerifyPayloadSync(document: string): string
+  /** Decode a URL-safe base64 verification payload (sync). */
+  decodeVerifyPayloadSync(encoded: string): string
+  /** Extract the document ID from a JACS-signed document (sync). */
+  extractDocumentIdSync(document: string): string
+  /** Unwrap and verify a signed event against known server public keys (sync, blocks event loop). */
+  unwrapSignedEventSync(eventJson: string, serverKeysJson: string): string
+  /** Build a JACS auth header for HTTP requests. */
+  buildAuthHeader(): Promise<string>
+  /** Deterministically serialize JSON per RFC 8785 / JCS. */
+  canonicalizeJson(jsonString: string): Promise<string>
+  /** Sign a response payload, returning a signed envelope JSON. */
+  signResponse(payloadJson: string): Promise<string>
+  /** Encode a document as URL-safe base64 for verification. */
+  encodeVerifyPayload(document: string): Promise<string>
+  /** Decode a URL-safe base64 verification payload. */
+  decodeVerifyPayload(encoded: string): Promise<string>
+  /** Extract the document ID from a JACS-signed document. */
+  extractDocumentId(document: string): Promise<string>
+  /** Unwrap and verify a signed event against known server public keys. */
+  unwrapSignedEvent(eventJson: string, serverKeysJson: string): Promise<string>
   /** Create a signed attestation document (sync). */
   createAttestationSync(paramsJson: string): string
   /** Verify an attestation -- local tier (sync). */

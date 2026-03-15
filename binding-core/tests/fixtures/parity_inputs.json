@@ -1,0 +1,58 @@
+{
+  "_description": "Parity test inputs: every JACS language binding must accept these inputs and produce structurally identical outputs. Exact bytes differ (crypto nonce) but field names, types, and verifiability must match.",
+  "sign_message_inputs": [
+    {
+      "name": "simple_message",
+      "data": {"action": "test", "value": 42}
+    },
+    {
+      "name": "nested_message",
+      "data": {"user": {"name": "Alice", "role": "admin"}, "items": [1, 2, 3]}
+    },
+    {
+      "name": "empty_object",
+      "data": {}
+    },
+    {
+      "name": "string_value",
+      "data": "hello world"
+    },
+    {
+      "name": "numeric_value",
+      "data": 12345
+    },
+    {
+      "name": "boolean_value",
+      "data": true
+    },
+    {
+      "name": "null_value",
+      "data": null
+    },
+    {
+      "name": "unicode_ascii_safe",
+      "data": {"greeting": "hello", "code": "ABC-123"}
+    }
+  ],
+  "sign_raw_bytes_inputs": [
+    {
+      "name": "hello_world",
+      "data_base64": "aGVsbG8gd29ybGQ="
+    },
+    {
+      "name": "binary_data",
+      "data_base64": "AAECBA=="
+    }
+  ],
+  "expected_signed_document_fields": {
+    "_description": "Every signed document must contain these fields (exact values vary)",
+    "required_top_level": ["jacsId", "jacsSignature"],
+    "required_signature_fields": ["agentID", "date", "signature", "publicKeyHash"]
+  },
+  "expected_verification_result_fields": {
+    "_description": "Every verification result must contain these fields",
+    "required": ["valid"],
+    "optional": ["signer_id", "timestamp", "errors", "data", "attachments"]
+  },
+  "algorithms": ["ed25519", "pq2025"]
+}

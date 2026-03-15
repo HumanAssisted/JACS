@@ -21,7 +21,7 @@ const jacsTools = createJacsTools({ client });
 const llmWithTools = model.bindTools([...myTools, ...jacsTools]);
 ```
 
-The tool set includes:
+The tool set includes 14 tools:
 
 - `jacs_sign`
 - `jacs_verify`
@@ -30,8 +30,11 @@ The tool set includes:
 - `jacs_check_agreement`
 - `jacs_verify_self`
 - `jacs_trust_agent`
+- `jacs_trust_agent_with_key`
 - `jacs_list_trusted`
 - `jacs_is_trusted`
+- `jacs_share_public_key`
+- `jacs_share_agent`
 - `jacs_audit`
 - `jacs_agent_info`
 

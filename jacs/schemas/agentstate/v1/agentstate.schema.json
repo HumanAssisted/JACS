@@ -4,12 +4,21 @@
   "title": "Agent State Document",
   "description": "A signed wrapper for agent state files (memory, skills, plans, configs, hooks). References the original file by path and hash, optionally embedding content.",
   "allOf": [
-    { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" }
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+    }
   ],
   "properties": {
     "jacsAgentStateType": {
       "type": "string",
-      "enum": ["memory", "skill", "plan", "config", "hook", "other"],
+      "enum": [
+        "memory",
+        "skill",
+        "plan",
+        "config",
+        "hook",
+        "other"
+      ],
       "description": "The type of agent state this document wraps. Use 'other' for general-purpose signed documents."
     },
     "jacsAgentStateName": {
@@ -38,12 +47,19 @@
     },
     "jacsAgentStateTags": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Tags for categorization and search."
     },
     "jacsAgentStateOrigin": {
       "type": "string",
-      "enum": ["authored", "adopted", "generated", "imported"],
+      "enum": [
+        "authored",
+        "adopted",
+        "generated",
+        "imported"
+      ],
       "description": "How this state document was created. 'authored' = created by the signing agent. 'adopted' = unsigned file found and signed by adopting agent. 'generated' = produced by an AI/automation. 'imported' = brought in from another JACS installation."
     },
     "jacsAgentStateSourceUrl": {

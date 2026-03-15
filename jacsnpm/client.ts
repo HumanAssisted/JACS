@@ -44,6 +44,8 @@ import type {
   VerificationResult,
   Attachment,
   AgreementStatus,
+  AttestationVerificationResult,
+  DsseEnvelope,
   AuditOptions,
   QuickstartOptions,
   QuickstartInfo,
@@ -57,6 +59,8 @@ export type {
   VerificationResult,
   Attachment,
   AgreementStatus,
+  AttestationVerificationResult,
+  DsseEnvelope,
   AuditOptions,
   QuickstartOptions,
   QuickstartInfo,
@@ -125,6 +129,84 @@ function resolveConfigRelativePath(configPath: string, candidate: string): strin
     return candidate;
   }
   return path.resolve(path.dirname(configPath), candidate);
+}
+
+function resolveCreatePaths(
+  configPath?: string | null,
+  dataDirectory?: string | null,
+  keyDirectory?: string | null,
+): { configPath: string; dataDirectory: string; keyDirectory: string } {
+  const resolvedConfigPath = configPath ?? './jacs.config.json';
+  const configDir = path.dirname(path.resolve(resolvedConfigPath));
+  const cwd = path.resolve(process.cwd());
+
+  return {
+    configPath: resolvedConfigPath,
+    dataDirectory: dataDirectory ?? (configDir === cwd ? './jacs_data' : path.join(configDir, 'jacs_data')),
+    keyDirectory: keyDirectory ?? (configDir === cwd ? './jacs_keys' : path.join(configDir, 'jacs_keys')),
+  };
+}
+
+function readSavedPassword(configPath: string): string {
+  try {
+    const resolvedConfigPath = path.resolve(configPath);
+    const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
+    const keyDir = resolveConfigRelativePath(
+      resolvedConfigPath,
+      config.jacs_key_directory || './jacs_keys',
+    );
+    const passwordPath = path.join(keyDir, '.jacs_password');
+    if (!fs.existsSync(passwordPath)) {
+      return '';
+    }
+    return fs.readFileSync(passwordPath, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+function resolvePrivateKeyPassword(
+  configPath?: string | null,
+  explicitPassword?: string | null,
+): string {
+  if (explicitPassword && explicitPassword.length > 0) {
+    return explicitPassword;
+  }
+  if (process.env.JACS_PRIVATE_KEY_PASSWORD) {
+    return process.env.JACS_PRIVATE_KEY_PASSWORD;
+  }
+  if (configPath) {
+    return readSavedPassword(configPath);
+  }
+  return '';
+}
+
+async function withTemporaryPasswordEnv<T>(password: string, fn: () => Promise<T>): Promise<T> {
+  const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+  process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+  try {
+    return await fn();
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+    } else {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+    }
+  }
+}
+
+function withTemporaryPasswordEnvSync<T>(password: string, fn: () => T): T {
+  const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+  process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+  try {
+    return fn();
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+    } else {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+    }
+  }
 }
 
 function normalizeDocumentInput(document: any): string {
@@ -247,7 +329,7 @@ function extractAttachmentsFromDocument(doc: any): Attachment[] {
   }));
 }
 
-function ensurePassword(): string {
+function ensurePassword(keyDirectory?: string): string {
   let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
   if (!password) {
     const crypto = require('crypto');
@@ -268,12 +350,11 @@ function ensurePassword(): string {
       process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
       process.env.JACS_SAVE_PASSWORD_FILE === 'true';
     if (persistPassword) {
-      const keysDir = './jacs_keys';
+      const keysDir = keyDirectory || './jacs_keys';
       fs.mkdirSync(keysDir, { recursive: true });
       const pwPath = path.join(keysDir, '.jacs_password');
       fs.writeFileSync(pwPath, password, { mode: 0o600 });
     }
-    process.env.JACS_PRIVATE_KEY_PASSWORD = password;
   }
   return password;
 }
@@ -285,6 +366,7 @@ function ensurePassword(): string {
 export class JacsClient {
   private agent: JacsAgent | null = null;
   private info: AgentInfo | null = null;
+  private privateKeyPassword: string | null = null;
   private _strict: boolean = false;
 
   constructor(options?: JacsClientOptions) {
@@ -301,16 +383,26 @@ export class JacsClient {
   static async quickstart(options: QuickstartOptions): Promise<JacsClient> {
     const { name, domain, description } = requireQuickstartIdentity(options);
     const client = new JacsClient({ strict: options?.strict });
-    const configPath = options?.configPath || './jacs.config.json';
+    const paths = resolveCreatePaths(options?.configPath);
+    const configPath = paths.configPath;
 
     if (fs.existsSync(configPath)) {
       await client.load(configPath);
       return client;
     }
 
-    const password = ensurePassword();
+    const password = ensurePassword(paths.keyDirectory);
     const algo = options?.algorithm || 'pq2025';
-    await client.create({ name, password, algorithm: algo, configPath, domain, description });
+    await client.create({
+      name,
+      password,
+      algorithm: algo,
+      configPath,
+      dataDirectory: paths.dataDirectory,
+      keyDirectory: paths.keyDirectory,
+      domain,
+      description,
+    });
     return client;
   }
 
@@ -320,16 +412,26 @@ export class JacsClient {
   static quickstartSync(options: QuickstartOptions): JacsClient {
     const { name, domain, description } = requireQuickstartIdentity(options);
     const client = new JacsClient({ strict: options?.strict });
-    const configPath = options?.configPath || './jacs.config.json';
+    const paths = resolveCreatePaths(options?.configPath);
+    const configPath = paths.configPath;
 
     if (fs.existsSync(configPath)) {
       client.loadSync(configPath);
       return client;
     }
 
-    const password = ensurePassword();
+    const password = ensurePassword(paths.keyDirectory);
     const algo = options?.algorithm || 'pq2025';
-    client.createSync({ name, password, algorithm: algo, configPath, domain, description });
+    client.createSync({
+      name,
+      password,
+      algorithm: algo,
+      configPath,
+      dataDirectory: paths.dataDirectory,
+      keyDirectory: paths.keyDirectory,
+      domain,
+      description,
+    });
     return client;
   }
 
@@ -396,8 +498,16 @@ export class JacsClient {
     if (!fs.existsSync(resolvedConfigPath)) {
       throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
     }
+    const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
     this.agent = new JacsAgent();
-    await this.agent.load(resolvedConfigPath);
+    this.privateKeyPassword = resolvedPassword || null;
+    if (resolvedPassword) {
+      await withTemporaryPasswordEnv(resolvedPassword, async () => {
+        await this.agent!.load(resolvedConfigPath);
+      });
+    } else {
+      await this.agent.load(resolvedConfigPath);
+    }
     this.info = extractAgentInfo(resolvedConfigPath);
     return this.info;
   }
@@ -411,83 +521,106 @@ export class JacsClient {
     if (!fs.existsSync(resolvedConfigPath)) {
       throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
     }
+    const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
     this.agent = new JacsAgent();
-    this.agent.loadSync(resolvedConfigPath);
+    this.privateKeyPassword = resolvedPassword || null;
+    if (resolvedPassword) {
+      withTemporaryPasswordEnvSync(resolvedPassword, () => {
+        this.agent!.loadSync(resolvedConfigPath);
+      });
+    } else {
+      this.agent.loadSync(resolvedConfigPath);
+    }
     this.info = extractAgentInfo(resolvedConfigPath);
     return this.info;
   }
 
   async create(options: CreateAgentOptions): Promise<AgentInfo> {
-    const resolvedPassword = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
+    const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
     if (!resolvedPassword) {
       throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
     }
+    const normalizedOptions = {
+      ...options,
+      ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
+    };
     const resultJson = await nativeCreateAgent(
-      options.name, resolvedPassword, options.algorithm ?? null, options.dataDirectory ?? null,
-      options.keyDirectory ?? null, options.configPath ?? null, options.agentType ?? null,
-      options.description ?? null, options.domain ?? null, options.defaultStorage ?? null,
+      normalizedOptions.name, resolvedPassword, normalizedOptions.algorithm ?? null, normalizedOptions.dataDirectory ?? null,
+      normalizedOptions.keyDirectory ?? null, normalizedOptions.configPath ?? null, normalizedOptions.agentType ?? null,
+      normalizedOptions.description ?? null, normalizedOptions.domain ?? null, normalizedOptions.defaultStorage ?? null,
     );
     const result = JSON.parse(resultJson);
-    const cfgPath = result.config_path || options.configPath || './jacs.config.json';
-    const dataDirectory = result.data_directory || options.dataDirectory || './jacs_data';
-    const keyDirectory = result.key_directory || options.keyDirectory || './jacs_keys';
+    const cfgPath = result.config_path || normalizedOptions.configPath || './jacs.config.json';
+    const dataDirectory = result.data_directory || normalizedOptions.dataDirectory || './jacs_data';
+    const keyDirectory = result.key_directory || normalizedOptions.keyDirectory || './jacs_keys';
     const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
     const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     this.info = {
       agentId: result.agent_id || '',
-      name: result.name || options.name,
+      name: result.name || normalizedOptions.name,
       publicKeyPath,
       configPath: cfgPath,
       version: result.version || '',
-      algorithm: result.algorithm || options.algorithm || 'pq2025',
+      algorithm: result.algorithm || normalizedOptions.algorithm || 'pq2025',
       privateKeyPath,
       dataDirectory,
       keyDirectory,
-      domain: result.domain || options.domain || '',
+      domain: result.domain || normalizedOptions.domain || '',
       dnsRecord: result.dns_record || '',
     };
     this.agent = new JacsAgent();
-    await this.agent.load(path.resolve(cfgPath));
+    this.privateKeyPassword = resolvedPassword;
+    await withTemporaryPasswordEnv(resolvedPassword, async () => {
+      await this.agent!.load(path.resolve(cfgPath));
+    });
     return this.info;
   }
 
   createSync(options: CreateAgentOptions): AgentInfo {
-    const resolvedPassword = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
+    const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
     if (!resolvedPassword) {
       throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
     }
+    const normalizedOptions = {
+      ...options,
+      ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
+    };
     const resultJson = nativeCreateAgentSync(
-      options.name, resolvedPassword, options.algorithm ?? null, options.dataDirectory ?? null,
-      options.keyDirectory ?? null, options.configPath ?? null, options.agentType ?? null,
-      options.description ?? null, options.domain ?? null, options.defaultStorage ?? null,
+      normalizedOptions.name, resolvedPassword, normalizedOptions.algorithm ?? null, normalizedOptions.dataDirectory ?? null,
+      normalizedOptions.keyDirectory ?? null, normalizedOptions.configPath ?? null, normalizedOptions.agentType ?? null,
+      normalizedOptions.description ?? null, normalizedOptions.domain ?? null, normalizedOptions.defaultStorage ?? null,
     );
     const result = JSON.parse(resultJson);
-    const cfgPath = result.config_path || options.configPath || './jacs.config.json';
-    const dataDirectory = result.data_directory || options.dataDirectory || './jacs_data';
-    const keyDirectory = result.key_directory || options.keyDirectory || './jacs_keys';
+    const cfgPath = result.config_path || normalizedOptions.configPath || './jacs.config.json';
+    const dataDirectory = result.data_directory || normalizedOptions.dataDirectory || './jacs_data';
+    const keyDirectory = result.key_directory || normalizedOptions.keyDirectory || './jacs_keys';
     const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
     const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     this.info = {
       agentId: result.agent_id || '',
-      name: result.name || options.name,
+      name: result.name || normalizedOptions.name,
       publicKeyPath,
       configPath: cfgPath,
       version: result.version || '',
-      algorithm: result.algorithm || options.algorithm || 'pq2025',
+      algorithm: result.algorithm || normalizedOptions.algorithm || 'pq2025',
       privateKeyPath,
       dataDirectory,
       keyDirectory,
-      domain: result.domain || options.domain || '',
+      domain: result.domain || normalizedOptions.domain || '',
       dnsRecord: result.dns_record || '',
     };
     this.agent = new JacsAgent();
-    this.agent.loadSync(path.resolve(cfgPath));
+    this.privateKeyPassword = resolvedPassword;
+    withTemporaryPasswordEnvSync(resolvedPassword, () => {
+      this.agent!.loadSync(path.resolve(cfgPath));
+    });
     return this.info;
   }
 
   reset(): void {
     this.agent = null;
     this.info = null;
+    this.privateKeyPassword = null;
     this._strict = false;
   }
 
@@ -555,18 +688,36 @@ export class JacsClient {
     return this.agent;
   }
 
-  async signMessage(data: any): Promise<SignedDocument> {
+  private async withPrivateKeyPassword<T>(operation: (agent: JacsAgent) => Promise<T>): Promise<T> {
     const agent = this.requireAgent();
+    if (!this.privateKeyPassword) {
+      return operation(agent);
+    }
+    return withTemporaryPasswordEnv(this.privateKeyPassword, () => operation(agent));
+  }
+
+  private withPrivateKeyPasswordSync<T>(operation: (agent: JacsAgent) => T): T {
+    const agent = this.requireAgent();
+    if (!this.privateKeyPassword) {
+      return operation(agent);
+    }
+    return withTemporaryPasswordEnvSync(this.privateKeyPassword, () => operation(agent));
+  }
+
+  async signMessage(data: any): Promise<SignedDocument> {
     const docContent = { jacsType: 'message', jacsLevel: 'raw', content: data };
-    const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, null, null);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPassword(async (agent) => {
+      const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, null, null);
+      return parseSignedResult(result);
+    });
   }
 
   signMessageSync(data: any): SignedDocument {
-    const agent = this.requireAgent();
     const docContent = { jacsType: 'message', jacsLevel: 'raw', content: data };
-    const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, null, null);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPasswordSync((agent) => {
+      const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, null, null);
+      return parseSignedResult(result);
+    });
   }
 
   async verify(signedDocument: string): Promise<VerificationResult> {
@@ -638,7 +789,8 @@ export class JacsClient {
     }
     try {
       await agent.verifyDocumentById(documentId);
-      const stored = this.readStoredDocumentById(documentId);
+      const storedJson = await agent.getDocumentById(documentId);
+      const stored = JSON.parse(storedJson);
       return {
         valid: true,
         signerId: stored?.jacsSignature?.agentID || '',
@@ -659,7 +811,8 @@ export class JacsClient {
     }
     try {
       agent.verifyDocumentByIdSync(documentId);
-      const stored = this.readStoredDocumentById(documentId);
+      const storedJson = agent.getDocumentByIdSync(documentId);
+      const stored = JSON.parse(storedJson);
       return {
         valid: true,
         signerId: stored?.jacsSignature?.agentID || '',
@@ -678,19 +831,23 @@ export class JacsClient {
   // ---------------------------------------------------------------------------
 
   async signFile(filePath: string, embed: boolean = false): Promise<SignedDocument> {
-    const agent = this.requireAgent();
+    this.requireAgent();
     if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
     const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
-    const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, filePath, embed);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPassword(async (agent) => {
+      const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, filePath, embed);
+      return parseSignedResult(result);
+    });
   }
 
   signFileSync(filePath: string, embed: boolean = false): SignedDocument {
-    const agent = this.requireAgent();
+    this.requireAgent();
     if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
     const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
-    const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, filePath, embed);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPasswordSync((agent) => {
+      const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, filePath, embed);
+      return parseSignedResult(result);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -698,55 +855,59 @@ export class JacsClient {
   // ---------------------------------------------------------------------------
 
   async createAgreement(document: any, agentIds: string[], options?: AgreementOptions): Promise<SignedDocument> {
-    const agent = this.requireAgent();
     const docString = normalizeDocumentInput(document);
     const hasExtended = options?.timeout || options?.quorum !== undefined || options?.requiredAlgorithms || options?.minimumStrength;
-    let result: string;
-    if (hasExtended) {
-      result = await agent.createAgreementWithOptions(
-        docString, agentIds, options?.question || null, options?.context || null,
-        options?.fieldName || null, options?.timeout || null, options?.quorum ?? null,
-        options?.requiredAlgorithms || null, options?.minimumStrength || null,
-      );
-    } else {
-      result = await agent.createAgreement(
-        docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null,
-      );
-    }
-    return parseSignedResult(result);
+    return this.withPrivateKeyPassword(async (agent) => {
+      let result: string;
+      if (hasExtended) {
+        result = await agent.createAgreementWithOptions(
+          docString, agentIds, options?.question || null, options?.context || null,
+          options?.fieldName || null, options?.timeout || null, options?.quorum ?? null,
+          options?.requiredAlgorithms || null, options?.minimumStrength || null,
+        );
+      } else {
+        result = await agent.createAgreement(
+          docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null,
+        );
+      }
+      return parseSignedResult(result);
+    });
   }
 
   createAgreementSync(document: any, agentIds: string[], options?: AgreementOptions): SignedDocument {
-    const agent = this.requireAgent();
     const docString = normalizeDocumentInput(document);
     const hasExtended = options?.timeout || options?.quorum !== undefined || options?.requiredAlgorithms || options?.minimumStrength;
-    let result: string;
-    if (hasExtended) {
-      result = agent.createAgreementWithOptionsSync(
-        docString, agentIds, options?.question || null, options?.context || null,
-        options?.fieldName || null, options?.timeout || null, options?.quorum ?? null,
-        options?.requiredAlgorithms || null, options?.minimumStrength || null,
-      );
-    } else {
-      result = agent.createAgreementSync(
-        docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null,
-      );
-    }
-    return parseSignedResult(result);
+    return this.withPrivateKeyPasswordSync((agent) => {
+      let result: string;
+      if (hasExtended) {
+        result = agent.createAgreementWithOptionsSync(
+          docString, agentIds, options?.question || null, options?.context || null,
+          options?.fieldName || null, options?.timeout || null, options?.quorum ?? null,
+          options?.requiredAlgorithms || null, options?.minimumStrength || null,
+        );
+      } else {
+        result = agent.createAgreementSync(
+          docString, agentIds, options?.question || null, options?.context || null, options?.fieldName || null,
+        );
+      }
+      return parseSignedResult(result);
+    });
   }
 
   async signAgreement(document: any, fieldName?: string): Promise<SignedDocument> {
-    const agent = this.requireAgent();
     const docString = normalizeDocumentInput(document);
-    const result = await agent.signAgreement(docString, fieldName || null);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPassword(async (agent) => {
+      const result = await agent.signAgreement(docString, fieldName || null);
+      return parseSignedResult(result);
+    });
   }
 
   signAgreementSync(document: any, fieldName?: string): SignedDocument {
-    const agent = this.requireAgent();
     const docString = normalizeDocumentInput(document);
-    const result = agent.signAgreementSync(docString, fieldName || null);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPasswordSync((agent) => {
+      const result = agent.signAgreementSync(docString, fieldName || null);
+      return parseSignedResult(result);
+    });
   }
 
   async checkAgreement(document: any, fieldName?: string): Promise<AgreementStatus> {
@@ -768,29 +929,29 @@ export class JacsClient {
   // ---------------------------------------------------------------------------
 
   async updateAgent(newAgentData: any): Promise<string> {
-    const agent = this.requireAgent();
     const dataString = typeof newAgentData === 'string' ? newAgentData : JSON.stringify(newAgentData);
-    return agent.updateAgent(dataString);
+    return this.withPrivateKeyPassword((agent) => agent.updateAgent(dataString));
   }
 
   updateAgentSync(newAgentData: any): string {
-    const agent = this.requireAgent();
     const dataString = typeof newAgentData === 'string' ? newAgentData : JSON.stringify(newAgentData);
-    return agent.updateAgentSync(dataString);
+    return this.withPrivateKeyPasswordSync((agent) => agent.updateAgentSync(dataString));
   }
 
   async updateDocument(documentId: string, newDocumentData: any, attachments?: string[], embed?: boolean): Promise<SignedDocument> {
-    const agent = this.requireAgent();
     const dataString = typeof newDocumentData === 'string' ? newDocumentData : JSON.stringify(newDocumentData);
-    const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPassword(async (agent) => {
+      const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
+      return parseSignedResult(result);
+    });
   }
 
   updateDocumentSync(documentId: string, newDocumentData: any, attachments?: string[], embed?: boolean): SignedDocument {
-    const agent = this.requireAgent();
     const dataString = typeof newDocumentData === 'string' ? newDocumentData : JSON.stringify(newDocumentData);
-    const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
-    return parseSignedResult(result);
+    return this.withPrivateKeyPasswordSync((agent) => {
+      const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
+      return parseSignedResult(result);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -890,14 +1051,18 @@ export class JacsClient {
     derivation?: Record<string, unknown>;
     policyContext?: Record<string, unknown>;
   }): Promise<SignedDocument> {
-    const agent = this.requireAgent();
     const paramsJson = JSON.stringify(params);
-    const raw: string = await agent.createAttestation(paramsJson);
-    return parseSignedResult(raw);
+    return this.withPrivateKeyPassword(async (agent) => {
+      const raw: string = await agent.createAttestation(paramsJson);
+      return parseSignedResult(raw);
+    });
   }
 
   /**
    * Verify an attestation document.
+   *
+   * The returned object preserves the canonical wire-format field names from the
+   * attestation/DSSE JSON contracts, which use camelCase.
    *
    * @param attestationJson - Raw JSON string of the attestation document.
    * @param opts - Optional. Set full: true for full-tier verification.
@@ -906,7 +1071,7 @@ export class JacsClient {
   async verifyAttestation(
     attestationJson: string,
     opts?: { full?: boolean },
-  ): Promise<Record<string, unknown>> {
+  ): Promise<AttestationVerificationResult> {
     const agent = this.requireAgent();
     const doc = JSON.parse(attestationJson);
     const docKey = `${doc.jacsId}:${doc.jacsVersion}`;
@@ -916,7 +1081,7 @@ export class JacsClient {
     } else {
       resultJson = await agent.verifyAttestation(docKey);
     }
-    return JSON.parse(resultJson);
+    return JSON.parse(resultJson) as AttestationVerificationResult;
   }
 
   /**
@@ -930,10 +1095,11 @@ export class JacsClient {
     signedDocJson: string,
     claims: Record<string, unknown>[],
   ): Promise<SignedDocument> {
-    const agent = this.requireAgent();
     const claimsJson = JSON.stringify(claims);
-    const raw: string = await agent.liftToAttestation(signedDocJson, claimsJson);
-    return parseSignedResult(raw);
+    return this.withPrivateKeyPassword(async (agent) => {
+      const raw: string = await agent.liftToAttestation(signedDocJson, claimsJson);
+      return parseSignedResult(raw);
+    });
   }
 
   /**
@@ -944,10 +1110,11 @@ export class JacsClient {
    */
   async exportAttestationDsse(
     attestationJson: string,
-  ): Promise<Record<string, unknown>> {
-    const agent = this.requireAgent();
-    const raw: string = await agent.exportAttestationDsse(attestationJson);
-    return JSON.parse(raw);
+  ): Promise<DsseEnvelope> {
+    return this.withPrivateKeyPassword(async (agent) => {
+      const raw: string = await agent.exportAttestationDsse(attestationJson);
+      return JSON.parse(raw) as DsseEnvelope;
+    });
   }
 
   // ---------------------------------------------------------------------------

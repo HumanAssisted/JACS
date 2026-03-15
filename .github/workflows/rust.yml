@@ -9,6 +9,10 @@ on:
       - "jacs-cli/**"
       - "jacs-mcp/**"
       - "binding-core/**"
+      - "jacs-postgresql/**"
+      - "jacs-surrealdb/**"
+      - "jacs-duckdb/**"
+      - "jacs-redb/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/rust.yml"
@@ -19,6 +23,10 @@ on:
       - "jacs-cli/**"
       - "jacs-mcp/**"
       - "binding-core/**"
+      - "jacs-postgresql/**"
+      - "jacs-surrealdb/**"
+      - "jacs-duckdb/**"
+      - "jacs-redb/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/rust.yml"
@@ -35,9 +43,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  quick-jacs:
-    name: Quick jacs checks (ubuntu)
+  rust-hygiene:
+    name: Rust hygiene (ubuntu)
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
@@ -53,23 +65,190 @@ jobs:
         with:
           toolchain: "1.93"
 
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Install cargo-audit and run audit
         run: |
           cargo install cargo-audit --locked --version 0.22.1
           cargo audit --ignore RUSTSEC-2023-0071
 
-      - name: Run quick Rust test suite
+      - name: License check (cargo-deny)
         run: |
-          cargo test -p jacs --verbose --lib
-          cargo test -p jacs --verbose --test pq2025_tests
-          cargo test -p jacs --verbose --test cross_language_tests
-          cargo test -p jacs --verbose --test structured_logging_tests
-          cargo test -p jacs-binding-core --verbose
-          cargo build -p jacs-cli
-          cargo test -p jacs-mcp --verbose
+          cargo install cargo-deny --locked
+          cargo deny check licenses
+
+      - name: Validate schema $id fields match file paths
+        run: ./scripts/validate-schemas.sh
+
+  quick-jacs:
+    name: Quick jacs core (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run quick Rust test suite (core)
+        run: make test-jacs-fast
+
+  quick-jacs-cli:
+    name: Quick jacs CLI (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run CLI integration tests
+        run: make test-jacs-cli
+
+  quick-binding-core:
+    name: Quick binding-core (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run binding-core tests
+        run: make test-jacs-binding-core
+
+  quick-jacs-mcp:
+    name: Quick jacs-mcp (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build jacs-cli (required by jacs-mcp integration tests)
+        run: cargo build -p jacs-cli
+
+      - name: Run jacs-mcp tests
+        run: make test-jacs-mcp
+
+  quick-jacs-mcp-minimal:
+    name: Quick jacs-mcp (mcp feature only)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run jacs-mcp tests (without attestation)
+        run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+
+  backend-inprocess:
+    name: ${{ matrix.package }} (ubuntu)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [jacs-duckdb, jacs-redb, jacs-surrealdb]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run in-process backend crate tests
+        run: cargo test -p ${{ matrix.package }} --lib --tests --verbose
+
+  # PostgreSQL backend tests use testcontainers (requires Docker daemon)
+  backend-postgresql:
+    name: jacs-postgresql (testcontainers)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run jacs-postgresql tests
+        run: cargo test -p jacs-postgresql --lib --tests --verbose
 
   full-jacs-release:
     name: Full jacs suite (${{ matrix.os }})
+    needs: [backend-postgresql]
     if: |
       startsWith(github.ref, 'refs/tags/') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full == 'true')
@@ -88,6 +267,9 @@ jobs:
         with:
           toolchain: "1.93"
 
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Install cargo-audit and run audit (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -96,11 +278,29 @@ jobs:
 
       - name: Run full jacs tests
         run: |
-          cargo test -p jacs --verbose
-          cargo test -p jacs-binding-core --verbose
+          cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
+          cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
           cargo build -p jacs-cli
-          cargo test -p jacs-mcp --verbose
+          cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
+
+      - name: Run jacs-mcp tests (without attestation)
+        run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+
+      - name: Run in-process backend crate tests (release)
+        run: |
+          cargo test -p jacs-duckdb --lib --tests --verbose
+          cargo test -p jacs-redb --lib --tests --verbose
+          cargo test -p jacs-surrealdb --lib --tests --verbose
+
+      - name: Run jacs-postgresql tests (Linux only)
+        if: runner.os == 'Linux'
+        run: cargo test -p jacs-postgresql --lib --tests --verbose
+
+      - name: Run cross-language and observability suites
+        run: |
+          make test-jacs-cross-language
+          make test-jacs-observability
 
   full-jacs-nightly:
     name: Full jacs suite (nightly ubuntu)
@@ -116,6 +316,9 @@ jobs:
         with:
           toolchain: "1.93"
 
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Install cargo-audit and run audit
         run: |
           cargo install cargo-audit --locked --version 0.22.1
@@ -123,8 +326,25 @@ jobs:
 
       - name: Run nightly full Rust tests
         run: |
-          cargo test -p jacs --verbose
-          cargo test -p jacs-binding-core --verbose
+          cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
+          cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
           cargo build -p jacs-cli
-          cargo test -p jacs-mcp --verbose
+          cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
+
+      - name: Run jacs-mcp tests (without attestation)
+        run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+
+      - name: Run in-process backend crate tests (nightly)
+        run: |
+          cargo test -p jacs-duckdb --lib --tests --verbose
+          cargo test -p jacs-redb --lib --tests --verbose
+          cargo test -p jacs-surrealdb --lib --tests --verbose
+
+      - name: Run jacs-postgresql tests
+        run: cargo test -p jacs-postgresql --lib --tests --verbose
+
+      - name: Run cross-language and observability suites
+        run: |
+          make test-jacs-cross-language
+          make test-jacs-observability

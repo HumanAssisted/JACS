@@ -3,7 +3,9 @@ use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::cli_utils::create::{handle_agent_create, handle_agent_create_auto, handle_config_create};
+use jacs::cli_utils::create::{
+    handle_agent_create, handle_agent_create_auto, handle_config_create,
+};
 use jacs::cli_utils::default_set_file_list;
 use jacs::cli_utils::document::{
     check_agreement, create_agreement, create_documents, extract_documents, sign_documents,
@@ -42,14 +44,8 @@ fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, Str
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let metadata = std::fs::metadata(path).map_err(|e| {
-            format!(
-                "Failed to read {} '{}': {}",
-                source_name,
-                path.display(),
-                e
-            )
-        })?;
+        let metadata = std::fs::metadata(path)
+            .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
         let mode = metadata.permissions().mode() & 0o777;
         if mode & 0o077 != 0 {
             return Err(format!(
@@ -177,7 +173,12 @@ fn load_agent_with_cli_dns_policy(
 ) -> Result<Agent, Box<dyn Error>> {
     let (dns_validate, dns_required, dns_strict) =
         resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
-    load_agent_with_dns_policy(agent_file, dns_validate, dns_required, dns_strict)
+    Ok(load_agent_with_dns_policy(
+        agent_file,
+        dns_validate,
+        dns_required,
+        dns_strict,
+    )?)
 }
 
 fn wrap_quickstart_error_with_password_help(
@@ -721,6 +722,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         .subcommand(
             Command::new("mcp")
                 .about("Start the built-in JACS MCP server (stdio transport)")
+                .arg(
+                    Arg::new("profile")
+                        .long("profile")
+                        .default_value("core")
+                        .help("Tool profile: 'core' (default, core tools) or 'full' (all tools)"),
+                )
                 .subcommand(
                     Command::new("install")
                         .about("Deprecated: MCP is now built into the jacs binary")
@@ -1396,7 +1403,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 let mut agent: Agent = load_agent(agentfile.cloned()).expect("REASON");
                 // Use updated set_file_list with storage
-                let _ = create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
+                let _ =
+                    create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
             }
 
             Some(("verify", verify_matches)) => {
@@ -1478,43 +1486,44 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     process::exit(1);
                 }
 
-                agent.reencrypt_key(&old_password, &new_password).map_err(
-                    |e| -> Box<dyn Error> {
+                jacs::simple::advanced::reencrypt_key(&agent, &old_password, &new_password)
+                    .map_err(|e| -> Box<dyn Error> {
                         Box::new(std::io::Error::new(
                             std::io::ErrorKind::Other,
                             format!("Re-encryption failed: {}", e),
                         ))
-                    },
-                )?;
+                    })?;
 
                 println!("Private key re-encrypted successfully.");
             }
             _ => println!("please enter subcommand see jacs key --help"),
         },
         #[cfg(feature = "mcp")]
-        Some(("mcp", mcp_matches)) => {
-            match mcp_matches.subcommand() {
-                Some(("install", _)) => {
-                    eprintln!("`jacs mcp install` is no longer needed.");
-                    eprintln!("MCP is built into the jacs binary. Use `jacs mcp` to serve.");
-                    process::exit(0);
-                }
-                Some(("run", _)) => {
-                    eprintln!("`jacs mcp run` is no longer needed.");
-                    eprintln!("Use `jacs mcp` directly to start the MCP server.");
-                    process::exit(0);
-                }
-                _ => {
-                    let agent = jacs_mcp::load_agent_from_config_env()?;
-                    let server = jacs_mcp::JacsMcpServer::new(agent);
-                    let rt = tokio::runtime::Runtime::new()?;
-                    rt.block_on(jacs_mcp::serve_stdio(server))?;
-                }
+        Some(("mcp", mcp_matches)) => match mcp_matches.subcommand() {
+            Some(("install", _)) => {
+                eprintln!("`jacs mcp install` is no longer needed.");
+                eprintln!("MCP is built into the jacs binary. Use `jacs mcp` to serve.");
+                process::exit(0);
             }
-        }
+            Some(("run", _)) => {
+                eprintln!("`jacs mcp run` is no longer needed.");
+                eprintln!("Use `jacs mcp` directly to start the MCP server.");
+                process::exit(0);
+            }
+            _ => {
+                let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
+                let profile = jacs_mcp::Profile::resolve(profile_str);
+                let agent = jacs_mcp::load_agent_from_config_env()?;
+                let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);
+                let rt = tokio::runtime::Runtime::new()?;
+                rt.block_on(jacs_mcp::serve_stdio(server))?;
+            }
+        },
         #[cfg(not(feature = "mcp"))]
         Some(("mcp", _)) => {
-            eprintln!("MCP support not compiled. Install with default features: cargo install jacs-cli");
+            eprintln!(
+                "MCP support not compiled. Install with default features: cargo install jacs-cli"
+            );
             process::exit(1);
         }
         Some(("a2a", a2a_matches)) => match a2a_matches.subcommand() {
@@ -1628,9 +1637,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 //  well-known endpoints or DNS in practice)
                 trust::trust_a2a_card(&key, &card_json)?;
 
-                println!("Trusted agent '{}' ({})", card.name, agent_id);
+                println!(
+                    "Saved unverified A2A Agent Card bookmark '{}' ({})",
+                    card.name, agent_id
+                );
                 println!("  Version: {}", agent_version);
-                println!("  Added to local trust store with key: {}", key);
+                println!("  Bookmark key: {}", key);
+                println!(
+                    "  This entry is not cryptographically trusted until verified JACS identity material is added."
+                );
             }
             Some(("discover", discover_matches)) => {
                 use jacs::a2a::AgentCard;
@@ -1743,7 +1758,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         quickstart_password_bootstrap_help()
                     )))
                 })?;
-                let (agent, info) = SimpleAgent::quickstart(
+                let (agent, info) = jacs::simple::advanced::quickstart(
                     "jacs-agent",
                     "localhost",
                     Some("JACS A2A agent"),
@@ -1753,23 +1768,23 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 .map_err(|e| wrap_quickstart_error_with_password_help("Failed to load agent", e))?;
 
                 // Export the Agent Card for display
-                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to export Agent Card: {}", e),
-                    ))
-                })?;
+                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to export Agent Card: {}", e),
+                        ))
+                    },
+                )?;
 
                 // Generate well-known documents via public API
-                let documents =
-                    agent
-                        .generate_well_known_documents(None)
-                        .map_err(|e| -> Box<dyn Error> {
-                            Box::new(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Failed to generate well-known documents: {}", e),
-                            ))
-                        })?;
+                let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to generate well-known documents: {}", e),
+                        ))
+                    })?;
 
                 // Build a lookup map: path -> JSON body
                 let mut routes: std::collections::HashMap<String, String> =
@@ -1851,33 +1866,32 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     )))
                 })?;
                 let (agent, info) =
-                    SimpleAgent::quickstart(name, domain, description, algorithm, None).map_err(
-                        |e| {
+                    jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
+                        .map_err(|e| {
                             wrap_quickstart_error_with_password_help(
                                 "Failed to quickstart agent",
                                 e,
                             )
-                        },
-                    )?;
+                        })?;
 
                 // Export the Agent Card
-                let agent_card = agent.export_agent_card().map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to export Agent Card: {}", e),
-                    ))
-                })?;
+                let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to export Agent Card: {}", e),
+                        ))
+                    },
+                )?;
 
                 // Generate well-known documents
-                let documents =
-                    agent
-                        .generate_well_known_documents(None)
-                        .map_err(|e| -> Box<dyn Error> {
-                            Box::new(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Failed to generate well-known documents: {}", e),
-                            ))
-                        })?;
+                let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
+                    .map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to generate well-known documents: {}", e),
+                        ))
+                    })?;
 
                 // Build route map
                 let mut routes: std::collections::HashMap<String, String> =
@@ -1962,8 +1976,11 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     quickstart_password_bootstrap_help()
                 )))
             })?;
-            let (agent, info) = SimpleAgent::quickstart(name, domain, description, algorithm, None)
-                .map_err(|e| wrap_quickstart_error_with_password_help("Quickstart failed", e))?;
+            let (agent, info) =
+                jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
+                    .map_err(|e| {
+                        wrap_quickstart_error_with_password_help("Quickstart failed", e)
+                    })?;
 
             if do_sign {
                 // Sign mode: read JSON, sign it, print signed document
@@ -2047,12 +2064,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         let doc_content = std::fs::read_to_string(doc_path).map_err(|e| {
                             format!("Failed to read document '{}': {}", doc_path, e)
                         })?;
-                        let result =
-                            agent
-                                .lift_to_attestation(&doc_content, &claims)
-                                .map_err(|e| {
-                                    format!("Failed to lift document to attestation: {}", e)
-                                })?;
+                        let result = jacs::attestation::simple::lift(&agent, &doc_content, &claims)
+                            .map_err(|e| {
+                                format!("Failed to lift document to attestation: {}", e)
+                            })?;
                         result.raw
                     } else {
                         // Build from scratch: need subject-type, subject-id, subject-digest
@@ -2086,9 +2101,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             },
                         };
 
-                        let result = agent
-                            .create_attestation(&subject, &claims, &evidence, None, None)
-                            .map_err(|e| format!("Failed to create attestation: {}", e))?;
+                        let result = jacs::attestation::simple::create(
+                            &agent, &subject, &claims, &evidence, None, None,
+                        )
+                        .map_err(|e| format!("Failed to create attestation: {}", e))?;
                         result.raw
                     };
 
@@ -2168,9 +2184,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                     // Now do attestation-specific verification
                     let att_result = if full {
-                        agent.verify_attestation_full(&doc_key)
+                        jacs::attestation::simple::verify_full(&agent, &doc_key)
                     } else {
-                        agent.verify_attestation(&doc_key)
+                        jacs::attestation::simple::verify(&agent, &doc_key)
                     };
 
                     match att_result {
@@ -2245,7 +2261,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                             process::exit(1);
                         });
 
-                    match agent.export_dsse(&attestation_json) {
+                    match jacs::attestation::simple::export_dsse(&attestation_json) {
                         Ok(envelope_json) => {
                             if let Some(out_path) = output_path {
                                 std::fs::write(out_path, &envelope_json).unwrap_or_else(|e| {

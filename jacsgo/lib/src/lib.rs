@@ -811,6 +811,7 @@ pub extern "C" fn jacs_agent_export_attestation_dsse(
 /// Export an A2A Agent Card for the current agent.
 /// Returns a JSON string of the Agent Card, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_export_agent_card(handle: *mut JacsAgentHandle) -> *mut c_char {
     if handle.is_null() {
@@ -833,6 +834,7 @@ pub extern "C" fn jacs_agent_export_agent_card(handle: *mut JacsAgentHandle) -> 
 /// `artifact_json` is the artifact payload, `artifact_type` is the type string.
 /// Returns a JSON string of the JACS-wrapped artifact, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_sign_a2a_artifact(
     handle: *mut JacsAgentHandle,
@@ -869,6 +871,7 @@ pub extern "C" fn jacs_agent_sign_a2a_artifact(
 /// Verify a JACS-wrapped A2A artifact (crypto-only, no trust policy).
 /// Returns a JSON string of the verification result, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_verify_a2a_artifact(
     handle: *mut JacsAgentHandle,
@@ -899,6 +902,7 @@ pub extern "C" fn jacs_agent_verify_a2a_artifact(
 /// Combines crypto verification with trust assessment.
 /// Returns a JSON string of the verification result with trust info, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
     handle: *mut JacsAgentHandle,
@@ -940,6 +944,7 @@ pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
 /// Assess an A2A agent's trustworthiness against a trust policy.
 /// Returns a JSON string of the trust assessment, or null on error.
 /// Must be freed with jacs_free_string().
+#[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_assess_a2a_agent(
     handle: *mut JacsAgentHandle,
@@ -1998,5 +2003,516 @@ fn c_string_to_option(c_str: *const c_char) -> Option<String> {
             .to_str()
             .ok()
             .map(|s| s.to_string())
+    }
+}
+
+// ============================================================================
+// SimpleAgentWrapper FFI — narrow contract API
+// ============================================================================
+// These functions wrap `SimpleAgentWrapper` from `jacs-binding-core`,
+// providing the same FFI contract as Python (PyO3) and Node.js (NAPI).
+// ============================================================================
+
+use jacs_binding_core::SimpleAgentWrapper;
+
+// Thread-local storage for the last error message from SimpleAgent FFI calls.
+// Go callers retrieve this via jacs_simple_last_error() when a function returns null.
+thread_local! {
+    static LAST_SIMPLE_ERROR: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Store an error message in thread-local storage.
+fn set_last_simple_error(msg: String) {
+    LAST_SIMPLE_ERROR.with(|cell| {
+        *cell.borrow_mut() = Some(msg);
+    });
+}
+
+/// Clear the last error message.
+fn clear_last_simple_error() {
+    LAST_SIMPLE_ERROR.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
+}
+
+/// Get the last error message from a SimpleAgent FFI call.
+/// Returns null if no error has occurred. Caller must free with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_last_error() -> *mut c_char {
+    LAST_SIMPLE_ERROR.with(|cell| match cell.borrow().as_ref() {
+        Some(msg) => CString::new(msg.as_str())
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        None => ptr::null_mut(),
+    })
+}
+
+/// Opaque handle to a SimpleAgentWrapper instance.
+pub struct SimpleAgentHandle {
+    wrapper: SimpleAgentWrapper,
+}
+
+/// Create a new SimpleAgent with persistent identity.
+/// Returns a handle, or null on failure.
+/// `info_json_out` receives the agent info JSON (caller must free with jacs_free_string).
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_create(
+    name: *const c_char,
+    purpose: *const c_char,
+    key_algorithm: *const c_char,
+    info_json_out: *mut *mut c_char,
+) -> *mut SimpleAgentHandle {
+    if name.is_null() || info_json_out.is_null() {
+        return ptr::null_mut();
+    }
+
+    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    let purpose_opt = if purpose.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(purpose) }.to_str().ok()
+    };
+
+    let algo_opt = if key_algorithm.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(key_algorithm) }.to_str().ok()
+    };
+
+    clear_last_simple_error();
+    match SimpleAgentWrapper::create(name_str, purpose_opt, algo_opt) {
+        Ok((wrapper, info_json)) => {
+            if let Ok(c_info) = CString::new(info_json) {
+                unsafe { *info_json_out = c_info.into_raw() };
+            } else {
+                unsafe { *info_json_out = ptr::null_mut() };
+            }
+            Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
+        }
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Load an existing SimpleAgent from a config file.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_load(
+    config_path: *const c_char,
+    strict: c_int,
+) -> *mut SimpleAgentHandle {
+    let config = if config_path.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(config_path) }.to_str().ok()
+    };
+
+    let strict_opt = if strict < 0 { None } else { Some(strict != 0) };
+
+    clear_last_simple_error();
+    match SimpleAgentWrapper::load(config, strict_opt) {
+        Ok(wrapper) => Box::into_raw(Box::new(SimpleAgentHandle { wrapper })),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Create an ephemeral (in-memory) SimpleAgent.
+/// `info_json_out` receives the agent info JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_ephemeral(
+    algorithm: *const c_char,
+    info_json_out: *mut *mut c_char,
+) -> *mut SimpleAgentHandle {
+    if info_json_out.is_null() {
+        return ptr::null_mut();
+    }
+
+    let algo_opt = if algorithm.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(algorithm) }.to_str().ok()
+    };
+
+    clear_last_simple_error();
+    match SimpleAgentWrapper::ephemeral(algo_opt) {
+        Ok((wrapper, info_json)) => {
+            if let Ok(c_info) = CString::new(info_json) {
+                unsafe { *info_json_out = c_info.into_raw() };
+            } else {
+                unsafe { *info_json_out = ptr::null_mut() };
+            }
+            Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
+        }
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Create a SimpleAgent with full programmatic control via JSON parameters.
+/// `info_json_out` receives the agent info JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_create_with_params(
+    params_json: *const c_char,
+    info_json_out: *mut *mut c_char,
+) -> *mut SimpleAgentHandle {
+    if params_json.is_null() || info_json_out.is_null() {
+        return ptr::null_mut();
+    }
+
+    let params_str = match unsafe { CStr::from_ptr(params_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+
+    clear_last_simple_error();
+    match SimpleAgentWrapper::create_with_params(params_str) {
+        Ok((wrapper, info_json)) => {
+            if let Ok(c_info) = CString::new(info_json) {
+                unsafe { *info_json_out = c_info.into_raw() };
+            } else {
+                unsafe { *info_json_out = ptr::null_mut() };
+            }
+            Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
+        }
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Free a SimpleAgent handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_free(handle: *mut SimpleAgentHandle) {
+    if !handle.is_null() {
+        unsafe {
+            let _ = Box::from_raw(handle);
+        }
+    }
+}
+
+/// Get the agent ID. Caller must free result with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_get_agent_id(handle: *const SimpleAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    clear_last_simple_error();
+    match h.wrapper.get_agent_id() {
+        Ok(id) => CString::new(id)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Get the JACS key ID. Caller must free result with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_key_id(handle: *const SimpleAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    clear_last_simple_error();
+    match h.wrapper.key_id() {
+        Ok(id) => CString::new(id)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Whether the agent is in strict mode.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_is_strict(handle: *const SimpleAgentHandle) -> c_int {
+    if handle.is_null() {
+        return 0;
+    }
+    let h = unsafe { &*handle };
+    if h.wrapper.is_strict() { 1 } else { 0 }
+}
+
+/// Export the agent identity JSON. Caller must free result with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_agent(handle: *const SimpleAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    clear_last_simple_error();
+    match h.wrapper.export_agent() {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Get the public key PEM. Caller must free result with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_get_public_key_pem(handle: *const SimpleAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    clear_last_simple_error();
+    match h.wrapper.get_public_key_pem() {
+        Ok(pem) => CString::new(pem)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Get the public key as base64. Caller must free result with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_get_public_key_base64(
+    handle: *const SimpleAgentHandle,
+) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    clear_last_simple_error();
+    match h.wrapper.get_public_key_base64() {
+        Ok(b64) => CString::new(b64)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Diagnostics JSON. Caller must free result with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_diagnostics(handle: *const SimpleAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let diag = h.wrapper.diagnostics();
+    CString::new(diag)
+        .map(|c| c.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+/// Config file path, if loaded from disk. Caller must free with jacs_free_string.
+/// Returns null if the agent has no config path (e.g., ephemeral).
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_config_path(handle: *const SimpleAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    match h.wrapper.config_path() {
+        Some(path) => CString::new(path)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        None => ptr::null_mut(),
+    }
+}
+
+/// Verify self. Returns VerificationResult JSON. Caller must free with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_verify_self(handle: *const SimpleAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    clear_last_simple_error();
+    match h.wrapper.verify_self() {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Verify a signed document. Returns VerificationResult JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_verify_json(
+    handle: *const SimpleAgentHandle,
+    signed_document: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || signed_document.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    match h.wrapper.verify_json(doc_str) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Verify a document by ID. Returns VerificationResult JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_verify_by_id(
+    handle: *const SimpleAgentHandle,
+    document_id: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || document_id.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let id_str = match unsafe { CStr::from_ptr(document_id) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    match h.wrapper.verify_by_id_json(id_str) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Verify a signed document with an explicit public key (base64-encoded).
+/// Returns VerificationResult JSON. Caller must free with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_verify_with_key(
+    handle: *const SimpleAgentHandle,
+    signed_document: *const c_char,
+    public_key_base64: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || signed_document.is_null() || public_key_base64.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let key_str = match unsafe { CStr::from_ptr(public_key_base64) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    match h.wrapper.verify_with_key_json(doc_str, key_str) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Sign a JSON message. Returns signed document JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_sign_message(
+    handle: *const SimpleAgentHandle,
+    data_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || data_json.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let data_str = match unsafe { CStr::from_ptr(data_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    match h.wrapper.sign_message_json(data_str) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Sign raw bytes. Returns base64 signature.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_sign_raw_bytes(
+    handle: *const SimpleAgentHandle,
+    data: *const u8,
+    data_len: size_t,
+) -> *mut c_char {
+    if handle.is_null() || data.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let data_slice = unsafe { slice::from_raw_parts(data, data_len) };
+    clear_last_simple_error();
+    match h.wrapper.sign_raw_bytes_base64(data_slice) {
+        Ok(b64) => CString::new(b64)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Sign a file. Returns signed document JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_sign_file(
+    handle: *const SimpleAgentHandle,
+    file_path: *const c_char,
+    embed: c_int,
+) -> *mut c_char {
+    if handle.is_null() || file_path.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    match h.wrapper.sign_file_json(path_str, embed != 0) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
     }
 }

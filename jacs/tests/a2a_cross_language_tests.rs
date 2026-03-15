@@ -1,3 +1,4 @@
+#![cfg(feature = "a2a")]
 //! Cross-language A2A fixture tests.
 //!
 //! These tests generate A2A-specific fixtures (Agent Cards, wrapped artifacts,
@@ -46,7 +47,7 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
     unsafe { std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "CrossLangA2AP@ssw0rd!2026") };
     std::env::set_current_dir(&tmp).expect("cd to temp");
 
-    let (agent, info) = SimpleAgent::quickstart(
+    let (agent, info) = jacs::simple::advanced::quickstart(
         "a2a-cross-language-agent",
         "a2a-cross-language.example.com",
         Some("A2A cross-language fixture agent"),
@@ -56,7 +57,7 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
     .expect("quickstart should succeed");
 
     // 1. Export Agent Card
-    let agent_card = agent.export_agent_card().expect("export agent card");
+    let agent_card = jacs::a2a::simple::export_agent_card(&agent).expect("export agent card");
     let agent_card_json = serde_json::to_string_pretty(&agent_card).expect("serialize agent card");
 
     // 2. Wrap an artifact with provenance
@@ -70,13 +71,14 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
             "purpose": "cross-language-a2a-interop"
         }
     });
-    let wrapped = agent
-        .wrap_a2a_artifact(
-            &serde_json::to_string(&test_artifact).unwrap(),
-            "artifact",
-            None,
-        )
-        .expect("wrap artifact");
+    #[allow(deprecated)]
+    let wrapped = jacs::a2a::simple::wrap_artifact(
+        &agent,
+        &serde_json::to_string(&test_artifact).unwrap(),
+        "artifact",
+        None,
+    )
+    .expect("wrap artifact");
 
     // 3. Create a second artifact with parent signature chain
     let wrapped_value: Value = serde_json::from_str(&wrapped).expect("parse wrapped");
@@ -96,13 +98,14 @@ fn generate_a2a_fixtures(algorithm: &str, prefix: &str) {
         }
     });
     let parent_sigs_json = serde_json::to_string(&vec![parent_sig]).unwrap();
-    let child_wrapped = agent
-        .wrap_a2a_artifact(
-            &serde_json::to_string(&child_artifact).unwrap(),
-            "artifact",
-            Some(&parent_sigs_json),
-        )
-        .expect("wrap child artifact");
+    #[allow(deprecated)]
+    let child_wrapped = jacs::a2a::simple::wrap_artifact(
+        &agent,
+        &serde_json::to_string(&child_artifact).unwrap(),
+        "artifact",
+        Some(&parent_sigs_json),
+    )
+    .expect("wrap child artifact");
 
     // Read public key
     let pub_key_path = tmp.join("jacs_keys").join("jacs.public.pem");
@@ -218,6 +221,7 @@ fn generate_ed25519_a2a_fixtures() {
     generate_a2a_fixtures("ed25519", "ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 #[serial]
 fn generate_pq2025_a2a_fixtures() {

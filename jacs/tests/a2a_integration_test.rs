@@ -1,3 +1,4 @@
+#![cfg(feature = "a2a")]
 //! Integration tests for A2A protocol support in JACS (v0.4.0)
 
 use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*, *};
@@ -287,7 +288,8 @@ fn test_well_known_endpoints_generation() {
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
 
     // Generate dual keys (ephemeral - no env vars needed)
-    let dual_keys = create_jwk_keys(Some("pq2025"), Some("rsa")).expect("Failed to create keys");
+    let dual_keys =
+        create_jwk_keys(Some("ring-Ed25519"), Some("rsa")).expect("Failed to create keys");
 
     // Sign agent card
     let jws_signature = sign_agent_card_jws(

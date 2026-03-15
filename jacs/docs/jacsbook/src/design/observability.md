@@ -47,7 +47,7 @@ init_custom_observability(config)?;
 ## Features and backends
 
 - No extra features: stderr/file logs only.
-- `observability-convenience`: enable convenience helpers (wrappers) for logs/metrics.
+- Convenience helpers (wrappers) for logs/metrics are always available (no feature flag needed).
 - `otlp-logs`: enable OTLP log export (pulls in OpenTelemetry + tokio).
 - `otlp-metrics`: enable OTLP metrics export (pulls in OpenTelemetry + tokio).
 - `otlp-tracing`: enable OTLP tracing export (pulls in OpenTelemetry + tokio).
@@ -101,11 +101,6 @@ Note: direct Prometheus export is not supported; route via an OTLP Collector.
 cargo build
 ```
 
-- Add convenience helpers only:
-```bash
-cargo build --features observability-convenience
-```
-
 - OTLP logs only:
 ```bash
 cargo build --features otlp-logs
@@ -121,9 +116,9 @@ cargo build --features otlp-metrics
 cargo build --features otlp-tracing
 ```
 
-- Full stack (helpers + logs + metrics + tracing):
+- Full stack (logs + metrics + tracing):
 ```bash
-cargo build --features "observability-convenience otlp-logs otlp-metrics otlp-tracing"
+cargo build --features "otlp-logs otlp-metrics otlp-tracing"
 ```
 
 WASM builds:

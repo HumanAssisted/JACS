@@ -1,9 +1,10 @@
 [package]
 name = "jacsnpm"
-version = "0.9.3"
+version = "0.9.4"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
+license = "Apache-2.0 OR MIT"
 
 [lib]
 name = "jacsnpm"
@@ -23,6 +24,7 @@ napi-derive = "2.16.13"
 
 [features]
 default = ["attestation"]
+a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
 
 [build-dependencies]

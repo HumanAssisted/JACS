@@ -61,6 +61,7 @@ function standaloneOpts() {
 const ALGORITHMS = [
   { prefix: 'ed25519', name: 'Ed25519', nodeAlgo: 'ring-Ed25519' },
   { prefix: 'pq2025', name: 'pq2025', nodeAlgo: 'pq2025' },
+  { prefix: 'rsa_pss', name: 'RSA-PSS', nodeAlgo: 'RSA-PSS' },
 ];
 const PYTHON_FIXTURES = [
   { prefix: 'python_ed25519', name: 'Python Ed25519' },

@@ -9,6 +9,7 @@ pub mod agent_card;
 pub mod extension;
 pub mod keys;
 pub mod provenance;
+pub mod simple;
 pub mod trust;
 
 use serde::{Deserialize, Serialize};

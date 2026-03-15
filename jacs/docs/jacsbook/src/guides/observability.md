@@ -52,7 +52,7 @@ cargo build --features otlp-tracing
 | `otlp-metrics` | OTLP metrics export (opentelemetry, opentelemetry-otlp, opentelemetry_sdk, tokio) |
 | `otlp-tracing` | Distributed tracing (opentelemetry, opentelemetry-otlp, tracing-opentelemetry, tokio) |
 
-The `observability-convenience` feature adds automatic counter/gauge recording for sign and verify operations without pulling in any OTLP dependencies.
+Convenience helpers for automatic counter/gauge recording for sign and verify operations are always available without any feature flag.
 
 ## OTEL Collector Configuration
 

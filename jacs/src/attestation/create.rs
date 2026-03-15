@@ -7,8 +7,8 @@
 use crate::agent::document::{DocumentTraits, JACSDocument};
 use crate::agent::{Agent, DOCUMENT_AGENT_SIGNATURE_FIELDNAME, SHA256_FIELDNAME};
 use crate::attestation::types::*;
+use crate::error::JacsError;
 use serde_json::{Value, json};
-use std::error::Error;
 use tracing::info;
 
 /// Build the attestation JSON body from typed parameters.
@@ -20,7 +20,7 @@ fn build_attestation_json(
     evidence: &[EvidenceRef],
     derivation: Option<&Derivation>,
     policy_context: Option<&PolicyContext>,
-) -> Result<Value, Box<dyn Error>> {
+) -> Result<Value, JacsError> {
     let mut attestation_body = json!({
         "subject": serde_json::to_value(subject)?,
         "claims": serde_json::to_value(claims)?,
@@ -80,7 +80,7 @@ pub fn create_attestation_impl(
     evidence: &[EvidenceRef],
     derivation: Option<&Derivation>,
     policy_context: Option<&PolicyContext>,
-) -> Result<JACSDocument, Box<dyn Error>> {
+) -> Result<JACSDocument, JacsError> {
     // 1. Build the attestation JSON envelope (no JACS header fields yet)
     let envelope = build_attestation_json(subject, claims, evidence, derivation, policy_context)?;
     let envelope_str = serde_json::to_string(&envelope)?;

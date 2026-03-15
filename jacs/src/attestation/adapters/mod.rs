@@ -6,8 +6,8 @@ pub mod a2a;
 pub mod email;
 
 use crate::attestation::types::{Claim, EvidenceRef, EvidenceVerificationResult};
+use crate::error::JacsError;
 use serde_json::Value;
-use std::error::Error;
 
 /// Trait for normalizing external evidence into attestation claims.
 /// Adapters are stored on Agent as Vec<Box<dyn EvidenceAdapter>> behind feature flag.
@@ -20,13 +20,13 @@ pub trait EvidenceAdapter: Send + Sync + std::fmt::Debug {
         &self,
         raw: &[u8],
         metadata: &Value,
-    ) -> Result<(Vec<Claim>, EvidenceRef), Box<dyn Error>>;
+    ) -> Result<(Vec<Claim>, EvidenceRef), JacsError>;
 
     /// Verify a previously created evidence reference.
     fn verify_evidence(
         &self,
         evidence: &EvidenceRef,
-    ) -> Result<EvidenceVerificationResult, Box<dyn Error>>;
+    ) -> Result<EvidenceVerificationResult, JacsError>;
 }
 
 /// Returns the default set of evidence adapters.
