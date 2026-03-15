@@ -504,10 +504,10 @@ impl JacsMcpServer {
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None, // custom_schema
-            None, // outputfilename
-            true, // no_save
-            None, // attachments
+            None,  // custom_schema
+            None,  // outputfilename
+            false, // no_save — persist to documents/ so list_state can find it
+            None,  // attachments
             Some(embed || params.state_type == "hook"),
         ) {
             Ok(signed_doc_string) => {

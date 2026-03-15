@@ -43,11 +43,10 @@ jobs:
       - name: Build jacs-cli (required by jacs-mcp integration tests)
         run: cargo build -p jacs-cli
 
-      - name: Run jacs-mcp tests (core profile)
-        run: cargo test -p jacs-mcp --verbose
-
-      - name: Run jacs-mcp tests (full profile)
+      - name: Run jacs-mcp tests
         run: cargo test -p jacs-mcp --features full-tools --verbose
+        env:
+          JACS_MCP_PROFILE: full
 
   test-jacsgo:
     name: Test jacsgo
