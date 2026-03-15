@@ -638,6 +638,10 @@ impl AgentWrapper {
     }
 
     /// Persist an already-signed JACS document and return its lookup key.
+    ///
+    /// Stores the document both in the agent's data directory (for file-based
+    /// access) and in the storage index (`documents/`) so that
+    /// `list_document_keys()` can find it.
     pub fn save_signed_document(
         &self,
         document_string: &str,
@@ -645,6 +649,8 @@ impl AgentWrapper {
         export_embedded: Option<bool>,
         extract_only: Option<bool>,
     ) -> BindingResult<String> {
+        use jacs::storage::StorageDocumentTraits;
+
         let mut agent = self.lock()?;
         let doc = agent.load_document(document_string).map_err(|e| {
             BindingCoreError::document_failed(format!("Failed to load signed document: {}", e))
@@ -658,6 +664,10 @@ impl AgentWrapper {
                     document_key, e
                 ))
             })?;
+
+        // Also store in the documents/ index so list_document_keys() finds it.
+        let _ = agent.storage_ref().store_document(&doc);
+
         Ok(document_key)
     }
 
