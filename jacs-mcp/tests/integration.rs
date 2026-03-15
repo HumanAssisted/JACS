@@ -38,6 +38,8 @@ impl RmcpSession {
         let bin_path = support::jacs_cli_bin();
         let command = tokio::process::Command::new(&bin_path).configure(|cmd| {
             cmd.arg("mcp")
+                .arg("--profile")
+                .arg("full")
                 .current_dir(&base)
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
