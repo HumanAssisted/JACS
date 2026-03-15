@@ -9,12 +9,13 @@ Cryptographic signatures for AI agent outputs. No server. No account. Three line
 > For a higher-level agent framework built on JACS, see [haiai](https://github.com/HumanAssisted/haiai).
 
   [![Rust](https://github.com/HumanAssisted/JACS/actions/workflows/rust.yml/badge.svg)](https://github.com/HumanAssisted/JACS/actions/workflows/rust.yml)
-  [![Homebrew](https://github.com/HumanAssisted/JACS/actions/workflows/homebrew.yml/badge.svg)](https://github.com/HumanAssisted/JACS/actions/workflows/homebrew.yml)
   [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/HumanAssisted/JACS/blob/main/LICENSE)
   [![Crates.io](https://img.shields.io/crates/v/jacs)](https://crates.io/crates/jacs)
   [![npm](https://img.shields.io/npm/v/@hai.ai/jacs)](https://www.npmjs.com/package/@hai.ai/jacs)
   [![PyPI](https://img.shields.io/pypi/v/jacs)](https://pypi.org/project/jacs/)
   [![Rust 1.93+](https://img.shields.io/badge/rust-1.93+-DEA584.svg?logo=rust)](https://www.rust-lang.org/)
+
+  [![Homebrew](https://github.com/HumanAssisted/JACS/actions/workflows/homebrew.yml/badge.svg)](https://github.com/HumanAssisted/JACS/actions/workflows/homebrew.yml)
 
 
 ## The Simple Contract
