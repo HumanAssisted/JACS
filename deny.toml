@@ -51,6 +51,48 @@ name = "ring"
 expression = "(Apache-2.0 OR ISC) AND OpenSSL"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
+# SurrealDB uses BUSL-1.1; accepted for optional backend integration
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-protocol"
+
+# SurrealDB crates without explicit license field in their published Cargo.toml
+[[licenses.clarify]]
+name = "surrealdb"
+expression = "BUSL-1.1"
+license-files = []
+
+[[licenses.clarify]]
+name = "surrealdb-core"
+expression = "BUSL-1.1"
+license-files = []
+
+[[licenses.clarify]]
+name = "surrealdb-types"
+expression = "BUSL-1.1"
+license-files = []
+
+[[licenses.clarify]]
+name = "surrealdb-types-derive"
+expression = "BUSL-1.1"
+license-files = []
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb"
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-core"
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-types"
+
+[[licenses.exceptions]]
+allow = ["BUSL-1.1"]
+name = "surrealdb-types-derive"
+
 [licenses.private]
 ignore = true
 

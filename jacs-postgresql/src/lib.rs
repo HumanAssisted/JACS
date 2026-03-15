@@ -87,10 +87,10 @@ impl PostgresStorage {
                     .await
             })
         })
-            .map_err(|e| JacsError::DatabaseError {
-                operation: "connect".to_string(),
-                reason: e.to_string(),
-            })?;
+        .map_err(|e| JacsError::DatabaseError {
+            operation: "connect".to_string(),
+            reason: e.to_string(),
+        })?;
 
         Ok(Self { pool, handle })
     }

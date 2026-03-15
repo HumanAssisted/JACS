@@ -84,6 +84,7 @@ test-jacs-pq:
 test-jacs-features: test-jacs-pq
 
 test-jacs-cli:
+	cargo build -p jacs-cli
 	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests --test cli_flags -- --nocapture
 
 test-jacs-cross-language:

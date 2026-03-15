@@ -4093,6 +4093,7 @@ impl ServerHandler for JacsMcpServer {
 }
 
 #[cfg(test)]
+#[allow(ambiguous_glob_imports)]
 mod tests {
     use super::*;
 

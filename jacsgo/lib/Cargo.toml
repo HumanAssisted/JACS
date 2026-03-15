@@ -11,7 +11,7 @@ name = "jacsgo"
 crate-type = ["cdylib"]
 
 [features]
-default = []
+default = ["a2a"]
 a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs/attestation", "jacs-binding-core/attestation"]
 

@@ -53,7 +53,7 @@ async fn setup_db() -> (PostgresStorage, ContainerAsync<Postgres>) {
 // StorageDocumentTraits Tests
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_connection_and_migration() {
     let (db, _container) = setup_db().await;
@@ -63,7 +63,7 @@ async fn test_connection_and_migration() {
     assert_eq!(count, 0, "Fresh database should have zero documents");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_store_and_retrieve_document() {
     let (db, _container) = setup_db().await;
@@ -86,7 +86,7 @@ async fn test_store_and_retrieve_document() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_raw_contents_preserves_json() {
     let (db, _container) = setup_db().await;
@@ -106,7 +106,7 @@ async fn test_raw_contents_preserves_json() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_document_exists() {
     let (db, _container) = setup_db().await;
@@ -126,7 +126,7 @@ async fn test_document_exists() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_remove_document() {
     let (db, _container) = setup_db().await;
@@ -152,7 +152,7 @@ async fn test_remove_document() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_list_documents_by_type() {
     let (db, _container) = setup_db().await;
@@ -182,7 +182,7 @@ async fn test_list_documents_by_type() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_append_only_same_key() {
     let (db, _container) = setup_db().await;
@@ -203,7 +203,7 @@ async fn test_append_only_same_key() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_multiple_versions() {
     let (db, _container) = setup_db().await;
@@ -235,7 +235,7 @@ async fn test_multiple_versions() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_get_latest_document() {
     let (db, _container) = setup_db().await;
@@ -264,7 +264,7 @@ async fn test_get_latest_document() {
 // DatabaseDocumentTraits Tests
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_query_by_type_with_pagination() {
     let (db, _container) = setup_db().await;
@@ -307,7 +307,7 @@ async fn test_query_by_type_with_pagination() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_query_by_field() {
     let (db, _container) = setup_db().await;
@@ -344,7 +344,7 @@ async fn test_query_by_field() {
     assert!(missing.is_empty(), "Should find no 'archived' documents");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_count_by_type() {
     let (db, _container) = setup_db().await;
@@ -368,7 +368,7 @@ async fn test_count_by_type() {
     assert_eq!(zero_count, 0, "Non-existent type should have count 0");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_query_by_agent() {
     let (db, _container) = setup_db().await;
@@ -401,7 +401,7 @@ async fn test_query_by_agent() {
     assert_eq!(alice_keys.len(), 2);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_bulk_store_and_retrieve() {
     let (db, _container) = setup_db().await;
@@ -427,7 +427,7 @@ async fn test_bulk_store_and_retrieve() {
     assert_eq!(retrieved[2].id, "bulk-3");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_merge_documents_not_supported() {
     let (db, _container) = setup_db().await;
@@ -446,7 +446,7 @@ async fn test_merge_documents_not_supported() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_get_versions_returns_full_documents() {
     let (db, _container) = setup_db().await;
@@ -469,7 +469,7 @@ async fn test_get_versions_returns_full_documents() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_get_latest_trait_method() {
     let (db, _container) = setup_db().await;
@@ -484,7 +484,7 @@ async fn test_get_latest_trait_method() {
     assert_eq!(latest.version, "v2");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_get_document_invalid_key_format() {
     let (db, _container) = setup_db().await;
@@ -496,7 +496,7 @@ async fn test_get_document_invalid_key_format() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_store_documents_partial_idempotency() {
     let (db, _container) = setup_db().await;
@@ -519,7 +519,7 @@ async fn test_store_documents_partial_idempotency() {
     assert_eq!(versions.len(), 1, "Duplicate should not create extra row");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_migrations_idempotent() {
     let (db, _container) = setup_db().await;
@@ -533,7 +533,7 @@ async fn test_migrations_idempotent() {
 // SearchProvider Tests
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_search_capabilities() {
     let (db, _container) = setup_db().await;
@@ -548,7 +548,7 @@ async fn test_search_capabilities() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_search_empty_query_returns_empty() {
     let (db, _container) = setup_db().await;
@@ -564,7 +564,7 @@ async fn test_search_empty_query_returns_empty() {
     assert_eq!(results.method, SearchMethod::FullText);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_search_fulltext_returns_results() {
     let (db, _container) = setup_db().await;
@@ -591,7 +591,7 @@ async fn test_search_fulltext_returns_results() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[serial]
 async fn test_search_with_type_filter() {
     let (db, _container) = setup_db().await;
