@@ -164,6 +164,7 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
         "expected jacs_list_state in tool list: {:?}",
         tools
     );
+    #[cfg(feature = "attestation-tools")]
     assert!(
         tools.iter().any(|tool| tool == "jacs_attest_create"),
         "expected attestation tools in default build: {:?}",
@@ -325,10 +326,11 @@ async fn mcp_sign_state_rejects_file_outside_allowed_roots() -> anyhow::Result<(
     Ok(())
 }
 
+#[cfg(feature = "full-tools")]
 #[tokio::test]
 async fn mcp_message_and_attestation_round_trip_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let signed_doc = session
         .call_tool(
@@ -510,10 +512,11 @@ async fn mcp_message_and_attestation_round_trip_over_stdio() -> anyhow::Result<(
     Ok(())
 }
 
+#[cfg(feature = "full-tools")]
 #[tokio::test]
 async fn mcp_check_agreement_rejects_tampered_agreement() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let exported = session
         .call_tool("jacs_export_agent", serde_json::json!({}))
@@ -633,10 +636,11 @@ async fn mcp_admin_tools_reject_inline_secrets_without_opt_in() -> anyhow::Resul
     Ok(())
 }
 
+#[cfg(feature = "full-tools")]
 #[tokio::test]
 async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let wrapped = session
         .call_tool(
@@ -724,10 +728,11 @@ async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "full-tools")]
 #[tokio::test]
 async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let parent = session
         .call_tool(
@@ -838,10 +843,11 @@ async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "full-tools")]
 #[tokio::test]
 async fn mcp_attestation_negative_paths_and_dsse_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let signed_doc = session
         .call_tool(
