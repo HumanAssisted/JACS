@@ -743,7 +743,10 @@ impl StorageDocumentTraits for MultiStorage {
                 if let Some(pos) = file.rfind("documents/") {
                     let after_prefix = &file[pos + "documents/".len()..];
                     if let Some(key) = after_prefix.strip_suffix(".json") {
-                        document_keys.push(key.to_string());
+                        // Reject keys with path separators to prevent traversal
+                        if !key.contains('/') && !key.contains('\\') {
+                            document_keys.push(key.to_string());
+                        }
                     }
                 }
             }
