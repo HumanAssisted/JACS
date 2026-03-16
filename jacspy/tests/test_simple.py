@@ -806,12 +806,7 @@ class TestAgreementWorkflow:
         assert result.valid is True
 
     def test_two_party_agreement_requires_both_signatures(self, tmp_path):
-        """Two distinct agents should both sign before agreement check succeeds.
-
-        Uses RSA-PSS because trust_agent_with_key requires text-format (PEM) keys.
-        Ed25519/pq2025 produce binary keys whose hash differs when round-tripped
-        through string encoding.
-        """
+        """Two distinct agents should both sign before agreement check succeeds."""
         password = "TestP@ss123!#"
 
         a1_root = tmp_path / "agent1"
@@ -825,7 +820,7 @@ class TestAgreementWorkflow:
             a1 = simple.create(
                 name="pytest-agent-1",
                 password=password,
-                algorithm="RSA-PSS",
+                algorithm=TEST_ALGORITHM_INTERNAL,
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",
@@ -837,7 +832,7 @@ class TestAgreementWorkflow:
             a2 = simple.create(
                 name="pytest-agent-2",
                 password=password,
-                algorithm="RSA-PSS",
+                algorithm=TEST_ALGORITHM_INTERNAL,
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",

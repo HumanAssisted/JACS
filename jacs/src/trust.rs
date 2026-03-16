@@ -195,7 +195,25 @@ pub fn trust_agent_with_key(
 
     // Get the public key bytes
     let public_key_bytes: Vec<u8> = match public_key_pem {
-        Some(pem) => pem.as_bytes().to_vec(),
+        Some(pem) => {
+            let trimmed = pem.trim();
+            if trimmed.starts_with("-----BEGIN") {
+                // PEM-armored key: extract the base64 body and decode to raw bytes.
+                // This handles Ed25519/pq2025 keys that were wrapped in PEM armor
+                // by normalize_public_key_pem().
+                let body: String = trimmed
+                    .lines()
+                    .filter(|l| !l.starts_with("-----"))
+                    .collect::<Vec<_>>()
+                    .join("");
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD
+                    .decode(&body)
+                    .unwrap_or_else(|_| trimmed.as_bytes().to_vec())
+            } else {
+                pem.as_bytes().to_vec()
+            }
+        }
         None => {
             // Try to load from trust store key cache
             load_public_key_from_cache(&public_key_hash)?
