@@ -131,9 +131,10 @@ fn test_12factor_env_vars_only() {
     let config = load_config_12factor(None).expect("Should load with just env vars");
 
     // Verify env vars are reflected in config
+    let expected_key_dir = utils::fixtures_keys_dir_string();
     assert_eq!(
         config.jacs_key_directory().as_deref(),
-        Some("tests/fixtures/keys"),
+        Some(expected_key_dir.as_str()),
         "Key directory should come from env var"
     );
     assert_eq!(

@@ -913,35 +913,16 @@ class TestAgreementWorkflow:
 
 
 class TestAllAlgorithms:
-    """Verify core sign/verify/trust/agreement flows work with every algorithm."""
+    """Verify core sign/verify/trust/agreement flows work with every algorithm.
+
+    Each parametrized test creates two agents and exercises sign, verify,
+    trust, and two-party agreement in a single test to minimize agent
+    creation overhead (pq2025 keygen is ~30-60s per agent).
+    """
 
     @pytest.mark.parametrize("algo", ["ring-Ed25519", "RSA-PSS", "pq2025"])
-    def test_sign_verify_round_trip(self, tmp_path, algo):
-        """Each algorithm can sign a message and verify it."""
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(tmp_path)
-            info = simple.create(
-                name=f"algo-test-{algo}",
-                password="TestP@ss123!#",
-                algorithm=algo,
-                data_directory="jacs_data",
-                key_directory="keys",
-                config_path="jacs.config.json",
-            )
-            assert info.agent_id
-
-            signed = simple.sign_message({"algo": algo, "test": True})
-            assert signed.document_id
-            result = simple.verify(signed.raw_json)
-            assert result.valid
-        finally:
-            os.chdir(original_cwd)
-            simple.reset()
-
-    @pytest.mark.parametrize("algo", ["ring-Ed25519", "RSA-PSS", "pq2025"])
-    def test_two_party_trust_and_agreement(self, tmp_path, algo):
-        """Each algorithm supports the full trust + two-party agreement flow."""
+    def test_full_flow(self, tmp_path, algo):
+        """Sign/verify + two-party trust/agreement for one algorithm."""
         password = "TestP@ss123!#"
         a1_root = tmp_path / "agent1"
         a2_root = tmp_path / "agent2"
@@ -950,6 +931,7 @@ class TestAllAlgorithms:
 
         original_cwd = os.getcwd()
         try:
+            # --- Agent 1: create, sign, verify ---
             os.chdir(a1_root)
             a1 = simple.create(
                 name="algo-agent-1",
@@ -959,9 +941,17 @@ class TestAllAlgorithms:
                 key_directory="keys",
                 config_path="jacs.config.json",
             )
+            assert a1.agent_id
+
+            signed = simple.sign_message({"algo": algo, "test": True})
+            assert signed.document_id
+            result = simple.verify(signed.raw_json)
+            assert result.valid
+
             agent1_json = simple.export_agent()
             agent1_public_key = simple.get_public_key()
 
+            # --- Agent 2: create ---
             os.chdir(a2_root)
             a2 = simple.create(
                 name="algo-agent-2",
@@ -972,6 +962,7 @@ class TestAllAlgorithms:
                 config_path="jacs.config.json",
             )
 
+            # --- Two-party agreement ---
             os.chdir(a1_root)
             simple.load("jacs.config.json")
             agreement = simple.create_agreement(

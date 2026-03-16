@@ -78,6 +78,7 @@ jobs:
 
   wheel-smoke-uv:
     name: Wheel smoke install (uv)
+    if: github.event_name == 'push'
     needs: test-jacs
     runs-on: ubuntu-latest
 
@@ -115,8 +116,10 @@ jobs:
           PY
 
   # Job to build wheels for CI coverage (PyPI package name is jacs)
+  # Only runs on pushes to main (not on PRs) to avoid slow QEMU aarch64 builds.
   build-jacs-wheels:
     name: Build jacs wheels on ${{ matrix.os }}
+    if: github.event_name == 'push'
     needs: [test-jacs, wheel-smoke-uv]
     runs-on: ${{ matrix.os }}
     strategy:
