@@ -675,6 +675,11 @@ fn test_quickstart_uses_password_file_bootstrap() -> Result<(), Box<dyn Error>> 
 
     let password_file = tmp_dir.join("password.txt");
     fs::write(&password_file, format!("{}\n", TEST_PASSWORD))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&password_file, fs::Permissions::from_mode(0o600))?;
+    }
     let password_file_value = password_file.to_string_lossy().to_string();
 
     let mut cmd = Command::cargo_bin("jacs")?;
@@ -1207,38 +1212,6 @@ fn test_mcp_install_from_cargo_dry_run_shows_cargo_plan() -> Result<(), Box<dyn 
     Ok(())
 }
 
-#[test]
-fn test_mcp_run_missing_binary_shows_install_hint() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
-    cmd.arg("mcp")
-        .arg("run")
-        .arg("--bin")
-        .arg("/definitely/not/a/real/jacs-mcp");
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Install it with `jacs mcp install`",
-    ));
-    Ok(())
-}
-
-#[test]
-fn test_mcp_run_help_mentions_stdio_and_no_forwarded_args() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
-    cmd.arg("mcp").arg("run").arg("--help");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("stdio transport"))
-        .stdout(predicate::str::contains("--bin <bin>"))
-        .stdout(predicate::str::contains("[args]").not())
-        .stdout(predicate::str::contains("Arguments forwarded").not());
-    Ok(())
-}
-
-#[test]
-fn test_mcp_run_rejects_forwarded_runtime_args() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
-    cmd.arg("mcp").arg("run").arg("--transport").arg("http");
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "unexpected argument '--transport'",
-    ));
-    Ok(())
-}
+// NOTE: test_mcp_run_* tests removed — the `jacs mcp run` subcommand
+// is deprecated and no longer accepts --bin, --transport, or other flags.
+// Use `jacs mcp` directly instead.

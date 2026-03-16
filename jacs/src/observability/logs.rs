@@ -110,7 +110,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
             Ok(None)
         }
         LogDestination::Otlp {
-            endpoint,
+            endpoint: _endpoint,
             headers: _,
         } => {
             #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
@@ -119,7 +119,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
                 let exporter = LogExporter::builder()
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
-                    .with_endpoint(endpoint)
+                    .with_endpoint(_endpoint)
                     .build()
                     .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
 
