@@ -116,14 +116,37 @@ function expectAuditReport(result) {
 }
 
 function seedPublicKeyCache(agentDir, agentJson, publicKeyPem) {
+  const crypto = require('crypto');
   const agent = JSON.parse(agentJson);
   const signature = agent.jacsSignature || {};
   const keyHash = signature.publicKeyHash;
   const signingAlgorithm = signature.signingAlgorithm || 'RSA-PSS';
   const publicKeysDir = path.join(agentDir, 'jacs_data', 'public_keys');
 
+  // Replicate Rust's hash_public_key: decode UTF-8, trim, remove \r, SHA-256 hex.
+  function hashLikeRust(buf) {
+    const text = buf.toString('utf8').trim().replace(/\r/g, '');
+    return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+  }
+
+  // Determine raw key bytes that match the signing-time hash.
+  let rawBytes = Buffer.from(publicKeyPem, 'utf8');
+  if (hashLikeRust(rawBytes) !== keyHash) {
+    // PEM-armored binary key — decode the base64 body.
+    const stripped = publicKeyPem.trim();
+    if (stripped.startsWith('-----BEGIN')) {
+      const body = stripped.split('\n').filter(l => !l.startsWith('-----')).join('');
+      try {
+        const decoded = Buffer.from(body, 'base64');
+        if (hashLikeRust(decoded) === keyHash) {
+          rawBytes = decoded;
+        }
+      } catch (_) { /* keep text bytes */ }
+    }
+  }
+
   fs.mkdirSync(publicKeysDir, { recursive: true });
-  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), publicKeyPem);
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), rawBytes);
   fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.enc_type`), signingAlgorithm);
 }
 

@@ -65,15 +65,58 @@ def assert_audit_result(result: dict) -> None:
         assert first_risk["message"]
 
 
+def _pem_to_raw_key_bytes(public_key_pem: str, expected_hash: str) -> bytes:
+    """Convert a public key string to the raw bytes that match the signing-time hash.
+
+    For RSA-PSS: the PEM text bytes ARE the raw key bytes (hash matches directly).
+    For Ed25519/pq2025: the PEM wraps binary data; we decode the base64 body.
+    """
+    import base64 as b64mod
+    import hashlib
+
+    text_bytes = public_key_pem.encode("utf-8")
+
+    # Replicate Rust's hash_public_key: decode, trim, remove \r, SHA-256 hex.
+    def _hash_like_rust(data: bytes) -> str:
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = data.decode("utf-8", errors="replace")
+        normalized = text.strip().replace("\r", "")
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    if _hash_like_rust(text_bytes) == expected_hash:
+        return text_bytes
+
+    # Try PEM-decode for armored binary keys.
+    stripped = public_key_pem.strip()
+    if stripped.startswith("-----BEGIN"):
+        lines = [l for l in stripped.splitlines() if not l.startswith("-----")]
+        try:
+            decoded = b64mod.b64decode("".join(lines))
+            if _hash_like_rust(decoded) == expected_hash:
+                return decoded
+        except Exception:
+            pass
+
+    return text_bytes
+
+
 def seed_public_key_cache(agent_root: Path, agent_json: str, public_key_pem: str) -> None:
+    """Write agent's public key to the local public_keys cache.
+
+    The cache must store the exact bytes that hash_public_key() used during signing.
+    """
     agent_data = json.loads(agent_json)
     signature = agent_data.get("jacsSignature", {})
     key_hash = signature["publicKeyHash"]
     signing_algorithm = signature.get("signingAlgorithm", "RSA-PSS")
 
+    raw_bytes = _pem_to_raw_key_bytes(public_key_pem, key_hash)
+
     public_keys_dir = agent_root / "jacs_data" / "public_keys"
     public_keys_dir.mkdir(parents=True, exist_ok=True)
-    (public_keys_dir / f"{key_hash}.pem").write_text(public_key_pem, encoding="utf-8")
+    (public_keys_dir / f"{key_hash}.pem").write_bytes(raw_bytes)
     (public_keys_dir / f"{key_hash}.enc_type").write_text(signing_algorithm, encoding="utf-8")
 
 
