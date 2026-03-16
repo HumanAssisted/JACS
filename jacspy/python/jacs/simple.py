@@ -1435,8 +1435,47 @@ def get_public_key() -> str:
     if _agent_info is None or _global_agent is None:
         raise AgentNotLoadedError("No agent loaded")
 
+    # Try native binding first (available on SimpleAgent / _EphemeralAgentAdapter).
+    # Falls back to file reading for JacsAgent which lacks the method.
     try:
         return _global_agent.get_public_key_pem()
+    except AttributeError:
+        pass
+
+    # Fallback: read from key file and PEM-armor binary keys so the output
+    # is safe to pass to trust_agent_with_key().
+    try:
+        key_candidates: List[str] = []
+        if _agent_info.public_key_path:
+            key_candidates.append(_agent_info.public_key_path)
+        if _agent_info.config_path and os.path.exists(_agent_info.config_path):
+            with open(_agent_info.config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            config_path = os.path.abspath(_agent_info.config_path)
+            key_dir = _resolve_config_relative_path(
+                config_path, config.get("jacs_key_directory", "./jacs_keys")
+            )
+            key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
+            key_candidates.append(os.path.join(key_dir, key_file))
+
+        for candidate in key_candidates:
+            if os.path.exists(candidate):
+                with open(candidate, "rb") as f:
+                    raw = f.read()
+                try:
+                    return raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    import base64
+                    b64 = base64.b64encode(raw).decode("ascii")
+                    return (
+                        "-----BEGIN PUBLIC KEY-----\n"
+                        + b64
+                        + "\n-----END PUBLIC KEY-----\n"
+                    )
+
+        raise JacsError(f"Could not find public key file in: {key_candidates}")
+    except JacsError:
+        raise
     except Exception as e:
         raise JacsError(f"Failed to read public key: {e}")
 

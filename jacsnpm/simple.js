@@ -840,7 +840,15 @@ function getPublicKey() {
     if (!fs.existsSync(agentInfo.publicKeyPath)) {
         throw new Error(`Public key not found: ${agentInfo.publicKeyPath}`);
     }
-    return fs.readFileSync(agentInfo.publicKeyPath, 'utf8');
+    const raw = fs.readFileSync(agentInfo.publicKeyPath);
+    // PEM text keys (RSA-PSS) are valid UTF-8; return as-is.
+    // Binary keys (Ed25519, pq2025) need PEM armor so trustAgentWithKey works.
+    const text = raw.toString('utf8');
+    if (text.includes('-----BEGIN') || Buffer.from(text, 'utf8').equals(raw)) {
+        return text;
+    }
+    const b64 = raw.toString('base64');
+    return `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----\n`;
 }
 function exportAgent() {
     if (!agentInfo) {

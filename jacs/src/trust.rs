@@ -193,15 +193,22 @@ pub fn trust_agent_with_key(
         );
     }
 
-    // Get the public key bytes
+    // Get the public key bytes.
+    //
+    // For text-format keys (RSA-PSS PEM), the string bytes ARE the key bytes.
+    // For binary keys wrapped in PEM armor (Ed25519, pq2025), we need to
+    // extract the base64 body and decode to get the original raw bytes.
+    // We try both representations and use whichever matches the expected hash.
     let public_key_bytes: Vec<u8> = match public_key_pem {
         Some(pem) => {
-            let trimmed = pem.trim();
-            if trimmed.starts_with("-----BEGIN") {
-                // PEM-armored key: extract the base64 body and decode to raw bytes.
-                // This handles Ed25519/pq2025 keys that were wrapped in PEM armor
-                // by normalize_public_key_pem().
-                let body: String = trimmed
+            let text_bytes = pem.as_bytes().to_vec();
+            if hash_public_key(&text_bytes) == public_key_hash {
+                // Native PEM key (RSA-PSS) — text bytes match the signing hash.
+                text_bytes
+            } else if pem.trim().starts_with("-----BEGIN") {
+                // PEM-armored binary key — decode base64 to get raw bytes.
+                let body: String = pem
+                    .trim()
                     .lines()
                     .filter(|l| !l.starts_with("-----"))
                     .collect::<Vec<_>>()
@@ -209,9 +216,9 @@ pub fn trust_agent_with_key(
                 use base64::Engine;
                 base64::engine::general_purpose::STANDARD
                     .decode(&body)
-                    .unwrap_or_else(|_| trimmed.as_bytes().to_vec())
+                    .unwrap_or(text_bytes)
             } else {
-                pem.as_bytes().to_vec()
+                text_bytes
             }
         }
         None => {
