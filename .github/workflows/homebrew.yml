@@ -3,7 +3,24 @@ name: Homebrew Install Smoke Tests
 on:
   push:
     branches: ["main"]
+    paths:
+      - "jacs/**"
+      - "jacs-cli/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Formula/**"
+      - ".github/workflows/homebrew.yml"
   pull_request:
+    branches: ["main"]
+    paths:
+      - "jacs/**"
+      - "jacs-cli/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Formula/**"
+      - ".github/workflows/homebrew.yml"
   workflow_dispatch:
 
 jobs:
