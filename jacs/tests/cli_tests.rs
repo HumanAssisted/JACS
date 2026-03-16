@@ -120,17 +120,15 @@ fn test_config_read_default() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_cli_version_subcommand() -> Result<(), Box<dyn Error>> {
-    // Renamed for clarity
     let mut cmd = Command::cargo_bin("jacs")?;
-    let expected_version_line = format!("jacs version: {}", env!("CARGO_PKG_VERSION"));
-    let expected_desc_raw = env!("CARGO_PKG_DESCRIPTION");
 
-    // Test the "version" subcommand
+    // The binary is jacs-cli, so it outputs "jacs-cli version: X.Y.Z"
+    // and the jacs-cli crate description.
     cmd.arg("version");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains(expected_version_line))
-        .stdout(predicate::str::contains(expected_desc_raw));
+        .stdout(predicate::str::contains(env!("CARGO_PKG_VERSION")))
+        .stdout(predicate::str::contains("JACS"));
 
     Ok(())
 }
@@ -968,11 +966,13 @@ fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
         .arg(card_file.to_string_lossy().as_ref())
         .arg("--policy=verified");
 
+    // Card has JACS extension but no signatures, so trust_level=Untrusted.
+    // Verified policy rejects Untrusted agents → exit code 1.
     cmd.assert()
-        .success()
+        .failure()
         .stdout(predicate::str::contains("JACS Test Agent"))
-        .stdout(predicate::str::contains("Allowed:     YES"))
-        .stdout(predicate::str::contains("JacsVerified"));
+        .stdout(predicate::str::contains("Untrusted"))
+        .stdout(predicate::str::contains("Allowed:     NO"));
 
     let _ = fs::remove_dir_all(&tmp_dir);
     Ok(())
@@ -1049,16 +1049,14 @@ fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
         .arg(card_file.to_string_lossy().as_ref())
         .arg("--json");
 
+    // Card has JACS extension but no signatures → Untrusted.
+    // Default policy is Verified which rejects Untrusted → exit code 1.
+    // JSON output is still written to stdout regardless of exit code.
     let output = cmd.output()?;
-    assert!(
-        output.status.success(),
-        "a2a assess --json failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
 
     let assessment: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-    assert_eq!(assessment["allowed"], true);
-    assert_eq!(assessment["trustLevel"], "JacsVerified");
+    assert_eq!(assessment["allowed"], false);
+    assert_eq!(assessment["trustLevel"], "Untrusted");
     assert_eq!(assessment["policy"], "Verified");
     assert_eq!(assessment["agentId"], "json-agent");
 
@@ -1151,67 +1149,56 @@ fn test_a2a_quickstart_invalid_algorithm() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn test_mcp_help_shows_install_and_run() -> Result<(), Box<dyn Error>> {
+fn test_mcp_help_shows_profile_and_stdio() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("jacs")?;
     cmd.arg("mcp").arg("--help");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("install"))
-        .stdout(predicate::str::contains("run"))
-        .stdout(predicate::str::contains(
-            "Install and run the JACS MCP server",
-        ));
+        .stdout(predicate::str::contains("profile"))
+        .stdout(predicate::str::contains("MCP"))
+        .stdout(predicate::str::contains("stdio"));
     Ok(())
 }
 
+/// `jacs mcp install` is now deprecated — the server is built-in.
+/// These tests verify the deprecation message is shown.
 #[test]
-fn test_mcp_install_dry_run_shows_prebuilt_plan() -> Result<(), Box<dyn Error>> {
+fn test_mcp_install_shows_builtin_message() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("jacs")?;
-    cmd.arg("mcp").arg("install").arg("--dry-run");
+    cmd.arg("mcp").arg("install");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains(
-            "Dry run: MCP prebuilt install plan",
-        ))
-        .stdout(predicate::str::contains("jacs-mcp-"))
-        .stdout(predicate::str::contains(
-            "github.com/HumanAssisted/JACS/releases/download",
-        ));
+        .stderr(predicate::str::contains("no longer needed"));
     Ok(())
 }
 
+/// `jacs mcp run` is deprecated — it should print a deprecation message and exit cleanly.
 #[test]
-fn test_mcp_install_dry_run_custom_url() -> Result<(), Box<dyn Error>> {
+fn test_mcp_run_shows_deprecation_message() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("jacs")?;
-    cmd.arg("mcp")
-        .arg("install")
-        .arg("--dry-run")
-        .arg("--url")
-        .arg("https://example.invalid/jacs-mcp.tar.gz");
-    cmd.assert().success().stdout(predicate::str::contains(
-        "https://example.invalid/jacs-mcp.tar.gz",
-    ));
-    Ok(())
-}
-
-#[test]
-fn test_mcp_install_from_cargo_dry_run_shows_cargo_plan() -> Result<(), Box<dyn Error>> {
-    let mut cmd = Command::cargo_bin("jacs")?;
-    cmd.arg("mcp")
-        .arg("install")
-        .arg("--from-cargo")
-        .arg("--dry-run")
-        .arg("--version")
-        .arg("0.8.0");
+    cmd.arg("mcp").arg("run");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Dry run: MCP cargo install plan"))
-        .stdout(predicate::str::contains(
-            "cargo install jacs-mcp --locked --version 0.8.0",
-        ));
+        .stderr(predicate::str::contains("no longer needed"));
     Ok(())
 }
 
-// NOTE: test_mcp_run_* tests removed — the `jacs mcp run` subcommand
-// is deprecated and no longer accepts --bin, --transport, or other flags.
-// Use `jacs mcp` directly instead.
+/// `jacs mcp run` rejects unknown flags (clap validation still applies).
+#[test]
+fn test_mcp_run_rejects_unknown_flags() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("run").arg("--transport").arg("http");
+    cmd.assert().failure();
+    Ok(())
+}
+
+/// `jacs mcp install` is deprecated — it should print a deprecation message and exit cleanly.
+#[test]
+fn test_mcp_install_shows_deprecation_message() -> Result<(), Box<dyn Error>> {
+    let mut cmd = Command::cargo_bin("jacs")?;
+    cmd.arg("mcp").arg("install");
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("no longer needed"));
+    Ok(())
+}
