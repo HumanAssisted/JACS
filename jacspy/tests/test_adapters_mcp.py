@@ -20,7 +20,7 @@ from jacs.client import JacsClient  # noqa: E402
 
 @pytest.fixture
 def client():
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm="ed25519")
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +205,7 @@ class TestAgreementTools:
         return JacsClient.quickstart(
             name="mcp-agreement-agent",
             domain="mcp-agreement.example",
+            algorithm="ring-Ed25519",
             config_path=str(tmp_path / "jacs.config.json"),
         )
 
@@ -255,6 +256,7 @@ class TestAuditTool:
         cl = JacsClient.quickstart(
             name="mcp-audit-agent",
             domain="mcp-audit.example",
+            algorithm="ring-Ed25519",
             config_path=str(tmp_path / "jacs.config.json"),
         )
         mcp = FakeMCP()
@@ -361,6 +363,7 @@ class TestRegisterA2ATools:
         cl = JacsClient.quickstart(
             name="mcp-a2a-agent",
             domain="mcp-a2a.example",
+            algorithm="ring-Ed25519",
             config_path=str(tmp_path / "jacs.config.json"),
         )
         mcp = FakeMCP()

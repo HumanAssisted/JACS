@@ -27,7 +27,7 @@ from jacs.client import JacsClient
 @pytest.fixture
 def ephemeral_client():
     """Create an ephemeral JacsClient for testing."""
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm="ed25519")
 
 
 @pytest.fixture

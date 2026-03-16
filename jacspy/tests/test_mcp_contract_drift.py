@@ -104,7 +104,7 @@ def _canonical_shape(tool):
 
 
 def _registered_tools():
-    client = JacsClient.ephemeral()
+    client = JacsClient.ephemeral(algorithm="ed25519")
     mcp = FakeMCP()
     register_jacs_tools(mcp, client=client)
     register_a2a_tools(mcp, client=client)

@@ -14,7 +14,7 @@ from jacs.client import JacsClient  # noqa: E402
 
 @pytest.fixture
 def ephemeral_client():
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm="ed25519")
 
 
 # ---------------------------------------------------------------------------

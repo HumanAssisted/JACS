@@ -819,7 +819,7 @@ class TestAgreementWorkflow:
             a1 = simple.create(
                 name="pytest-agent-1",
                 password=password,
-                algorithm="RSA-PSS",
+                algorithm="ring-Ed25519",
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",
@@ -831,7 +831,7 @@ class TestAgreementWorkflow:
             a2 = simple.create(
                 name="pytest-agent-2",
                 password=password,
-                algorithm="RSA-PSS",
+                algorithm="ring-Ed25519",
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",

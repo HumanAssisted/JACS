@@ -17,6 +17,7 @@ from jacs.adapters.crewai import (
     jacs_guardrail,
 )
 from jacs.client import JacsClient
+from conftest import TEST_ALGORITHM
 
 
 # ---------------------------------------------------------------------------
@@ -24,16 +25,16 @@ from jacs.client import JacsClient
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def client():
     """Ephemeral JacsClient for zero-config test setup."""
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def second_client():
     """A second ephemeral JacsClient for multi-identity tests."""
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
 class FakeTaskOutput:
@@ -93,7 +94,7 @@ class TestJacsGuardrail:
 
     def test_guardrail_strict_rejects_on_failure(self):
         """Strict guardrail returns (False, error) when signing fails."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         gd = jacs_guardrail(client=client, strict=True)
         client.reset()  # break the client
 
@@ -104,7 +105,7 @@ class TestJacsGuardrail:
 
     def test_guardrail_permissive_passthrough_on_failure(self):
         """Permissive guardrail returns (True, original) when signing fails."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         gd = jacs_guardrail(client=client, strict=False)
         client.reset()
 
@@ -115,7 +116,7 @@ class TestJacsGuardrail:
 
     def test_guardrail_permissive_logs_warning(self, caplog):
         """Permissive guardrail logs a warning on failure."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         gd = jacs_guardrail(client=client, strict=False)
         client.reset()
 
@@ -158,7 +159,7 @@ class TestJacsSignedTool:
 
     def test_run_passthrough_on_failure(self):
         """When signing fails in permissive mode, return original output."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         inner = FakeTool(output="fallback output")
         wrapped = JacsSignedTool(inner, client=client, strict=False)
         client.reset()
@@ -168,7 +169,7 @@ class TestJacsSignedTool:
 
     def test_run_strict_raises_on_failure(self):
         """When signing fails in strict mode, raise."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         inner = FakeTool(output="data")
         wrapped = JacsSignedTool(inner, client=client, strict=True)
         client.reset()

@@ -17,6 +17,7 @@ from jacs.adapters.langchain import (
     jacs_wrap_tool_call,
 )
 from jacs.client import JacsClient
+from conftest import TEST_ALGORITHM
 
 
 # ---------------------------------------------------------------------------
@@ -24,16 +25,16 @@ from jacs.client import JacsClient
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def client():
     """Ephemeral JacsClient for zero-config test setup."""
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def second_client():
     """A second ephemeral JacsClient for multi-identity tests."""
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
 class FakeToolMessage:
@@ -130,7 +131,7 @@ class TestJacsSigningMiddleware:
         assert vr.valid is True
 
     def test_strict_raises_on_signing_failure(self):
-        cl = JacsClient.ephemeral()
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         mw = JacsSigningMiddleware(client=cl, strict=True)
         cl.reset()
 
@@ -143,7 +144,7 @@ class TestJacsSigningMiddleware:
             mw.wrap_tool_call(request, handler)
 
     def test_permissive_passthrough_on_signing_failure(self):
-        cl = JacsClient.ephemeral()
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         mw = JacsSigningMiddleware(client=cl, strict=False)
         cl.reset()
 
@@ -239,7 +240,7 @@ class TestJacsWrapToolCall:
         assert vr.valid is True
 
     def test_strict_raises_on_signing_failure(self):
-        cl = JacsClient.ephemeral()
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         wrapper = jacs_wrap_tool_call(client=cl, strict=True)
         cl.reset()
 
@@ -250,7 +251,7 @@ class TestJacsWrapToolCall:
             wrapper("req", execute)
 
     def test_permissive_passthrough_on_signing_failure(self):
-        cl = JacsClient.ephemeral()
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         wrapper = jacs_wrap_tool_call(client=cl, strict=False)
         cl.reset()
 
@@ -261,7 +262,7 @@ class TestJacsWrapToolCall:
         assert result.content == "original data"
 
     def test_permissive_logs_warning(self, caplog):
-        cl = JacsClient.ephemeral()
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         wrapper = jacs_wrap_tool_call(client=cl, strict=False)
         cl.reset()
 
@@ -322,7 +323,7 @@ class TestJacsAwrapToolCall:
 
     @pytest.mark.asyncio
     async def test_strict_raises_on_failure(self):
-        cl = JacsClient.ephemeral()
+        cl = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         wrapper = jacs_awrap_tool_call(client=cl, strict=True)
         cl.reset()
 
@@ -360,7 +361,7 @@ class TestSignedTool:
 
         from jacs.adapters.langchain import signed_tool
 
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
         def my_func(query: str) -> str:
             return f"result for {query}"
@@ -385,7 +386,7 @@ class TestSignedTool:
 
         from jacs.adapters.langchain import signed_tool
 
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
         def my_func(x: str) -> str:
             return f"value: {x}"
@@ -406,7 +407,7 @@ class TestSignedTool:
 
         from jacs.adapters.langchain import signed_tool
 
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
         def noop(x: str) -> str:
             return x
@@ -444,7 +445,7 @@ class TestWithJacsSigning:
 
         from jacs.adapters.langchain import with_jacs_signing
 
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         node = with_jacs_signing([], client=client)
         assert isinstance(node, ToolNode)
 
