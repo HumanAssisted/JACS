@@ -716,11 +716,6 @@ impl DocumentTraits for Agent {
         let document_hash = self.hash_doc(&new_document)?;
         new_document[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
 
-        // Archive old version so list_document_keys only returns the latest.
-        if let Err(e) = self.archive_old_version(&original_document) {
-            tracing::warn!("Failed to archive old version: {}", e);
-        }
-
         self.store_jacs_document(&new_document)
     }
 

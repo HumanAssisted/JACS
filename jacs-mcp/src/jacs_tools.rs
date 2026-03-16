@@ -972,6 +972,15 @@ impl JacsMcpServer {
         }
 
         matched.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+
+        // Deduplicate: keep only the latest version per jacsId.
+        // Keys are "jacsId:jacsVersion" — group by the id prefix.
+        let mut seen_ids = std::collections::HashSet::new();
+        matched.retain(|(_, key, _)| {
+            let jacs_id = key.split(':').next().unwrap_or(key);
+            seen_ids.insert(jacs_id.to_string())
+        });
+
         let result = ListStateResult {
             success: true,
             documents: matched.into_iter().map(|(_, _, entry)| entry).collect(),
@@ -3657,7 +3666,7 @@ impl JacsMcpServer {
 
         let limit = params.limit.unwrap_or(20) as usize;
         let offset = params.offset.unwrap_or(0) as usize;
-        let mut matched: Vec<(String, MemoryEntry)> = Vec::new();
+        let mut matched: Vec<(String, bool, MemoryEntry)> = Vec::new();
 
         for key in keys {
             let doc_string = match self.agent.get_document_by_id(&key) {
@@ -3669,18 +3678,11 @@ impl JacsMcpServer {
                 Err(_) => continue,
             };
 
-            // Filter: must be agentstate with type "memory" and not removed.
+            // Filter: must be agentstate with type "memory".
             if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
                 continue;
             }
             if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
-                continue;
-            }
-            if doc
-                .get("jacsAgentStateRemoved")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
                 continue;
             }
 
@@ -3704,6 +3706,10 @@ impl JacsMcpServer {
                 }
             }
 
+            let is_removed = doc
+                .get("jacsAgentStateRemoved")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let name = value_string(&doc, "jacsAgentStateName").unwrap_or_else(|| key.clone());
             let content = extract_embedded_state_content(&doc);
             let description = value_string(&doc, "jacsAgentStateDescription");
@@ -3711,6 +3717,7 @@ impl JacsMcpServer {
 
             matched.push((
                 version_date,
+                is_removed,
                 MemoryEntry {
                     jacs_document_id: key,
                     name,
@@ -3722,14 +3729,27 @@ impl JacsMcpServer {
             ));
         }
 
-        // Sort by version date descending (newest first).
+        // Sort by version date descending (newest first), deduplicate to keep
+        // only the latest version per jacsId, then filter out removed.
         matched.sort_by(|a, b| b.0.cmp(&a.0));
+        {
+            let mut seen_ids = std::collections::HashSet::new();
+            matched.retain(|(_, _, entry)| {
+                let jacs_id = entry
+                    .jacs_document_id
+                    .split(':')
+                    .next()
+                    .unwrap_or(&entry.jacs_document_id);
+                seen_ids.insert(jacs_id.to_string())
+            });
+        }
+        matched.retain(|(_, is_removed, _)| !is_removed);
         let total = matched.len();
         let memories: Vec<MemoryEntry> = matched
             .into_iter()
             .skip(offset)
             .take(limit)
-            .map(|(_, entry)| entry)
+            .map(|(_, _, entry)| entry)
             .collect();
 
         let result = MemoryListResult {
