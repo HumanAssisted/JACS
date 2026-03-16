@@ -16,11 +16,12 @@ from jacs.adapters.mcp import (  # noqa: E402
     _is_untrust_allowed,
 )
 from jacs.client import JacsClient  # noqa: E402
+from conftest import TEST_ALGORITHM, TEST_ALGORITHM_INTERNAL
 
 
 @pytest.fixture
 def client():
-    return JacsClient.ephemeral(algorithm="ed25519")
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +206,7 @@ class TestAgreementTools:
         return JacsClient.quickstart(
             name="mcp-agreement-agent",
             domain="mcp-agreement.example",
-            algorithm="ring-Ed25519",
+            algorithm=TEST_ALGORITHM_INTERNAL,
             config_path=str(tmp_path / "jacs.config.json"),
         )
 
@@ -256,7 +257,7 @@ class TestAuditTool:
         cl = JacsClient.quickstart(
             name="mcp-audit-agent",
             domain="mcp-audit.example",
-            algorithm="ring-Ed25519",
+            algorithm=TEST_ALGORITHM_INTERNAL,
             config_path=str(tmp_path / "jacs.config.json"),
         )
         mcp = FakeMCP()
@@ -363,7 +364,7 @@ class TestRegisterA2ATools:
         cl = JacsClient.quickstart(
             name="mcp-a2a-agent",
             domain="mcp-a2a.example",
-            algorithm="ring-Ed25519",
+            algorithm=TEST_ALGORITHM_INTERNAL,
             config_path=str(tmp_path / "jacs.config.json"),
         )
         mcp = FakeMCP()

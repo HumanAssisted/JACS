@@ -7,12 +7,13 @@ import pytest
 
 from jacs.adapters.base import BaseJacsAdapter
 from jacs.client import JacsClient
+from conftest import TEST_ALGORITHM
 
 
 @pytest.fixture(scope="module")
 def ephemeral_client():
     """Create an ephemeral JacsClient for testing."""
-    return JacsClient.ephemeral(algorithm="ed25519")
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
 @pytest.fixture
@@ -138,7 +139,7 @@ class TestPassthroughMode:
     def test_sign_passthrough_on_error(self):
         """If signing fails, permissive mode should return JSON-serialized data."""
         # Create an adapter with a broken client (reset it)
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         adapter = BaseJacsAdapter(client=client, strict=False)
         client.reset()  # break the client
 
@@ -148,7 +149,7 @@ class TestPassthroughMode:
 
     def test_sign_passthrough_string(self):
         """If signing a string fails, permissive mode returns the string."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         adapter = BaseJacsAdapter(client=client, strict=False)
         client.reset()
 
@@ -157,7 +158,7 @@ class TestPassthroughMode:
 
     def test_sign_passthrough_logs_warning(self, caplog):
         """Permissive mode should log a warning when signing fails."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         adapter = BaseJacsAdapter(client=client, strict=False)
         client.reset()
 
@@ -178,7 +179,7 @@ class TestSignVerifyRoundtrip:
 
     def test_two_adapters_cross_verify(self):
         """Adapter A signs, adapter B verifies (same ephemeral agent)."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         adapter_a = BaseJacsAdapter(client=client)
         adapter_b = BaseJacsAdapter(client=client)
 

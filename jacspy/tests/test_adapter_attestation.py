@@ -18,6 +18,7 @@ import pytest
 
 from jacs.adapters.base import BaseJacsAdapter
 from jacs.client import JacsClient
+from conftest import TEST_ALGORITHM
 
 
 # --------------------------------------------------------------------------
@@ -27,7 +28,7 @@ from jacs.client import JacsClient
 @pytest.fixture
 def ephemeral_client():
     """Create an ephemeral JacsClient for testing."""
-    return JacsClient.ephemeral(algorithm="ed25519")
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
 @pytest.fixture

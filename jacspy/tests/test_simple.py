@@ -15,6 +15,7 @@ from pathlib import Path
 pytest.importorskip("jacs")
 
 from jacs import simple
+from conftest import TEST_ALGORITHM_INTERNAL
 from jacs.types import (
     AgentInfo,
     SignedDocument,
@@ -819,7 +820,7 @@ class TestAgreementWorkflow:
             a1 = simple.create(
                 name="pytest-agent-1",
                 password=password,
-                algorithm="ring-Ed25519",
+                algorithm=TEST_ALGORITHM_INTERNAL,
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",
@@ -831,7 +832,7 @@ class TestAgreementWorkflow:
             a2 = simple.create(
                 name="pytest-agent-2",
                 password=password,
-                algorithm="ring-Ed25519",
+                algorithm=TEST_ALGORITHM_INTERNAL,
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",

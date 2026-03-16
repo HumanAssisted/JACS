@@ -10,11 +10,12 @@ from starlette.testclient import TestClient  # noqa: E402
 
 from jacs.adapters.fastapi import JacsMiddleware, jacs_route  # noqa: E402
 from jacs.client import JacsClient  # noqa: E402
+from conftest import TEST_ALGORITHM
 
 
 @pytest.fixture
 def ephemeral_client():
-    return JacsClient.ephemeral(algorithm="ed25519")
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
 # ---------------------------------------------------------------------------
