@@ -108,6 +108,14 @@ jobs:
             $_ -eq "$prefix/jacspy/src/lib.rs" -or
             $_ -eq "$prefix/jacsgo/lib/Cargo.toml" -or
             $_ -eq "$prefix/jacsgo/lib/src/lib.rs" -or
+            $_ -eq "$prefix/jacs-duckdb/Cargo.toml" -or
+            $_ -like "$prefix/jacs-duckdb/src/*" -or
+            $_ -eq "$prefix/jacs-redb/Cargo.toml" -or
+            $_ -like "$prefix/jacs-redb/src/*" -or
+            $_ -eq "$prefix/jacs-surrealdb/Cargo.toml" -or
+            $_ -like "$prefix/jacs-surrealdb/src/*" -or
+            $_ -eq "$prefix/jacs-postgresql/Cargo.toml" -or
+            $_ -like "$prefix/jacs-postgresql/src/*" -or
             $_ -like "$prefix/binding-core/src/*" -or
             $_ -like "$prefix/jacs/src/*" -or
             $_ -like "$prefix/jacs/schemas/*" -or
