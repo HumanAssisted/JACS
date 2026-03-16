@@ -1417,6 +1417,9 @@ def reencrypt_key(old_password: str, new_password: str) -> None:
 def get_public_key() -> str:
     """Get the loaded agent's public key in PEM format.
 
+    For algorithms that produce PEM text keys (RSA-PSS), returns the PEM directly.
+    For algorithms with binary keys (Ed25519, pq2025), returns PEM-armored output.
+
     Returns:
         The public key as a PEM-encoded string
 
@@ -1427,40 +1430,13 @@ def get_public_key() -> str:
         pem = jacs.get_public_key()
         print(pem)  # Share this with others for verification
     """
-    # Note: This requires the Rust binding to expose get_public_key_pem
-    # For now, we read it from the key file
     global _agent_info
 
     if _agent_info is None or _global_agent is None:
         raise AgentNotLoadedError("No agent loaded")
 
-    # Try loaded agent metadata first, then config-derived fallbacks.
     try:
-        key_candidates: List[str] = []
-        if _agent_info.public_key_path:
-            key_candidates.append(_agent_info.public_key_path)
-        if _agent_info.config_path and os.path.exists(_agent_info.config_path):
-            with open(_agent_info.config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            config_path = os.path.abspath(_agent_info.config_path)
-            key_dir = _resolve_config_relative_path(
-                config_path, config.get("jacs_key_directory", "./jacs_keys")
-            )
-            key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
-            key_candidates.append(os.path.join(key_dir, key_file))
-
-        for candidate in key_candidates:
-            if os.path.exists(candidate):
-                with open(candidate, "rb") as f:
-                    raw = f.read()
-                try:
-                    return raw.decode("utf-8")
-                except UnicodeDecodeError:
-                    import base64
-                    return base64.b64encode(raw).decode("ascii")
-
-        raise JacsError(f"Could not find public key file in: {key_candidates}")
-
+        return _global_agent.get_public_key_pem()
     except Exception as e:
         raise JacsError(f"Failed to read public key: {e}")
 
