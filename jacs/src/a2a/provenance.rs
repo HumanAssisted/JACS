@@ -793,7 +793,9 @@ mod tests {
             verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Open)
                 .unwrap();
 
-        assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
+        // Test card has no signatures so card_signature_verified=false → Untrusted.
+        // Open policy still allows the agent regardless of trust level.
+        assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
         assert!(result.trust_assessment.as_ref().unwrap().allowed);
     }
 
@@ -822,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn test_policy_verified_accepts_jacs_agent() {
+    fn test_policy_verified_rejects_unsigned_jacs_agent() {
         let agent = crate::get_empty_agent();
         let card = make_test_card("jacs-agent", true, Some("agent-2"), Some("v1"));
         let artifact = make_dummy_wrapped_artifact("task", "agent-2");
@@ -831,10 +833,12 @@ mod tests {
             verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Verified)
                 .unwrap();
 
-        // Verified policy accepts JACS agents — trust check passes,
-        // but crypto verification may fail (dummy artifact is not properly signed)
-        assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
-        assert!(result.trust_assessment.as_ref().unwrap().allowed);
+        // Test card declares JACS extension but has no signatures,
+        // so card_signature_verified=false → Untrusted.
+        // Verified policy rejects Untrusted agents.
+        assert!(!result.valid);
+        assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
+        assert!(!result.trust_assessment.as_ref().unwrap().allowed);
     }
 
     #[test]
@@ -852,9 +856,10 @@ mod tests {
             verify_wrapped_artifact_with_policy(&agent, &artifact, &card, A2ATrustPolicy::Strict)
                 .unwrap();
 
-        // Strict policy rejects agents not in trust store
+        // Strict policy rejects agents not in trust store.
+        // Test card has no signatures so trust_level=Untrusted (not JacsVerified).
         assert!(!result.valid);
-        assert_eq!(result.trust_level, Some(TrustLevel::JacsVerified));
+        assert_eq!(result.trust_level, Some(TrustLevel::Untrusted));
         assert!(!result.trust_assessment.as_ref().unwrap().allowed);
         assert!(
             result
