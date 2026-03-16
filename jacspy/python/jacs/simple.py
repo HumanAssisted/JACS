@@ -1451,8 +1451,13 @@ def get_public_key() -> str:
 
         for candidate in key_candidates:
             if os.path.exists(candidate):
-                with open(candidate, "r", encoding="utf-8") as f:
-                    return f.read()
+                with open(candidate, "rb") as f:
+                    raw = f.read()
+                try:
+                    return raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    import base64
+                    return base64.b64encode(raw).decode("ascii")
 
         raise JacsError(f"Could not find public key file in: {key_candidates}")
 
