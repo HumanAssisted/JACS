@@ -8,6 +8,7 @@
 
 use base64::Engine as _;
 use jacs::agent::agreement::Agreement;
+#[cfg(feature = "a2a")]
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::{DocumentTraits, JACSDocument};
 use jacs::agent::payloads::PayloadTraits;

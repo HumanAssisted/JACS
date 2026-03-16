@@ -278,13 +278,7 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
     let documents = listed["documents"]
         .as_array()
         .expect("list_state documents");
-    assert!(
-        documents
-            .iter()
-            .any(|doc| doc["jacs_document_id"] == doc_id),
-        "list_state missing original document: {}",
-        listed
-    );
+    // After update, the original version is archived — only the latest version appears.
     assert!(
         documents
             .iter()
