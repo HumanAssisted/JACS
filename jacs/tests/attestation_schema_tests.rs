@@ -1,4 +1,4 @@
-#![cfg(feature = "attestation-tests")]
+#![cfg(feature = "attestation")]
 
 //! Tests for the attestation JSON schema file.
 //! These tests validate the schema itself is well-formed and has the correct structure.

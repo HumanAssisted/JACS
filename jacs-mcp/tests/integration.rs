@@ -38,6 +38,8 @@ impl RmcpSession {
         let bin_path = support::jacs_cli_bin();
         let command = tokio::process::Command::new(&bin_path).configure(|cmd| {
             cmd.arg("mcp")
+                .arg("--profile")
+                .arg("full")
                 .current_dir(&base)
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
@@ -151,7 +153,7 @@ fn starts_server_with_agent_env() {
 #[tokio::test]
 async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
     let server_info = session
         .client
         .peer_info()
@@ -166,11 +168,11 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
     );
     assert!(
         tools.iter().any(|tool| tool == "jacs_attest_create"),
-        "expected attestation tools in default build: {:?}",
+        "expected attestation tools in full-tools build: {:?}",
         tools
     );
 
-    let state_dir = session.workspace().join("data");
+    let state_dir = session.workspace().join("jacs_data").join("state");
     fs::create_dir_all(&state_dir).expect("mkdir state dir");
     let state_path = state_dir.join("memory.json");
     fs::write(&state_path, "{\"topic\":\"mcp probe\",\"value\":1}\n").expect("write state file");
@@ -179,7 +181,7 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
         .call_tool(
             "jacs_sign_state",
             serde_json::json!({
-                "file_path": "data/memory.json",
+                "file_path": "jacs_data/state/memory.json",
                 "state_type": "memory",
                 "name": "Probe Memory",
                 "description": "Created by MCP integration test",
@@ -187,9 +189,12 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
             }),
         )
         .await?;
-    let doc_id = signed["jacs_document_id"]
-        .as_str()
-        .expect("sign_state jacs_document_id");
+    let doc_id = signed["jacs_document_id"].as_str().unwrap_or_else(|| {
+        panic!(
+            "sign_state jacs_document_id missing from response: {}",
+            signed
+        )
+    });
     assert_ne!(doc_id, "unknown");
     assert!(
         doc_id.contains(':'),
@@ -234,7 +239,7 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
         .call_tool(
             "jacs_update_state",
             serde_json::json!({
-                "file_path": "data/memory.json",
+                "file_path": "jacs_data/state/memory.json",
                 "jacs_id": doc_id,
                 "new_content": "{\"topic\":\"mcp probe\",\"value\":2}"
             }),
@@ -273,13 +278,7 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
     let documents = listed["documents"]
         .as_array()
         .expect("list_state documents");
-    assert!(
-        documents
-            .iter()
-            .any(|doc| doc["jacs_document_id"] == doc_id),
-        "list_state missing original document: {}",
-        listed
-    );
+    // After update, the original version is archived — only the latest version appears.
     assert!(
         documents
             .iter()
@@ -293,9 +292,42 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn mcp_message_and_attestation_round_trip_over_stdio() -> anyhow::Result<()> {
+async fn mcp_sign_state_rejects_file_outside_allowed_roots() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
     let session = RmcpSession::spawn(&[]).await?;
+
+    let notes_dir = session.workspace().join("notes");
+    fs::create_dir_all(&notes_dir).expect("mkdir notes dir");
+    fs::write(notes_dir.join("secret.txt"), "top secret\n").expect("write secret file");
+
+    let blocked = session
+        .call_tool(
+            "jacs_sign_state",
+            serde_json::json!({
+                "file_path": "notes/secret.txt",
+                "state_type": "memory",
+                "name": "Blocked Secret",
+                "embed": true
+            }),
+        )
+        .await?;
+
+    assert_eq!(blocked["success"], false, "unexpected success: {}", blocked);
+    assert_eq!(
+        blocked["error"].as_str(),
+        Some("STATE_FILE_ACCESS_BLOCKED"),
+        "unexpected error payload: {}",
+        blocked
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_message_and_attestation_round_trip_over_stdio() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let signed_doc = session
         .call_tool(
@@ -404,6 +436,31 @@ async fn mcp_message_and_attestation_round_trip_over_stdio() -> anyhow::Result<(
     );
     assert_eq!(received["content"], "updated content");
 
+    let mut tampered_message: serde_json::Value =
+        serde_json::from_str(updated_message).expect("parse tampered message seed");
+    tampered_message["jacsMessageContent"] = serde_json::json!("tampered content");
+    let tampered_received = session
+        .call_tool(
+            "jacs_message_receive",
+            serde_json::json!({ "signed_message": tampered_message.to_string() }),
+        )
+        .await?;
+    assert_eq!(
+        tampered_received["success"], false,
+        "tampered message must fail closed: {}",
+        tampered_received
+    );
+    assert_eq!(
+        tampered_received["signature_valid"], false,
+        "tampered message should report invalid signature: {}",
+        tampered_received
+    );
+    assert!(
+        tampered_received["content"].is_null(),
+        "tampered message content should not be returned: {}",
+        tampered_received
+    );
+
     let attestation = session
         .call_tool(
             "jacs_attest_create",
@@ -453,9 +510,132 @@ async fn mcp_message_and_attestation_round_trip_over_stdio() -> anyhow::Result<(
 }
 
 #[tokio::test]
+async fn mcp_check_agreement_rejects_tampered_agreement() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+
+    let exported = session
+        .call_tool("jacs_export_agent", serde_json::json!({}))
+        .await?;
+    let agent_id = exported["agent_id"]
+        .as_str()
+        .expect("exported agent id for agreement");
+
+    let created = session
+        .call_tool(
+            "jacs_create_agreement",
+            serde_json::json!({
+                "document": "{\"proposal\":\"ship-it\"}",
+                "agent_ids": [agent_id],
+                "question": "Ship it?"
+            }),
+        )
+        .await?;
+    assert_eq!(
+        created["success"], true,
+        "create_agreement failed: {}",
+        created
+    );
+    let created_agreement = created["signed_agreement"]
+        .as_str()
+        .expect("created agreement");
+
+    let signed = session
+        .call_tool(
+            "jacs_sign_agreement",
+            serde_json::json!({ "signed_agreement": created_agreement }),
+        )
+        .await?;
+    assert_eq!(signed["success"], true, "sign_agreement failed: {}", signed);
+    let signed_agreement = signed["signed_agreement"]
+        .as_str()
+        .expect("signed agreement payload");
+
+    let mut tampered: serde_json::Value =
+        serde_json::from_str(signed_agreement).expect("parse agreement");
+    tampered["jacsAgreement"]["question"] = serde_json::json!("Ship it right now?");
+
+    let checked = session
+        .call_tool(
+            "jacs_check_agreement",
+            serde_json::json!({ "signed_agreement": tampered.to_string() }),
+        )
+        .await?;
+    assert_eq!(
+        checked["success"], false,
+        "tampered agreement passed: {}",
+        checked
+    );
+    assert!(
+        checked["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Failed to check agreement"),
+        "unexpected tampered agreement error: {}",
+        checked
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_admin_tools_reject_inline_secrets_without_opt_in() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_ALLOW_REGISTRATION", "true")]).await?;
+
+    let create_result = session
+        .call_tool(
+            "jacs_create_agent",
+            serde_json::json!({
+                "name": "inline-secret-agent",
+                "password": "Str0ng!Passw0rd",
+                "data_directory": "tmp-agent-data",
+                "key_directory": "tmp-agent-keys"
+            }),
+        )
+        .await?;
+    assert_eq!(
+        create_result["success"], false,
+        "inline-password agent creation must be rejected: {}",
+        create_result
+    );
+    assert_eq!(
+        create_result["error"].as_str(),
+        Some("INLINE_SECRET_DISABLED"),
+        "unexpected create_agent error: {}",
+        create_result
+    );
+
+    let reencrypt_result = session
+        .call_tool(
+            "jacs_reencrypt_key",
+            serde_json::json!({
+                "old_password": TEST_PASSWORD,
+                "new_password": "N3w!SecurePassword"
+            }),
+        )
+        .await?;
+    assert_eq!(
+        reencrypt_result["success"], false,
+        "inline-password reencrypt must be rejected: {}",
+        reencrypt_result
+    );
+    assert_eq!(
+        reencrypt_result["error"].as_str(),
+        Some("INLINE_SECRET_DISABLED"),
+        "unexpected reencrypt error: {}",
+        reencrypt_result
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
 async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let wrapped = session
         .call_tool(
@@ -493,20 +673,23 @@ async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
         "verify_a2a_artifact failed: {}",
         verified
     );
-    assert_eq!(verified["valid"], true, "wrapped artifact invalid: {}", verified);
+    assert_eq!(
+        verified["valid"], true,
+        "wrapped artifact invalid: {}",
+        verified
+    );
     let verification_details = parse_json_string_field(&verified, "verification_details")?;
     assert_eq!(verification_details["status"], "SelfSigned");
     assert_eq!(verification_details["parentSignaturesValid"], true);
-    assert_eq!(verification_details["originalArtifact"]["content"], "hello from a2a mcp");
+    assert_eq!(
+        verification_details["originalArtifact"]["content"],
+        "hello from a2a mcp"
+    );
 
     let card = session
         .call_tool("jacs_export_agent_card", serde_json::json!({}))
         .await?;
-    assert_eq!(
-        card["success"], true,
-        "export_agent_card failed: {}",
-        card
-    );
+    assert_eq!(card["success"], true, "export_agent_card failed: {}", card);
     let agent_card_json = card["agent_card"].as_str().expect("agent_card payload");
 
     let assessment = session
@@ -523,7 +706,11 @@ async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
         "assess_a2a_agent failed: {}",
         assessment
     );
-    assert_eq!(assessment["allowed"], true, "assessment rejected: {}", assessment);
+    assert_eq!(
+        assessment["allowed"], true,
+        "assessment rejected: {}",
+        assessment
+    );
     assert_eq!(
         assessment["policy"]
             .as_str()
@@ -539,7 +726,7 @@ async fn mcp_a2a_round_trip_over_stdio() -> anyhow::Result<()> {
 #[tokio::test]
 async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let parent = session
         .call_tool(
@@ -583,8 +770,16 @@ async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
             serde_json::json!({ "wrapped_artifact": valid_child_artifact }),
         )
         .await?;
-    assert_eq!(valid_chain["success"], true, "valid chain failed: {}", valid_chain);
-    assert_eq!(valid_chain["valid"], true, "child artifact invalid: {}", valid_chain);
+    assert_eq!(
+        valid_chain["success"], true,
+        "valid chain failed: {}",
+        valid_chain
+    );
+    assert_eq!(
+        valid_chain["valid"], true,
+        "child artifact invalid: {}",
+        valid_chain
+    );
     let valid_chain_details = parse_json_string_field(&valid_chain, "verification_details")?;
     assert_eq!(valid_chain_details["parentSignaturesValid"], true);
     assert_eq!(
@@ -645,7 +840,7 @@ async fn mcp_a2a_parent_chain_reports_invalid_parent() -> anyhow::Result<()> {
 #[tokio::test]
 async fn mcp_attestation_negative_paths_and_dsse_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
-    let session = RmcpSession::spawn(&[]).await?;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
 
     let signed_doc = session
         .call_tool(
@@ -697,7 +892,9 @@ async fn mcp_attestation_negative_paths_and_dsse_over_stdio() -> anyhow::Result<
         .await?;
     assert_eq!(dsse["payloadType"], "application/vnd.in-toto+json");
     assert!(
-        dsse["payload"].as_str().is_some_and(|payload| !payload.is_empty()),
+        dsse["payload"]
+            .as_str()
+            .is_some_and(|payload| !payload.is_empty()),
         "dsse payload missing: {}",
         dsse
     );
@@ -707,7 +904,10 @@ async fn mcp_attestation_negative_paths_and_dsse_over_stdio() -> anyhow::Result<
         signatures[0]["keyid"],
         attestation["jacsSignature"]["publicKeyHash"]
     );
-    assert_eq!(signatures[0]["sig"], attestation["jacsSignature"]["signature"]);
+    assert_eq!(
+        signatures[0]["sig"],
+        attestation["jacsSignature"]["signature"]
+    );
 
     let missing_subject = session
         .call_tool(

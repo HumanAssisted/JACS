@@ -5,9 +5,9 @@ use crate::a2a::keys::{create_jwk_set, export_as_jwk, sign_jws};
 use crate::a2a::{AgentCard, AgentCardSignature};
 use crate::agent::{Agent, boilerplate::BoilerPlate};
 use crate::crypt::supported_verification_algorithms;
+use crate::error::JacsError;
 use crate::time_utils;
 use serde_json::{Value, json};
-use std::error::Error;
 use tracing::info;
 
 /// Sign an A2A Agent Card using JWS and embed the signature.
@@ -19,7 +19,7 @@ pub fn sign_agent_card_jws(
     private_key: &[u8],
     algorithm: &str,
     key_id: &str,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     // Serialize the agent card to JSON
     let agent_card_json = serde_json::to_vec(agent_card)?;
 
@@ -70,7 +70,7 @@ pub fn verify_agent_card_jws(
     agent_card: &AgentCard,
     public_key: &[u8],
     algorithm: &str,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<bool, JacsError> {
     use crate::a2a::keys::verify_jws;
 
     // Get the first signature
@@ -133,7 +133,7 @@ pub fn generate_well_known_documents(
     a2a_public_key: &[u8],
     a2a_algorithm: &str,
     jws_signature: &str,
-) -> Result<Vec<(String, Value)>, Box<dyn Error>> {
+) -> Result<Vec<(String, Value)>, JacsError> {
     let mut documents = Vec::new();
     let endpoints = WellKnownEndpoints::default();
 
@@ -168,7 +168,7 @@ pub fn generate_well_known_documents(
 }
 
 /// Create JACS agent descriptor document
-fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> {
+fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, JacsError> {
     let agent_value = agent.get_value().ok_or("Agent value not loaded")?;
 
     let public_key = agent.get_public_key()?;
@@ -207,7 +207,7 @@ fn create_jacs_agent_descriptor(agent: &Agent) -> Result<Value, Box<dyn Error>> 
 }
 
 /// Create JACS public key document
-fn create_jacs_pubkey_document(agent: &Agent) -> Result<Value, Box<dyn Error>> {
+fn create_jacs_pubkey_document(agent: &Agent) -> Result<Value, JacsError> {
     let public_key = agent.get_public_key()?;
     let public_key_b64 = crate::crypt::base64_encode(&public_key);
     let public_key_hash = crate::crypt::hash::hash_public_key(&public_key);

@@ -43,7 +43,7 @@ FIXTURES_DIR = (
 )
 
 # Algorithms that the Rust fixture generator creates
-ALGORITHMS = ["ed25519", "pq2025"]
+ALGORITHMS = ["ed25519", "pq2025", "rsa_pss"]
 PYTHON_FIXTURES = ["python_ed25519", "python_pq2025"]
 UPDATE_FIXTURES = os.environ.get("UPDATE_CROSS_LANG_FIXTURES", "").lower() in {
     "1",
@@ -221,6 +221,7 @@ class TestCrossLanguageVerifyStandalone:
 COUNTERSIGN_ALGO = {
     "ed25519": "ring-Ed25519",
     "pq2025": "ring-Ed25519",
+    "rsa_pss": "ring-Ed25519",
 }
 
 

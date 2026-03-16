@@ -184,7 +184,7 @@ async def discover_and_assess(
                 "trust_level": trust.get("trustLevel", "untrusted"),
                 "allowed": trust.get("allowed", False),
             }
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError, TypeError):
             logger.warning(
                 "Falling back to local trust policy evaluation "
                 "— binding-core assess_a2a_agent unavailable"

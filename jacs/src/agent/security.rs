@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::agent::FileLoader;
-use std::error::Error;
+use crate::error::JacsError;
 use std::fs;
 use tracing::{error, info};
 
@@ -20,17 +20,17 @@ const _JACS_ENABLE_FILESYSTEM_QUARANTINE: &str = "JACS_ENABLE_FILESYSTEM_QUARANT
 pub trait SecurityTraits {
     fn use_security(&self) -> bool;
     fn use_fs_security(&self) -> bool;
-    fn check_data_directory(&self) -> Result<(), Box<dyn Error>>;
+    fn check_data_directory(&self) -> Result<(), JacsError>;
     fn is_executable(&self, path: &std::path::Path) -> bool;
-    fn quarantine_file(&self, file_path: &Path) -> Result<(), Box<dyn Error>>;
-    fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), Box<dyn Error>>;
+    fn quarantine_file(&self, file_path: &Path) -> Result<(), JacsError>;
+    fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), JacsError>;
 }
 
 impl SecurityTraits for Agent {
     /// this function attempts to detect executable files
     /// if they should be there alert the user
     /// /// it will move all exuctable documents in JACS_DATA_DIRECTORY a quarantine directory
-    fn check_data_directory(&self) -> Result<(), Box<dyn Error>> {
+    fn check_data_directory(&self) -> Result<(), JacsError> {
         if !self.use_security() {
             info!(
                 "Filesystem quarantine is disabled. Set JACS_ENABLE_FILESYSTEM_QUARANTINE=true to enable. \
@@ -74,7 +74,7 @@ impl SecurityTraits for Agent {
     }
     // Mark the file as not executable (Unix)
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "windows")))]
-    fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), JacsError> {
         std::fs::set_permissions(Path::new(path), Permissions::from_mode(0o600))?;
         Ok(())
     }
@@ -83,7 +83,7 @@ impl SecurityTraits for Agent {
     // On Windows, we can't easily remove execute permissions via standard Rust APIs.
     // The file has already been moved to quarantine, which is the primary security measure.
     #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
-    fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    fn mark_file_not_executable(&self, path: &std::path::Path) -> Result<(), JacsError> {
         // On Windows, files are executable based on extension, not permissions.
         // We could use Windows ACL APIs via the `windows` crate, but for now
         // we rely on quarantine and log a warning.
@@ -96,7 +96,7 @@ impl SecurityTraits for Agent {
 
     // WASM stub - no filesystem permissions
     #[cfg(target_arch = "wasm32")]
-    fn mark_file_not_executable(&self, _path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    fn mark_file_not_executable(&self, _path: &std::path::Path) -> Result<(), JacsError> {
         Ok(())
     }
 
@@ -159,7 +159,7 @@ impl SecurityTraits for Agent {
     fn is_executable(&self, _path: &std::path::Path) -> bool {
         false
     }
-    fn quarantine_file(&self, file_path: &Path) -> Result<(), Box<dyn Error>> {
+    fn quarantine_file(&self, file_path: &Path) -> Result<(), JacsError> {
         if !self.use_fs_security() {
             info!(
                 "quarantine not possible because filesystem is not used: {}",

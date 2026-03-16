@@ -50,7 +50,10 @@
     },
     "minimumStrength": {
       "type": "string",
-      "enum": ["classical", "post-quantum"],
+      "enum": [
+        "classical",
+        "post-quantum"
+      ],
       "description": "Minimum cryptographic strength tier required for signatures. 'classical' accepts any algorithm; 'post-quantum' requires pq2025."
     }
   },

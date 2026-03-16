@@ -2,23 +2,36 @@
 //!
 //! This module provides MCP tools for agent state signing, verification,
 //! messaging, agreements, A2A interoperability, and trust store management.
+//!
+//! ## Tech Debt (Issue 017)
+//!
+//! This file contains all 42 tool handler implementations in a single 4400+
+//! line monolith. TASK_038 split **type definitions and tool registration**
+//! into per-family modules under `tools/`, but the actual handler methods
+//! remain here.
+//!
+//! A future refactoring should move handler methods into their respective
+//! `tools/*.rs` modules (e.g., `tools::memory::handle_memory_save()`),
+//! leaving only the `JacsMcpServer` struct, `ServerHandler` impl, and
+//! shared helper functions in this file. This will require either:
+//! - A facade pattern where `jacs_tools.rs` delegates to module functions, or
+//! - Adjusting the `#[tool_router]` / `#[tool_handler]` macros from rmcp
+//!   to support handlers spread across multiple modules.
 
+use jacs::document::DocumentService;
 use jacs::schema::agentstate_crud;
 use jacs::validation::require_relative_path_safe;
 use jacs_binding_core::AgentWrapper;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo, Tool, ToolsCapability};
-use rmcp::{ServerHandler, tool, tool_handler, tool_router};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use rmcp::{ServerHandler, tool, tool_router};
 use sha2::{Digest, Sha256};
+
+use crate::tools::*;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use uuid::Uuid;
-
-// =============================================================================
-// Request/Response Types
-// =============================================================================
 
 // =============================================================================
 // Helper Functions
@@ -56,6 +69,84 @@ fn is_untrust_allowed() -> bool {
     std::env::var("JACS_MCP_ALLOW_UNTRUST")
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or(false)
+}
+
+fn inline_secrets_allowed() -> bool {
+    std::env::var("JACS_MCP_ALLOW_INLINE_SECRETS")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+fn arbitrary_state_files_allowed() -> bool {
+    std::env::var("JACS_MCP_ALLOW_ARBITRARY_STATE_FILES")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+fn configured_state_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(root) = std::env::var("JACS_DATA_DIRECTORY")
+        && !root.trim().is_empty()
+    {
+        roots.push(PathBuf::from(root));
+    }
+
+    roots.push(PathBuf::from("jacs_data"));
+    roots
+}
+
+fn absolute_from_cwd(path: &Path, cwd: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    }
+}
+
+fn validate_state_file_root(file_path: &str) -> Result<(), String> {
+    if arbitrary_state_files_allowed() {
+        return Ok(());
+    }
+
+    let cwd = std::env::current_dir()
+        .map_err(|e| format!("Failed to determine working directory: {}", e))?;
+    let requested = absolute_from_cwd(Path::new(file_path), &cwd);
+    let allowed_roots = configured_state_roots();
+
+    let lexically_allowed = allowed_roots.iter().any(|root| {
+        let root_abs = absolute_from_cwd(root, &cwd);
+        requested.starts_with(&root_abs)
+    });
+
+    if !lexically_allowed {
+        return Err("STATE_FILE_ACCESS_BLOCKED".to_string());
+    }
+
+    if requested.exists() {
+        let canonical_requested = requested
+            .canonicalize()
+            .map_err(|_| "STATE_FILE_ACCESS_BLOCKED".to_string())?;
+        let canonically_allowed = allowed_roots.iter().any(|root| {
+            let root_abs = absolute_from_cwd(root, &cwd);
+            let canonical_root = root_abs.canonicalize().unwrap_or(root_abs);
+            canonical_requested.starts_with(&canonical_root)
+        });
+
+        if !canonically_allowed {
+            return Err("STATE_FILE_ACCESS_BLOCKED".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_optional_relative_path(label: &str, path: Option<&String>) -> Result<(), String> {
+    if let Some(path) = path {
+        require_relative_path_safe(path)
+            .map_err(|e| format!("{} path validation failed: {}", label, e))?;
+    }
+    Ok(())
 }
 
 /// Build a stable storage lookup key (`jacsId:jacsVersion`) from a signed document.
@@ -144,1102 +235,6 @@ fn extract_verify_a2a_valid(details_json: &str) -> bool {
         .unwrap_or(false)
 }
 
-// =============================================================================
-// Request/Response Types
-// =============================================================================
-
-// =============================================================================
-// Agent Management Request/Response Types
-// =============================================================================
-
-/// Parameters for creating a new JACS agent programmatically.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CreateAgentProgrammaticParams {
-    /// Name for the new agent.
-    #[schemars(description = "Name for the new agent")]
-    pub name: String,
-
-    /// Password for encrypting the private key.
-    #[schemars(
-        description = "Password for encrypting the private key. Must be at least 8 characters with uppercase, lowercase, digit, and special character."
-    )]
-    pub password: String,
-
-    /// Cryptographic algorithm. Default: "pq2025" (ML-DSA-87, FIPS-204).
-    #[schemars(
-        description = "Cryptographic algorithm: 'pq2025' (default, post-quantum), 'ring-Ed25519', or 'RSA-PSS'"
-    )]
-    pub algorithm: Option<String>,
-
-    /// Directory for data files. Default: "./jacs_data".
-    #[schemars(description = "Directory for data files (default: ./jacs_data)")]
-    pub data_directory: Option<String>,
-
-    /// Directory for key files. Default: "./jacs_keys".
-    #[schemars(description = "Directory for key files (default: ./jacs_keys)")]
-    pub key_directory: Option<String>,
-
-    /// Optional agent type (e.g., "ai", "human").
-    #[schemars(description = "Agent type (default: 'ai')")]
-    pub agent_type: Option<String>,
-
-    /// Optional description of the agent.
-    #[schemars(description = "Description of the agent")]
-    pub description: Option<String>,
-}
-
-/// Result of creating an agent.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CreateAgentProgrammaticResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The new agent's ID (UUID).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<String>,
-
-    /// The agent name.
-    pub name: String,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for re-encrypting the agent's private key.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ReencryptKeyParams {
-    /// Current password for the private key.
-    #[schemars(description = "Current password for the private key")]
-    pub old_password: String,
-
-    /// New password to encrypt the private key with.
-    #[schemars(
-        description = "New password. Must be at least 8 characters with uppercase, lowercase, digit, and special character."
-    )]
-    pub new_password: String,
-}
-
-/// Parameters for the JACS security audit tool.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct JacsAuditParams {
-    /// Optional path to jacs config file.
-    #[schemars(description = "Optional path to jacs.config.json")]
-    pub config_path: Option<String>,
-
-    /// Optional number of recent documents to re-verify.
-    #[schemars(description = "Number of recent documents to re-verify (default from config)")]
-    pub recent_n: Option<u32>,
-}
-
-/// Result of re-encrypting the private key.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ReencryptKeyResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// =============================================================================
-// Agent State Request/Response Types
-// =============================================================================
-
-/// Parameters for signing an agent state file.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SignStateParams {
-    /// Path to the file to sign.
-    #[schemars(description = "Path to the file to sign as agent state")]
-    pub file_path: String,
-
-    /// The type of agent state.
-    #[schemars(description = "Type of agent state: memory, skill, plan, config, or hook")]
-    pub state_type: String,
-
-    /// Human-readable name for this state document.
-    #[schemars(description = "Human-readable name for this state document")]
-    pub name: String,
-
-    /// Optional description of the state document.
-    #[schemars(description = "Optional description of what this state document contains")]
-    pub description: Option<String>,
-
-    /// Optional framework identifier (e.g., "claude-code", "openclaw").
-    #[schemars(description = "Optional framework identifier (e.g., 'claude-code', 'openclaw')")]
-    pub framework: Option<String>,
-
-    /// Optional tags for categorization.
-    #[schemars(description = "Optional tags for categorization")]
-    pub tags: Option<Vec<String>>,
-
-    /// Whether to embed file content inline. Always true for hooks.
-    #[schemars(
-        description = "Whether to embed file content inline (default false, always true for hooks)"
-    )]
-    pub embed: Option<bool>,
-}
-
-/// Result of signing an agent state file.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SignStateResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The JACS document ID of the signed state.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub jacs_document_id: Option<String>,
-
-    /// The state type that was signed.
-    pub state_type: String,
-
-    /// The name of the state document.
-    pub name: String,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for verifying an agent state file or document.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct VerifyStateParams {
-    /// Path to the original file to verify against.
-    #[schemars(
-        description = "DEPRECATED for MCP security: direct file-path verification is disabled. Use jacs_id."
-    )]
-    pub file_path: Option<String>,
-
-    /// JACS document ID to verify.
-    #[schemars(description = "JACS document ID to verify (uuid:version)")]
-    pub jacs_id: Option<String>,
-}
-
-/// Result of verifying an agent state file.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct VerifyStateResult {
-    /// Whether the verification succeeded overall.
-    pub success: bool,
-
-    /// Whether the file hash matches the signed hash.
-    pub hash_match: bool,
-
-    /// Whether the document signature is valid.
-    pub signature_valid: bool,
-
-    /// Information about the signing agent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signing_info: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if verification failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for loading a signed agent state.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct LoadStateParams {
-    /// Path to the file to load.
-    #[schemars(
-        description = "DEPRECATED for MCP security: direct file-path loading is disabled. Use jacs_id."
-    )]
-    pub file_path: Option<String>,
-
-    /// JACS document ID to load.
-    #[schemars(description = "JACS document ID to load (uuid:version)")]
-    pub jacs_id: Option<String>,
-
-    /// Whether to require verification before loading (default true).
-    #[schemars(description = "Whether to require verification before loading (default true)")]
-    pub require_verified: Option<bool>,
-}
-
-/// Result of loading a signed agent state.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct LoadStateResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The loaded content.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
-
-    /// Whether the document was verified.
-    pub verified: bool,
-
-    /// Any warnings about the loaded state.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub warnings: Option<Vec<String>>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for updating a signed agent state.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct UpdateStateParams {
-    /// Path to the file to update.
-    #[schemars(
-        description = "DEPRECATED for MCP security: direct file-path updates are disabled. Use jacs_id."
-    )]
-    pub file_path: String,
-
-    /// JACS document ID to update (uuid:version).
-    #[schemars(description = "JACS document ID to update (uuid:version)")]
-    pub jacs_id: Option<String>,
-
-    /// New content to write to the file. If omitted, re-signs current content.
-    #[schemars(
-        description = "New embedded content for the JACS state document. If omitted, re-signs current embedded content."
-    )]
-    pub new_content: Option<String>,
-}
-
-/// Result of updating a signed agent state.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct UpdateStateResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The new JACS document version ID.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub jacs_document_version_id: Option<String>,
-
-    /// The new SHA-256 hash of the content.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub new_hash: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for listing signed agent state documents.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ListStateParams {
-    /// Filter by state type.
-    #[schemars(description = "Filter by state type: memory, skill, plan, config, or hook")]
-    pub state_type: Option<String>,
-
-    /// Filter by framework.
-    #[schemars(description = "Filter by framework identifier")]
-    pub framework: Option<String>,
-
-    /// Filter by tags (documents must have all specified tags).
-    #[schemars(description = "Filter by tags (documents must have all specified tags)")]
-    pub tags: Option<Vec<String>>,
-}
-
-/// A summary entry for a signed agent state document.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct StateListEntry {
-    /// The JACS document ID.
-    pub jacs_document_id: String,
-
-    /// The state type.
-    pub state_type: String,
-
-    /// The document name.
-    pub name: String,
-
-    /// The framework, if set.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub framework: Option<String>,
-
-    /// Tags on the document.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Vec<String>>,
-}
-
-/// Result of listing signed agent state documents.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ListStateResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The list of state documents.
-    pub documents: Vec<StateListEntry>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for adopting an external agent state file.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AdoptStateParams {
-    /// Path to the file to adopt and sign.
-    #[schemars(description = "Path to the file to adopt and sign as agent state")]
-    pub file_path: String,
-
-    /// The type of agent state.
-    #[schemars(description = "Type of agent state: memory, skill, plan, config, or hook")]
-    pub state_type: String,
-
-    /// Human-readable name for this state document.
-    #[schemars(description = "Human-readable name for this adopted state document")]
-    pub name: String,
-
-    /// Optional URL where the content was obtained from.
-    #[schemars(description = "Optional URL where the content was originally obtained")]
-    pub source_url: Option<String>,
-
-    /// Optional description of the state document.
-    #[schemars(description = "Optional description of what this adopted state document contains")]
-    pub description: Option<String>,
-}
-
-/// Result of adopting an external agent state file.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AdoptStateResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The JACS document ID of the adopted state.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub jacs_document_id: Option<String>,
-
-    /// The state type that was adopted.
-    pub state_type: String,
-
-    /// The name of the adopted state document.
-    pub name: String,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// =============================================================================
-// Trust Store Request/Response Types
-// =============================================================================
-
-/// Parameters for adding an agent to the local trust store.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TrustAgentParams {
-    /// The full agent JSON document to trust.
-    #[schemars(description = "The full JACS agent JSON document to add to the trust store")]
-    pub agent_json: String,
-}
-
-/// Result of trusting an agent.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TrustAgentResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The trusted agent's ID.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for removing an agent from the trust store.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct UntrustAgentParams {
-    /// The agent ID (UUID) to remove from the trust store.
-    #[schemars(description = "The JACS agent ID (UUID format) to remove from the trust store")]
-    pub agent_id: String,
-}
-
-/// Result of untrusting an agent.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct UntrustAgentResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The agent ID that was removed.
-    pub agent_id: String,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for listing trusted agents (no parameters required).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ListTrustedAgentsParams {}
-
-/// Result of listing trusted agents.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ListTrustedAgentsResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// List of trusted agent IDs.
-    pub agent_ids: Vec<String>,
-
-    /// Number of trusted agents.
-    pub count: usize,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for checking if an agent is trusted.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IsTrustedParams {
-    /// The agent ID (UUID) to check.
-    #[schemars(description = "The JACS agent ID (UUID format) to check trust status for")]
-    pub agent_id: String,
-}
-
-/// Result of checking trust status.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct IsTrustedResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The agent ID that was checked.
-    pub agent_id: String,
-
-    /// Whether the agent is in the trust store.
-    pub trusted: bool,
-
-    /// Human-readable status message.
-    pub message: String,
-}
-
-/// Parameters for getting a trusted agent's details.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct GetTrustedAgentParams {
-    /// The agent ID (UUID) to retrieve from the trust store.
-    #[schemars(description = "The JACS agent ID (UUID format) to retrieve from the trust store")]
-    pub agent_id: String,
-}
-
-/// Result of getting a trusted agent's details.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct GetTrustedAgentResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The agent ID.
-    pub agent_id: String,
-
-    /// The full agent JSON document from the trust store.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_json: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// =============================================================================
-// A2A Artifact Wrapping/Verification Request/Response Types
-// =============================================================================
-
-/// Parameters for wrapping an A2A artifact with JACS provenance.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WrapA2aArtifactParams {
-    /// The artifact JSON content to wrap and sign.
-    #[schemars(description = "The A2A artifact JSON content to wrap with JACS provenance")]
-    pub artifact_json: String,
-
-    /// The artifact type identifier (e.g., "a2a-artifact", "message", "task-result").
-    #[schemars(
-        description = "Artifact type identifier (e.g., 'a2a-artifact', 'message', 'task-result')"
-    )]
-    pub artifact_type: String,
-
-    /// Optional parent signatures JSON array for chain-of-custody.
-    #[schemars(
-        description = "Optional JSON array of parent signatures for chain-of-custody provenance"
-    )]
-    pub parent_signatures: Option<String>,
-}
-
-/// Result of wrapping an A2A artifact.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct WrapA2aArtifactResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The wrapped artifact as a JSON string with JACS provenance.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wrapped_artifact: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for verifying a JACS-wrapped A2A artifact.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct VerifyA2aArtifactParams {
-    /// The wrapped artifact JSON to verify.
-    #[schemars(description = "The JACS-wrapped A2A artifact JSON to verify")]
-    pub wrapped_artifact: String,
-}
-
-/// Result of verifying a wrapped A2A artifact.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct VerifyA2aArtifactResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// Whether the artifact's signature and hash are valid.
-    pub valid: bool,
-
-    /// The verification result details as JSON.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub verification_details: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if verification failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for assessing trust level of a remote A2A agent.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AssessA2aAgentParams {
-    /// The Agent Card JSON of the remote agent to assess.
-    #[schemars(description = "The A2A Agent Card JSON of the remote agent to assess")]
-    pub agent_card_json: String,
-
-    /// Trust policy to apply: "open", "verified", or "strict".
-    #[schemars(
-        description = "Trust policy: 'open' (accept all), 'verified' (require JACS), or 'strict' (require trust store)"
-    )]
-    pub policy: Option<String>,
-}
-
-/// Result of assessing an A2A agent's trust level.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AssessA2aAgentResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// Whether the agent is allowed under the specified policy.
-    pub allowed: bool,
-
-    /// The trust level: "Untrusted", "JacsVerified", or "ExplicitlyTrusted".
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub trust_level: Option<String>,
-
-    /// The policy that was applied.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub policy: Option<String>,
-
-    /// Reason for the assessment result.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the assessment failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// =============================================================================
-// Agent Card & Well-Known Request/Response Types
-// =============================================================================
-
-/// Parameters for exporting the local agent's A2A Agent Card (no params needed).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExportAgentCardParams {}
-
-/// Result of exporting the Agent Card.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExportAgentCardResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The Agent Card as a JSON string.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_card: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for generating well-known documents.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct GenerateWellKnownParams {
-    /// Optional A2A signing algorithm override (default: ring-Ed25519).
-    #[schemars(description = "A2A signing algorithm override (default: ring-Ed25519)")]
-    pub a2a_algorithm: Option<String>,
-}
-
-/// Result of generating well-known documents.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct GenerateWellKnownResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The well-known documents as a JSON array of {path, document} objects.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub documents: Option<String>,
-
-    /// Number of documents generated.
-    pub count: usize,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for exporting the local agent's full JSON document (no params needed).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExportAgentParams {}
-
-/// Result of exporting the agent document.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ExportAgentResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The full agent JSON document.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_json: Option<String>,
-
-    /// The agent's ID (UUID).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agent_id: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// =============================================================================
-// Document Sign/Verify Request/Response Types
-// =============================================================================
-
-/// Parameters for verifying a raw signed JACS document string.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct VerifyDocumentParams {
-    /// The full JACS signed document as a JSON string.
-    #[schemars(description = "The full signed JACS document JSON string to verify")]
-    pub document: String,
-}
-
-/// Result of verifying a signed document.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct VerifyDocumentResult {
-    /// Whether the operation completed without error.
-    pub success: bool,
-
-    /// Whether the document's hash and signature are valid.
-    pub valid: bool,
-
-    /// The signer's agent ID, if available.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signer_id: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if verification failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for signing arbitrary content as a JACS document.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SignDocumentParams {
-    /// The JSON content string to sign.
-    #[schemars(description = "The JSON content to sign as a JACS document")]
-    pub content: String,
-
-    /// Optional MIME type of the content (default: "application/json").
-    #[schemars(description = "MIME type of the content (default: 'application/json')")]
-    pub content_type: Option<String>,
-}
-
-/// Result of signing a document.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SignDocumentResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The full signed JACS document as a JSON string.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_document: Option<String>,
-
-    /// SHA-256 hash of the signed document content.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content_hash: Option<String>,
-
-    /// The JACS document ID assigned to the signed document.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub jacs_document_id: Option<String>,
-
-    /// Human-readable status message.
-    pub message: String,
-
-    /// Error message if signing failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// =============================================================================
-// Message Request/Response Types
-// =============================================================================
-
-/// Parameters for sending a signed message to another agent.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageSendParams {
-    /// The recipient agent's ID (UUID format).
-    #[schemars(description = "The JACS agent ID of the recipient (UUID format)")]
-    pub recipient_agent_id: String,
-
-    /// The message content to send.
-    #[schemars(description = "The message content to send")]
-    pub content: String,
-
-    /// The MIME type of the content (default: "text/plain").
-    #[schemars(description = "MIME type of the content (default: 'text/plain')")]
-    pub content_type: Option<String>,
-}
-
-/// Result of sending a signed message.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageSendResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The JACS document ID of the signed message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub jacs_document_id: Option<String>,
-
-    /// The full signed message JSON.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_message: Option<String>,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for updating an existing signed message.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageUpdateParams {
-    /// The JACS document ID of the message to update.
-    #[schemars(description = "JACS document ID of the message to update")]
-    pub jacs_id: String,
-
-    /// The new message content.
-    #[schemars(description = "Updated message content")]
-    pub content: String,
-
-    /// The MIME type of the content (default: "text/plain").
-    #[schemars(description = "MIME type of the content (default: 'text/plain')")]
-    pub content_type: Option<String>,
-}
-
-/// Result of updating a signed message.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageUpdateResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The JACS document ID of the updated message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub jacs_document_id: Option<String>,
-
-    /// The full updated signed message JSON.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_message: Option<String>,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for agreeing to (co-signing) a received message.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageAgreeParams {
-    /// The full signed message JSON document to agree to.
-    #[schemars(description = "The full signed JSON document to agree to")]
-    pub signed_message: String,
-}
-
-/// Result of agreeing to a message.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageAgreeResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The document ID of the original message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub original_document_id: Option<String>,
-
-    /// The document ID of the agreement document.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agreement_document_id: Option<String>,
-
-    /// The full signed agreement JSON.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_agreement: Option<String>,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for receiving and verifying a signed message.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageReceiveParams {
-    /// The full signed message JSON document received from another agent.
-    #[schemars(description = "The full signed JSON document received from another agent")]
-    pub signed_message: String,
-}
-
-/// Result of receiving and verifying a signed message.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct MessageReceiveResult {
-    /// Whether the operation succeeded.
-    pub success: bool,
-
-    /// The sender's agent ID.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sender_agent_id: Option<String>,
-
-    /// The extracted message content.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<String>,
-
-    /// The content MIME type.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content_type: Option<String>,
-
-    /// The message timestamp (ISO 8601).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<String>,
-
-    /// Whether the cryptographic signature is valid.
-    pub signature_valid: bool,
-
-    /// Error message if the operation failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-// =============================================================================
-// Agreement Types — Multi-party cryptographic agreements
-// =============================================================================
-
-/// Parameters for creating a multi-party agreement.
-///
-/// An agreement is a document that multiple agents must sign. Use this when agents
-/// need to formally commit to a shared decision — for example, approving a deployment,
-/// authorizing a data transfer, or reaching consensus on a proposal.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CreateAgreementParams {
-    /// The document to create an agreement for, as a JSON string.
-    /// This is the content all parties will be agreeing to.
-    #[schemars(
-        description = "JSON document that all parties will agree to. Can be any valid JSON object."
-    )]
-    pub document: String,
-
-    /// List of agent IDs (UUIDs) that must sign this agreement.
-    /// Include your own agent ID if you want to be a required signer.
-    #[schemars(description = "List of agent IDs (UUIDs) that are parties to this agreement")]
-    pub agent_ids: Vec<String>,
-
-    /// A human-readable question summarizing what signers are agreeing to.
-    #[schemars(description = "Question for signers, e.g. 'Do you approve deploying model v2?'")]
-    pub question: Option<String>,
-
-    /// Additional context to help signers make their decision.
-    #[schemars(description = "Additional context for signers")]
-    pub context: Option<String>,
-
-    /// ISO 8601 deadline. The agreement expires if not fully signed by this time.
-    /// Example: "2025-12-31T23:59:59Z"
-    #[schemars(
-        description = "ISO 8601 deadline after which the agreement expires. Example: '2025-12-31T23:59:59Z'"
-    )]
-    pub timeout: Option<String>,
-
-    /// Minimum number of signatures required (M-of-N). If omitted, ALL agents must sign.
-    /// For example, quorum=2 with 3 agent_ids means any 2 of 3 signers is sufficient.
-    #[schemars(
-        description = "Minimum signatures required (M-of-N). If omitted, all agents must sign."
-    )]
-    pub quorum: Option<u32>,
-
-    /// Only allow agents using these algorithms to sign.
-    /// Values: "RSA-PSS", "ring-Ed25519", "pq2025"
-    #[schemars(
-        description = "Only allow these signing algorithms. Values: 'RSA-PSS', 'ring-Ed25519', 'pq2025'"
-    )]
-    pub required_algorithms: Option<Vec<String>>,
-
-    /// Minimum cryptographic strength: "classical" (any algorithm) or "post-quantum" (pq2025 only).
-    #[schemars(description = "Minimum crypto strength: 'classical' or 'post-quantum'")]
-    pub minimum_strength: Option<String>,
-}
-
-/// Result of creating an agreement.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CreateAgreementResult {
-    pub success: bool,
-
-    /// The JACS document ID of the agreement.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub agreement_id: Option<String>,
-
-    /// The full signed agreement JSON. Pass this to other agents for signing.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_agreement: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for signing an existing agreement.
-///
-/// Use this after receiving an agreement document from another agent.
-/// Your agent will cryptographically co-sign it, adding your signature
-/// to the agreement's signature list.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SignAgreementParams {
-    /// The full signed agreement JSON document to co-sign.
-    #[schemars(
-        description = "The full agreement JSON to sign. Obtained from jacs_create_agreement or from another agent."
-    )]
-    pub signed_agreement: String,
-
-    /// Optional custom agreement field name (default: 'jacsAgreement').
-    #[schemars(description = "Custom agreement field name (default: 'jacsAgreement')")]
-    pub agreement_fieldname: Option<String>,
-}
-
-/// Result of signing an agreement.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SignAgreementResult {
-    pub success: bool,
-
-    /// The updated agreement JSON with your signature added.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_agreement: Option<String>,
-
-    /// Number of signatures now on the agreement.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature_count: Option<usize>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Parameters for checking agreement status.
-///
-/// Use this to see how many agents have signed, whether quorum is met,
-/// and whether the agreement has expired.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CheckAgreementParams {
-    /// The full signed agreement JSON document to check.
-    #[schemars(description = "The agreement JSON to check status of")]
-    pub signed_agreement: String,
-
-    /// Optional custom agreement field name (default: 'jacsAgreement').
-    #[schemars(description = "Custom agreement field name (default: 'jacsAgreement')")]
-    pub agreement_fieldname: Option<String>,
-}
-
-/// Result of checking an agreement's status.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct CheckAgreementResult {
-    pub success: bool,
-
-    /// Whether the agreement is complete (quorum met, not expired, all signatures valid).
-    pub complete: bool,
-
-    /// Total agents required to sign.
-    pub total_agents: usize,
-
-    /// Number of valid signatures collected.
-    pub signatures_collected: usize,
-
-    /// Minimum signatures required (quorum). Equals total_agents if no quorum set.
-    pub signatures_required: usize,
-
-    /// Whether quorum has been met.
-    pub quorum_met: bool,
-
-    /// Whether the agreement has expired (past timeout).
-    pub expired: bool,
-
-    /// List of agent IDs that have signed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_by: Option<Vec<String>>,
-
-    /// List of agent IDs that have NOT signed yet.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unsigned: Option<Vec<String>>,
-
-    /// Timeout deadline (if set).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
 /// Format a SystemTime as an ISO 8601 UTC timestamp string.
 fn format_iso8601(t: std::time::SystemTime) -> String {
     let d = t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
@@ -1303,55 +298,6 @@ fn is_leap(y: i64) -> bool {
 }
 
 // =============================================================================
-// Attestation Request/Response Types (feature-gated)
-// =============================================================================
-
-/// Parameters for creating an attestation.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AttestCreateParams {
-    /// JSON string with subject, claims, and optional evidence/derivation/policyContext.
-    #[schemars(
-        description = "JSON string containing attestation parameters: { subject: { type, id, digests }, claims: [{ name, value, confidence?, assuranceLevel? }], evidence?: [...], derivation?: {...}, policyContext?: {...} }"
-    )]
-    pub params_json: String,
-}
-
-/// Parameters for verifying an attestation.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AttestVerifyParams {
-    /// The document key in "jacsId:jacsVersion" format.
-    #[schemars(description = "Document key in 'jacsId:jacsVersion' format")]
-    pub document_key: String,
-
-    /// Whether to perform full verification (including evidence and chain).
-    #[serde(default)]
-    #[schemars(description = "Set to true for full-tier verification (evidence + chain checks)")]
-    pub full: bool,
-}
-
-/// Parameters for exporting an attestation as a DSSE envelope.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AttestExportDsseParams {
-    /// The signed attestation document JSON string.
-    #[schemars(description = "JSON string of the signed attestation document to export as DSSE")]
-    pub attestation_json: String,
-}
-
-/// Parameters for lifting a signed document to an attestation.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct AttestLiftParams {
-    /// The signed document JSON string.
-    #[schemars(description = "JSON string of the existing signed JACS document to lift")]
-    pub signed_doc_json: String,
-
-    /// Claims JSON string (array of claim objects).
-    #[schemars(
-        description = "JSON array of claim objects: [{ name, value, confidence?, assuranceLevel? }]"
-    )]
-    pub claims_json: String,
-}
-
-// =============================================================================
 // MCP Server
 // =============================================================================
 
@@ -1362,17 +308,24 @@ pub struct AttestLiftParams {
 pub struct JacsMcpServer {
     /// The local agent identity.
     agent: Arc<AgentWrapper>,
+    /// Unified document service resolved from the loaded agent config.
+    document_service: Option<Arc<dyn DocumentService>>,
     /// Tool router for MCP tool dispatch.
     tool_router: ToolRouter<Self>,
     /// Whether agent creation is allowed (from JACS_MCP_ALLOW_REGISTRATION env var).
     registration_allowed: bool,
     /// Whether untrusting agents is allowed (from JACS_MCP_ALLOW_UNTRUST env var).
     untrust_allowed: bool,
+    /// Runtime tool profile controlling which tools are registered.
+    profile: crate::profile::Profile,
 }
 
 #[allow(dead_code)]
 impl JacsMcpServer {
-    /// Create a new JACS MCP server with the given agent.
+    /// Create a new JACS MCP server with the given agent and default profile.
+    ///
+    /// The runtime profile is resolved from `JACS_MCP_PROFILE` env var,
+    /// defaulting to `Core`.
     ///
     /// # Arguments
     ///
@@ -1382,9 +335,25 @@ impl JacsMcpServer {
     ///
     /// * `JACS_MCP_ALLOW_REGISTRATION` - Set to "true" to enable the jacs_create_agent tool
     /// * `JACS_MCP_ALLOW_UNTRUST` - Set to "true" to enable the jacs_untrust_agent tool
+    /// * `JACS_MCP_PROFILE` - Set to "full" to expose all tools, defaults to "core"
     pub fn new(agent: AgentWrapper) -> Self {
+        let profile = crate::profile::Profile::resolve(None);
+        Self::with_profile(agent, profile)
+    }
+
+    /// Create a new JACS MCP server with an explicit runtime profile.
+    ///
+    /// Use this when the profile has been parsed from a CLI flag.
+    pub fn with_profile(agent: AgentWrapper, profile: crate::profile::Profile) -> Self {
         let registration_allowed = is_registration_allowed();
         let untrust_allowed = is_untrust_allowed();
+        let document_service = match jacs::document::service_from_agent(agent.inner_arc()) {
+            Ok(service) => Some(service),
+            Err(err) => {
+                tracing::warn!("Document service unavailable for MCP server: {}", err);
+                None
+            }
+        };
 
         if registration_allowed {
             tracing::info!("Agent creation is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
@@ -1394,506 +363,35 @@ impl JacsMcpServer {
             );
         }
 
+        tracing::info!(profile = %profile, "Tool profile active");
+
         Self {
             agent: Arc::new(agent),
+            document_service,
             tool_router: Self::tool_router(),
             registration_allowed,
             untrust_allowed,
+            profile,
         }
     }
 
-    /// Get the list of available tools for LLM discovery.
+    /// Get the list of all compiled-in tools (ignores runtime profile).
+    ///
+    /// Use this for contract snapshots and tests that need the full surface.
     pub fn tools() -> Vec<Tool> {
-        vec![
-            Tool::new(
-                "jacs_sign_state",
-                "Sign an agent state file (memory, skill, plan, config, or hook) to create \
-                 a cryptographically signed JACS document. This establishes provenance and \
-                 integrity for the file's contents.",
-                Self::jacs_sign_state_schema(),
-            ),
-            Tool::new(
-                "jacs_verify_state",
-                "Verify the integrity and authenticity of a signed agent state. Checks both \
-                 the file hash and the cryptographic signature.",
-                Self::jacs_verify_state_schema(),
-            ),
-            Tool::new(
-                "jacs_load_state",
-                "Load a signed agent state document and optionally verify it before returning \
-                 the content.",
-                Self::jacs_load_state_schema(),
-            ),
-            Tool::new(
-                "jacs_update_state",
-                "Update a previously signed agent state file. Writes new content (if provided), \
-                 recomputes the SHA-256 hash, and creates a new signed version.",
-                Self::jacs_update_state_schema(),
-            ),
-            Tool::new(
-                "jacs_list_state",
-                "List signed agent state documents, with optional filtering by type, framework, \
-                 or tags.",
-                Self::jacs_list_state_schema(),
-            ),
-            Tool::new(
-                "jacs_adopt_state",
-                "Adopt an external file as signed agent state. Like sign_state but marks the \
-                 origin as 'adopted' and optionally records the source URL.",
-                Self::jacs_adopt_state_schema(),
-            ),
-            Tool::new(
-                "jacs_create_agent",
-                "Create a new JACS agent with cryptographic keys. This is the programmatic \
-                 equivalent of 'jacs create'. Returns agent ID and key paths. \
-                 SECURITY: Requires JACS_MCP_ALLOW_REGISTRATION=true environment variable.",
-                Self::jacs_create_agent_schema(),
-            ),
-            Tool::new(
-                "jacs_reencrypt_key",
-                "Re-encrypt the agent's private key with a new password. Use this to rotate \
-                 the password protecting the private key without changing the key itself.",
-                Self::jacs_reencrypt_key_schema(),
-            ),
-            Tool::new(
-                "jacs_audit",
-                "Run a read-only JACS security audit and health checks. Returns a JSON report \
-                 with risks, health_checks, summary, and overall_status. Does not modify state. \
-                 Optional: config_path, recent_n (number of recent documents to re-verify).",
-                Self::jacs_audit_schema(),
-            ),
-            Tool::new(
-                "jacs_message_send",
-                "Create and cryptographically sign a message for sending to another agent. \
-                 Returns the signed JACS document that can be transmitted to the recipient.",
-                Self::jacs_message_send_schema(),
-            ),
-            Tool::new(
-                "jacs_message_update",
-                "Update and re-sign an existing message document with new content.",
-                Self::jacs_message_update_schema(),
-            ),
-            Tool::new(
-                "jacs_message_agree",
-                "Verify and co-sign (agree to) a received signed message. Creates an agreement \
-                 document that references the original message.",
-                Self::jacs_message_agree_schema(),
-            ),
-            Tool::new(
-                "jacs_message_receive",
-                "Verify a received signed message and extract its content, sender ID, and timestamp. \
-                 Use this to validate authenticity before processing a message from another agent.",
-                Self::jacs_message_receive_schema(),
-            ),
-            // --- Agreement tools ---
-            Tool::new(
-                "jacs_create_agreement",
-                "Create a multi-party cryptographic agreement. Use this when multiple agents need \
-                 to formally agree on something — like approving a deployment, authorizing a data \
-                 transfer, or ratifying a decision. You specify which agents must sign, an optional \
-                 quorum (e.g., 2-of-3), a timeout deadline, and algorithm constraints. Returns a \
-                 signed agreement document to pass to other agents for co-signing.",
-                Self::jacs_create_agreement_schema(),
-            ),
-            Tool::new(
-                "jacs_sign_agreement",
-                "Co-sign an existing agreement. Use this after receiving an agreement document from \
-                 another agent. Your cryptographic signature is added to the agreement. The updated \
-                 document can then be passed to the next signer or checked for completion.",
-                Self::jacs_sign_agreement_schema(),
-            ),
-            Tool::new(
-                "jacs_check_agreement",
-                "Check the status of an agreement: how many agents have signed, whether quorum is \
-                 met, whether it has expired, and which agents still need to sign. Use this to \
-                 decide whether an agreement is complete and ready to act on.",
-                Self::jacs_check_agreement_schema(),
-            ),
-            // --- Document sign/verify tools ---
-            Tool::new(
-                "jacs_sign_document",
-                "Sign arbitrary JSON content to create a cryptographically signed JACS document. \
-                 Use this for attestation -- when you want to prove that content was signed by \
-                 this agent. Returns the signed envelope with hash and document ID.",
-                Self::jacs_sign_document_schema(),
-            ),
-            Tool::new(
-                "jacs_verify_document",
-                "Verify a signed JACS document given its full JSON string. Checks both the \
-                 content hash and cryptographic signature. Use this when you have a signed \
-                 document in memory (e.g. from an approval context or message payload) and \
-                 need to confirm its integrity and authenticity.",
-                Self::jacs_verify_document_schema(),
-            ),
-            // --- A2A artifact tools ---
-            Tool::new(
-                "jacs_wrap_a2a_artifact",
-                "Wrap an A2A artifact with JACS provenance. Signs the artifact JSON, binding \
-                 this agent's identity to the content. Optionally include parent signatures \
-                 for chain-of-custody provenance.",
-                Self::jacs_wrap_a2a_artifact_schema(),
-            ),
-            Tool::new(
-                "jacs_verify_a2a_artifact",
-                "Verify a JACS-wrapped A2A artifact. Checks the cryptographic signature and \
-                 hash to confirm the artifact was signed by the claimed agent and has not \
-                 been tampered with.",
-                Self::jacs_verify_a2a_artifact_schema(),
-            ),
-            Tool::new(
-                "jacs_assess_a2a_agent",
-                "Assess the trust level of a remote A2A agent given its Agent Card. Applies \
-                 a trust policy (open, verified, or strict) and returns whether the agent is \
-                 allowed and at what trust level.",
-                Self::jacs_assess_a2a_agent_schema(),
-            ),
-            // --- Agent Card & well-known tools ---
-            Tool::new(
-                "jacs_export_agent_card",
-                "Export this agent's A2A Agent Card as JSON. The Agent Card describes the \
-                 agent's capabilities, endpoints, and identity for A2A discovery.",
-                Self::jacs_export_agent_card_schema(),
-            ),
-            Tool::new(
-                "jacs_generate_well_known",
-                "Generate all .well-known documents for A2A discovery. Returns an array of \
-                 {path, document} objects that can be served at each path for agent discovery.",
-                Self::jacs_generate_well_known_schema(),
-            ),
-            Tool::new(
-                "jacs_export_agent",
-                "Export the local agent's full JACS JSON document. This includes the agent's \
-                 identity, public key hash, and signed metadata.",
-                Self::jacs_export_agent_schema(),
-            ),
-            // --- Trust store tools ---
-            Tool::new(
-                "jacs_trust_agent",
-                "Add an agent to the local trust store. The agent's self-signature is \
-                 cryptographically verified before it is trusted. Pass the full agent JSON \
-                 document. Returns the trusted agent ID on success.",
-                Self::jacs_trust_agent_schema(),
-            ),
-            Tool::new(
-                "jacs_untrust_agent",
-                "Remove an agent from the local trust store. \
-                 SECURITY: Requires JACS_MCP_ALLOW_UNTRUST=true environment variable to prevent \
-                 prompt injection attacks from removing trusted agents without user consent.",
-                Self::jacs_untrust_agent_schema(),
-            ),
-            Tool::new(
-                "jacs_list_trusted_agents",
-                "List all agent IDs currently in the local trust store. Returns the count \
-                 and a list of trusted agent IDs.",
-                Self::jacs_list_trusted_agents_schema(),
-            ),
-            Tool::new(
-                "jacs_is_trusted",
-                "Check whether a specific agent is in the local trust store. Returns a boolean \
-                 indicating trust status.",
-                Self::jacs_is_trusted_schema(),
-            ),
-            Tool::new(
-                "jacs_get_trusted_agent",
-                "Retrieve the full agent JSON document for a trusted agent from the local \
-                 trust store. Fails if the agent is not trusted.",
-                Self::jacs_get_trusted_agent_schema(),
-            ),
-            // --- Attestation tools ---
-            Tool::new(
-                "jacs_attest_create",
-                "Create a signed attestation document. Provide a JSON string with: subject \
-                 (type, id, digests), claims (name, value, confidence, assuranceLevel), and \
-                 optional evidence, derivation, and policyContext. Requires the attestation \
-                 feature.",
-                Self::jacs_attest_create_schema(),
-            ),
-            Tool::new(
-                "jacs_attest_verify",
-                "Verify an attestation document. Provide a document_key in 'jacsId:jacsVersion' \
-                 format. Set full=true for full-tier verification including evidence and \
-                 derivation chain checks. Requires the attestation feature.",
-                Self::jacs_attest_verify_schema(),
-            ),
-            Tool::new(
-                "jacs_attest_lift",
-                "Lift an existing signed JACS document into an attestation. Provide the signed \
-                 document JSON and a JSON array of claims to attach. Requires the attestation \
-                 feature.",
-                Self::jacs_attest_lift_schema(),
-            ),
-            Tool::new(
-                "jacs_attest_export_dsse",
-                "Export an attestation as a DSSE envelope for in-toto/SLSA compatibility. \
-                 Provide the signed attestation document JSON. Returns a DSSE envelope with \
-                 payloadType, payload, and signatures. Requires the attestation feature.",
-                Self::jacs_attest_export_dsse_schema(),
-            ),
-        ]
+        crate::tools::all_tools()
     }
 
-    fn jacs_sign_state_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(SignStateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
+    /// Get the list of tools for the active runtime profile.
+    ///
+    /// This is what should be advertised to MCP clients.
+    pub fn active_tools(&self) -> Vec<Tool> {
+        self.profile.tools()
     }
 
-    fn jacs_verify_state_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(VerifyStateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_load_state_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(LoadStateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_update_state_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(UpdateStateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_list_state_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(ListStateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_adopt_state_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(AdoptStateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_create_agent_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(CreateAgentProgrammaticParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_reencrypt_key_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(ReencryptKeyParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_audit_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(JacsAuditParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_message_send_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(MessageSendParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_message_update_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(MessageUpdateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_message_agree_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(MessageAgreeParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_message_receive_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(MessageReceiveParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_create_agreement_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(CreateAgreementParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_sign_agreement_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(SignAgreementParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_check_agreement_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(CheckAgreementParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_sign_document_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(SignDocumentParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_verify_document_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(VerifyDocumentParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_wrap_a2a_artifact_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(WrapA2aArtifactParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_verify_a2a_artifact_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(VerifyA2aArtifactParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_assess_a2a_agent_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(AssessA2aAgentParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_export_agent_card_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(ExportAgentCardParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_generate_well_known_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(GenerateWellKnownParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_export_agent_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(ExportAgentParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_trust_agent_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(TrustAgentParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_untrust_agent_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(UntrustAgentParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_list_trusted_agents_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(ListTrustedAgentsParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_is_trusted_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(IsTrustedParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_get_trusted_agent_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(GetTrustedAgentParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_attest_create_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(AttestCreateParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_attest_verify_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(AttestVerifyParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_attest_lift_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(AttestLiftParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
-    }
-
-    fn jacs_attest_export_dsse_schema() -> serde_json::Map<String, serde_json::Value> {
-        let schema = schemars::schema_for!(AttestExportDsseParams);
-        match serde_json::to_value(schema) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        }
+    /// Get a reference to the active runtime profile.
+    pub fn profile(&self) -> &crate::profile::Profile {
+        &self.profile
     }
 }
 
@@ -1918,6 +416,19 @@ impl JacsMcpServer {
                 name: params.name,
                 message: "Path validation failed".to_string(),
                 error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if let Err(error_code) = validate_state_file_root(&params.file_path) {
+            let result = SignStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "State file access is restricted to approved JACS data roots.".to_string(),
+                error: Some(error_code),
             };
             return serde_json::to_string_pretty(&result)
                 .unwrap_or_else(|e| format!("Error: {}", e));
@@ -1990,17 +501,25 @@ impl JacsMcpServer {
 
         // Sign and persist through JACS document storage so subsequent MCP calls can
         // reference only the JACS document ID (no sidecar/path coupling).
+        // no_save=false so the document is stored in the agent's own storage
+        // (documents/ directory), making it discoverable via list_document_keys().
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None, // custom_schema
-            None, // outputfilename
-            true, // no_save
-            None, // attachments
+            None,  // custom_schema
+            None,  // outputfilename
+            false, // no_save — persist immediately so list_state can find it
+            None,  // attachments
             Some(embed || params.state_type == "hook"),
         ) {
-            Ok(signed_doc_string) => {
-                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+            Ok(save_result) => {
+                // With no_save=false, create_document returns "saved  {id}:{version}"
+                let doc_id = save_result
+                    .strip_prefix("saved  ")
+                    .map(|s| s.to_string())
+                    .or_else(|| extract_document_lookup_key_from_str(&save_result));
+
+                let doc_id = match doc_id {
                     Some(id) => id,
                     None => {
                         return serde_json::to_string_pretty(&SignStateResult {
@@ -2014,21 +533,6 @@ impl JacsMcpServer {
                         .unwrap_or_else(|e| format!("Error: {}", e));
                     }
                 };
-
-                if let Err(e) =
-                    self.agent
-                        .save_signed_document(&signed_doc_string, None, None, None)
-                {
-                    return serde_json::to_string_pretty(&SignStateResult {
-                        success: false,
-                        jacs_document_id: Some(doc_id),
-                        state_type: params.state_type,
-                        name: params.name,
-                        message: "Failed to persist signed state document".to_string(),
-                        error: Some(e.to_string()),
-                    })
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-                }
 
                 SignStateResult {
                     success: true,
@@ -2052,7 +556,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Verify the integrity and authenticity of a signed agent state.
@@ -2283,7 +789,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, Some(&doc))
     }
 
     /// Update a previously signed agent state file.
@@ -2381,7 +889,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// List signed agent state documents.
@@ -2462,6 +972,15 @@ impl JacsMcpServer {
         }
 
         matched.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+
+        // Deduplicate: keep only the latest version per jacsId.
+        // Keys are "jacsId:jacsVersion" — group by the id prefix.
+        let mut seen_ids = std::collections::HashSet::new();
+        matched.retain(|(_, key, _)| {
+            let jacs_id = key.split(':').next().unwrap_or(key);
+            seen_ids.insert(jacs_id.to_string())
+        });
+
         let result = ListStateResult {
             success: true,
             documents: matched.into_iter().map(|(_, _, entry)| entry).collect(),
@@ -2472,7 +991,9 @@ impl JacsMcpServer {
             error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Adopt an external file as signed agent state.
@@ -2496,6 +1017,19 @@ impl JacsMcpServer {
                 name: params.name,
                 message: "Path validation failed".to_string(),
                 error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if let Err(error_code) = validate_state_file_root(&params.file_path) {
+            let result = AdoptStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "State file access is restricted to approved JACS data roots.".to_string(),
+                error: Some(error_code),
             };
             return serde_json::to_string_pretty(&result)
                 .unwrap_or_else(|e| format!("Error: {}", e));
@@ -2614,7 +1148,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Create a new JACS agent programmatically.
@@ -2640,6 +1176,48 @@ impl JacsMcpServer {
                           environment variable to enable."
                     .to_string(),
                 error: Some("REGISTRATION_NOT_ALLOWED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if !inline_secrets_allowed() {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Inline passwords are disabled for MCP. Use an operator-provided \
+                          secret channel or set JACS_MCP_ALLOW_INLINE_SECRETS=true to opt in."
+                    .to_string(),
+                error: Some("INLINE_SECRET_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if let Err(e) =
+            validate_optional_relative_path("data_directory", params.data_directory.as_ref())
+        {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Agent creation directory validation failed".to_string(),
+                error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        if let Err(e) =
+            validate_optional_relative_path("key_directory", params.key_directory.as_ref())
+        {
+            let result = CreateAgentProgrammaticResult {
+                success: false,
+                agent_id: None,
+                name: params.name,
+                message: "Agent creation directory validation failed".to_string(),
+                error: Some(format!("PATH_TRAVERSAL_BLOCKED: {}", e)),
             };
             return serde_json::to_string_pretty(&result)
                 .unwrap_or_else(|e| format!("Error: {}", e));
@@ -2695,6 +1273,18 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<ReencryptKeyParams>,
     ) -> String {
+        if !inline_secrets_allowed() {
+            let result = ReencryptKeyResult {
+                success: false,
+                message: "Inline passwords are disabled for MCP. Use an operator-provided \
+                          secret channel or set JACS_MCP_ALLOW_INLINE_SECRETS=true to opt in."
+                    .to_string(),
+                error: Some("INLINE_SECRET_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         let result = match self
             .agent
             .reencrypt_key(&params.old_password, &params.new_password)
@@ -2728,6 +1318,533 @@ impl JacsMcpServer {
             })
             .to_string(),
         }
+    }
+
+    /// Record an audit trail event as a signed agentstate document with type "hook".
+    ///
+    /// Builds an agentstate document containing the action, target, details, and tags,
+    /// then signs and persists it. All audit entries are private and use the "hook" state type.
+    #[tool(
+        name = "jacs_audit_log",
+        description = "Record a tool-use, data-access, or other event as a cryptographically signed audit trail entry."
+    )]
+    pub async fn jacs_audit_log(&self, Parameters(params): Parameters<AuditLogParams>) -> String {
+        // Build the audit entry content as JSON.
+        let timestamp = format_iso8601(std::time::SystemTime::now());
+        let mut content_obj = serde_json::json!({
+            "action": params.action,
+            "timestamp": timestamp,
+        });
+        if let Some(ref target) = params.target {
+            content_obj["target"] = serde_json::json!(target);
+        }
+        if let Some(ref details) = params.details {
+            content_obj["details"] = serde_json::json!(details);
+        }
+        if let Some(ref tags) = params.tags {
+            content_obj["tags"] = serde_json::json!(tags);
+        }
+
+        let content_str = serde_json::to_string_pretty(&content_obj).unwrap_or_default();
+
+        // Create an agentstate document with inline content.
+        let name = format!("audit_{}_{}", params.action, &timestamp[..10]);
+        let mut doc = match agentstate_crud::create_agentstate_with_content(
+            "hook",
+            &name,
+            &content_str,
+            "application/json",
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = AuditLogResult {
+                    success: false,
+                    jacs_document_id: None,
+                    action: params.action,
+                    message: "Failed to create audit entry document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Set tags if provided.
+        if let Some(tags) = &params.tags {
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            let _ = agentstate_crud::set_agentstate_tags(&mut doc, tag_refs);
+        }
+
+        // Always private, origin "authored".
+        let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
+        doc["jacsVisibility"] = serde_json::json!("private");
+
+        // Sign and persist.
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,       // custom_schema
+            None,       // outputfilename
+            true,       // no_save
+            None,       // attachments
+            Some(true), // embed
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&AuditLogResult {
+                            success: false,
+                            jacs_document_id: None,
+                            action: params.action,
+                            message: "Failed to determine the signed document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&AuditLogResult {
+                        success: false,
+                        jacs_document_id: Some(doc_id),
+                        action: params.action,
+                        message: "Failed to persist signed audit entry".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+
+                AuditLogResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    action: params.action,
+                    message: "Audit entry recorded successfully".to_string(),
+                    error: None,
+                }
+            }
+            Err(e) => AuditLogResult {
+                success: false,
+                jacs_document_id: None,
+                action: params.action,
+                message: "Failed to sign audit entry document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Query the audit trail by action type, target, and/or time range.
+    ///
+    /// Iterates over all stored documents, filters to hook-type agentstate
+    /// documents, and applies optional action/target/time filters.
+    #[tool(
+        name = "jacs_audit_query",
+        description = "Search the audit trail by action type, target, and/or time range."
+    )]
+    pub async fn jacs_audit_query(
+        &self,
+        Parameters(params): Parameters<AuditQueryParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = AuditQueryResult {
+                    success: false,
+                    entries: Vec::new(),
+                    total: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let limit = params.limit.unwrap_or(50) as usize;
+        let offset = params.offset.unwrap_or(0) as usize;
+        let mut matched: Vec<(String, AuditQueryEntry)> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Must be agentstate with type "hook".
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("hook") {
+                continue;
+            }
+
+            // Parse the embedded audit content.
+            let content_str = extract_embedded_state_content(&doc).unwrap_or_default();
+            let content: serde_json::Value =
+                serde_json::from_str(&content_str).unwrap_or(serde_json::Value::Null);
+
+            let action = content
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let target = content
+                .get("target")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let timestamp = content
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let details = content
+                .get("details")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+
+            // Apply filters.
+            if let Some(ref filter_action) = params.action {
+                if action != *filter_action {
+                    continue;
+                }
+            }
+            if let Some(ref filter_target) = params.target {
+                match target.as_deref() {
+                    Some(t) if t == filter_target.as_str() => {}
+                    _ => continue,
+                }
+            }
+            if let Some(ref start) = params.start_time {
+                if timestamp.as_str() < start.as_str() {
+                    continue;
+                }
+            }
+            if let Some(ref end) = params.end_time {
+                if timestamp.as_str() > end.as_str() {
+                    continue;
+                }
+            }
+
+            matched.push((
+                timestamp.clone(),
+                AuditQueryEntry {
+                    jacs_document_id: key,
+                    action,
+                    target,
+                    timestamp,
+                    details,
+                },
+            ));
+        }
+
+        // Sort by timestamp descending (newest first).
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        let total = matched.len();
+        let entries: Vec<AuditQueryEntry> = matched
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, entry)| entry)
+            .collect();
+
+        let result = AuditQueryResult {
+            success: true,
+            entries,
+            total,
+            message: format!("Found {} audit entries", total),
+            error: None,
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Export audit trail entries for a time period as a signed JACS document.
+    ///
+    /// Queries all hook-type agentstate documents within the time range,
+    /// collects them into a JSON array, wraps in a new JACS document, and signs it.
+    #[tool(
+        name = "jacs_audit_export",
+        description = "Export audit trail entries for a time period as a single signed JACS document."
+    )]
+    pub async fn jacs_audit_export(
+        &self,
+        Parameters(params): Parameters<AuditExportParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = AuditExportResult {
+                    success: false,
+                    signed_bundle: None,
+                    entry_count: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut entries: Vec<serde_json::Value> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Must be agentstate with type "hook".
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("hook") {
+                continue;
+            }
+
+            // Parse the embedded audit content for time filtering.
+            let content_str = extract_embedded_state_content(&doc).unwrap_or_default();
+            let content: serde_json::Value =
+                serde_json::from_str(&content_str).unwrap_or(serde_json::Value::Null);
+
+            let timestamp = content
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let action = content.get("action").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Apply time range filter.
+            if timestamp < params.start_time.as_str() {
+                continue;
+            }
+            if timestamp > params.end_time.as_str() {
+                continue;
+            }
+
+            // Apply optional action filter.
+            if let Some(ref filter_action) = params.action {
+                if action != filter_action.as_str() {
+                    continue;
+                }
+            }
+
+            entries.push(content);
+        }
+
+        let entry_count = entries.len();
+
+        // Wrap entries into a single bundle document.
+        let bundle_content = serde_json::json!({
+            "audit_export": true,
+            "start_time": params.start_time,
+            "end_time": params.end_time,
+            "entry_count": entry_count,
+            "entries": entries,
+        });
+        let bundle_str = serde_json::to_string_pretty(&bundle_content).unwrap_or_default();
+
+        let name = format!(
+            "audit_export_{}_to_{}",
+            &params.start_time[..10.min(params.start_time.len())],
+            &params.end_time[..10.min(params.end_time.len())]
+        );
+
+        let mut doc = match agentstate_crud::create_agentstate_with_content(
+            "hook",
+            &name,
+            &bundle_str,
+            "application/json",
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = AuditExportResult {
+                    success: false,
+                    signed_bundle: None,
+                    entry_count,
+                    message: "Failed to create audit export document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
+        doc["jacsVisibility"] = serde_json::json!("private");
+
+        // Sign and persist.
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,       // custom_schema
+            None,       // outputfilename
+            true,       // no_save
+            None,       // attachments
+            Some(true), // embed
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&AuditExportResult {
+                            success: false,
+                            signed_bundle: None,
+                            entry_count,
+                            message: "Failed to determine the signed document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&AuditExportResult {
+                        success: false,
+                        signed_bundle: Some(signed_doc_string),
+                        entry_count,
+                        message: "Audit export signed but failed to persist".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+
+                AuditExportResult {
+                    success: true,
+                    signed_bundle: Some(signed_doc_string),
+                    entry_count,
+                    message: format!(
+                        "Exported {} audit entries as signed bundle (id: {})",
+                        entry_count, doc_id
+                    ),
+                    error: None,
+                }
+            }
+            Err(e) => AuditExportResult {
+                success: false,
+                signed_bundle: None,
+                entry_count,
+                message: "Failed to sign audit export document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Search across all signed documents using the configured document service.
+    #[tool(
+        name = "jacs_search",
+        description = "Search across all signed documents using the unified search interface."
+    )]
+    pub async fn jacs_search(&self, Parameters(params): Parameters<SearchParams>) -> String {
+        let Some(service) = self.document_service.as_ref() else {
+            let result = SearchResult {
+                success: false,
+                results: Vec::new(),
+                total: 0,
+                search_method: None,
+                message: "Document service is not available for the configured storage backend"
+                    .to_string(),
+                error: Some("document_service_unavailable".to_string()),
+            };
+            let serialized =
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+            return inject_meta(&serialized, None);
+        };
+
+        let query_text = params.query.clone();
+        let query = jacs::search::SearchQuery {
+            query: params.query,
+            jacs_type: params.jacs_type,
+            agent_id: params.agent_id,
+            field_filter: params.field_filter.map(|filter| jacs::search::FieldFilter {
+                field_path: filter.field_path,
+                value: filter.value,
+            }),
+            limit: params.limit.unwrap_or(20) as usize,
+            offset: params.offset.unwrap_or(0) as usize,
+            min_score: params.min_score,
+        };
+
+        let search_results = match service.search(query) {
+            Ok(results) => results,
+            Err(err) => {
+                let result = SearchResult {
+                    success: false,
+                    results: Vec::new(),
+                    total: 0,
+                    search_method: None,
+                    message: "Search failed".to_string(),
+                    error: Some(err.to_string()),
+                };
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                return inject_meta(&serialized, None);
+            }
+        };
+
+        let search_method = match search_results.method {
+            jacs::search::SearchMethod::FullText => "fulltext",
+            jacs::search::SearchMethod::Vector => "vector",
+            jacs::search::SearchMethod::Hybrid => "hybrid",
+            jacs::search::SearchMethod::FieldMatch => "field_match",
+            jacs::search::SearchMethod::Unsupported => "unsupported",
+        }
+        .to_string();
+
+        let results = search_results
+            .results
+            .into_iter()
+            .map(|hit| {
+                let doc = &hit.document.value;
+                let name = value_string(doc, "jacsAgentStateName")
+                    .or_else(|| value_string(doc, "jacsName"))
+                    .or_else(|| value_string(doc, "name"));
+                let snippet = extract_embedded_state_content(doc)
+                    .or_else(|| value_string(doc, "jacsDescription"))
+                    .or_else(|| value_string(doc, "content"));
+
+                SearchResultEntry {
+                    jacs_document_id: hit.document.getkey(),
+                    jacs_type: Some(hit.document.jacs_type.clone()),
+                    name,
+                    snippet,
+                    score: Some(hit.score),
+                    search_method: Some(search_method.clone()),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let total = search_results.total_count;
+        let result = SearchResult {
+            success: true,
+            results,
+            total,
+            search_method: Some(search_method),
+            message: format!("Found {} documents matching '{}'", total, query_text),
+            error: None,
+        };
+
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Create and sign a message document for sending to another agent.
@@ -2839,7 +1956,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Update and re-sign an existing message document with new content.
@@ -2954,7 +2073,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Co-sign (agree to) a received signed message.
@@ -3047,7 +2168,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Verify and extract content from a received signed message.
@@ -3126,6 +2249,23 @@ impl JacsMcpServer {
             .and_then(|v| v.as_str())
             .map(String::from);
 
+        if !signature_valid {
+            let result = MessageReceiveResult {
+                success: false,
+                sender_agent_id: None,
+                content: None,
+                content_type: None,
+                timestamp: None,
+                signature_valid: false,
+                error: Some(
+                    "Message signature is INVALID — content may have been tampered with"
+                        .to_string(),
+                ),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         let result = MessageReceiveResult {
             success: true,
             sender_agent_id,
@@ -3133,17 +2273,12 @@ impl JacsMcpServer {
             content_type,
             timestamp,
             signature_valid,
-            error: if !signature_valid {
-                Some(
-                    "Message signature is INVALID — content may have been tampered with"
-                        .to_string(),
-                )
-            } else {
-                None
-            },
+            error: None,
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, Some(&doc))
     }
 
     // =========================================================================
@@ -3218,7 +2353,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Co-sign an existing agreement.
@@ -3266,7 +2403,9 @@ impl JacsMcpServer {
             },
         };
 
-        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
     }
 
     /// Check the status of an agreement.
@@ -3282,7 +2421,32 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<CheckAgreementParams>,
     ) -> String {
-        // Parse the agreement to extract status without full verification
+        let fieldname = params
+            .agreement_fieldname
+            .unwrap_or_else(|| "jacsAgreement".to_string());
+
+        if let Err(e) = self
+            .agent
+            .check_agreement(&params.signed_agreement, Some(fieldname.clone()))
+        {
+            let result = CheckAgreementResult {
+                success: false,
+                complete: false,
+                total_agents: 0,
+                signatures_collected: 0,
+                signatures_required: 0,
+                quorum_met: false,
+                expired: false,
+                signed_by: None,
+                unsigned: None,
+                timeout: None,
+                error: Some(format!("Failed to check agreement: {}", e)),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Parse the verified agreement to extract status details.
         let doc: serde_json::Value = match serde_json::from_str(&params.signed_agreement) {
             Ok(v) => v,
             Err(e) => {
@@ -3303,10 +2467,6 @@ impl JacsMcpServer {
                     .unwrap_or_else(|e| format!("Error: {}", e));
             }
         };
-
-        let fieldname = params
-            .agreement_fieldname
-            .unwrap_or_else(|| "jacsAgreement".to_string());
 
         let agreement = match doc.get(&fieldname) {
             Some(a) => a,
@@ -3467,7 +2627,9 @@ impl JacsMcpServer {
                     message: "Document signed successfully".to_string(),
                     error: None,
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, Some(&content_value))
             }
             Err(e) => {
                 let result = SignDocumentResult {
@@ -3478,7 +2640,9 @@ impl JacsMcpServer {
                     message: "Failed to sign document".to_string(),
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
         }
     }
@@ -3580,7 +2744,9 @@ impl JacsMcpServer {
                     message: "Artifact wrapped with JACS provenance".to_string(),
                     error: None,
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
             Err(e) => {
                 let result = WrapA2aArtifactResult {
@@ -3589,7 +2755,9 @@ impl JacsMcpServer {
                     message: "Failed to wrap artifact".to_string(),
                     error: Some(e.to_string()),
                 };
-                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
             }
         }
     }
@@ -4208,10 +3376,621 @@ impl JacsMcpServer {
             .to_string()
         }
     }
+
+    // =========================================================================
+    // Memory Tools
+    // =========================================================================
+
+    /// Save a memory as a cryptographically signed private agentstate document.
+    ///
+    /// Builds an agentstate document with `jacsAgentStateType: "memory"`,
+    /// embeds the content inline, and signs it. No file path required.
+    #[tool(
+        name = "jacs_memory_save",
+        description = "Save a memory as a cryptographically signed private document."
+    )]
+    pub async fn jacs_memory_save(
+        &self,
+        Parameters(params): Parameters<MemorySaveParams>,
+    ) -> String {
+        // Build agentstate document with inline content (no file path).
+        let mut doc = match agentstate_crud::create_agentstate_with_content(
+            "memory",
+            &params.name,
+            &params.content,
+            "text/plain",
+        ) {
+            Ok(doc) => doc,
+            Err(e) => {
+                let result = MemorySaveResult {
+                    success: false,
+                    jacs_document_id: None,
+                    name: params.name,
+                    message: "Failed to create memory document".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Set optional fields.
+        if let Some(desc) = &params.description {
+            doc["jacsAgentStateDescription"] = serde_json::json!(desc);
+        }
+
+        if let Some(framework) = &params.framework {
+            if let Err(e) = agentstate_crud::set_agentstate_framework(&mut doc, framework) {
+                let result = MemorySaveResult {
+                    success: false,
+                    jacs_document_id: None,
+                    name: params.name,
+                    message: "Failed to set framework".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        if let Some(tags) = &params.tags {
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            if let Err(e) = agentstate_crud::set_agentstate_tags(&mut doc, tag_refs) {
+                let result = MemorySaveResult {
+                    success: false,
+                    jacs_document_id: None,
+                    name: params.name,
+                    message: "Failed to set tags".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        // Mark origin as "authored" and visibility as private.
+        let _ = agentstate_crud::set_agentstate_origin(&mut doc, "authored", None);
+        doc["jacsVisibility"] = serde_json::json!("private");
+
+        // Sign and persist the document.
+        let doc_string = doc.to_string();
+        let result = match self.agent.create_document(
+            &doc_string,
+            None,       // custom_schema
+            None,       // outputfilename
+            true,       // no_save
+            None,       // attachments
+            Some(true), // embed
+        ) {
+            Ok(signed_doc_string) => {
+                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+                    Some(id) => id,
+                    None => {
+                        return serde_json::to_string_pretty(&MemorySaveResult {
+                            success: false,
+                            jacs_document_id: None,
+                            name: params.name,
+                            message: "Failed to determine the signed document ID".to_string(),
+                            error: Some("DOCUMENT_ID_MISSING".to_string()),
+                        })
+                        .unwrap_or_else(|e| format!("Error: {}", e));
+                    }
+                };
+
+                if let Err(e) =
+                    self.agent
+                        .save_signed_document(&signed_doc_string, None, None, None)
+                {
+                    return serde_json::to_string_pretty(&MemorySaveResult {
+                        success: false,
+                        jacs_document_id: Some(doc_id),
+                        name: params.name,
+                        message: "Failed to persist signed memory document".to_string(),
+                        error: Some(e.to_string()),
+                    })
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                }
+
+                MemorySaveResult {
+                    success: true,
+                    jacs_document_id: Some(doc_id),
+                    name: params.name,
+                    message: "Memory saved successfully".to_string(),
+                    error: None,
+                }
+            }
+            Err(e) => MemorySaveResult {
+                success: false,
+                jacs_document_id: None,
+                name: params.name,
+                message: "Failed to sign memory document".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Search saved memories by query string and optional tag filter.
+    ///
+    /// Iterates over all stored documents, filters to memory-type agentstate
+    /// documents that are not marked as removed, and matches the query against
+    /// the name, content, and description fields.
+    #[tool(
+        name = "jacs_memory_recall",
+        description = "Search saved memories by query string and optional tag filter."
+    )]
+    pub async fn jacs_memory_recall(
+        &self,
+        Parameters(params): Parameters<MemoryRecallParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = MemoryRecallResult {
+                    success: false,
+                    memories: Vec::new(),
+                    total: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let limit = params.limit.unwrap_or(10) as usize;
+        let query_lower = params.query.to_lowercase();
+        let mut matched: Vec<(String, MemoryEntry)> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Filter: must be agentstate with type "memory" and not removed.
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+                continue;
+            }
+            if doc
+                .get("jacsAgentStateRemoved")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                continue;
+            }
+
+            // Filter by tags if specified.
+            let tags = value_string_vec(&doc, "jacsAgentStateTags");
+            if let Some(filter_tags) = params.tags.as_ref() {
+                let doc_tags = tags.clone().unwrap_or_default();
+                if !filter_tags
+                    .iter()
+                    .all(|tag| doc_tags.iter().any(|item| item == tag))
+                {
+                    continue;
+                }
+            }
+
+            // Match query against name, content, and description.
+            let name = value_string(&doc, "jacsAgentStateName").unwrap_or_default();
+            let content = extract_embedded_state_content(&doc).unwrap_or_default();
+            let description = value_string(&doc, "jacsAgentStateDescription").unwrap_or_default();
+
+            let matches = name.to_lowercase().contains(&query_lower)
+                || content.to_lowercase().contains(&query_lower)
+                || description.to_lowercase().contains(&query_lower);
+
+            if !matches {
+                continue;
+            }
+
+            let version_date = value_string(&doc, "jacsVersionDate").unwrap_or_default();
+            let framework = value_string(&doc, "jacsAgentStateFramework");
+
+            matched.push((
+                version_date,
+                MemoryEntry {
+                    jacs_document_id: key,
+                    name,
+                    content: Some(content),
+                    description: value_string(&doc, "jacsAgentStateDescription"),
+                    tags: tags.filter(|items| !items.is_empty()),
+                    framework,
+                },
+            ));
+        }
+
+        // Sort by version date descending (newest first).
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        let total = matched.len();
+        let memories: Vec<MemoryEntry> = matched
+            .into_iter()
+            .take(limit)
+            .map(|(_, entry)| entry)
+            .collect();
+
+        let result = MemoryRecallResult {
+            success: true,
+            memories,
+            total,
+            message: format!(
+                "Found {} memory/memories matching query '{}'",
+                total, params.query
+            ),
+            error: None,
+        };
+
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        // Memory documents are always private by design.
+        inject_meta(&serialized, None)
+    }
+
+    /// List all saved memory documents with optional filtering.
+    ///
+    /// Similar to `jacs_list_state` but locked to `state_type = "memory"`,
+    /// with pagination support and removal filtering.
+    #[tool(
+        name = "jacs_memory_list",
+        description = "List all saved memory documents with optional filtering and pagination."
+    )]
+    pub async fn jacs_memory_list(
+        &self,
+        Parameters(params): Parameters<MemoryListParams>,
+    ) -> String {
+        let keys = match self.agent.list_document_keys() {
+            Ok(keys) => keys,
+            Err(e) => {
+                let result = MemoryListResult {
+                    success: false,
+                    memories: Vec::new(),
+                    total: 0,
+                    message: "Failed to enumerate stored documents".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let limit = params.limit.unwrap_or(20) as usize;
+        let offset = params.offset.unwrap_or(0) as usize;
+        let mut matched: Vec<(String, bool, MemoryEntry)> = Vec::new();
+
+        for key in keys {
+            let doc_string = match self.agent.get_document_by_id(&key) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+            let doc = match serde_json::from_str::<serde_json::Value>(&doc_string) {
+                Ok(doc) => doc,
+                Err(_) => continue,
+            };
+
+            // Filter: must be agentstate with type "memory".
+            if doc.get("jacsType").and_then(|v| v.as_str()) != Some("agentstate") {
+                continue;
+            }
+            if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+                continue;
+            }
+
+            // Filter by framework if specified.
+            let framework = value_string(&doc, "jacsAgentStateFramework");
+            if let Some(filter) = params.framework.as_deref()
+                && framework.as_deref() != Some(filter)
+            {
+                continue;
+            }
+
+            // Filter by tags if specified.
+            let tags = value_string_vec(&doc, "jacsAgentStateTags");
+            if let Some(filter_tags) = params.tags.as_ref() {
+                let doc_tags = tags.clone().unwrap_or_default();
+                if !filter_tags
+                    .iter()
+                    .all(|tag| doc_tags.iter().any(|item| item == tag))
+                {
+                    continue;
+                }
+            }
+
+            let is_removed = doc
+                .get("jacsAgentStateRemoved")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let name = value_string(&doc, "jacsAgentStateName").unwrap_or_else(|| key.clone());
+            let content = extract_embedded_state_content(&doc);
+            let description = value_string(&doc, "jacsAgentStateDescription");
+            let version_date = value_string(&doc, "jacsVersionDate").unwrap_or_default();
+
+            matched.push((
+                version_date,
+                is_removed,
+                MemoryEntry {
+                    jacs_document_id: key,
+                    name,
+                    content,
+                    description,
+                    tags: tags.filter(|items| !items.is_empty()),
+                    framework,
+                },
+            ));
+        }
+
+        // Sort by version date descending (newest first), deduplicate to keep
+        // only the latest version per jacsId, then filter out removed.
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        {
+            let mut seen_ids = std::collections::HashSet::new();
+            matched.retain(|(_, _, entry)| {
+                let jacs_id = entry
+                    .jacs_document_id
+                    .split(':')
+                    .next()
+                    .unwrap_or(&entry.jacs_document_id);
+                seen_ids.insert(jacs_id.to_string())
+            });
+        }
+        matched.retain(|(_, is_removed, _)| !is_removed);
+        let total = matched.len();
+        let memories: Vec<MemoryEntry> = matched
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, _, entry)| entry)
+            .collect();
+
+        let result = MemoryListResult {
+            success: true,
+            memories,
+            total,
+            message: format!(
+                "Listed {} memory document(s) (total: {}).",
+                limit.min(total.saturating_sub(offset)),
+                total
+            ),
+            error: None,
+        };
+
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        // Memory documents are always private by design.
+        inject_meta(&serialized, None)
+    }
+
+    /// Mark a memory document as removed (soft-delete).
+    ///
+    /// Loads the document, sets `jacsAgentStateRemoved: true`, and re-signs
+    /// it as a new version. The provenance chain is preserved.
+    #[tool(
+        name = "jacs_memory_forget",
+        description = "Mark a memory document as removed while preserving its provenance chain."
+    )]
+    pub async fn jacs_memory_forget(
+        &self,
+        Parameters(params): Parameters<MemoryForgetParams>,
+    ) -> String {
+        let existing_doc_string = match self.agent.get_document_by_id(&params.jacs_id) {
+            Ok(s) => s,
+            Err(e) => {
+                let result = MemoryForgetResult {
+                    success: false,
+                    jacs_document_id: params.jacs_id,
+                    message: "Failed to load memory document".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut doc = match serde_json::from_str::<serde_json::Value>(&existing_doc_string) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = MemoryForgetResult {
+                    success: false,
+                    jacs_document_id: params.jacs_id,
+                    message: "Memory document is not valid JSON".to_string(),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Verify this is actually a memory document.
+        if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+            let result = MemoryForgetResult {
+                success: false,
+                jacs_document_id: params.jacs_id,
+                message: "Document is not a memory document".to_string(),
+                error: Some("NOT_A_MEMORY".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Check if already removed to avoid creating redundant versions.
+        if doc
+            .get("jacsAgentStateRemoved")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            let result = MemoryForgetResult {
+                success: false,
+                jacs_document_id: params.jacs_id,
+                message: "Memory is already forgotten".to_string(),
+                error: Some("ALREADY_REMOVED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Mark as removed.
+        doc["jacsAgentStateRemoved"] = serde_json::json!(true);
+
+        match self
+            .agent
+            .update_document(&params.jacs_id, &doc.to_string(), None, None)
+        {
+            Ok(updated_doc_string) => {
+                let new_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
+                    .ok()
+                    .and_then(|v| extract_document_lookup_key(&v))
+                    .unwrap_or_else(|| params.jacs_id.clone());
+
+                let result = MemoryForgetResult {
+                    success: true,
+                    jacs_document_id: new_id,
+                    message: format!(
+                        "Memory '{}' has been forgotten (provenance preserved)",
+                        params.jacs_id
+                    ),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Err(e) => {
+                let result = MemoryForgetResult {
+                    success: false,
+                    jacs_document_id: params.jacs_id,
+                    message: "Failed to update and re-sign memory document".to_string(),
+                    error: Some(e.to_string()),
+                };
+                serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+        }
+    }
+
+    /// Update an existing memory with new content, name, or tags.
+    ///
+    /// Loads the memory document, applies the requested changes, and creates
+    /// a new signed version linked to the previous version.
+    #[tool(
+        name = "jacs_memory_update",
+        description = "Update an existing memory with new content, name, or tags."
+    )]
+    pub async fn jacs_memory_update(
+        &self,
+        Parameters(params): Parameters<MemoryUpdateParams>,
+    ) -> String {
+        let existing_doc_string = match self.agent.get_document_by_id(&params.jacs_id) {
+            Ok(s) => s,
+            Err(e) => {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: format!("Failed to load memory document '{}'", params.jacs_id),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let mut doc = match serde_json::from_str::<serde_json::Value>(&existing_doc_string) {
+            Ok(v) => v,
+            Err(e) => {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: format!("Memory document '{}' is not valid JSON", params.jacs_id),
+                    error: Some(e.to_string()),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        // Verify this is actually a memory document.
+        if value_string(&doc, "jacsAgentStateType").as_deref() != Some("memory") {
+            let result = MemoryUpdateResult {
+                success: false,
+                jacs_document_id: None,
+                message: "Document is not a memory document".to_string(),
+                error: Some("NOT_A_MEMORY".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
+        // Apply updates.
+        if let Some(content) = params.content.as_deref() {
+            update_embedded_state_content(&mut doc, content);
+        }
+
+        if let Some(name) = &params.name {
+            doc["jacsAgentStateName"] = serde_json::json!(name);
+        }
+
+        if let Some(tags) = &params.tags {
+            let tag_refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+            if let Err(e) = agentstate_crud::set_agentstate_tags(&mut doc, tag_refs) {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: "Failed to set tags".to_string(),
+                    error: Some(e),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        }
+
+        match self
+            .agent
+            .update_document(&params.jacs_id, &doc.to_string(), None, None)
+        {
+            Ok(updated_doc_string) => {
+                let version_id = serde_json::from_str::<serde_json::Value>(&updated_doc_string)
+                    .ok()
+                    .and_then(|v| extract_document_lookup_key(&v))
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                let result = MemoryUpdateResult {
+                    success: true,
+                    jacs_document_id: Some(version_id),
+                    message: format!("Memory '{}' updated successfully", params.jacs_id),
+                    error: None,
+                };
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
+            }
+            Err(e) => {
+                let result = MemoryUpdateResult {
+                    success: false,
+                    jacs_document_id: None,
+                    message: format!("Failed to update and re-sign '{}'", params.jacs_id),
+                    error: Some(e.to_string()),
+                };
+                let serialized = serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+                inject_meta(&serialized, None)
+            }
+        }
+    }
 }
 
-// Implement the tool handler for the server
-#[tool_handler(router = self.tool_router)]
+// Implement the tool handler for the server.
+//
+// We intentionally do NOT use #[tool_handler(router = ...)] here because
+// the macro generates list_tools/call_tool that expose ALL compiled-in tools,
+// ignoring the runtime profile. Instead we manually implement list_tools to
+// return only profile-filtered tools, and call_tool to reject tools outside
+// the active profile before delegating to the router.
 impl ServerHandler for JacsMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -4237,6 +4016,11 @@ impl ServerHandler for JacsMcpServer {
                  (verify integrity), jacs_load_state (load with verification), \
                  jacs_update_state (update and re-sign), jacs_list_state (list signed docs), \
                  jacs_adopt_state (adopt external files). \
+                 \
+                 Memory tools: jacs_memory_save (save a memory), jacs_memory_recall \
+                 (search memories by query), jacs_memory_list (list all memories), \
+                 jacs_memory_forget (soft-delete a memory), jacs_memory_update \
+                 (update an existing memory). \
                  \
                  Messaging tools: jacs_message_send (create and sign a message), \
                  jacs_message_update (update and re-sign a message), \
@@ -4265,10 +4049,59 @@ impl ServerHandler for JacsMcpServer {
                  jacs_attest_lift (lift signed document into attestation), \
                  jacs_attest_export_dsse (export attestation as DSSE envelope). \
                  \
-                 Security: jacs_audit (read-only security audit and health checks)."
+                 Security: jacs_audit (read-only security audit and health checks). \
+                 \
+                 Audit trail: jacs_audit_log (record events as signed audit entries), \
+                 jacs_audit_query (search audit trail by action, target, time range), \
+                 jacs_audit_export (export audit trail as signed bundle). \
+                 \
+                 Search: jacs_search (unified search across all signed documents)."
                     .to_string(),
             ),
         }
+    }
+
+    /// Return only the tools that belong to the active runtime profile.
+    ///
+    /// This replaces the `#[tool_handler]`-generated `list_tools` which would
+    /// expose ALL compiled-in tools regardless of the profile.
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, rmcp::model::ErrorData> {
+        Ok(rmcp::model::ListToolsResult {
+            tools: self.active_tools(),
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    /// Dispatch a tool call, but only if the tool is in the active profile.
+    ///
+    /// Tools outside the active profile are rejected with a descriptive error
+    /// rather than being silently executed.
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParam,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::model::ErrorData> {
+        // Check that the requested tool is in the active profile.
+        let active = self.active_tools();
+        let tool_allowed = active.iter().any(|t| t.name == request.name);
+        if !tool_allowed {
+            return Err(rmcp::model::ErrorData::invalid_params(
+                format!(
+                    "Tool '{}' is not available in the '{}' profile. \
+                     Use --profile full or set JACS_MCP_PROFILE=full to access all tools.",
+                    request.name,
+                    self.profile().as_str(),
+                ),
+                None,
+            ));
+        }
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
     }
 }
 
@@ -4277,11 +4110,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tools_list() {
+    fn test_tools_list_matches_compiled_features() {
         let tools = JacsMcpServer::tools();
-        assert_eq!(tools.len(), 33, "JacsMcpServer should expose 33 tools");
-
         let names: Vec<&str> = tools.iter().map(|t| &*t.name).collect();
+
+        // Total should match the compiled-in tool count
+        assert_eq!(
+            tools.len(),
+            crate::tools::total_tool_count(),
+            "tools() count should match total_tool_count()"
+        );
+
+        // Core tools are always present (core-tools is in default features)
         assert!(names.contains(&"jacs_sign_state"));
         assert!(names.contains(&"jacs_verify_state"));
         assert!(names.contains(&"jacs_load_state"));
@@ -4291,34 +4131,46 @@ mod tests {
         assert!(names.contains(&"jacs_create_agent"));
         assert!(names.contains(&"jacs_reencrypt_key"));
         assert!(names.contains(&"jacs_audit"));
-        assert!(names.contains(&"jacs_message_send"));
-        assert!(names.contains(&"jacs_message_update"));
-        assert!(names.contains(&"jacs_message_agree"));
-        assert!(names.contains(&"jacs_message_receive"));
-        assert!(names.contains(&"jacs_create_agreement"));
-        assert!(names.contains(&"jacs_sign_agreement"));
-        assert!(names.contains(&"jacs_check_agreement"));
+        assert!(names.contains(&"jacs_audit_log"));
+        assert!(names.contains(&"jacs_audit_query"));
+        assert!(names.contains(&"jacs_audit_export"));
+        assert!(names.contains(&"jacs_search"));
         assert!(names.contains(&"jacs_sign_document"));
         assert!(names.contains(&"jacs_verify_document"));
-        // A2A artifact tools
-        assert!(names.contains(&"jacs_wrap_a2a_artifact"));
-        assert!(names.contains(&"jacs_verify_a2a_artifact"));
-        assert!(names.contains(&"jacs_assess_a2a_agent"));
-        // Agent Card & well-known tools
         assert!(names.contains(&"jacs_export_agent_card"));
         assert!(names.contains(&"jacs_generate_well_known"));
         assert!(names.contains(&"jacs_export_agent"));
-        // Trust store tools
         assert!(names.contains(&"jacs_trust_agent"));
         assert!(names.contains(&"jacs_untrust_agent"));
         assert!(names.contains(&"jacs_list_trusted_agents"));
         assert!(names.contains(&"jacs_is_trusted"));
         assert!(names.contains(&"jacs_get_trusted_agent"));
-        // Attestation tools
+        assert!(names.contains(&"jacs_memory_save"));
+        assert!(names.contains(&"jacs_memory_recall"));
+        assert!(names.contains(&"jacs_memory_list"));
+        assert!(names.contains(&"jacs_memory_forget"));
+        assert!(names.contains(&"jacs_memory_update"));
+
+        // Advanced tools conditionally present based on feature flags
+        #[cfg(feature = "messaging-tools")]
+        assert!(names.contains(&"jacs_message_send"));
+        #[cfg(not(feature = "messaging-tools"))]
+        assert!(!names.contains(&"jacs_message_send"));
+
+        #[cfg(feature = "agreement-tools")]
+        assert!(names.contains(&"jacs_create_agreement"));
+        #[cfg(not(feature = "agreement-tools"))]
+        assert!(!names.contains(&"jacs_create_agreement"));
+
+        #[cfg(feature = "a2a-tools")]
+        assert!(names.contains(&"jacs_wrap_a2a_artifact"));
+        #[cfg(not(feature = "a2a-tools"))]
+        assert!(!names.contains(&"jacs_wrap_a2a_artifact"));
+
+        #[cfg(feature = "attestation-tools")]
         assert!(names.contains(&"jacs_attest_create"));
-        assert!(names.contains(&"jacs_attest_verify"));
-        assert!(names.contains(&"jacs_attest_lift"));
-        assert!(names.contains(&"jacs_attest_export_dsse"));
+        #[cfg(not(feature = "attestation-tools"))]
+        assert!(!names.contains(&"jacs_attest_create"));
     }
 
     #[test]
@@ -4555,9 +4407,10 @@ mod tests {
         assert!(json.contains("signed_agreement"));
     }
 
+    #[cfg(feature = "agreement-tools")]
     #[test]
     fn test_tool_list_includes_agreement_tools() {
-        // Verify the 3 new agreement tools are in the tool list
+        // Verify the 3 agreement tools are registered when agreement-tools is enabled
         let tools = JacsMcpServer::tools();
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         assert!(
@@ -4691,7 +4544,7 @@ mod tests {
         // This should NOT be blocked by path validation (it will fail later
         // because the file doesn't exist, but NOT with PATH_TRAVERSAL_BLOCKED)
         let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
-            file_path: "data/my-state.json".to_string(),
+            file_path: "jacs_data/my-state.json".to_string(),
             state_type: "memory".to_string(),
             name: "safe-path-test".to_string(),
             description: None,
@@ -4702,6 +4555,44 @@ mod tests {
         assert!(
             !response.contains("PATH_TRAVERSAL_BLOCKED"),
             "Safe relative path should not be blocked: {}",
+            response
+        );
+    }
+
+    #[test]
+    fn test_sign_state_rejects_path_outside_default_state_roots() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_sign_state(Parameters(SignStateParams {
+            file_path: "notes/secret.txt".to_string(),
+            state_type: "memory".to_string(),
+            name: "blocked-root-test".to_string(),
+            description: None,
+            framework: None,
+            tags: None,
+            embed: None,
+        })));
+        assert!(
+            response.contains("STATE_FILE_ACCESS_BLOCKED"),
+            "Expected STATE_FILE_ACCESS_BLOCKED in: {}",
+            response
+        );
+    }
+
+    #[test]
+    fn test_adopt_state_rejects_path_outside_default_state_roots() {
+        let server = make_test_server();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let response = rt.block_on(server.jacs_adopt_state(Parameters(AdoptStateParams {
+            file_path: "notes/secret.txt".to_string(),
+            state_type: "skill".to_string(),
+            name: "blocked-root-test".to_string(),
+            source_url: Some("https://example.com/secret.txt".to_string()),
+            description: None,
+        })));
+        assert!(
+            response.contains("STATE_FILE_ACCESS_BLOCKED"),
+            "Expected STATE_FILE_ACCESS_BLOCKED in: {}",
             response
         );
     }

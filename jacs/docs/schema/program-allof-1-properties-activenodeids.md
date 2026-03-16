@@ -1,7 +1,7 @@
 # Untitled array in Program Schema
 
 ```txt
-https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/activeNodeIDs
+https://hai.ai/schemas/program/v1/program.schema.json#/allOf/1/properties/activeNodeIDs
 ```
 
 task being processed, a description can be found there.

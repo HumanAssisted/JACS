@@ -60,6 +60,44 @@ export interface Attachment {
     hash: string;
     embedded: boolean;
 }
+export interface AttestationCryptoVerificationResult {
+    signatureValid: boolean;
+    hashValid: boolean;
+    signerId: string;
+    algorithm: string;
+}
+export interface AttestationEvidenceVerificationResult {
+    kind: string;
+    digestValid: boolean;
+    freshnessValid: boolean;
+    detail: string;
+}
+export interface AttestationChainLink {
+    documentId: string;
+    valid: boolean;
+    detail: string;
+}
+export interface AttestationChainVerificationResult {
+    valid: boolean;
+    depth: number;
+    maxDepth: number;
+    links: AttestationChainLink[];
+}
+export interface AttestationVerificationResult {
+    valid: boolean;
+    crypto: AttestationCryptoVerificationResult;
+    evidence: AttestationEvidenceVerificationResult[];
+    chain?: AttestationChainVerificationResult | null;
+    errors: string[];
+}
+export interface DsseEnvelope {
+    payloadType: string;
+    payload: string;
+    signatures: Array<{
+        keyid?: string;
+        sig: string;
+    }>;
+}
 export interface LoadOptions {
     strict?: boolean;
 }
@@ -271,15 +309,21 @@ export declare function createAttestationSync(params: {
 /**
  * Verify an attestation document -- local tier (async).
  *
+ * The returned object preserves the canonical wire-format field names from the
+ * attestation/DSSE JSON contracts, which use camelCase.
+ *
  * @param attestationJson - Raw JSON string of the attestation document.
  * @param opts - Optional. Set full: true for full-tier verification.
  * @returns Verification result object.
  */
 export declare function verifyAttestation(attestationJson: string, opts?: {
     full?: boolean;
-}): Promise<Record<string, unknown>>;
+}): Promise<AttestationVerificationResult>;
 /**
  * Verify an attestation document -- local tier (sync).
+ *
+ * The returned object preserves the canonical wire-format field names from the
+ * attestation/DSSE JSON contracts, which use camelCase.
  *
  * @param attestationJson - Raw JSON string of the attestation document.
  * @param opts - Optional. Set full: true for full-tier verification.
@@ -287,7 +331,7 @@ export declare function verifyAttestation(attestationJson: string, opts?: {
  */
 export declare function verifyAttestationSync(attestationJson: string, opts?: {
     full?: boolean;
-}): Record<string, unknown>;
+}): AttestationVerificationResult;
 /**
  * Lift a signed document into an attestation (async).
  *
@@ -310,12 +354,12 @@ export declare function liftToAttestationSync(signedDocJson: string, claims: Rec
  * @param attestationJson - Raw JSON string of the attestation document.
  * @returns The DSSE envelope as a parsed object.
  */
-export declare function exportAttestationDsse(attestationJson: string): Promise<Record<string, unknown>>;
+export declare function exportAttestationDsse(attestationJson: string): Promise<DsseEnvelope>;
 /**
  * Export an attestation as a DSSE (Dead Simple Signing Envelope) (sync).
  *
  * @param attestationJson - Raw JSON string of the attestation document.
  * @returns The DSSE envelope as a parsed object.
  */
-export declare function exportAttestationDsseSync(attestationJson: string): Record<string, unknown>;
+export declare function exportAttestationDsseSync(attestationJson: string): DsseEnvelope;
 export declare function generateVerifyLink(doc: string, baseUrl?: string): string;

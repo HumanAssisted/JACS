@@ -151,7 +151,6 @@ algorithm to use for creating and using keys
 | :--------------- | :---------- |
 | `"RSA-PSS"`      |             |
 | `"ring-Ed25519"` |             |
-| `"pq-dilithium"` |             |
 | `"pq2025"`       |             |
 
 ## jacs\_agent\_schema\_version
@@ -210,7 +209,7 @@ version number of the schema used to validate signature
 
 ## jacs\_private\_key\_password
 
-encryption password. Do not use in production and instead only keep in ENV with JACS\_AGENT\_PRIVATE\_KEY\_PASSWORD
+DEPRECATED - DO NOT USE. Passwords in config files are a security risk. Use the JACS\_PRIVATE\_KEY\_PASSWORD environment variable instead. This field will trigger a security warning and be ignored.
 
 `jacs_private_key_password`
 
@@ -248,11 +247,18 @@ default storage to use
 
 **enum**: the value of this property must be equal to one of the following values:
 
-| Value   | Explanation |
-| :------ | :---------- |
-| `"fs"`  |             |
-| `"aws"` |             |
-| `"hai"` |             |
+| Value         | Explanation |
+| :------------ | :---------- |
+| `"fs"`        |             |
+| `"aws"`       |             |
+| `"hai"`       |             |
+| `"memory"`    |             |
+| `"database"`  |             |
+| `"sqlite"`    |             |
+| `"rusqlite"`  |             |
+| `"surrealdb"` |             |
+| `"duckdb"`    |             |
+| `"redb"`      |             |
 
 ## jacs\_agent\_domain
 

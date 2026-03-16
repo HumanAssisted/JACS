@@ -10,6 +10,17 @@ import pathlib
 import shutil
 import pytest
 
+# Default algorithm for tests. Override via JACS_TEST_ALGORITHM env var.
+# Ed25519 is ~100x faster than pq2025/RSA-PSS for key generation and signing.
+TEST_ALGORITHM = os.environ.get("JACS_TEST_ALGORITHM", "ed25519")
+
+# The internal Rust name for the test algorithm (used by simple.create / quickstart).
+TEST_ALGORITHM_INTERNAL = {
+    "ed25519": "ring-Ed25519",
+    "rsa-pss": "RSA-PSS",
+    "pq2025": "pq2025",
+}.get(TEST_ALGORITHM, TEST_ALGORITHM)
+
 _JACS_PATH_ENV_VARS = (
     "JACS_DATA_DIRECTORY",
     "JACS_KEY_DIRECTORY",
@@ -67,7 +78,7 @@ def _ensure_loadable_agent_fixture(fixtures_dir: pathlib.Path) -> None:
         simple.create(
             name="jacspy-test-agent",
             password=password,
-            algorithm="RSA-PSS",
+            algorithm=TEST_ALGORITHM_INTERNAL,
             data_directory="jacs_data",
             key_directory="jacs_keys",
             config_path="jacs.config.json",

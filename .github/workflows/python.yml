@@ -2,9 +2,23 @@ name: Python (jacs)
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["main"]
+    paths:
+      - "jacspy/**"
+      - "jacs/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/python.yml"
   pull_request:
-    branches: [ "master" ]
+    branches: ["main"]
+    paths:
+      - "jacspy/**"
+      - "jacs/**"
+      - "binding-core/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/python.yml"
   workflow_dispatch: # Allows manual triggering
 
 env:
@@ -24,8 +38,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image for testing (x86_64)
-        working-directory: jacspy # Directory containing DockerfileBuilder
-        run: docker buildx build --tag "jacs-build-x86_64" -f DockerfileBuilder . --load # --load makes image available
+        uses: docker/build-push-action@v5
+        with:
+          context: jacspy
+          file: jacspy/DockerfileBuilder
+          tags: jacs-build-x86_64
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Run jacs tests in Docker (x86_64)
         working-directory: jacspy # To match PWD context if needed by scripts
@@ -58,6 +78,7 @@ jobs:
 
   wheel-smoke-uv:
     name: Wheel smoke install (uv)
+    if: github.event_name == 'push'
     needs: test-jacs
     runs-on: ubuntu-latest
 
@@ -95,8 +116,10 @@ jobs:
           PY
 
   # Job to build wheels for CI coverage (PyPI package name is jacs)
+  # Only runs on pushes to main (not on PRs) to avoid slow QEMU aarch64 builds.
   build-jacs-wheels:
     name: Build jacs wheels on ${{ matrix.os }}
+    if: github.event_name == 'push'
     needs: [test-jacs, wheel-smoke-uv]
     runs-on: ${{ matrix.os }}
     strategy:

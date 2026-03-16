@@ -19,6 +19,12 @@ use std::path::PathBuf;
 ///
 /// Falls back to `~/.jacs/trusted_agents/` if platform detection fails.
 pub fn trust_store_dir() -> PathBuf {
+    if let Ok(override_dir) = std::env::var("JACS_TRUST_STORE_DIR")
+        && !override_dir.trim().is_empty()
+    {
+        return PathBuf::from(override_dir);
+    }
+
     #[cfg(target_os = "macos")]
     {
         if let Some(home) = dirs::home_dir() {
@@ -170,7 +176,7 @@ pub fn local_data_dir() -> PathBuf {
 /// Ensures a directory exists, creating it if necessary.
 ///
 /// Returns the path if successful, or an error if creation fails.
-pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, Box<dyn std::error::Error>> {
+pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, crate::error::JacsError> {
     if !path.exists() {
         std::fs::create_dir_all(path).map_err(|e| {
             let suggestion = match e.kind() {

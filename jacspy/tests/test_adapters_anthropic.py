@@ -7,12 +7,13 @@ import pytest
 
 from jacs.adapters.anthropic import JacsToolHook, signed_tool
 from jacs.client import JacsClient
+from conftest import TEST_ALGORITHM
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ephemeral_client():
     """Create an ephemeral JacsClient for testing."""
-    return JacsClient.ephemeral()
+    return JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
 
 # ------------------------------------------------------------------
@@ -110,7 +111,7 @@ class TestSignedToolModes:
 
     def test_strict_raises_on_broken_client(self):
         """In strict mode, signing failure raises an exception."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
         @signed_tool(client=client, strict=True)
         def my_tool() -> str:
@@ -124,7 +125,7 @@ class TestSignedToolModes:
 
     def test_permissive_passes_through(self):
         """In permissive mode, signing failure returns original value."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
         @signed_tool(client=client, strict=False)
         def my_tool() -> str:
@@ -136,7 +137,7 @@ class TestSignedToolModes:
 
     def test_permissive_dict_passes_through(self):
         """In permissive mode, dict is JSON-serialized on failure."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
 
         @signed_tool(client=client, strict=False)
         def my_tool() -> dict:
@@ -225,7 +226,7 @@ class TestJacsToolHook:
 
     def test_strict_mode_raises(self):
         """Hook in strict mode raises on signing failure."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         hook = JacsToolHook(client=client, strict=True)
         client.reset()
 
@@ -236,7 +237,7 @@ class TestJacsToolHook:
 
     def test_permissive_passes_through(self):
         """Hook in permissive mode passes through on failure."""
-        client = JacsClient.ephemeral()
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         hook = JacsToolHook(client=client, strict=False)
         client.reset()
 

@@ -165,7 +165,7 @@ impl Drop for ScopedTempCwd {
 fn create_test_agent(algorithm: &str) -> SimpleAgent {
     let _scope = ScopedTempCwd::enter(&format!("jacs_structlog_test_{}", algorithm));
 
-    let (agent, _info) = SimpleAgent::quickstart(
+    let (agent, _info) = jacs::simple::advanced::quickstart(
         "structured-log-agent",
         "structured-log.example.com",
         Some("Structured logging test agent"),
@@ -327,11 +327,12 @@ fn test_verify_emits_signature_verified_event() {
 
 #[test]
 #[serial]
+#[cfg(feature = "agreements")]
 fn test_agreement_created_event() {
     let _password = PasswordEnvGuard::set();
     let _scope = ScopedTempCwd::enter("jacs_structlog_agreement");
 
-    let (agent, info) = SimpleAgent::quickstart(
+    let (agent, info) = jacs::simple::advanced::quickstart(
         "structured-log-agreement-agent",
         "agreement.example.com",
         Some("Agreement structured logging test agent"),
@@ -347,14 +348,14 @@ fn test_agreement_created_event() {
     let payload = json!({"test": "agreement_logging", "jacsLevel": "artifact"}).to_string();
 
     let events = with_captured_logs(|| {
-        let _agreement = agent
-            .create_agreement(
-                &payload,
-                &[agent_id.clone()],
-                Some("Do you agree?"),
-                Some("Test context"),
-            )
-            .expect("create_agreement should succeed");
+        let _agreement = jacs::agreements::create(
+            &agent,
+            &payload,
+            &[agent_id.clone()],
+            Some("Do you agree?"),
+            Some("Test context"),
+        )
+        .expect("create_agreement should succeed");
     });
 
     let created_events = events_with_name(&events, "agreement_created");
@@ -376,11 +377,12 @@ fn test_agreement_created_event() {
 
 #[test]
 #[serial]
+#[cfg(feature = "agreements")]
 fn test_signature_added_and_quorum_events() {
     let _password = PasswordEnvGuard::set();
     let _scope = ScopedTempCwd::enter("jacs_structlog_sig_added");
 
-    let (agent, info) = SimpleAgent::quickstart(
+    let (agent, info) = jacs::simple::advanced::quickstart(
         "structured-log-signature-agent",
         "signature.example.com",
         Some("Signature structured logging test agent"),
@@ -395,20 +397,19 @@ fn test_signature_added_and_quorum_events() {
     let payload = json!({"test": "sig_added_logging", "jacsLevel": "artifact"}).to_string();
 
     // Create agreement first (outside capture)
-    let agreement = agent
-        .create_agreement(
-            &payload,
-            &[agent_id],
-            Some("Do you agree?"),
-            Some("Context"),
-        )
-        .expect("create_agreement should succeed");
+    let agreement = jacs::agreements::create(
+        &agent,
+        &payload,
+        &[agent_id],
+        Some("Do you agree?"),
+        Some("Context"),
+    )
+    .expect("create_agreement should succeed");
 
     // Now sign the agreement (inside capture)
     let events = with_captured_logs(|| {
-        let _signed = agent
-            .sign_agreement(&agreement.raw)
-            .expect("sign_agreement should succeed");
+        let _signed =
+            jacs::agreements::sign(&agent, &agreement.raw).expect("sign_agreement should succeed");
     });
 
     let added_events = events_with_name(&events, "signature_added");
@@ -526,9 +527,15 @@ mod attestation_tracing {
         let agent = ephemeral_agent();
 
         let events = with_captured_logs(|| {
-            let _doc = agent
-                .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
-                .expect("create attestation");
+            let _doc = jacs::attestation::simple::create(
+                &agent,
+                &test_subject(),
+                &[test_claim()],
+                &[],
+                None,
+                None,
+            )
+            .expect("create attestation");
         });
 
         let create_events = events_with_name(&events, "attestation_created");
@@ -558,9 +565,15 @@ mod attestation_tracing {
     #[serial]
     fn attestation_verify_local_emits_event() {
         let agent = ephemeral_agent();
-        let signed = agent
-            .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
-            .expect("create attestation");
+        let signed = jacs::attestation::simple::create(
+            &agent,
+            &test_subject(),
+            &[test_claim()],
+            &[],
+            None,
+            None,
+        )
+        .expect("create attestation");
 
         let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
         let key = format!(
@@ -570,7 +583,7 @@ mod attestation_tracing {
         );
 
         let events = with_captured_logs(|| {
-            let _result = agent.verify_attestation(&key).expect("local verify");
+            let _result = jacs::attestation::simple::verify(&agent, &key).expect("local verify");
         });
 
         let verify_events = events_with_name(&events, "attestation_verify_local");
@@ -599,9 +612,15 @@ mod attestation_tracing {
     #[serial]
     fn attestation_verify_full_emits_event() {
         let agent = ephemeral_agent();
-        let signed = agent
-            .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
-            .expect("create attestation");
+        let signed = jacs::attestation::simple::create(
+            &agent,
+            &test_subject(),
+            &[test_claim()],
+            &[],
+            None,
+            None,
+        )
+        .expect("create attestation");
 
         let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
         let key = format!(
@@ -611,7 +630,8 @@ mod attestation_tracing {
         );
 
         let events = with_captured_logs(|| {
-            let _result = agent.verify_attestation_full(&key).expect("full verify");
+            let _result =
+                jacs::attestation::simple::verify_full(&agent, &key).expect("full verify");
         });
 
         let verify_events = events_with_name(&events, "attestation_verify_full");

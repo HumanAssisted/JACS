@@ -4,7 +4,7 @@
 https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm
 ```
 
-What signature algorithm was used
+The cryptographic algorithm used to create this signature. MUST be verified explicitly during signature verification.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                                    |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------------------ |
@@ -22,4 +22,4 @@ What signature algorithm was used
 | :--------------- | :---------- |
 | `"RSA-PSS"`      |             |
 | `"ring-Ed25519"` |             |
-| `"pq-dilithium"` |             |
+| `"pq2025"`       |             |

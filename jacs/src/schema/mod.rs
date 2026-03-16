@@ -248,7 +248,7 @@ impl Schema {
         validator: &Validator,
         default_schema_name: &str,
         invalid_json_prefix: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Value, JacsError> {
         let instance: serde_json::Value = match serde_json::from_str(json) {
             Ok(value) => {
                 debug!("validate json {:?}", value);
@@ -257,7 +257,7 @@ impl Schema {
             Err(e) => {
                 let error_message = format!("{}: {}", invalid_json_prefix, e);
                 warn!("validate error {:?}", error_message);
-                return Err(error_message.into());
+                return Err(JacsError::SchemaError(error_message));
             }
         };
 
@@ -270,7 +270,7 @@ impl Schema {
                     .unwrap_or(default_schema_name);
                 let error_message = format_schema_validation_error(&error, schema_name, &instance);
                 error!("{}", error_message);
-                Err(error_message.into())
+                Err(JacsError::SchemaError(error_message))
             }
         }
     }
@@ -279,11 +279,7 @@ impl Schema {
     /// logs store the complete valid file, but for databases or applications we may want
     /// only certain fields
     /// if fieldnames are tagged with "hai" in the schema, they are excluded from here
-    pub fn extract_hai_fields(
-        &self,
-        document: &Value,
-        level: &str,
-    ) -> Result<Value, Box<dyn Error>> {
+    pub fn extract_hai_fields(&self, document: &Value, level: &str) -> Result<Value, JacsError> {
         let schema_url = document["$schema"]
             .as_str()
             .unwrap_or("schemas/header/v1/header.schema.json");
@@ -297,22 +293,30 @@ impl Schema {
         schema_url: &str,
         level: &str,
         processed_fields: &mut Vec<String>,
-    ) -> Result<Value, Box<dyn Error>> {
+    ) -> Result<Value, JacsError> {
         let mut result = json!({});
 
         // Load the schema using the EmbeddedSchemaResolver
         let schema_resolver = EmbeddedSchemaResolver::new();
-        let base_url = Url::parse("https://hai.ai")?;
-        let url = base_url.join(schema_url)?;
+        let base_url = Url::parse("https://hai.ai")
+            .map_err(|e| JacsError::SchemaError(format!("Invalid base URL: {}", e)))?;
+        let url = base_url.join(schema_url).map_err(|e| {
+            JacsError::SchemaError(format!("Invalid schema URL '{}': {}", schema_url, e))
+        })?;
         let schema_value_result =
-            schema_resolver.retrieve(&Uri::try_from(url.as_str().to_string())?);
+            schema_resolver
+                .retrieve(&Uri::try_from(url.as_str().to_string()).map_err(|e| {
+                    JacsError::SchemaError(format!("Invalid URI '{}': {}", url, e))
+                })?);
         let schema_value: Arc<Value> = match schema_value_result {
             Err(_) => {
-                let default_url =
-                    Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")?;
-                let result = match schema_resolver
-                    .retrieve(&Uri::try_from(default_url.as_str().to_string())?)
-                {
+                let default_url = Url::parse("https://hai.ai/schemas/header/v1/header.schema.json")
+                    .map_err(|e| JacsError::SchemaError(format!("Invalid default URL: {}", e)))?;
+                let result = match schema_resolver.retrieve(
+                    &Uri::try_from(default_url.as_str().to_string()).map_err(|e| {
+                        JacsError::SchemaError(format!("Invalid default URI: {}", e))
+                    })?,
+                ) {
                     Ok(value) => value,
                     Err(e) => return Err(e.to_string().into()),
                 };
@@ -390,7 +394,7 @@ impl Schema {
         processed_fields: &mut Vec<String>,
         result: &mut Value,
         properties: &Value,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), JacsError> {
         if let Value::Object(properties_map) = properties {
             for (field_name, field_schema) in properties_map {
                 if field_name == "jacsTaskMessages" || field_name == "attachments" {
@@ -495,7 +499,7 @@ impl Schema {
         agentversion: &str,
         headerversion: &str,
         signatureversion: &str,
-    ) -> Result<Self, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Self, JacsError> {
         // let current_dir = env::current_dir()?;
         // TODO let the agent, header, and signature versions for verifying being flexible
         let default_version = "v1";
@@ -565,11 +569,11 @@ impl Schema {
         );
 
         // Helper to get schema with better error messages
-        let get_schema = |path: &str| -> Result<&str, Box<dyn std::error::Error>> {
+        let get_schema = |path: &str| -> Result<&str, JacsError> {
             DEFAULT_SCHEMA_STRINGS
                 .get(path)
                 .copied()
-                .ok_or_else(|| format!("Schema not found: {}", path).into())
+                .ok_or_else(|| JacsError::SchemaError(format!("Schema not found: {}", path)))
         };
 
         let headerdata = get_schema(&header_path)?;
@@ -668,10 +672,7 @@ impl Schema {
 
     /// basic check this conforms to a schema
     /// validate header does not check hashes or signature
-    pub fn validate_header(
-        &self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_header(&self, json: &str) -> Result<Value, JacsError> {
         self.validate_json_with_schema(
             json,
             &self.headerschema,
@@ -682,15 +683,12 @@ impl Schema {
 
     /// basic check this conforms to a schema
     /// validate header does not check hashes or signature
-    pub fn validate_task(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_task(&self, json: &str) -> Result<Value, JacsError> {
         self.validate_json_with_schema(json, &self.taskschema, "task.schema.json", "Invalid JSON")
     }
 
     /// Validates a JSON string against the agentstate schema.
-    pub fn validate_agentstate(
-        &self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_agentstate(&self, json: &str) -> Result<Value, JacsError> {
         self.validate_json_with_schema(
             json,
             &self.agentstateschema,
@@ -700,16 +698,13 @@ impl Schema {
     }
 
     /// Validates a JSON string against the todo schema.
-    pub fn validate_todo(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_todo(&self, json: &str) -> Result<Value, JacsError> {
         self.validate_json_with_schema(json, &self.todoschema, "todo.schema.json", "Invalid JSON")
     }
 
     /// Validates a JSON string against the attestation schema.
     #[cfg(feature = "attestation")]
-    pub fn validate_attestation(
-        &self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_attestation(&self, json: &str) -> Result<Value, JacsError> {
         self.validate_json_with_schema(
             json,
             &self.attestationschema,
@@ -719,10 +714,7 @@ impl Schema {
     }
 
     /// Validates a JSON string against the commitment schema.
-    pub fn validate_commitment(
-        &self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_commitment(&self, json: &str) -> Result<Value, JacsError> {
         self.validate_json_with_schema(
             json,
             &self.commitmentschema,
@@ -733,10 +725,7 @@ impl Schema {
 
     /// basic check this conforms to a schema
     /// validate header does not check hashes or signature
-    pub fn validate_signature(
-        &self,
-        signature: &Value,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    pub fn validate_signature(&self, signature: &Value) -> Result<(), JacsError> {
         let validation_result = self.signatureschema.validate(signature);
 
         match validation_result {
@@ -745,15 +734,12 @@ impl Schema {
                 let error_message =
                     format_schema_validation_error(&error, "signature.schema.json", signature);
                 error!("{}", error_message);
-                Err(error_message.into())
+                Err(JacsError::SchemaError(error_message))
             }
         }
     }
 
-    pub fn validate_agent(
-        &self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_agent(&self, json: &str) -> Result<Value, JacsError> {
         self.validate_json_with_schema(
             json,
             &self.agentschema,
@@ -770,35 +756,40 @@ impl Schema {
         )
     }
 
-    pub fn getschema(&self, value: Value) -> Result<String, Box<dyn Error>> {
+    pub fn getschema(&self, value: Value) -> Result<String, JacsError> {
         let schemafield = "$schema";
         if let Some(schema) = value.get(schemafield)
             && let Some(schema_str) = schema.as_str()
         {
             return Ok(schema_str.to_string());
         }
-        Err("Schema extraction failed: no schema in doc or schema is not a string".into())
+        Err(JacsError::SchemaError(
+            "Schema extraction failed: no schema in doc or schema is not a string".to_string(),
+        ))
     }
 
     /// use this to get the name of the
-    pub fn getshortschema(&self, value: Value) -> Result<String, Box<dyn Error>> {
+    pub fn getshortschema(&self, value: Value) -> Result<String, JacsError> {
         let longschema = self.getschema(value)?;
-        let re = Regex::new(r"/([^/]+)\.schema\.json$")
-            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
+        let re = Regex::new(r"/([^/]+)\.schema\.json$").map_err(|e| JacsError::Internal {
+            message: format!("Invalid regex pattern: {}", e),
+        })?;
 
         if let Some(caps) = re.captures(&longschema)
             && let Some(matched) = caps.get(1)
         {
             return Ok(matched.as_str().to_string());
         }
-        Err("Failed to extract schema name from URL".into())
+        Err(JacsError::SchemaError(
+            "Failed to extract schema name from URL".to_string(),
+        ))
     }
 
     /// load a document that has data but no id or version
     /// an id and version is assigned
     /// header is validated
     /// document is reeturned
-    pub fn create(&self, json: &str) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn create(&self, json: &str) -> Result<Value, JacsError> {
         // create json string
         let mut instance: serde_json::Value = match serde_json::from_str(json) {
             Ok(value) => {
@@ -863,8 +854,7 @@ impl Schema {
                     format_schema_validation_error(&error, schema_name, &instance)
                 );
                 error!("{}", error_message);
-                return Err(Box::new(ValidationError(error_message))
-                    as Box<dyn std::error::Error + 'static>);
+                return Err(JacsError::ValidationError(error_message));
             }
         };
 

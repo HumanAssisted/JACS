@@ -6,6 +6,7 @@ from pathlib import Path
 
 from jacs.adapters.mcp import register_a2a_tools, register_jacs_tools, register_trust_tools
 from jacs.client import JacsClient
+from conftest import TEST_ALGORITHM
 
 
 CONTRACT_PATH = (
@@ -104,7 +105,7 @@ def _canonical_shape(tool):
 
 
 def _registered_tools():
-    client = JacsClient.ephemeral()
+    client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
     mcp = FakeMCP()
     register_jacs_tools(mcp, client=client)
     register_a2a_tools(mcp, client=client)

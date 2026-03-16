@@ -229,7 +229,7 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 <input type="radio" id="tab-rust" name="tab-group">
 <label for="tab-rust">Rust CLI</label>
 <div class="content">
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <pre><code class="language-bash"># Info mode -- prints agent ID and algorithm
 jacs quickstart --name my-agent --domain my-agent.example.com
@@ -251,15 +251,10 @@ jacs quickstart --name my-agent --domain my-agent.example.com --sign --file myda
 <pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
 brew install jacs
 </code></pre>
-<h3 id="mcp-quick-start-rust-cli"><a class="header" href="#mcp-quick-start-rust-cli">MCP quick start (Rust CLI)</a></h3>
-<pre><code class="language-bash"># Install platform-matched jacs-mcp binary
-jacs mcp install
-
-# Run stdio MCP server
-jacs mcp run
-
-# Optional fallback if you want cargo-based install
-jacs mcp install --from-cargo
+<h3 id="mcp-server-rust-cli"><a class="header" href="#mcp-server-rust-cli">MCP server (Rust CLI)</a></h3>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
 <p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart(...)</code> already creates a persistent agent.</p>
@@ -269,7 +264,7 @@ jacs mcp install --from-cargo
 <label for="adv-rust">Rust CLI</label>
 <div class="content">
 <h3 id="install"><a class="header" href="#install">Install</a></h3>
-<pre><code class="language-bash">cargo install jacs --features cli
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
 <h3 id="initialize"><a class="header" href="#initialize">Initialize</a></h3>
 <pre><code class="language-bash"># Create configuration and agent in one step

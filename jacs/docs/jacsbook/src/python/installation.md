@@ -16,6 +16,8 @@ The JACS Python package (`jacs`) provides Python bindings to the JACS Rust libra
 pip install jacs
 ```
 
+For framework adapters (LangChain, FastAPI, CrewAI, Anthropic, etc.) use optional extras, e.g. `pip install jacs[langchain]`, `jacs[fastapi]`, or `jacs[all]`. Optional: `jacs[langgraph]`, `jacs[ws]`. See [Framework Adapters](adapters.md) and the package `pyproject.toml`.
+
 ### Using conda
 ```bash
 conda install -c conda-forge jacs
@@ -47,16 +49,23 @@ Create a simple test to verify everything is working:
 ```python
 # test.py
 import jacs
-
 print('JACS Python bindings loaded successfully!')
 
-# Test basic functionality
-try:
-    agent = jacs.JacsAgent()
-    agent.load('./jacs.config.json')
-    print('Agent loaded successfully!')
-except Exception as error:
-    print(f'Error loading agent: {error}')
+# Quick check (no config file; in-memory agent)
+from jacs.client import JacsClient
+client = JacsClient.ephemeral()
+signed = client.sign_message({"hello": "jacs"})
+result = client.verify(signed.raw_json)
+print('Sign & verify OK:', result.valid)
+```
+
+Or with an existing config file:
+
+```python
+import jacs
+agent = jacs.JacsAgent()
+agent.load('./jacs.config.json')
+print('Agent loaded successfully!')
 ```
 
 Run the test:
@@ -166,14 +175,23 @@ Configure storage in `jacs.config.json`:
 }
 ```
 
-### S3 Storage
+### Local Indexed SQLite
 ```json
 {
-  "jacs_default_storage": "s3"
+  "jacs_default_storage": "rusqlite"
 }
 ```
 
-S3 credentials are read from standard AWS environment variables.
+Use `rusqlite` when you want local full-text search and the upgraded `DocumentService` behavior in bindings and MCP.
+
+### AWS Storage
+```json
+{
+  "jacs_default_storage": "aws"
+}
+```
+
+AWS credentials are read from standard AWS environment variables.
 
 ### Memory Storage (Testing)
 ```json
@@ -248,7 +266,7 @@ my-jacs-project/
 
 ### Requirements.txt Setup
 ```
-jacs>=0.1.0
+jacs>=0.9.0
 fastapi>=0.100.0  # For FastMCP integration
 uvicorn>=0.23.0   # For ASGI server
 pydantic>=2.0.0   # For data validation

@@ -93,12 +93,57 @@ export interface Attachment {
   embedded: boolean;
 }
 
+export interface AttestationCryptoVerificationResult {
+  signatureValid: boolean;
+  hashValid: boolean;
+  signerId: string;
+  algorithm: string;
+}
+
+export interface AttestationEvidenceVerificationResult {
+  kind: string;
+  digestValid: boolean;
+  freshnessValid: boolean;
+  detail: string;
+}
+
+export interface AttestationChainLink {
+  documentId: string;
+  valid: boolean;
+  detail: string;
+}
+
+export interface AttestationChainVerificationResult {
+  valid: boolean;
+  depth: number;
+  maxDepth: number;
+  links: AttestationChainLink[];
+}
+
+export interface AttestationVerificationResult {
+  valid: boolean;
+  crypto: AttestationCryptoVerificationResult;
+  evidence: AttestationEvidenceVerificationResult[];
+  chain?: AttestationChainVerificationResult | null;
+  errors: string[];
+}
+
+export interface DsseEnvelope {
+  payloadType: string;
+  payload: string;
+  signatures: Array<{
+    keyid?: string;
+    sig: string;
+  }>;
+}
+
 // =============================================================================
 // Global State
 // =============================================================================
 
 let globalAgent: JacsAgent | null = null;
 let agentInfo: AgentInfo | null = null;
+let agentPassword: string | null = null;
 let strictMode: boolean = false;
 
 export interface LoadOptions {
@@ -122,6 +167,84 @@ function resolveConfigRelativePath(configPath: string, candidate: string): strin
     return candidate;
   }
   return path.resolve(path.dirname(configPath), candidate);
+}
+
+function resolveCreatePaths(
+  configPath?: string | null,
+  dataDirectory?: string | null,
+  keyDirectory?: string | null,
+): { configPath: string; dataDirectory: string; keyDirectory: string } {
+  const resolvedConfigPath = configPath ?? './jacs.config.json';
+  const configDir = path.dirname(path.resolve(resolvedConfigPath));
+  const cwd = path.resolve(process.cwd());
+
+  return {
+    configPath: resolvedConfigPath,
+    dataDirectory: dataDirectory ?? (configDir === cwd ? './jacs_data' : path.join(configDir, 'jacs_data')),
+    keyDirectory: keyDirectory ?? (configDir === cwd ? './jacs_keys' : path.join(configDir, 'jacs_keys')),
+  };
+}
+
+function readSavedPassword(configPath: string): string {
+  try {
+    const resolvedConfigPath = path.resolve(configPath);
+    const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
+    const keyDir = resolveConfigRelativePath(
+      resolvedConfigPath,
+      config.jacs_key_directory || './jacs_keys',
+    );
+    const passwordPath = path.join(keyDir, '.jacs_password');
+    if (!fs.existsSync(passwordPath)) {
+      return '';
+    }
+    return fs.readFileSync(passwordPath, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+function resolvePrivateKeyPassword(
+  configPath?: string | null,
+  explicitPassword?: string | null,
+): string {
+  if (explicitPassword && explicitPassword.length > 0) {
+    return explicitPassword;
+  }
+  if (process.env.JACS_PRIVATE_KEY_PASSWORD) {
+    return process.env.JACS_PRIVATE_KEY_PASSWORD;
+  }
+  if (configPath) {
+    return readSavedPassword(configPath);
+  }
+  return '';
+}
+
+async function withTemporaryPasswordEnv<T>(password: string, fn: () => Promise<T>): Promise<T> {
+  const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+  process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+  try {
+    return await fn();
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+    } else {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+    }
+  }
+}
+
+function withTemporaryPasswordEnvSync<T>(password: string, fn: () => T): T {
+  const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+  process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+  try {
+    return fn();
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+    } else {
+      process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+    }
+  }
 }
 
 function normalizeDocumentInput(document: any): string {
@@ -272,27 +395,6 @@ function extractAttachmentsFromDocument(doc: any): Attachment[] {
   }));
 }
 
-function readStoredDocumentById(documentId: string): any | null {
-  if (!agentInfo) {
-    return null;
-  }
-  try {
-    const configPath = path.resolve(agentInfo.configPath);
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    const dataDir = resolveConfigRelativePath(
-      configPath,
-      config.jacs_data_directory || './jacs_data',
-    );
-    const docPath = path.join(dataDir, 'documents', `${documentId}.json`);
-    if (!fs.existsSync(docPath)) {
-      return null;
-    }
-    return JSON.parse(fs.readFileSync(docPath, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
 function extractAgentInfo(resolvedConfigPath: string): AgentInfo {
   const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
   const agentIdVersion = config.jacs_agent_id_and_version || '';
@@ -360,6 +462,22 @@ function requireAgent(): JacsAgent {
     throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
   }
   return globalAgent;
+}
+
+async function withAgentPassword<T>(operation: (agent: JacsAgent) => Promise<T>): Promise<T> {
+  const agent = requireAgent();
+  if (!agentPassword) {
+    return operation(agent);
+  }
+  return withTemporaryPasswordEnv(agentPassword, () => operation(agent));
+}
+
+function withAgentPasswordSync<T>(operation: (agent: JacsAgent) => T): T {
+  const agent = requireAgent();
+  if (!agentPassword) {
+    return operation(agent);
+  }
+  return withTemporaryPasswordEnvSync(agentPassword, () => operation(agent));
 }
 
 function verifyImpl(signedDocument: string, agent: JacsAgent, isSync: boolean): VerificationResult | Promise<VerificationResult> {
@@ -457,7 +575,7 @@ export interface QuickstartInfo {
   domain: string;
 }
 
-function ensurePassword(): string {
+function ensurePassword(keyDirectory?: string): string {
   let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
   if (!password) {
     const crypto = require('crypto');
@@ -479,12 +597,11 @@ function ensurePassword(): string {
       process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
       process.env.JACS_SAVE_PASSWORD_FILE === 'true';
     if (persistPassword) {
-      const keysDir = './jacs_keys';
+      const keysDir = keyDirectory || './jacs_keys';
       fs.mkdirSync(keysDir, { recursive: true });
       const pwPath = path.join(keysDir, '.jacs_password');
       fs.writeFileSync(pwPath, password, { mode: 0o600 });
     }
-    process.env.JACS_PRIVATE_KEY_PASSWORD = password;
   }
   return password;
 }
@@ -496,14 +613,15 @@ function ensurePassword(): string {
 export async function quickstart(options: QuickstartOptions): Promise<QuickstartInfo> {
   const { name, domain, description } = requireQuickstartIdentity(options);
   strictMode = resolveStrict(options?.strict);
-  const configPath = options?.configPath || './jacs.config.json';
+  const paths = resolveCreatePaths(options?.configPath);
+  const configPath = paths.configPath;
 
   if (fs.existsSync(configPath)) {
     const info = await load(configPath);
     return toQuickstartInfo(info);
   }
 
-  const password = ensurePassword();
+  const password = ensurePassword(paths.keyDirectory);
   const algo = options?.algorithm || 'pq2025';
   await create({
     name,
@@ -512,8 +630,10 @@ export async function quickstart(options: QuickstartOptions): Promise<Quickstart
     description,
     domain,
     configPath,
+    dataDirectory: paths.dataDirectory,
+    keyDirectory: paths.keyDirectory,
   });
-  const loaded = await load(configPath, { strict: strictMode });
+  const loaded = await withTemporaryPasswordEnv(password, async () => load(configPath, { strict: strictMode }));
   return toQuickstartInfo(loaded);
 }
 
@@ -523,14 +643,15 @@ export async function quickstart(options: QuickstartOptions): Promise<Quickstart
 export function quickstartSync(options: QuickstartOptions): QuickstartInfo {
   const { name, domain, description } = requireQuickstartIdentity(options);
   strictMode = resolveStrict(options?.strict);
-  const configPath = options?.configPath || './jacs.config.json';
+  const paths = resolveCreatePaths(options?.configPath);
+  const configPath = paths.configPath;
 
   if (fs.existsSync(configPath)) {
     const info = loadSync(configPath);
     return toQuickstartInfo(info);
   }
 
-  const password = ensurePassword();
+  const password = ensurePassword(paths.keyDirectory);
   const algo = options?.algorithm || 'pq2025';
   createSync({
     name,
@@ -539,8 +660,10 @@ export function quickstartSync(options: QuickstartOptions): QuickstartInfo {
     description,
     domain,
     configPath,
+    dataDirectory: paths.dataDirectory,
+    keyDirectory: paths.keyDirectory,
   });
-  const loaded = loadSync(configPath, { strict: strictMode });
+  const loaded = withTemporaryPasswordEnvSync(password, () => loadSync(configPath, { strict: strictMode }));
   return toQuickstartInfo(loaded);
 }
 
@@ -562,7 +685,7 @@ export interface CreateAgentOptions {
 }
 
 function resolveCreatePassword(options: CreateAgentOptions): string {
-  const p = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
+  const p = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
   if (!p) {
     throw new Error(
       'Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.',
@@ -591,8 +714,13 @@ function createNativeArgs(options: CreateAgentOptions, password: string): [strin
  */
 export async function create(options: CreateAgentOptions): Promise<AgentInfo> {
   const password = resolveCreatePassword(options);
-  const resultJson = await nativeCreateAgent(...createNativeArgs(options, password));
-  return parseCreateResult(resultJson, options);
+  const normalizedOptions = {
+    ...options,
+    ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
+  };
+  const resultJson = await nativeCreateAgent(...createNativeArgs(normalizedOptions, password));
+  agentPassword = password;
+  return parseCreateResult(resultJson, normalizedOptions);
 }
 
 /**
@@ -600,8 +728,13 @@ export async function create(options: CreateAgentOptions): Promise<AgentInfo> {
  */
 export function createSync(options: CreateAgentOptions): AgentInfo {
   const password = resolveCreatePassword(options);
-  const resultJson = nativeCreateAgentSync(...createNativeArgs(options, password));
-  return parseCreateResult(resultJson, options);
+  const normalizedOptions = {
+    ...options,
+    ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
+  };
+  const resultJson = nativeCreateAgentSync(...createNativeArgs(normalizedOptions, password));
+  agentPassword = password;
+  return parseCreateResult(resultJson, normalizedOptions);
 }
 
 /**
@@ -609,9 +742,17 @@ export function createSync(options: CreateAgentOptions): AgentInfo {
  */
 export async function load(configPath?: string, options?: LoadOptions): Promise<AgentInfo> {
   const resolvedConfigPath = resolveLoadPath(configPath, options);
+  const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
 
   globalAgent = new JacsAgent();
-  await globalAgent.load(resolvedConfigPath);
+  agentPassword = resolvedPassword || null;
+  if (resolvedPassword) {
+    await withTemporaryPasswordEnv(resolvedPassword, async () => {
+      await globalAgent!.load(resolvedConfigPath);
+    });
+  } else {
+    await globalAgent.load(resolvedConfigPath);
+  }
   return setLoadedAgentInfo(resolvedConfigPath);
 }
 
@@ -620,9 +761,17 @@ export async function load(configPath?: string, options?: LoadOptions): Promise<
  */
 export function loadSync(configPath?: string, options?: LoadOptions): AgentInfo {
   const resolvedConfigPath = resolveLoadPath(configPath, options);
+  const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
 
   globalAgent = new JacsAgent();
-  globalAgent.loadSync(resolvedConfigPath);
+  agentPassword = resolvedPassword || null;
+  if (resolvedPassword) {
+    withTemporaryPasswordEnvSync(resolvedPassword, () => {
+      globalAgent!.loadSync(resolvedConfigPath);
+    });
+  } else {
+    globalAgent.loadSync(resolvedConfigPath);
+  }
   return setLoadedAgentInfo(resolvedConfigPath);
 }
 
@@ -658,36 +807,36 @@ export function verifySelfSync(): VerificationResult {
  * Signs arbitrary data as a JACS message.
  */
 export async function signMessage(data: any): Promise<SignedDocument> {
-  const agent = requireAgent();
   const docContent = createRawDocumentPayload('message', { content: data });
-  const result = await createDocumentImpl(agent, docContent, null, null, false) as string;
-  return parseSignedResult(result);
+  return withAgentPassword(async (agent) => {
+    const result = await createDocumentImpl(agent, docContent, null, null, false) as string;
+    return parseSignedResult(result);
+  });
 }
 
 /**
  * Signs arbitrary data (sync, blocks event loop).
  */
 export function signMessageSync(data: any): SignedDocument {
-  const agent = requireAgent();
   const docContent = createRawDocumentPayload('message', { content: data });
-  const result = createDocumentImpl(agent, docContent, null, null, true) as string;
-  return parseSignedResult(result);
+  return withAgentPasswordSync((agent) => {
+    const result = createDocumentImpl(agent, docContent, null, null, true) as string;
+    return parseSignedResult(result);
+  });
 }
 
 /**
  * Updates the agent document with new data and re-signs it.
  */
 export async function updateAgent(newAgentData: any): Promise<string> {
-  const agent = requireAgent();
-  return agent.updateAgent(normalizeJsonInput(newAgentData));
+  return withAgentPassword((agent) => agent.updateAgent(normalizeJsonInput(newAgentData)));
 }
 
 /**
  * Updates the agent document (sync, blocks event loop).
  */
 export function updateAgentSync(newAgentData: any): string {
-  const agent = requireAgent();
-  return agent.updateAgentSync(normalizeJsonInput(newAgentData));
+  return withAgentPasswordSync((agent) => agent.updateAgentSync(normalizeJsonInput(newAgentData)));
 }
 
 /**
@@ -699,10 +848,11 @@ export async function updateDocument(
   attachments?: string[],
   embed?: boolean
 ): Promise<SignedDocument> {
-  const agent = requireAgent();
   const dataString = normalizeJsonInput(newDocumentData);
-  const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
-  return parseSignedResult(result);
+  return withAgentPassword(async (agent) => {
+    const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
+    return parseSignedResult(result);
+  });
 }
 
 /**
@@ -714,38 +864,43 @@ export function updateDocumentSync(
   attachments?: string[],
   embed?: boolean
 ): SignedDocument {
-  const agent = requireAgent();
   const dataString = normalizeJsonInput(newDocumentData);
-  const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
-  return parseSignedResult(result);
+  return withAgentPasswordSync((agent) => {
+    const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
+    return parseSignedResult(result);
+  });
 }
 
 /**
  * Signs a file with optional content embedding.
  */
 export async function signFile(filePath: string, embed: boolean = false): Promise<SignedDocument> {
-  const agent = requireAgent();
+  requireAgent();
   ensureFileExists(filePath);
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),
   });
-  const result = await createDocumentImpl(agent, docContent, filePath, embed, false) as string;
-  return parseSignedResult(result);
+  return withAgentPassword(async (agent) => {
+    const result = await createDocumentImpl(agent, docContent, filePath, embed, false) as string;
+    return parseSignedResult(result);
+  });
 }
 
 /**
  * Signs a file (sync, blocks event loop).
  */
 export function signFileSync(filePath: string, embed: boolean = false): SignedDocument {
-  const agent = requireAgent();
+  requireAgent();
   ensureFileExists(filePath);
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),
   });
-  const result = createDocumentImpl(agent, docContent, filePath, embed, true) as string;
-  return parseSignedResult(result);
+  return withAgentPasswordSync((agent) => {
+    const result = createDocumentImpl(agent, docContent, filePath, embed, true) as string;
+    return parseSignedResult(result);
+  });
 }
 
 /**
@@ -799,7 +954,8 @@ export async function verifyById(documentId: string): Promise<VerificationResult
 
   try {
     await agent.verifyDocumentById(documentId);
-    const stored = readStoredDocumentById(documentId);
+    const storedJson = await agent.getDocumentById(documentId);
+    const stored = JSON.parse(storedJson);
     return {
       ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
       timestamp: stored?.jacsSignature?.date || '',
@@ -822,7 +978,8 @@ export function verifyByIdSync(documentId: string): VerificationResult {
 
   try {
     agent.verifyDocumentByIdSync(documentId);
-    const stored = readStoredDocumentById(documentId);
+    const storedJson = agent.getDocumentByIdSync(documentId);
+    const stored = JSON.parse(storedJson);
     return {
       ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
       timestamp: stored?.jacsSignature?.date || '',
@@ -860,7 +1017,15 @@ export function getPublicKey(): string {
   if (!fs.existsSync(agentInfo.publicKeyPath)) {
     throw new Error(`Public key not found: ${agentInfo.publicKeyPath}`);
   }
-  return fs.readFileSync(agentInfo.publicKeyPath, 'utf8');
+  const raw = fs.readFileSync(agentInfo.publicKeyPath);
+  // PEM text keys (RSA-PSS) are valid UTF-8; return as-is.
+  // Binary keys (Ed25519, pq2025) need PEM armor so trustAgentWithKey works.
+  const text = raw.toString('utf8');
+  if (text.includes('-----BEGIN') || Buffer.from(text, 'utf8').equals(raw)) {
+    return text;
+  }
+  const b64 = raw.toString('base64');
+  return `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----\n`;
 }
 
 export function exportAgent(): string {
@@ -915,6 +1080,7 @@ export function debugInfo(): Record<string, unknown> {
 export function reset(): void {
   globalAgent = null;
   agentInfo = null;
+  agentPassword = null;
   strictMode = false;
 }
 
@@ -1006,10 +1172,11 @@ export async function createAgreement(
   context?: string,
   fieldName?: string
 ): Promise<SignedDocument> {
-  const agent = requireAgent();
   const docString = normalizeDocumentInput(document);
-  const result = await agent.createAgreement(docString, agentIds, question || null, context || null, fieldName || null);
-  return parseSignedResult(result);
+  return withAgentPassword(async (agent) => {
+    const result = await agent.createAgreement(docString, agentIds, question || null, context || null, fieldName || null);
+    return parseSignedResult(result);
+  });
 }
 
 export function createAgreementSync(
@@ -1019,30 +1186,33 @@ export function createAgreementSync(
   context?: string,
   fieldName?: string
 ): SignedDocument {
-  const agent = requireAgent();
   const docString = normalizeDocumentInput(document);
-  const result = agent.createAgreementSync(docString, agentIds, question || null, context || null, fieldName || null);
-  return parseSignedResult(result);
+  return withAgentPasswordSync((agent) => {
+    const result = agent.createAgreementSync(docString, agentIds, question || null, context || null, fieldName || null);
+    return parseSignedResult(result);
+  });
 }
 
 export async function signAgreement(
   document: any,
   fieldName?: string
 ): Promise<SignedDocument> {
-  const agent = requireAgent();
   const docString = normalizeDocumentInput(document);
-  const result = await agent.signAgreement(docString, fieldName || null);
-  return parseSignedResult(result);
+  return withAgentPassword(async (agent) => {
+    const result = await agent.signAgreement(docString, fieldName || null);
+    return parseSignedResult(result);
+  });
 }
 
 export function signAgreementSync(
   document: any,
   fieldName?: string
 ): SignedDocument {
-  const agent = requireAgent();
   const docString = normalizeDocumentInput(document);
-  const result = agent.signAgreementSync(docString, fieldName || null);
-  return parseSignedResult(result);
+  return withAgentPasswordSync((agent) => {
+    const result = agent.signAgreementSync(docString, fieldName || null);
+    return parseSignedResult(result);
+  });
 }
 
 export async function checkAgreement(
@@ -1135,15 +1305,16 @@ export async function createAttestation(params: {
   derivation?: Record<string, unknown>;
   policyContext?: Record<string, unknown>;
 }): Promise<SignedDocument> {
-  const agent = requireAgent();
-  const raw: string = await (agent as any).createAttestation(JSON.stringify(params));
-  const doc = JSON.parse(raw);
-  return {
-    raw,
-    documentId: doc.jacsId || '',
-    agentId: doc.jacsSignature?.agentID || '',
-    timestamp: doc.jacsSignature?.date || '',
-  };
+  return withAgentPassword(async (agent) => {
+    const raw: string = await (agent as any).createAttestation(JSON.stringify(params));
+    const doc = JSON.parse(raw);
+    return {
+      raw,
+      documentId: doc.jacsId || '',
+      agentId: doc.jacsSignature?.agentID || '',
+      timestamp: doc.jacsSignature?.date || '',
+    };
+  });
 }
 
 /**
@@ -1159,19 +1330,23 @@ export function createAttestationSync(params: {
   derivation?: Record<string, unknown>;
   policyContext?: Record<string, unknown>;
 }): SignedDocument {
-  const agent = requireAgent();
-  const raw: string = (agent as any).createAttestationSync(JSON.stringify(params));
-  const doc = JSON.parse(raw);
-  return {
-    raw,
-    documentId: doc.jacsId || '',
-    agentId: doc.jacsSignature?.agentID || '',
-    timestamp: doc.jacsSignature?.date || '',
-  };
+  return withAgentPasswordSync((agent) => {
+    const raw: string = (agent as any).createAttestationSync(JSON.stringify(params));
+    const doc = JSON.parse(raw);
+    return {
+      raw,
+      documentId: doc.jacsId || '',
+      agentId: doc.jacsSignature?.agentID || '',
+      timestamp: doc.jacsSignature?.date || '',
+    };
+  });
 }
 
 /**
  * Verify an attestation document -- local tier (async).
+ *
+ * The returned object preserves the canonical wire-format field names from the
+ * attestation/DSSE JSON contracts, which use camelCase.
  *
  * @param attestationJson - Raw JSON string of the attestation document.
  * @param opts - Optional. Set full: true for full-tier verification.
@@ -1180,7 +1355,7 @@ export function createAttestationSync(params: {
 export async function verifyAttestation(
   attestationJson: string,
   opts?: { full?: boolean },
-): Promise<Record<string, unknown>> {
+): Promise<AttestationVerificationResult> {
   const agent = requireAgent();
   const doc = JSON.parse(attestationJson);
   const docKey = `${doc.jacsId}:${doc.jacsVersion}`;
@@ -1190,11 +1365,14 @@ export async function verifyAttestation(
   } else {
     resultJson = await (agent as any).verifyAttestation(docKey);
   }
-  return JSON.parse(resultJson);
+  return JSON.parse(resultJson) as AttestationVerificationResult;
 }
 
 /**
  * Verify an attestation document -- local tier (sync).
+ *
+ * The returned object preserves the canonical wire-format field names from the
+ * attestation/DSSE JSON contracts, which use camelCase.
  *
  * @param attestationJson - Raw JSON string of the attestation document.
  * @param opts - Optional. Set full: true for full-tier verification.
@@ -1203,7 +1381,7 @@ export async function verifyAttestation(
 export function verifyAttestationSync(
   attestationJson: string,
   opts?: { full?: boolean },
-): Record<string, unknown> {
+): AttestationVerificationResult {
   const agent = requireAgent();
   const doc = JSON.parse(attestationJson);
   const docKey = `${doc.jacsId}:${doc.jacsVersion}`;
@@ -1213,7 +1391,7 @@ export function verifyAttestationSync(
   } else {
     resultJson = (agent as any).verifyAttestationSync(docKey);
   }
-  return JSON.parse(resultJson);
+  return JSON.parse(resultJson) as AttestationVerificationResult;
 }
 
 /**
@@ -1227,15 +1405,16 @@ export async function liftToAttestation(
   signedDocJson: string,
   claims: Record<string, unknown>[],
 ): Promise<SignedDocument> {
-  const agent = requireAgent();
-  const raw: string = await (agent as any).liftToAttestation(signedDocJson, JSON.stringify(claims));
-  const doc = JSON.parse(raw);
-  return {
-    raw,
-    documentId: doc.jacsId || '',
-    agentId: doc.jacsSignature?.agentID || '',
-    timestamp: doc.jacsSignature?.date || '',
-  };
+  return withAgentPassword(async (agent) => {
+    const raw: string = await (agent as any).liftToAttestation(signedDocJson, JSON.stringify(claims));
+    const doc = JSON.parse(raw);
+    return {
+      raw,
+      documentId: doc.jacsId || '',
+      agentId: doc.jacsSignature?.agentID || '',
+      timestamp: doc.jacsSignature?.date || '',
+    };
+  });
 }
 
 /**
@@ -1249,15 +1428,16 @@ export function liftToAttestationSync(
   signedDocJson: string,
   claims: Record<string, unknown>[],
 ): SignedDocument {
-  const agent = requireAgent();
-  const raw: string = (agent as any).liftToAttestationSync(signedDocJson, JSON.stringify(claims));
-  const doc = JSON.parse(raw);
-  return {
-    raw,
-    documentId: doc.jacsId || '',
-    agentId: doc.jacsSignature?.agentID || '',
-    timestamp: doc.jacsSignature?.date || '',
-  };
+  return withAgentPasswordSync((agent) => {
+    const raw: string = (agent as any).liftToAttestationSync(signedDocJson, JSON.stringify(claims));
+    const doc = JSON.parse(raw);
+    return {
+      raw,
+      documentId: doc.jacsId || '',
+      agentId: doc.jacsSignature?.agentID || '',
+      timestamp: doc.jacsSignature?.date || '',
+    };
+  });
 }
 
 /**
@@ -1268,10 +1448,11 @@ export function liftToAttestationSync(
  */
 export async function exportAttestationDsse(
   attestationJson: string,
-): Promise<Record<string, unknown>> {
-  const agent = requireAgent();
-  const raw: string = await (agent as any).exportAttestationDsse(attestationJson);
-  return JSON.parse(raw);
+): Promise<DsseEnvelope> {
+  return withAgentPassword(async (agent) => {
+    const raw: string = await (agent as any).exportAttestationDsse(attestationJson);
+    return JSON.parse(raw) as DsseEnvelope;
+  });
 }
 
 /**
@@ -1282,10 +1463,11 @@ export async function exportAttestationDsse(
  */
 export function exportAttestationDsseSync(
   attestationJson: string,
-): Record<string, unknown> {
-  const agent = requireAgent();
-  const raw: string = (agent as any).exportAttestationDsseSync(attestationJson);
-  return JSON.parse(raw);
+): DsseEnvelope {
+  return withAgentPasswordSync((agent) => {
+    const raw: string = (agent as any).exportAttestationDsseSync(attestationJson);
+    return JSON.parse(raw) as DsseEnvelope;
+  });
 }
 
 // =============================================================================

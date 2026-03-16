@@ -323,7 +323,7 @@ fn create_example_workflow(
     )?;
     artifacts.push(wrapped_entities);
 
-    create_chain_of_custody(artifacts)
+    Ok(create_chain_of_custody(artifacts)?)
 }
 
 fn setup_key_env_vars() {

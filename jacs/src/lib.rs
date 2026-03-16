@@ -1,3 +1,51 @@
+//! JACS -- JSON AI Communication Standard.
+//!
+//! Cryptographic signatures for AI agent outputs. Create agent identities,
+//! sign documents, verify provenance, and manage trust -- all locally,
+//! with no server required.
+//!
+//! # Getting Started
+//!
+//! Most users should start with the [`simple`] module, which provides the
+//! [`SimpleAgent`](simple::SimpleAgent) facade -- a clean API for the most
+//! common operations:
+//!
+//! ```rust,ignore
+//! use jacs::simple::SimpleAgent;
+//!
+//! let (agent, info) = SimpleAgent::create("my-agent", None, None)?;
+//! let signed = agent.sign_message(&serde_json::json!({"hello": "world"}))?;
+//! let result = agent.verify(&signed.raw)?;
+//! assert!(result.valid);
+//! ```
+//!
+//! # Architecture
+//!
+//! ```text
+//! simple/           Narrow public API (SimpleAgent facade)
+//! document/         DocumentService trait -- unified CRUD, versioning, search
+//! search/           SearchProvider + EmbeddingProvider traits
+//! storage/          Storage backends (filesystem, SQLite, memory, S3)
+//! agent/            Agent struct, document traits, security
+//! crypt/            Signing, verification, key management
+//! schema/           JSON schema validation
+//! trust/            Trust store and trust levels
+//! dns/              DNS-based key verification
+//! ```
+//!
+//! # Feature Flags
+//!
+//! | Feature | Default | Description |
+//! |---------|---------|-------------|
+//! | `sqlite` | Yes | Sync SQLite backend via rusqlite |
+//! | `sqlx-sqlite` | No | Async SQLite backend via sqlx + tokio |
+//! | `a2a` | No | Agent-to-Agent protocol |
+//! | `agreements` | No | Multi-agent agreement signing |
+//! | `attestation` | No | Evidence-based attestation |
+//! | `otlp-logs` | No | OpenTelemetry log export |
+//! | `otlp-metrics` | No | OpenTelemetry metrics export |
+//! | `otlp-tracing` | No | OpenTelemetry distributed tracing |
+
 use crate::agent::document::DocumentTraits;
 use crate::shared::save_document;
 use tracing::error;
@@ -9,16 +57,17 @@ use crate::schema::agent_crud::create_minimal_agent;
 use crate::schema::service_crud::create_minimal_service;
 use crate::schema::task_crud::create_minimal_task;
 use serde_json::Value;
-use std::error::Error;
 use std::path::Path;
 use tracing::debug;
 
+#[cfg(feature = "a2a")]
 pub mod a2a;
 pub mod agent;
 pub mod audit;
 pub mod config;
 pub mod crypt;
 pub mod dns;
+pub mod document;
 pub mod email;
 pub mod error;
 pub mod health;
@@ -30,20 +79,24 @@ pub mod protocol;
 pub mod rate_limit;
 pub mod replay;
 pub mod schema;
+pub mod search;
 pub mod shared;
 pub mod shutdown;
 pub mod simple;
 pub mod storage;
+pub mod testing;
 pub mod time_utils;
 pub mod trust;
 pub mod validation;
 
+#[cfg(feature = "agreements")]
+pub mod agreements;
+
 #[cfg(feature = "attestation")]
 pub mod attestation;
 
-// #[cfg(feature = "cli")]
 pub mod cli_utils;
-// Re-export error types for convenience
+/// The primary error type for all JACS operations.
 pub use error::JacsError;
 
 // Re-export health check types for convenience
@@ -85,7 +138,7 @@ pub use time_utils::{
 
 /// Initialize observability with a default configuration suitable for most applications.
 /// This sets up file-based logging and metrics in the current directory.
-pub fn init_default_observability() -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_default_observability() -> Result<(), JacsError> {
     let config = ObservabilityConfig {
         logs: LogConfig {
             enabled: true,
@@ -111,9 +164,7 @@ pub fn init_default_observability() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Initialize observability with custom configuration.
 /// This is useful when you need specific logging/metrics destinations.
-pub fn init_custom_observability(
-    config: ObservabilityConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn init_custom_observability(config: ObservabilityConfig) -> Result<(), JacsError> {
     init_observability(config).map(|_| ())
 }
 
@@ -221,7 +272,7 @@ fn load_path_agent(
     dns_validate: Option<bool>,
     dns_required: Option<bool>,
     dns_strict: Option<bool>,
-) -> Result<Agent, Box<dyn Error>> {
+) -> Result<Agent, JacsError> {
     debug!("[load_path_agent] Loading from path: {}", filepath);
     let mut agent = get_empty_agent();
     apply_dns_policy(&mut agent, dns_validate, dns_required, dns_strict);
@@ -254,12 +305,16 @@ fn load_path_agent(
     Ok(agent)
 }
 
+/// Load an agent from a file path or default config, with full DNS policy control.
+///
+/// If `agentfile` is `Some`, loads from the given file path.
+/// If `None`, loads from the default config path (`JACS_CONFIG` env var or `./jacs.config.json`).
 pub fn load_agent_with_dns_policy(
     agentfile: Option<String>,
     dns_validate: Option<bool>,
     dns_required: Option<bool>,
     dns_strict: Option<bool>,
-) -> Result<agent::Agent, Box<dyn Error>> {
+) -> Result<agent::Agent, JacsError> {
     debug!("load_agent agentfile = {:?}", agentfile);
     if let Some(file) = agentfile {
         load_path_agent(file, dns_validate, dns_required, dns_strict)
@@ -273,7 +328,10 @@ pub fn load_agent_with_dns_policy(
     }
 }
 
-pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Error>> {
+/// Load an agent from a file path or default config with default DNS policy.
+///
+/// Convenience wrapper around [`load_agent_with_dns_policy`] with all DNS options set to `None`.
+pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, JacsError> {
     load_agent_with_dns_policy(agentfile, None, None, None)
 }
 
@@ -281,7 +339,7 @@ pub fn load_agent(agentfile: Option<String>) -> Result<agent::Agent, Box<dyn Err
 pub fn load_agent_with_dns_strict(
     agentfile: String,
     dns_strict: bool,
-) -> Result<agent::Agent, Box<dyn Error>> {
+) -> Result<agent::Agent, JacsError> {
     load_agent_with_dns_policy(Some(agentfile), None, None, Some(dns_strict))
 }
 
@@ -292,7 +350,7 @@ pub fn create_minimal_blank_agent(
     service_desc: Option<String>,
     success_desc: Option<String>,
     failure_desc: Option<String>,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let mut services: Vec<Value> = Vec::new();
 
     // Use provided descriptions or fall back to defaults.
@@ -311,9 +369,7 @@ pub fn create_minimal_blank_agent(
         None,
         None,
     )
-    .map_err(|e| {
-        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)) as Box<dyn Error>
-    })?;
+    .map_err(|e| JacsError::IoError(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
 
     services.push(service);
 
@@ -322,11 +378,15 @@ pub fn create_minimal_blank_agent(
     Ok(agent_value.to_string())
 }
 
+/// Create a signed task document with the given name and description.
+///
+/// The task is signed by the provided agent and persisted to storage.
+/// Returns the validated task JSON string.
 pub fn create_task(
     agent: &mut Agent,
     name: String,
     description: String,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let mut actions: Vec<Value> = Vec::new();
     let action = create_minimal_action(&name, &description, None, None);
     actions.push(action);
@@ -335,7 +395,9 @@ pub fn create_task(
 
     // create document
     let embed = None;
-    let docresult = agent.create_document_and_load(&task.to_string(), None, embed);
+    let docresult = agent
+        .create_document_and_load(&task.to_string(), None, embed)
+        .map_err(Into::into);
 
     save_document(agent, docresult, None, None, None, None)?;
 
@@ -358,22 +420,8 @@ pub fn create_task(
     }
 }
 
-// todo
-pub fn update_task(_: String) -> Result<String, Box<dyn Error>> {
-    // update document
-    // validate
+/// Update a task document (placeholder -- not yet implemented).
+pub fn update_task(_: String) -> Result<String, JacsError> {
+    // TODO: implement proper task update logic
     Ok("".to_string())
 }
-
-// lets move these here
-
-/*
-create_config() - Create configuration (missing)
-verify_agent() - Verify agent integrity (missing)
-verify_document() - Verify document integrity (missing)
-verify_signature() - Verify signature (missing)
-update_agent() - Update existing agent (missing)
-update_document() - Update existing document (missing)
-
-
-*/

@@ -25,7 +25,6 @@ use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dns::bootstrap::verify_registry_registration_sync;
 use crate::dns::bootstrap::{pubkey_digest_hex, verify_pubkey_via_dns_or_embedded};
-#[cfg(feature = "observability-convenience")]
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
 use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
@@ -35,7 +34,6 @@ use loaders::FileLoader;
 use serde_json::{Value, json, to_value};
 use serde_json_canonicalizer::to_string as to_canonical_string;
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
@@ -43,6 +41,24 @@ use uuid::Uuid;
 
 use crate::validation::are_valid_uuid_parts;
 use secrecy::SecretBox;
+
+/// Normalize a verification claim value.
+///
+/// Maps the deprecated `"verified-hai.ai"` alias to `"verified-registry"` and logs
+/// a deprecation warning. All other values pass through unchanged.
+///
+/// This alias will be removed in the next major version.
+pub fn normalize_verification_claim(claim: &str) -> &str {
+    if claim == "verified-hai.ai" {
+        warn!(
+            "Verification claim \"verified-hai.ai\" is deprecated. \
+             Use \"verified-registry\" instead. This alias will be removed in the next major version."
+        );
+        "verified-registry"
+    } else {
+        claim
+    }
+}
 
 /// this field is only ignored by itself, but other
 /// document signatures and hashes include this to detect tampering
@@ -96,7 +112,7 @@ pub(crate) fn extract_signature_fields(
     Some(out)
 }
 
-pub(crate) fn canonicalize_json(value: &Value) -> Result<String, Box<dyn Error>> {
+pub(crate) fn canonicalize_json(value: &Value) -> Result<String, JacsError> {
     let canonical = to_canonical_string(value)
         .map_err(|e| std::io::Error::other(format!("Failed to canonicalize JSON: {}", e)))?;
     Ok(canonical)
@@ -105,7 +121,7 @@ pub(crate) fn canonicalize_json(value: &Value) -> Result<String, Box<dyn Error>>
 fn validate_signature_temporal_claims(
     json_value: &Value,
     signature_key_from: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let signature = json_value.get(signature_key_from).ok_or_else(|| {
         JacsError::SignatureVerificationFailed {
             reason: format!(
@@ -165,7 +181,7 @@ pub(crate) fn build_signature_content(
     keys: Option<Vec<String>>,
     placement_key: &str,
     _mode: SignatureContentMode,
-) -> Result<(String, Vec<String>), Box<dyn Error>> {
+) -> Result<(String, Vec<String>), JacsError> {
     debug!("build_signature_content keys:\n{:?}", keys);
     let defaults = keys.is_none();
     let mut accepted_fields = match keys {
@@ -223,7 +239,7 @@ pub type SecretPrivateKey = SecretBox<Vec<u8>>;
 ///
 /// # Errors
 /// Returns an error if decryption fails (wrong password or corrupted data).
-pub fn use_secret(key: &[u8]) -> Result<ZeroizingVec, Box<dyn std::error::Error>> {
+pub fn use_secret(key: &[u8]) -> Result<ZeroizingVec, JacsError> {
     decrypt_private_key_secure(key)
 }
 
@@ -280,7 +296,7 @@ impl Agent {
         agentversion: &str,
         headerversion: &str,
         signature_version: &str,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self, JacsError> {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let config = Some(load_config_12factor_optional(None)?);
@@ -307,7 +323,7 @@ impl Agent {
 
     /// Create an ephemeral agent with in-memory keys and storage.
     /// No config file, no directories, no environment variables needed.
-    pub fn ephemeral(algorithm: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn ephemeral(algorithm: &str) -> Result<Self, JacsError> {
         let config = Config::builder()
             .key_algorithm(algorithm)
             .default_storage("memory")
@@ -372,7 +388,7 @@ impl Agent {
     }
 
     #[must_use = "agent loading result must be checked for errors"]
-    pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), Box<dyn Error>> {
+    pub fn load_by_id(&mut self, lookup_id: String) -> Result<(), JacsError> {
         let start_time = std::time::Instant::now();
         let default_config_path = crate::paths::default_config_path();
         let default_config_path = default_config_path.to_string_lossy().to_string();
@@ -393,7 +409,7 @@ impl Agent {
                 lookup_id, e
             )
         })?;
-        let result: Result<(), Box<dyn Error>> = self.load(&agent_string).map_err(|e| {
+        let result: Result<(), JacsError> = self.load(&agent_string).map_err(|e| {
             format!(
                 "load_by_id failed for agent '{}': Agent validation or key loading failed: {}",
                 lookup_id, e
@@ -401,14 +417,10 @@ impl Agent {
             .into()
         });
 
-        let _duration_ms = start_time.elapsed().as_millis() as u64;
+        let duration_ms = start_time.elapsed().as_millis() as u64;
         let success = result.is_ok();
 
-        #[cfg(feature = "observability-convenience")]
-        {
-            // Record the agent operation
-            record_agent_operation("load_by_id", &lookup_id, success, duration_ms);
-        }
+        record_agent_operation("load_by_id", &lookup_id, success, duration_ms);
 
         if success {
             info!("Successfully loaded agent by ID: {}", lookup_id);
@@ -420,7 +432,7 @@ impl Agent {
     }
 
     #[must_use = "agent loading result must be checked for errors"]
-    pub fn load_by_config(&mut self, path: String) -> Result<(), Box<dyn Error>> {
+    pub fn load_by_config(&mut self, path: String) -> Result<(), JacsError> {
         // load config string
         let mut config = load_config_12factor(Some(&path)).map_err(|e| {
             format!(
@@ -439,7 +451,8 @@ impl Agent {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        let storage_root = if storage_type == "fs" {
+        let uses_filesystem_paths = matches!(storage_type.as_str(), "fs" | "rusqlite" | "sqlite");
+        let storage_root = if uses_filesystem_paths {
             let config_dir = std::path::Path::new(&path)
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
@@ -544,7 +557,12 @@ impl Agent {
         };
 
         self.config = Some(config);
-        self.storage = MultiStorage::_new(storage_type.clone(), storage_root).map_err(|e| {
+        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
+            "fs".to_string()
+        } else {
+            storage_type.clone()
+        };
+        self.storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
             format!(
                 "load_by_config failed: Could not initialize storage type '{}' (from config '{}'): {}",
                 storage_type, path, e
@@ -562,11 +580,35 @@ impl Agent {
                     "load_by_config failed: Agent '{}' validation or key loading failed (config '{}'): {}",
                     lookup_id, path, e
                 );
-                Box::<dyn Error>::from(err_msg)
+                JacsError::Internal { message: err_msg }
             })
         } else {
             Ok(())
         }
+    }
+
+    /// Replace the internal storage with a pre-configured [`MultiStorage`].
+    ///
+    /// This allows callers to inject a custom storage backend (e.g., in-memory
+    /// for testing, or a pre-configured filesystem backend with a specific root).
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let storage = MultiStorage::new("memory".to_string())?;
+    /// agent.set_storage(storage);
+    /// ```
+    pub fn set_storage(&mut self, storage: MultiStorage) {
+        self.storage = storage;
+    }
+
+    /// Returns a reference to the agent's internal storage backend.
+    ///
+    /// This is primarily used by [`service_from_agent`](crate::document::service_from_agent)
+    /// to reuse the correctly-rooted `MultiStorage` that `load_by_config` set up,
+    /// rather than creating a new one with a potentially-relative base directory.
+    pub fn storage_ref(&self) -> &MultiStorage {
+        &self.storage
     }
 
     /// Replace the internal storage with one rooted at `root`.
@@ -576,13 +618,18 @@ impl Agent {
     /// directory.  `MultiStorage::clean_path` strips leading slashes,
     /// turning absolute paths into paths relative to the FS store root.
     /// By rooting at `/` the resolved path is still correct.
-    pub fn set_storage_root(&mut self, root: std::path::PathBuf) -> Result<(), Box<dyn Error>> {
+    pub fn set_storage_root(&mut self, root: std::path::PathBuf) -> Result<(), JacsError> {
         let storage_type: String = self
             .config
             .as_ref()
             .and_then(|c| c.jacs_default_storage().clone())
             .unwrap_or_else(|| "fs".to_string());
-        self.storage = MultiStorage::_new(storage_type, root)?;
+        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
+            "fs".to_string()
+        } else {
+            storage_type
+        };
+        self.storage = MultiStorage::_new(file_storage_type, root)?;
         Ok(())
     }
 
@@ -605,14 +652,17 @@ impl Agent {
 
     /// Get the verification claim from the agent's value.
     ///
-    /// Returns the claim as a string, or None if not set.
-    /// Valid claims are: "unverified", "verified", "verified-registry" (legacy: "verified-hai.ai")
+    /// Returns the normalized claim as a string, or None if not set.
+    /// Valid claims are: "unverified", "verified", "verified-registry".
+    /// The deprecated "verified-hai.ai" is accepted but normalized to "verified-registry"
+    /// with a deprecation warning. It will be removed in the next major version.
     fn get_verification_claim(&self) -> Option<String> {
-        self.value
+        let raw = self
+            .value
             .as_ref()?
             .get("jacsVerificationClaim")?
-            .as_str()
-            .map(|s| s.to_string())
+            .as_str()?;
+        Some(normalize_verification_claim(raw).to_string())
     }
 
     /// Get the agent's key algorithm
@@ -625,7 +675,7 @@ impl Agent {
         private_key: Vec<u8>,
         public_key: Vec<u8>,
         key_algorithm: &str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), JacsError> {
         let private_key_encrypted = encrypt_private_key(&private_key)?;
         // Box the Vec<u8> before creating SecretBox
         self.private_key = Some(SecretBox::new(Box::new(private_key_encrypted)));
@@ -643,7 +693,7 @@ impl Agent {
     }
 
     #[must_use = "private key must be used for signing operations"]
-    pub fn get_private_key(&self) -> Result<&SecretPrivateKey, Box<dyn Error>> {
+    pub fn get_private_key(&self) -> Result<&SecretPrivateKey, JacsError> {
         match &self.private_key {
             Some(private_key) => Ok(private_key),
             None => {
@@ -659,7 +709,7 @@ impl Agent {
     }
 
     #[must_use = "agent loading result must be checked for errors"]
-    pub fn load(&mut self, agent_string: &str) -> Result<(), Box<dyn Error>> {
+    pub fn load(&mut self, agent_string: &str) -> Result<(), JacsError> {
         // validate schema
         // then load
         // then load keys
@@ -725,7 +775,7 @@ impl Agent {
     }
 
     #[must_use = "signature verification result must be checked"]
-    pub fn verify_self_signature(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn verify_self_signature(&mut self) -> Result<(), JacsError> {
         let agent_id = self.id.as_deref().unwrap_or("<unknown>");
         let public_key = self.get_public_key().map_err(|e| {
             format!(
@@ -772,7 +822,7 @@ impl Agent {
         &mut self,
         document_key: String,
         signature_key_from: Option<&str>,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<String, JacsError> {
         let document = self.get_document(&document_key)?;
         let document_value = document.getvalue();
         let signature_key_from_final =
@@ -784,7 +834,7 @@ impl Agent {
         &self,
         json_value: &Value,
         signature_key_from: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<String, JacsError> {
         let agentid = json_value[signature_key_from]["agentID"]
             .as_str()
             .unwrap_or("")
@@ -811,7 +861,7 @@ impl Agent {
         public_key_enc_type: Option<String>,
         original_public_key_hash: Option<String>,
         signature: Option<String>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), JacsError> {
         let start_time = std::time::Instant::now();
         let resolved_fields = fields
             .map(|s| s.to_vec())
@@ -861,6 +911,7 @@ impl Agent {
         let verification_claim = self.get_verification_claim();
         let domain_present = maybe_domain.is_some();
         let (validate, strict, required) = match verification_claim.as_deref() {
+            // "verified-hai.ai" kept as fallback during deprecation period (normalized above)
             Some("verified") | Some("verified-registry") | Some("verified-hai.ai") => {
                 // Verified claims MUST use strict settings
                 if !domain_present {
@@ -898,7 +949,7 @@ impl Agent {
                     strict,
                 ) {
                     error!("public key identity check failed: {}", e);
-                    return Err(e.into());
+                    return Err(e);
                 }
             } else if required {
                 return Err("DNS validation failed: domain required but not configured".into());
@@ -913,19 +964,16 @@ impl Agent {
                 );
                 error!("{}", error_message);
 
-                let _duration_ms = start_time.elapsed().as_millis() as u64;
-                let _algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
-                #[cfg(feature = "observability-convenience")]
-                {
-                    record_signature_verification("unknown_agent", false, algorithm);
-                }
+                let algorithm = resolved_public_key_enc_type.as_deref().unwrap_or("unknown");
+                record_signature_verification("unknown_agent", false, algorithm);
 
                 return Err(error_message.into());
             }
         }
 
-        // Registry verification for verified-registry (and legacy verified-hai.ai) claims
+        // Registry verification for verified-registry claims
         // This MUST succeed for agents claiming registry-verified status
+        // "verified-hai.ai" kept as fallback during deprecation period (normalized above)
         #[cfg(not(target_arch = "wasm32"))]
         if matches!(
             verification_claim.as_deref(),
@@ -948,9 +996,8 @@ impl Agent {
                     );
                     return Err(JacsError::VerificationClaimFailed {
                         claim: verification_claim.unwrap_or_default(),
-                        reason: e,
-                    }
-                    .into());
+                        reason: e.to_string(),
+                    });
                 }
             }
         }
@@ -1009,10 +1056,7 @@ impl Agent {
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
-        #[cfg(feature = "observability-convenience")]
-        {
-            record_signature_verification(agent_id, success, algorithm);
-        }
+        record_signature_verification(agent_id, success, algorithm);
 
         if success {
             info!(
@@ -1061,7 +1105,7 @@ impl Agent {
     /// # Returns
     ///
     /// * `Ok(Value)` - A new JSON value containing the signature and related metadata.
-    /// * `Err(Box<dyn Error>)` - An error occurred while generating the signature.
+    /// * `Err(JacsError)` - An error occurred while generating the signature.
     ///
     ///
     /// # Errors
@@ -1083,7 +1127,7 @@ impl Agent {
         json_value: &Value,
         fields: Option<&[String]>,
         placement_key: &str,
-    ) -> Result<Value, Box<dyn Error>> {
+    ) -> Result<Value, JacsError> {
         debug!("placement_key:\n{}", placement_key);
         let (document_values_string, accepted_fields) =
             Agent::get_values_as_string(json_value, fields.map(|s| s.to_vec()), placement_key)?;
@@ -1112,7 +1156,7 @@ impl Agent {
 
         let serialized_fields = match to_value(accepted_fields) {
             Ok(value) => value,
-            Err(err) => return Err(Box::new(err)),
+            Err(err) => return Err(err.into()),
         };
         let public_key = self.get_public_key()?;
         let public_key_hash = hash_public_key(&public_key);
@@ -1155,7 +1199,7 @@ impl Agent {
         json_value: &Value,
         keys: Option<Vec<String>>,
         placement_key: &str,
-    ) -> Result<(String, Vec<String>), Box<dyn Error>> {
+    ) -> Result<(String, Vec<String>), JacsError> {
         build_signature_content(
             json_value,
             keys,
@@ -1166,7 +1210,7 @@ impl Agent {
 
     /// verify the hash of a complete document that has SHA256_FIELDNAME
     #[must_use = "hash verification result must be checked"]
-    pub fn verify_hash(&self, doc: &Value) -> Result<bool, Box<dyn Error>> {
+    pub fn verify_hash(&self, doc: &Value) -> Result<bool, JacsError> {
         let original_hash_string = doc[SHA256_FIELDNAME].as_str().unwrap_or("").to_string();
         let new_hash_string = self.hash_doc(doc)?;
 
@@ -1188,7 +1232,7 @@ impl Agent {
 
     /// verify the hash where the document is the agent itself.
     #[must_use = "hash verification result must be checked"]
-    pub fn verify_self_hash(&self) -> Result<bool, Box<dyn Error>> {
+    pub fn verify_self_hash(&self) -> Result<bool, JacsError> {
         match &self.value {
             Some(embedded_value) => self.verify_hash(embedded_value),
             None => {
@@ -1212,7 +1256,7 @@ impl Agent {
     /// resigning
     /// rehashing
     #[must_use = "updated agent JSON must be used or stored"]
-    pub fn update_self(&mut self, new_agent_string: &str) -> Result<String, Box<dyn Error>> {
+    pub fn update_self(&mut self, new_agent_string: &str) -> Result<String, JacsError> {
         let mut new_self: Value = self.schema.validate_agent(new_agent_string)?;
         let original_self = self.value.as_ref().ok_or_else(|| {
             let agent_id = self.id.as_deref().unwrap_or("<uninitialized>");
@@ -1239,6 +1283,7 @@ impl Agent {
         // Security: Once an agent claims verified status, it cannot be downgraded
         fn claim_level(claim: &str) -> u8 {
             match claim {
+                // "verified-hai.ai" kept as fallback during deprecation period
                 "verified-registry" | "verified-hai.ai" => 2,
                 "verified" => 1,
                 _ => 0, // "unverified" or missing
@@ -1282,7 +1327,7 @@ impl Agent {
         let document_hash = self.hash_doc(&new_self)?;
         new_self[SHA256_FIELDNAME] = json!(format!("{}", document_hash));
         //replace ones self
-        self.version = Some(new_self["jacsVersion"].to_string());
+        self.version = new_self.get_str("jacsVersion");
         self.value = Some(new_self.clone());
         self.validate_agent(&self.to_string())?;
         self.verify_self_signature()?;
@@ -1298,7 +1343,7 @@ impl Agent {
     /// 4. Signs the new document with the **new** key
     ///
     /// Returns `(new_version, new_public_key_bytes, signed_agent_json)`.
-    pub fn rotate_self(&mut self) -> Result<(String, Vec<u8>, Value), Box<dyn Error>> {
+    pub fn rotate_self(&mut self) -> Result<(String, Vec<u8>, Value), JacsError> {
         // Clone the current agent value up front to avoid borrow conflicts
         let original_value = self
             .value
@@ -1382,10 +1427,7 @@ impl Agent {
         Ok((new_version, new_public_key, new_doc))
     }
 
-    pub fn validate_header(
-        &mut self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_header(&mut self, json: &str) -> Result<Value, JacsError> {
         let value = self.schema.validate_header(json)?;
 
         // check hash
@@ -1395,10 +1437,7 @@ impl Agent {
         Ok(value)
     }
 
-    pub fn validate_agent(
-        &mut self,
-        json: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    pub fn validate_agent(&mut self, json: &str) -> Result<Value, JacsError> {
         let value = self.schema.validate_agent(json)?;
         //
         // additional validation
@@ -1426,7 +1465,7 @@ impl Agent {
     }
 
     #[must_use = "save result must be checked for errors"]
-    pub fn save(&self) -> Result<String, Box<dyn Error>> {
+    pub fn save(&self) -> Result<String, JacsError> {
         let agent_string = self.as_string()?;
         let lookup_id = self.get_lookup_id()?;
         self.fs_agent_save(&lookup_id, &agent_string)
@@ -1439,7 +1478,7 @@ impl Agent {
         json: &str,
         create_keys: bool,
         _create_keys_algorithm: Option<&str>,
-    ) -> Result<Value, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<Value, JacsError> {
         // validate schema json string
         // make sure id and version are empty
         let mut instance = self.schema.create(json)?;
@@ -1840,6 +1879,37 @@ impl AgentBuilder {
 }
 
 #[cfg(test)]
+mod verification_claim_normalization_tests {
+    use super::normalize_verification_claim;
+
+    #[test]
+    fn verified_registry_passes_through_unchanged() {
+        assert_eq!(
+            normalize_verification_claim("verified-registry"),
+            "verified-registry"
+        );
+    }
+
+    #[test]
+    fn verified_hai_ai_normalizes_to_verified_registry() {
+        assert_eq!(
+            normalize_verification_claim("verified-hai.ai"),
+            "verified-registry"
+        );
+    }
+
+    #[test]
+    fn unverified_passes_through_unchanged() {
+        assert_eq!(normalize_verification_claim("unverified"), "unverified");
+    }
+
+    #[test]
+    fn verified_passes_through_unchanged() {
+        assert_eq!(normalize_verification_claim("verified"), "verified");
+    }
+}
+
+#[cfg(test)]
 mod builder_tests {
     use super::*;
 
@@ -2212,6 +2282,7 @@ mod ephemeral_tests {
         let _ = std::fs::remove_dir_all(&temp);
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     fn test_ephemeral_pq2025() {
         let mut agent = Agent::ephemeral("pq2025").unwrap();

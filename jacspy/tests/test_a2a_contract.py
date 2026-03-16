@@ -5,11 +5,6 @@ These tests validate that JACSA2AIntegration.verify_wrapped_artifact() output
 conforms to the canonical a2a-verification-result.schema.json defined in Task 001
 of the ATTESTATION_A2A_RESOLUTION PRD (Phase 0).
 
-EXPECTED STATE: These tests are designed to FAIL in the Red phase.  The Python
-wrapper currently returns snake_case field names (e.g. ``signer_id``) and lacks
-the ``status`` enum field.  They will pass after Tasks 007/008/011 align the
-wrapper output to the shared contract.
-
 Fixture files in ``fixtures/a2a_contract/`` are copies of the canonical fixtures
 from ``jacs/tests/fixtures/a2a_contract/``.  The schema is loaded from
 ``jacs/schemas/a2a-verification-result.schema.json``.
@@ -220,17 +215,10 @@ pytestmark = pytest.mark.contract
 class TestVerifyResultShape:
     """Unit tests verifying that verify_wrapped_artifact() output contains
     the fields required by the shared contract schema.
-
-    These tests are expected to fail until TASK_007 aligns the Python wrapper
-    output to use the canonical field names and status enum.
     """
 
     def test_verify_result_has_status_field(self):
         """Output must contain a ``status`` field (string or object).
-
-        The current Python wrapper only returns ``valid`` (boolean) without a
-        ``status`` enum.  This test is expected to fail until TASK_007 adds
-        the ``status`` field to the output.
 
         Schema ref: /properties/status -> VerificationStatus
         """
@@ -251,8 +239,6 @@ class TestVerifyResultShape:
     def test_verify_result_status_values_verified(self):
         """When verification succeeds, ``status`` must be one of ``Verified``
         or ``SelfSigned``.
-
-        This test is expected to fail until TASK_007 adds the ``status`` field.
 
         Schema ref: /definitions/VerificationStatus
         """
@@ -275,8 +261,6 @@ class TestVerifyResultShape:
     def test_verify_result_status_values_invalid(self):
         """When verification fails, ``status`` must be an object with either
         ``Unverified`` or ``Invalid`` key.
-
-        This test is expected to fail until TASK_007 adds the ``status`` field.
 
         Schema ref: /definitions/VerificationStatus (Unverified / Invalid variants)
         """
@@ -319,9 +303,6 @@ class TestVerifyResultShape:
         """When ``assess_trust=True``, the output must contain ``trustAssessment``
         and ``trustLevel`` fields matching the schema structure.
 
-        This test is expected to fail until TASK_008 aligns the trust output.
-        The current wrapper returns a ``trust`` dict with snake_case keys instead.
-
         Schema ref: /properties/trustAssessment, /properties/trustLevel
         """
         integration = _make_integration(verify_succeeds=True)
@@ -342,8 +323,6 @@ class TestVerifyResultShape:
     def test_verify_result_trust_policy_values(self):
         """``trustAssessment.allowed`` must be boolean and ``trustAssessment.policy``
         must be one of the defined policy enum values.
-
-        This test is expected to fail until TASK_008 aligns the trust output.
 
         Schema ref: /definitions/TrustAssessment, /definitions/A2ATrustPolicy
         """
@@ -374,9 +353,6 @@ class TestVerifyResultShape:
         """The ``valid`` boolean field must still be present for backward
         compatibility, alongside the new ``status`` field.
 
-        This test SHOULD pass even before alignment, since ``valid`` is
-        already present in the current output.
-
         Schema ref: /properties/valid
         """
         integration = _make_integration(verify_succeeds=True)
@@ -402,10 +378,6 @@ class TestVerifyResultShape:
         """All field names in the output must use camelCase as specified
         by the shared schema.
 
-        This test is expected to fail until TASK_007 converts field names.
-        The current wrapper returns snake_case names like ``signer_id``,
-        ``signer_version``, ``artifact_type``, ``original_artifact``.
-
         Schema ref: all top-level properties
         """
         integration = _make_integration(verify_succeeds=True)
@@ -428,7 +400,8 @@ class TestVerifyResultShape:
             "parentVerificationResults",
         }
 
-        # These are the snake_case equivalents the current code produces
+        # These are snake_case equivalents that must not appear in the
+        # protocol-shaped verification result.
         snake_case_fields = {
             "signer_id",
             "signer_version",
@@ -466,8 +439,6 @@ class TestContractFixtures:
     wrapper, and asserts that the output matches the expected field names
     and structure defined in the fixture.
 
-    These tests are expected to fail until Tasks 007/008/011 align the
-    Python wrapper output to the canonical schema.
     """
 
     @pytest.fixture(scope="class")
@@ -480,9 +451,6 @@ class TestContractFixtures:
         ``self_signed_verified.json`` fixture structure.
 
         Expected: status="SelfSigned", valid=true, no trust fields.
-        This test is expected to fail until TASK_007 adds the status field
-        and converts to camelCase field names.
-
         Fixture: fixtures/a2a_contract/self_signed_verified.json
         """
         expected = _load_fixture("self_signed_verified")
@@ -540,9 +508,6 @@ class TestContractFixtures:
         ``foreign_verified.json`` fixture structure.
 
         Expected: status="Verified", valid=true, trustAssessment present.
-        This test is expected to fail until TASK_007/008 add status and
-        trustAssessment fields.
-
         Fixture: fixtures/a2a_contract/foreign_verified.json
         """
         expected = _load_fixture("foreign_verified")
@@ -634,8 +599,6 @@ class TestContractFixtures:
         verification.  ``Invalid`` means the key was available but the
         signature did not match.
 
-        This test is expected to fail until TASK_007 implements the status enum.
-
         Fixtures: foreign_unverified.json, invalid_signature.json
         """
         unverified_expected = _load_fixture("foreign_unverified")
@@ -711,8 +674,6 @@ class TestContractFixtures:
         ``trust_blocked.json`` fixture structure.
 
         Expected: status=Invalid (due to policy), trustAssessment.allowed=false.
-        This test is expected to fail until TASK_008/011 align the trust output.
-
         Fixture: fixtures/a2a_contract/trust_blocked.json
         """
         expected = _load_fixture("trust_blocked")
@@ -763,8 +724,7 @@ class TestContractFixtures:
         """Meta-test: all fixture files themselves must be valid against the
         shared schema.
 
-        This test validates the test data, not the wrapper output.  It should
-        pass immediately since Task 001 created conforming fixtures.
+        This test validates the test data, not the wrapper output.
         """
         fixture_names = [
             "self_signed_verified",

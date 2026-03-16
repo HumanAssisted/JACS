@@ -81,7 +81,7 @@ fn generate_fixture(algorithm: &str, prefix: &str) {
 
     std::env::set_current_dir(&tmp).expect("cd to temp");
 
-    let (agent, _info) = SimpleAgent::quickstart(
+    let (agent, _info) = jacs::simple::advanced::quickstart(
         "cross-language-agent",
         "cross-language.example.com",
         Some("Cross-language test agent"),
@@ -285,6 +285,7 @@ fn generate_ed25519_fixture() {
     generate_fixture("ed25519", "ed25519");
 }
 
+#[cfg(feature = "pq-tests")]
 #[test]
 #[serial]
 fn generate_pq2025_fixture() {
@@ -297,12 +298,38 @@ fn generate_pq2025_fixture() {
 
 #[test]
 #[serial]
-fn verify_ed25519_fixture_standalone() {
-    verify_fixture("ed25519");
+fn generate_rsa_pss_fixture() {
+    if !should_update_fixtures() {
+        eprintln!("Skipping fixture regeneration (set UPDATE_CROSS_LANG_FIXTURES=1 to update)");
+        return;
+    }
+    generate_fixture("RSA-PSS", "rsa_pss");
 }
 
 #[test]
 #[serial]
+fn verify_ed25519_fixture_standalone() {
+    verify_fixture("ed25519");
+}
+
+#[cfg(feature = "pq-tests")]
+#[test]
+#[serial]
 fn verify_pq2025_fixture_standalone() {
     verify_fixture("pq2025");
+}
+
+#[test]
+#[serial]
+fn verify_rsa_pss_fixture_standalone() {
+    let out = fixtures_dir();
+    let signed_path = out.join("rsa_pss_signed.json");
+    if !signed_path.exists() {
+        eprintln!(
+            "Skipping RSA-PSS fixture verification (fixture not generated yet; \
+             set UPDATE_CROSS_LANG_FIXTURES=1 and run generate_rsa_pss_fixture first)"
+        );
+        return;
+    }
+    verify_fixture("rsa_pss");
 }

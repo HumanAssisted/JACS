@@ -91,8 +91,11 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 | `otlp-logs` | OpenTelemetry Protocol logging backend |
 | `otlp-metrics` | OpenTelemetry Protocol metrics backend |
 | `otlp-tracing` | OpenTelemetry Protocol distributed tracing |
-| `observability-convenience` | Helper wrappers for metrics and logging |
-| `mcp-server` | Model Context Protocol server integration surface |
+| `sqlite` | Lightweight sync SQLite backend (default) |
+| `sqlx-sqlite` | Async SQLite backend via sqlx (requires tokio) |
+| `agreements` | Agreement lifecycle support |
+| `a2a` | Agent-to-Agent protocol support |
+| `attestation` | Attestation support |
 
 ## Platform Support
 

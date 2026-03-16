@@ -15,6 +15,7 @@ from pathlib import Path
 pytest.importorskip("jacs")
 
 from jacs import simple
+from conftest import TEST_ALGORITHM_INTERNAL
 from jacs.types import (
     AgentInfo,
     SignedDocument,
@@ -64,15 +65,58 @@ def assert_audit_result(result: dict) -> None:
         assert first_risk["message"]
 
 
+def _pem_to_raw_key_bytes(public_key_pem: str, expected_hash: str) -> bytes:
+    """Convert a public key string to the raw bytes that match the signing-time hash.
+
+    For RSA-PSS: the PEM text bytes ARE the raw key bytes (hash matches directly).
+    For Ed25519/pq2025: the PEM wraps binary data; we decode the base64 body.
+    """
+    import base64 as b64mod
+    import hashlib
+
+    text_bytes = public_key_pem.encode("utf-8")
+
+    # Replicate Rust's hash_public_key: decode, trim, remove \r, SHA-256 hex.
+    def _hash_like_rust(data: bytes) -> str:
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = data.decode("utf-8", errors="replace")
+        normalized = text.strip().replace("\r", "")
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    if _hash_like_rust(text_bytes) == expected_hash:
+        return text_bytes
+
+    # Try PEM-decode for armored binary keys.
+    stripped = public_key_pem.strip()
+    if stripped.startswith("-----BEGIN"):
+        lines = [l for l in stripped.splitlines() if not l.startswith("-----")]
+        try:
+            decoded = b64mod.b64decode("".join(lines))
+            if _hash_like_rust(decoded) == expected_hash:
+                return decoded
+        except Exception:
+            pass
+
+    return text_bytes
+
+
 def seed_public_key_cache(agent_root: Path, agent_json: str, public_key_pem: str) -> None:
+    """Write agent's public key to the local public_keys cache.
+
+    The cache must store the exact bytes that hash_public_key() used during signing.
+    """
     agent_data = json.loads(agent_json)
     signature = agent_data.get("jacsSignature", {})
     key_hash = signature["publicKeyHash"]
     signing_algorithm = signature.get("signingAlgorithm", "RSA-PSS")
 
+    raw_bytes = _pem_to_raw_key_bytes(public_key_pem, key_hash)
+
     public_keys_dir = agent_root / "jacs_data" / "public_keys"
     public_keys_dir.mkdir(parents=True, exist_ok=True)
-    (public_keys_dir / f"{key_hash}.pem").write_text(public_key_pem, encoding="utf-8")
+    (public_keys_dir / f"{key_hash}.pem").write_bytes(raw_bytes)
     (public_keys_dir / f"{key_hash}.enc_type").write_text(signing_algorithm, encoding="utf-8")
 
 
@@ -819,7 +863,7 @@ class TestAgreementWorkflow:
             a1 = simple.create(
                 name="pytest-agent-1",
                 password=password,
-                algorithm="RSA-PSS",
+                algorithm=TEST_ALGORITHM_INTERNAL,
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",
@@ -831,7 +875,7 @@ class TestAgreementWorkflow:
             a2 = simple.create(
                 name="pytest-agent-2",
                 password=password,
-                algorithm="RSA-PSS",
+                algorithm=TEST_ALGORITHM_INTERNAL,
                 data_directory="jacs_data",
                 key_directory="keys",
                 config_path="jacs.config.json",
@@ -866,6 +910,79 @@ class TestAgreementWorkflow:
             assert len(status.pending) == 0
         finally:
             os.chdir(original_cwd)
+
+
+class TestAllAlgorithms:
+    """Verify core sign/verify/trust/agreement flows work with every algorithm.
+
+    Each parametrized test creates two agents and exercises sign, verify,
+    trust, and two-party agreement in a single test to minimize agent
+    creation overhead (pq2025 keygen is ~30-60s per agent).
+    """
+
+    @pytest.mark.parametrize("algo", ["ring-Ed25519", "RSA-PSS", "pq2025"])
+    def test_full_flow(self, tmp_path, algo):
+        """Sign/verify + two-party trust/agreement for one algorithm."""
+        password = "TestP@ss123!#"
+        a1_root = tmp_path / "agent1"
+        a2_root = tmp_path / "agent2"
+        a1_root.mkdir()
+        a2_root.mkdir()
+
+        original_cwd = os.getcwd()
+        try:
+            # --- Agent 1: create, sign, verify ---
+            os.chdir(a1_root)
+            a1 = simple.create(
+                name="algo-agent-1",
+                password=password,
+                algorithm=algo,
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
+            )
+            assert a1.agent_id
+
+            signed = simple.sign_message({"algo": algo, "test": True})
+            assert signed.document_id
+            result = simple.verify(signed.raw_json)
+            assert result.valid
+
+            agent1_json = simple.export_agent()
+            agent1_public_key = simple.get_public_key()
+
+            # --- Agent 2: create ---
+            os.chdir(a2_root)
+            a2 = simple.create(
+                name="algo-agent-2",
+                password=password,
+                algorithm=algo,
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
+            )
+
+            # --- Two-party agreement ---
+            os.chdir(a1_root)
+            simple.load("jacs.config.json")
+            agreement = simple.create_agreement(
+                document={"proposal": f"test-{algo}"},
+                agent_ids=[a1.agent_id, a2.agent_id],
+                question="Approve?",
+            )
+            signed_by_a1 = simple.sign_agreement(agreement)
+
+            os.chdir(a2_root)
+            simple.load("jacs.config.json")
+            simple.trust_agent_with_key(agent1_json, agent1_public_key)
+            seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
+            signed_by_both = simple.sign_agreement(signed_by_a1)
+            status = simple.check_agreement(signed_by_both)
+            assert status.complete is True
+            assert len(status.pending) == 0
+        finally:
+            os.chdir(original_cwd)
+            simple.reset()
 
 
 class TestAudit:

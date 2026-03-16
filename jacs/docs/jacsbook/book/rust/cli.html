@@ -194,7 +194,7 @@ jacs task --help
 <tr><td><code>jacs agent</code></td><td>Manage agents</td></tr>
 <tr><td><code>jacs document</code></td><td>Manage documents</td></tr>
 <tr><td><code>jacs task</code></td><td>Manage tasks</td></tr>
-<tr><td><code>jacs mcp</code></td><td>Install and run the Rust MCP server</td></tr>
+<tr><td><code>jacs mcp</code></td><td>Start the built-in MCP server (stdio transport)</td></tr>
 </tbody></table>
 </div>
 <h2 id="initialization"><a class="header" href="#initialization">Initialization</a></h2>
@@ -208,17 +208,10 @@ jacs init
 <li>Generates cryptographic keys</li>
 <li>Creates an initial agent document</li>
 </ol>
-<h2 id="mcp-commands"><a class="header" href="#mcp-commands">MCP Commands</a></h2>
-<h3 id="install-mcp-server"><a class="header" href="#install-mcp-server">Install MCP Server</a></h3>
-<pre><code class="language-bash"># Install jacs-mcp from prebuilt platform assets (defaults to matching CLI version)
-jacs mcp install
-</code></pre>
-<h3 id="run-mcp-server"><a class="header" href="#run-mcp-server">Run MCP Server</a></h3>
-<pre><code class="language-bash"># Start stdio MCP server
-jacs mcp run
-
-# Run a custom binary path
-jacs mcp run --bin /path/to/jacs-mcp
+<h2 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h2>
+<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
+<pre><code class="language-bash"># Start the MCP server (stdio transport)
+jacs mcp
 </code></pre>
 <h2 id="configuration-commands"><a class="header" href="#configuration-commands">Configuration Commands</a></h2>
 <h3 id="create-configuration"><a class="header" href="#create-configuration">Create Configuration</a></h3>

@@ -12,7 +12,7 @@ Services the agent can perform.
 
 ## jacsServices Type
 
-unknown\[]
+`object[]` ([Service](agent-allof-1-jacsservices-service.md))
 
 ## jacsServices Constraints
 

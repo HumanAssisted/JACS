@@ -22,6 +22,13 @@ try {
   simple = null;
 }
 
+let bindings;
+try {
+  bindings = require('../index.js');
+} catch (e) {
+  bindings = null;
+}
+
 // Path to test fixtures (use shared fixtures from jacs/tests/scratch)
 const FIXTURES_DIR = path.resolve(__dirname, '../../jacs/tests/scratch');
 const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
@@ -37,6 +44,12 @@ const RISK_CATEGORIES = [
   'quarantine',
   'directories',
 ];
+
+function resolveConfigRelativePath(configPath, candidate) {
+  return path.isAbsolute(candidate)
+    ? candidate
+    : path.resolve(path.dirname(configPath), candidate);
+}
 
 // Helper to get a fresh simple module and load it in the fixtures directory (sync)
 function loadSimpleInFixtures() {
@@ -103,14 +116,37 @@ function expectAuditReport(result) {
 }
 
 function seedPublicKeyCache(agentDir, agentJson, publicKeyPem) {
+  const crypto = require('crypto');
   const agent = JSON.parse(agentJson);
   const signature = agent.jacsSignature || {};
   const keyHash = signature.publicKeyHash;
   const signingAlgorithm = signature.signingAlgorithm || 'RSA-PSS';
   const publicKeysDir = path.join(agentDir, 'jacs_data', 'public_keys');
 
+  // Replicate Rust's hash_public_key: decode UTF-8, trim, remove \r, SHA-256 hex.
+  function hashLikeRust(buf) {
+    const text = buf.toString('utf8').trim().replace(/\r/g, '');
+    return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+  }
+
+  // Determine raw key bytes that match the signing-time hash.
+  let rawBytes = Buffer.from(publicKeyPem, 'utf8');
+  if (hashLikeRust(rawBytes) !== keyHash) {
+    // PEM-armored binary key — decode the base64 body.
+    const stripped = publicKeyPem.trim();
+    if (stripped.startsWith('-----BEGIN')) {
+      const body = stripped.split('\n').filter(l => !l.startsWith('-----')).join('');
+      try {
+        const decoded = Buffer.from(body, 'base64');
+        if (hashLikeRust(decoded) === keyHash) {
+          rawBytes = decoded;
+        }
+      } catch (_) { /* keep text bytes */ }
+    }
+  }
+
   fs.mkdirSync(publicKeysDir, { recursive: true });
-  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), publicKeyPem);
+  fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.pem`), rawBytes);
   fs.writeFileSync(path.join(publicKeysDir, `${keyHash}.enc_type`), signingAlgorithm);
 }
 
@@ -256,23 +292,29 @@ describe('JACS Simple API', function() {
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-quickstart-'));
-      const customDir = path.join(tmpDir, 'custom');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
-      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
 
       try {
-        fs.mkdirSync(customDir, { recursive: true });
-        process.chdir(customDir);
+        process.chdir(tmpDir);
         const info = await freshSimple.quickstart({
           name: 'simple-test-agent',
           domain: 'simple-test.example.com',
           algorithm: 'ring-Ed25519',
-          configPath: path.join(customDir, 'jacs.config.json'),
+          configPath: path.join('custom', 'jacs.config.json'),
         });
         expect(info).to.have.property('agentId').that.is.a('string').and.not.empty;
         expect(freshSimple.isLoaded()).to.equal(true);
-        expect(fs.existsSync(path.join(customDir, 'jacs.config.json'))).to.equal(true);
+        const configPath = path.join(tmpDir, 'custom', 'jacs.config.json');
+        expect(fs.existsSync(configPath)).to.equal(true);
+        expect(process.env.JACS_PRIVATE_KEY_PASSWORD).to.equal(undefined);
+
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory);
+        const keyDir = resolveConfigRelativePath(configPath, config.jacs_key_directory);
+        expect(fs.existsSync(dataDir)).to.equal(true);
+        expect(fs.existsSync(keyDir)).to.equal(true);
 
         const signed = await freshSimple.signMessage({ quickstart: true });
         expect(signed.documentId).to.be.a('string').and.not.empty;
@@ -522,7 +564,8 @@ describe('JACS Simple API', function() {
       expect(agreement.documentId).to.be.a('string').and.not.empty;
     });
 
-    (simpleExists ? it : it.skip)('should require both agents for two-party agreement completion', () => {
+    (simpleExists ? it : it.skip)('should require both agents for two-party agreement completion', function() {
+      this.timeout(30000);
       const modulePath = require.resolve('../simple.js');
       const password = 'TestP@ss123!#';
       const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));
@@ -778,6 +821,63 @@ describe('JACS Simple API', function() {
       expect(result.valid).to.be.false;
       expect(result.errors).to.be.an('array').that.is.not.empty;
       expect(result.errors[0]).to.match(/Document ID must be in 'uuid:version' format/);
+    });
+
+    (simpleExists ? it : it.skip)('verifyById should use native document lookup for metadata instead of JS filesystem reads', async function () {
+      this.timeout(30000);
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-verify-by-id-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
+
+      try {
+        process.chdir(tmpDir);
+        await freshSimple.quickstart({
+          name: 'simple-verify-by-id-agent',
+          domain: 'simple-verify-by-id.example.com',
+          algorithm: 'ring-Ed25519',
+        });
+        const info = freshSimple.getAgentInfo();
+        const nativeAgent = new bindings.JacsAgent();
+        await nativeAgent.load(path.resolve(info.configPath));
+        const storedRaw = await nativeAgent.createDocument(
+          JSON.stringify({ jacsType: 'message', jacsLevel: 'raw', content: { verifyById: true } }),
+          null,
+          null,
+          false,
+          null,
+          null,
+        );
+        const documentId = String(storedRaw).replace(/^saved\s+/, '');
+
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          const target = String(filePath);
+          if (target.endsWith('jacs.config.json') || target.includes(`${path.sep}documents${path.sep}`)) {
+            throw new Error('verifyById should not depend on JS filesystem reads');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const result = await freshSimple.verifyById(documentId);
+          expect(result.valid).to.equal(true);
+          expect(result.signerId).to.be.a('string').and.not.empty;
+          expect(result.timestamp).to.be.a('string').and.not.empty;
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+        }
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 

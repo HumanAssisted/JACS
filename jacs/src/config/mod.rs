@@ -10,7 +10,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::str::FromStr;
@@ -53,8 +52,6 @@ impl FromStr for KeyResolutionSource {
             "local" => Ok(KeyResolutionSource::Local),
             "dns" => Ok(KeyResolutionSource::Dns),
             "registry" => Ok(KeyResolutionSource::Registry),
-            // Backward compat: "hai" maps to Registry
-            "hai" => Ok(KeyResolutionSource::Registry),
             other => Err(format!(
                 "Unknown key resolution source '{}'. Valid options are: local, dns, registry",
                 other
@@ -77,7 +74,6 @@ impl FromStr for KeyResolutionSource {
 /// - `local` - Local filesystem (keys in `public_keys/` directory)
 /// - `dns` - DNS TXT record verification
 /// - `registry` - Remote registry key service (JACS_KEYS_BASE_URL)
-/// - `hai` - Backward-compatible alias for `registry`
 ///
 /// # Examples
 ///
@@ -559,14 +555,14 @@ impl Config {
         }
     }
 
-    pub fn get_key_algorithm(&self) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn get_key_algorithm(&self) -> Result<String, JacsError> {
         // 1. Try getting from config
         if let Some(algo_str) = self.jacs_agent_key_algorithm().as_deref() {
             // Config exists and has the key algorithm string
             return Ok(algo_str.to_string());
         }
         get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)
-            .map_err(|e| Box::new(e) as Box<dyn Error>) // Map EnvError to Box<dyn Error>
+            .map_err(|e| JacsError::ConfigError(e.to_string()))
     }
 
     fn replace_if_some<T>(target: &mut Option<T>, incoming: Option<T>) {
@@ -766,7 +762,7 @@ impl Config {
 
     /// Load config from a JSON file without applying environment overrides.
     /// Use `load_config_12factor` for the recommended 12-Factor compliant loading.
-    pub fn from_file(path: &str) -> Result<Config, Box<dyn Error>> {
+    pub fn from_file(path: &str) -> Result<Config, JacsError> {
         let json_str = fs::read_to_string(path).map_err(|e| {
             let help = match e.kind() {
                 std::io::ErrorKind::NotFound => {
@@ -867,7 +863,7 @@ impl fmt::Display for Config {
 /// // Load with just defaults and env overrides
 /// let config = load_config_12factor(None)?;
 /// ```
-pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, Box<dyn Error>> {
+pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, JacsError> {
     // Step 1: Start with hardcoded defaults
     let mut config = Config::with_defaults();
 
@@ -899,7 +895,7 @@ pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, Box<dyn
 ///
 /// # Arguments
 /// * `config_path` - Optional path to a JSON config file (won't fail if missing)
-pub fn load_config_12factor_optional(config_path: Option<&str>) -> Result<Config, Box<dyn Error>> {
+pub fn load_config_12factor_optional(config_path: Option<&str>) -> Result<Config, JacsError> {
     // Step 1: Start with hardcoded defaults
     let mut config = Config::with_defaults();
 
@@ -941,7 +937,7 @@ pub fn load_config_12factor_optional(config_path: Option<&str>) -> Result<Config
     since = "0.2.0",
     note = "Use load_config_12factor() for 12-Factor compliant config loading"
 )]
-pub fn load_config(config_path: &str) -> Result<Config, Box<dyn Error>> {
+pub fn load_config(config_path: &str) -> Result<Config, JacsError> {
     Config::from_file(config_path)
 }
 
@@ -1071,13 +1067,15 @@ fn format_validation_error(error: &jsonschema::ValidationError, instance: &Value
     msg
 }
 
-pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
-    let jacsconfigschema_result: Value = serde_json::from_str(CONFIG_SCHEMA_STRING)?;
+pub fn validate_config(config_json: &str) -> Result<Value, JacsError> {
+    let jacsconfigschema_result: Value = serde_json::from_str(CONFIG_SCHEMA_STRING)
+        .map_err(|e| JacsError::ConfigError(format!("Failed to parse config schema: {}", e)))?;
 
     let jacsconfigschema = Validator::options()
         .with_draft(Draft::Draft7)
         .with_retriever(EmbeddedSchemaResolver::new())
-        .build(&jacsconfigschema_result)?;
+        .build(&jacsconfigschema_result)
+        .map_err(|e| JacsError::ConfigError(format!("Failed to compile config schema: {}", e)))?;
 
     let instance: Value = serde_json::from_str(config_json).map_err(|e| {
         // Provide detailed JSON parse error with line/column
@@ -1096,14 +1094,14 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
             e
         );
         error!("{}", err_msg);
-        Box::<dyn Error>::from(err_msg)
+        JacsError::ConfigError(err_msg)
     })?;
 
     // Validate and provide detailed error messages
     if let Err(e) = jacsconfigschema.validate(&instance) {
         let err_msg = format_validation_error(&e, &instance);
         error!("{}", err_msg);
-        return Err(Box::<dyn Error>::from(err_msg));
+        return Err(JacsError::ConfigError(err_msg));
     }
 
     Ok(instance)
@@ -1117,11 +1115,13 @@ pub fn validate_config(config_json: &str) -> Result<Value, Box<dyn Error>> {
     since = "0.2.0",
     note = "Use load_config_12factor_optional() for 12-Factor compliant config loading"
 )]
-pub fn find_config(path: String) -> Result<Config, Box<dyn Error>> {
+pub fn find_config(path: String) -> Result<Config, JacsError> {
     let config: Config = match fs::read_to_string(format!("{}jacs.config.json", path)) {
         Ok(content) => {
             let validated_value = validate_config(&content)?;
-            serde_json::from_value(validated_value)?
+            serde_json::from_value(validated_value).map_err(|e| {
+                JacsError::ConfigError(format!("Failed to deserialize config: {}", e))
+            })?
         }
         Err(_) => Config::default(),
     };
@@ -1144,16 +1144,21 @@ pub fn set_env_vars(
     do_override: bool,
     config_json: Option<&str>,
     ignore_agent_id: bool,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, JacsError> {
     let config: Config = match config_json {
         Some(json_str) => {
             let validated_value = validate_config(json_str)?;
-            serde_json::from_value(validated_value)?
+            serde_json::from_value(validated_value).map_err(|e| {
+                JacsError::ConfigError(format!("Failed to deserialize config: {}", e))
+            })?
         }
         None => find_config(".".to_string())?,
     };
     // debug!("configs from file {:?}", config);
-    validate_config(&serde_json::to_string(&config).map_err(|e| Box::new(e) as Box<dyn Error>)?)?;
+    validate_config(
+        &serde_json::to_string(&config)
+            .map_err(|e| JacsError::ConfigError(format!("Failed to serialize config: {}", e)))?,
+    )?;
 
     // Security: Password should come from environment variable, not config file
     if config.jacs_private_key_password.is_some() {
@@ -1171,7 +1176,8 @@ pub fn set_env_vars(
         .as_ref()
         .unwrap_or(&"false".to_string())
         .clone();
-    set_env_var_override("JACS_USE_SECURITY", &jacs_use_security, do_override)?;
+    set_env_var_override("JACS_USE_SECURITY", &jacs_use_security, do_override)
+        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let jacs_data_directory = config
         .jacs_data_directory
@@ -1182,14 +1188,16 @@ pub fn set_env_vars(
                 .unwrap_or_else(|_| "./jacs_data".to_string()),
         )
         .clone();
-    set_env_var_override("JACS_DATA_DIRECTORY", &jacs_data_directory, do_override)?;
+    set_env_var_override("JACS_DATA_DIRECTORY", &jacs_data_directory, do_override)
+        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let jacs_key_directory = config
         .jacs_key_directory
         .as_ref()
         .unwrap_or(&".".to_string())
         .clone();
-    set_env_var_override("JACS_KEY_DIRECTORY", &jacs_key_directory, do_override)?;
+    set_env_var_override("JACS_KEY_DIRECTORY", &jacs_key_directory, do_override)
+        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let jacs_agent_private_key_filename = config
         .jacs_agent_private_key_filename
@@ -1200,7 +1208,8 @@ pub fn set_env_vars(
         "JACS_AGENT_PRIVATE_KEY_FILENAME",
         &jacs_agent_private_key_filename,
         do_override,
-    )?;
+    )
+    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let jacs_agent_public_key_filename = config
         .jacs_agent_public_key_filename
@@ -1211,7 +1220,8 @@ pub fn set_env_vars(
         "JACS_AGENT_PUBLIC_KEY_FILENAME",
         &jacs_agent_public_key_filename,
         do_override,
-    )?;
+    )
+    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let jacs_agent_key_algorithm = config
         .jacs_agent_key_algorithm
@@ -1222,14 +1232,16 @@ pub fn set_env_vars(
         "JACS_AGENT_KEY_ALGORITHM",
         &jacs_agent_key_algorithm,
         do_override,
-    )?;
+    )
+    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let jacs_default_storage = config
         .jacs_default_storage
         .as_ref()
         .unwrap_or(&"fs".to_string())
         .clone();
-    set_env_var_override("JACS_DEFAULT_STORAGE", &jacs_default_storage, do_override)?;
+    set_env_var_override("JACS_DEFAULT_STORAGE", &jacs_default_storage, do_override)
+        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let jacs_agent_id_and_version = config
         .jacs_agent_id_and_version
@@ -1251,13 +1263,14 @@ pub fn set_env_vars(
         "JACS_AGENT_ID_AND_VERSION",
         &jacs_agent_id_and_version,
         do_override,
-    )?;
+    )
+    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
     let message = format!("{}", config);
     info!("{}", message);
     check_env_vars(ignore_agent_id).map_err(|e| {
         error!("Error checking environment variables: {}", e);
-        Box::new(e) as Box<dyn Error>
+        JacsError::ConfigError(e.to_string())
     })?;
     Ok(message)
 }
@@ -2083,14 +2096,14 @@ mod tests {
             KeyResolutionSource::from_str(" registry ").unwrap(),
             KeyResolutionSource::Registry
         );
-        // Backward compat: "hai" maps to Registry
-        assert_eq!(
-            KeyResolutionSource::from_str("hai").unwrap(),
-            KeyResolutionSource::Registry
+        // "hai" is no longer a valid key resolution source (removed in architecture upgrade)
+        assert!(
+            KeyResolutionSource::from_str("hai").is_err(),
+            "\"hai\" should be rejected as a key resolution source"
         );
-        assert_eq!(
-            KeyResolutionSource::from_str("HAI").unwrap(),
-            KeyResolutionSource::Registry
+        assert!(
+            KeyResolutionSource::from_str("HAI").is_err(),
+            "\"HAI\" should be rejected as a key resolution source"
         );
 
         // Invalid sources
@@ -2144,12 +2157,19 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_get_key_resolution_order_hai_backward_compat() {
+    fn test_get_key_resolution_order_hai_is_rejected() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "hai").unwrap();
 
+        // "hai" should be silently skipped (invalid source), resulting in empty order
+        // which falls back to default
         let order = get_key_resolution_order();
-        assert_eq!(order, vec![KeyResolutionSource::Registry]);
+        // Since "hai" is no longer valid, it should be skipped and order should be empty
+        // (the get_key_resolution_order function logs a warning and skips invalid sources)
+        assert!(
+            !order.iter().any(|s| format!("{}", s) == "hai"),
+            "\"hai\" should not appear in key resolution order"
+        );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
     }

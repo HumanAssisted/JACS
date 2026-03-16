@@ -32,6 +32,46 @@ pub fn base64_encode(data: &[u8]) -> String {
     STANDARD.encode(data)
 }
 
+fn armor_pem_block(data: &[u8], block_type: &str) -> String {
+    let encoded = base64_encode(data);
+    let mut pem = String::with_capacity(encoded.len() + block_type.len() * 2 + 64);
+    pem.push_str("-----BEGIN ");
+    pem.push_str(block_type);
+    pem.push_str("-----\n");
+
+    for chunk in encoded.as_bytes().chunks(64) {
+        pem.push_str(std::str::from_utf8(chunk).expect("base64 output is valid ascii"));
+        pem.push('\n');
+    }
+
+    pem.push_str("-----END ");
+    pem.push_str(block_type);
+    pem.push_str("-----\n");
+    pem
+}
+
+/// Convert raw public-key bytes into canonical PEM text for external APIs.
+///
+/// Internally, JACS stores public keys as raw algorithm-specific bytes for
+/// Ed25519 and pq2025, while RSA keys may already be PEM text. This helper
+/// preserves existing PEM blocks and otherwise ASCII-armors the exact bytes
+/// without lossy decoding.
+#[must_use = "public key PEM must be used"]
+pub fn normalize_public_key_pem(public_key: &[u8]) -> String {
+    if let Ok(text) = std::str::from_utf8(public_key) {
+        let trimmed = text.trim();
+        if trimmed.contains("BEGIN PUBLIC KEY") || trimmed.contains("BEGIN RSA PUBLIC KEY") {
+            let mut normalized = trimmed.replace("\r\n", "\n").replace('\r', "\n");
+            if !normalized.ends_with('\n') {
+                normalized.push('\n');
+            }
+            return normalized;
+        }
+    }
+
+    armor_pem_block(public_key, "PUBLIC KEY")
+}
+
 /// Decode base64 string to bytes using the standard engine.
 #[inline]
 #[must_use = "decoded bytes must be used"]
@@ -80,7 +120,7 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 /// - Pq2025 (ML-DSA-87): 2592-byte public keys
 pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
-) -> Result<CryptoSigningAlgorithm, Box<dyn std::error::Error>> {
+) -> Result<CryptoSigningAlgorithm, JacsError> {
     trace!(
         public_key_len = public_key.len(),
         "Detecting algorithm from public key"
@@ -136,8 +176,7 @@ pub fn detect_algorithm_from_public_key(
     );
     Err(JacsError::CryptoError(
         "Could not determine the algorithm from the public key format".to_string(),
-    )
-    .into())
+    ))
 }
 
 /// Detects which algorithm to use based on signature length and other characteristics
@@ -150,15 +189,15 @@ pub fn detect_algorithm_from_signature(
 }
 
 pub trait KeyManager {
-    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>>;
+    fn generate_keys(&mut self) -> Result<(), JacsError>;
+    fn sign_string(&mut self, data: &str) -> Result<String, JacsError>;
     fn verify_string(
         &self,
         data: &str,
         signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+    ) -> Result<(), JacsError>;
 
     /// Signs multiple strings in a batch operation.
     ///
@@ -179,7 +218,7 @@ pub trait KeyManager {
     ///
     /// Returns an error if signing any message fails. In case of failure, no
     /// signatures are returned (all-or-nothing semantics).
-    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>>;
+    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, JacsError>;
 }
 
 impl Agent {
@@ -187,7 +226,7 @@ impl Agent {
     ///
     /// This is the byte-level equivalent of `sign_string`. Used by
     /// the email signing module where the payload is binary.
-    pub fn sign_bytes(&mut self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    pub fn sign_bytes(&mut self, data: &[u8]) -> Result<Vec<u8>, JacsError> {
         let config = self
             .config
             .as_ref()
@@ -242,10 +281,7 @@ impl Agent {
     /// Generate keys using a specific KeyStore implementation.
     /// For ephemeral agents, uses set_keys_raw (no AES encryption).
     /// For persistent agents, uses set_keys (AES-encrypts private key).
-    pub fn generate_keys_with_store(
-        &mut self,
-        ks: &dyn KeyStore,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn generate_keys_with_store(&mut self, ks: &dyn KeyStore) -> Result<(), JacsError> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let key_algorithm = config.get_key_algorithm()?;
         info!(algorithm = %key_algorithm, "Generating new keypair");
@@ -266,11 +302,11 @@ impl Agent {
 
 impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
-    fn generate_keys(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn generate_keys(&mut self) -> Result<(), JacsError> {
         self.generate_keys_with_store(&FsEncryptedStore)
     }
 
-    fn sign_string(&mut self, data: &str) -> Result<String, Box<dyn std::error::Error>> {
+    fn sign_string(&mut self, data: &str) -> Result<String, JacsError> {
         let config = self.config.as_ref().ok_or(
             "Document signing failed: agent configuration not initialized. \
             Call load() with a valid config file or create() to initialize the agent first.",
@@ -360,7 +396,7 @@ impl KeyManager for Agent {
         }
     }
 
-    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    fn sign_batch(&mut self, messages: &[&str]) -> Result<Vec<String>, JacsError> {
         if messages.is_empty() {
             return Ok(Vec::new());
         }
@@ -466,7 +502,7 @@ impl KeyManager for Agent {
         signature_base64: &str,
         public_key: Vec<u8>,
         public_key_enc_type: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), JacsError> {
         trace!(
             data_len = data.len(),
             signature_len = signature_base64.len(),
@@ -476,13 +512,17 @@ impl KeyManager for Agent {
         );
         let verify_start = std::time::Instant::now();
         // Get the signature bytes for analysis
-        let signature_bytes = STANDARD.decode(signature_base64)?;
+        let signature_bytes = STANDARD
+            .decode(signature_base64)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?;
 
         // Determine the algorithm type
         let algo = match public_key_enc_type {
             Some(ref enc_type) => {
                 debug!(algorithm = %enc_type, "Using explicit algorithm from signature");
-                CryptoSigningAlgorithm::from_str(enc_type)?
+                CryptoSigningAlgorithm::from_str(enc_type).map_err(|_| {
+                    JacsError::CryptoError(format!("Unknown signing algorithm: {}", enc_type))
+                })?
             }
             None => {
                 warn!(
@@ -520,7 +560,12 @@ impl KeyManager for Agent {
                             .ok_or("Agent config not initialized for algorithm fallback")?;
                         let key_algorithm = config.get_key_algorithm()?;
                         debug!(fallback = %key_algorithm, "Using config fallback for algorithm detection");
-                        CryptoSigningAlgorithm::from_str(&key_algorithm)?
+                        CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
+                            JacsError::CryptoError(format!(
+                                "Unknown signing algorithm: {}",
+                                key_algorithm
+                            ))
+                        })?
                     }
                 }
             }
@@ -550,5 +595,29 @@ impl KeyManager for Agent {
         );
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_public_key_pem;
+
+    #[test]
+    fn normalize_public_key_pem_wraps_raw_bytes() {
+        let pem = normalize_public_key_pem(&[0x34, 0x9e, 0x74, 0xd9, 0xd1, 0x60]);
+        assert!(pem.starts_with("-----BEGIN PUBLIC KEY-----\n"));
+        assert!(pem.ends_with("-----END PUBLIC KEY-----\n"));
+        assert!(pem.contains("NJ502dFg"));
+    }
+
+    #[test]
+    fn normalize_public_key_pem_preserves_existing_pem() {
+        let pem = normalize_public_key_pem(
+            b"-----BEGIN PUBLIC KEY-----\r\nQUJD\n-----END PUBLIC KEY-----\r\n",
+        );
+        assert_eq!(
+            pem,
+            "-----BEGIN PUBLIC KEY-----\nQUJD\n-----END PUBLIC KEY-----\n"
+        );
     }
 }

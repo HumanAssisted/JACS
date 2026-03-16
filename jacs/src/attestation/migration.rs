@@ -8,8 +8,8 @@ use crate::agent::document::JACSDocument;
 use crate::attestation::AttestationTraits;
 use crate::attestation::digest::compute_digest_set;
 use crate::attestation::types::*;
+use crate::error::JacsError;
 use serde_json::Value;
-use std::error::Error;
 
 /// Lift an existing signed JACS document into an attestation.
 ///
@@ -27,7 +27,7 @@ pub fn lift_to_attestation(
     agent: &mut Agent,
     signed_document_json: &str,
     claims: &[Claim],
-) -> Result<JACSDocument, Box<dyn Error>> {
+) -> Result<JACSDocument, JacsError> {
     // 1. Parse the signed document
     let doc_value: Value = serde_json::from_str(signed_document_json).map_err(|e| {
         format!(

@@ -19,8 +19,8 @@
  * ```
  */
 import { JacsAgent, hashString, createConfig } from './index';
-import type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions } from './simple';
-export type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions, };
+import type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AttestationVerificationResult, DsseEnvelope, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions } from './simple';
+export type { AgentInfo, SignedDocument, VerificationResult, Attachment, AgreementStatus, AttestationVerificationResult, DsseEnvelope, AuditOptions, QuickstartOptions, QuickstartInfo, CreateAgentOptions, LoadOptions, };
 export { hashString, createConfig };
 export interface AgreementOptions {
     question?: string;
@@ -56,6 +56,7 @@ export interface ClientArtifactVerificationResult {
 export declare class JacsClient {
     private agent;
     private info;
+    private privateKeyPassword;
     private _strict;
     constructor(options?: JacsClientOptions);
     /**
@@ -91,6 +92,8 @@ export declare class JacsClient {
      */
     get _agent(): JacsAgent;
     private requireAgent;
+    private withPrivateKeyPassword;
+    private withPrivateKeyPasswordSync;
     signMessage(data: any): Promise<SignedDocument>;
     signMessageSync(data: any): SignedDocument;
     verify(signedDocument: string): Promise<VerificationResult>;
@@ -142,13 +145,16 @@ export declare class JacsClient {
     /**
      * Verify an attestation document.
      *
+     * The returned object preserves the canonical wire-format field names from the
+     * attestation/DSSE JSON contracts, which use camelCase.
+     *
      * @param attestationJson - Raw JSON string of the attestation document.
      * @param opts - Optional. Set full: true for full-tier verification.
      * @returns Verification result with valid, crypto, evidence, chain, errors.
      */
     verifyAttestation(attestationJson: string, opts?: {
         full?: boolean;
-    }): Promise<Record<string, unknown>>;
+    }): Promise<AttestationVerificationResult>;
     /**
      * Lift a signed document into an attestation.
      *
@@ -163,7 +169,7 @@ export declare class JacsClient {
      * @param attestationJson - Raw JSON string of the attestation document.
      * @returns The DSSE envelope as a parsed object.
      */
-    exportAttestationDsse(attestationJson: string): Promise<Record<string, unknown>>;
+    exportAttestationDsse(attestationJson: string): Promise<DsseEnvelope>;
     /**
      * Get a configured JACSA2AIntegration instance bound to this client.
      *

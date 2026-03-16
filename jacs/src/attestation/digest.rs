@@ -5,15 +5,15 @@
 
 use crate::attestation::types::{DigestSet, EvidenceSensitivity};
 use crate::crypt::hash::{hash_bytes, hash_string};
+use crate::error::JacsError;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::error::Error;
 
 /// Auto-embed threshold: evidence smaller than 64 KB is embedded by default.
 pub const AUTO_EMBED_THRESHOLD: usize = 64 * 1024;
 
 /// Compute a DigestSet from a serde_json Value using JCS canonicalization.
-pub fn compute_digest_set(value: &Value) -> Result<DigestSet, Box<dyn Error>> {
+pub fn compute_digest_set(value: &Value) -> Result<DigestSet, JacsError> {
     let canonical = serde_json_canonicalizer::to_string(value)?;
     let sha256 = hash_string(&canonical);
     Ok(DigestSet {

@@ -1,7 +1,7 @@
 # Untitled array in Program Schema
 
 ```txt
-https://hai.ai/schemas/program/v1/eval.program.json#/allOf/1/properties/nodes
+https://hai.ai/schemas/program/v1/program.schema.json#/allOf/1/properties/nodes
 ```
 
 list of evaluation units, informatio labels

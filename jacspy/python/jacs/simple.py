@@ -56,6 +56,7 @@ Example:
 import json
 import logging
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Union, List, Any
 
@@ -110,6 +111,7 @@ except ImportError:
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
+_agent_password: Optional[str] = None
 _strict: bool = False
 
 
@@ -131,9 +133,10 @@ def reset():
     After calling reset(), you must call load() or create() again before
     using any signing or verification functions.
     """
-    global _global_agent, _agent_info, _strict
+    global _global_agent, _agent_info, _agent_password, _strict
     _global_agent = None
     _agent_info = None
+    _agent_password = None
     _strict = False
 
 
@@ -152,6 +155,70 @@ def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
     if os.path.isabs(candidate):
         return candidate
     return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
+
+
+def _resolve_create_directories(
+    config_path: str,
+    data_directory: str = "./jacs_data",
+    key_directory: str = "./jacs_keys",
+) -> tuple[str, str]:
+    config_dir = os.path.dirname(os.path.abspath(config_path))
+    cwd = os.path.abspath(os.getcwd())
+    if config_dir != cwd:
+        if data_directory == "./jacs_data":
+            data_directory = os.path.join(config_dir, "jacs_data")
+        if key_directory == "./jacs_keys":
+            key_directory = os.path.join(config_dir, "jacs_keys")
+    return data_directory, key_directory
+
+
+def _read_saved_password(config_path: str) -> str:
+    try:
+        resolved_config_path = os.path.abspath(config_path)
+        with open(resolved_config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        key_dir = _resolve_config_relative_path(
+            resolved_config_path, config.get("jacs_key_directory", "./jacs_keys")
+        )
+        password_path = os.path.join(key_dir, ".jacs_password")
+        if not os.path.exists(password_path):
+            return ""
+        with open(password_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def _resolve_private_key_password(
+    config_path: Optional[str] = None, explicit_password: Optional[str] = None
+) -> str:
+    if explicit_password:
+        return explicit_password
+    env_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
+    if env_password:
+        return env_password
+    if config_path:
+        return _read_saved_password(config_path)
+    return ""
+
+
+@contextmanager
+def _temporary_private_key_password(password: Optional[str]):
+    previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
+    try:
+        if password:
+            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
+        yield
+    finally:
+        if previous_password is None:
+            os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
+        else:
+            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password
+
+
+def _call_with_agent_password(func, *args, **kwargs):
+    with _temporary_private_key_password(_agent_password):
+        return func(*args, **kwargs)
 
 
 def _read_document_by_id(document_id: str) -> Optional[dict]:
@@ -282,12 +349,16 @@ def create(
         )
         print(f"Created agent: {agent.agent_id}")
     """
-    global _global_agent, _agent_info, _strict
+    global _global_agent, _agent_info, _agent_password, _strict
 
     _strict = _resolve_strict(strict)
 
+    data_directory, key_directory = _resolve_create_directories(
+        config_path, data_directory, key_directory
+    )
+
     # Resolve password
-    resolved_password = password or os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
+    resolved_password = _resolve_private_key_password(config_path, password)
     if not resolved_password:
         raise ConfigError(
             "Password is required for agent creation. "
@@ -312,17 +383,10 @@ def create(
             default_storage=default_storage,
         )
 
-        # Load using the caller-provided password even when env var is unset.
-        previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
-        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = resolved_password
-        try:
+        _agent_password = resolved_password
+        with _temporary_private_key_password(resolved_password):
             _global_agent = JacsAgent()
             _global_agent.load(config_path)
-        finally:
-            if previous_password is None:
-                os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
-            else:
-                os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password
 
         _agent_info = AgentInfo(
             agent_id=info_dict.get("agent_id", ""),
@@ -372,7 +436,7 @@ def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> Ag
         agent = jacs.load("./jacs.config.json", strict=True)
         print(f"Loaded: {agent.name}")
     """
-    global _global_agent, _agent_info, _strict
+    global _global_agent, _agent_info, _agent_password, _strict
 
     _strict = _resolve_strict(strict)
 
@@ -393,9 +457,11 @@ def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> Ag
     try:
         # Create a new JacsAgent instance
         _global_agent = JacsAgent()
+        _agent_password = _resolve_private_key_password(config_path)
 
         # Load the agent from config
-        _global_agent.load(config_path)
+        with _temporary_private_key_password(_agent_password):
+            _global_agent.load(config_path)
 
         # Read config to get agent info
         with open(config_path, 'r') as f:
@@ -669,6 +735,8 @@ def quickstart(
         # No existing config -- create a new persistent agent
         logger.info("quickstart: no config at %s, creating new agent", cfg_path)
 
+        data_dir, key_dir = _resolve_create_directories(cfg_path)
+
         # Ensure password is available
         password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
         if not password:
@@ -685,20 +753,20 @@ def quickstart(
             )
             persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
             if persist_password:
-                keys_dir = "./jacs_keys"
-                os.makedirs(keys_dir, exist_ok=True)
-                pw_path = os.path.join(keys_dir, ".jacs_password")
+                os.makedirs(key_dir, exist_ok=True)
+                pw_path = os.path.join(key_dir, ".jacs_password")
                 with open(pw_path, "w", encoding="utf-8") as f:
                     f.write(password)
                 os.chmod(pw_path, 0o600)
                 logger.info("quickstart: generated password saved to %s", pw_path)
-            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
 
         algo = algorithm or "pq2025"
         return create(
             name=name,
             password=password,
             algorithm=algo,
+            data_directory=data_dir,
+            key_directory=key_dir,
             description=description or "",
             domain=domain,
             config_path=cfg_path,
@@ -788,7 +856,7 @@ def update_agent(new_agent_data: Union[str, dict]) -> str:
         data_string = new_agent_data
 
     try:
-        return agent.update_agent(data_string)
+        return _call_with_agent_password(agent.update_agent, data_string)
     except Exception as e:
         raise JacsError(f"Failed to update agent: {e}")
 
@@ -836,7 +904,8 @@ def update_document(
         data_string = new_document_data
 
     try:
-        result = agent.update_document(
+        result = _call_with_agent_password(
+            agent.update_document,
             document_id,
             data_string,
             attachments,
@@ -897,7 +966,8 @@ def create_agreement(
         doc_str = document
 
     try:
-        result = agent.create_agreement(
+        result = _call_with_agent_password(
+            agent.create_agreement,
             doc_str,
             agent_ids,
             question,
@@ -953,7 +1023,7 @@ def sign_agreement(
         doc_str = document
 
     try:
-        result = agent.sign_agreement(doc_str, field_name)
+        result = _call_with_agent_password(agent.sign_agreement, doc_str, field_name)
         return _parse_signed_document(result)
     except Exception as e:
         raise JacsError(f"Failed to sign agreement: {e}")
@@ -1062,7 +1132,8 @@ def sign_message(data: Any) -> SignedDocument:
         })
 
         # Sign using the agent's create_document method
-        result = agent.create_document(
+        result = _call_with_agent_password(
+            agent.create_document,
             document_string=doc_json,
             custom_schema=None,
             outputfilename=None,
@@ -1124,7 +1195,8 @@ def sign_file(
         })
 
         # Sign with attachment
-        result = agent.create_document(
+        result = _call_with_agent_password(
+            agent.create_document,
             document_string=doc_json,
             custom_schema=None,
             outputfilename=None,
@@ -1289,7 +1361,10 @@ def verify_by_id(document_id: str) -> VerificationResult:
 
     try:
         is_valid = agent.verify_document_by_id(document_id)
-        doc_data = _read_document_by_id(document_id)
+        doc_json = agent.get_document_by_id(document_id)
+        doc_data = json.loads(doc_json) if doc_json else None
+        if not isinstance(doc_data, dict):
+            doc_data = None
         signer_id, signer_public_key_hash, timestamp = _extract_signature_metadata(doc_data)
 
         return VerificationResult(
@@ -1342,6 +1417,9 @@ def reencrypt_key(old_password: str, new_password: str) -> None:
 def get_public_key() -> str:
     """Get the loaded agent's public key in PEM format.
 
+    For algorithms that produce PEM text keys (RSA-PSS), returns the PEM directly.
+    For algorithms with binary keys (Ed25519, pq2025), returns PEM-armored output.
+
     Returns:
         The public key as a PEM-encoded string
 
@@ -1352,14 +1430,20 @@ def get_public_key() -> str:
         pem = jacs.get_public_key()
         print(pem)  # Share this with others for verification
     """
-    # Note: This requires the Rust binding to expose get_public_key_pem
-    # For now, we read it from the key file
     global _agent_info
 
     if _agent_info is None or _global_agent is None:
         raise AgentNotLoadedError("No agent loaded")
 
-    # Try loaded agent metadata first, then config-derived fallbacks.
+    # Try native binding first (available on SimpleAgent / _EphemeralAgentAdapter).
+    # Falls back to file reading for JacsAgent which lacks the method.
+    try:
+        return _global_agent.get_public_key_pem()
+    except AttributeError:
+        pass
+
+    # Fallback: read from key file and PEM-armor binary keys so the output
+    # is safe to pass to trust_agent_with_key().
     try:
         key_candidates: List[str] = []
         if _agent_info.public_key_path:
@@ -1376,11 +1460,22 @@ def get_public_key() -> str:
 
         for candidate in key_candidates:
             if os.path.exists(candidate):
-                with open(candidate, "r", encoding="utf-8") as f:
-                    return f.read()
+                with open(candidate, "rb") as f:
+                    raw = f.read()
+                try:
+                    return raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    import base64
+                    b64 = base64.b64encode(raw).decode("ascii")
+                    return (
+                        "-----BEGIN PUBLIC KEY-----\n"
+                        + b64
+                        + "\n-----END PUBLIC KEY-----\n"
+                    )
 
         raise JacsError(f"Could not find public key file in: {key_candidates}")
-
+    except JacsError:
+        raise
     except Exception as e:
         raise JacsError(f"Failed to read public key: {e}")
 

@@ -215,7 +215,7 @@ cargo build --features otlp-tracing
 <tr><td><code>otlp-tracing</code></td><td>Distributed tracing (opentelemetry, opentelemetry-otlp, tracing-opentelemetry, tokio)</td></tr>
 </tbody></table>
 </div>
-<p>The <code>observability-convenience</code> feature adds automatic counter/gauge recording for sign and verify operations without pulling in any OTLP dependencies.</p>
+<p>Convenience helpers for automatic counter/gauge recording for sign and verify operations are always available without any feature flag.</p>
 <h2 id="otel-collector-configuration"><a class="header" href="#otel-collector-configuration">OTEL Collector Configuration</a></h2>
 <p>Route JACS events through an OpenTelemetry Collector. This configuration receives OTLP over HTTP, batches events, and exports to common backends.</p>
 <pre><code class="language-yaml"># otel-collector-config.yaml

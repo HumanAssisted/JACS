@@ -1,0 +1,24 @@
+[package]
+name = "jacs-duckdb"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "DuckDB storage backend for JACS documents"
+readme.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords = ["cryptography", "json", "duckdb", "storage"]
+categories = ["database", "data-structures"]
+
+[dependencies]
+jacs = { version = "0.9.4", path = "../jacs", default-features = false }
+duckdb = { version = "1.4", features = ["bundled", "json"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
+serial_test = "3.2.0"

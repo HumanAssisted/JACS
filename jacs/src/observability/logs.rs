@@ -62,16 +62,33 @@ use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig
 use opentelemetry_sdk::{Resource, logs::SdkLoggerProvider};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std::error::Error>> {
+pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error::JacsError> {
     if !config.enabled {
         return Ok(None);
     }
 
-    let filter = EnvFilter::new(&config.level)
-        .add_directive("hyper=warn".parse()?)
-        .add_directive("tonic=warn".parse()?)
-        .add_directive("h2=warn".parse()?)
-        .add_directive("reqwest=warn".parse()?);
+    let filter =
+        EnvFilter::new(&config.level)
+            .add_directive("hyper=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?)
+            .add_directive("tonic=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?)
+            .add_directive("h2=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?)
+            .add_directive("reqwest=warn".parse().map_err(
+                |e: tracing_subscriber::filter::ParseError| {
+                    crate::error::JacsError::ConfigError(e.to_string())
+                },
+            )?);
 
     match &config.destination {
         LogDestination::File { path } => {
@@ -81,7 +98,8 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             Registry::default()
                 .with(filter)
                 .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
-                .try_init()?;
+                .try_init()
+                .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
             Ok(Some(guard))
         }
         LogDestination::Stderr => {
@@ -92,7 +110,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
             Ok(None)
         }
         LogDestination::Otlp {
-            endpoint: _,
+            endpoint: _endpoint,
             headers: _,
         } => {
             #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
@@ -101,8 +119,9 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
                 let exporter = LogExporter::builder()
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
-                    .with_endpoint(endpoint)
-                    .build()?;
+                    .with_endpoint(_endpoint)
+                    .build()
+                    .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
 
                 // Create logger provider
                 let logger_provider = SdkLoggerProvider::builder()
@@ -117,7 +136,8 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
                     .with(filter)
                     .with(fmt::layer().with_writer(io::stderr)) // Also log to stderr for debugging
                     .with(otel_layer)
-                    .try_init()?;
+                    .try_init()
+                    .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
                 return Ok(None);
             }
             #[cfg(any(target_arch = "wasm32", not(feature = "otlp-logs")))]
@@ -130,7 +150,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, Box<dyn std:
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn init_logs(config: &LogConfig) -> Result<Option<()>, Box<dyn std::error::Error>> {
+pub fn init_logs(config: &LogConfig) -> Result<Option<()>, crate::error::JacsError> {
     if !config.enabled {
         return Ok(None);
     }

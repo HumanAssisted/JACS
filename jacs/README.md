@@ -44,7 +44,8 @@ assert!(result.valid);
 - Commitments (shared signed agreements between agents)
 - Todo lists (private signed task tracking with cross-references)
 - Conversation threading (ordered, signed message chains)
-- PostgreSQL database storage (optional, `database` feature flag)
+- Verified document storage via filesystem and local `rusqlite` search/indexing
+- Trait-based storage interfaces with additional backends in separate crates
 - MCP and A2A protocol support
 - Python, Go, and NPM bindings
 
@@ -90,4 +91,4 @@ jacs verify doc.json     # Verify a document
 - [Python](https://pypi.org/project/jacs/)
 - [Crates.io](https://crates.io/crates/jacs)
 
-**Version**: 0.9.3 | [HAI.AI](https://hai.ai)
+**Version**: 0.9.4 | [HAI.AI](https://hai.ai)

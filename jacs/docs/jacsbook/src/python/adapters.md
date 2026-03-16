@@ -21,6 +21,8 @@ pip install jacs[crewai]
 pip install jacs[anthropic]
 ```
 
+Optional: `jacs[langgraph]` (LangGraph ToolNode), `jacs[ws]` (WebSockets). See `pyproject.toml` for the full list.
+
 ## LangChain / LangGraph
 
 This is the smallest JACS path if your model already lives in LangChain.

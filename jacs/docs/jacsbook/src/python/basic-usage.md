@@ -1,6 +1,6 @@
 # Basic Usage
 
-This chapter covers fundamental JACS operations in Python, including agent initialization, document creation, signing, and verification.
+This chapter covers fundamental JACS operations in Python. For quick signing and verification, start with the **[Simplified API](simple-api.md)** (`jacs.simple`) or **JacsClient**; the sections below use the `JacsAgent` class directly for fine-grained control.
 
 ## Initializing an Agent
 

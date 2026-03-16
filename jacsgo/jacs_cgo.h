@@ -1,6 +1,12 @@
 #ifndef JACS_CGO_H
 #define JACS_CGO_H
 
+// Shared opaque handle types
+typedef void* JacsAgentHandle;
+
+// Memory management
+void jacs_free_string(char* s);
+
 char* jacs_audit(const char* config_path, int recent_n);
 char* jacs_create_agent(const char* name, const char* password, const char* algorithm, const char* data_directory, const char* key_directory, const char* config_path, const char* agent_type, const char* description, const char* domain, const char* default_storage);
 
@@ -25,5 +31,42 @@ char* jacs_agent_create_attestation(JacsAgentHandle handle, const char* params_j
 char* jacs_agent_verify_attestation(JacsAgentHandle handle, const char* document_key, int full);
 char* jacs_agent_lift_to_attestation(JacsAgentHandle handle, const char* signed_doc_json, const char* claims_json);
 char* jacs_agent_export_attestation_dsse(JacsAgentHandle handle, const char* attestation_json);
+
+// ============================================================================
+// SimpleAgent API — narrow contract via SimpleAgentWrapper
+// ============================================================================
+typedef void* SimpleAgentHandle;
+
+// Error handling
+char* jacs_simple_last_error(void);
+
+// Constructors
+SimpleAgentHandle jacs_simple_create(const char* name, const char* purpose, const char* key_algorithm, char** info_json_out);
+SimpleAgentHandle jacs_simple_load(const char* config_path, int strict);
+SimpleAgentHandle jacs_simple_ephemeral(const char* algorithm, char** info_json_out);
+SimpleAgentHandle jacs_simple_create_with_params(const char* params_json, char** info_json_out);
+void jacs_simple_free(SimpleAgentHandle handle);
+
+// Identity / Introspection
+char* jacs_simple_get_agent_id(SimpleAgentHandle handle);
+char* jacs_simple_key_id(SimpleAgentHandle handle);
+int   jacs_simple_is_strict(SimpleAgentHandle handle);
+char* jacs_simple_export_agent(SimpleAgentHandle handle);
+char* jacs_simple_get_public_key_pem(SimpleAgentHandle handle);
+char* jacs_simple_get_public_key_base64(SimpleAgentHandle handle);
+char* jacs_simple_diagnostics(SimpleAgentHandle handle);
+char* jacs_simple_config_path(SimpleAgentHandle handle);
+
+// Verification
+char* jacs_simple_verify_self(SimpleAgentHandle handle);
+char* jacs_simple_verify_json(SimpleAgentHandle handle, const char* signed_document);
+char* jacs_simple_verify_by_id(SimpleAgentHandle handle, const char* document_id);
+
+char* jacs_simple_verify_with_key(SimpleAgentHandle handle, const char* signed_document, const char* public_key_base64);
+
+// Signing
+char* jacs_simple_sign_message(SimpleAgentHandle handle, const char* data_json);
+char* jacs_simple_sign_raw_bytes(SimpleAgentHandle handle, const uint8_t* data, size_t data_len);
+char* jacs_simple_sign_file(SimpleAgentHandle handle, const char* file_path, int embed);
 
 #endif

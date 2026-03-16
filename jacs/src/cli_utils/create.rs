@@ -6,13 +6,13 @@ use crate::config::{Config, check_env_vars, set_env_vars};
 use crate::create_minimal_blank_agent;
 use crate::crypt::KeyManager;
 use crate::dns::bootstrap as dns_bootstrap;
+use crate::error::JacsError;
 use crate::get_empty_agent;
 use crate::storage::MultiStorage;
 use crate::storage::jenv::set_env_var;
 use rpassword::read_password;
 use serde_json::{Value, json};
 use std::env;
-use std::error::Error;
 use std::fs::File;
 use std::io;
 use std::io::Write;
@@ -27,11 +27,8 @@ const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
 ///
 /// Accepts pre-built `CreateAgentParams` and delegates to `SimpleAgent::create_with_params()`.
 /// Use this when integrating CLI commands with the programmatic API.
-pub fn handle_agent_create_programmatic(
-    params: CreateAgentParams,
-) -> Result<AgentInfo, Box<dyn Error>> {
-    let (_agent, info) =
-        SimpleAgent::create_with_params(params).map_err(|e| -> Box<dyn Error> { Box::new(e) })?;
+pub fn handle_agent_create_programmatic(params: CreateAgentParams) -> Result<AgentInfo, JacsError> {
+    let (_agent, info) = SimpleAgent::create_with_params(params)?;
     Ok(info)
 }
 
@@ -52,7 +49,7 @@ fn request_string(message: &str, default: &str) -> String {
     }
 }
 
-fn resolve_cli_password_for_config_create() -> Result<Option<String>, Box<dyn Error>> {
+fn resolve_cli_password_for_config_create() -> Result<Option<String>, JacsError> {
     let env_password = match env::var("JACS_PRIVATE_KEY_PASSWORD") {
         Ok(value) => {
             if value.trim().is_empty() {
@@ -132,7 +129,7 @@ fn resolve_cli_password_for_config_create() -> Result<Option<String>, Box<dyn Er
 }
 
 // Function to handle the 'config create' logic
-pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
+pub fn handle_config_create() -> Result<(), JacsError> {
     println!("Welcome to the JACS Config Generator!");
     let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
 
@@ -326,10 +323,7 @@ pub fn handle_config_create() -> Result<(), Box<dyn Error>> {
 }
 
 // Function to handle the 'agent create' logic
-pub fn handle_agent_create(
-    filename: Option<&String>,
-    create_keys: bool,
-) -> Result<(), Box<dyn Error>> {
+pub fn handle_agent_create(filename: Option<&String>, create_keys: bool) -> Result<(), JacsError> {
     handle_agent_create_inner(filename, create_keys, false)
 }
 
@@ -339,7 +333,7 @@ pub fn handle_agent_create_auto(
     filename: Option<&String>,
     create_keys: bool,
     auto_update_config: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     handle_agent_create_inner(filename, create_keys, auto_update_config)
 }
 
@@ -347,7 +341,7 @@ fn handle_agent_create_inner(
     filename: Option<&String>,
     create_keys: bool,
     auto_update_config: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
     // Initialize storage using MultiStorage::new - Note: storage is passed in now
 

@@ -420,23 +420,25 @@ main().catch(console.error);
 <h3 id="mcp-server"><a class="header" href="#mcp-server">MCP Server</a></h3>
 <pre><code class="language-javascript">import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
 import { z } from 'zod';
-
-const JACS_CONFIG = "./jacs.server.config.json";
 
 async function main() {
   console.error("JACS MCP Server starting...");
 
-  // Create transport with JACS encryption
+  const client = await JacsClient.quickstart({
+    name: 'jacs-demo-server',
+    domain: 'mcp.local',
+  });
+
   const baseTransport = new StdioServerTransport();
   const secureTransport = createJACSTransportProxy(
     baseTransport,
-    JACS_CONFIG,
+    client,
     "server"
   );
 
-  // Create MCP server
   const server = new McpServer({
     name: "jacs-demo-server",
     version: "1.0.0"
@@ -495,14 +497,17 @@ main().catch(err =&gt; {
 <h3 id="mcp-client"><a class="header" href="#mcp-client">MCP Client</a></h3>
 <pre><code class="language-javascript">import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { JacsClient } from '@hai.ai/jacs/client';
 import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
-
-const JACS_CONFIG = "./jacs.client.config.json";
 
 async function main() {
   console.log("JACS MCP Client starting...");
 
-  // Connect to server
+  const client = await JacsClient.quickstart({
+    name: 'jacs-demo-client',
+    domain: 'mcp.local',
+  });
+
   const baseTransport = new StdioClientTransport({
     command: 'node',
     args: ['mcp-server.js']
@@ -510,39 +515,39 @@ async function main() {
 
   const secureTransport = createJACSTransportProxy(
     baseTransport,
-    JACS_CONFIG,
+    client,
     "client"
   );
 
-  const client = new Client({
+  const mcpClient = new Client({
     name: "jacs-demo-client",
     version: "1.0.0"
   }, {
     capabilities: { tools: {} }
   });
 
-  await client.connect(secureTransport);
+  await mcpClient.connect(secureTransport);
   console.log("Connected to JACS MCP Server");
 
   // List tools
-  const tools = await client.listTools();
+  const tools = await mcpClient.listTools();
   console.log("Available tools:", tools.tools.map(t =&gt; t.name));
 
   // Call echo
-  const echoResult = await client.callTool({
+  const echoResult = await mcpClient.callTool({
     name: "echo",
     arguments: { message: "Hello, JACS!" }
   });
   console.log("Echo:", echoResult.content[0].text);
 
   // Call calculate
-  const calcResult = await client.callTool({
+  const calcResult = await mcpClient.callTool({
     name: "calculate",
     arguments: { operation: "multiply", a: 6, b: 7 }
   });
   console.log("Calculate:", calcResult.content[0].text);
 
-  await client.close();
+  await mcpClient.close();
   console.log("Done!");
 }
 

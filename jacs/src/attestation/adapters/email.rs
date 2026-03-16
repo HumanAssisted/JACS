@@ -6,8 +6,8 @@
 use crate::attestation::adapters::EvidenceAdapter;
 use crate::attestation::digest::{compute_digest_set_bytes, should_embed_with_sensitivity};
 use crate::attestation::types::*;
+use crate::error::JacsError;
 use serde_json::Value;
-use std::error::Error;
 use tracing::info;
 
 /// Email evidence adapter.
@@ -23,7 +23,7 @@ impl EvidenceAdapter for EmailAdapter {
         &self,
         raw: &[u8],
         _metadata: &Value,
-    ) -> Result<(Vec<Claim>, EvidenceRef), Box<dyn Error>> {
+    ) -> Result<(Vec<Claim>, EvidenceRef), JacsError> {
         let digests = compute_digest_set_bytes(raw);
         let sensitivity = EvidenceSensitivity::Public;
         let embedded = should_embed_with_sensitivity(raw, &sensitivity);
@@ -75,7 +75,7 @@ impl EvidenceAdapter for EmailAdapter {
     fn verify_evidence(
         &self,
         evidence: &EvidenceRef,
-    ) -> Result<EvidenceVerificationResult, Box<dyn Error>> {
+    ) -> Result<EvidenceVerificationResult, JacsError> {
         let digest_valid = if let Some(ref data) = evidence.embedded_data {
             let data_str = data.as_str().unwrap_or("");
             let decoded =

@@ -20,10 +20,14 @@ jacs = { version = "0.3", features = ["cli", "observability"] }
 
 | Feature | Description |
 |---------|-------------|
-| `cli` | CLI utilities and helpers |
-| `observability` | OpenTelemetry logging and metrics |
-| `observability-convenience` | Helper functions for observability |
-| `full` | All features enabled |
+| `sqlite` | Lightweight sync SQLite backend (default) |
+| `sqlx-sqlite` | Async SQLite backend via sqlx (requires tokio) |
+| `otlp-logs` | OTLP log export support |
+| `otlp-metrics` | OTLP metrics export support |
+| `otlp-tracing` | OTLP distributed tracing support |
+| `agreements` | Agreement lifecycle support |
+| `a2a` | Agent-to-Agent protocol support |
+| `attestation` | Attestation support |
 
 ## Core Types
 
@@ -424,8 +428,17 @@ let storage = MultiStorage::new("fs".to_string())?;
 // In-memory storage
 let storage = MultiStorage::new("memory".to_string())?;
 
-// S3 storage
-let storage = MultiStorage::new("s3".to_string())?;
+// AWS object storage
+let storage = MultiStorage::new("aws".to_string())?;
+```
+
+For signed document CRUD/search, prefer the unified `DocumentService` surface:
+
+```rust,ignore
+use jacs::document::service_from_agent;
+
+let docs = service_from_agent(agent_handle)?;
+// `fs` and `rusqlite` currently resolve in JACS core.
 ```
 
 ## Error Handling

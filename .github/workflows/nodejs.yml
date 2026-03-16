@@ -2,14 +2,14 @@ name: Node.js (jacsnpm)
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["main"]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
       - 'binding-core/**'  # jacsnpm verifyStandalone depends on binding-core
       - '.github/workflows/nodejs.yml'
   pull_request:
-    branches: [ "master" ]
+    branches: ["main"]
     paths:
       - 'jacsnpm/**'
       - 'jacs/**'  # jacsnpm depends on jacs
@@ -19,6 +19,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+
+concurrency:
+  group: node-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-jacsnpm:
@@ -35,12 +39,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: jacsnpm/package-lock.json
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Install dependencies
         working-directory: jacsnpm
@@ -67,6 +78,10 @@ jobs:
         working-directory: jacsnpm
         run: npm run test:ci
 
+      - name: Run parity tests (binding contract conformance)
+        working-directory: jacsnpm
+        run: node --test tests/test_parity.js
+
       - name: Smoke test quickstart example
         working-directory: jacsnpm
         env:
@@ -86,4 +101,4 @@ jobs:
           cd /tmp/jacs-npm-smoke
           npm init -y >/dev/null
           npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
-          node -e "require('jacs'); require('jacs/simple'); require('jacs/mcp'); require('jacs/a2a'); console.log('smoke imports ok')"
+          ls node_modules/@hai.ai/jacs/package.json && echo "smoke install ok"

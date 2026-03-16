@@ -127,7 +127,7 @@ mod attestation_cross_lang {
         // SAFETY: serial test
         unsafe { std::env::set_current_dir(&tmp).expect("cd to temp") };
 
-        let (agent, _info) = SimpleAgent::quickstart(
+        let (agent, _info) = jacs::simple::advanced::quickstart(
             "attestation-cross-lang-agent",
             "attestation.cross-lang.example.com",
             Some("Cross-language attestation test agent"),
@@ -140,9 +140,9 @@ mod attestation_cross_lang {
         let subject = make_subject();
         let claims = make_claims();
         let evidence = make_evidence();
-        let signed = agent
-            .create_attestation(&subject, &claims, &evidence, None, None)
-            .expect("create_attestation should succeed");
+        let signed =
+            jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
+                .expect("create_attestation should succeed");
 
         // Parse signed attestation for metadata extraction
         let signed_value: Value =
@@ -501,6 +501,7 @@ mod attestation_cross_lang {
         generate_attestation_fixture("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn generate_pq2025_attestation_fixture() {
@@ -519,6 +520,7 @@ mod attestation_cross_lang {
         verify_attestation_fixture("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn verify_pq2025_attestation_fixture() {
@@ -535,6 +537,7 @@ mod attestation_cross_lang {
         verify_tampered_signature_fails("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn tampered_signature_pq2025_fails() {
@@ -551,6 +554,7 @@ mod attestation_cross_lang {
         verify_tampered_body_fails("ed25519", "ed25519");
     }
 
+    #[cfg(feature = "pq-tests")]
     #[test]
     #[serial]
     fn tampered_body_pq2025_fails() {

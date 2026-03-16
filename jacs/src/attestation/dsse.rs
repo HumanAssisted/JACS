@@ -7,9 +7,9 @@
 //! - in-toto Statement spec: <https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md>
 //! - DSSE spec: <https://github.com/secure-systems-lab/dsse/blob/master/envelope.md>
 
+use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
-use std::error::Error;
 
 /// The `_type` field for in-toto Statements.
 pub const INTOTO_STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
@@ -38,7 +38,7 @@ pub const DSSE_PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
 ///   "signatures": [{ "keyid": "...", "sig": "..." }]
 /// }
 /// ```
-pub fn export_dsse(attestation_value: &Value) -> Result<Value, Box<dyn Error>> {
+pub fn export_dsse(attestation_value: &Value) -> Result<Value, JacsError> {
     // 1. Extract the attestation content
     let attestation = attestation_value
         .get("attestation")
@@ -113,7 +113,7 @@ pub fn export_dsse(attestation_value: &Value) -> Result<Value, Box<dyn Error>> {
 }
 
 /// Build the DSSE `signatures[]` array from a JACS signature.
-fn build_dsse_signatures(doc: &Value) -> Result<Vec<Value>, Box<dyn Error>> {
+fn build_dsse_signatures(doc: &Value) -> Result<Vec<Value>, JacsError> {
     let jacs_sig = doc
         .get("jacsSignature")
         .ok_or("export_dsse: document missing 'jacsSignature'. Sign the attestation first.")?;

@@ -1,0 +1,29 @@
+{
+  "status": {
+    "Invalid": {
+      "reason": "Signature verification failed: Ed25519 signature mismatch"
+    }
+  },
+  "valid": false,
+  "signerId": "agent-malicious-004",
+  "signerVersion": "v1-tampered",
+  "artifactType": "a2a-message",
+  "timestamp": "2025-06-02T10:15:00Z",
+  "parentSignaturesValid": false,
+  "parentVerificationResults": [
+    {
+      "index": 0,
+      "artifactId": "parent-artifact-002",
+      "signerId": "agent-original-001",
+      "status": {
+        "Invalid": {
+          "reason": "Verification error: hash mismatch in parent document"
+        }
+      },
+      "verified": false
+    }
+  ],
+  "originalArtifact": {
+    "content": "This message has a tampered signature"
+  }
+}

@@ -3,15 +3,10 @@
 //! Conformance tests for the S3 (MinIO) backend.
 //!
 //! These tests require Docker (testcontainers) to spin up a MinIO instance.
+//! They will fail at runtime if Docker is not available.
 //!
 //! ```sh
-//! cargo test --features s3-tests -- conformance_s3
-//! ```
-//!
-//! Or use docker-compose:
-//! ```sh
-//! docker compose -f docker-compose.test.yml up -d
-//! cargo test --features s3-tests -- conformance_s3
+//! cargo test -p jacs -- conformance_s3
 //! ```
 
 mod conformance;

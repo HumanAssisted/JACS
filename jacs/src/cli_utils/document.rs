@@ -3,12 +3,12 @@ use crate::agent::Agent;
 use crate::agent::document::DocumentTraits;
 use crate::cli_utils::get_storage_default_for_cli;
 use crate::cli_utils::set_file_list;
+use crate::error::JacsError;
 use crate::shared::document_add_agreement;
 use crate::shared::document_check_agreement;
 use crate::shared::document_create;
 use crate::shared::document_load_and_save;
 use crate::shared::document_sign_agreement;
-use std::error::Error;
 use std::process;
 
 #[allow(clippy::too_many_arguments)]
@@ -21,7 +21,7 @@ pub fn create_documents(
     embed: Option<bool>,
     no_save: bool,
     schema: Option<&String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage = get_storage_default_for_cli();
     if outputfilename.is_some() && directory.is_some() {
         eprintln!(
@@ -114,7 +114,7 @@ pub fn update_documents(
     embed: Option<bool>,
     no_save: bool,
     schema: Option<&String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage = get_storage_default_for_cli();
     if let Some(schema_file) = schema {
         // Use storage to read the schema file
@@ -215,7 +215,7 @@ pub fn extract_documents(
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage = get_storage_default_for_cli();
     let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
         .expect("Failed to determine file list");
@@ -249,7 +249,7 @@ pub fn verify_documents(
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage = get_storage_default_for_cli();
     let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
         .expect("Failed to determine file list");
@@ -283,7 +283,7 @@ pub fn sign_documents(
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage = get_storage_default_for_cli();
     let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
         .expect("Failed to determine file list");
@@ -320,7 +320,7 @@ pub fn create_agreement(
     schema: Option<&String>,
     no_save: bool,
     directory: Option<&String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage = get_storage_default_for_cli();
     let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
         .expect("Failed to determine file list");
@@ -357,7 +357,7 @@ pub fn check_agreement(
     schema: Option<&String>,
     filename: Option<&String>,
     directory: Option<&String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), JacsError> {
     let storage = get_storage_default_for_cli();
     let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
         .expect("Failed to determine file list");

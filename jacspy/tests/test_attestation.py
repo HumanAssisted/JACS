@@ -28,6 +28,7 @@ pytestmark = pytest.mark.skipif(
 
 from jacs.client import JacsClient
 from jacs.types import SignedDocument
+from conftest import TEST_ALGORITHM
 
 
 # ---------------------------------------------------------------------------
@@ -83,8 +84,8 @@ class TestSimpleAgentAttestation:
         result_json = agent.verify_attestation(doc_key)
         result = json.loads(result_json)
         assert result["valid"] is True
-        assert result["crypto"]["signature_valid"] is True
-        assert result["crypto"]["hash_valid"] is True
+        assert result["crypto"]["signatureValid"] is True
+        assert result["crypto"]["hashValid"] is True
 
     def test_verify_attestation_full(self):
         """Create then full-verify. Evidence list should be present."""
@@ -141,7 +142,7 @@ class TestJacsClientAttestation:
 
     def test_client_create_attestation(self):
         """Create attestation via JacsClient. Should return SignedDocument."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         signed = client.create_attestation(
             subject=_make_subject(),
             claims=_make_claims(),
@@ -153,7 +154,7 @@ class TestJacsClientAttestation:
 
     def test_client_verify_attestation(self):
         """Verify attestation via JacsClient (local tier)."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         signed = client.create_attestation(
             subject=_make_subject(),
             claims=_make_claims(),
@@ -164,7 +165,7 @@ class TestJacsClientAttestation:
 
     def test_client_verify_attestation_full(self):
         """Verify attestation via JacsClient (full tier)."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         signed = client.create_attestation(
             subject=_make_subject(),
             claims=_make_claims(),
@@ -176,7 +177,7 @@ class TestJacsClientAttestation:
 
     def test_client_lift_to_attestation(self):
         """Lift a signed document to attestation via JacsClient."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         signed_msg = client.sign_message({"content": "lift me"})
         att = client.lift_to_attestation(signed_msg, _make_claims())
         assert isinstance(att, SignedDocument)
@@ -185,7 +186,7 @@ class TestJacsClientAttestation:
 
     def test_attestation_round_trip(self):
         """Create, verify local, verify full -- full round trip."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         signed = client.create_attestation(
             subject=_make_subject(),
             claims=_make_claims(),
@@ -198,7 +199,7 @@ class TestJacsClientAttestation:
 
     def test_client_export_dsse(self):
         """Export DSSE via JacsClient."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         signed = client.create_attestation(
             subject=_make_subject(),
             claims=_make_claims(),
@@ -210,20 +211,20 @@ class TestJacsClientAttestation:
 
     def test_client_create_invalid_claims_raises(self):
         """Empty claims should raise via JacsClient."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         with pytest.raises(Exception):
             client.create_attestation(subject=_make_subject(), claims=[])
 
     def test_client_verify_attestation_nonstrict_returns_invalid(self):
         """Non-strict client returns valid=False on bad input instead of raising."""
-        client = JacsClient.ephemeral(algorithm="ed25519", strict=False)
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM, strict=False)
         result = client.verify_attestation('{"jacsId":"fake","jacsVersion":"v1"}')
         assert result["valid"] is False
         assert len(result.get("errors", [])) > 0
 
     def test_client_create_with_policy_context(self):
         """Create attestation with policy context."""
-        client = JacsClient.ephemeral(algorithm="ed25519")
+        client = JacsClient.ephemeral(algorithm=TEST_ALGORITHM)
         signed = client.create_attestation(
             subject=_make_subject(),
             claims=_make_claims(),

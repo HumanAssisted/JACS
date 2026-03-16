@@ -8,19 +8,24 @@ use crate::agent::{
     extract_signature_fields,
 };
 use crate::crypt::hash::hash_public_key;
-use crate::crypt::{CryptoSigningAlgorithm, detect_algorithm_from_public_key};
+use crate::crypt::{
+    CryptoSigningAlgorithm, detect_algorithm_from_public_key, normalize_public_key_pem,
+};
 use crate::error::JacsError;
 use crate::paths::trust_store_dir;
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
 use crate::validation::{require_relative_path_safe, validate_agent_id};
-use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
 use tracing::{info, warn};
+
+fn default_trust_verified() -> bool {
+    true
+}
 
 /// Validates an agent ID is safe for use in filesystem paths.
 ///
@@ -84,6 +89,9 @@ pub struct TrustedAgent {
     pub public_key_hash: String,
     /// When this agent was trusted.
     pub trusted_at: String,
+    /// Whether this entry was cryptographically verified before being trusted.
+    #[serde(default = "default_trust_verified")]
+    pub verified: bool,
 }
 
 /// Adds an agent to the local trust store.
@@ -185,9 +193,34 @@ pub fn trust_agent_with_key(
         );
     }
 
-    // Get the public key bytes
+    // Get the public key bytes.
+    //
+    // For text-format keys (RSA-PSS PEM), the string bytes ARE the key bytes.
+    // For binary keys wrapped in PEM armor (Ed25519, pq2025), we need to
+    // extract the base64 body and decode to get the original raw bytes.
+    // We try both representations and use whichever matches the expected hash.
     let public_key_bytes: Vec<u8> = match public_key_pem {
-        Some(pem) => pem.as_bytes().to_vec(),
+        Some(pem) => {
+            let text_bytes = pem.as_bytes().to_vec();
+            if hash_public_key(&text_bytes) == public_key_hash {
+                // Native PEM key (RSA-PSS) — text bytes match the signing hash.
+                text_bytes
+            } else if pem.trim().starts_with("-----BEGIN") {
+                // PEM-armored binary key — decode base64 to get raw bytes.
+                let body: String = pem
+                    .trim()
+                    .lines()
+                    .filter(|l| !l.starts_with("-----"))
+                    .collect::<Vec<_>>()
+                    .join("");
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD
+                    .decode(&body)
+                    .unwrap_or(text_bytes)
+            } else {
+                text_bytes
+            }
+        }
         None => {
             // Try to load from trust store key cache
             load_public_key_from_cache(&public_key_hash)?
@@ -238,17 +271,14 @@ pub fn trust_agent_with_key(
         signing_algorithm.as_deref(),
     )?;
 
-    // Convert public key bytes to PEM string for metadata
-    let public_key_pem_string = String::from_utf8(public_key_bytes.clone())
-        .unwrap_or_else(|_| B64.encode(&public_key_bytes));
-
     // Also save a metadata file for quick lookups
     let trusted_agent = TrustedAgent {
         agent_id: agent_id.clone(),
         name,
-        public_key_pem: public_key_pem_string,
+        public_key_pem: normalize_public_key_pem(&public_key_bytes),
         public_key_hash,
         trusted_at: time_utils::now_rfc3339(),
+        verified: true,
     };
 
     let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
@@ -307,7 +337,9 @@ pub fn list_trusted_agents() -> Result<Vec<String>, JacsError> {
                 .is_some_and(|n| n.ends_with(".meta.json"))
             && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
         {
-            agents.push(stem.to_string());
+            if is_trusted(stem) {
+                agents.push(stem.to_string());
+            }
         }
     }
 
@@ -389,6 +421,23 @@ pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
             agent_id,
             agent_file.to_string_lossy()
         )));
+    }
+
+    match read_trusted_agent_metadata(agent_id)? {
+        Some(metadata) if metadata.verified => {}
+        Some(_) => {
+            return Err(JacsError::TrustError(format!(
+                "Agent '{}' is stored only as an unverified A2A bookmark, not a trusted agent. \
+                 Use a cryptographically verified trust flow before treating it as trusted.",
+                agent_id
+            )));
+        }
+        None => {
+            return Err(JacsError::TrustError(format!(
+                "Agent '{}' is missing trust metadata and cannot be treated as trusted.",
+                agent_id
+            )));
+        }
     }
 
     fs::read_to_string(&agent_file).map_err(|e| JacsError::FileReadFailed {
@@ -475,6 +524,7 @@ pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsErr
         public_key_pem: String::new(),
         public_key_hash: String::new(),
         trusted_at: time_utils::now_rfc3339(),
+        verified: false,
     };
 
     let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
@@ -502,7 +552,47 @@ pub fn is_trusted(agent_id: &str) -> bool {
     }
     let trust_dir = trust_store_dir();
     let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    agent_file.exists()
+    if !agent_file.exists() {
+        return false;
+    }
+    read_trusted_agent_metadata(agent_id)
+        .ok()
+        .flatten()
+        .map(|metadata| metadata.verified)
+        .unwrap_or(false)
+}
+
+/// Checks whether an agent has a verified trust entry.
+pub fn is_verified_trusted(agent_id: &str) -> bool {
+    is_trusted(agent_id)
+}
+
+fn read_trusted_agent_metadata(agent_id: &str) -> Result<Option<TrustedAgent>, JacsError> {
+    let trust_dir = trust_store_dir();
+    let metadata_file = trust_dir.join(format!("{}.meta.json", agent_id));
+
+    validate_path_within_trust_dir(&metadata_file, &trust_dir)?;
+
+    if !metadata_file.exists() {
+        return Ok(None);
+    }
+
+    let metadata_json =
+        fs::read_to_string(&metadata_file).map_err(|e| JacsError::FileReadFailed {
+            path: metadata_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+
+    let metadata =
+        serde_json::from_str::<TrustedAgent>(&metadata_json).map_err(|e| JacsError::Internal {
+            message: format!(
+                "Failed to parse trust metadata '{}': {}",
+                metadata_file.display(),
+                e
+            ),
+        })?;
+
+    Ok(Some(metadata))
 }
 
 // =============================================================================
@@ -651,7 +741,7 @@ fn verify_agent_self_signature(
         }
     };
 
-    let verify_with_payload = |payload: &str| -> Result<(), Box<dyn std::error::Error>> {
+    let verify_with_payload = |payload: &str| -> Result<(), JacsError> {
         match algo {
             CryptoSigningAlgorithm::RsaPss => crate::crypt::rsawrapper::verify_string(
                 public_key_bytes.to_vec(),

@@ -186,10 +186,14 @@ jacs = "0.3"
 jacs = { version = "0.3", features = ["cli", "observability"] }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>cli</code></td><td>CLI utilities and helpers</td></tr>
-<tr><td><code>observability</code></td><td>OpenTelemetry logging and metrics</td></tr>
-<tr><td><code>observability-convenience</code></td><td>Helper functions for observability</td></tr>
-<tr><td><code>full</code></td><td>All features enabled</td></tr>
+<tr><td><code>sqlite</code></td><td>Lightweight sync SQLite backend (default)</td></tr>
+<tr><td><code>sqlx-sqlite</code></td><td>Async SQLite backend via sqlx (requires tokio)</td></tr>
+<tr><td><code>otlp-logs</code></td><td>OTLP log export support</td></tr>
+<tr><td><code>otlp-metrics</code></td><td>OTLP metrics export support</td></tr>
+<tr><td><code>otlp-tracing</code></td><td>OTLP distributed tracing support</td></tr>
+<tr><td><code>agreements</code></td><td>Agreement lifecycle support</td></tr>
+<tr><td><code>a2a</code></td><td>Agent-to-Agent protocol support</td></tr>
+<tr><td><code>attestation</code></td><td>Attestation support</td></tr>
 </tbody></table>
 </div>
 <h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
@@ -538,9 +542,14 @@ let storage = MultiStorage::new("fs".to_string())?;
 // In-memory storage
 let storage = MultiStorage::new("memory".to_string())?;
 
-// S3 storage
-let storage = MultiStorage::new("s3".to_string())?;
+// AWS object storage
+let storage = MultiStorage::new("aws".to_string())?;
 <span class="boring">}</span></code></pre></pre>
+<p>For signed document CRUD/search, prefer the unified <code>DocumentService</code> surface:</p>
+<pre><code class="language-rust ignore">use jacs::document::service_from_agent;
+
+let docs = service_from_agent(agent_handle)?;
+// `fs` and `rusqlite` currently resolve in JACS core.</code></pre>
 <h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
 <p>JACS functions return <code>Result&lt;T, Box&lt;dyn Error&gt;&gt;</code>:</p>
 <pre><pre class="playground"><code class="language-rust">use jacs::get_empty_agent;

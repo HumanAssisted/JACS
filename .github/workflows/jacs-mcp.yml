@@ -1,0 +1,52 @@
+name: MCP Server (jacs-mcp)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "jacs-mcp/**"
+      - "jacs/**"
+      - "binding-core/**"
+      - "jacs-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/jacs-mcp.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "jacs-mcp/**"
+      - "jacs/**"
+      - "binding-core/**"
+      - "jacs-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/jacs-mcp.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-jacs-mcp:
+    name: Test jacs-mcp
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build jacs-cli (required by jacs-mcp integration tests)
+        run: cargo build -p jacs-cli
+
+      - name: Run jacs-mcp tests
+        run: cargo test -p jacs-mcp --features full-tools --verbose
+        env:
+          JACS_MCP_PROFILE: full

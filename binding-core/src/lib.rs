@@ -8,6 +8,7 @@
 
 use base64::Engine as _;
 use jacs::agent::agreement::Agreement;
+#[cfg(feature = "a2a")]
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::{DocumentTraits, JACSDocument};
 use jacs::agent::payloads::PayloadTraits;
@@ -23,6 +24,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
+pub mod doc_wrapper;
+pub mod simple_wrapper;
+
+pub use doc_wrapper::DocumentServiceWrapper;
+pub use simple_wrapper::SimpleAgentWrapper;
+pub use simple_wrapper::sign_message_json;
+pub use simple_wrapper::verify_json;
 
 /// Error type for binding core operations.
 ///
@@ -258,6 +266,14 @@ impl AgentWrapper {
     /// with binding-core's attestation methods.
     pub fn from_inner(inner: Arc<Mutex<Agent>>) -> Self {
         Self { inner }
+    }
+
+    /// Get the inner `Arc<Mutex<Agent>>`.
+    ///
+    /// Used to share the agent handle with `DocumentServiceWrapper` and other
+    /// components that need direct access to the underlying agent.
+    pub fn inner_arc(&self) -> Arc<Mutex<Agent>> {
+        Arc::clone(&self.inner)
     }
 
     /// Get a locked reference to the inner agent.
@@ -623,6 +639,10 @@ impl AgentWrapper {
     }
 
     /// Persist an already-signed JACS document and return its lookup key.
+    ///
+    /// Stores the document both in the agent's data directory (for file-based
+    /// access) and in the storage index (`documents/`) so that
+    /// `list_document_keys()` can find it.
     pub fn save_signed_document(
         &self,
         document_string: &str,
@@ -643,6 +663,7 @@ impl AgentWrapper {
                     document_key, e
                 ))
             })?;
+
         Ok(document_key)
     }
 
@@ -1119,7 +1140,10 @@ impl AgentWrapper {
             )),
         }
     }
+}
 
+#[cfg(feature = "a2a")]
+impl AgentWrapper {
     // =========================================================================
     // A2A Protocol Methods
     // =========================================================================
@@ -1359,7 +1383,9 @@ impl AgentWrapper {
             ))
         })
     }
+}
 
+impl AgentWrapper {
     // =========================================================================
     // Attestation API (gated behind `attestation` feature)
     // =========================================================================
@@ -1639,9 +1665,8 @@ impl AgentWrapper {
     /// Checks `jacsDocumentId`, `document_id`, `id` in priority order.
     /// SDK clients use this to build hosted verification URLs.
     pub fn extract_document_id(&self, document: &str) -> BindingResult<String> {
-        jacs::protocol::extract_document_id(document).map_err(|e| {
-            BindingCoreError::generic(format!("Failed to extract document ID: {}", e))
-        })
+        jacs::protocol::extract_document_id(document)
+            .map_err(|e| BindingCoreError::generic(format!("Failed to extract document ID: {}", e)))
     }
 
     /// Unwrap a JACS-signed event, verifying the signature when the signer's
@@ -2282,6 +2307,7 @@ pub fn create_agent_programmatic(
         description: description.unwrap_or("").to_string(),
         domain: domain.unwrap_or("").to_string(),
         default_storage: default_storage.unwrap_or("fs").to_string(),
+        storage: None,
     };
 
     let (_agent, info) = SimpleAgent::create_with_params(params)
@@ -2597,6 +2623,7 @@ mod tests {
         wrapper
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card_returns_valid_json() {
         let wrapper = ephemeral_wrapper();
@@ -2607,6 +2634,7 @@ mod tests {
         assert_eq!(card["protocolVersions"][0], "0.4.0");
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_and_verify_a2a_artifact() {
@@ -2626,6 +2654,7 @@ mod tests {
         assert_eq!(result["status"], "SelfSigned");
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_sign_artifact_alias_matches_wrap() {
         let wrapper = ephemeral_wrapper();
@@ -2640,6 +2669,7 @@ mod tests {
         assert_eq!(result["valid"], true);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_with_parent_chain() {
@@ -2658,6 +2688,7 @@ mod tests {
         assert_eq!(parent_sigs.len(), 1);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     #[allow(deprecated)]
     fn test_wrap_a2a_artifact_invalid_json_error() {
@@ -2667,6 +2698,7 @@ mod tests {
         assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidArgument);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_verify_a2a_artifact_invalid_json_error() {
         let wrapper = ephemeral_wrapper();
@@ -2675,6 +2707,7 @@ mod tests {
         assert_eq!(result.unwrap_err().kind, ErrorKind::InvalidArgument);
     }
 
+    #[cfg(feature = "a2a")]
     #[test]
     fn test_export_agent_card_unloaded_agent_error() {
         let wrapper = AgentWrapper::new();
@@ -2696,7 +2729,9 @@ mod tests {
     #[test]
     fn protocol_build_auth_header_starts_with_jacs() {
         let wrapper = protocol_wrapper();
-        let header = wrapper.build_auth_header().expect("build_auth_header failed");
+        let header = wrapper
+            .build_auth_header()
+            .expect("build_auth_header failed");
         assert!(
             header.starts_with("JACS "),
             "Header must start with 'JACS ', got: {header}"
@@ -2752,7 +2787,10 @@ mod tests {
             .expect("encode_verify_payload failed");
         assert!(!encoded.contains('+'), "URL-safe base64 must not contain +");
         assert!(!encoded.contains('/'), "URL-safe base64 must not contain /");
-        assert!(!encoded.contains('='), "URL-safe base64 must not have padding");
+        assert!(
+            !encoded.contains('='),
+            "URL-safe base64 must not have padding"
+        );
         let decoded = wrapper
             .decode_verify_payload(&encoded)
             .expect("decode_verify_payload failed");

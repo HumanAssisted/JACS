@@ -16,10 +16,11 @@ https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1
 
 # 1 Properties
 
-| Property                            | Type     | Required | Nullable       | Defined by                                                                                                                                   |
-| :---------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
-| [jacsAgentType](#jacsagenttype)     | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType")     |
-| [jacsAgentDomain](#jacsagentdomain) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagentdomain.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentDomain") |
+| Property                                        | Type     | Required | Nullable       | Defined by                                                                                                                                               |
+| :---------------------------------------------- | :------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [jacsAgentType](#jacsagenttype)                 | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType")                 |
+| [jacsAgentDomain](#jacsagentdomain)             | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagentdomain.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentDomain")             |
+| [jacsVerificationClaim](#jacsverificationclaim) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsverificationclaim.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsVerificationClaim") |
 
 ## jacsAgentType
 
@@ -67,3 +68,40 @@ Optional domain used for DNSSEC-validated public key fingerprint (\_v1.agent.jac
 ### jacsAgentDomain Type
 
 `string`
+
+## jacsVerificationClaim
+
+Agent's claim about verification status. 'unverified' (default) allows relaxed DNS/TLS settings. 'verified' requires strict DNS with DNSSEC and domain must be set. 'verified-registry' requires registry verification. DEPRECATED: 'verified-hai.ai' is a deprecated alias for 'verified-registry' and will be removed in the next major version.
+
+`jacsVerificationClaim`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Agent](agent-allof-1-properties-jacsverificationclaim.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsVerificationClaim")
+
+### jacsVerificationClaim Type
+
+`string`
+
+### jacsVerificationClaim Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value                 | Explanation |
+| :-------------------- | :---------- |
+| `"unverified"`        |             |
+| `"verified"`          |             |
+| `"verified-registry"` |             |
+| `"verified-hai.ai"`   |             |
+
+### jacsVerificationClaim Default Value
+
+The default value is:
+
+```json
+"unverified"
+```

@@ -1,3 +1,4 @@
+#![cfg(feature = "a2a")]
 //! A2A verification result contract tests (Task 001).
 //!
 //! These tests validate that fixture files in `tests/fixtures/a2a_contract/`

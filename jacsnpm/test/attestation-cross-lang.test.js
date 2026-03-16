@@ -297,7 +297,7 @@ describe('Cross-language attestation verification', function () {
         // Verify locally
         const result = await client.verifyAttestation(att.raw);
         expect(result.valid).to.equal(true);
-        expect(result.crypto.signature_valid).to.equal(true);
+        expect(result.crypto.signatureValid).to.equal(true);
       },
     );
   });

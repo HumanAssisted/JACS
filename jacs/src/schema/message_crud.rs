@@ -1,8 +1,8 @@
 use crate::Agent;
 use crate::agent::document::{DocumentTraits, JACSDocument};
+use crate::error::JacsError;
 use crate::time_utils;
 use serde_json::{Value, json};
-use std::error::Error;
 
 /// Creates a minimal message with required fields.
 /// message are immutable and signed so theres no update method
@@ -15,7 +15,7 @@ pub fn create_message(
     outbound: Option<bool>,
     attachments: Option<Vec<String>>,
     embed: Option<bool>,
-) -> Result<JACSDocument, Box<dyn Error>> {
+) -> Result<JACSDocument, JacsError> {
     let datetime = time_utils::now_rfc3339();
     let schema = "https://hai.ai/schemas/message/v1/message.schema.json";
 

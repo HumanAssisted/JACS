@@ -15,8 +15,7 @@ pub const TEST_PASSWORD: &str = "secretpassord";
 const IAT_SKEW_ENV_VAR: &str = "JACS_MAX_IAT_SKEW_SECONDS";
 
 static FIXTURE_IAT_INIT: Once = Once::new();
-pub static ENV_LOCK: LazyLock<std::sync::Mutex<()>> =
-    LazyLock::new(|| std::sync::Mutex::new(()));
+pub static ENV_LOCK: LazyLock<std::sync::Mutex<()>> = LazyLock::new(|| std::sync::Mutex::new(()));
 
 pub struct ScopedEnvVar {
     key: &'static str,

@@ -23,11 +23,11 @@ jacs = { version = "0.3", features = ["observability"] }
 
 | Feature | Description |
 |---------|-------------|
-| `observability` | Core observability support |
-| `observability-convenience` | Helper functions for recording operations |
 | `otlp-logs` | OTLP log export support |
 | `otlp-metrics` | OTLP metrics export support |
 | `otlp-tracing` | OTLP distributed tracing support |
+
+Convenience helpers for recording operations are always available (no feature flag needed).
 
 ## Quick Start
 
@@ -237,7 +237,7 @@ record_histogram("jacs_operation_duration_ms", 150.0, Some(tags));
 
 ### Built-in Metrics
 
-When `observability-convenience` feature is enabled, JACS automatically records:
+JACS convenience helpers automatically record:
 
 - `jacs_agent_operations` - Count of agent operations
 - `jacs_signature_verifications` - Signature verification results

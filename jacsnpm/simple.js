@@ -130,6 +130,7 @@ const deprecation_1 = require("./deprecation");
 // =============================================================================
 let globalAgent = null;
 let agentInfo = null;
+let agentPassword = null;
 let strictMode = false;
 function resolveStrict(explicit) {
     if (explicit !== undefined) {
@@ -146,6 +147,73 @@ function resolveConfigRelativePath(configPath, candidate) {
         return candidate;
     }
     return path.resolve(path.dirname(configPath), candidate);
+}
+function resolveCreatePaths(configPath, dataDirectory, keyDirectory) {
+    const resolvedConfigPath = configPath ?? './jacs.config.json';
+    const configDir = path.dirname(path.resolve(resolvedConfigPath));
+    const cwd = path.resolve(process.cwd());
+    return {
+        configPath: resolvedConfigPath,
+        dataDirectory: dataDirectory ?? (configDir === cwd ? './jacs_data' : path.join(configDir, 'jacs_data')),
+        keyDirectory: keyDirectory ?? (configDir === cwd ? './jacs_keys' : path.join(configDir, 'jacs_keys')),
+    };
+}
+function readSavedPassword(configPath) {
+    try {
+        const resolvedConfigPath = path.resolve(configPath);
+        const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
+        const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
+        const passwordPath = path.join(keyDir, '.jacs_password');
+        if (!fs.existsSync(passwordPath)) {
+            return '';
+        }
+        return fs.readFileSync(passwordPath, 'utf8').trim();
+    }
+    catch {
+        return '';
+    }
+}
+function resolvePrivateKeyPassword(configPath, explicitPassword) {
+    if (explicitPassword && explicitPassword.length > 0) {
+        return explicitPassword;
+    }
+    if (process.env.JACS_PRIVATE_KEY_PASSWORD) {
+        return process.env.JACS_PRIVATE_KEY_PASSWORD;
+    }
+    if (configPath) {
+        return readSavedPassword(configPath);
+    }
+    return '';
+}
+async function withTemporaryPasswordEnv(password, fn) {
+    const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+    process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+    try {
+        return await fn();
+    }
+    finally {
+        if (previousPassword === undefined) {
+            delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        }
+        else {
+            process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+    }
+}
+function withTemporaryPasswordEnvSync(password, fn) {
+    const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+    process.env.JACS_PRIVATE_KEY_PASSWORD = password;
+    try {
+        return fn();
+    }
+    finally {
+        if (previousPassword === undefined) {
+            delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        }
+        else {
+            process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+    }
 }
 function normalizeDocumentInput(document) {
     if (typeof document === 'string') {
@@ -268,24 +336,6 @@ function extractAttachmentsFromDocument(doc) {
         content: (f.contents || f.content) ? Buffer.from(f.contents || f.content, 'base64') : undefined,
     }));
 }
-function readStoredDocumentById(documentId) {
-    if (!agentInfo) {
-        return null;
-    }
-    try {
-        const configPath = path.resolve(agentInfo.configPath);
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory || './jacs_data');
-        const docPath = path.join(dataDir, 'documents', `${documentId}.json`);
-        if (!fs.existsSync(docPath)) {
-            return null;
-        }
-        return JSON.parse(fs.readFileSync(docPath, 'utf8'));
-    }
-    catch {
-        return null;
-    }
-}
 function extractAgentInfo(resolvedConfigPath) {
     const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
     const agentIdVersion = config.jacs_agent_id_and_version || '';
@@ -343,6 +393,20 @@ function requireAgent() {
         throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
     }
     return globalAgent;
+}
+async function withAgentPassword(operation) {
+    const agent = requireAgent();
+    if (!agentPassword) {
+        return operation(agent);
+    }
+    return withTemporaryPasswordEnv(agentPassword, () => operation(agent));
+}
+function withAgentPasswordSync(operation) {
+    const agent = requireAgent();
+    if (!agentPassword) {
+        return operation(agent);
+    }
+    return withTemporaryPasswordEnvSync(agentPassword, () => operation(agent));
 }
 function verifyImpl(signedDocument, agent, isSync) {
     const trimmed = signedDocument.trim();
@@ -408,7 +472,7 @@ function verifyImpl(signedDocument, agent, isSync) {
             .catch((e) => makeFailure(e));
     }
 }
-function ensurePassword() {
+function ensurePassword(keyDirectory) {
     let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
     if (!password) {
         const crypto = require('crypto');
@@ -428,12 +492,11 @@ function ensurePassword() {
         const persistPassword = process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
             process.env.JACS_SAVE_PASSWORD_FILE === 'true';
         if (persistPassword) {
-            const keysDir = './jacs_keys';
+            const keysDir = keyDirectory || './jacs_keys';
             fs.mkdirSync(keysDir, { recursive: true });
             const pwPath = path.join(keysDir, '.jacs_password');
             fs.writeFileSync(pwPath, password, { mode: 0o600 });
         }
-        process.env.JACS_PRIVATE_KEY_PASSWORD = password;
     }
     return password;
 }
@@ -444,12 +507,13 @@ function ensurePassword() {
 async function quickstart(options) {
     const { name, domain, description } = requireQuickstartIdentity(options);
     strictMode = resolveStrict(options?.strict);
-    const configPath = options?.configPath || './jacs.config.json';
+    const paths = resolveCreatePaths(options?.configPath);
+    const configPath = paths.configPath;
     if (fs.existsSync(configPath)) {
         const info = await load(configPath);
         return toQuickstartInfo(info);
     }
-    const password = ensurePassword();
+    const password = ensurePassword(paths.keyDirectory);
     const algo = options?.algorithm || 'pq2025';
     await create({
         name,
@@ -458,8 +522,10 @@ async function quickstart(options) {
         description,
         domain,
         configPath,
+        dataDirectory: paths.dataDirectory,
+        keyDirectory: paths.keyDirectory,
     });
-    const loaded = await load(configPath, { strict: strictMode });
+    const loaded = await withTemporaryPasswordEnv(password, async () => load(configPath, { strict: strictMode }));
     return toQuickstartInfo(loaded);
 }
 /**
@@ -468,12 +534,13 @@ async function quickstart(options) {
 function quickstartSync(options) {
     const { name, domain, description } = requireQuickstartIdentity(options);
     strictMode = resolveStrict(options?.strict);
-    const configPath = options?.configPath || './jacs.config.json';
+    const paths = resolveCreatePaths(options?.configPath);
+    const configPath = paths.configPath;
     if (fs.existsSync(configPath)) {
         const info = loadSync(configPath);
         return toQuickstartInfo(info);
     }
-    const password = ensurePassword();
+    const password = ensurePassword(paths.keyDirectory);
     const algo = options?.algorithm || 'pq2025';
     createSync({
         name,
@@ -482,12 +549,14 @@ function quickstartSync(options) {
         description,
         domain,
         configPath,
+        dataDirectory: paths.dataDirectory,
+        keyDirectory: paths.keyDirectory,
     });
-    const loaded = loadSync(configPath, { strict: strictMode });
+    const loaded = withTemporaryPasswordEnvSync(password, () => loadSync(configPath, { strict: strictMode }));
     return toQuickstartInfo(loaded);
 }
 function resolveCreatePassword(options) {
-    const p = options.password ?? process.env.JACS_PRIVATE_KEY_PASSWORD ?? '';
+    const p = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
     if (!p) {
         throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
     }
@@ -512,24 +581,43 @@ function createNativeArgs(options, password) {
  */
 async function create(options) {
     const password = resolveCreatePassword(options);
-    const resultJson = await (0, index_1.createAgent)(...createNativeArgs(options, password));
-    return parseCreateResult(resultJson, options);
+    const normalizedOptions = {
+        ...options,
+        ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
+    };
+    const resultJson = await (0, index_1.createAgent)(...createNativeArgs(normalizedOptions, password));
+    agentPassword = password;
+    return parseCreateResult(resultJson, normalizedOptions);
 }
 /**
  * Creates a new JACS agent (sync, blocks event loop).
  */
 function createSync(options) {
     const password = resolveCreatePassword(options);
-    const resultJson = (0, index_1.createAgentSync)(...createNativeArgs(options, password));
-    return parseCreateResult(resultJson, options);
+    const normalizedOptions = {
+        ...options,
+        ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
+    };
+    const resultJson = (0, index_1.createAgentSync)(...createNativeArgs(normalizedOptions, password));
+    agentPassword = password;
+    return parseCreateResult(resultJson, normalizedOptions);
 }
 /**
  * Loads an existing agent from a configuration file.
  */
 async function load(configPath, options) {
     const resolvedConfigPath = resolveLoadPath(configPath, options);
+    const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
     globalAgent = new index_1.JacsAgent();
-    await globalAgent.load(resolvedConfigPath);
+    agentPassword = resolvedPassword || null;
+    if (resolvedPassword) {
+        await withTemporaryPasswordEnv(resolvedPassword, async () => {
+            await globalAgent.load(resolvedConfigPath);
+        });
+    }
+    else {
+        await globalAgent.load(resolvedConfigPath);
+    }
     return setLoadedAgentInfo(resolvedConfigPath);
 }
 /**
@@ -537,8 +625,17 @@ async function load(configPath, options) {
  */
 function loadSync(configPath, options) {
     const resolvedConfigPath = resolveLoadPath(configPath, options);
+    const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
     globalAgent = new index_1.JacsAgent();
-    globalAgent.loadSync(resolvedConfigPath);
+    agentPassword = resolvedPassword || null;
+    if (resolvedPassword) {
+        withTemporaryPasswordEnvSync(resolvedPassword, () => {
+            globalAgent.loadSync(resolvedConfigPath);
+        });
+    }
+    else {
+        globalAgent.loadSync(resolvedConfigPath);
+    }
     return setLoadedAgentInfo(resolvedConfigPath);
 }
 /**
@@ -571,75 +668,81 @@ function verifySelfSync() {
  * Signs arbitrary data as a JACS message.
  */
 async function signMessage(data) {
-    const agent = requireAgent();
     const docContent = createRawDocumentPayload('message', { content: data });
-    const result = await createDocumentImpl(agent, docContent, null, null, false);
-    return parseSignedResult(result);
+    return withAgentPassword(async (agent) => {
+        const result = await createDocumentImpl(agent, docContent, null, null, false);
+        return parseSignedResult(result);
+    });
 }
 /**
  * Signs arbitrary data (sync, blocks event loop).
  */
 function signMessageSync(data) {
-    const agent = requireAgent();
     const docContent = createRawDocumentPayload('message', { content: data });
-    const result = createDocumentImpl(agent, docContent, null, null, true);
-    return parseSignedResult(result);
+    return withAgentPasswordSync((agent) => {
+        const result = createDocumentImpl(agent, docContent, null, null, true);
+        return parseSignedResult(result);
+    });
 }
 /**
  * Updates the agent document with new data and re-signs it.
  */
 async function updateAgent(newAgentData) {
-    const agent = requireAgent();
-    return agent.updateAgent(normalizeJsonInput(newAgentData));
+    return withAgentPassword((agent) => agent.updateAgent(normalizeJsonInput(newAgentData)));
 }
 /**
  * Updates the agent document (sync, blocks event loop).
  */
 function updateAgentSync(newAgentData) {
-    const agent = requireAgent();
-    return agent.updateAgentSync(normalizeJsonInput(newAgentData));
+    return withAgentPasswordSync((agent) => agent.updateAgentSync(normalizeJsonInput(newAgentData)));
 }
 /**
  * Updates an existing document with new data and re-signs it.
  */
 async function updateDocument(documentId, newDocumentData, attachments, embed) {
-    const agent = requireAgent();
     const dataString = normalizeJsonInput(newDocumentData);
-    const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
-    return parseSignedResult(result);
+    return withAgentPassword(async (agent) => {
+        const result = await agent.updateDocument(documentId, dataString, attachments || null, embed ?? null);
+        return parseSignedResult(result);
+    });
 }
 /**
  * Updates an existing document (sync, blocks event loop).
  */
 function updateDocumentSync(documentId, newDocumentData, attachments, embed) {
-    const agent = requireAgent();
     const dataString = normalizeJsonInput(newDocumentData);
-    const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
-    return parseSignedResult(result);
+    return withAgentPasswordSync((agent) => {
+        const result = agent.updateDocumentSync(documentId, dataString, attachments || null, embed ?? null);
+        return parseSignedResult(result);
+    });
 }
 /**
  * Signs a file with optional content embedding.
  */
 async function signFile(filePath, embed = false) {
-    const agent = requireAgent();
+    requireAgent();
     ensureFileExists(filePath);
     const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
     });
-    const result = await createDocumentImpl(agent, docContent, filePath, embed, false);
-    return parseSignedResult(result);
+    return withAgentPassword(async (agent) => {
+        const result = await createDocumentImpl(agent, docContent, filePath, embed, false);
+        return parseSignedResult(result);
+    });
 }
 /**
  * Signs a file (sync, blocks event loop).
  */
 function signFileSync(filePath, embed = false) {
-    const agent = requireAgent();
+    requireAgent();
     ensureFileExists(filePath);
     const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
     });
-    const result = createDocumentImpl(agent, docContent, filePath, embed, true);
-    return parseSignedResult(result);
+    return withAgentPasswordSync((agent) => {
+        const result = createDocumentImpl(agent, docContent, filePath, embed, true);
+        return parseSignedResult(result);
+    });
 }
 /**
  * Verifies a signed document and extracts its content.
@@ -679,7 +782,8 @@ async function verifyById(documentId) {
     }
     try {
         await agent.verifyDocumentById(documentId);
-        const stored = readStoredDocumentById(documentId);
+        const storedJson = await agent.getDocumentById(documentId);
+        const stored = JSON.parse(storedJson);
         return {
             ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
             timestamp: stored?.jacsSignature?.date || '',
@@ -700,7 +804,8 @@ function verifyByIdSync(documentId) {
     }
     try {
         agent.verifyDocumentByIdSync(documentId);
-        const stored = readStoredDocumentById(documentId);
+        const storedJson = agent.getDocumentByIdSync(documentId);
+        const stored = JSON.parse(storedJson);
         return {
             ...makeVerificationSuccess(stored?.jacsSignature?.agentID || ''),
             timestamp: stored?.jacsSignature?.date || '',
@@ -735,7 +840,15 @@ function getPublicKey() {
     if (!fs.existsSync(agentInfo.publicKeyPath)) {
         throw new Error(`Public key not found: ${agentInfo.publicKeyPath}`);
     }
-    return fs.readFileSync(agentInfo.publicKeyPath, 'utf8');
+    const raw = fs.readFileSync(agentInfo.publicKeyPath);
+    // PEM text keys (RSA-PSS) are valid UTF-8; return as-is.
+    // Binary keys (Ed25519, pq2025) need PEM armor so trustAgentWithKey works.
+    const text = raw.toString('utf8');
+    if (text.includes('-----BEGIN') || Buffer.from(text, 'utf8').equals(raw)) {
+        return text;
+    }
+    const b64 = raw.toString('base64');
+    return `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----\n`;
 }
 function exportAgent() {
     if (!agentInfo) {
@@ -781,6 +894,7 @@ function debugInfo() {
 function reset() {
     globalAgent = null;
     agentInfo = null;
+    agentPassword = null;
     strictMode = false;
 }
 function getDnsRecord(domain, ttl = 3600) {
@@ -834,28 +948,32 @@ function getSetupInstructionsSync(domain, ttl = 3600) {
     return JSON.parse(json);
 }
 async function createAgreement(document, agentIds, question, context, fieldName) {
-    const agent = requireAgent();
     const docString = normalizeDocumentInput(document);
-    const result = await agent.createAgreement(docString, agentIds, question || null, context || null, fieldName || null);
-    return parseSignedResult(result);
+    return withAgentPassword(async (agent) => {
+        const result = await agent.createAgreement(docString, agentIds, question || null, context || null, fieldName || null);
+        return parseSignedResult(result);
+    });
 }
 function createAgreementSync(document, agentIds, question, context, fieldName) {
-    const agent = requireAgent();
     const docString = normalizeDocumentInput(document);
-    const result = agent.createAgreementSync(docString, agentIds, question || null, context || null, fieldName || null);
-    return parseSignedResult(result);
+    return withAgentPasswordSync((agent) => {
+        const result = agent.createAgreementSync(docString, agentIds, question || null, context || null, fieldName || null);
+        return parseSignedResult(result);
+    });
 }
 async function signAgreement(document, fieldName) {
-    const agent = requireAgent();
     const docString = normalizeDocumentInput(document);
-    const result = await agent.signAgreement(docString, fieldName || null);
-    return parseSignedResult(result);
+    return withAgentPassword(async (agent) => {
+        const result = await agent.signAgreement(docString, fieldName || null);
+        return parseSignedResult(result);
+    });
 }
 function signAgreementSync(document, fieldName) {
-    const agent = requireAgent();
     const docString = normalizeDocumentInput(document);
-    const result = agent.signAgreementSync(docString, fieldName || null);
-    return parseSignedResult(result);
+    return withAgentPasswordSync((agent) => {
+        const result = agent.signAgreementSync(docString, fieldName || null);
+        return parseSignedResult(result);
+    });
 }
 async function checkAgreement(document, fieldName) {
     const agent = requireAgent();
@@ -914,15 +1032,16 @@ function auditSync(options) {
  * @returns The signed attestation as a SignedDocument.
  */
 async function createAttestation(params) {
-    const agent = requireAgent();
-    const raw = await agent.createAttestation(JSON.stringify(params));
-    const doc = JSON.parse(raw);
-    return {
-        raw,
-        documentId: doc.jacsId || '',
-        agentId: doc.jacsSignature?.agentID || '',
-        timestamp: doc.jacsSignature?.date || '',
-    };
+    return withAgentPassword(async (agent) => {
+        const raw = await agent.createAttestation(JSON.stringify(params));
+        const doc = JSON.parse(raw);
+        return {
+            raw,
+            documentId: doc.jacsId || '',
+            agentId: doc.jacsSignature?.agentID || '',
+            timestamp: doc.jacsSignature?.date || '',
+        };
+    });
 }
 /**
  * Create a signed attestation document (sync).
@@ -931,18 +1050,22 @@ async function createAttestation(params) {
  * @returns The signed attestation as a SignedDocument.
  */
 function createAttestationSync(params) {
-    const agent = requireAgent();
-    const raw = agent.createAttestationSync(JSON.stringify(params));
-    const doc = JSON.parse(raw);
-    return {
-        raw,
-        documentId: doc.jacsId || '',
-        agentId: doc.jacsSignature?.agentID || '',
-        timestamp: doc.jacsSignature?.date || '',
-    };
+    return withAgentPasswordSync((agent) => {
+        const raw = agent.createAttestationSync(JSON.stringify(params));
+        const doc = JSON.parse(raw);
+        return {
+            raw,
+            documentId: doc.jacsId || '',
+            agentId: doc.jacsSignature?.agentID || '',
+            timestamp: doc.jacsSignature?.date || '',
+        };
+    });
 }
 /**
  * Verify an attestation document -- local tier (async).
+ *
+ * The returned object preserves the canonical wire-format field names from the
+ * attestation/DSSE JSON contracts, which use camelCase.
  *
  * @param attestationJson - Raw JSON string of the attestation document.
  * @param opts - Optional. Set full: true for full-tier verification.
@@ -963,6 +1086,9 @@ async function verifyAttestation(attestationJson, opts) {
 }
 /**
  * Verify an attestation document -- local tier (sync).
+ *
+ * The returned object preserves the canonical wire-format field names from the
+ * attestation/DSSE JSON contracts, which use camelCase.
  *
  * @param attestationJson - Raw JSON string of the attestation document.
  * @param opts - Optional. Set full: true for full-tier verification.
@@ -989,15 +1115,16 @@ function verifyAttestationSync(attestationJson, opts) {
  * @returns The lifted attestation as a SignedDocument.
  */
 async function liftToAttestation(signedDocJson, claims) {
-    const agent = requireAgent();
-    const raw = await agent.liftToAttestation(signedDocJson, JSON.stringify(claims));
-    const doc = JSON.parse(raw);
-    return {
-        raw,
-        documentId: doc.jacsId || '',
-        agentId: doc.jacsSignature?.agentID || '',
-        timestamp: doc.jacsSignature?.date || '',
-    };
+    return withAgentPassword(async (agent) => {
+        const raw = await agent.liftToAttestation(signedDocJson, JSON.stringify(claims));
+        const doc = JSON.parse(raw);
+        return {
+            raw,
+            documentId: doc.jacsId || '',
+            agentId: doc.jacsSignature?.agentID || '',
+            timestamp: doc.jacsSignature?.date || '',
+        };
+    });
 }
 /**
  * Lift a signed document into an attestation (sync).
@@ -1007,15 +1134,16 @@ async function liftToAttestation(signedDocJson, claims) {
  * @returns The lifted attestation as a SignedDocument.
  */
 function liftToAttestationSync(signedDocJson, claims) {
-    const agent = requireAgent();
-    const raw = agent.liftToAttestationSync(signedDocJson, JSON.stringify(claims));
-    const doc = JSON.parse(raw);
-    return {
-        raw,
-        documentId: doc.jacsId || '',
-        agentId: doc.jacsSignature?.agentID || '',
-        timestamp: doc.jacsSignature?.date || '',
-    };
+    return withAgentPasswordSync((agent) => {
+        const raw = agent.liftToAttestationSync(signedDocJson, JSON.stringify(claims));
+        const doc = JSON.parse(raw);
+        return {
+            raw,
+            documentId: doc.jacsId || '',
+            agentId: doc.jacsSignature?.agentID || '',
+            timestamp: doc.jacsSignature?.date || '',
+        };
+    });
 }
 /**
  * Export an attestation as a DSSE (Dead Simple Signing Envelope) (async).
@@ -1024,9 +1152,10 @@ function liftToAttestationSync(signedDocJson, claims) {
  * @returns The DSSE envelope as a parsed object.
  */
 async function exportAttestationDsse(attestationJson) {
-    const agent = requireAgent();
-    const raw = await agent.exportAttestationDsse(attestationJson);
-    return JSON.parse(raw);
+    return withAgentPassword(async (agent) => {
+        const raw = await agent.exportAttestationDsse(attestationJson);
+        return JSON.parse(raw);
+    });
 }
 /**
  * Export an attestation as a DSSE (Dead Simple Signing Envelope) (sync).
@@ -1035,9 +1164,10 @@ async function exportAttestationDsse(attestationJson) {
  * @returns The DSSE envelope as a parsed object.
  */
 function exportAttestationDsseSync(attestationJson) {
-    const agent = requireAgent();
-    const raw = agent.exportAttestationDsseSync(attestationJson);
-    return JSON.parse(raw);
+    return withAgentPasswordSync((agent) => {
+        const raw = agent.exportAttestationDsseSync(attestationJson);
+        return JSON.parse(raw);
+    });
 }
 // =============================================================================
 // Verification Link

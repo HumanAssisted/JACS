@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://hai.ai/schemas/task/v1/task-schema.json",
+  "$id": "https://hai.ai/schemas/task/v1/task.schema.json",
   "title": "Task",
   "description": "General schema for stateful resources.",
   "allOf": [

@@ -386,11 +386,13 @@ The `jacs_default_storage` field determines where JACS stores agent data, docume
 
 | Backend | Value | Description | Use Case |
 |---------|-------|-------------|----------|
-| **Filesystem** | `"fs"` | Local file system storage | Development, single-node deployments |
-| **AWS S3** | `"aws"` | Amazon S3 object storage | Production, cloud deployments |
-| **HAI Remote** | `"hai"` | HAI.ai remote storage service | HAI.ai platform integration |
-| **Memory** | `"memory"` | In-memory storage (non-persistent) | Testing, temporary data |
+| **Filesystem** | `"fs"` | Signed JSON documents on local disk | Default, development, single-node deployments |
+| **Local Indexed SQLite** | `"rusqlite"` | Signed documents in SQLite with FTS search | Local search, bindings, MCP |
+| **AWS S3** | `"aws"` | Amazon S3 object storage | Remote object storage |
+| **Memory** | `"memory"` | In-memory object storage (non-persistent) | Testing, temporary data |
 | **Web Local** | `"local"` | Browser local storage (WASM only) | Web applications |
+
+For local indexed document search in JACS core, use `"rusqlite"`. Additional database backends such as PostgreSQL, DuckDB, Redb, and SurrealDB live in separate crates and are **not** core `jacs_default_storage` values.
 
 ### Backend-Specific Configuration
 
@@ -407,6 +409,19 @@ The `jacs_default_storage` field determines where JACS stores agent data, docume
 **Data location:** Local directories as specified in config
 **Best for:** Development, local testing, single-machine deployments
 
+#### Local Indexed SQLite (`"rusqlite"`)
+```json
+{
+  "jacs_default_storage": "rusqlite",
+  "jacs_data_directory": "./jacs_data",
+  "jacs_key_directory": "./jacs_keys"
+}
+```
+
+**Requirements:** Built with the default `sqlite` Cargo feature
+**Database path:** `<jacs_data_directory>/jacs_documents.sqlite3`
+**Best for:** Local full-text search, MCP/binding document operations, single-machine deployments that want indexed reads
+
 #### AWS S3 Storage (`"aws"`)
 ```json
 {
@@ -422,20 +437,6 @@ The `jacs_default_storage` field determines where JACS stores agent data, docume
 
 **Best for:** Production deployments, distributed systems, cloud-native applications
 
-#### HAI Remote Storage (`"hai"`)
-```json
-{
-  "jacs_default_storage": "hai"
-}
-```
-
-**Required Environment Variables:**
-- `HAI_STORAGE_URL` - HAI.ai storage service endpoint
-
-This is an HTTP object store backend. Full HAI platform workflows (registration, attestation, key discovery) require the separate [haisdk](https://github.com/HumanAssisted/haisdk) package.
-
-**Best for:** Remote document storage via HTTP
-
 #### Memory Storage (`"memory"`)
 ```json
 {
@@ -449,10 +450,17 @@ This is an HTTP object store backend. Full HAI platform workflows (registration,
 
 ### Storage Behavior
 
-- **Agent data** (agent definitions, signatures) are stored using the configured backend
-- **Documents** are stored using the configured backend
-- **Cryptographic keys** are stored using the configured backend
-- **Observability data** (logs, metrics) can use separate storage via observability configuration
+- **Filesystem (`fs`)** stores signed documents as JSON files under `jacs_data/documents/`.
+- **Rusqlite (`rusqlite`)** stores signed documents in `jacs_data/jacs_documents.sqlite3` and is the indexed `DocumentService` path used by bindings and MCP.
+- **Agent files and keys** remain path-based assets under `jacs_data/` and `jacs_keys/`.
+- **Observability data** (logs, metrics) can use separate storage via observability configuration.
+
+### DocumentService Guarantees
+
+- Every `DocumentService` read verifies the stored JACS document before returning it.
+- Every `create()` and `update()` verifies the signed document before persisting it.
+- If an update payload changes a signed JACS document without re-signing it, the write fails.
+- Visibility changes create a new signed version instead of mutating metadata in place.
 
 ### Configuration Examples
 
@@ -480,22 +488,10 @@ export AWS_SECRET_ACCESS_KEY="..."
 export AWS_REGION="us-west-2"
 ```
 
-**HAI Platform Integration**
-```json
-{
-  "jacs_default_storage": "hai"
-}
-```
-
-With environment variable:
-```bash
-export HAI_STORAGE_URL="https://storage.hai.ai/v1"
-```
-
 ### Security Considerations
 
 - **AWS S3**: Ensure proper IAM permissions for bucket access
-- **HAI Remote**: Secure the `HAI_STORAGE_URL` endpoint and any required authentication
+- **Rusqlite**: Protect the local database file with the same filesystem permissions you use for other signed artifacts
 - **Filesystem**: Ensure proper file system permissions for data and key directories
 - **Keys**: Regardless of storage backend, always set `JACS_PRIVATE_KEY_PASSWORD` for key encryption
 

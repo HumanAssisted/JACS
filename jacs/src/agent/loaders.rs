@@ -12,7 +12,6 @@ use secrecy::ExposeSecret;
 use crate::storage::jenv::get_env_var;
 use crate::time_utils;
 use crate::validation::require_relative_path_safe;
-use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
 #[cfg(unix)]
@@ -28,7 +27,7 @@ fn remote_key_rate_limiter() -> &'static RateLimiter {
     REMOTE_KEY_RATE_LIMITER.get_or_init(|| RateLimiter::new(2.0, 3))
 }
 
-fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), JacsError> {
     let path_obj = Path::new(path);
 
     if let Some(parent) = path_obj.parent() {
@@ -74,53 +73,48 @@ fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), Box<dy
 pub trait FileLoader {
     // utils
 
-    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>>;
-    fn fs_agent_load(&self, agentid: &str) -> Result<String, Box<dyn Error>>;
-    // fn fs_agent_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
-    // fn fs_document_new(&self, filename: &String) -> Result<String, Box<dyn Error>>;
-    // fn fs_document_load(&self, document_id: &String) -> Result<String, Box<dyn Error>>;
+    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<JacsError>>;
+    fn fs_agent_load(&self, agentid: &str) -> Result<String, JacsError>;
+    // fn fs_agent_new(&self, filename: &String) -> Result<String, JacsError>;
+    // fn fs_document_new(&self, filename: &String) -> Result<String, JacsError>;
+    // fn fs_document_load(&self, document_id: &String) -> Result<String, JacsError>;
     fn fs_preload_keys(
         &mut self,
         private_key_filename: &str,
         public_key_filename: &str,
         custom_key_algorithm: Option<String>,
-    ) -> Result<(), Box<dyn Error>>;
-    fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>>;
-    fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>>;
+    ) -> Result<(), JacsError>;
+    fn fs_save_keys(&mut self) -> Result<(), JacsError>;
+    fn fs_load_keys(&mut self) -> Result<(), JacsError>;
 
     // save
-    // fn fs_docs_save_all(&mut self) -> Result<Vec<String>, Box<dyn Error>>;
-    fn fs_agent_save(&self, agentid: &str, agent_string: &str) -> Result<String, Box<dyn Error>>;
+    // fn fs_docs_save_all(&mut self) -> Result<Vec<String>, JacsError>;
+    fn fs_agent_save(&self, agentid: &str, agent_string: &str) -> Result<String, JacsError>;
     fn fs_document_save(
         &self,
         document_id: &str,
         document_string: &str,
         output_filename: Option<String>,
-    ) -> Result<String, Box<dyn Error>>;
+    ) -> Result<String, JacsError>;
 
-    fn fs_document_archive(&self, lookup_key: &str) -> Result<(), Box<dyn Error>>;
-    fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>>;
-    fn load_private_key(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>>;
-    fn save_private_key(
-        &self,
-        filename: &str,
-        private_key: &[u8],
-    ) -> Result<String, Box<dyn Error>>;
-    fn create_backup(&self, file_path: &str) -> Result<String, Box<dyn Error>>;
+    fn fs_document_archive(&self, lookup_key: &str) -> Result<(), JacsError>;
+    fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, JacsError>;
+    fn load_private_key(&self, filename: &str) -> Result<Vec<u8>, JacsError>;
+    fn save_private_key(&self, filename: &str, private_key: &[u8]) -> Result<String, JacsError>;
+    fn create_backup(&self, file_path: &str) -> Result<String, JacsError>;
     /// used to get base64 content from a filepath
-    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>>;
-    fn fs_load_public_key(&self, hash: &str) -> Result<Vec<u8>, Box<dyn Error>>;
+    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, JacsError>;
+    fn fs_load_public_key(&self, hash: &str) -> Result<Vec<u8>, JacsError>;
     fn use_filesystem(&self) -> bool;
-    fn fs_load_public_key_type(&self, agent_id_and_version: &str)
-    -> Result<String, Box<dyn Error>>;
+    fn fs_load_public_key_type(&self, agent_id_and_version: &str) -> Result<String, JacsError>;
     fn fs_save_remote_public_key(
         &self,
         agent_id_and_version: &str,
         public_key: &[u8],
         public_key_enc_type: &[u8],
-    ) -> Result<(), Box<dyn Error>>;
-    fn make_data_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>>;
-    fn make_key_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>>;
+    ) -> Result<(), JacsError>;
+    fn make_data_directory_path(&self, filename: &str) -> Result<String, JacsError>;
+    fn make_key_directory_path(&self, filename: &str) -> Result<String, JacsError>;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -132,7 +126,7 @@ impl FileLoader for Agent {
             .is_some_and(|conf| conf.jacs_default_storage().as_deref() == Some("fs"))
     }
 
-    fn fs_save_keys(&mut self) -> Result<(), Box<dyn Error>> {
+    fn fs_save_keys(&mut self) -> Result<(), JacsError> {
         // Get private key filename: ONLY from config
         let private_key_filename = self
             .config
@@ -177,7 +171,7 @@ impl FileLoader for Agent {
         Ok(())
     }
 
-    fn fs_load_keys(&mut self) -> Result<(), Box<dyn Error>> {
+    fn fs_load_keys(&mut self) -> Result<(), JacsError> {
         let private_key_filename = self
             .config
             .as_ref()
@@ -243,7 +237,7 @@ impl FileLoader for Agent {
     }
 
     /// in JACS the public keys need to be added manually
-    fn fs_load_public_key(&self, hash: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn fs_load_public_key(&self, hash: &str) -> Result<Vec<u8>, JacsError> {
         let public_key_path = format!("public_keys/{}.pem", hash);
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
         self.storage
@@ -256,7 +250,7 @@ impl FileLoader for Agent {
             })
     }
 
-    fn fs_load_public_key_type(&self, hash: &str) -> Result<String, Box<dyn Error>> {
+    fn fs_load_public_key_type(&self, hash: &str) -> Result<String, JacsError> {
         let public_key_path = format!("public_keys/{}.enc_type", hash);
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
         let bytes = self.storage.get_file(&absolute_public_key_path, None).map_err(|e| {
@@ -279,7 +273,7 @@ impl FileLoader for Agent {
         agent_id_and_version: &str,
         public_key: &[u8],
         public_key_enc_type: &[u8],
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), JacsError> {
         let public_key_path = format!("public_keys/{}.pem", agent_id_and_version);
         let enc_type_path = format!("public_keys/{}.enc_type", agent_id_and_version);
         let absolute_public_key_path = self.make_data_directory_path(&public_key_path)?;
@@ -298,7 +292,7 @@ impl FileLoader for Agent {
         private_key_filename: &str,
         public_key_filename: &str,
         custom_key_algorithm: Option<String>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), JacsError> {
         let private_path = self.make_key_directory_path(private_key_filename).map_err(|e| {
             format!(
                 "fs_preload_keys failed: Could not construct path for private key file '{}': {}",
@@ -359,8 +353,8 @@ impl FileLoader for Agent {
     }
 
     /// function used to load all documents present
-    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<Box<dyn Error>>> {
-        let mut errors: Vec<Box<dyn Error>> = Vec::new();
+    fn fs_docs_load_all(&mut self) -> Result<Vec<String>, Vec<JacsError>> {
+        let mut errors: Vec<JacsError> = Vec::new();
         let mut documents: Vec<String> = Vec::new();
 
         // Handle Result from make_data_directory_path manually
@@ -390,13 +384,15 @@ impl FileLoader for Agent {
                         match self.storage.get_file(&file_path, None) {
                             Ok(contents) => match String::from_utf8(contents) {
                                 Ok(doc) => documents.push(doc),
-                                Err(e) => errors.push(Box::new(e)),
+                                Err(e) => errors.push(JacsError::Internal {
+                                    message: e.to_string(),
+                                }),
                             },
-                            Err(e) => errors.push(Box::new(e)),
+                            Err(e) => errors.push(JacsError::from(e)),
                         }
                     }
                 }
-                Err(e) => errors.push(Box::new(e)),
+                Err(e) => errors.push(JacsError::from(e)),
             }
         }
 
@@ -408,7 +404,7 @@ impl FileLoader for Agent {
         }
     }
 
-    fn fs_agent_load(&self, agentid: &str) -> Result<String, Box<dyn Error>> {
+    fn fs_agent_load(&self, agentid: &str) -> Result<String, JacsError> {
         // Expects logical agentid (no .json)
         info!("[fs_agent_load] Loading using agent ID: {}", agentid);
 
@@ -446,7 +442,7 @@ impl FileLoader for Agent {
         })
     }
 
-    fn fs_agent_save(&self, agentid: &str, agent_string: &str) -> Result<String, Box<dyn Error>> {
+    fn fs_agent_save(&self, agentid: &str, agent_string: &str) -> Result<String, JacsError> {
         info!("[fs_agent_save] Starting save for agent ID: {}", agentid);
 
         // Construct the relative path for storage operations
@@ -502,7 +498,7 @@ impl FileLoader for Agent {
                     "[fs_agent_save] storage.save_file failed (relative path): {}",
                     e
                 );
-                Box::new(e) as Box<dyn Error>
+                JacsError::StorageError(e.to_string())
             })?;
 
         info!(
@@ -512,7 +508,7 @@ impl FileLoader for Agent {
         Ok(absolute_path_str)
     }
 
-    fn fs_document_archive(&self, lookup_key: &str) -> Result<(), Box<dyn Error>> {
+    fn fs_document_archive(&self, lookup_key: &str) -> Result<(), JacsError> {
         let document_filename = format!("{}.json", lookup_key);
         let old_path = format!("documents/{}", document_filename);
         let new_path = format!("documents/archive/{}", document_filename);
@@ -529,7 +525,7 @@ impl FileLoader for Agent {
         document_id: &str,
         document_string: &str,
         output_filename: Option<String>,
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<String, JacsError> {
         if let Err(e) = self.check_data_directory() {
             error!("Failed to check data directory: {}", e);
         }
@@ -548,7 +544,7 @@ impl FileLoader for Agent {
         Ok(document_path)
     }
 
-    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, Box<dyn Error>> {
+    fn fs_get_document_content(&self, document_filepath: String) -> Result<String, JacsError> {
         let contents = self.storage.get_file(&document_filepath, None)?;
 
         // Compress the contents using gzip
@@ -561,7 +557,7 @@ impl FileLoader for Agent {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn load_public_key_file(&self, filename: &str) -> Result<Vec<u8>, JacsError> {
         self.storage.get_file(filename, None).map_err(|e| {
             let suggestion = if e.to_string().contains("not found")
                 || e.to_string().contains("NotFound")
@@ -581,7 +577,7 @@ impl FileLoader for Agent {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn load_private_key(&self, filename: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn load_private_key(&self, filename: &str) -> Result<Vec<u8>, JacsError> {
         let filepath = self.make_key_directory_path(filename).map_err(|e| {
             format!(
                 "load_private_key failed: Could not construct key directory path for '{}': {}",
@@ -616,7 +612,7 @@ impl FileLoader for Agent {
         &self,
         full_filepath: &str,
         private_key: &[u8],
-    ) -> Result<String, Box<dyn Error>> {
+    ) -> Result<String, JacsError> {
         // SECURITY: Require encryption password. Never write private keys unencrypted.
         let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
             .unwrap_or(None)
@@ -642,7 +638,7 @@ impl FileLoader for Agent {
     }
     /// private Helper function to create a backup file name based on the current timestamp
     #[cfg(not(target_arch = "wasm32"))]
-    fn create_backup(&self, file_path: &str) -> Result<String, Box<dyn Error>> {
+    fn create_backup(&self, file_path: &str) -> Result<String, JacsError> {
         let timestamp = time_utils::backup_timestamp_suffix();
 
         // Split the path into directory and filename
@@ -650,7 +646,10 @@ impl FileLoader for Agent {
         let file_stem = path
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .ok_or_else(|| Box::new(std::io::Error::other("Failed to read file stem")))?;
+            .ok_or_else(|| JacsError::FileReadFailed {
+                path: file_path.to_string(),
+                reason: "Failed to read file stem".to_string(),
+            })?;
         let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
 
         // Create the backup path
@@ -665,10 +664,9 @@ impl FileLoader for Agent {
         Ok(backup_path)
     }
 
-    fn make_data_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>> {
+    fn make_data_directory_path(&self, filename: &str) -> Result<String, JacsError> {
         // Path validated to prevent traversal from untrusted input (e.g. publicKeyHash).
-        require_relative_path_safe(filename)
-            .map_err::<Box<dyn Error>, _>(|e| e.to_string().into())?;
+        require_relative_path_safe(filename).map_err::<JacsError, _>(|e| e.to_string().into())?;
         // Fail if config or specific directory is missing
         let mut data_dir = self
             .config
@@ -695,10 +693,9 @@ impl FileLoader for Agent {
         debug!("Data directory path: {}", path);
         Ok(path)
     }
-    fn make_key_directory_path(&self, filename: &str) -> Result<String, Box<dyn Error>> {
+    fn make_key_directory_path(&self, filename: &str) -> Result<String, JacsError> {
         // Path validated to prevent traversal from untrusted input.
-        require_relative_path_safe(filename)
-            .map_err::<Box<dyn Error>, _>(|e| e.to_string().into())?;
+        require_relative_path_safe(filename).map_err::<JacsError, _>(|e| e.to_string().into())?;
         // Fail if config or specific directory is missing
         let mut key_dir = self
             .config

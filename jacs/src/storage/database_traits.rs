@@ -1,9 +1,21 @@
-//! Generic database storage traits for JACS documents.
+//! Database storage traits for JACS documents (Level 2 in the trait hierarchy).
 //!
-//! This module defines the `DatabaseDocumentTraits` trait which extends
-//! `StorageDocumentTraits` with query capabilities that only a database
-//! can provide. The trait is backend-agnostic -- implementations exist
-//! for PostgreSQL (reference) with SQLite, DuckDB, and LanceDB planned.
+//! This module defines [`DatabaseDocumentTraits`] which extends
+//! [`StorageDocumentTraits`](super::StorageDocumentTraits) with indexed query
+//! capabilities that only a database backend can provide.
+//!
+//! # Trait Hierarchy
+//!
+//! ```text
+//! StorageDocumentTraits        (base -- CRUD, list, versions, bulk)
+//!     └── DatabaseDocumentTraits   (indexed queries -- type, field, agent, pagination)
+//!         └── SearchProvider       (fulltext/vector/hybrid search -- defined in search/)
+//! ```
+//!
+//! # Implementations
+//!
+//! - **Built-in:** `SqliteStorage` (sqlx), `RusqliteStorage` (rusqlite)
+//! - **Extracted crates:** `jacs-postgresql`, `jacs-surrealdb`, `jacs-duckdb`, `jacs-redb`
 //!
 //! # Append-Only Model
 //!
@@ -11,25 +23,28 @@
 //! keyed by `(jacs_id, jacs_version)`. No UPDATE operations on existing rows.
 
 use crate::agent::document::JACSDocument;
-use std::error::Error;
+use crate::error::JacsError;
 
-/// Extended storage trait for database backends.
+/// Extended storage trait for database backends (Level 2).
 ///
-/// Provides query capabilities beyond basic CRUD:
+/// Builds on [`StorageDocumentTraits`](super::StorageDocumentTraits) by adding
+/// indexed query capabilities:
 /// - Type-based queries with pagination
-/// - Field-based JSONB queries
+/// - Field-based JSON/JSONB queries
 /// - Aggregation counts
-/// - Version history
+/// - Version history ordered by creation date
+/// - Agent-scoped queries
 ///
-/// All methods are synchronous. Implementations bridge async internally.
-pub trait DatabaseDocumentTraits: Send + Sync {
+/// All methods are synchronous. Async implementations bridge internally
+/// (e.g., `tokio::runtime::Handle::block_on`).
+pub trait DatabaseDocumentTraits: super::StorageDocumentTraits {
     /// Query documents by their `jacsType` field with pagination.
     fn query_by_type(
         &self,
         jacs_type: &str,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    ) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Query documents where a JSONB field matches a value.
     /// `field_path` is a top-level field name (e.g., "jacsCommitmentStatus").
@@ -40,16 +55,16 @@ pub trait DatabaseDocumentTraits: Send + Sync {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    ) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Count documents by type.
-    fn count_by_type(&self, jacs_type: &str) -> Result<usize, Box<dyn Error>>;
+    fn count_by_type(&self, jacs_type: &str) -> Result<usize, JacsError>;
 
     /// Get all versions of a document ordered by creation date.
-    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    fn get_versions(&self, jacs_id: &str) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Get the most recent version of a document.
-    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, Box<dyn Error>>;
+    fn get_latest(&self, jacs_id: &str) -> Result<JACSDocument, JacsError>;
 
     /// Query documents by the agent that signed them.
     fn query_by_agent(
@@ -58,10 +73,10 @@ pub trait DatabaseDocumentTraits: Send + Sync {
         jacs_type: Option<&str>,
         limit: usize,
         offset: usize,
-    ) -> Result<Vec<JACSDocument>, Box<dyn Error>>;
+    ) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Run database migrations to create/update the schema.
-    fn run_migrations(&self) -> Result<(), Box<dyn Error>>;
+    fn run_migrations(&self) -> Result<(), JacsError>;
 }
 
 /// Placeholder for future vector search capabilities.

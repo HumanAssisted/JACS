@@ -1,4 +1,4 @@
-#![cfg(feature = "attestation-tests")]
+#![cfg(feature = "attestation")]
 
 //! Integration tests for the attestation feature.
 //!
@@ -65,9 +65,9 @@ fn test_claim() -> Claim {
 fn attestation_create_verify_round_trip() {
     let agent = ephemeral_simple_agent();
     let subject = test_subject();
-    let signed = agent
-        .create_attestation(&subject, &[test_claim()], &[], None, None)
-        .expect("create attestation");
+    let signed =
+        jacs::attestation::simple::create(&agent, &subject, &[test_claim()], &[], None, None)
+            .expect("create attestation");
 
     let doc: Value = serde_json::from_str(&signed.raw).unwrap();
     let key = format!(
@@ -76,7 +76,7 @@ fn attestation_create_verify_round_trip() {
         doc["jacsVersion"].as_str().unwrap()
     );
 
-    let result = agent.verify_attestation(&key).expect("verify attestation");
+    let result = jacs::attestation::simple::verify(&agent, &key).expect("verify attestation");
     assert!(
         result.valid,
         "round-trip attestation should verify: {:?}",
@@ -160,8 +160,7 @@ fn attestation_lift_existing_document_verify() {
     let original_id = signed_msg.document_id.clone();
 
     // Lift to attestation
-    let attestation = agent
-        .lift_to_attestation(&signed_msg.raw, &[test_claim()])
+    let attestation = jacs::attestation::simple::lift(&agent, &signed_msg.raw, &[test_claim()])
         .expect("lift to attestation");
 
     let att_doc: Value = serde_json::from_str(&attestation.raw).unwrap();
@@ -179,7 +178,7 @@ fn attestation_lift_existing_document_verify() {
         att_doc["jacsId"].as_str().unwrap(),
         att_doc["jacsVersion"].as_str().unwrap()
     );
-    let result = agent.verify_attestation(&att_key).expect("verify lifted");
+    let result = jacs::attestation::simple::verify(&agent, &att_key).expect("verify lifted");
     assert!(
         result.valid,
         "lifted attestation should verify: {:?}",
@@ -429,9 +428,15 @@ fn attestation_simple_agent_full_pipeline() {
     let agent = ephemeral_simple_agent();
 
     // Create attestation
-    let signed = agent
-        .create_attestation(&test_subject(), &[test_claim()], &[], None, None)
-        .expect("create attestation");
+    let signed = jacs::attestation::simple::create(
+        &agent,
+        &test_subject(),
+        &[test_claim()],
+        &[],
+        None,
+        None,
+    )
+    .expect("create attestation");
 
     // Local verify
     let doc: Value = serde_json::from_str(&signed.raw).unwrap();
@@ -440,15 +445,15 @@ fn attestation_simple_agent_full_pipeline() {
         doc["jacsId"].as_str().unwrap(),
         doc["jacsVersion"].as_str().unwrap()
     );
-    let local_result = agent.verify_attestation(&key).expect("local verify");
+    let local_result = jacs::attestation::simple::verify(&agent, &key).expect("local verify");
     assert!(local_result.valid);
 
     // Full verify
-    let full_result = agent.verify_attestation_full(&key).expect("full verify");
+    let full_result = jacs::attestation::simple::verify_full(&agent, &key).expect("full verify");
     assert!(full_result.valid);
 
     // DSSE export
-    let dsse_json = agent.export_dsse(&signed.raw).expect("DSSE export");
+    let dsse_json = jacs::attestation::simple::export_dsse(&signed.raw).expect("DSSE export");
     let envelope: Value = serde_json::from_str(&dsse_json).unwrap();
     assert_eq!(
         envelope["payloadType"].as_str().unwrap(),

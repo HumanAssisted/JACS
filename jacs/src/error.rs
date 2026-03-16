@@ -175,6 +175,14 @@ pub enum JacsError {
     /// The default maximum size is 10MB, configurable via `JACS_MAX_DOCUMENT_SIZE`.
     DocumentTooLarge { size: usize, max_size: usize },
 
+    // === Document Lookup Errors ===
+    /// JACS document not found by ID in storage.
+    ///
+    /// This is a domain-level "not found" — the document ID was valid
+    /// but no matching document exists in the storage backend.
+    /// Distinct from `FileNotFound` which is a filesystem concept.
+    DocumentNotFound { document_id: String },
+
     // === File Errors ===
     /// File not found at the specified path.
     FileNotFound { path: String },
@@ -198,6 +206,13 @@ pub enum JacsError {
     // === Registration Errors ===
     /// Registration with a remote registry failed.
     RegistrationFailed { reason: String },
+
+    // === Search Errors ===
+    /// Search operation failed.
+    ///
+    /// Use this for errors from search backends (fulltext, vector, hybrid).
+    /// Distinct from `StorageError` which covers general storage operations.
+    SearchError(String),
 
     // === Storage Errors ===
     /// Generic storage backend error.
@@ -346,6 +361,15 @@ impl fmt::Display for JacsError {
                 )
             }
 
+            // Document lookup
+            JacsError::DocumentNotFound { document_id } => {
+                write!(
+                    f,
+                    "Document '{}' not found in storage. Verify the document ID is correct and the document has been stored.",
+                    document_id
+                )
+            }
+
             // Files
             JacsError::FileNotFound { path } => {
                 write!(
@@ -396,6 +420,9 @@ impl fmt::Display for JacsError {
             JacsError::RegistrationFailed { reason } => {
                 write!(f, "Registration failed: {}", reason)
             }
+
+            // Search
+            JacsError::SearchError(msg) => write!(f, "Search error: {}", msg),
 
             // Storage
             JacsError::StorageError(msg) => write!(f, "Storage error: {}", msg),
@@ -502,6 +529,14 @@ impl From<Box<dyn Error>> for JacsError {
         let msg = err.to_string();
         let lower = msg.to_lowercase();
 
+        // Log when this bridge is hit to track migration progress.
+        // As callers migrate to constructing specific JacsError variants,
+        // this bridge should be used less frequently.
+        tracing::warn!(
+            error_msg = %msg,
+            "Box<dyn Error> -> JacsError bridge hit; prefer constructing JacsError directly"
+        );
+
         // Categorize known error patterns into specific variants
         if lower.contains("password")
             || lower.contains("encrypt")
@@ -553,6 +588,55 @@ impl From<&str> for JacsError {
     fn from(err: &str) -> Self {
         JacsError::Internal {
             message: err.to_string(),
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl From<object_store::Error> for JacsError {
+    fn from(err: object_store::Error) -> Self {
+        JacsError::StorageError(err.to_string())
+    }
+}
+
+impl From<crate::storage::jenv::EnvError> for JacsError {
+    fn from(err: crate::storage::jenv::EnvError) -> Self {
+        JacsError::ConfigError(err.to_string())
+    }
+}
+
+#[cfg(feature = "a2a")]
+impl From<crate::a2a::A2AError> for JacsError {
+    fn from(err: crate::a2a::A2AError) -> Self {
+        match err {
+            crate::a2a::A2AError::SerializationError(msg) => {
+                JacsError::DocumentError(format!("A2A serialization: {}", msg))
+            }
+            crate::a2a::A2AError::SigningError(msg) => {
+                JacsError::CryptoError(format!("A2A signing: {}", msg))
+            }
+            crate::a2a::A2AError::ValidationError(msg) => {
+                JacsError::ValidationError(format!("A2A validation: {}", msg))
+            }
+            crate::a2a::A2AError::KeyGenerationError(msg) => {
+                JacsError::CryptoError(format!("A2A key generation: {}", msg))
+            }
+        }
+    }
+}
+
+impl From<base64::DecodeError> for JacsError {
+    fn from(err: base64::DecodeError) -> Self {
+        JacsError::CryptoError(format!("base64 decode failed: {}", err))
+    }
+}
+
+#[cfg(feature = "sqlx-sqlite")]
+impl From<sqlx::Error> for JacsError {
+    fn from(err: sqlx::Error) -> Self {
+        JacsError::DatabaseError {
+            operation: "sqlite".to_string(),
+            reason: err.to_string(),
         }
     }
 }
@@ -708,6 +792,26 @@ mod tests {
     // ==========================================================================
 
     #[test]
+    fn test_document_not_found_error_is_actionable() {
+        let err = JacsError::DocumentNotFound {
+            document_id: "doc-abc-123".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("doc-abc-123"),
+            "Should include the document ID"
+        );
+        assert!(
+            msg.contains("not found"),
+            "Should state the document was not found"
+        );
+        assert!(
+            msg.contains("Verify") || msg.contains("stored"),
+            "Should provide guidance"
+        );
+    }
+
+    #[test]
     fn test_file_not_found_error_is_actionable() {
         let err = JacsError::FileNotFound {
             path: "/path/to/missing.json".to_string(),
@@ -823,6 +927,14 @@ mod tests {
     // ==========================================================================
 
     #[test]
+    fn test_search_error_display() {
+        let err = JacsError::SearchError("fulltext index unavailable".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Search error"));
+        assert!(msg.contains("fulltext index unavailable"));
+    }
+
+    #[test]
     fn test_storage_error_display() {
         let err = JacsError::StorageError("backend unavailable".to_string());
         let msg = err.to_string();
@@ -893,6 +1005,130 @@ mod tests {
         let handle = std::thread::spawn(move || err.to_string());
         let msg = handle.join().unwrap();
         assert!(msg.contains("timeout"));
+    }
+
+    #[test]
+    fn test_from_env_error_not_found() {
+        let env_err = crate::storage::jenv::EnvError::NotFound("JACS_TEST_VAR".to_string());
+        let err: JacsError = env_err.into();
+        assert!(
+            matches!(err, JacsError::ConfigError(_)),
+            "EnvError::NotFound should map to ConfigError, got: {:?}",
+            err
+        );
+        assert!(err.to_string().contains("JACS_TEST_VAR"));
+    }
+
+    #[test]
+    fn test_from_env_error_empty() {
+        let env_err = crate::storage::jenv::EnvError::Empty("JACS_KEY".to_string());
+        let err: JacsError = env_err.into();
+        assert!(
+            matches!(err, JacsError::ConfigError(_)),
+            "EnvError::Empty should map to ConfigError, got: {:?}",
+            err
+        );
+        assert!(err.to_string().contains("JACS_KEY"));
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_serialization_error() {
+        let a2a_err = crate::a2a::A2AError::SerializationError("bad json".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::DocumentError(_)),
+            "SerializationError should map to DocumentError, got: {:?}",
+            err
+        );
+        assert!(err.to_string().contains("A2A serialization"));
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_signing_error() {
+        let a2a_err = crate::a2a::A2AError::SigningError("key missing".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::CryptoError(_)),
+            "SigningError should map to CryptoError, got: {:?}",
+            err
+        );
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_validation_error() {
+        let a2a_err = crate::a2a::A2AError::ValidationError("schema mismatch".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::ValidationError(_)),
+            "A2A ValidationError should map to JacsError::ValidationError, got: {:?}",
+            err
+        );
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn test_from_a2a_key_generation_error() {
+        let a2a_err = crate::a2a::A2AError::KeyGenerationError("entropy".to_string());
+        let err: JacsError = a2a_err.into();
+        assert!(
+            matches!(err, JacsError::CryptoError(_)),
+            "KeyGenerationError should map to CryptoError, got: {:?}",
+            err
+        );
+    }
+
+    // ==========================================================================
+    // Task 010: JacsError Conversion Coverage Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_from_serde_json_error_converts_to_document_malformed() {
+        let bad_json = "{ invalid json }";
+        let serde_err = serde_json::from_str::<serde_json::Value>(bad_json).unwrap_err();
+        let jacs_err: JacsError = serde_err.into();
+        assert!(
+            matches!(jacs_err, JacsError::DocumentMalformed { .. }),
+            "serde_json::Error should map to DocumentMalformed, got: {:?}",
+            jacs_err
+        );
+        let msg = jacs_err.to_string();
+        assert!(
+            msg.contains("Malformed document"),
+            "Display should mention 'Malformed document'"
+        );
+    }
+
+    #[test]
+    fn test_from_base64_decode_error_converts_to_crypto() {
+        use base64::Engine;
+        let b64_err = base64::engine::general_purpose::STANDARD
+            .decode("not-valid-base64!!!")
+            .unwrap_err();
+        let jacs_err: JacsError = b64_err.into();
+        assert!(
+            matches!(jacs_err, JacsError::CryptoError(_)),
+            "base64::DecodeError should map to CryptoError, got: {:?}",
+            jacs_err
+        );
+    }
+
+    #[test]
+    fn test_config_not_found_display_includes_path_and_guidance() {
+        let err = JacsError::ConfigNotFound {
+            path: "/tmp/nonexistent.json".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/tmp/nonexistent.json"),
+            "Should include the path"
+        );
+        assert!(
+            msg.contains("create") || msg.contains("Run"),
+            "Should provide actionable guidance"
+        );
     }
 
     #[test]

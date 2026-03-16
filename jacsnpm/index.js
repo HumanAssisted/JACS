@@ -310,9 +310,10 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { JacsAgent, hashString, createConfig, createAgentSync, createAgent, trustAgent, trustAgentWithKey, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, auditSync, audit, legacyLoad, legacySignAgent, legacyVerifyString, legacySignString, legacyVerifyAgent, legacyUpdateAgent, verifyDocumentStandalone, legacyVerifyDocument, legacyUpdateDocument, legacyVerifySignature, legacyCreateAgreement, legacySignAgreement, legacyCreateDocument, legacyCheckAgreement, legacySignRequest, legacyVerifyResponse, legacyVerifyResponseWithAgentId } = nativeBinding
+const { JacsAgent, JacsSimpleAgent, hashString, createConfig, createAgentSync, createAgent, trustAgent, trustAgentWithKey, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, auditSync, audit, legacyLoad, legacySignAgent, legacyVerifyString, legacySignString, legacyVerifyAgent, legacyUpdateAgent, verifyDocumentStandalone, legacyVerifyDocument, legacyUpdateDocument, legacyVerifySignature, legacyCreateAgreement, legacySignAgreement, legacyCreateDocument, legacyCheckAgreement, legacySignRequest, legacyVerifyResponse, legacyVerifyResponseWithAgentId } = nativeBinding
 
 module.exports.JacsAgent = JacsAgent
+module.exports.JacsSimpleAgent = JacsSimpleAgent
 module.exports.hashString = hashString
 module.exports.createConfig = createConfig
 module.exports.createAgentSync = createAgentSync
