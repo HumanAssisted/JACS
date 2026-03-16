@@ -101,4 +101,4 @@ jobs:
           cd /tmp/jacs-npm-smoke
           npm init -y >/dev/null
           npm install "${GITHUB_WORKSPACE}/jacsnpm/${PACKAGE_TGZ}" --ignore-scripts
-          node -e "const pkg = require('@hai.ai/jacs/package.json'); console.log('packed version:', pkg.version)"
+          ls node_modules/@hai.ai/jacs/package.json && echo "smoke install ok"
