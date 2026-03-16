@@ -1,0 +1,63 @@
+name: Release storage crate
+
+on:
+  push:
+    tags:
+      - 'crate/jacs-duckdb/v*'
+      - 'crate/jacs-redb/v*'
+      - 'crate/jacs-surrealdb/v*'
+      - 'crate/jacs-postgresql/v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Extract crate name and version from tag
+        id: extract
+        run: |
+          # Tag format: crate/<crate-name>/v<version>
+          TAG="${GITHUB_REF#refs/tags/crate/}"
+          CRATE_NAME="${TAG%%/v*}"
+          VERSION="${TAG#*/v}"
+          echo "crate=$CRATE_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Publishing $CRATE_NAME v$VERSION"
+
+      - name: Verify Cargo.toml version matches tag
+        run: |
+          CRATE="${{ steps.extract.outputs.crate }}"
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          CARGO_VERSION=$(grep '^version = ' $CRATE/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "$CRATE Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
+          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch! $CRATE/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Publish to crates.io
+        run: |
+          CRATE="${{ steps.extract.outputs.crate }}"
+          VERSION="${{ steps.extract.outputs.version }}"
+          LATEST=$(curl -sL --retry 3 --retry-delay 5 \
+            -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' \
+            "https://crates.io/api/v1/crates/$CRATE" | \
+            python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          if [ "$LATEST" = "$VERSION" ]; then
+            echo "$CRATE $VERSION already published, skipping"
+          else
+            cd "$CRATE" && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 101 ]; then
+                echo "::warning::$CRATE $VERSION already exists on crates.io (exit 101), continuing"
+              else
+                exit $EXIT_CODE
+              fi
+            }
+          fi

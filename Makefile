@@ -5,7 +5,8 @@
         test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         audit-jacs \
         publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
-        release-jacs release-jacspy release-jacsnpm release-cli release-all release-everything release-delete-tags \
+        publish-jacs-storage publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
+        release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-all release-everything release-delete-tags \
         retry-jacspy retry-jacsnpm retry-cli \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
         install-githooks regen-cross-lang-fixtures \
@@ -39,6 +40,12 @@ JACSNPM_RUST_VERSION := $(shell grep '^version' jacsnpm/Cargo.toml | head -1 | s
 
 # Go FFI Rust library version (from jacsgo/lib/Cargo.toml)
 JACSGO_VERSION := $(shell grep '^version' jacsgo/lib/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+# Storage backend crate versions (independent version track)
+JACS_DUCKDB_VERSION := $(shell grep '^version' jacs-duckdb/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+JACS_REDB_VERSION := $(shell grep '^version' jacs-redb/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+JACS_SURREALDB_VERSION := $(shell grep '^version' jacs-surrealdb/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+JACS_POSTGRESQL_VERSION := $(shell grep '^version' jacs-postgresql/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
 # Fast Rust lane for the core crate: exclude dedicated CLI, interop, observability,
 # and PQ-only binaries so the default PR path stays bounded.
@@ -176,6 +183,10 @@ versions:
 	@echo "  jacsnpm (package.json):   $(JACSNPM_VERSION)"
 	@echo "  jacsnpm (Cargo.toml):     $(JACSNPM_RUST_VERSION)"
 	@echo "  jacsgo/lib (Cargo.toml):  $(JACSGO_VERSION)"
+	@echo "  jacs-duckdb:              $(JACS_DUCKDB_VERSION)"
+	@echo "  jacs-redb:                $(JACS_REDB_VERSION)"
+	@echo "  jacs-surrealdb:           $(JACS_SURREALDB_VERSION)"
+	@echo "  jacs-postgresql:          $(JACS_POSTGRESQL_VERSION)"
 	@echo ""
 	@if [ "$(JACS_VERSION)" = "$(JACS_MCP_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(BINDING_CORE_VERSION)" ] && \
@@ -254,12 +265,44 @@ publish-jacs-mcp:
 publish-jacs-cli:
 	cd jacs-cli && cargo publish
 
+# Publish storage backend crates to crates.io (requires jacs already published).
+publish-jacs-storage:
+	cd jacs-duckdb && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs-duckdb..."
+	sleep 30
+	cd jacs-redb && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs-redb..."
+	sleep 30
+	cd jacs-surrealdb && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs-surrealdb..."
+	sleep 30
+	cd jacs-postgresql && cargo publish
+
+# Individual storage crate publish targets
+publish-jacs-duckdb:
+	cd jacs-duckdb && cargo publish
+
+publish-jacs-redb:
+	cd jacs-redb && cargo publish
+
+publish-jacs-surrealdb:
+	cd jacs-surrealdb && cargo publish
+
+publish-jacs-postgresql:
+	cd jacs-postgresql && cargo publish
+
 # Dry run for crates.io publish
 publish-jacs-dry:
 	cd jacs && cargo publish --dry-run
 	cd binding-core && cargo publish --dry-run
 	cd jacs-mcp && cargo publish --dry-run
 	cd jacs-cli && cargo publish --dry-run
+
+publish-jacs-storage-dry:
+	cd jacs-duckdb && cargo publish --dry-run
+	cd jacs-redb && cargo publish --dry-run
+	cd jacs-surrealdb && cargo publish --dry-run
+	cd jacs-postgresql && cargo publish --dry-run
 
 # Publish to PyPI (requires MATURIN_PYPI_TOKEN or ~/.pypirc)
 publish-jacspy:
@@ -353,13 +396,28 @@ release-cli: check-version-cli
 	git push origin cli/v$(JACS_VERSION)
 	@echo "Tagged cli/v$(JACS_VERSION) - GitHub CI will publish GitHub release binaries"
 
+# Tag and push to trigger storage crate releases via GitHub CI
+release-jacs-storage:
+	@for crate in jacs-duckdb jacs-redb jacs-surrealdb jacs-postgresql; do \
+		ver=$$(grep '^version' $$crate/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/'); \
+		tag="crate/$$crate/v$$ver"; \
+		if git tag -l | grep -q "^$$tag$$"; then \
+			echo "SKIP: Tag $$tag already exists"; \
+		else \
+			echo "Tagging $$tag..."; \
+			git tag "$$tag"; \
+			git push origin "$$tag"; \
+			echo "Tagged $$tag - GitHub CI will publish to crates.io"; \
+		fi; \
+	done
+
 # Release all packages via GitHub CI (verifies all versions match first)
 release-all: check-versions release-jacs release-jacspy release-jacsnpm
 	@echo "All release tags pushed for v$(JACS_VERSION). GitHub CI will handle publishing."
 
-# Release all packages plus CLI binaries via GitHub CI
-release-everything: release-all release-cli
-	@echo "All release tags, including CLI binaries, pushed for v$(JACS_VERSION)."
+# Release all packages plus CLI binaries and storage crates via GitHub CI
+release-everything: release-all release-cli release-jacs-storage
+	@echo "All release tags, including CLI binaries and storage crates, pushed for v$(JACS_VERSION)."
 
 # Delete release tags for current versions (use with caution - for fixing failed releases)
 release-delete-tags:
