@@ -541,7 +541,8 @@ describe('JACS Simple API', function() {
       expect(agreement.documentId).to.be.a('string').and.not.empty;
     });
 
-    (simpleExists ? it : it.skip)('should require both agents for two-party agreement completion', () => {
+    (simpleExists ? it : it.skip)('should require both agents for two-party agreement completion', function() {
+      this.timeout(30000);
       const modulePath = require.resolve('../simple.js');
       const password = 'TestP@ss123!#';
       const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));

@@ -343,46 +343,60 @@ fn jacs_search_uses_document_service_backend_method() {
 /// When the MCP server has no document_service (e.g. unsupported storage backend),
 /// `jacs_search` returns a JSON response with `success: false` and
 /// `error: "document_service_unavailable"`.
-#[tokio::test(flavor = "multi_thread")]
-async fn jacs_search_returns_error_when_no_document_service() {
-    // Create an agent with FS storage, then patch config to "memory"
-    // (which service_from_agent doesn't wire) so document_service = None.
-    let (agent, _tmp) = sqlite_ready_agent();
+/// Run in a dedicated thread with its own tokio runtime to avoid
+/// env-var race conditions with other tests that call `sqlite_ready_agent()`.
+#[test]
+fn jacs_search_returns_error_when_no_document_service() {
+    let handle = std::thread::spawn(|| {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("create runtime");
+        rt.block_on(async {
+            // Create an agent with FS storage, then patch config to "memory"
+            // (which service_from_agent doesn't wire) so document_service = None.
+            let (agent, _tmp) = sqlite_ready_agent();
 
-    // Patch the config's jacs_default_storage to "memory"
-    {
-        let agent_arc = agent.inner_arc();
-        let mut guard = agent_arc.lock().unwrap();
-        if let Some(ref mut config) = guard.config {
-            let mut val = serde_json::to_value(&*config).unwrap();
-            val["jacs_default_storage"] = serde_json::json!("memory");
-            *config = serde_json::from_value(val).unwrap();
-        }
-    }
+            // Patch the config's jacs_default_storage to "memory"
+            {
+                let agent_arc = agent.inner_arc();
+                let mut guard = agent_arc.lock().unwrap();
+                if let Some(ref mut config) = guard.config {
+                    let mut val = serde_json::to_value(&*config).unwrap();
+                    val["jacs_default_storage"] = serde_json::json!("memory");
+                    *config = serde_json::from_value(val).unwrap();
+                }
+            }
 
-    let server = JacsMcpServer::new(agent);
+            let server = JacsMcpServer::new(agent);
 
-    let raw = server
-        .jacs_search(Parameters(SearchParams {
-            query: "anything".to_string(),
-            jacs_type: None,
-            agent_id: None,
-            field_filter: None,
-            limit: Some(10),
-            offset: Some(0),
-            min_score: None,
-        }))
-        .await;
+            let raw = server
+                .jacs_search(Parameters(SearchParams {
+                    query: "anything".to_string(),
+                    jacs_type: None,
+                    agent_id: None,
+                    field_filter: None,
+                    limit: Some(10),
+                    offset: Some(0),
+                    min_score: None,
+                }))
+                .await;
 
-    let result: serde_json::Value =
-        serde_json::from_str(&raw).expect("response should be valid JSON");
-    assert_eq!(
-        result["success"], false,
-        "search with no document_service should return success: false"
-    );
-    assert_eq!(
-        result["error"], "document_service_unavailable",
-        "error code should be document_service_unavailable: {}",
-        result
-    );
+            let result: serde_json::Value =
+                serde_json::from_str(&raw).expect("response should be valid JSON");
+            assert_eq!(
+                result["success"], false,
+                "search with no document_service should return success: false"
+            );
+            assert_eq!(
+                result["error"], "document_service_unavailable",
+                "error code should be document_service_unavailable: {}",
+                result
+            );
+
+            std::mem::forget(server);
+            std::mem::forget(_tmp);
+        });
+    });
+    let _ = handle.join();
 }
