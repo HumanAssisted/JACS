@@ -501,17 +501,25 @@ impl JacsMcpServer {
 
         // Sign and persist through JACS document storage so subsequent MCP calls can
         // reference only the JACS document ID (no sidecar/path coupling).
+        // no_save=false so the document is stored in the agent's own storage
+        // (documents/ directory), making it discoverable via list_document_keys().
         let doc_string = doc.to_string();
         let result = match self.agent.create_document(
             &doc_string,
-            None, // custom_schema
-            None, // outputfilename
-            true, // no_save — saved separately via save_signed_document below
-            None, // attachments
+            None,  // custom_schema
+            None,  // outputfilename
+            false, // no_save — persist immediately so list_state can find it
+            None,  // attachments
             Some(embed || params.state_type == "hook"),
         ) {
-            Ok(signed_doc_string) => {
-                let doc_id = match extract_document_lookup_key_from_str(&signed_doc_string) {
+            Ok(save_result) => {
+                // With no_save=false, create_document returns "saved  {id}:{version}"
+                let doc_id = save_result
+                    .strip_prefix("saved  ")
+                    .map(|s| s.to_string())
+                    .or_else(|| extract_document_lookup_key_from_str(&save_result));
+
+                let doc_id = match doc_id {
                     Some(id) => id,
                     None => {
                         return serde_json::to_string_pretty(&SignStateResult {
@@ -525,21 +533,6 @@ impl JacsMcpServer {
                         .unwrap_or_else(|e| format!("Error: {}", e));
                     }
                 };
-
-                if let Err(e) =
-                    self.agent
-                        .save_signed_document(&signed_doc_string, None, None, None)
-                {
-                    return serde_json::to_string_pretty(&SignStateResult {
-                        success: false,
-                        jacs_document_id: Some(doc_id),
-                        state_type: params.state_type,
-                        name: params.name,
-                        message: "Failed to persist signed state document".to_string(),
-                        error: Some(e.to_string()),
-                    })
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-                }
 
                 SignStateResult {
                     success: true,

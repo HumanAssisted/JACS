@@ -649,8 +649,6 @@ impl AgentWrapper {
         export_embedded: Option<bool>,
         extract_only: Option<bool>,
     ) -> BindingResult<String> {
-        use jacs::storage::StorageDocumentTraits;
-
         let mut agent = self.lock()?;
         let doc = agent.load_document(document_string).map_err(|e| {
             BindingCoreError::document_failed(format!("Failed to load signed document: {}", e))
@@ -664,11 +662,6 @@ impl AgentWrapper {
                     document_key, e
                 ))
             })?;
-
-        // Also store in the documents/ index so list_document_keys() finds it.
-        if let Err(e) = agent.storage_ref().store_document(&doc) {
-            tracing::warn!("Failed to store document in index: {}", e);
-        }
 
         Ok(document_key)
     }

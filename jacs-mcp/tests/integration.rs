@@ -151,7 +151,6 @@ fn starts_server_with_agent_env() {
 }
 
 #[tokio::test]
-#[ignore = "list_state returns empty — object_store path encoding issue with document keys containing colons (tracked)"]
 async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
     let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;

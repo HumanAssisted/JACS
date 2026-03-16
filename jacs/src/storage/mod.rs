@@ -733,15 +733,18 @@ impl StorageDocumentTraits for MultiStorage {
             .list(&search_prefix, None)
             .map_err(|e| JacsError::StorageError(e.to_string()))?;
 
-        // Extract document keys from file paths
+        // Extract document keys from file paths.
+        // object_store returns paths relative to the store root (e.g.
+        // "path/to/workspace/documents/id:version.json" for LocalFileSystem
+        // rooted at "/"). We match on "documents/" anywhere in the path.
         let mut document_keys = Vec::new();
         for file in files {
             if file.ends_with(".json") && !file.contains("/archive/") {
-                // Extract key from path like "documents/id:version.json"
-                if let Some(filename) = file.strip_prefix("documents/")
-                    && let Some(key) = filename.strip_suffix(".json")
-                {
-                    document_keys.push(key.to_string());
+                if let Some(pos) = file.rfind("documents/") {
+                    let after_prefix = &file[pos + "documents/".len()..];
+                    if let Some(key) = after_prefix.strip_suffix(".json") {
+                        document_keys.push(key.to_string());
+                    }
                 }
             }
         }

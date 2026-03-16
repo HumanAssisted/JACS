@@ -766,6 +766,8 @@ impl DocumentTraits for Agent {
 
         if !is_extract_only {
             let _ = self.fs_document_save(document_key, &document_string, output_filename)?;
+            // Also store in the documents/ index so list_document_keys() can find it.
+            let _ = self.storage.store_document(&original_document);
         }
 
         let do_export = export_embedded.unwrap_or_default();

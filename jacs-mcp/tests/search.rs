@@ -257,9 +257,13 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
     }
 
     let wrapper = AgentWrapper::new();
+    // Re-root storage at the temp directory so absolute config paths resolve correctly.
     wrapper
         .load(config_path.to_string_lossy().into_owned())
         .expect("agent load should succeed");
+    wrapper
+        .set_storage_root(tmp.path().to_path_buf())
+        .expect("set_storage_root should succeed");
 
     (wrapper, tmp)
 }
@@ -318,7 +322,6 @@ async fn jacs_search_uses_document_service_backend_method() -> anyhow::Result<()
 /// `jacs_search` returns a JSON response with `success: false` and
 /// `error: "document_service_unavailable"`.
 #[tokio::test]
-#[ignore = "sqlite_ready_agent temp dir path mismatch — create_with_params and load use different base dirs"]
 async fn jacs_search_returns_error_when_no_document_service() {
     // Create an agent with FS storage, then patch config to "memory"
     // (which service_from_agent doesn't wire) so document_service = None.
