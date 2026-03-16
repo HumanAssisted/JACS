@@ -869,6 +869,88 @@ class TestAgreementWorkflow:
             os.chdir(original_cwd)
 
 
+class TestAllAlgorithms:
+    """Verify core sign/verify/trust/agreement flows work with every algorithm."""
+
+    @pytest.mark.parametrize("algo", ["ring-Ed25519", "RSA-PSS", "pq2025"])
+    def test_sign_verify_round_trip(self, tmp_path, algo):
+        """Each algorithm can sign a message and verify it."""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            info = simple.create(
+                name=f"algo-test-{algo}",
+                password="TestP@ss123!#",
+                algorithm=algo,
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
+            )
+            assert info.agent_id
+
+            signed = simple.sign_message({"algo": algo, "test": True})
+            assert signed.document_id
+            result = simple.verify(signed.raw_json)
+            assert result.valid
+        finally:
+            os.chdir(original_cwd)
+            simple.reset()
+
+    @pytest.mark.parametrize("algo", ["ring-Ed25519", "RSA-PSS", "pq2025"])
+    def test_two_party_trust_and_agreement(self, tmp_path, algo):
+        """Each algorithm supports the full trust + two-party agreement flow."""
+        password = "TestP@ss123!#"
+        a1_root = tmp_path / "agent1"
+        a2_root = tmp_path / "agent2"
+        a1_root.mkdir()
+        a2_root.mkdir()
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(a1_root)
+            a1 = simple.create(
+                name="algo-agent-1",
+                password=password,
+                algorithm=algo,
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
+            )
+            agent1_json = simple.export_agent()
+            agent1_public_key = simple.get_public_key()
+
+            os.chdir(a2_root)
+            a2 = simple.create(
+                name="algo-agent-2",
+                password=password,
+                algorithm=algo,
+                data_directory="jacs_data",
+                key_directory="keys",
+                config_path="jacs.config.json",
+            )
+
+            os.chdir(a1_root)
+            simple.load("jacs.config.json")
+            agreement = simple.create_agreement(
+                document={"proposal": f"test-{algo}"},
+                agent_ids=[a1.agent_id, a2.agent_id],
+                question="Approve?",
+            )
+            signed_by_a1 = simple.sign_agreement(agreement)
+
+            os.chdir(a2_root)
+            simple.load("jacs.config.json")
+            simple.trust_agent_with_key(agent1_json, agent1_public_key)
+            seed_public_key_cache(a2_root, agent1_json, agent1_public_key)
+            signed_by_both = simple.sign_agreement(signed_by_a1)
+            status = simple.check_agreement(signed_by_both)
+            assert status.complete is True
+            assert len(status.pending) == 0
+        finally:
+            os.chdir(original_cwd)
+            simple.reset()
+
+
 class TestAudit:
     """Tests for audit() security audit and health checks."""
 
