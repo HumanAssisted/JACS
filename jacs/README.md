@@ -91,4 +91,4 @@ jacs verify doc.json     # Verify a document
 - [Python](https://pypi.org/project/jacs/)
 - [Crates.io](https://crates.io/crates/jacs)
 
-**Version**: 0.9.6 | [HAI.AI](https://hai.ai)
+**Version**: 0.9.7 | [HAI.AI](https://hai.ai)

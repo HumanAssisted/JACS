@@ -2012,15 +2012,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 eprintln!("{}", jacs::crypt::aes_encrypt::password_requirements());
                 let password = loop {
                     eprintln!("Enter a password for your JACS private key:");
-                    let pw = read_password()
-                        .map_err(|e| format!("Failed to read password: {}", e))?;
+                    let pw =
+                        read_password().map_err(|e| format!("Failed to read password: {}", e))?;
                     if pw.trim().is_empty() {
                         eprintln!("Password cannot be empty. Please try again.");
                         continue;
                     }
                     eprintln!("Confirm password:");
-                    let pw2 = read_password()
-                        .map_err(|e| format!("Failed to read password: {}", e))?;
+                    let pw2 =
+                        read_password().map_err(|e| format!("Failed to read password: {}", e))?;
                     if pw != pw2 {
                         eprintln!("Passwords do not match. Please try again.");
                         continue;
@@ -2039,10 +2039,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     if jacs::keystore::keychain::is_available() {
                         match jacs::keystore::keychain::store_password(&password) {
                             Ok(()) => eprintln!("Password stored in OS keychain."),
-                            Err(e) => eprintln!(
-                                "Warning: Could not store in OS keychain: {}",
-                                e
-                            ),
+                            Err(e) => eprintln!("Warning: Could not store in OS keychain: {}", e),
                         }
                     }
                 }
