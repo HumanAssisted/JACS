@@ -1,3 +1,5 @@
+pub mod keychain;
+
 use crate::error::JacsError;
 use std::fmt;
 use std::fs::OpenOptions;
@@ -70,6 +72,9 @@ pub enum KeyBackend {
     Pkcs11,
     IosKeychain,
     AndroidKeystore,
+    /// Desktop OS credential store (macOS Keychain / Linux Secret Service).
+    /// Used for storing the private key *password*, not the key itself.
+    OsKeychain,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -104,21 +109,14 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
     }
 }
 
-/// Check that `JACS_PRIVATE_KEY_PASSWORD` is set and non-empty.
+/// Check that a private key password is available from any source.
 ///
-/// Returns `Ok(())` if the password is available, or an error describing what
-/// the user needs to do. This is the single policy-enforcement point used by
-/// `save_private_key` to ensure keys are never written unencrypted.
+/// Returns `Ok(())` if the password is available (env var, keychain, or password file),
+/// or an error describing what the user needs to do. This is the single
+/// policy-enforcement point used by `save_private_key` to ensure keys are
+/// never written unencrypted.
 pub fn require_encryption_password() -> Result<(), JacsError> {
-    let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default();
-    if password.trim().is_empty() {
-        return Err(
-            "SECURITY: JACS_PRIVATE_KEY_PASSWORD is not set or is empty. \
-            Private keys must be encrypted before writing to disk. \
-            Set this environment variable to a strong password."
-                .into(),
-        );
-    }
+    crate::crypt::aes_encrypt::resolve_private_key_password()?;
     Ok(())
 }
 
@@ -245,8 +243,7 @@ impl KeyStore for FsEncryptedStore {
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
 
-        let _password =
-            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
+        let _password = crate::crypt::aes_encrypt::resolve_private_key_password()?;
         let enc = encrypt_private_key(&priv_key).map_err(|e| {
             format!(
                 "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
@@ -288,8 +285,7 @@ impl KeyStore for FsEncryptedStore {
             .map_err(|e| e.to_string())?;
         let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
         let enc_path = format!("{}.enc", priv_path);
-        let _password =
-            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
+        let _password = crate::crypt::aes_encrypt::resolve_private_key_password()?;
 
         let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
             storage.get_file(&enc_path, None).map_err(|e2| {

@@ -152,6 +152,16 @@ rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
 # DuckDB storage has been extracted to the `jacs-duckdb` crate.
 # Redb storage has been extracted to the `jacs-redb` crate.
 
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", optional = true, features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", optional = true, features = ["sync-secret-service"] }
+
+# Fallback for other platforms (Windows, etc.) — no platform-specific backend
+[target.'cfg(not(any(target_os = "macos", target_os = "linux")))'.dependencies]
+keyring = { version = "3.6", optional = true }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.100"
 web-sys = { version = "0.3", features = ["Storage", "Window"] }
@@ -184,6 +194,12 @@ pq-tests = []
 
 # S3 conformance tests (require Docker/MinIO). Omit for fast test runs.
 s3-tests = []
+
+# OS keychain integration for password storage (macOS Keychain, Linux Secret Service)
+keychain = ["dep:keyring"]
+
+# OS keychain integration tests (require real keychain access). Omit for CI.
+keychain-tests = ["keychain"]
 
 # Observability backends are gated behind compile-time features.
 # Default is a minimal core: stderr/file logs only, no remote backends.

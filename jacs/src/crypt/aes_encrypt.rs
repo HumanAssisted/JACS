@@ -8,7 +8,7 @@ use crate::crypt::constants::{
 };
 use crate::crypt::private_key::ZeroizingVec;
 use crate::error::JacsError;
-use crate::storage::jenv::get_required_env_var;
+use crate::storage::jenv::get_env_var;
 use aes_gcm::AeadCore;
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
@@ -304,6 +304,55 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
     derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS)
 }
 
+/// Resolve the private key password from all available sources.
+///
+/// Resolution order (highest priority first):
+/// 1. `JACS_PRIVATE_KEY_PASSWORD` environment variable
+/// 2. OS keychain (if `keychain` feature is enabled and not disabled via config/env)
+/// 3. Error with helpful message
+///
+/// This is the single source of truth for password resolution. All encryption/decryption
+/// code should call this instead of reading the env var directly.
+pub fn resolve_private_key_password() -> Result<String, JacsError> {
+    // 1. Try env var (highest priority — explicit always wins)
+    if let Ok(Some(pw)) = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false) {
+        if pw.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "JACS_PRIVATE_KEY_PASSWORD is set but empty or whitespace-only. \
+                 Provide a non-empty password."
+                    .to_string(),
+            ));
+        }
+        return Ok(pw);
+    }
+
+    // 2. Try OS keychain (if not disabled)
+    if !is_keychain_disabled() {
+        if let Ok(Some(pw)) = crate::keystore::keychain::get_password() {
+            tracing::debug!("Using password from OS keychain");
+            return Ok(pw);
+        }
+    }
+
+    // 3. Fail with helpful message
+    Err(JacsError::ConfigError(
+        "No private key password available. Options:\n\
+         1. Set JACS_PRIVATE_KEY_PASSWORD environment variable\n\
+         2. Use `jacs keychain set` to store in OS keychain\n\
+         3. Set JACS_PASSWORD_FILE to a file path containing the password"
+            .to_string(),
+    ))
+}
+
+/// Check whether OS keychain lookups are disabled via env var or config.
+fn is_keychain_disabled() -> bool {
+    // Check env var (which may have been set by config loading)
+    if let Ok(Some(val)) = get_env_var("JACS_KEYCHAIN_BACKEND", false) {
+        return val.eq_ignore_ascii_case("disabled");
+    }
+    false
+}
+
 /// Encrypt a private key with a password using AES-256-GCM.
 ///
 /// The encrypted output format is: salt (16 bytes) || nonce (12 bytes) || ciphertext
@@ -312,13 +361,11 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
 ///
 /// # Security Requirements
 ///
-/// The password (from `JACS_PRIVATE_KEY_PASSWORD` environment variable) must:
-/// - Be at least 8 characters long
-/// - Not be empty or whitespace-only
+/// The password is resolved via `resolve_private_key_password()` which checks
+/// the env var, OS keychain, and password file in priority order.
 pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, JacsError> {
     // Password is required and must be non-empty
-    let password =
-        get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
+    let password = resolve_private_key_password()?;
 
     // Validate password strength
     validate_password(&password)?;
@@ -410,8 +457,7 @@ pub fn decrypt_private_key_secure(
     // 1. The password must match whatever was used during encryption
     // 2. Existing keys may have been encrypted with older/weaker passwords
     // Password strength is validated only during encrypt_private_key()
-    let password =
-        get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
+    let password = resolve_private_key_password()?;
 
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
@@ -680,7 +726,11 @@ mod tests {
         let result = encrypt_private_key(original_key);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("empty") || err_msg.contains("whitespace"));
+        assert!(
+            err_msg.contains("empty") || err_msg.contains("whitespace"),
+            "Expected error about empty/whitespace password, got: {}",
+            err_msg
+        );
 
         remove_test_password();
     }
@@ -694,7 +744,11 @@ mod tests {
         let result = encrypt_private_key(original_key);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("empty") || err_msg.contains("whitespace"));
+        assert!(
+            err_msg.contains("empty") || err_msg.contains("whitespace"),
+            "Expected error about empty/whitespace password, got: {}",
+            err_msg
+        );
 
         remove_test_password();
     }

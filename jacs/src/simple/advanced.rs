@@ -722,17 +722,8 @@ pub fn quickstart(
         ));
     }
 
-    // Fail hard if no password is available.
-    let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD")
-        .ok()
-        .filter(|pw| !pw.trim().is_empty())
-        .ok_or_else(|| {
-            JacsError::ConfigError(
-                "Missing private key password. Set JACS_PRIVATE_KEY_PASSWORD \
-                from your environment or secret manager before calling quickstart()."
-                    .to_string(),
-            )
-        })?;
+    // Resolve password from env var, OS keychain, or fail with helpful message.
+    let password = crate::crypt::aes_encrypt::resolve_private_key_password()?;
 
     // Use create_with_params for full control
     let algo = match algorithm.unwrap_or("pq2025") {

@@ -102,16 +102,18 @@ fn ensure_cli_private_key_password() -> Result<(), String> {
     let env_password = get_non_empty_env_var("JACS_PRIVATE_KEY_PASSWORD")?;
     let password_file = get_non_empty_env_var(CLI_PASSWORD_FILE_ENV)?;
 
-    if env_password.is_some() && password_file.is_some() {
-        return Err(format!(
-            "Multiple password sources configured: JACS_PRIVATE_KEY_PASSWORD and {}. \
-Configure exactly one source.\n\n{}",
-            CLI_PASSWORD_FILE_ENV,
-            quickstart_password_bootstrap_help()
-        ));
-    }
-
+    // 1. Env var wins (highest priority). If both env var and password file are
+    //    set, use the env var with a warning instead of erroring. This fixes
+    //    integrations (e.g. OpenClaw) that set JACS_PRIVATE_KEY_PASSWORD in
+    //    the process env while JACS_PASSWORD_FILE is also present.
     if let Some(password) = env_password {
+        if password_file.is_some() {
+            eprintln!(
+                "Warning: both JACS_PRIVATE_KEY_PASSWORD and {} are set. \
+                 Using JACS_PRIVATE_KEY_PASSWORD (highest priority).",
+                CLI_PASSWORD_FILE_ENV
+            );
+        }
         // SAFETY: CLI process is single-threaded for command handling at this point.
         unsafe {
             env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
@@ -119,6 +121,7 @@ Configure exactly one source.\n\n{}",
         return Ok(());
     }
 
+    // 2. Password file (explicit)
     if let Some(path) = password_file {
         let password = read_password_from_file(Path::new(path.trim()), CLI_PASSWORD_FILE_ENV)?;
         // SAFETY: CLI process is single-threaded for command handling at this point.
@@ -128,6 +131,7 @@ Configure exactly one source.\n\n{}",
         return Ok(());
     }
 
+    // 3. Legacy password file
     let legacy_path = Path::new(DEFAULT_LEGACY_PASSWORD_FILE);
     if legacy_path.exists() {
         let password = read_password_from_file(legacy_path, "legacy password file")?;
@@ -140,8 +144,11 @@ Configure exactly one source.\n\n{}",
             legacy_path.display(),
             CLI_PASSWORD_FILE_ENV
         );
+        return Ok(());
     }
 
+    // 4. No CLI-level password found. The core layer's resolve_private_key_password()
+    //    will check the OS keychain automatically when encryption/decryption is needed.
     Ok(())
 }
 
@@ -1049,7 +1056,39 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .value_parser(value_parser!(String))
                         .help("Directory containing public keys for verification"),
                 )
-        )
+        );
+
+    // OS keychain subcommand (only when keychain feature is enabled)
+    #[cfg(feature = "keychain")]
+    let matches = matches.subcommand(
+        Command::new("keychain")
+            .about("Manage private key passwords in the OS keychain")
+            .subcommand(
+                Command::new("set")
+                    .about("Store a password in the OS keychain")
+                    .arg(
+                        Arg::new("password")
+                            .long("password")
+                            .help("Password to store (if omitted, prompts interactively)")
+                            .value_name("PASSWORD"),
+                    ),
+            )
+            .subcommand(
+                Command::new("get")
+                    .about("Retrieve the stored password (prints to stdout)"),
+            )
+            .subcommand(
+                Command::new("delete")
+                    .about("Remove the stored password from the OS keychain"),
+            )
+            .subcommand(
+                Command::new("status")
+                    .about("Check if a password is stored in the OS keychain"),
+            )
+            .arg_required_else_help(true),
+    );
+
+    let matches = matches
         .arg_required_else_help(true)
         .get_matches();
 
@@ -2400,6 +2439,63 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             println!("\n--- Running Agent Creation (with keys) ---");
             handle_agent_create_auto(None, true, auto_yes)?;
             println!("\n--- JACS Initialization Complete ---");
+        }
+        #[cfg(feature = "keychain")]
+        Some(("keychain", keychain_matches)) => {
+            use jacs::keystore::keychain;
+
+            match keychain_matches.subcommand() {
+                Some(("set", sub)) => {
+                    let password = if let Some(pw) = sub.get_one::<String>("password") {
+                        pw.clone()
+                    } else {
+                        eprintln!("Enter password to store in keychain:");
+                        read_password().map_err(|e| format!("Failed to read password: {}", e))?
+                    };
+                    if password.trim().is_empty() {
+                        eprintln!("Error: password cannot be empty.");
+                        process::exit(1);
+                    }
+                    keychain::store_password(&password)?;
+                    eprintln!("Password stored in OS keychain.");
+                }
+                Some(("get", _)) => {
+                    match keychain::get_password()? {
+                        Some(pw) => println!("{}", pw),
+                        None => {
+                            eprintln!("No password found in OS keychain.");
+                            process::exit(1);
+                        }
+                    }
+                }
+                Some(("delete", _)) => {
+                    keychain::delete_password()?;
+                    eprintln!("Password removed from OS keychain.");
+                }
+                Some(("status", _)) => {
+                    if keychain::is_available() {
+                        match keychain::get_password() {
+                            Ok(Some(_)) => {
+                                eprintln!("Keychain backend: available");
+                                eprintln!("Password: stored");
+                            }
+                            Ok(None) => {
+                                eprintln!("Keychain backend: available");
+                                eprintln!("Password: not stored");
+                            }
+                            Err(e) => {
+                                eprintln!("Keychain backend: error ({})", e);
+                            }
+                        }
+                    } else {
+                        eprintln!("Keychain backend: not available (feature disabled)");
+                    }
+                }
+                _ => {
+                    eprintln!("Unknown keychain subcommand. Use: set, get, delete, status");
+                    process::exit(1);
+                }
+            }
         }
         _ => {
             // This branch should ideally be unreachable after adding arg_required_else_help(true)

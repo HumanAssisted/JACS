@@ -222,6 +222,10 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     jacs_dns_required: Option<bool>,
+    /// OS keychain backend: "auto", "macos-keychain", "linux-secret-service", or "disabled".
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_keychain_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
     // Database storage configuration
@@ -326,6 +330,7 @@ impl Default for Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -484,6 +489,7 @@ impl ConfigBuilder {
             jacs_dns_validate: self.dns_validate,
             jacs_dns_strict: self.dns_strict,
             jacs_dns_required: self.dns_required,
+            jacs_keychain_backend: None,
             observability: self.observability,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -547,6 +553,7 @@ impl Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -626,6 +633,7 @@ impl Config {
             jacs_dns_validate,
             jacs_dns_strict,
             jacs_dns_required,
+            jacs_keychain_backend,
             observability,
             jacs_database_url,
             jacs_database_max_connections,
@@ -654,6 +662,7 @@ impl Config {
         Self::replace_if_some(&mut self.jacs_dns_validate, jacs_dns_validate);
         Self::replace_if_some(&mut self.jacs_dns_strict, jacs_dns_strict);
         Self::replace_if_some(&mut self.jacs_dns_required, jacs_dns_required);
+        Self::replace_if_some(&mut self.jacs_keychain_backend, jacs_keychain_backend);
         Self::replace_if_some(&mut self.observability, observability);
         Self::replace_if_some(&mut self.jacs_database_url, jacs_database_url);
         Self::replace_if_some(
@@ -752,6 +761,7 @@ impl Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -1266,6 +1276,12 @@ pub fn set_env_vars(
     )
     .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
+    // Propagate keychain backend setting to env var if set in config
+    if let Some(ref backend) = config.jacs_keychain_backend {
+        set_env_var_override("JACS_KEYCHAIN_BACKEND", backend, do_override)
+            .map_err(|e| JacsError::ConfigError(e.to_string()))?;
+    }
+
     let message = format!("{}", config);
     info!("{}", message);
     check_env_vars(ignore_agent_id).map_err(|e| {
@@ -1567,6 +1583,7 @@ mod tests {
             jacs_dns_validate: Some(true),
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -1646,6 +1663,7 @@ mod tests {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,

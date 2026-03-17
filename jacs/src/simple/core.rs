@@ -60,6 +60,31 @@ pub(crate) fn build_agent_document(
     Ok(agent_json)
 }
 
+/// Write .gitignore and .dockerignore in the key directory to prevent
+/// accidental exposure of private keys and password files.
+pub(crate) fn write_key_directory_ignore_files(key_dir: &Path) {
+    let ignore_content = "# JACS private key material — do NOT commit or ship\n\
+        *.pem\n\
+        *.pem.enc\n\
+        .jacs_password\n\
+        *.key\n\
+        *.key.enc\n";
+
+    let gitignore_path = key_dir.join(".gitignore");
+    if !gitignore_path.exists() {
+        if let Err(e) = std::fs::write(&gitignore_path, ignore_content) {
+            warn!("Could not write {}: {}", gitignore_path.display(), e);
+        }
+    }
+
+    let dockerignore_path = key_dir.join(".dockerignore");
+    if !dockerignore_path.exists() {
+        if let Err(e) = std::fs::write(&dockerignore_path, ignore_content) {
+            warn!("Could not write {}: {}", dockerignore_path.display(), e);
+        }
+    }
+}
+
 /// Resolve strict mode: explicit parameter wins, then env var, then false.
 pub(crate) fn resolve_strict(explicit: Option<bool>) -> bool {
     if let Some(s) = explicit {
@@ -355,6 +380,9 @@ impl SimpleAgent {
                 reason: e.to_string(),
             }
         })?;
+
+        // Protect key directory from accidental git commits / Docker inclusion
+        write_key_directory_ignore_files(keys_dir);
 
         let env_keys = [
             "JACS_PRIVATE_KEY_PASSWORD",

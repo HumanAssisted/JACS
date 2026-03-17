@@ -83,15 +83,15 @@ fn resolve_cli_password_for_config_create() -> Result<Option<String>, JacsError>
         }
     };
 
-    if env_password.is_some() && password_file.is_some() {
-        return Err(format!(
-            "Multiple password sources configured: JACS_PRIVATE_KEY_PASSWORD and {}. Configure exactly one.",
-            CLI_PASSWORD_FILE_ENV
-        )
-        .into());
-    }
-
+    // Env var takes priority. If both are set, warn but use env var.
     if let Some(env_password) = env_password {
+        if password_file.is_some() {
+            eprintln!(
+                "Warning: both JACS_PRIVATE_KEY_PASSWORD and {} are set. \
+                 Using JACS_PRIVATE_KEY_PASSWORD (highest priority).",
+                CLI_PASSWORD_FILE_ENV
+            );
+        }
         println!("Using password from JACS_PRIVATE_KEY_PASSWORD environment variable.");
         return Ok(Some(env_password));
     }
@@ -123,6 +123,12 @@ fn resolve_cli_password_for_config_create() -> Result<Option<String>, JacsError>
             password_path.display()
         );
         return Ok(Some(password));
+    }
+
+    // Try OS keychain as a fallback
+    if let Ok(Some(pw)) = crate::keystore::keychain::get_password() {
+        println!("Using password from OS keychain.");
+        return Ok(Some(pw));
     }
 
     Ok(None)
