@@ -1,3 +1,9 @@
+## 0.9.5
+
+### Fixes
+
+- Include `deprecation.js` and `deprecation.d.ts` in npm package bundle (was missing from `files` in package.json)
+
 ## 0.9.4
 
 ### API and core
