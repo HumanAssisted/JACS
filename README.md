@@ -234,4 +234,4 @@ Framework adapters for signing AI outputs with zero infrastructure:
 
 ---
 
-v0.9.5 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
+v0.9.6 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)

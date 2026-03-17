@@ -1742,8 +1742,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             Some(("serve", serve_matches)) => {
-                use jacs::simple::SimpleAgent;
-
                 let port = *serve_matches.get_one::<u16>("port").unwrap();
                 let host = serve_matches
                     .get_one::<String>("host")
@@ -1835,8 +1833,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             Some(("quickstart", qs_matches)) => {
-                use jacs::simple::SimpleAgent;
-
                 let port = *qs_matches.get_one::<u16>("port").unwrap();
                 let host = qs_matches
                     .get_one::<String>("host")
@@ -1950,8 +1946,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => println!("please enter subcommand see jacs a2a --help"),
         },
         Some(("quickstart", qs_matches)) => {
-            use jacs::simple::SimpleAgent;
-
             let algorithm = qs_matches
                 .get_one::<String>("algorithm")
                 .map(|s| s.as_str());
@@ -2255,7 +2249,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         process::exit(1);
                     });
 
-                    let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519"))
+                    let (_agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519"))
                         .unwrap_or_else(|e| {
                             eprintln!("Failed to create agent: {}", e);
                             process::exit(1);

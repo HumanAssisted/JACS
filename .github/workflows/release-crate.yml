@@ -45,6 +45,12 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Pre-publish compile check (all crates)
+        run: |
+          echo "Checking all publishable crates compile cleanly with -D warnings..."
+          cargo check -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
+          echo "All crates compile cleanly"
+
       - name: Publish jacs to crates.io
         run: |
           LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")

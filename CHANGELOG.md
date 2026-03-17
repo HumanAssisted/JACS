@@ -1,8 +1,14 @@
-## 0.9.5
+## 0.9.6
 
 ### Fixes
 
+- Fix jacs-cli publish failure: remove unused `SimpleAgent` imports that caused `-D warnings` compile errors in CI
+- Fix crates.io release workflow: add explicit `cargo check -D warnings` step before publish so compile failures are caught early
 - Include `deprecation.js` and `deprecation.d.ts` in npm package bundle (was missing from `files` in package.json)
+
+### Docs
+
+- Add `RELEASING.md` with complete version bump checklist and release process
 
 ## 0.9.4
 

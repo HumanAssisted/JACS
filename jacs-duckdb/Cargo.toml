@@ -13,7 +13,7 @@ keywords = ["cryptography", "json", "duckdb", "storage"]
 categories = ["database", "data-structures"]
 
 [dependencies]
-jacs = { version = "0.9.5", path = "../jacs", default-features = false }
+jacs = { version = "0.9.6", path = "../jacs", default-features = false }
 duckdb = { version = "1.4", features = ["bundled", "json"] }
 serde_json = "1.0"
 
