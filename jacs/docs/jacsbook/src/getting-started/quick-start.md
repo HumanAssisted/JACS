@@ -8,17 +8,21 @@ Get signing and verifying in under a minute. No manual setup needed.
 
 ### Password bootstrap
 
-Rust CLI quickstart requires exactly one explicit password source:
+Rust CLI quickstart requires a password source. Choose one:
 
 ```bash
-# Recommended
+# Option A: Environment variable (recommended for CI/servers)
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 
-# CLI convenience (file contains only the password)
+# Option B: OS keychain (recommended for developer workstations)
+jacs keychain set   # prompts once, then all JACS commands find the password automatically
+
+# Option C: Password file (CLI convenience)
 export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
 ```
 
-If both `JACS_PRIVATE_KEY_PASSWORD` and `JACS_PASSWORD_FILE` are set, CLI fails fast to avoid ambiguity.
+If both `JACS_PRIVATE_KEY_PASSWORD` and `JACS_PASSWORD_FILE` are set, CLI fails fast to avoid ambiguity. The OS keychain is the lowest-priority source and is only consulted when neither env var nor password file is set.
+
 Python/Node quickstart can auto-generate a secure password if `JACS_PRIVATE_KEY_PASSWORD` is unset. Set `JACS_SAVE_PASSWORD_FILE=true` if you want the generated password persisted to `./jacs_keys/.jacs_password`. In production, set `JACS_PRIVATE_KEY_PASSWORD` explicitly.
 One call and you're signing.
 

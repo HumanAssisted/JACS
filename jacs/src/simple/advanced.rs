@@ -16,7 +16,7 @@ use crate::simple::types::*;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Re-encrypts the agent's private key from one password to another.
 ///
@@ -735,7 +735,7 @@ pub fn quickstart(
 
     let params = CreateAgentParams {
         name: name.to_string(),
-        password,
+        password: password.clone(),
         algorithm: algo.to_string(),
         config_path: config.to_string(),
         description: description.unwrap_or("").to_string(),
@@ -743,7 +743,22 @@ pub fn quickstart(
         ..Default::default()
     };
 
-    SimpleAgent::create_with_params(params)
+    let result = SimpleAgent::create_with_params(params)?;
+
+    // Store the password in the OS keychain when available (PRD Decision #1).
+    // This means future operations "just work" without env vars or password files.
+    if crate::keystore::keychain::is_available() {
+        match crate::keystore::keychain::store_password(&password) {
+            Ok(()) => {
+                info!("Password stored in OS keychain (service: jacs-private-key)");
+            }
+            Err(e) => {
+                warn!("Could not store password in OS keychain: {}", e);
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 /// Updates the agent's own document with new data and re-signs it.

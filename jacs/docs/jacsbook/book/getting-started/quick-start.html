@@ -179,15 +179,18 @@
 <h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
 <p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.</p>
 <h3 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h3>
-<p>Rust CLI quickstart requires exactly one explicit password source:</p>
-<pre><code class="language-bash"># Recommended
+<p>Rust CLI quickstart requires a password source. Choose one:</p>
+<pre><code class="language-bash"># Option A: Environment variable (recommended for CI/servers)
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 
-# CLI convenience (file contains only the password)
+# Option B: OS keychain (recommended for developer workstations)
+jacs keychain set   # prompts once, then all JACS commands find the password automatically
+
+# Option C: Password file (CLI convenience)
 export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
 </code></pre>
-<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity.
-Python/Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. Set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want the generated password persisted to <code>./jacs_keys/.jacs_password</code>. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.
+<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity. The OS keychain is the lowest-priority source and is only consulted when neither env var nor password file is set.</p>
+<p>Python/Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. Set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want the generated password persisted to <code>./jacs_keys/.jacs_password</code>. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.
 One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">

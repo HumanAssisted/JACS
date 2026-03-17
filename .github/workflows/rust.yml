@@ -251,6 +251,10 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo test -p jacs-postgresql --lib --tests --verbose
 
+      - name: Keychain integration tests (macOS)
+        if: runner.os == 'macOS'
+        run: cargo test -p jacs --features keychain-tests -- keychain_macos --verbose
+
       - name: Run cross-language and observability suites
         run: |
           make test-jacs-cross-language

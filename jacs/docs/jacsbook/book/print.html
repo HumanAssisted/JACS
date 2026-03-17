@@ -807,15 +807,18 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 <h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
 <p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.</p>
 <h3 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h3>
-<p>Rust CLI quickstart requires exactly one explicit password source:</p>
-<pre><code class="language-bash"># Recommended
+<p>Rust CLI quickstart requires a password source. Choose one:</p>
+<pre><code class="language-bash"># Option A: Environment variable (recommended for CI/servers)
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 
-# CLI convenience (file contains only the password)
+# Option B: OS keychain (recommended for developer workstations)
+jacs keychain set   # prompts once, then all JACS commands find the password automatically
+
+# Option C: Password file (CLI convenience)
 export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
 </code></pre>
-<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity.
-Python/Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. Set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want the generated password persisted to <code>./jacs_keys/.jacs_password</code>. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.
+<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity. The OS keychain is the lowest-priority source and is only consulted when neither env var nor password file is set.</p>
+<p>Python/Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. Set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want the generated password persisted to <code>./jacs_keys/.jacs_password</code>. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.
 One call and you're signing.</p>
 <div class="tabs">
 <div class="tab">
@@ -1652,6 +1655,9 @@ CMD ["python", "main.py"]
 </code></pre>
 <h2 id="lambda-deployment"><a class="header" href="#lambda-deployment">Lambda Deployment</a></h2>
 <p>For AWS Lambda, include the JACS native library in a Lambda layer or bundle it in your deployment package. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> as a Lambda environment variable (use AWS Secrets Manager for production).</p>
+<blockquote>
+<p><strong>Headless environments (Docker, Lambda, CI):</strong> Set <code>JACS_KEYCHAIN_BACKEND=disabled</code> to skip OS keychain lookups, which are not available in containers or serverless runtimes. Use <code>JACS_PRIVATE_KEY_PASSWORD</code> or <code>JACS_PASSWORD_FILE</code> instead.</p>
+</blockquote>
 <h2 id="building-from-source"><a class="header" href="#building-from-source">Building from Source</a></h2>
 <p>If no pre-built binary exists for your platform:</p>
 <pre><code class="language-bash"># Python
@@ -1680,7 +1686,7 @@ cd jacspy &amp;&amp; maturin develop --release
 <pre><code class="language-bash">cp jacs.config.example.json jacs.config.json
 </code></pre>
 <h3 id="private-key-decryption-failed"><a class="header" href="#private-key-decryption-failed">Private key decryption failed</a></h3>
-<p>Wrong or missing password. Check <code>JACS_PRIVATE_KEY_PASSWORD</code>. For CLI, you may also set <code>JACS_PASSWORD_FILE</code> to a file that contains only the password. Set exactly one explicit source; if both are set, CLI fails by design.</p>
+<p>Wrong or missing password. Check <code>JACS_PRIVATE_KEY_PASSWORD</code>. For CLI, you may also set <code>JACS_PASSWORD_FILE</code> to a file that contains only the password, or use <code>jacs keychain set</code> to store the password in the OS keychain. Set exactly one explicit source; if both env var and password file are set, CLI fails by design. The OS keychain is only consulted when neither env var nor password file is present.</p>
 <h3 id="algorithm-detection-failed"><a class="header" href="#algorithm-detection-failed">Algorithm detection failed</a></h3>
 <p>Set the <code>signingAlgorithm</code> field in your config, or pass it explicitly to <code>quickstart(...)</code> / <code>create(...)</code>. Valid values: <code>pq2025</code>, <code>ring-Ed25519</code>, <code>RSA-PSS</code>.</p>
 <h2 id="runtime-issues"><a class="header" href="#runtime-issues">Runtime Issues</a></h2>
@@ -10137,6 +10143,7 @@ let prev = get_previous_message_id(&amp;message);
 <tr><td><code>jacs_agent_public_key_filename</code></td><td>string</td><td>Public key filename</td></tr>
 <tr><td><code>jacs_agent_key_algorithm</code></td><td>string</td><td>Signing algorithm</td></tr>
 <tr><td><code>jacs_default_storage</code></td><td>string</td><td>Storage backend</td></tr>
+<tr><td><code>jacs_keychain_backend</code></td><td>string</td><td>OS keychain backend: <code>"auto"</code>, <code>"macos-keychain"</code>, <code>"linux-secret-service"</code>, <code>"disabled"</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="configuration-options-1"><a class="header" href="#configuration-options-1">Configuration Options</a></h2>
@@ -10173,7 +10180,7 @@ let prev = get_previous_message_id(&amp;message);
   "jacs_private_key_password": "your-password"
 }
 </code></pre>
-<p><strong>Warning</strong>: Do not store passwords in config files for production. Use the <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable instead.</p>
+<p><strong>Warning</strong>: Do not store passwords in config files for production. Use the <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable or <code>jacs keychain set</code> (OS keychain) instead. See <a href="schemas/../reference/configuration.html#os-keychain-configuration">OS Keychain Configuration</a>.</p>
 <h3 id="storage-configuration"><a class="header" href="#storage-configuration">Storage Configuration</a></h3>
 <h4 id="jacs_default_storage"><a class="header" href="#jacs_default_storage">jacs_default_storage</a></h4>
 <p>Specifies where documents are stored:</p>
@@ -10235,6 +10242,21 @@ let prev = get_previous_message_id(&amp;message);
 }
 </code></pre>
 <h3 id="security-2"><a class="header" href="#security-2">Security</a></h3>
+<h4 id="jacs_keychain_backend"><a class="header" href="#jacs_keychain_backend">jacs_keychain_backend</a></h4>
+<p>OS keychain backend for password storage. Controls whether JACS looks up the private key password from the OS credential store.</p>
+<pre><code class="language-json">{
+  "jacs_keychain_backend": "auto"
+}
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>"auto"</code></td><td>Detect platform default (macOS Keychain or Linux Secret Service)</td></tr>
+<tr><td><code>"macos-keychain"</code></td><td>macOS Keychain</td></tr>
+<tr><td><code>"linux-secret-service"</code></td><td>Linux D-Bus Secret Service</td></tr>
+<tr><td><code>"disabled"</code></td><td>Never consult OS keychain (recommended for CI/headless)</td></tr>
+</tbody></table>
+</div>
+<p>Override with env var: <code>JACS_KEYCHAIN_BACKEND=disabled</code></p>
+<p>See <a href="schemas/../reference/configuration.html#os-keychain-configuration">OS Keychain Configuration</a> for full details.</p>
 <h4 id="jacs_use_security"><a class="header" href="#jacs_use_security">jacs_use_security</a></h4>
 <p>Enable strict security features:</p>
 <pre><code class="language-json">{
@@ -10250,6 +10272,7 @@ let prev = get_previous_message_id(&amp;message);
 <tr><td><code>JACS_PRIVATE_KEY_PASSWORD</code></td><td><code>jacs_private_key_password</code></td></tr>
 <tr><td><code>JACS_DATA_DIRECTORY</code></td><td><code>jacs_data_directory</code></td></tr>
 <tr><td><code>JACS_KEY_DIRECTORY</code></td><td><code>jacs_key_directory</code></td></tr>
+<tr><td><code>JACS_KEYCHAIN_BACKEND</code></td><td><code>jacs_keychain_backend</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="see-also-12"><a class="header" href="#see-also-12">See Also</a></h2>
@@ -10361,9 +10384,9 @@ trust levels that map directly to JACS's trust model:</p>
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><h1 id="security-model"><a class="header" href="#security-model">Security Model</a></h1>
 <p>JACS implements a comprehensive security model designed to ensure authenticity, integrity, and non-repudiation for all agent communications and documents.</p>
-<h2 id="security-model-v060"><a class="header" href="#security-model-v060">Security Model (v0.6.0)</a></h2>
+<h2 id="security-model-v060"><a class="header" href="#security-model-v060">Security Model (v0.6.0+)</a></h2>
 <ul>
-<li><strong>Passwords</strong>: The private key password must be set only via the <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. It is never stored in config files.</li>
+<li><strong>Passwords</strong>: The private key password can be provided via <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable, <code>JACS_PASSWORD_FILE</code>, or the OS keychain (macOS Keychain / Linux Secret Service). It is never stored in config files.</li>
 <li><strong>Keys</strong>: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.</li>
 <li><strong>Path validation</strong>: All paths built from untrusted input (e.g. <code>publicKeyHash</code>, filenames) are validated via <code>require_relative_path_safe()</code> to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, <code>.</code>, <code>..</code>, null bytes, and Windows drive-prefixed paths.</li>
 <li><strong>Trust ID canonicalization</strong>: Trust-store operations normalize canonical agent docs (<code>jacsId</code> + <code>jacsVersion</code>) into a safe <code>UUID:VERSION_UUID</code> identifier before filesystem use, preserving path-safety checks while supporting standard agent document layout.</li>
@@ -10492,11 +10515,38 @@ jacs_keys/
 <h3 id="key-protection"><a class="header" href="#key-protection">Key Protection</a></h3>
 <p><strong>Encryption at Rest</strong>:</p>
 <p>Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-SHA256 (600,000 iterations). Never store the password in config files.</p>
-<pre><code class="language-bash"># Set via environment variable only
+<pre><code class="language-bash"># Option 1: Environment variable (recommended for CI/servers)
 export JACS_PRIVATE_KEY_PASSWORD="secure-password"
+
+# Option 2: OS keychain (recommended for developer workstations)
+jacs keychain set
 </code></pre>
 <blockquote>
-<p><strong>Important</strong>: The CLI can prompt for the password during <code>jacs init</code>, but scripts and servers must set <code>JACS_PRIVATE_KEY_PASSWORD</code> as an environment variable.</p>
+<p><strong>Important</strong>: The CLI can prompt for the password during <code>jacs init</code>, but scripts and servers must set <code>JACS_PRIVATE_KEY_PASSWORD</code> as an environment variable or use the OS keychain.</p>
+</blockquote>
+<p><strong>OS Keychain Integration</strong>:</p>
+<p>On macOS and Linux desktops, JACS can store and retrieve the private key password from the OS credential store, eliminating the need for environment variables or plaintext password files during day-to-day development:</p>
+<ul>
+<li><strong>macOS</strong>: Uses Security.framework (Keychain Access)</li>
+<li><strong>Linux</strong>: Uses the freedesktop.org D-Bus Secret Service API (GNOME Keyring, KDE Wallet, KeePassXC)</li>
+</ul>
+<p>Store your password once with <code>jacs keychain set</code>, and all subsequent JACS operations will find it automatically. The password resolution order is:</p>
+<ol>
+<li><code>JACS_PRIVATE_KEY_PASSWORD</code> env var (highest priority -- explicit always wins)</li>
+<li><code>JACS_PASSWORD_FILE</code> / legacy <code>.jacs_password</code> file</li>
+<li>OS keychain (lowest priority among explicit sources)</li>
+</ol>
+<p>To disable keychain lookups (recommended for CI and headless environments):</p>
+<pre><code class="language-bash">export JACS_KEYCHAIN_BACKEND=disabled
+</code></pre>
+<p>Or in <code>jacs.config.json</code>:</p>
+<pre><code class="language-json">{
+  "jacs_keychain_backend": "disabled"
+}
+</code></pre>
+<p>The keychain stores the password under service name <code>jacs-private-key</code> with user <code>default</code>. Multiple agents on one machine can use agent-specific passwords via the <code>*_for_agent()</code> API variants.</p>
+<blockquote>
+<p><strong>Security note</strong>: The OS keychain is encrypted at rest by the OS and unlocked by the user's login session. It is the same mechanism used by <code>git</code>, <code>ssh-agent</code>, <code>docker</code>, and other CLI tools. The <code>keychain</code> feature is optional and not compiled into the <code>jacs</code> core crate by default -- it is enabled by default only in <code>jacs-cli</code>.</p>
 </blockquote>
 <p><strong>Password Entropy Requirements</strong>:</p>
 <p>JACS enforces password entropy minimums for private key encryption. Password validation is performed at encryption time, and weak passwords are rejected with helpful error messages:</p>
@@ -10776,8 +10826,14 @@ chmod 700 ./jacs_keys
 chmod 600 ./jacs_keys/private.pem
 </code></pre>
 <h3 id="2-password-handling"><a class="header" href="#2-password-handling">2. Password Handling</a></h3>
-<pre><code class="language-bash"># Use environment variables
+<pre><code class="language-bash"># Option A: Use environment variables (CI, servers)
 export JACS_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
+
+# Option B: Use OS keychain (developer workstations)
+jacs keychain set  # stores password securely in OS credential store
+
+# Option C: Disable keychain for headless/CI environments
+export JACS_KEYCHAIN_BACKEND=disabled
 </code></pre>
 <h3 id="3-transport-security"><a class="header" href="#3-transport-security">3. Transport Security</a></h3>
 <p>Always use TLS for network communication:</p>
@@ -10818,7 +10874,9 @@ Use test keys separate from production</li>
 <li><input disabled="" type="checkbox"/>
 Encrypt private keys at rest</li>
 <li><input disabled="" type="checkbox"/>
-Use environment variables for secrets (never store <code>jacs_private_key_password</code> in config)</li>
+Use environment variables or OS keychain for secrets (never store <code>jacs_private_key_password</code> in config)</li>
+<li><input disabled="" type="checkbox"/>
+Set <code>JACS_KEYCHAIN_BACKEND=disabled</code> on CI/headless servers</li>
 <li><input disabled="" type="checkbox"/>
 Enable DNS verification</li>
 <li><input disabled="" type="checkbox"/>
@@ -17191,6 +17249,42 @@ Signed at: 2026-02-10T12:00:00Z
 </code></pre>
 <p>If <code>./jacs.config.json</code> and agent keys exist in the current directory, the CLI uses them automatically. Otherwise it creates a temporary ephemeral verifier internally.</p>
 <p>See the <a href="reference/../getting-started/verification.html">Verification Guide</a> for Python, Node.js, and DNS verification workflows.</p>
+<h3 id="jacs-keychain"><a class="header" href="#jacs-keychain"><code>jacs keychain</code></a></h3>
+<p>Manage private key passwords in the OS keychain (macOS Keychain or Linux Secret Service via D-Bus). This allows JACS to retrieve your private key password without environment variables or password files.</p>
+<blockquote>
+<p>Requires the <code>keychain</code> feature (enabled by default in <code>jacs-cli</code>).
+Set <code>JACS_KEYCHAIN_BACKEND=disabled</code> to skip keychain lookups in CI/headless environments.</p>
+</blockquote>
+<pre><code class="language-bash"># Store a password interactively (prompts for input)
+jacs keychain set
+
+# Store a password non-interactively (for scripting)
+jacs keychain set --password "YourStr0ng!Pass#Here"
+
+# Retrieve the stored password (prints to stdout, for piping)
+export JACS_PRIVATE_KEY_PASSWORD=$(jacs keychain get)
+
+# Remove the stored password
+jacs keychain delete
+
+# Check keychain availability and whether a password is stored
+jacs keychain status
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>jacs keychain set</code></td><td>Store a password (prompts interactively)</td></tr>
+<tr><td><code>jacs keychain set --password &lt;pw&gt;</code></td><td>Store a specific password (for scripting)</td></tr>
+<tr><td><code>jacs keychain get</code></td><td>Print stored password to stdout</td></tr>
+<tr><td><code>jacs keychain delete</code></td><td>Remove stored password from OS keychain</td></tr>
+<tr><td><code>jacs keychain status</code></td><td>Check keychain availability and storage state</td></tr>
+</tbody></table>
+</div>
+<p><strong>Output conventions:</strong> Human-friendly messages go to stderr; machine-friendly data goes to stdout. This means <code>jacs keychain get</code> output can be safely piped or captured in a variable.</p>
+<p><strong>Password resolution order:</strong> When JACS needs the private key password, it checks sources in this order:</p>
+<ol>
+<li><code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable (highest priority)</li>
+<li><code>JACS_PASSWORD_FILE</code> / legacy <code>.jacs_password</code> file</li>
+<li>OS keychain (if <code>keychain</code> feature is enabled and not disabled)</li>
+</ol>
 <h3 id="jacs-init"><a class="header" href="#jacs-init"><code>jacs init</code></a></h3>
 <p>Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.</p>
 <pre><code class="language-bash">jacs init
@@ -17716,9 +17810,9 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <h2 id="environment-variable-integration"><a class="header" href="#environment-variable-integration">Environment Variable Integration</a></h2>
 <p>The observability configuration works alongside JACS's core configuration system.</p>
 <h3 id="required-environment-variable"><a class="header" href="#required-environment-variable">Required Environment Variable</a></h3>
-<p>Only <strong>one</strong> environment variable is truly required:</p>
+<p>Only <strong>one</strong> environment variable is truly required (unless using the OS keychain):</p>
 <ul>
-<li><code>JACS_PRIVATE_KEY_PASSWORD</code> - Password for encrypting/decrypting private keys (required for cryptographic operations)</li>
+<li><code>JACS_PRIVATE_KEY_PASSWORD</code> - Password for encrypting/decrypting private keys (required for cryptographic operations, unless the password is stored in the OS keychain)</li>
 </ul>
 <h3 id="configuration-based-settings"><a class="header" href="#configuration-based-settings">Configuration-Based Settings</a></h3>
 <p>All other JACS settings are <strong>configuration file fields</strong> that have sensible defaults:</p>
@@ -17727,8 +17821,26 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
 <li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>pq2025</code>)</li>
 <li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
+<li><code>jacs_keychain_backend</code> - OS keychain backend for password storage (default: <code>"auto"</code>). See below.</li>
 <li><code>jacs_use_security</code> / <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> - Enable filesystem quarantine of executable files (default: <code>false</code>). The env var <code>JACS_USE_SECURITY</code> is deprecated; use <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> instead.</li>
 </ul>
+<h3 id="os-keychain-configuration"><a class="header" href="#os-keychain-configuration">OS Keychain Configuration</a></h3>
+<p>The <code>jacs_keychain_backend</code> field controls whether JACS looks up the private key password from the OS credential store (macOS Keychain or Linux Secret Service):</p>
+<pre><code class="language-json">{
+  "jacs_keychain_backend": "auto"
+}
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>"auto"</code></td><td>Detect the platform default (macOS Keychain or Linux Secret Service). This is the default when the field is omitted.</td></tr>
+<tr><td><code>"macos-keychain"</code></td><td>Explicitly use the macOS Keychain</td></tr>
+<tr><td><code>"linux-secret-service"</code></td><td>Explicitly use the Linux D-Bus Secret Service (GNOME Keyring, KDE Wallet, KeePassXC)</td></tr>
+<tr><td><code>"disabled"</code></td><td>Never consult the OS keychain. Recommended for CI, headless servers, and containers.</td></tr>
+</tbody></table>
+</div>
+<p>You can also override via environment variable:</p>
+<pre><code class="language-bash">export JACS_KEYCHAIN_BACKEND=disabled  # skip keychain in CI
+</code></pre>
+<p>When not set to <code>"disabled"</code>, password resolution checks: env var first, then OS keychain, then error. See the <a href="reference/cli-commands.html#jacs-keychain">CLI keychain commands</a> for storing and managing passwords.</p>
 <p>These can be overridden by environment variables if needed, but they are primarily configured through the <code>jacs.config.json</code> file.</p>
 <p>The observability configuration is completely optional - JACS will work without any observability configuration.</p>
 <h2 id="storage-configuration-1"><a class="header" href="#storage-configuration-1">Storage Configuration</a></h2>

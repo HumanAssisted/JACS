@@ -263,6 +263,23 @@ pub fn handle_config_create() -> Result<(), JacsError> {
         }
     };
 
+    // Store the password in the OS keychain when available so future
+    // operations "just work" without env vars or password files.
+    if crate::keystore::keychain::is_available() {
+        match crate::keystore::keychain::store_password(&jacs_private_key_password) {
+            Ok(()) => {
+                println!("Password stored in OS keychain.");
+            }
+            Err(e) => {
+                eprintln!(
+                    "Warning: Could not store password in OS keychain: {}. \
+                     You will need to set JACS_PRIVATE_KEY_PASSWORD for future operations.",
+                    e
+                );
+            }
+        }
+    }
+
     let jacs_use_security = request_string("Use experimental security features", "false");
     let jacs_data_directory = request_string("Directory for data storage", "./jacs");
     let jacs_key_directory = request_string("Directory for keys", "./jacs_keys");

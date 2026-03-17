@@ -1074,23 +1074,18 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     ),
             )
             .subcommand(
-                Command::new("get")
-                    .about("Retrieve the stored password (prints to stdout)"),
+                Command::new("get").about("Retrieve the stored password (prints to stdout)"),
             )
             .subcommand(
-                Command::new("delete")
-                    .about("Remove the stored password from the OS keychain"),
+                Command::new("delete").about("Remove the stored password from the OS keychain"),
             )
             .subcommand(
-                Command::new("status")
-                    .about("Check if a password is stored in the OS keychain"),
+                Command::new("status").about("Check if a password is stored in the OS keychain"),
             )
             .arg_required_else_help(true),
     );
 
-    let matches = matches
-        .arg_required_else_help(true)
-        .get_matches();
+    let matches = matches.arg_required_else_help(true).get_matches();
 
     match matches.subcommand() {
         Some(("version", _sub_matches)) => {
@@ -2002,13 +1997,57 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
             let sign_file = qs_matches.get_one::<String>("file");
 
-            ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
-                Box::new(std::io::Error::other(format!(
-                    "Password bootstrap failed: {}\n\n{}",
-                    e,
-                    quickstart_password_bootstrap_help()
-                )))
-            })?;
+            // Try to resolve password from existing sources (env var, password file, legacy file).
+            // If none found, prompt interactively and store in OS keychain.
+            if let Err(e) = ensure_cli_private_key_password() {
+                eprintln!("Note: {}", e);
+            }
+
+            // If still no password available, prompt interactively
+            if env::var("JACS_PRIVATE_KEY_PASSWORD")
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+            {
+                eprintln!("{}", jacs::crypt::aes_encrypt::password_requirements());
+                let password = loop {
+                    eprintln!("Enter a password for your JACS private key:");
+                    let pw = read_password()
+                        .map_err(|e| format!("Failed to read password: {}", e))?;
+                    if pw.trim().is_empty() {
+                        eprintln!("Password cannot be empty. Please try again.");
+                        continue;
+                    }
+                    eprintln!("Confirm password:");
+                    let pw2 = read_password()
+                        .map_err(|e| format!("Failed to read password: {}", e))?;
+                    if pw != pw2 {
+                        eprintln!("Passwords do not match. Please try again.");
+                        continue;
+                    }
+                    break pw;
+                };
+
+                // SAFETY: CLI is single-threaded at this point
+                unsafe {
+                    env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
+                }
+
+                // Store in OS keychain so future commands "just work"
+                #[cfg(feature = "keychain")]
+                {
+                    if jacs::keystore::keychain::is_available() {
+                        match jacs::keystore::keychain::store_password(&password) {
+                            Ok(()) => eprintln!("Password stored in OS keychain."),
+                            Err(e) => eprintln!(
+                                "Warning: Could not store in OS keychain: {}",
+                                e
+                            ),
+                        }
+                    }
+                }
+            }
+
             let (agent, info) =
                 jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
                     .map_err(|e| {
@@ -2459,15 +2498,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     keychain::store_password(&password)?;
                     eprintln!("Password stored in OS keychain.");
                 }
-                Some(("get", _)) => {
-                    match keychain::get_password()? {
-                        Some(pw) => println!("{}", pw),
-                        None => {
-                            eprintln!("No password found in OS keychain.");
-                            process::exit(1);
-                        }
+                Some(("get", _)) => match keychain::get_password()? {
+                    Some(pw) => println!("{}", pw),
+                    None => {
+                        eprintln!("No password found in OS keychain.");
+                        process::exit(1);
                     }
-                }
+                },
                 Some(("delete", _)) => {
                     keychain::delete_password()?;
                     eprintln!("Password removed from OS keychain.");

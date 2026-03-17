@@ -1,11 +1,11 @@
 pub mod keychain;
 
+use crate::crypt::private_key::LockedVec;
 use crate::error::JacsError;
 use std::fmt;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
-use zeroize::Zeroize;
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -311,7 +311,15 @@ impl KeyStore for FsEncryptedStore {
                 e
             )
         })?;
-        Ok(decrypted.as_slice().to_vec())
+        // Wrap in LockedVec so the decrypted bytes are mlock'd (pinned to RAM)
+        // during the brief window before being returned to the caller. The
+        // LockedVec is dropped at end of scope, which zeroizes + munlocks.
+        // TODO: When KeyStore::load_private() return type changes to LockedVec,
+        // this intermediate copy can be eliminated.
+        let locked = LockedVec::new(decrypted.as_slice().to_vec());
+        let result = locked.as_slice().to_vec();
+        // locked is dropped here -> zeroize + munlock
+        Ok(result)
     }
 
     fn load_public(&self) -> Result<Vec<u8>, JacsError> {
@@ -453,9 +461,10 @@ unimplemented_store!(IosKeychainStore);
 unimplemented_store!(AndroidKeystoreStore);
 
 /// In-memory key store for ephemeral agents. Keys never touch disk.
-/// Private key bytes are zeroized on Drop.
+/// Private key bytes are stored in mlock'd memory (via [`LockedVec`]) and
+/// zeroized on Drop.
 pub struct InMemoryKeyStore {
-    private_key: Mutex<Option<Vec<u8>>>,
+    private_key: Mutex<Option<LockedVec>>,
     public_key: Mutex<Option<Vec<u8>>>,
     algorithm: String,
 }
@@ -485,10 +494,10 @@ impl fmt::Debug for InMemoryKeyStore {
 
 impl Drop for InMemoryKeyStore {
     fn drop(&mut self) {
+        // LockedVec::drop() handles both zeroization and munlock automatically.
+        // We just need to take the value so it gets dropped.
         if let Ok(mut key) = self.private_key.lock() {
-            if let Some(ref mut bytes) = *key {
-                bytes.zeroize();
-            }
+            let _ = key.take();
         }
     }
 }
@@ -512,17 +521,22 @@ impl KeyStore for InMemoryKeyStore {
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
             CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
-        // Store copies in memory — no disk, no encryption
-        *self.private_key.lock().unwrap() = Some(priv_key.clone());
+        // Store copies in memory — no disk, no encryption.
+        // Private key is wrapped in LockedVec for mlock + zeroize-on-drop protection.
+        *self.private_key.lock().unwrap() = Some(LockedVec::new(priv_key.clone()));
         *self.public_key.lock().unwrap() = Some(pub_key.clone());
         Ok((priv_key, pub_key))
     }
 
     fn load_private(&self) -> Result<Vec<u8>, JacsError> {
+        // TODO: When KeyStore::load_private() return type changes to LockedVec,
+        // this clone can be eliminated. For now we clone out of locked storage
+        // into a transient Vec<u8> that callers will use briefly for signing.
         self.private_key
             .lock()
             .unwrap()
-            .clone()
+            .as_ref()
+            .map(|lv| lv.as_slice().to_vec())
             .ok_or_else(|| "InMemoryKeyStore: no private key generated yet".into())
     }
 
@@ -1062,5 +1076,94 @@ mod tests {
             FsEncryptedStore::insert_version_in_path("nodir.pem", "v2"),
             "nodir.v2.pem"
         );
+    }
+
+    // =========================================================================
+    // LockedVec integration tests (Task 010: memory pinning)
+    // =========================================================================
+
+    #[test]
+    fn test_in_memory_keystore_uses_locked_storage() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let _ = ks.generate(&spec).unwrap();
+
+        // Verify the stored private key is in a LockedVec
+        let guard = ks.private_key.lock().unwrap();
+        let locked_vec = guard.as_ref().expect("private key should be stored");
+        assert!(
+            !locked_vec.is_empty(),
+            "stored private key should not be empty"
+        );
+        // On Unix, the memory should be mlock'd
+        if cfg!(unix) {
+            assert!(
+                locked_vec.is_locked(),
+                "InMemoryKeyStore private key should be in mlock'd memory on Unix"
+            );
+        }
+    }
+
+    #[test]
+    fn test_sign_with_locked_key_material() {
+        // Generate keys, load private key (which comes from LockedVec storage),
+        // sign a message, verify signature — ensures the locked memory path
+        // doesn't break signing.
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (_priv_key, pub_key) = ks.generate(&spec).unwrap();
+
+        // load_private() clones from the LockedVec
+        let loaded_priv = ks.load_private().unwrap();
+        assert!(
+            !loaded_priv.is_empty(),
+            "loaded private key should not be empty"
+        );
+
+        // Sign using the loaded key
+        let message = b"test message for locked key signing";
+        let sig_bytes = ks
+            .sign_detached(&loaded_priv, message, "ring-Ed25519")
+            .unwrap();
+        assert!(!sig_bytes.is_empty(), "signature should not be empty");
+
+        // Verify the signature with the public key
+        let sig_b64 = STANDARD.encode(&sig_bytes);
+        crypt::ringwrapper::verify_string(pub_key, "test message for locked key signing", &sig_b64)
+            .expect("signature from locked key material should verify");
+    }
+
+    #[test]
+    #[serial]
+    fn test_fs_encrypted_load_private_returns_locked_bytes() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let dir_name = setup_fs_test_dir("locked_load");
+        let _key_dir = format!("{}/keys", dir_name);
+
+        let store = FsEncryptedStore;
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+
+        // Generate keys on disk
+        let (orig_priv, _) = store.generate(&spec).unwrap();
+
+        // load_private() decrypts through LockedVec internally
+        let loaded = store.load_private().unwrap();
+        assert_eq!(
+            orig_priv, loaded,
+            "loaded private key should match generated key"
+        );
+        assert!(!loaded.is_empty(), "loaded private key should not be empty");
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
     }
 }

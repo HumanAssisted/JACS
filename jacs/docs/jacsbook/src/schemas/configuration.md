@@ -30,6 +30,7 @@ All other settings use sensible defaults (`./jacs_data`, `./jacs_keys`, `fs` sto
 | `jacs_agent_public_key_filename` | string | Public key filename |
 | `jacs_agent_key_algorithm` | string | Signing algorithm |
 | `jacs_default_storage` | string | Storage backend |
+| `jacs_keychain_backend` | string | OS keychain backend: `"auto"`, `"macos-keychain"`, `"linux-secret-service"`, `"disabled"` |
 
 ## Configuration Options
 
@@ -84,7 +85,7 @@ Password for encrypted private keys:
 }
 ```
 
-**Warning**: Do not store passwords in config files for production. Use the `JACS_PRIVATE_KEY_PASSWORD` environment variable instead.
+**Warning**: Do not store passwords in config files for production. Use the `JACS_PRIVATE_KEY_PASSWORD` environment variable or `jacs keychain set` (OS keychain) instead. See [OS Keychain Configuration](../reference/configuration.md#os-keychain-configuration).
 
 ### Storage Configuration
 
@@ -184,6 +185,27 @@ Require domain and DNS validation:
 
 ### Security
 
+#### jacs_keychain_backend
+
+OS keychain backend for password storage. Controls whether JACS looks up the private key password from the OS credential store.
+
+```json
+{
+  "jacs_keychain_backend": "auto"
+}
+```
+
+| Value | Description |
+|-------|-------------|
+| `"auto"` | Detect platform default (macOS Keychain or Linux Secret Service) |
+| `"macos-keychain"` | macOS Keychain |
+| `"linux-secret-service"` | Linux D-Bus Secret Service |
+| `"disabled"` | Never consult OS keychain (recommended for CI/headless) |
+
+Override with env var: `JACS_KEYCHAIN_BACKEND=disabled`
+
+See [OS Keychain Configuration](../reference/configuration.md#os-keychain-configuration) for full details.
+
 #### jacs_use_security
 
 Enable strict security features:
@@ -209,6 +231,7 @@ Configuration can be overridden with environment variables:
 | `JACS_PRIVATE_KEY_PASSWORD` | `jacs_private_key_password` |
 | `JACS_DATA_DIRECTORY` | `jacs_data_directory` |
 | `JACS_KEY_DIRECTORY` | `jacs_key_directory` |
+| `JACS_KEYCHAIN_BACKEND` | `jacs_keychain_backend` |
 
 ## See Also
 

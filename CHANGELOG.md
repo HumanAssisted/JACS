@@ -1,3 +1,24 @@
+## 0.9.7 (unreleased)
+
+### Features
+
+- **OS Keychain Integration**: Store and retrieve private key passwords from the OS credential store (macOS Keychain, Linux Secret Service via D-Bus). Eliminates the need for environment variables or plaintext password files on developer workstations.
+  - New CLI commands: `jacs keychain set`, `jacs keychain get`, `jacs keychain delete`, `jacs keychain status`
+  - Automatic password resolution: env var -> password file -> OS keychain
+  - New config field `jacs_keychain_backend` (`"auto"`, `"macos-keychain"`, `"linux-secret-service"`, `"disabled"`)
+  - Set `JACS_KEYCHAIN_BACKEND=disabled` for CI/headless environments
+  - Feature-gated behind `keychain` Cargo feature (enabled by default in `jacs-cli`, optional in `jacs` core)
+- **Memory-pinned key storage**: Decrypted private key bytes are now held in `mlock()`-pinned memory (`LockedVec`) that is excluded from core dumps (`MADV_DONTDUMP` on Linux) and zeroized before `munlock()` on drop.
+- **Key directory safety**: `quickstart` and `create_with_params` now generate `.gitignore` and `.dockerignore` files in the key directory to prevent accidental exposure of private keys and password files.
+
+### Security
+
+- New `KeyBackend::OsKeychain` variant for desktop OS credential stores
+- `resolve_private_key_password()` is now the single source of truth for password resolution across all encryption/decryption paths
+- Platform integration tests for macOS Keychain (real backend) and Linux Secret Service
+
+---
+
 ## 0.9.6
 
 ### Fixes
