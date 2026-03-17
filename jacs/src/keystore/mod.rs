@@ -274,6 +274,10 @@ impl KeyStore for FsEncryptedStore {
         set_secure_permissions(&pub_path, false)?;
         set_secure_permissions(&key_dir, true)?;
 
+        // Protect key directory from accidental git commits / Docker inclusion
+        let key_dir_path = std::path::Path::new(key_dir.trim_start_matches("./"));
+        crate::simple::core::write_key_directory_ignore_files(key_dir_path);
+
         Ok((priv_key, pub_key))
     }
 
@@ -314,8 +318,14 @@ impl KeyStore for FsEncryptedStore {
         // Wrap in LockedVec so the decrypted bytes are mlock'd (pinned to RAM)
         // during the brief window before being returned to the caller. The
         // LockedVec is dropped at end of scope, which zeroizes + munlocks.
+        //
+        // SECURITY NOTE: The returned Vec<u8> is NOT mlock'd — the key material
+        // spends most of its lifetime in regular heap memory that could be swapped
+        // to disk or included in core dumps. InMemoryKeyStore avoids this by
+        // keeping keys in LockedVec for their full lifetime.
+        //
         // TODO: When KeyStore::load_private() return type changes to LockedVec,
-        // this intermediate copy can be eliminated.
+        // this intermediate copy can be eliminated (breaking trait change).
         let locked = LockedVec::new(decrypted.as_slice().to_vec());
         let result = locked.as_slice().to_vec();
         // locked is dropped here -> zeroize + munlock

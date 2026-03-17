@@ -575,6 +575,33 @@ export interface QuickstartInfo {
   domain: string;
 }
 
+/**
+ * Write .gitignore and .dockerignore in the key directory to prevent
+ * accidental exposure of private keys and password files.
+ */
+function writeKeyDirectoryIgnoreFiles(keyDir: string): void {
+  const ignoreContent =
+    '# JACS private key material -- do NOT commit or ship\n' +
+    '*.pem\n*.pem.enc\n.jacs_password\n*.key\n*.key.enc\n';
+  fs.mkdirSync(keyDir, { recursive: true });
+  const gitignore = path.join(keyDir, '.gitignore');
+  if (!fs.existsSync(gitignore)) {
+    try {
+      fs.writeFileSync(gitignore, ignoreContent);
+    } catch (e) {
+      // Best-effort; don't fail agent creation
+    }
+  }
+  const dockerignore = path.join(keyDir, '.dockerignore');
+  if (!fs.existsSync(dockerignore)) {
+    try {
+      fs.writeFileSync(dockerignore, ignoreContent);
+    } catch (e) {
+      // Best-effort; don't fail agent creation
+    }
+  }
+}
+
 function ensurePassword(keyDirectory?: string): string {
   let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
   if (!password) {
@@ -622,6 +649,8 @@ export async function quickstart(options: QuickstartOptions): Promise<Quickstart
   }
 
   const password = ensurePassword(paths.keyDirectory);
+  // Write .gitignore/.dockerignore to protect key material from git/Docker
+  writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
   const algo = options?.algorithm || 'pq2025';
   await create({
     name,
@@ -652,6 +681,8 @@ export function quickstartSync(options: QuickstartOptions): QuickstartInfo {
   }
 
   const password = ensurePassword(paths.keyDirectory);
+  // Write .gitignore/.dockerignore to protect key material from git/Docker
+  writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
   const algo = options?.algorithm || 'pq2025';
   createSync({
     name,

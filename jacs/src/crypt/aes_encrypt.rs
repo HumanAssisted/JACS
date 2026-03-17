@@ -308,8 +308,9 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
 ///
 /// Resolution order (highest priority first):
 /// 1. `JACS_PRIVATE_KEY_PASSWORD` environment variable
-/// 2. OS keychain (if `keychain` feature is enabled and not disabled via config/env)
-/// 3. Error with helpful message
+/// 2. `JACS_PASSWORD_FILE` env var or legacy `./jacs_keys/.jacs_password` file
+/// 3. OS keychain (if `keychain` feature is enabled and not disabled via config/env)
+/// 4. Error with helpful message
 ///
 /// This is the single source of truth for password resolution. All encryption/decryption
 /// code should call this instead of reading the env var directly.
@@ -326,7 +327,41 @@ pub fn resolve_private_key_password() -> Result<String, JacsError> {
         return Ok(pw);
     }
 
-    // 2. Try OS keychain (if not disabled)
+    // 2. Try password file (JACS_PASSWORD_FILE or legacy .jacs_password)
+    if let Ok(Some(path_str)) = get_env_var("JACS_PASSWORD_FILE", false) {
+        let path = std::path::Path::new(path_str.trim());
+        if path.exists() {
+            if let Ok(contents) = std::fs::read_to_string(path) {
+                let pw = contents.trim_end_matches(|c| c == '\n' || c == '\r');
+                if !pw.is_empty() {
+                    tracing::debug!("Using password from JACS_PASSWORD_FILE");
+                    return Ok(pw.to_string());
+                }
+            }
+        }
+    }
+    // Legacy fallback: ./jacs_keys/.jacs_password
+    let legacy_path = std::path::Path::new("./jacs_keys/.jacs_password");
+    if legacy_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(legacy_path) {
+            let pw = contents.trim_end_matches(|c| c == '\n' || c == '\r');
+            if !pw.is_empty() {
+                tracing::debug!("Using password from legacy .jacs_password file");
+                // Warn about migration opportunity when keychain is available
+                if !is_keychain_disabled() && crate::keystore::keychain::is_available() {
+                    tracing::warn!(
+                        "A plaintext .jacs_password file was found at '{}'. \
+                         Consider migrating to the OS keychain with `jacs keychain set` \
+                         and then deleting the password file.",
+                        legacy_path.display()
+                    );
+                }
+                return Ok(pw.to_string());
+            }
+        }
+    }
+
+    // 3. Try OS keychain (if not disabled)
     if !is_keychain_disabled() {
         if let Ok(Some(pw)) = crate::keystore::keychain::get_password() {
             tracing::debug!("Using password from OS keychain");
@@ -334,12 +369,12 @@ pub fn resolve_private_key_password() -> Result<String, JacsError> {
         }
     }
 
-    // 3. Fail with helpful message
+    // 4. Fail with helpful message
     Err(JacsError::ConfigError(
         "No private key password available. Options:\n\
          1. Set JACS_PRIVATE_KEY_PASSWORD environment variable\n\
-         2. Use `jacs keychain set` to store in OS keychain\n\
-         3. Set JACS_PASSWORD_FILE to a file path containing the password"
+         2. Set JACS_PASSWORD_FILE to a file path containing the password\n\
+         3. Use `jacs keychain set` to store in OS keychain"
             .to_string(),
     ))
 }

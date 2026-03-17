@@ -144,6 +144,18 @@ fn ensure_cli_private_key_password() -> Result<(), String> {
             legacy_path.display(),
             CLI_PASSWORD_FILE_ENV
         );
+        // Warn about keychain migration opportunity
+        #[cfg(feature = "keychain")]
+        {
+            if jacs::keystore::keychain::is_available() {
+                eprintln!(
+                    "Warning: A plaintext password file '{}' was found. \
+                     Consider migrating to the OS keychain with `jacs keychain set` \
+                     and then deleting the password file.",
+                    legacy_path.display()
+                );
+            }
+        }
         return Ok(());
     }
 
@@ -2490,6 +2502,11 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     };
                     if password.trim().is_empty() {
                         eprintln!("Error: password cannot be empty.");
+                        process::exit(1);
+                    }
+                    // Validate password strength before storing
+                    if let Err(e) = jacs::crypt::aes_encrypt::check_password_strength(&password) {
+                        eprintln!("Error: {}", e);
                         process::exit(1);
                     }
                     keychain::store_password(&password)?;

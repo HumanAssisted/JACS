@@ -324,4 +324,85 @@ mod tests {
             assert!(result.is_err());
         }
     }
+
+    /// Mock-based unit tests using keyring's mock credential builder.
+    ///
+    /// These test the keyring Entry API directly (since the mock backend has
+    /// no persistence across separate Entry::new calls). They verify our
+    /// error mapping, store/get/delete logic, and overwrite behavior work
+    /// correctly without touching the real OS keychain.
+    #[cfg(feature = "keychain")]
+    mod mock_tests {
+        use keyring::{Entry, Error as KeyringError};
+
+        /// Create an Entry backed by the mock credential builder.
+        fn mock_entry(service: &str, user: &str) -> Entry {
+            let builder = keyring::mock::default_credential_builder();
+            Entry::new_with_credential(builder.build(None, service, user).unwrap())
+        }
+
+        #[test]
+        fn test_mock_store_and_get_roundtrip() {
+            let entry = mock_entry("jacs-test", "mock-user");
+            entry.set_password("TestPassword!123").unwrap();
+            let pw = entry.get_password().unwrap();
+            assert_eq!(pw, "TestPassword!123");
+        }
+
+        #[test]
+        fn test_mock_get_when_none_stored() {
+            let entry = mock_entry("jacs-test", "mock-none");
+            let result = entry.get_password();
+            assert!(matches!(result, Err(KeyringError::NoEntry)));
+        }
+
+        #[test]
+        fn test_mock_delete_after_store() {
+            let entry = mock_entry("jacs-test", "mock-delete");
+            entry.set_password("ToDelete!456").unwrap();
+            entry.delete_credential().unwrap();
+            let result = entry.get_password();
+            assert!(matches!(result, Err(KeyringError::NoEntry)));
+        }
+
+        #[test]
+        fn test_mock_delete_when_none_stored() {
+            let entry = mock_entry("jacs-test", "mock-del-empty");
+            let result = entry.delete_credential();
+            assert!(matches!(result, Err(KeyringError::NoEntry)));
+        }
+
+        #[test]
+        fn test_mock_overwrite() {
+            let entry = mock_entry("jacs-test", "mock-overwrite");
+            entry.set_password("PasswordA!123").unwrap();
+            entry.set_password("PasswordB!456").unwrap();
+            let pw = entry.get_password().unwrap();
+            assert_eq!(pw, "PasswordB!456");
+        }
+
+        #[test]
+        fn test_mock_error_injection() {
+            let entry = mock_entry("jacs-test", "mock-error");
+            let mock: &keyring::mock::MockCredential =
+                entry.get_credential().downcast_ref().unwrap();
+            mock.set_error(KeyringError::NoStorageAccess(Box::new(
+                std::io::Error::new(std::io::ErrorKind::PermissionDenied, "mock access denied"),
+            )));
+            let result = entry.set_password("test");
+            assert!(result.is_err());
+            // Error is cleared after one use
+            entry.set_password("test").unwrap();
+        }
+
+        #[test]
+        fn test_mock_agent_specific_entries_are_isolated() {
+            let entry_a = mock_entry("jacs-private-key", "agent-a");
+            let entry_b = mock_entry("jacs-private-key", "agent-b");
+            entry_a.set_password("PasswordA!123").unwrap();
+            entry_b.set_password("PasswordB!456").unwrap();
+            assert_eq!(entry_a.get_password().unwrap(), "PasswordA!123");
+            assert_eq!(entry_b.get_password().unwrap(), "PasswordB!456");
+        }
+    }
 }
