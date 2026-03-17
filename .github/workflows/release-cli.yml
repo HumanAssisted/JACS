@@ -130,6 +130,10 @@ jobs:
           $requiredFiles | Set-Content -Path $manifest
           tar -xf $archive -C $workspace --strip-components 1 -T $manifest
 
+      - name: Install system dependencies (D-Bus for keychain support)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.93'
