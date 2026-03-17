@@ -194,8 +194,6 @@
     "langchain.js",
     "langchain.d.ts",
     "langchain.js.map",
-    "deprecation.js",
-    "deprecation.d.ts",
     "jacs.*.node",
     "scripts/install-cli.js",
     "bin/"
