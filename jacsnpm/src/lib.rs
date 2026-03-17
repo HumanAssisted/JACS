@@ -170,6 +170,12 @@ impl JacsAgent {
         self.inner.load(config_path).to_napi()
     }
 
+    /// Load an agent from a configuration file and return canonical metadata (sync).
+    #[napi(js_name = "loadWithInfoSync")]
+    pub fn load_with_info_sync(&self, config_path: String) -> Result<String> {
+        self.inner.load_with_info(config_path).to_napi()
+    }
+
     /// Create an ephemeral in-memory agent (sync, blocks event loop).
     #[napi(js_name = "ephemeralSync")]
     pub fn ephemeral_sync(&self, algorithm: Option<String>) -> Result<String> {
@@ -445,6 +451,16 @@ impl JacsAgent {
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| a.load(config_path))),
+        })
+    }
+
+    /// Load an agent from a configuration file and return canonical metadata.
+    #[napi(js_name = "loadWithInfo", ts_return_type = "Promise<string>")]
+    pub fn load_with_info_async(&self, config_path: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.load_with_info(config_path))),
         })
     }
 

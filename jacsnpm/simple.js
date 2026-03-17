@@ -132,6 +132,17 @@ let globalAgent = null;
 let agentInfo = null;
 let agentPassword = null;
 let strictMode = false;
+function adoptClientState(client) {
+    const state = client;
+    globalAgent = state.agent ?? null;
+    agentInfo = state.info ? { ...state.info } : null;
+    agentPassword = state.privateKeyPassword ?? null;
+    strictMode = state._strict ?? strictMode;
+    if (!agentInfo) {
+        throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
+    }
+    return agentInfo;
+}
 function resolveStrict(explicit) {
     if (explicit !== undefined) {
         return explicit;
@@ -472,6 +483,33 @@ function verifyImpl(signedDocument, agent, isSync) {
             .catch((e) => makeFailure(e));
     }
 }
+/**
+ * Write .gitignore and .dockerignore in the key directory to prevent
+ * accidental exposure of private keys and password files.
+ */
+function writeKeyDirectoryIgnoreFiles(keyDir) {
+    const ignoreContent = '# JACS private key material -- do NOT commit or ship\n' +
+        '*.pem\n*.pem.enc\n.jacs_password\n*.key\n*.key.enc\n';
+    fs.mkdirSync(keyDir, { recursive: true });
+    const gitignore = path.join(keyDir, '.gitignore');
+    if (!fs.existsSync(gitignore)) {
+        try {
+            fs.writeFileSync(gitignore, ignoreContent);
+        }
+        catch (e) {
+            // Best-effort; don't fail agent creation
+        }
+    }
+    const dockerignore = path.join(keyDir, '.dockerignore');
+    if (!fs.existsSync(dockerignore)) {
+        try {
+            fs.writeFileSync(dockerignore, ignoreContent);
+        }
+        catch (e) {
+            // Best-effort; don't fail agent creation
+        }
+    }
+}
 function ensurePassword(keyDirectory) {
     let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
     if (!password) {
@@ -505,55 +543,17 @@ function ensurePassword(keyDirectory) {
  * @returns Promise<QuickstartInfo>
  */
 async function quickstart(options) {
-    const { name, domain, description } = requireQuickstartIdentity(options);
-    strictMode = resolveStrict(options?.strict);
-    const paths = resolveCreatePaths(options?.configPath);
-    const configPath = paths.configPath;
-    if (fs.existsSync(configPath)) {
-        const info = await load(configPath);
-        return toQuickstartInfo(info);
-    }
-    const password = ensurePassword(paths.keyDirectory);
-    const algo = options?.algorithm || 'pq2025';
-    await create({
-        name,
-        password,
-        algorithm: algo,
-        description,
-        domain,
-        configPath,
-        dataDirectory: paths.dataDirectory,
-        keyDirectory: paths.keyDirectory,
-    });
-    const loaded = await withTemporaryPasswordEnv(password, async () => load(configPath, { strict: strictMode }));
-    return toQuickstartInfo(loaded);
+    const { JacsClient } = require('./client');
+    const client = await JacsClient.quickstart(options);
+    return toQuickstartInfo(adoptClientState(client));
 }
 /**
  * Quickstart (sync variant, blocks event loop).
  */
 function quickstartSync(options) {
-    const { name, domain, description } = requireQuickstartIdentity(options);
-    strictMode = resolveStrict(options?.strict);
-    const paths = resolveCreatePaths(options?.configPath);
-    const configPath = paths.configPath;
-    if (fs.existsSync(configPath)) {
-        const info = loadSync(configPath);
-        return toQuickstartInfo(info);
-    }
-    const password = ensurePassword(paths.keyDirectory);
-    const algo = options?.algorithm || 'pq2025';
-    createSync({
-        name,
-        password,
-        algorithm: algo,
-        description,
-        domain,
-        configPath,
-        dataDirectory: paths.dataDirectory,
-        keyDirectory: paths.keyDirectory,
-    });
-    const loaded = withTemporaryPasswordEnvSync(password, () => loadSync(configPath, { strict: strictMode }));
-    return toQuickstartInfo(loaded);
+    const { JacsClient } = require('./client');
+    const client = JacsClient.quickstartSync(options);
+    return toQuickstartInfo(adoptClientState(client));
 }
 function resolveCreatePassword(options) {
     const p = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
@@ -606,37 +606,19 @@ function createSync(options) {
  * Loads an existing agent from a configuration file.
  */
 async function load(configPath, options) {
-    const resolvedConfigPath = resolveLoadPath(configPath, options);
-    const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
-    globalAgent = new index_1.JacsAgent();
-    agentPassword = resolvedPassword || null;
-    if (resolvedPassword) {
-        await withTemporaryPasswordEnv(resolvedPassword, async () => {
-            await globalAgent.load(resolvedConfigPath);
-        });
-    }
-    else {
-        await globalAgent.load(resolvedConfigPath);
-    }
-    return setLoadedAgentInfo(resolvedConfigPath);
+    const { JacsClient } = require('./client');
+    const client = new JacsClient({ strict: options?.strict });
+    await client.load(configPath, options);
+    return adoptClientState(client);
 }
 /**
  * Loads an existing agent (sync, blocks event loop).
  */
 function loadSync(configPath, options) {
-    const resolvedConfigPath = resolveLoadPath(configPath, options);
-    const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
-    globalAgent = new index_1.JacsAgent();
-    agentPassword = resolvedPassword || null;
-    if (resolvedPassword) {
-        withTemporaryPasswordEnvSync(resolvedPassword, () => {
-            globalAgent.loadSync(resolvedConfigPath);
-        });
-    }
-    else {
-        globalAgent.loadSync(resolvedConfigPath);
-    }
-    return setLoadedAgentInfo(resolvedConfigPath);
+    const { JacsClient } = require('./client');
+    const client = new JacsClient({ strict: options?.strict });
+    client.loadSync(configPath, options);
+    return adoptClientState(client);
 }
 /**
  * Verifies the currently loaded agent's integrity.

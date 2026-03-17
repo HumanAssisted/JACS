@@ -21,6 +21,7 @@ use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
@@ -150,6 +151,51 @@ impl<T> From<PoisonError<T>> for BindingCoreError {
 
 /// Result type for binding core operations.
 pub type BindingResult<T> = Result<T, BindingCoreError>;
+
+fn serialize_agent_info(info: &jacs::simple::AgentInfo) -> BindingResult<String> {
+    serde_json::to_string(info).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e))
+    })
+}
+
+fn resolve_existing_config_path(config_path: &str) -> BindingResult<String> {
+    let requested = Path::new(config_path);
+    let resolved = if requested.is_absolute() {
+        requested.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!(
+                    "Failed to determine current working directory: {}",
+                    e
+                ))
+            })?
+            .join(requested)
+    };
+
+    if !resolved.exists() {
+        return Err(BindingCoreError::agent_load(format!(
+            "Config file not found: {}",
+            resolved.display()
+        )));
+    }
+
+    Ok(normalize_path(&resolved).to_string_lossy().into_owned())
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
+}
 
 fn is_editable_level(level: &str) -> bool {
     matches!(level, "artifact" | "config")
@@ -288,6 +334,18 @@ impl AgentWrapper {
             .load_by_config(config_path)
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
         Ok("Agent loaded".to_string())
+    }
+
+    /// Load agent configuration and return canonical loaded-agent metadata.
+    pub fn load_with_info(&self, config_path: String) -> BindingResult<String> {
+        let resolved_config_path = resolve_existing_config_path(&config_path)?;
+        let mut agent = self.lock()?;
+        agent
+            .load_by_config(resolved_config_path.clone())
+            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
+        let info = jacs::simple::build_loaded_agent_info(&agent, &resolved_config_path)
+            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
+        serialize_agent_info(&info)
     }
 
     /// Re-root the internal file storage at `root`.

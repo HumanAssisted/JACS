@@ -256,32 +256,20 @@ function normalizeA2AVerificationResult(
   };
 }
 
-function extractAgentInfo(resolvedConfigPath: string): AgentInfo {
-  const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
-  const agentIdVersion = config.jacs_agent_id_and_version || '';
-  const [agentId, version] = agentIdVersion.split(':');
-  const dataDir = resolveConfigRelativePath(
-    resolvedConfigPath,
-    config.jacs_data_directory || './jacs_data',
-  );
-  const keyDir = resolveConfigRelativePath(
-    resolvedConfigPath,
-    config.jacs_key_directory || './jacs_keys',
-  );
-  const publicKeyFilename = config.jacs_agent_public_key_filename || 'jacs.public.pem';
-  const privateKeyFilename = config.jacs_agent_private_key_filename || 'jacs.private.pem.enc';
+function parseLoadedAgentInfo(resultJson: string): AgentInfo {
+  const info = JSON.parse(resultJson);
   return {
-    agentId: agentId || '',
-    name: config.name || '',
-    publicKeyPath: path.join(keyDir, publicKeyFilename),
-    configPath: resolvedConfigPath,
-    version: version || '',
-    algorithm: config.jacs_agent_key_algorithm || 'pq2025',
-    privateKeyPath: path.join(keyDir, privateKeyFilename),
-    dataDirectory: dataDir,
-    keyDirectory: keyDir,
-    domain: config.domain || '',
-    dnsRecord: config.dns_record || '',
+    agentId: info.agent_id || '',
+    name: info.name || '',
+    publicKeyPath: info.public_key_path || '',
+    configPath: info.config_path || '',
+    version: info.version || '',
+    algorithm: info.algorithm || 'pq2025',
+    privateKeyPath: info.private_key_path || '',
+    dataDirectory: info.data_directory || '',
+    keyDirectory: info.key_directory || '',
+    domain: info.domain || '',
+    dnsRecord: info.dns_record || '',
   };
 }
 
@@ -359,6 +347,29 @@ function ensurePassword(keyDirectory?: string): string {
   return password;
 }
 
+function writeKeyDirectoryIgnoreFiles(keyDir: string): void {
+  const ignoreContent =
+    '# JACS private key material -- do NOT commit or ship\n' +
+    '*.pem\n*.pem.enc\n.jacs_password\n*.key\n*.key.enc\n';
+  fs.mkdirSync(keyDir, { recursive: true });
+  const gitignore = path.join(keyDir, '.gitignore');
+  if (!fs.existsSync(gitignore)) {
+    try {
+      fs.writeFileSync(gitignore, ignoreContent);
+    } catch (_) {
+      // Best-effort; don't fail agent creation.
+    }
+  }
+  const dockerignore = path.join(keyDir, '.dockerignore');
+  if (!fs.existsSync(dockerignore)) {
+    try {
+      fs.writeFileSync(dockerignore, ignoreContent);
+    } catch (_) {
+      // Best-effort; don't fail agent creation.
+    }
+  }
+}
+
 // =============================================================================
 // JacsClient
 // =============================================================================
@@ -392,6 +403,7 @@ export class JacsClient {
     }
 
     const password = ensurePassword(paths.keyDirectory);
+    writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
     const algo = options?.algorithm || 'pq2025';
     await client.create({
       name,
@@ -421,6 +433,7 @@ export class JacsClient {
     }
 
     const password = ensurePassword(paths.keyDirectory);
+    writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
     const algo = options?.algorithm || 'pq2025';
     client.createSync({
       name,
@@ -503,13 +516,14 @@ export class JacsClient {
     this.privateKeyPassword = resolvedPassword || null;
     if (resolvedPassword) {
       await withTemporaryPasswordEnv(resolvedPassword, async () => {
-        await this.agent!.load(resolvedConfigPath);
+        const infoJson = await this.agent!.loadWithInfo(resolvedConfigPath);
+        this.info = parseLoadedAgentInfo(infoJson);
       });
     } else {
-      await this.agent.load(resolvedConfigPath);
+      const infoJson = await this.agent.loadWithInfo(resolvedConfigPath);
+      this.info = parseLoadedAgentInfo(infoJson);
     }
-    this.info = extractAgentInfo(resolvedConfigPath);
-    return this.info;
+    return this.info!;
   }
 
   loadSync(configPath?: string, options?: LoadOptions): AgentInfo {
@@ -526,13 +540,14 @@ export class JacsClient {
     this.privateKeyPassword = resolvedPassword || null;
     if (resolvedPassword) {
       withTemporaryPasswordEnvSync(resolvedPassword, () => {
-        this.agent!.loadSync(resolvedConfigPath);
+        const infoJson = this.agent!.loadWithInfoSync(resolvedConfigPath);
+        this.info = parseLoadedAgentInfo(infoJson);
       });
     } else {
-      this.agent.loadSync(resolvedConfigPath);
+      const infoJson = this.agent.loadWithInfoSync(resolvedConfigPath);
+      this.info = parseLoadedAgentInfo(infoJson);
     }
-    this.info = extractAgentInfo(resolvedConfigPath);
-    return this.info;
+    return this.info!;
   }
 
   async create(options: CreateAgentOptions): Promise<AgentInfo> {

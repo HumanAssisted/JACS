@@ -15,7 +15,7 @@ use crate::mime::mime_from_extension;
 use crate::schema::utils::{ValueExt, check_document_size};
 use serde_json::{Value, json};
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -97,6 +97,106 @@ pub(crate) fn resolve_strict(explicit: Option<bool>) -> bool {
 
 /// Mutex to prevent concurrent environment variable stomping during creation.
 pub(crate) static CREATE_MUTEX: Mutex<()> = Mutex::new(());
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn resolve_config_relative_path(config_path: &Path, candidate: &str) -> PathBuf {
+    let candidate_path = Path::new(candidate);
+    if candidate_path.is_absolute() {
+        normalize_path(candidate_path)
+    } else {
+        let config_dir = config_path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        normalize_path(&config_dir.join(candidate_path))
+    }
+}
+
+/// Build canonical `AgentInfo` for an agent that has already been loaded.
+///
+/// The returned filesystem paths are resolved against the config file location
+/// so higher-level wrappers do not need to reopen the config to rebuild
+/// metadata.
+pub fn build_loaded_agent_info(
+    agent: &crate::agent::Agent,
+    config_path: &str,
+) -> Result<AgentInfo, JacsError> {
+    let resolved_config_path = if Path::new(config_path).is_absolute() {
+        normalize_path(Path::new(config_path))
+    } else {
+        normalize_path(&std::env::current_dir()?.join(config_path))
+    };
+
+    let agent_value = agent
+        .get_value()
+        .cloned()
+        .ok_or(JacsError::AgentNotLoaded)?;
+    let config = agent.config.as_ref();
+
+    let key_directory = resolve_config_relative_path(
+        &resolved_config_path,
+        config
+            .and_then(|cfg| cfg.jacs_key_directory().as_deref())
+            .unwrap_or("./jacs_keys"),
+    );
+    let data_directory = resolve_config_relative_path(
+        &resolved_config_path,
+        config
+            .and_then(|cfg| cfg.jacs_data_directory().as_deref())
+            .unwrap_or("./jacs_data"),
+    );
+    let public_key_filename = config
+        .and_then(|cfg| cfg.jacs_agent_public_key_filename().as_deref())
+        .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME);
+    let private_key_filename = config
+        .and_then(|cfg| cfg.jacs_agent_private_key_filename().as_deref())
+        .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME);
+
+    Ok(AgentInfo {
+        agent_id: agent_value["jacsId"].as_str().unwrap_or("").to_string(),
+        name: agent_value["name"].as_str().unwrap_or("").to_string(),
+        public_key_path: key_directory
+            .join(public_key_filename)
+            .to_string_lossy()
+            .into_owned(),
+        config_path: resolved_config_path.to_string_lossy().into_owned(),
+        version: agent_value["jacsVersion"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        algorithm: config
+            .and_then(|cfg| cfg.jacs_agent_key_algorithm().as_deref())
+            .unwrap_or("")
+            .to_string(),
+        private_key_path: key_directory
+            .join(private_key_filename)
+            .to_string_lossy()
+            .into_owned(),
+        data_directory: data_directory.to_string_lossy().into_owned(),
+        key_directory: key_directory.to_string_lossy().into_owned(),
+        domain: agent_value
+            .get("jacsAgentDomain")
+            .and_then(|v| v.as_str())
+            .or_else(|| agent_value.get("domain").and_then(|v| v.as_str()))
+            .or_else(|| config.and_then(|cfg| cfg.jacs_agent_domain().as_deref()))
+            .unwrap_or("")
+            .to_string(),
+        dns_record: String::new(),
+    })
+}
 
 /// Extracts file attachments from a JACS document.
 pub(crate) fn extract_attachments(doc: &Value) -> Vec<Attachment> {
@@ -686,6 +786,19 @@ impl SimpleAgent {
             config_path: Some(path.to_string()),
             strict: resolve_strict(strict),
         })
+    }
+
+    /// Returns canonical metadata for the currently loaded agent.
+    pub fn loaded_info(&self) -> Result<AgentInfo, JacsError> {
+        let config_path = self
+            .config_path
+            .as_deref()
+            .ok_or(JacsError::AgentNotLoaded)?
+            .to_string();
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        build_loaded_agent_info(&agent, &config_path)
     }
 
     /// Creates an ephemeral in-memory agent. No config file, no directories,

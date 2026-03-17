@@ -287,6 +287,10 @@ class JacsClient:
                     f.write(password)
                 os.chmod(pw_path, 0o600)
 
+        from .simple import _write_key_directory_ignore_files
+
+        _write_key_directory_ignore_files(key_dir)
+
         algo = algorithm or "pq2025"
         _SimpleAgent.create_agent(
             name=name,
@@ -351,46 +355,14 @@ class JacsClient:
                 "Run 'jacs create' or call jacs.create() to create a new agent."
             )
 
+        resolved_config_path = os.path.abspath(config_path)
         self._private_key_password = (
-            _resolve_private_key_password(config_path, password) or None
+            _resolve_private_key_password(resolved_config_path, password) or None
         )
         with _temporary_private_key_password(self._private_key_password):
-            self._agent.load(config_path)
+            info_json = self._agent.load_with_info(resolved_config_path)
 
-        with open(config_path, "r") as f:
-            config = json.load(f)
-
-        id_ver = config.get("jacs_agent_id_and_version", "")
-        parts = id_ver.split(":") if id_ver else ["", ""]
-        agent_id = parts[0] if parts else ""
-        version = parts[1] if len(parts) > 1 else ""
-        resolved_config_path = os.path.abspath(config_path)
-        key_dir = _resolve_config_relative_path(
-            resolved_config_path,
-            config.get("jacs_key_directory", "./jacs_keys"),
-        )
-        data_dir = _resolve_config_relative_path(
-            resolved_config_path,
-            config.get("jacs_data_directory", "./jacs_data"),
-        )
-        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
-        private_key_file = config.get(
-            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
-        )
-
-        self._agent_info = AgentInfo(
-            agent_id=agent_id,
-            version=version,
-            name=config.get("name"),
-            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
-            config_path=resolved_config_path,
-            public_key_path=os.path.join(key_dir, public_key_file),
-            private_key_path=os.path.join(key_dir, private_key_file),
-            data_directory=data_dir,
-            key_directory=key_dir,
-            domain=config.get("domain", ""),
-            dns_record=config.get("dns_record", ""),
-        )
+        self._agent_info = AgentInfo.from_dict(json.loads(info_json))
 
     def _require_agent(self):
         if self._agent is None:

@@ -613,8 +613,6 @@ pub fn quickstart(
     algorithm: Option<&str>,
     config_path: Option<&str>,
 ) -> Result<(SimpleAgent, AgentInfo), JacsError> {
-    use super::core::{DEFAULT_PRIVATE_KEY_FILENAME, DEFAULT_PUBLIC_KEY_FILENAME};
-
     let config = config_path.unwrap_or("./jacs.config.json");
 
     // If config already exists, load the existing agent
@@ -625,82 +623,13 @@ pub fn quickstart(
         );
         let agent = SimpleAgent::load(Some(config), None)?;
 
-        // Build AgentInfo from the loaded agent
-        let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire agent lock: {}", e),
-        })?;
-        let agent_value = inner
-            .get_value()
-            .cloned()
-            .ok_or(JacsError::AgentNotLoaded)?;
-        let agent_id = agent_value["jacsId"].as_str().unwrap_or("").to_string();
-        let version = agent_value["jacsVersion"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let loaded_name = agent_value
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or(name)
-            .to_string();
-        let loaded_domain = agent_value
-            .get("jacsAgentDomain")
-            .and_then(|v| v.as_str())
-            .or_else(|| agent_value.get("domain").and_then(|v| v.as_str()))
-            .unwrap_or(domain)
-            .to_string();
-        let (algo, key_dir, data_dir, private_key_filename, public_key_filename) =
-            if let Some(ref cfg) = inner.config {
-                let a = cfg
-                    .jacs_agent_key_algorithm()
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_string();
-                let k = cfg
-                    .jacs_key_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_keys")
-                    .to_string();
-                let d = cfg
-                    .jacs_data_directory()
-                    .as_deref()
-                    .unwrap_or("./jacs_data")
-                    .to_string();
-                let priv_name = cfg
-                    .jacs_agent_private_key_filename()
-                    .as_deref()
-                    .unwrap_or(DEFAULT_PRIVATE_KEY_FILENAME)
-                    .to_string();
-                let pub_name = cfg
-                    .jacs_agent_public_key_filename()
-                    .as_deref()
-                    .unwrap_or(DEFAULT_PUBLIC_KEY_FILENAME)
-                    .to_string();
-                (a, k, d, priv_name, pub_name)
-            } else {
-                (
-                    String::new(),
-                    "./jacs_keys".to_string(),
-                    "./jacs_data".to_string(),
-                    DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
-                    DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
-                )
-            };
-        drop(inner);
-
-        let info = AgentInfo {
-            agent_id,
-            name: loaded_name,
-            public_key_path: format!("{}/{}", key_dir, public_key_filename),
-            config_path: config.to_string(),
-            version,
-            algorithm: algo,
-            private_key_path: format!("{}/{}", key_dir, private_key_filename),
-            data_directory: data_dir,
-            key_directory: key_dir,
-            domain: loaded_domain,
-            dns_record: String::new(),
-        };
+        let mut info = agent.loaded_info()?;
+        if info.name.is_empty() {
+            info.name = name.to_string();
+        }
+        if info.domain.is_empty() {
+            info.domain = domain.to_string();
+        }
 
         return Ok((agent, info));
     }

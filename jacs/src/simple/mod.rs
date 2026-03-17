@@ -61,6 +61,7 @@ pub mod core;
 pub mod diagnostics;
 pub mod types;
 pub use core::SimpleAgent;
+pub use core::build_loaded_agent_info;
 pub use diagnostics::diagnostics;
 pub use types::*;
 

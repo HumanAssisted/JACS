@@ -151,6 +151,18 @@ def _get_agent() -> JacsAgent:
     return _global_agent
 
 
+def _adopt_client_state(client) -> AgentInfo:
+    """Copy the loaded state from JacsClient into simple.py module globals."""
+    global _global_agent, _agent_info, _agent_password, _strict
+    _global_agent = client._agent
+    _agent_info = client._agent_info
+    _agent_password = client._private_key_password
+    _strict = client._strict
+    if _agent_info is None:
+        raise AgentNotLoadedError("No agent loaded on this JACS module instance.")
+    return _agent_info
+
+
 def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
     if os.path.isabs(candidate):
         return candidate
@@ -464,82 +476,19 @@ def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> Ag
         agent = jacs.load("./jacs.config.json", strict=True)
         print(f"Loaded: {agent.name}")
     """
-    global _global_agent, _agent_info, _agent_password, _strict
+    from .client import JacsClient
 
-    _strict = _resolve_strict(strict)
-
-    # Use default config path if not provided
-    if config_path is None:
-        config_path = "./jacs.config.json"
-
-    logger.debug("load() called with config_path=%s", config_path)
-
-    # Check if config exists
-    if not os.path.exists(config_path):
-        logger.error("Config file not found: %s", config_path)
-        raise ConfigError(
-            f"Config file not found: {config_path}\n"
-            "Run 'jacs create' or call jacs.create() to create a new agent."
-        )
+    cfg_path = config_path or "./jacs.config.json"
+    logger.debug("load() called with config_path=%s", cfg_path)
 
     try:
-        # Create a new JacsAgent instance
-        _global_agent = JacsAgent()
-        _agent_password = _resolve_private_key_password(config_path)
-
-        # Load the agent from config
-        with _temporary_private_key_password(_agent_password):
-            _global_agent.load(config_path)
-
-        # Read config to get agent info
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-
-        # Extract agent ID from config
-        agent_id_version = config.get("jacs_agent_id_and_version", "")
-        parts = agent_id_version.split(":") if agent_id_version else ["", ""]
-        agent_id = parts[0] if parts else ""
-        version = parts[1] if len(parts) > 1 else ""
-
-        config_abs = os.path.abspath(config_path)
-        key_dir = _resolve_config_relative_path(
-            config_abs, config.get("jacs_key_directory", "./jacs_keys")
-        )
-        data_dir = _resolve_config_relative_path(
-            config_abs, config.get("jacs_data_directory", "./jacs_data")
-        )
-        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
-        private_key_file = config.get(
-            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
-        )
-        _agent_info = AgentInfo(
-            agent_id=agent_id,
-            version=version,
-            name=config.get("name"),
-            public_key_hash="",  # Will be populated after verification
-            created_at="",
-            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
-            config_path=config_abs,
-            public_key_path=os.path.join(key_dir, public_key_file),
-            private_key_path=os.path.join(key_dir, private_key_file),
-            data_directory=data_dir,
-            key_directory=key_dir,
-            domain=config.get("domain", ""),
-            dns_record=config.get("dns_record", ""),
-        )
-
-        logger.info("Agent loaded: id=%s, name=%s", agent_id, config.get("name"))
-        return _agent_info
-
-    except FileNotFoundError:
-        logger.error("Config file not found: %s", config_path)
-        raise ConfigError(f"Config file not found: {config_path}")
-    except json.JSONDecodeError as e:
-        logger.error("Invalid config file: %s", e)
-        raise ConfigError(f"Invalid config file: {e}")
+        client = JacsClient(config_path=cfg_path, strict=strict)
+        info = _adopt_client_state(client)
+        logger.info("Agent loaded: id=%s, name=%s", info.agent_id, info.name)
+        return info
     except Exception as e:
         logger.error("Failed to load agent: %s", e)
-        raise JacsError(f"Failed to load agent: {e}")
+        raise
 
 
 class _EphemeralAgentAdapter:
@@ -744,66 +693,18 @@ def quickstart(
     Returns:
         AgentInfo with agent_id, name, algorithm, version
     """
-    global _global_agent, _agent_info, _strict
-
-    if not isinstance(name, str) or not name.strip():
-        raise ConfigError("quickstart() requires a non-empty 'name'.")
-    if not isinstance(domain, str) or not domain.strip():
-        raise ConfigError("quickstart() requires a non-empty 'domain'.")
-
-    _strict = _resolve_strict(strict)
-    cfg_path = config_path or "./jacs.config.json"
+    from .client import JacsClient
 
     try:
-        if os.path.exists(cfg_path):
-            # Load existing agent
-            logger.info("quickstart: found existing config at %s, loading", cfg_path)
-            return load(cfg_path, strict=strict)
-
-        # No existing config -- create a new persistent agent
-        logger.info("quickstart: no config at %s, creating new agent", cfg_path)
-
-        data_dir, key_dir = _resolve_create_directories(cfg_path)
-
-        # Ensure password is available
-        password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-        if not password:
-            import secrets
-            import string
-            # Generate a secure password meeting JACS requirements
-            chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
-            password = (
-                secrets.choice(string.ascii_uppercase)
-                + secrets.choice(string.ascii_lowercase)
-                + secrets.choice(string.digits)
-                + secrets.choice("!@#$%^&*()-_=+")
-                + ''.join(secrets.choice(chars) for _ in range(28))
-            )
-            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
-            if persist_password:
-                os.makedirs(key_dir, exist_ok=True)
-                pw_path = os.path.join(key_dir, ".jacs_password")
-                with open(pw_path, "w", encoding="utf-8") as f:
-                    f.write(password)
-                os.chmod(pw_path, 0o600)
-                logger.info("quickstart: generated password saved to %s", pw_path)
-
-        # Write .gitignore/.dockerignore to protect key material from git/Docker
-        _write_key_directory_ignore_files(key_dir)
-
-        algo = algorithm or "pq2025"
-        return create(
+        client = JacsClient.quickstart(
             name=name,
-            password=password,
-            algorithm=algo,
-            data_directory=data_dir,
-            key_directory=key_dir,
-            description=description or "",
             domain=domain,
-            config_path=cfg_path,
+            description=description,
+            algorithm=algorithm,
+            config_path=config_path,
             strict=strict,
         )
-
+        return _adopt_client_state(client)
     except ImportError:
         raise JacsError(
             "Quickstart requires the full JACS native module. "

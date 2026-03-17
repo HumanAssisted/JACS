@@ -75,6 +75,11 @@ impl JacsAgent {
         self.inner.load(config_path).to_py()
     }
 
+    /// Load agent configuration and return canonical loaded-agent metadata JSON.
+    fn load_with_info(&self, config_path: String) -> PyResult<String> {
+        self.inner.load_with_info(config_path).to_py()
+    }
+
     /// Sign an external agent's document with this agent's registration signature.
     fn sign_agent(
         &self,

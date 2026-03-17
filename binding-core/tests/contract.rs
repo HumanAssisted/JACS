@@ -26,6 +26,41 @@
 
 use jacs_binding_core::AgentWrapper;
 use serde_json::{Value, json};
+use serial_test::serial;
+use std::path::{Path, PathBuf};
+
+struct CwdGuard {
+    original: PathBuf,
+}
+
+impl CwdGuard {
+    fn change_to(path: &Path) -> Self {
+        let original = std::env::current_dir().expect("current dir should be available");
+        std::env::set_current_dir(path).expect("should change current dir");
+        Self { original }
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original);
+    }
+}
+
+fn canonical_display(path: &Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn assert_same_path(actual: &Value, expected: &Path) {
+    let actual_path = actual.as_str().expect("path value should be a string");
+    assert_eq!(
+        canonical_display(Path::new(actual_path)),
+        canonical_display(expected)
+    );
+}
 
 // =============================================================================
 // Helper: create an ephemeral wrapper for tests
@@ -45,6 +80,51 @@ fn create_ephemeral_wrapper_rsa() -> AgentWrapper {
         .ephemeral(Some("rsa-pss"))
         .expect("ephemeral(rsa-pss) should succeed");
     wrapper
+}
+
+#[test]
+#[serial]
+fn test_load_with_info_returns_canonical_metadata() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config_dir = tmp.path().join("nested");
+    let data_dir = config_dir.join("jacs_data");
+    let key_dir = config_dir.join("jacs_keys");
+    let config_path = config_dir.join("jacs.config.json");
+
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name("binding-agent-wrapper")
+        .password("TestP@ss123!#")
+        .algorithm("ring-Ed25519")
+        .data_directory(data_dir.to_str().unwrap())
+        .key_directory(key_dir.to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .domain("binding-wrapper.example.com")
+        .build();
+
+    let (_agent, created_info) =
+        jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
+
+    let _cwd_guard = CwdGuard::change_to(tmp.path());
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+    }
+
+    let wrapper = AgentWrapper::new();
+    let info_json = wrapper
+        .load_with_info("./nested/jacs.config.json".to_string())
+        .expect("load_with_info should succeed");
+    let info: Value = serde_json::from_str(&info_json).expect("info should be valid JSON");
+
+    assert_eq!(info["agent_id"], created_info.agent_id);
+    assert_eq!(info["version"], created_info.version);
+    assert_eq!(info["algorithm"], created_info.algorithm);
+    assert_same_path(&info["config_path"], &config_path);
+    assert_same_path(&info["data_directory"], &data_dir);
+    assert_same_path(&info["key_directory"], &key_dir);
+
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
 }
 
 #[cfg(feature = "pq-tests")]

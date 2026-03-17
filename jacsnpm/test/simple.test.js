@@ -328,6 +328,51 @@ describe('JACS Simple API', function() {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
+
+    (simpleExists ? it : it.skip)('should not reopen config in JS during simple load when password is already resolved', async function () {
+      this.timeout(30000);
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-native-load-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
+
+      try {
+        process.chdir(tmpDir);
+        await freshSimple.quickstart({
+          name: 'simple-native-load',
+          domain: 'simple-native.example.com',
+          algorithm: 'ring-Ed25519',
+          configPath: path.join('native', 'jacs.config.json'),
+        });
+
+        const configPath = path.join(tmpDir, 'native', 'jacs.config.json');
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          if (path.resolve(String(filePath)) === path.resolve(configPath)) {
+            throw new Error('simple load() should not reopen config in JS');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const info = await freshSimple.load(configPath);
+          expect(info.agentId).to.be.a('string').and.not.empty;
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+          freshSimple.reset();
+        }
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('getAgentInfo', () => {

@@ -11,17 +11,19 @@ fn config_path_loader_resolves_relative_directories_from_config_location() -> an
     let (config_path, workspace) = prepare_temp_workspace();
     let _password = ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
 
-    let agent = jacs_mcp::load_agent_from_config_path(&config_path)?;
+    let (agent, info) = jacs_mcp::load_agent_from_config_path_with_info(&config_path)?;
     let _ = agent.get_agent_json()?;
 
     assert_eq!(
-        PathBuf::from(get_env_var("JACS_DATA_DIRECTORY", false)?.expect("data dir override")),
+        PathBuf::from(info["data_directory"].as_str().expect("data dir")),
         workspace.join("jacs_data")
     );
     assert_eq!(
-        PathBuf::from(get_env_var("JACS_KEY_DIRECTORY", false)?.expect("key dir override")),
+        PathBuf::from(info["key_directory"].as_str().expect("key dir")),
         workspace.join("jacs_keys")
     );
+    assert!(get_env_var("JACS_DATA_DIRECTORY", false)?.is_none());
+    assert!(get_env_var("JACS_KEY_DIRECTORY", false)?.is_none());
 
     cleanup_workspace(&workspace);
     Ok(())
@@ -37,14 +39,11 @@ fn env_loader_resolves_relative_directories_from_jacs_config() -> anyhow::Result
     let agent = jacs_mcp::load_agent_from_config_env()?;
     let _ = agent.get_agent_json()?;
 
-    assert_eq!(
-        PathBuf::from(get_env_var("JACS_DATA_DIRECTORY", false)?.expect("data dir override")),
-        workspace.join("jacs_data")
-    );
-    assert_eq!(
-        PathBuf::from(get_env_var("JACS_KEY_DIRECTORY", false)?.expect("key dir override")),
-        workspace.join("jacs_keys")
-    );
+    let (_agent, info) = jacs_mcp::load_agent_from_config_path_with_info(&config_path)?;
+    assert_eq!(PathBuf::from(info["data_directory"].as_str().expect("data dir")), workspace.join("jacs_data"));
+    assert_eq!(PathBuf::from(info["key_directory"].as_str().expect("key dir")), workspace.join("jacs_keys"));
+    assert!(get_env_var("JACS_DATA_DIRECTORY", false)?.is_none());
+    assert!(get_env_var("JACS_KEY_DIRECTORY", false)?.is_none());
 
     cleanup_workspace(&workspace);
     Ok(())
