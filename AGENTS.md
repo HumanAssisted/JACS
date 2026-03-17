@@ -80,16 +80,18 @@ The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order 
 
 ### Storage backend crates
 
-These have their own version track (e.g. `0.1.0`). Bump their package `version`
-only when they have actual changes. **Always** keep their `jacs` dependency
-version in sync with the main release.
+**IMPORTANT:** These depend on the `jacs` core crate. When you bump the main
+JACS version, you **must also bump the storage crate versions** (at least a
+patch bump) because their `jacs` dep version changes and crates.io won't let
+you re-publish the same version. `make release-jacs-storage` will skip them
+if the tag already exists.
 
 | File | Fields |
 |------|--------|
-| `jacs-duckdb/Cargo.toml` | `version` (own track), `jacs = { version = "X.Y.Z" }` |
-| `jacs-redb/Cargo.toml` | `version` (own track), `jacs = { version = "X.Y.Z" }` |
-| `jacs-surrealdb/Cargo.toml` | `version` (own track), `jacs = { version = "X.Y.Z" }` |
-| `jacs-postgresql/Cargo.toml` | `version` (own track), `jacs = { version = "X.Y.Z" }` |
+| `jacs-duckdb/Cargo.toml` | `version` (bump!), `jacs = { version = "X.Y.Z" }` |
+| `jacs-redb/Cargo.toml` | `version` (bump!), `jacs = { version = "X.Y.Z" }` |
+| `jacs-surrealdb/Cargo.toml` | `version` (bump!), `jacs = { version = "X.Y.Z" }` |
+| `jacs-postgresql/Cargo.toml` | `version` (bump!), `jacs = { version = "X.Y.Z" }` |
 
 ### JACS Repo — Non-Rust package manifests
 

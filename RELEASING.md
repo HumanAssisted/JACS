@@ -112,6 +112,21 @@ For crates.io, if a crate already published but a later one failed, just re-run
 
 ### Storage backend crates
 
-These have independent version tracks. Bump their `version` field only when
-they have actual changes. Always keep their `jacs` dependency version in sync
-with the main release version.
+**IMPORTANT:** Storage backend crates (`jacs-duckdb`, `jacs-redb`, `jacs-surrealdb`,
+`jacs-postgresql`) depend on the `jacs` core crate. When you bump the main JACS
+version, you **must also bump the storage crate versions** (at least a patch bump)
+because:
+
+1. Their `jacs = { version = "X.Y.Z" }` dependency changes
+2. crates.io won't let you re-publish the same version
+3. `make release-jacs-storage` will skip them if the tag already exists
+
+So on every main version bump: update their `jacs` dep version **and** bump their
+own package version (e.g. `0.1.0` -> `0.1.1`).
+
+| File | What to bump |
+|------|-------------|
+| `jacs-duckdb/Cargo.toml` | `version` + `jacs` dep version |
+| `jacs-redb/Cargo.toml` | `version` + `jacs` dep version |
+| `jacs-surrealdb/Cargo.toml` | `version` + `jacs` dep version |
+| `jacs-postgresql/Cargo.toml` | `version` + `jacs` dep version |
