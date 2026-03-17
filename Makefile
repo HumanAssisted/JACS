@@ -8,6 +8,7 @@
         publish-jacs-storage publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
         release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-all release-everything release-delete-tags \
         retry-jacspy retry-jacsnpm retry-cli \
+        bump-patch bump-minor bump-major \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
         install-githooks regen-cross-lang-fixtures \
         help
@@ -171,6 +172,16 @@ install-githooks:
 # ============================================================================
 # VERSION INFO
 # ============================================================================
+
+# Bump version across all files: make bump-patch / bump-minor / bump-major
+bump-patch:
+	./scripts/bump-version.sh patch
+
+bump-minor:
+	./scripts/bump-version.sh minor
+
+bump-major:
+	./scripts/bump-version.sh major
 
 # Show all detected versions
 versions:
@@ -459,6 +470,11 @@ retry-cli:
 
 help:
 	@echo "JACS Makefile Commands"
+	@echo ""
+	@echo "VERSION BUMP:"
+	@echo "  make bump-patch      Bump patch version (0.9.6 -> 0.9.7) across all files"
+	@echo "  make bump-minor      Bump minor version (0.9.6 -> 0.10.0) across all files"
+	@echo "  make bump-major      Bump major version (0.9.6 -> 1.0.0) across all files"
 	@echo ""
 	@echo "VERSION INFO:"
 	@echo "  make versions        Show all detected versions from source files"

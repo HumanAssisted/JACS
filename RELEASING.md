@@ -55,11 +55,21 @@ make check-versions  # fail if versions don't match
 
 ### 1. Bump versions
 
-Update all files listed above. Then verify:
+Use the bump script to update all files automatically:
 
 ```bash
-make check-versions
-cargo generate-lockfile
+make bump-patch   # 0.9.6 -> 0.9.7
+make bump-minor   # 0.9.6 -> 0.10.0
+make bump-major   # 0.9.6 -> 1.0.0
+```
+
+This updates all Cargo.toml, package.json, pyproject.toml, contract JSON,
+README footers, CHANGELOG, and storage backend crates. It also runs
+`cargo generate-lockfile` and `make check-versions` automatically.
+
+Then verify the compile:
+
+```bash
 RUSTFLAGS="-D warnings" cargo check -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
 ```
 

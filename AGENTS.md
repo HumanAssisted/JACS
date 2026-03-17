@@ -20,6 +20,11 @@ When bumping the JACS version, **all** of the following locations must be update
 ### Makefile commands
 
 ```bash
+# Version bump (updates ALL files automatically, including storage crates)
+make bump-patch      # 0.9.6 -> 0.9.7
+make bump-minor      # 0.9.6 -> 0.10.0
+make bump-major      # 0.9.6 -> 1.0.0
+
 make versions        # show all detected versions from source files
 make check-versions  # fail if any main-track versions don't match
 
