@@ -62,18 +62,13 @@ fn test_create_returns_wrapper_and_info_json() {
     let tmp = tempfile::TempDir::new().unwrap();
     let _cwd_guard = CwdGuard::change_to(tmp.path());
 
+    // Post ENV_SECURITY_PRD: create_with_params uses KeyPaths from params,
+    // not env vars. Only password is still needed from env for the create() path.
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
-        std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent.private.pem.enc");
-        std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent.public.pem");
     }
 
     let result = SimpleAgentWrapper::create("test-agent", None, Some("ed25519"));
-
-    unsafe {
-        std::env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
-        std::env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
-    }
 
     let (wrapper, info_json) = result.expect("create should succeed");
 

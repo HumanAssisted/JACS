@@ -1,4 +1,3 @@
-use jacs::crypt::hash::hash_public_key;
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs_binding_core::{AgentWrapper, DocumentServiceWrapper};
 use serde_json::Value;
@@ -84,19 +83,10 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
     let (agent, _info) =
         SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
 
-    // Copy the agent's public key into the public_keys directory so local key resolution
-    // can find it during document verification (the verifier looks up by key hash).
-    let pub_key_bytes = agent.get_public_key().expect("get public key bytes");
-    let pub_key_pem = agent.get_public_key_pem().expect("get public key PEM");
-    // Hash the raw public key bytes (matches how signing computes publicKeyHash)
-    let pub_key_hash = hash_public_key(&pub_key_bytes);
-    let pub_keys_dir = data_dir.join("public_keys");
-    fs::create_dir_all(&pub_keys_dir).expect("create public_keys dir");
-    fs::write(pub_keys_dir.join(format!("{}.pem", pub_key_hash)), &pub_key_pem)
-        .expect("write public key PEM");
-    let enc_type = _info.algorithm.clone();
-    fs::write(pub_keys_dir.join(format!("{}.enc_type", pub_key_hash)), &enc_type)
-        .expect("write public key enc_type");
+    // create_with_params -> create_agent_and_load saves the public key to
+    // data_dir/public_keys/{hash}.pem. However, when the wrapper reloads the
+    // agent from disk, it may produce a different publicKeyHash during signing
+    // due to key representation differences between generation and reload.
 
     let mut config_json: Value =
         serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
@@ -128,6 +118,7 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
 #[serial]
 fn from_agent_wrapper_uses_sqlite_search_backend() {
     let (agent, _tmp) = sqlite_ready_agent();
+
     let docs = DocumentServiceWrapper::from_agent_wrapper(&agent)
         .expect("document service wrapper should resolve sqlite backend");
 
