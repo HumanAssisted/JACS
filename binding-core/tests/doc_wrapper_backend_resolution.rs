@@ -1,3 +1,4 @@
+use jacs::crypt::hash::hash_public_key;
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs_binding_core::{AgentWrapper, DocumentServiceWrapper};
 use serde_json::Value;
@@ -8,9 +9,15 @@ const TEST_PASSWORD: &str = "TestP@ss123!#";
 
 fn agent_with_storage(storage: &str) -> (AgentWrapper, tempfile::TempDir) {
     let tmp = tempfile::TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    // Canonicalize to resolve macOS /var -> /private/var symlink so that
+    // paths written into the config match the paths the agent sees at runtime.
+    let tmp_canonical = tmp
+        .path()
+        .canonicalize()
+        .unwrap_or_else(|_| tmp.path().to_path_buf());
+    let data_dir = tmp_canonical.join("jacs_data");
+    let key_dir = tmp_canonical.join("jacs_keys");
+    let config_path = tmp_canonical.join("jacs.config.json");
 
     let params = CreateAgentParams::builder()
         .name("binding-doc-wrapper-backend-test")
@@ -40,6 +47,8 @@ fn agent_with_storage(storage: &str) -> (AgentWrapper, tempfile::TempDir) {
 
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+        // Restrict key resolution to local-only so verification never attempts remote fetch
+        std::env::set_var("JACS_KEY_RESOLUTION", "local");
     }
 
     let wrapper = AgentWrapper::new();
@@ -52,9 +61,15 @@ fn agent_with_storage(storage: &str) -> (AgentWrapper, tempfile::TempDir) {
 
 fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
     let tmp = tempfile::TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    // Canonicalize to resolve macOS /var -> /private/var symlink so that
+    // paths written into the config match the paths the agent sees at runtime.
+    let tmp_canonical = tmp
+        .path()
+        .canonicalize()
+        .unwrap_or_else(|_| tmp.path().to_path_buf());
+    let data_dir = tmp_canonical.join("jacs_data");
+    let key_dir = tmp_canonical.join("jacs_keys");
+    let config_path = tmp_canonical.join("jacs.config.json");
 
     let params = CreateAgentParams::builder()
         .name("binding-doc-wrapper-sqlite")
@@ -66,8 +81,22 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
         .default_storage("fs")
         .build();
 
-    let (_agent, _info) =
+    let (agent, _info) =
         SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
+
+    // Copy the agent's public key into the public_keys directory so local key resolution
+    // can find it during document verification (the verifier looks up by key hash).
+    let pub_key_bytes = agent.get_public_key().expect("get public key bytes");
+    let pub_key_pem = agent.get_public_key_pem().expect("get public key PEM");
+    // Hash the raw public key bytes (matches how signing computes publicKeyHash)
+    let pub_key_hash = hash_public_key(&pub_key_bytes);
+    let pub_keys_dir = data_dir.join("public_keys");
+    fs::create_dir_all(&pub_keys_dir).expect("create public_keys dir");
+    fs::write(pub_keys_dir.join(format!("{}.pem", pub_key_hash)), &pub_key_pem)
+        .expect("write public key PEM");
+    let enc_type = _info.algorithm.clone();
+    fs::write(pub_keys_dir.join(format!("{}.enc_type", pub_key_hash)), &enc_type)
+        .expect("write public key enc_type");
 
     let mut config_json: Value =
         serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
@@ -83,6 +112,8 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
 
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+        // Restrict key resolution to local-only so verification never attempts remote fetch
+        std::env::set_var("JACS_KEY_RESOLUTION", "local");
     }
 
     let wrapper = AgentWrapper::new();

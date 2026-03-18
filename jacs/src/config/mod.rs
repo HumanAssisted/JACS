@@ -902,6 +902,25 @@ pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, JacsErr
     Ok(config)
 }
 
+/// Load configuration from a config file only, **without** applying env/jenv overrides.
+///
+/// This is the isolation-safe counterpart of `load_config_12factor`: the caller
+/// already constructed a pristine config file and does not want ambient JACS_*
+/// environment variables to override it.  Used by standalone verification
+/// (Issue 008) so that concurrent callers cannot interfere through shared
+/// global jenv state.
+///
+/// # Arguments
+/// * `config_path` - Path to a JSON config file (required, must exist)
+pub fn load_config_file_only(config_path: &str) -> Result<Config, JacsError> {
+    let mut config = Config::with_defaults();
+    let file_config = Config::from_file(config_path)?;
+    config.merge(file_config);
+    // Deliberately skip apply_env_overrides() — the config file is authoritative.
+    info!("Loaded config (file-only, no env overrides): {}", config);
+    Ok(config)
+}
+
 /// Load configuration with 12-Factor compliance, with optional config file that may not exist.
 ///
 /// Unlike `load_config_12factor`, this function does not fail if the config file doesn't exist.

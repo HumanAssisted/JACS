@@ -410,20 +410,33 @@ impl SimpleAgent {
         use crate::storage::jenv;
 
         // Resolve password: params > env var (via canonical resolver) > error
+        // If resolution fails, propagate the detailed error describing which
+        // sources were tried (env var, password file, keychain) rather than
+        // discarding it with unwrap_or_default() (Issue 016).
         let password = if !params.password.is_empty() {
             params.password.clone()
         } else {
-            // Try the canonical resolver (env, password file, keychain)
-            crate::crypt::aes_encrypt::resolve_private_key_password(None).unwrap_or_default()
+            match crate::crypt::aes_encrypt::resolve_private_key_password(None) {
+                Ok(pw) if !pw.is_empty() => pw,
+                Ok(_) => {
+                    return Err(JacsError::ConfigError(
+                        "Password is required for agent creation. \
+                        Pass it in CreateAgentParams.password, or set JACS_PRIVATE_KEY_PASSWORD, \
+                        JACS_PASSWORD_FILE, or configure the OS keychain."
+                            .to_string(),
+                    ));
+                }
+                Err(e) => {
+                    return Err(JacsError::ConfigError(format!(
+                        "Password is required for agent creation. \
+                        Pass it in CreateAgentParams.password, or set JACS_PRIVATE_KEY_PASSWORD, \
+                        JACS_PASSWORD_FILE, or configure the OS keychain. \
+                        Resolution failed: {}",
+                        e
+                    )));
+                }
+            }
         };
-
-        if password.is_empty() {
-            return Err(JacsError::ConfigError(
-                "Password is required for agent creation. \
-                Either pass it in CreateAgentParams.password or set the JACS_PRIVATE_KEY_PASSWORD environment variable."
-                    .to_string(),
-            ));
-        }
 
         let algorithm = if params.algorithm.is_empty() {
             "pq2025".to_string()
@@ -488,18 +501,33 @@ impl SimpleAgent {
             "JACS_AGENT_PUBLIC_KEY_FILENAME",
         ];
         // Save previous values so we can restore them on exit (success or error).
-        let saved_jenv: Vec<(&str, Option<String>)> = JENV_CONFIG_KEYS
+        // We distinguish "had a jenv override" from "value came from process env
+        // passthrough" to avoid manufacturing sticky overrides (Issue 014).
+        let saved_jenv: Vec<(&str, bool, Option<String>)> = JENV_CONFIG_KEYS
             .iter()
-            .map(|&key| (key, jenv::get_env_var(key, false).ok().flatten()))
+            .map(|&key| {
+                let had_override = jenv::has_jenv_override(key);
+                let value = if had_override {
+                    jenv::get_env_var(key, false).ok().flatten()
+                } else {
+                    None
+                };
+                (key, had_override, value)
+            })
             .collect();
         // Drop guard that restores jenv state even if we return early with `?`.
-        struct JenvRestoreGuard<'a>(Vec<(&'a str, Option<String>)>);
+        struct JenvRestoreGuard<'a>(Vec<(&'a str, bool, Option<String>)>);
         impl<'a> Drop for JenvRestoreGuard<'a> {
             fn drop(&mut self) {
-                for (key, prev) in &self.0 {
-                    if let Some(val) = prev {
-                        let _ = jenv::set_env_var(key, val);
+                for (key, had_override, prev) in &self.0 {
+                    if *had_override {
+                        if let Some(val) = prev {
+                            let _ = jenv::set_env_var(key, val);
+                        } else {
+                            let _ = jenv::clear_env_var(key);
+                        }
                     } else {
+                        // No jenv override existed before; clear so env passthrough resumes.
                         let _ = jenv::clear_env_var(key);
                     }
                 }

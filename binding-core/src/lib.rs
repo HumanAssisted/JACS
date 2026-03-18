@@ -383,6 +383,18 @@ impl AgentWrapper {
         })
     }
 
+    /// Load agent configuration from file only, **without** applying env/jenv
+    /// overrides. This is the isolation-safe counterpart of [`load`] — the
+    /// caller constructs a pristine config file and does not want ambient JACS_*
+    /// environment variables to pollute it (Issue 008).
+    pub fn load_file_only(&self, config_path: String) -> BindingResult<String> {
+        let mut agent = self.lock()?;
+        agent
+            .load_by_config_file_only(config_path)
+            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
+        Ok("Agent loaded (file-only)".to_string())
+    }
+
     /// Load agent configuration and return canonical loaded-agent metadata.
     pub fn load_with_info(&self, config_path: String) -> BindingResult<String> {
         let resolved_config_path = resolve_existing_config_path(&config_path)?;
@@ -2164,69 +2176,53 @@ pub fn verify_document_standalone(
     std::fs::write(&config_path, &config_json)
         .map_err(|e| BindingCoreError::generic(format!("Failed to write temp config: {}", e)))?;
 
-    // Isolate standalone verification from ambient env var pollution.
-    // Several test suites set JACS_* vars globally; load_config_12factor would
-    // otherwise override our temp config and silently point key lookups elsewhere.
+    // Issue 008: Use load_file_only to bypass env/jenv overrides entirely.
+    // This eliminates the 16-key JenvGuard save/clear/restore pattern.
+    // The config file is authoritative — no ambient JACS_* vars can pollute it.
     //
-    // We use jenv (thread-safe env store) to clear and restore vars instead of
-    // unsafe std::env::set_var/remove_var. This eliminates all unsafe env
-    // mutation from the standalone verification path.
+    // JACS_KEY_RESOLUTION is the only runtime-read jenv key we still need to
+    // manage, since key_resolution_order() reads it at verification time.
     use jacs::storage::jenv;
 
-    struct JenvGuard {
-        saved: Vec<(&'static str, Option<String>)>,
+    // Minimal guard for JACS_KEY_RESOLUTION only (Issue 014-safe).
+    struct KeyResolutionGuard {
+        had_override: bool,
+        prev_value: Option<String>,
     }
-    impl Drop for JenvGuard {
+    impl Drop for KeyResolutionGuard {
         fn drop(&mut self) {
-            for (key, prev) in &self.saved {
-                if let Some(val) = prev {
-                    let _ = jacs::storage::jenv::set_env_var(key, val);
+            if self.had_override {
+                if let Some(ref val) = self.prev_value {
+                    let _ = jacs::storage::jenv::set_env_var("JACS_KEY_RESOLUTION", val);
                 } else {
-                    let _ = jacs::storage::jenv::clear_env_var(key);
+                    let _ = jacs::storage::jenv::clear_env_var("JACS_KEY_RESOLUTION");
                 }
+            } else {
+                let _ = jacs::storage::jenv::clear_env_var("JACS_KEY_RESOLUTION");
             }
         }
     }
-
-    let isolated_keys: [&'static str; 16] = [
-        "JACS_USE_SECURITY",
-        "JACS_DATA_DIRECTORY",
-        "JACS_KEY_DIRECTORY",
-        "JACS_AGENT_PRIVATE_KEY_FILENAME",
-        "JACS_AGENT_PUBLIC_KEY_FILENAME",
-        "JACS_AGENT_KEY_ALGORITHM",
-        "JACS_AGENT_ID_AND_VERSION",
-        "JACS_DEFAULT_STORAGE",
-        "JACS_AGENT_DOMAIN",
-        "JACS_DNS_VALIDATE",
-        "JACS_DNS_STRICT",
-        "JACS_DNS_REQUIRED",
-        "JACS_DATABASE_URL",
-        "JACS_DATABASE_MAX_CONNECTIONS",
-        "JACS_DATABASE_MIN_CONNECTIONS",
-        "JACS_DATABASE_CONNECT_TIMEOUT_SECS",
-    ];
-    let mut saved: Vec<(&'static str, Option<String>)> = Vec::new();
-    for key in isolated_keys {
-        saved.push((key, jenv::get_env_var(key, false).ok().flatten()));
-        let _ = jenv::clear_env_var(key);
-    }
-    saved.push((
-        "JACS_KEY_RESOLUTION",
+    let kr_had_override = jenv::has_jenv_override("JACS_KEY_RESOLUTION");
+    let kr_prev = if kr_had_override {
         jenv::get_env_var("JACS_KEY_RESOLUTION", false)
             .ok()
-            .flatten(),
-    ));
+            .flatten()
+    } else {
+        None
+    };
     if let Some(kr) = key_resolution {
         let _ = jenv::set_env_var("JACS_KEY_RESOLUTION", kr);
     } else {
         let _ = jenv::clear_env_var("JACS_KEY_RESOLUTION");
     }
-    let _env_guard = JenvGuard { saved };
+    let _kr_guard = KeyResolutionGuard {
+        had_override: kr_had_override,
+        prev_value: kr_prev,
+    };
 
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();
-        wrapper.load(config_path.to_string_lossy().to_string())?;
+        wrapper.load_file_only(config_path.to_string_lossy().to_string())?;
         let _ = wrapper.set_storage_root(PathBuf::from(&effective_storage_root));
 
         if explicit_local_key_available {
