@@ -12,6 +12,14 @@ use crate::error::JacsError;
 pub const SERVICE_NAME: &str = "jacs-private-key";
 pub const DEFAULT_USER: &str = "default";
 
+/// Returns `true` when the OS keychain has been explicitly disabled via
+/// `JACS_KEYCHAIN_BACKEND=disabled` (case-insensitive).
+fn is_runtime_disabled() -> bool {
+    std::env::var("JACS_KEYCHAIN_BACKEND")
+        .map(|v| v.eq_ignore_ascii_case("disabled"))
+        .unwrap_or(false)
+}
+
 // =============================================================================
 // Feature-enabled implementation
 // =============================================================================
@@ -42,6 +50,9 @@ mod inner {
     }
 
     pub fn store_password(password: &str) -> Result<(), JacsError> {
+        if is_runtime_disabled() {
+            return Ok(()); // silently skip when keychain is disabled
+        }
         if password.is_empty() {
             return Err(JacsError::ConfigError(
                 "Cannot store an empty password in the OS keychain.".to_string(),
@@ -62,6 +73,9 @@ mod inner {
     }
 
     pub fn get_password() -> Result<Option<String>, JacsError> {
+        if is_runtime_disabled() {
+            return Ok(None);
+        }
         let entry = make_entry(DEFAULT_USER)?;
         match entry.get_password() {
             Ok(pw) => Ok(Some(pw)),
@@ -98,6 +112,9 @@ mod inner {
     }
 
     pub fn is_available() -> bool {
+        if is_runtime_disabled() {
+            return false;
+        }
         // Check if we can create an entry without error
         Entry::new(SERVICE_NAME, "__jacs_availability_check__").is_ok()
     }

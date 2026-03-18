@@ -129,6 +129,8 @@ jobs:
 
       - name: Run CLI integration tests
         run: make test-jacs-cli
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
   quick-binding-core:
     name: Quick binding-core (ubuntu)
@@ -239,14 +241,18 @@ jobs:
 
       - name: Run full jacs tests
         run: |
+          cargo build -p jacs-cli
           cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
           cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
-          cargo build -p jacs-cli
           cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run jacs-mcp tests (without attestation)
         run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run in-process backend crate tests (release)
         run: |
@@ -294,11 +300,13 @@ jobs:
 
       - name: Run nightly full Rust tests
         run: |
+          cargo build -p jacs-cli
           cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
           cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
-          cargo build -p jacs-cli
           cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run jacs-mcp tests (without attestation)
         run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose

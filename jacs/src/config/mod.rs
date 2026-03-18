@@ -743,6 +743,44 @@ impl Config {
         // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
     }
 
+    /// Publish config values to environment variables so that legacy code which
+    /// reads `JACS_*` env vars directly (e.g. `FsEncryptedStore::key_paths()`)
+    /// sees the values loaded from the config file.
+    ///
+    /// Only sets a variable when the config has a `Some` value **and** the
+    /// variable is not already present in the environment (env always wins).
+    ///
+    /// # Safety
+    /// Uses `std::env::set_var` which is unsafe in Rust 2024 edition because
+    /// mutating the environment is not thread-safe.  Call this early in the
+    /// process (e.g. right after config loading in a CLI) before spawning
+    /// worker threads.
+    pub unsafe fn publish_to_env(&self) {
+        fn set_if_absent(key: &str, value: &Option<String>) {
+            if let Some(v) = value {
+                if std::env::var_os(key).is_none() {
+                    unsafe { std::env::set_var(key, v) };
+                }
+            }
+        }
+        set_if_absent("JACS_USE_SECURITY", &self.jacs_use_security);
+        set_if_absent("JACS_DATA_DIRECTORY", &self.jacs_data_directory);
+        set_if_absent("JACS_KEY_DIRECTORY", &self.jacs_key_directory);
+        set_if_absent(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            &self.jacs_agent_private_key_filename,
+        );
+        set_if_absent(
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+            &self.jacs_agent_public_key_filename,
+        );
+        set_if_absent("JACS_AGENT_KEY_ALGORITHM", &self.jacs_agent_key_algorithm);
+        set_if_absent("JACS_AGENT_ID_AND_VERSION", &self.jacs_agent_id_and_version);
+        set_if_absent("JACS_DEFAULT_STORAGE", &self.jacs_default_storage);
+        set_if_absent("JACS_AGENT_DOMAIN", &self.jacs_agent_domain);
+        set_if_absent("JACS_KEYCHAIN_BACKEND", &self.jacs_keychain_backend);
+    }
+
     /// Create a Config with only hardcoded defaults (no env var lookups).
     /// This is useful for testing or when you want explicit control.
     pub fn with_defaults() -> Self {
