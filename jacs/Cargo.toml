@@ -241,5 +241,17 @@ name = "attestation_benchmarks"
 harness = false
 required-features = ["attestation"]
 
+[[example]]
+name = "a2a_agent_example"
+required-features = ["a2a"]
+
+[[example]]
+name = "a2a_complete_example"
+required-features = ["a2a"]
+
+[[example]]
+name = "a2a_simple_example"
+required-features = ["a2a"]
+
 [package.metadata.dev-requirements]
 cargo-audit = "0.22.1"

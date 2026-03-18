@@ -256,7 +256,7 @@ impl Agent {
             (raw, ks)
         } else {
             let decrypted =
-                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                crate::agent::decrypt_with_agent_password(binding.expose_secret(), self.password())
                     .map_err(|e| {
                         format!("Byte signing failed: could not decrypt private key: {}", e)
                     })?;
@@ -356,15 +356,17 @@ impl KeyManager for Agent {
                 };
                 (raw, ks)
             } else {
-                let decrypted =
-                    crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
-                        .map_err(|e| {
-                            format!(
-                                "Document signing failed: could not decrypt private key. \
+                let decrypted = crate::agent::decrypt_with_agent_password(
+                    binding.expose_secret(),
+                    self.password(),
+                )
+                .map_err(|e| {
+                    format!(
+                        "Document signing failed: could not decrypt private key. \
                                 Check that the password is correct. Error: {}",
-                                e
-                            )
-                        })?;
+                        e
+                    )
+                })?;
                 (
                     decrypted.as_slice().to_vec(),
                     Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
@@ -452,7 +454,7 @@ impl KeyManager for Agent {
             (raw, ks)
         } else {
             let decrypted =
-                crate::crypt::aes_encrypt::decrypt_private_key_secure(binding.expose_secret())
+                crate::agent::decrypt_with_agent_password(binding.expose_secret(), self.password())
                     .map_err(|e| {
                         format!(
                             "Batch signing failed: could not decrypt private key. \
@@ -532,9 +534,12 @@ impl KeyManager for Agent {
                 );
 
                 // Check if strict mode is enabled
-                let strict = std::env::var("JACS_REQUIRE_EXPLICIT_ALGORITHM")
-                    .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-                    .unwrap_or(false);
+                let strict =
+                    crate::storage::jenv::get_env_var("JACS_REQUIRE_EXPLICIT_ALGORITHM", false)
+                        .ok()
+                        .flatten()
+                        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                        .unwrap_or(false);
                 if strict {
                     return Err(
                         "Signature verification requires explicit signingAlgorithm field. \

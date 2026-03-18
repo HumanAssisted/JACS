@@ -415,11 +415,21 @@ fn is_keychain_disabled() -> bool {
 /// The password is resolved via `resolve_private_key_password()` which checks
 /// the env var, OS keychain, and password file in priority order.
 pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, JacsError> {
-    // Password is required and must be non-empty
     let password = resolve_private_key_password(None)?;
+    encrypt_private_key_with_password(private_key, &password)
+}
 
+/// Encrypt a private key with an explicit password (agent-scoped, no global state).
+///
+/// Use this variant when you have a resolved password (e.g., from `Agent.password()`).
+/// The zero-arg `encrypt_private_key()` remains for backward compatibility and resolves
+/// the password from env/jenv/keychain.
+pub fn encrypt_private_key_with_password(
+    private_key: &[u8],
+    password: &str,
+) -> Result<Vec<u8>, JacsError> {
     // Validate password strength
-    validate_password(&password)?;
+    validate_password(password)?;
 
     // Generate a random salt
     let mut salt = [0u8; PBKDF2_SALT_SIZE];
@@ -503,13 +513,18 @@ pub fn decrypt_private_key(encrypted_key_with_salt_and_nonce: &[u8]) -> Result<V
 pub fn decrypt_private_key_secure(
     encrypted_key_with_salt_and_nonce: &[u8],
 ) -> Result<ZeroizingVec, JacsError> {
-    // Password is required and must be non-empty
-    // Note: We don't validate password strength during decryption because:
-    // 1. The password must match whatever was used during encryption
-    // 2. Existing keys may have been encrypted with older/weaker passwords
-    // Password strength is validated only during encrypt_private_key()
     let password = resolve_private_key_password(None)?;
+    decrypt_private_key_secure_with_password(encrypted_key_with_salt_and_nonce, &password)
+}
 
+/// Decrypt a private key with an explicit password (agent-scoped, no global state).
+///
+/// Use this variant when you have a resolved password (e.g., from `Agent.password()`).
+/// The zero-arg `decrypt_private_key_secure()` remains for backward compatibility.
+pub fn decrypt_private_key_secure_with_password(
+    encrypted_key_with_salt_and_nonce: &[u8],
+    password: &str,
+) -> Result<ZeroizingVec, JacsError> {
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
             "Encrypted private key file is corrupted or truncated: expected at least {} bytes, got {} bytes. \

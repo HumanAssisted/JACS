@@ -72,7 +72,12 @@ mod tests {
     fn load_with_info_returns_resolved_directories() {
         let _guard = test_lock().lock().unwrap();
         let tmp = tempfile::TempDir::new().unwrap();
-        let config_dir = tmp.path().join("nested");
+        // Canonicalize to resolve macOS /var -> /private/var symlink
+        let tmp_canonical = tmp
+            .path()
+            .canonicalize()
+            .unwrap_or_else(|_| tmp.path().to_path_buf());
+        let config_dir = tmp_canonical.join("nested");
         let data_dir = config_dir.join("jacs_data");
         let key_dir = config_dir.join("jacs_keys");
         let config_path = config_dir.join("jacs.config.json");

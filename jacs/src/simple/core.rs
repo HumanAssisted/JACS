@@ -90,7 +90,9 @@ pub(crate) fn resolve_strict(explicit: Option<bool>) -> bool {
     if let Some(s) = explicit {
         return s;
     }
-    std::env::var("JACS_STRICT_MODE")
+    crate::storage::jenv::get_env_var("JACS_STRICT_MODE", false)
+        .ok()
+        .flatten()
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false)
 }
@@ -474,6 +476,37 @@ impl SimpleAgent {
         // Set non-password config in jenv for code that still reads from there
         // (e.g., MultiStorage::default_new(), Agent::new(), config loading).
         // These are directory/storage config, not secrets, so jenv is acceptable.
+        //
+        // IMPORTANT: We save previous values and restore them after agent creation
+        // to avoid polluting the global jenv store for concurrent callers (Issue 011).
+        const JENV_CONFIG_KEYS: [&str; 6] = [
+            "JACS_DATA_DIRECTORY",
+            "JACS_KEY_DIRECTORY",
+            "JACS_AGENT_KEY_ALGORITHM",
+            "JACS_DEFAULT_STORAGE",
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+        ];
+        // Save previous values so we can restore them on exit (success or error).
+        let saved_jenv: Vec<(&str, Option<String>)> = JENV_CONFIG_KEYS
+            .iter()
+            .map(|&key| (key, jenv::get_env_var(key, false).ok().flatten()))
+            .collect();
+        // Drop guard that restores jenv state even if we return early with `?`.
+        struct JenvRestoreGuard<'a>(Vec<(&'a str, Option<String>)>);
+        impl<'a> Drop for JenvRestoreGuard<'a> {
+            fn drop(&mut self) {
+                for (key, prev) in &self.0 {
+                    if let Some(val) = prev {
+                        let _ = jenv::set_env_var(key, val);
+                    } else {
+                        let _ = jenv::clear_env_var(key);
+                    }
+                }
+            }
+        }
+        let _jenv_guard = JenvRestoreGuard(saved_jenv);
+
         jenv::set_env_var("JACS_DATA_DIRECTORY", &params.data_directory)?;
         jenv::set_env_var("JACS_KEY_DIRECTORY", &params.key_directory)?;
         jenv::set_env_var("JACS_AGENT_KEY_ALGORITHM", &algorithm)?;
@@ -486,8 +519,10 @@ impl SimpleAgent {
             "JACS_AGENT_PUBLIC_KEY_FILENAME",
             DEFAULT_PUBLIC_KEY_FILENAME,
         )?;
-        // Password flows through Agent.password, NOT through env/jenv
-        jenv::set_env_var("JACS_PRIVATE_KEY_PASSWORD", &password)?;
+        // Password flows through Agent.password (set below), NOT through env/jenv.
+        // Do NOT set JACS_PRIVATE_KEY_PASSWORD in jenv — it would race under
+        // concurrent multi-agent creation. The password reaches encrypt/decrypt
+        // via Agent.password -> FsEncryptedStore.password -> _with_password fns.
 
         // Create a minimal agent JSON
         let description = if params.description.is_empty() {

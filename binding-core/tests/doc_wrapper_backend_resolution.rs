@@ -30,6 +30,8 @@ fn agent_with_storage(storage: &str) -> (AgentWrapper, tempfile::TempDir) {
         serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
             .expect("parse generated config");
     config_json["jacs_default_storage"] = Value::String(storage.to_string());
+    // Disable DNS validation so the test works offline (no network key fetch)
+    config_json["jacs_dns_validate"] = Value::Bool(false);
     fs::write(
         &config_path,
         serde_json::to_string_pretty(&config_json).expect("serialize config"),
@@ -71,6 +73,8 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
         serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
             .expect("parse generated config");
     config_json["jacs_default_storage"] = Value::String("rusqlite".to_string());
+    // Disable DNS validation so the test works offline (no network key fetch)
+    config_json["jacs_dns_validate"] = Value::Bool(false);
     fs::write(
         &config_path,
         serde_json::to_string_pretty(&config_json).expect("serialize config"),

@@ -1,7 +1,7 @@
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::SecurityTraits;
-use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+// encrypt/decrypt now use _with_password variants via agent-scoped resolution
 use crate::error::JacsError;
 use crate::rate_limit::RateLimiter;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -160,7 +160,7 @@ impl FileLoader for Agent {
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
         // Use secure decryption - ZeroizingVec will be zeroized when it goes out of scope
-        let key_vec = decrypt_private_key_secure(borrowed_key)?;
+        let key_vec = super::decrypt_with_agent_password(borrowed_key, self.password.as_deref())?;
 
         self.save_private_key(&absolute_private_key_path, key_vec.as_slice())?;
 
@@ -591,7 +591,7 @@ impl FileLoader for Agent {
         })?;
         if filename.ends_with(".enc") {
             // Use secure decryption - the ZeroizingVec will be zeroized after we extract the bytes
-            let decrypted = decrypt_private_key_secure(&loaded_key).map_err(|e| {
+            let decrypted = super::decrypt_with_agent_password(&loaded_key, self.password.as_deref()).map_err(|e| {
                 format!(
                     "Failed to decrypt private key from '{}': {}. \
                     Verify that JACS_PRIVATE_KEY_PASSWORD is set to the correct password used during key generation.",
@@ -613,15 +613,20 @@ impl FileLoader for Agent {
         private_key: &[u8],
     ) -> Result<String, JacsError> {
         // SECURITY: Require encryption password. Never write private keys unencrypted.
-        // Use the canonical resolver which checks explicit, env var, password file, and keychain.
-        crate::crypt::aes_encrypt::resolve_private_key_password(None).map_err(|_| {
-            JacsError::from(
-                "SECURITY: Refusing to save private key without encryption. \
+        // Use agent-scoped password if available, otherwise resolve from env/jenv/keychain.
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())
+                .map_err(|_| {
+                    JacsError::from(
+                        "SECURITY: Refusing to save private key without encryption. \
                 Set JACS_PRIVATE_KEY_PASSWORD, JACS_PASSWORD_FILE, or configure OS keychain.",
-            )
-        })?;
+                    )
+                })?;
 
-        let encrypted_key = encrypt_private_key(private_key)?;
+        let encrypted_key = crate::crypt::aes_encrypt::encrypt_private_key_with_password(
+            private_key,
+            &resolved_pw,
+        )?;
         let final_path = if !full_filepath.ends_with(".enc") {
             format!("{}.enc", full_filepath)
         } else {

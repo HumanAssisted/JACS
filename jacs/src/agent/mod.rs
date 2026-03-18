@@ -16,7 +16,7 @@ use crate::storage::MultiStorage;
 
 use crate::config::{Config, load_config_12factor, load_config_12factor_optional};
 
-use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+use crate::crypt::aes_encrypt::decrypt_private_key_secure;
 use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
@@ -27,7 +27,7 @@ use crate::dns::bootstrap::verify_registry_registration_sync;
 use crate::dns::bootstrap::{pubkey_digest_hex, verify_pubkey_via_dns_or_embedded};
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
-use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
+use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt};
 use crate::time_utils;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
@@ -243,6 +243,15 @@ pub fn use_secret(key: &[u8]) -> Result<ZeroizingVec, JacsError> {
     decrypt_private_key_secure(key)
 }
 
+/// Decrypt a private key using an agent-scoped password if available.
+pub(crate) fn decrypt_with_agent_password(
+    key: &[u8],
+    password: Option<&str>,
+) -> Result<ZeroizingVec, JacsError> {
+    let resolved = crate::crypt::aes_encrypt::resolve_private_key_password(password)?;
+    crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(key, &resolved)
+}
+
 #[derive(Debug)]
 pub struct Agent {
     /// the JSONSchema used
@@ -307,19 +316,7 @@ impl Agent {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let config = Some(load_config_12factor_optional(None)?);
-        let key_paths =
-            config.as_ref().map(|c| KeyPaths {
-                key_directory: c
-                    .jacs_key_directory()
-                    .clone()
-                    .unwrap_or_else(|| "./jacs_keys".to_string()),
-                private_key_filename: c.jacs_agent_private_key_filename().clone().unwrap_or_else(
-                    || crate::simple::core::DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
-                ),
-                public_key_filename: c.jacs_agent_public_key_filename().clone().unwrap_or_else(
-                    || crate::simple::core::DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
-                ),
-            });
+        let key_paths = config.as_ref().map(Self::key_paths_from_config);
         Ok(Self {
             schema,
             value: None,
@@ -396,6 +393,38 @@ impl Agent {
         self.key_paths = Some(paths);
     }
 
+    /// Build `KeyPaths` from a `Config`.
+    ///
+    /// Used both at construction time (before `self` exists) and after config
+    /// updates.  Centralises the default-value logic so every call site stays
+    /// in sync.
+    fn key_paths_from_config(c: &Config) -> KeyPaths {
+        KeyPaths {
+            key_directory: c
+                .jacs_key_directory()
+                .clone()
+                .unwrap_or_else(|| "./jacs_keys".to_string()),
+            private_key_filename: c
+                .jacs_agent_private_key_filename()
+                .clone()
+                .unwrap_or_else(|| crate::simple::core::DEFAULT_PRIVATE_KEY_FILENAME.to_string()),
+            public_key_filename: c
+                .jacs_agent_public_key_filename()
+                .clone()
+                .unwrap_or_else(|| crate::simple::core::DEFAULT_PUBLIC_KEY_FILENAME.to_string()),
+        }
+    }
+
+    /// Rebuild `self.key_paths` from `self.config`.
+    ///
+    /// Must be called after every `self.config = Some(...)` assignment so that
+    /// `build_fs_store()` picks up the new key directory (Issue 012).
+    fn refresh_key_paths_from_config(&mut self) {
+        if let Some(ref c) = self.config {
+            self.key_paths = Some(Self::key_paths_from_config(c));
+        }
+    }
+
     /// Get the agent-scoped password, if set.
     pub fn password(&self) -> Option<&str> {
         self.password.as_deref()
@@ -412,12 +441,18 @@ impl Agent {
         crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())
     }
 
-    /// Build an `FsEncryptedStore` from the agent's `key_paths` (if set),
-    /// falling back to `KeyPaths::from_env()` for backward compatibility.
+    /// Build an `FsEncryptedStore` from the agent's `key_paths` and `password`.
     pub fn build_fs_store(&self) -> Result<FsEncryptedStore, JacsError> {
         match self.key_paths.as_ref() {
-            Some(paths) => Ok(FsEncryptedStore::new(paths.clone())),
-            None => FsEncryptedStore::from_env(),
+            Some(paths) => Ok(FsEncryptedStore::with_password(
+                paths.clone(),
+                self.password.clone(),
+            )),
+            None => Err(JacsError::ConfigError(
+                "Agent has no key_paths set. Ensure the agent was created with a config \
+                that includes jacs_key_directory, or call set_key_paths() before key operations."
+                    .to_string(),
+            )),
         }
     }
 
@@ -460,6 +495,7 @@ impl Agent {
                 )
             })?,
         );
+        self.refresh_key_paths_from_config();
         debug!("load_by_id config {:?}", self.config);
 
         let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
@@ -616,6 +652,9 @@ impl Agent {
         };
 
         self.config = Some(config);
+        // Refresh key_paths from the new config so build_fs_store() uses the
+        // correct key directory, not stale paths from construction time (Issue 012).
+        self.refresh_key_paths_from_config();
         let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
             "fs".to_string()
         } else {
@@ -735,7 +774,12 @@ impl Agent {
         public_key: Vec<u8>,
         key_algorithm: &str,
     ) -> Result<(), JacsError> {
-        let private_key_encrypted = encrypt_private_key(&private_key)?;
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let private_key_encrypted = crate::crypt::aes_encrypt::encrypt_private_key_with_password(
+            &private_key,
+            &resolved_pw,
+        )?;
         // Box the Vec<u8> before creating SecretBox
         self.private_key = Some(SecretBox::new(Box::new(private_key_encrypted)));
         self.public_key = Some(public_key);
@@ -1512,10 +1556,16 @@ impl Agent {
     pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), String> {
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
-            let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
+            let schema_value =
+                crate::schema::utils::resolve_schema_with_config(path, self.config.as_ref())
+                    .map_err(|e| e.to_string())?;
+            let retriever = match self.config.as_ref() {
+                Some(c) => EmbeddedSchemaResolver::with_config(c),
+                None => EmbeddedSchemaResolver::new(),
+            };
             let schema = Validator::options()
                 .with_draft(Draft::Draft7)
-                .with_retriever(EmbeddedSchemaResolver::new())
+                .with_retriever(retriever)
                 .build(&schema_value)
                 .map_err(|e| e.to_string())?;
             schemas.insert(path.clone(), schema);
@@ -1880,19 +1930,7 @@ impl AgentBuilder {
         let document_schemas = Arc::new(Mutex::new(HashMap::new()));
 
         // Build key paths from config
-        let key_paths =
-            config.as_ref().map(|c| KeyPaths {
-                key_directory: c
-                    .jacs_key_directory()
-                    .clone()
-                    .unwrap_or_else(|| "./jacs_keys".to_string()),
-                private_key_filename: c.jacs_agent_private_key_filename().clone().unwrap_or_else(
-                    || crate::simple::core::DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
-                ),
-                public_key_filename: c.jacs_agent_public_key_filename().clone().unwrap_or_else(
-                    || crate::simple::core::DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
-                ),
-            });
+        let key_paths = config.as_ref().map(Agent::key_paths_from_config);
 
         // Create the agent
         let mut agent = Agent {

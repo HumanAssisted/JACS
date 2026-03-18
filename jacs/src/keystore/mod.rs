@@ -115,18 +115,18 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
 /// or an error describing what the user needs to do. This is the single
 /// policy-enforcement point used by `save_private_key` to ensure keys are
 /// never written unencrypted.
-pub fn require_encryption_password() -> Result<(), JacsError> {
-    crate::crypt::aes_encrypt::resolve_private_key_password(None)?;
+pub fn require_encryption_password(explicit_password: Option<&str>) -> Result<(), JacsError> {
+    crate::crypt::aes_encrypt::resolve_private_key_password(explicit_password)?;
     Ok(())
 }
 
 // Default filesystem-encrypted backend placeholder.
 // Current code paths in Agent/crypt already implement FS behavior; this scaffold
 // exists for future refactors. For now these functions are unimplemented.
-use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+// encrypt/decrypt now use _with_password variants via FsEncryptedStore.password
 use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
-use crate::storage::jenv::get_required_env_var;
+// get_required_env_var no longer needed — KeyPaths::from_env() deleted
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tracing::debug;
 
@@ -171,43 +171,28 @@ impl KeyPaths {
             format!("{}.enc", p)
         }
     }
-
-    /// Build `KeyPaths` by reading `JACS_KEY_DIRECTORY`,
-    /// `JACS_AGENT_PRIVATE_KEY_FILENAME`, and `JACS_AGENT_PUBLIC_KEY_FILENAME`
-    /// from the jenv/env store.
-    ///
-    /// This is a temporary bridge for call sites that have not yet been
-    /// migrated to carry `KeyPaths` explicitly (see Task 004/008).
-    pub fn from_env() -> Result<Self, JacsError> {
-        let key_directory =
-            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
-        let private_key_filename = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
-        let public_key_filename = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
-        Ok(Self {
-            key_directory,
-            private_key_filename,
-            public_key_filename,
-        })
-    }
 }
 
 #[derive(Debug)]
 pub struct FsEncryptedStore {
     paths: KeyPaths,
+    /// Agent-scoped password for encrypt/decrypt operations.
+    /// When `Some`, used directly instead of resolving from env/jenv.
+    password: Option<String>,
 }
 
 impl FsEncryptedStore {
-    /// Create a new `FsEncryptedStore` with explicit key paths.
+    /// Create a new `FsEncryptedStore` with explicit key paths and optional password.
     pub fn new(paths: KeyPaths) -> Self {
-        Self { paths }
+        Self {
+            paths,
+            password: None,
+        }
     }
 
-    /// Create a new `FsEncryptedStore` by reading paths from the jenv/env store.
-    /// Temporary bridge for call sites not yet migrated to explicit `KeyPaths`.
-    pub fn from_env() -> Result<Self, JacsError> {
-        Ok(Self::new(KeyPaths::from_env()?))
+    /// Create a new `FsEncryptedStore` with explicit key paths and agent-scoped password.
+    pub fn with_password(paths: KeyPaths, password: Option<String>) -> Self {
+        Self { paths, password }
     }
 }
 impl FsEncryptedStore {
@@ -310,8 +295,9 @@ impl KeyStore for FsEncryptedStore {
         let pub_path = self.paths.public_key_path();
         let final_priv_path = self.paths.private_key_enc_path();
 
-        let _password = crate::crypt::aes_encrypt::resolve_private_key_password(None)?;
-        let enc = encrypt_private_key(&priv_key).map_err(|e| {
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let enc = crate::crypt::aes_encrypt::encrypt_private_key_with_password(&priv_key, &resolved_pw).map_err(|e| {
             format!(
                 "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
                 e
@@ -348,7 +334,8 @@ impl KeyStore for FsEncryptedStore {
         let storage = Self::storage_for_key_dir(key_dir)?;
         let priv_path = self.paths.private_key_path();
         let enc_path = self.paths.private_key_enc_path();
-        let _password = crate::crypt::aes_encrypt::resolve_private_key_password(None)?;
+        let _password =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
 
         let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
             storage.get_file(&enc_path, None).map_err(|e2| {
@@ -361,8 +348,14 @@ impl KeyStore for FsEncryptedStore {
             })
         })?;
 
-        // Use secure decryption - the ZeroizingVec will be zeroized when dropped
-        let decrypted = decrypt_private_key_secure(&bytes).map_err(|e| {
+        // Use secure decryption with agent-scoped password if available
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let decrypted = crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(
+            &bytes,
+            &resolved_pw,
+        )
+        .map_err(|e| {
             format!(
                 "Failed to decrypt private key from '{}': {}. \
                 Private keys must be encrypted and JACS_PRIVATE_KEY_PASSWORD must be set.",

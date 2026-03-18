@@ -408,7 +408,15 @@ impl JacsMcpServer {
     fn validate_state_file_root(&self, file_path: &str) -> Result<(), String> {
         let env_roots;
         let allowed_roots = if self.state_roots.is_empty() {
-            env_roots = configured_state_roots(None);
+            // Extract data_directory from the loaded agent's config so we don't
+            // fall back to std::env::var("JACS_DATA_DIRECTORY") (Issue 004).
+            let data_dir: Option<String> = self.agent.inner_arc().lock().ok().and_then(|agent| {
+                agent
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.jacs_data_directory().clone())
+            });
+            env_roots = configured_state_roots(data_dir.as_deref());
             env_roots.as_slice()
         } else {
             self.state_roots.as_slice()

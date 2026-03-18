@@ -346,18 +346,16 @@ impl AgentWrapper {
         &self,
         operation: impl FnOnce() -> BindingResult<T>,
     ) -> BindingResult<T> {
-        // Sync the wrapper's password to the Agent's agent-scoped password field.
-        // This avoids all env var mutation — the Agent carries the password internally
-        // and passes it to resolve_private_key_password(Some(&pw)).
-        if let Some(password) = self.configured_private_key_password()? {
-            {
-                let mut agent = self.lock()?;
-                agent.set_password(Some(password));
-            }
-            operation()
-        } else {
-            operation()
+        // Always sync the wrapper's password state to the Agent's agent-scoped
+        // password field, including None. This ensures that when a caller clears
+        // the wrapper password, the inner Agent also has its password cleared
+        // so it falls back to env/jenv/keychain resolution (Issue 013).
+        {
+            let password = self.configured_private_key_password()?;
+            let mut agent = self.lock()?;
+            agent.set_password(password);
         }
+        operation()
     }
 
     /// Configure a per-wrapper private-key password for load/sign operations.
@@ -2215,7 +2213,9 @@ pub fn verify_document_standalone(
     }
     saved.push((
         "JACS_KEY_RESOLUTION",
-        jenv::get_env_var("JACS_KEY_RESOLUTION", false).ok().flatten(),
+        jenv::get_env_var("JACS_KEY_RESOLUTION", false)
+            .ok()
+            .flatten(),
     ));
     if let Some(kr) = key_resolution {
         let _ = jenv::set_env_var("JACS_KEY_RESOLUTION", kr);

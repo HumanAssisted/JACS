@@ -51,8 +51,9 @@ pub const DEFAULT_MAX_DOCUMENT_SIZE: usize = 10 * 1024 * 1024;
 /// export JACS_MAX_DOCUMENT_SIZE=52428800
 /// ```
 pub fn max_document_size() -> usize {
-    std::env::var("JACS_MAX_DOCUMENT_SIZE")
+    crate::storage::jenv::get_env_var("JACS_MAX_DOCUMENT_SIZE", false)
         .ok()
+        .flatten()
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_MAX_DOCUMENT_SIZE)
 }
@@ -425,7 +426,9 @@ impl ValueExt for Value {
 
 /// A schema retriever that primarily uses embedded schemas, with fallbacks to local filesystem
 /// and remote URLs.
-pub struct EmbeddedSchemaResolver {}
+pub struct EmbeddedSchemaResolver {
+    config: Option<crate::config::Config>,
+}
 
 impl Default for EmbeddedSchemaResolver {
     fn default() -> Self {
@@ -435,7 +438,14 @@ impl Default for EmbeddedSchemaResolver {
 
 impl EmbeddedSchemaResolver {
     pub fn new() -> Self {
-        EmbeddedSchemaResolver {}
+        EmbeddedSchemaResolver { config: None }
+    }
+
+    /// Create a resolver that carries an agent's config for filesystem schema access checks.
+    pub fn with_config(config: &crate::config::Config) -> Self {
+        EmbeddedSchemaResolver {
+            config: Some(config.clone()),
+        }
     }
 }
 
@@ -445,10 +455,12 @@ impl Retrieve for EmbeddedSchemaResolver {
         uri: &jsonschema::Uri<String>,
     ) -> Result<Value, Box<dyn Error + Send + Sync>> {
         let path = uri.path().as_str();
-        resolve_schema(path).map(|arc| (*arc).clone()).map_err(|e| {
-            let err_msg = e.to_string();
-            Box::new(std::io::Error::other(err_msg)) as Box<dyn Error + Send + Sync>
-        })
+        resolve_schema_with_config(path, self.config.as_ref())
+            .map(|arc| (*arc).clone())
+            .map_err(|e| {
+                let err_msg = e.to_string();
+                Box::new(std::io::Error::other(err_msg)) as Box<dyn Error + Send + Sync>
+            })
     }
 }
 
@@ -634,7 +646,23 @@ fn check_filesystem_schema_access(
 /// - Filesystem access is disabled by default (opt-in via `JACS_ALLOW_FILESYSTEM_SCHEMAS`)
 /// - Path traversal (`..`) is blocked for filesystem paths
 /// - TLS certificate validation is enabled by default (can be relaxed for development)
+/// Resolve a schema without an agent config context.
+///
+/// Equivalent to `resolve_schema_with_config(rawpath, None)`.
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, JacsError> {
+    resolve_schema_with_config(rawpath, None)
+}
+
+/// Resolve a schema, optionally using an agent's [`Config`] for filesystem
+/// access checks (allowed directories).
+///
+/// When `config` is `Some`, `check_filesystem_schema_access` can use the
+/// agent's configured `jacs_data_directory` instead of falling back to
+/// `std::env::var("JACS_DATA_DIRECTORY")`.
+pub fn resolve_schema_with_config(
+    rawpath: &str,
+    config: Option<&crate::config::Config>,
+) -> Result<Arc<Value>, JacsError> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
     let path = rawpath.strip_prefix('/').unwrap_or(rawpath);
     let cache_key = schema_cache_key(path);
@@ -668,7 +696,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, JacsError> {
         }
     } else {
         // Filesystem path - check security restrictions
-        check_filesystem_schema_access(path, None)?;
+        check_filesystem_schema_access(path, config)?;
 
         let storage = MultiStorage::default_new()
             .map_err(|e| JacsError::SchemaError(format!("Failed to initialize storage: {}", e)))?;
