@@ -1,13 +1,10 @@
-// Allow deprecated config functions during 12-Factor migration (see task ARCH-005)
-#![allow(deprecated)]
-
+use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
-use crate::config::{Config, check_env_vars, set_env_vars};
+use crate::config::{Config, check_env_vars};
 use crate::create_minimal_blank_agent;
 use crate::crypt::KeyManager;
 use crate::dns::bootstrap as dns_bootstrap;
 use crate::error::JacsError;
-use crate::get_empty_agent;
 use crate::storage::MultiStorage;
 use crate::storage::jenv::set_env_var;
 use rpassword::read_password;
@@ -17,7 +14,6 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::Path;
-use std::process;
 
 use crate::simple::{AgentInfo, CreateAgentParams, SimpleAgent};
 
@@ -195,11 +191,11 @@ pub fn handle_config_create() -> Result<(), JacsError> {
     // --- Check if config file already exists ---
     let config_path = "jacs.config.json";
     if Path::new(config_path).exists() {
-        println!(
+        return Err(format!(
             "Configuration file '{}' already exists. Please remove or rename it if you want to create a new one.",
             config_path
-        );
-        process::exit(0); // Exit gracefully
+        )
+        .into());
     }
     // --- End check ---
 
@@ -366,38 +362,32 @@ fn handle_agent_create_inner(
     auto_update_config: bool,
 ) -> Result<(), JacsError> {
     let storage: MultiStorage = MultiStorage::default_new().expect("Failed to initialize storage");
-    // Initialize storage using MultiStorage::new - Note: storage is passed in now
-
-    // Try to load config file and set environment variables from it
     let config_path_str = "jacs.config.json";
-    let _ = if Path::new(config_path_str).exists() {
-        match std::fs::read_to_string(config_path_str) {
-            Ok(content) => {
-                println!("Loading configuration from {}...", config_path_str);
-                // Call set_env_vars with the content, don't override existing env vars,
-                // and consider the agent ID from the config file initially.
-                set_env_vars(false, Some(&content), false)
-            }
-            Err(e) => {
-                eprintln!("Warning: Could not read {}: {}", config_path_str, e);
-                // Proceed without config file content, let set_env_vars handle defaults
-                set_env_vars(false, None, false)
-            }
-        }
+    let mut agent = if Path::new(config_path_str).exists() {
+        println!("Loading configuration from {}...", config_path_str);
+        Agent::builder()
+            .config_path(config_path_str)
+            .build()
+            .map_err(|e| {
+                format!(
+                    "Failed to initialize agent from config '{}': {}",
+                    config_path_str, e
+                )
+            })?
     } else {
         println!(
             "{} not found, proceeding with defaults or environment variables.",
             config_path_str
         );
-        // Config file doesn't exist, let set_env_vars handle defaults/env vars
-        set_env_vars(false, None, false)
+        Agent::builder()
+            .build()
+            .map_err(|e| format!("Failed to initialize agent with defaults: {}", e))?
     };
 
     // -- Get user input for agent type and SERVICE descriptions --
     let agent_type = request_string("Agent Type (e.g., ai, person, service, device)", "ai"); // Default to ai
     if agent_type.is_empty() {
-        eprintln!("Agent type cannot be empty.");
-        process::exit(1);
+        return Err("Agent type cannot be empty.".into());
     }
     // TODO: Validate agent_type against schema enum: ["human", "human-org", "hybrid", "ai"]
 
@@ -466,20 +456,7 @@ fn handle_agent_create_inner(
 
     let modified_agent_string = serde_json::to_string(&agent_json)?;
 
-    // Proceed with agent creation using modified string
-    let mut agent = get_empty_agent();
-    // NOTE: We previously called set_env_vars here. Now it's called earlier when loading the config.
-    // We might still need to call check_env_vars or ensure the agent uses the loaded config.
-    // For now, let's assume the environment is set correctly by the earlier call.
-    // Let's remove the redundant set_env_vars call here.
-    /*
-    let configs = set_env_vars(true, None, true).unwrap_or_else(|e| {
-        // Ignore agent id initially
-        eprintln!("Warning: Failed to set some environment variables: {}", e);
-        Config::default().to_string()
-    });
-    println!("Creating agent with config {}", configs);
-    */
+    // Proceed with agent creation using the already-initialized config-backed agent.
     println!("Proceeding with agent creation using loaded configuration/environment variables.");
 
     if create_keys {

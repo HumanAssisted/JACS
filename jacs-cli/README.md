@@ -11,7 +11,7 @@ This installs the `jacs` binary with CLI and MCP server built in.
 ## Quick Start
 
 ```bash
-# Set a password for key encryption
+# Developer / desktop workflow
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 
 # Create an agent and start signing
@@ -19,6 +19,16 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 jacs document create -f mydata.json
 
 # Start the MCP server (stdio transport)
+jacs mcp
+```
+
+For Linux or other headless service environments, prefer a secret-mounted
+password file:
+
+```bash
+export JACS_CONFIG=/srv/my-project/jacs.config.json
+export JACS_PASSWORD_FILE=/run/secrets/jacs-password
+export JACS_KEYCHAIN_BACKEND=disabled
 jacs mcp
 ```
 
@@ -54,7 +64,9 @@ Configure in `.mcp.json` for Claude Code or similar clients:
       "command": "jacs",
       "args": ["mcp"],
       "env": {
-        "JACS_PRIVATE_KEY_PASSWORD": "your-password"
+        "JACS_CONFIG": "/srv/my-project/jacs.config.json",
+        "JACS_PASSWORD_FILE": "/run/secrets/jacs-password",
+        "JACS_KEYCHAIN_BACKEND": "disabled"
       }
     }
   }
@@ -62,6 +74,9 @@ Configure in `.mcp.json` for Claude Code or similar clients:
 ```
 
 The MCP server uses stdio transport only (no HTTP) for security.
+
+`JACS_PRIVATE_KEY_PASSWORD` is still supported, but for Linux/headless services
+`JACS_PASSWORD_FILE` is the preferred deployment path.
 
 ## Documentation
 

@@ -27,14 +27,14 @@ const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
 const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
 
 fn quickstart_password_bootstrap_help() -> &'static str {
-    "Password bootstrap options (set exactly one explicit source):
+    "Password bootstrap options (prefer exactly one explicit source):
   1) Direct env (recommended):
      export JACS_PRIVATE_KEY_PASSWORD='your-strong-password'
   2) Export from a secret file:
      export JACS_PRIVATE_KEY_PASSWORD=\"$(cat /path/to/password)\"
   3) CLI convenience (file path):
      export JACS_PASSWORD_FILE=/path/to/password
-If both JACS_PRIVATE_KEY_PASSWORD and JACS_PASSWORD_FILE are set, CLI fails to avoid ambiguity.
+If both JACS_PRIVATE_KEY_PASSWORD and JACS_PASSWORD_FILE are set, CLI warns and uses JACS_PRIVATE_KEY_PASSWORD.
 If neither is set, CLI will try legacy ./jacs_keys/.jacs_password when present."
 }
 
@@ -2565,4 +2565,111 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::ffi::OsString;
+    use tempfile::tempdir;
+
+    struct EnvGuard {
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl EnvGuard {
+        fn capture(keys: &[&'static str]) -> Self {
+            Self {
+                saved: keys
+                    .iter()
+                    .map(|key| (*key, std::env::var_os(key)))
+                    .collect(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                match value {
+                    Some(value) => {
+                        // SAFETY: These unit tests are marked serial and restore prior process env.
+                        unsafe {
+                            std::env::set_var(key, value);
+                        }
+                    }
+                    None => {
+                        // SAFETY: These unit tests are marked serial and restore prior process env.
+                        unsafe {
+                            std::env::remove_var(key);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn quickstart_help_mentions_env_precedence_warning() {
+        let help = quickstart_password_bootstrap_help();
+        assert!(help.contains("prefer exactly one explicit source"));
+        assert!(help.contains("CLI warns and uses JACS_PRIVATE_KEY_PASSWORD"));
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_cli_private_key_password_reads_password_file_when_env_absent() {
+        let _guard = EnvGuard::capture(&["JACS_PRIVATE_KEY_PASSWORD", CLI_PASSWORD_FILE_ENV]);
+        let temp = tempdir().expect("tempdir");
+        let password_file = temp.path().join("password.txt");
+        std::fs::write(&password_file, "TestP@ss123!#\n").expect("write password file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&password_file, std::fs::Permissions::from_mode(0o600))
+                .expect("chmod password file");
+        }
+
+        // SAFETY: These unit tests are marked serial and restore prior process env.
+        unsafe {
+            std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+            std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
+        }
+
+        ensure_cli_private_key_password().expect("password bootstrap should succeed");
+
+        assert_eq!(
+            std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
+            "TestP@ss123!#"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_cli_private_key_password_prefers_env_when_sources_are_ambiguous() {
+        let _guard = EnvGuard::capture(&["JACS_PRIVATE_KEY_PASSWORD", CLI_PASSWORD_FILE_ENV]);
+        let temp = tempdir().expect("tempdir");
+        let password_file = temp.path().join("password.txt");
+        std::fs::write(&password_file, "DifferentP@ss456$\n").expect("write password file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&password_file, std::fs::Permissions::from_mode(0o600))
+                .expect("chmod password file");
+        }
+
+        // SAFETY: These unit tests are marked serial and restore prior process env.
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+            std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
+        }
+
+        ensure_cli_private_key_password().expect("password bootstrap should succeed");
+
+        assert_eq!(
+            std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
+            "TestP@ss123!#"
+        );
+    }
 }

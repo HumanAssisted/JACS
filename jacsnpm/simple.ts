@@ -143,19 +143,16 @@ export interface DsseEnvelope {
 
 let globalAgent: JacsAgent | null = null;
 let agentInfo: AgentInfo | null = null;
-let agentPassword: string | null = null;
 let strictMode: boolean = false;
 
 function adoptClientState(client: unknown): AgentInfo {
   const state = client as {
     agent: JacsAgent | null;
     info: AgentInfo | null;
-    privateKeyPassword: string | null;
     _strict: boolean;
   };
   globalAgent = state.agent ?? null;
   agentInfo = state.info ? { ...state.info } : null;
-  agentPassword = state.privateKeyPassword ?? null;
   strictMode = state._strict ?? strictMode;
   if (!agentInfo) {
     throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
@@ -236,34 +233,6 @@ function resolvePrivateKeyPassword(
   return '';
 }
 
-async function withTemporaryPasswordEnv<T>(password: string, fn: () => Promise<T>): Promise<T> {
-  const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
-  process.env.JACS_PRIVATE_KEY_PASSWORD = password;
-  try {
-    return await fn();
-  } finally {
-    if (previousPassword === undefined) {
-      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
-    } else {
-      process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
-    }
-  }
-}
-
-function withTemporaryPasswordEnvSync<T>(password: string, fn: () => T): T {
-  const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
-  process.env.JACS_PRIVATE_KEY_PASSWORD = password;
-  try {
-    return fn();
-  } finally {
-    if (previousPassword === undefined) {
-      delete process.env.JACS_PRIVATE_KEY_PASSWORD;
-    } else {
-      process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
-    }
-  }
-}
-
 function normalizeDocumentInput(document: any): string {
   if (typeof document === 'string') {
     return document;
@@ -281,25 +250,6 @@ function normalizeDocumentInput(document: any): string {
 
 function normalizeJsonInput(value: any): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
-}
-
-function resolveLoadPath(configPath?: string, options?: LoadOptions): string {
-  strictMode = resolveStrict(options?.strict);
-  const requestedPath = configPath || './jacs.config.json';
-  const resolvedConfigPath = path.resolve(requestedPath);
-
-  if (!fs.existsSync(resolvedConfigPath)) {
-    throw new Error(
-      `Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`
-    );
-  }
-
-  return resolvedConfigPath;
-}
-
-function setLoadedAgentInfo(resolvedConfigPath: string): AgentInfo {
-  agentInfo = extractAgentInfo(resolvedConfigPath);
-  return agentInfo;
 }
 
 function requireQuickstartIdentity(options: QuickstartOptions | undefined): { name: string; domain: string; description: string } {
@@ -412,36 +362,6 @@ function extractAttachmentsFromDocument(doc: any): Attachment[] {
   }));
 }
 
-function extractAgentInfo(resolvedConfigPath: string): AgentInfo {
-  const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
-  const agentIdVersion = config.jacs_agent_id_and_version || '';
-  const [agentId, version] = agentIdVersion.split(':');
-  const dataDir = resolveConfigRelativePath(
-    resolvedConfigPath,
-    config.jacs_data_directory || './jacs_data',
-  );
-  const keyDir = resolveConfigRelativePath(
-    resolvedConfigPath,
-    config.jacs_key_directory || './jacs_keys',
-  );
-  const publicKeyFilename = config.jacs_agent_public_key_filename || 'jacs.public.pem';
-  const privateKeyFilename = config.jacs_agent_private_key_filename || 'jacs.private.pem.enc';
-
-  return {
-    agentId: agentId || '',
-    name: config.name || '',
-    publicKeyPath: path.join(keyDir, publicKeyFilename),
-    configPath: resolvedConfigPath,
-    version: version || '',
-    algorithm: config.jacs_agent_key_algorithm || 'pq2025',
-    privateKeyPath: path.join(keyDir, privateKeyFilename),
-    dataDirectory: dataDir,
-    keyDirectory: keyDir,
-    domain: config.domain || '',
-    dnsRecord: config.dns_record || '',
-  };
-}
-
 function parseCreateResult(resultJson: string, options: CreateAgentOptions): AgentInfo {
   const info = JSON.parse(resultJson);
   const configPath = info.config_path || options.configPath || './jacs.config.json';
@@ -483,18 +403,12 @@ function requireAgent(): JacsAgent {
 
 async function withAgentPassword<T>(operation: (agent: JacsAgent) => Promise<T>): Promise<T> {
   const agent = requireAgent();
-  if (!agentPassword) {
-    return operation(agent);
-  }
-  return withTemporaryPasswordEnv(agentPassword, () => operation(agent));
+  return operation(agent);
 }
 
 function withAgentPasswordSync<T>(operation: (agent: JacsAgent) => T): T {
   const agent = requireAgent();
-  if (!agentPassword) {
-    return operation(agent);
-  }
-  return withTemporaryPasswordEnvSync(agentPassword, () => operation(agent));
+  return operation(agent);
 }
 
 function verifyImpl(signedDocument: string, agent: JacsAgent, isSync: boolean): VerificationResult | Promise<VerificationResult> {
@@ -721,7 +635,6 @@ export async function create(options: CreateAgentOptions): Promise<AgentInfo> {
     ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
   };
   const resultJson = await nativeCreateAgent(...createNativeArgs(normalizedOptions, password));
-  agentPassword = password;
   return parseCreateResult(resultJson, normalizedOptions);
 }
 
@@ -735,7 +648,6 @@ export function createSync(options: CreateAgentOptions): AgentInfo {
     ...resolveCreatePaths(options.configPath ?? null, options.dataDirectory ?? null, options.keyDirectory ?? null),
   };
   const resultJson = nativeCreateAgentSync(...createNativeArgs(normalizedOptions, password));
-  agentPassword = password;
   return parseCreateResult(resultJson, normalizedOptions);
 }
 
@@ -995,39 +907,11 @@ export function reencryptKeySync(oldPassword: string, newPassword: string): void
 // =============================================================================
 
 export function getPublicKey(): string {
-  if (!agentInfo) {
-    throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
-  }
-  if (!fs.existsSync(agentInfo.publicKeyPath)) {
-    throw new Error(`Public key not found: ${agentInfo.publicKeyPath}`);
-  }
-  const raw = fs.readFileSync(agentInfo.publicKeyPath);
-  // PEM text keys (RSA-PSS) are valid UTF-8; return as-is.
-  // Binary keys (Ed25519, pq2025) need PEM armor so trustAgentWithKey works.
-  const text = raw.toString('utf8');
-  if (text.includes('-----BEGIN') || Buffer.from(text, 'utf8').equals(raw)) {
-    return text;
-  }
-  const b64 = raw.toString('base64');
-  return `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----\n`;
+  return requireAgent().getPublicKeyPem();
 }
 
 export function exportAgent(): string {
-  if (!agentInfo) {
-    throw new Error('No agent loaded. Call quickstart({ name, domain }) for zero-config setup, or load() for a persistent agent.');
-  }
-  const configPath = path.resolve(agentInfo.configPath);
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  const dataDir = resolveConfigRelativePath(
-    configPath,
-    config.jacs_data_directory || './jacs_data',
-  );
-  const agentIdVersion = config.jacs_agent_id_and_version || '';
-  const agentPath = path.join(dataDir, 'agent', `${agentIdVersion}.json`);
-  if (!fs.existsSync(agentPath)) {
-    throw new Error(`Agent file not found: ${agentPath}`);
-  }
-  return fs.readFileSync(agentPath, 'utf8');
+  return requireAgent().exportAgent();
 }
 
 /** @deprecated Use getPublicKey() instead. */
@@ -1062,9 +946,15 @@ export function debugInfo(): Record<string, unknown> {
 }
 
 export function reset(): void {
+  if (globalAgent) {
+    try {
+      globalAgent.setPrivateKeyPassword(null);
+    } catch {
+      // Best-effort cleanup; the instance is being discarded anyway.
+    }
+  }
   globalAgent = null;
   agentInfo = null;
-  agentPassword = null;
   strictMode = false;
 }
 

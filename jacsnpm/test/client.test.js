@@ -306,6 +306,50 @@ describe('JacsClient', function () {
     });
   });
 
+  describe('exportAgent', () => {
+    (available ? it : it.skip)('should use native export instead of JS filesystem reads', async function () {
+      this.timeout(30000);
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-export-agent-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        const client = await clientModule.JacsClient.quickstart({
+          name: 'export-agent-client',
+          domain: 'export-agent-client.example.com',
+          algorithm: 'ring-Ed25519',
+        });
+
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          const target = String(filePath);
+          if (target.endsWith('jacs.config.json') || target.includes(`${path.sep}agent${path.sep}`)) {
+            throw new Error('exportAgent should not depend on JS filesystem reads');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const agentJson = client.exportAgent();
+          const agent = JSON.parse(agentJson);
+          expect(agent.jacsId).to.equal(client.agentId);
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+        }
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Signing (ephemeral, sync)
   // ---------------------------------------------------------------------------

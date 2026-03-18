@@ -127,6 +127,52 @@ fn test_load_with_info_returns_canonical_metadata() {
     }
 }
 
+#[test]
+#[serial]
+fn test_load_with_info_prefers_wrapper_password_and_restores_process_env() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config_path = tmp.path().join("jacs.config.json");
+    let data_dir = tmp.path().join("jacs_data");
+    let key_dir = tmp.path().join("jacs_keys");
+
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name("binding-password-store")
+        .password("CorrectP@ss123!#")
+        .algorithm("ring-Ed25519")
+        .data_directory(data_dir.to_str().unwrap())
+        .key_directory(key_dir.to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .domain("binding-password.example.com")
+        .build();
+
+    let (_agent, created_info) =
+        jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
+
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "WrongEnvP@ss123!#");
+    }
+
+    let wrapper = AgentWrapper::new();
+    wrapper
+        .set_private_key_password(Some("CorrectP@ss123!#".to_string()))
+        .expect("setting wrapper password should succeed");
+
+    let info_json = wrapper
+        .load_with_info(config_path.to_string_lossy().to_string())
+        .expect("load_with_info should succeed with wrapper password");
+    let info: Value = serde_json::from_str(&info_json).expect("info should be valid JSON");
+
+    assert_eq!(info["agent_id"], created_info.agent_id);
+    assert_eq!(
+        std::env::var("JACS_PRIVATE_KEY_PASSWORD").ok().as_deref(),
+        Some("WrongEnvP@ss123!#")
+    );
+
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+}
+
 #[cfg(feature = "pq-tests")]
 fn create_ephemeral_wrapper_pq() -> AgentWrapper {
     let wrapper = AgentWrapper::new();

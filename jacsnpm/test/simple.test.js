@@ -852,6 +852,52 @@ describe('JACS Simple API', function() {
     });
   });
 
+  describe('exportAgent', () => {
+    (simpleExists ? it : it.skip)('should use native export instead of JS filesystem reads', async function () {
+      this.timeout(30000);
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-export-agent-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
+
+      try {
+        process.chdir(tmpDir);
+        await freshSimple.quickstart({
+          name: 'simple-export-agent',
+          domain: 'simple-export-agent.example.com',
+          algorithm: 'ring-Ed25519',
+        });
+
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          const target = String(filePath);
+          if (target.endsWith('jacs.config.json') || target.includes(`${path.sep}agent${path.sep}`)) {
+            throw new Error('exportAgent should not depend on JS filesystem reads');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const info = freshSimple.getAgentInfo();
+          const agentDoc = JSON.parse(freshSimple.exportAgent());
+          expect(agentDoc.jacsId).to.equal(info.agentId);
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+        }
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('verifyById / verifyByIdSync', () => {
     (simpleExists && fixturesExist ? it : it.skip)('verifyByIdSync should return invalid format error payload', () => {
       const freshSimple = loadSimpleInFixtures();

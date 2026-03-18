@@ -310,10 +310,10 @@ class TestVerifyByIdUsesNativeStorage:
                     }
                 )
 
-        def fail_read(*_args, **_kwargs):
-            raise AssertionError("_read_document_by_id should not be used")
+        def fail_open(*_args, **_kwargs):
+            raise AssertionError("verify_by_id should not perform Python file reads")
 
-        monkeypatch.setattr(jacs_client, "_read_document_by_id", fail_read)
+        monkeypatch.setattr(builtins, "open", fail_open)
         client = JacsClient.__new__(JacsClient)
         client._strict = False
         client._agent = FakeAgent()
@@ -344,10 +344,10 @@ class TestVerifyByIdUsesNativeStorage:
                     }
                 )
 
-        def fail_read(*_args, **_kwargs):
-            raise AssertionError("_read_document_by_id should not be used")
+        def fail_open(*_args, **_kwargs):
+            raise AssertionError("verify_by_id should not perform Python file reads")
 
-        monkeypatch.setattr(jacs_simple, "_read_document_by_id", fail_read)
+        monkeypatch.setattr(builtins, "open", fail_open)
         monkeypatch.setattr(jacs_simple, "_global_agent", FakeAgent())
         monkeypatch.setattr(
             jacs_simple,
@@ -362,3 +362,54 @@ class TestVerifyByIdUsesNativeStorage:
         assert result.signer_id == "agent-2"
         assert result.signer_public_key_hash == "pkh-2"
         assert result.timestamp == "2026-03-10T00:00:01Z"
+
+
+class TestPasswordConfiguration:
+    def test_client_load_configures_native_agent_password_store(self, monkeypatch):
+        captured = {}
+
+        class FakeAgent:
+            def set_private_key_password(self, password):
+                captured["password"] = password
+
+            def load_with_info(self, config_path):
+                captured["config_path"] = config_path
+                return json.dumps(
+                    {
+                        "agent_id": "agent-3",
+                        "version": "1",
+                        "name": "agent-3",
+                        "algorithm": TEST_ALGORITHM_INTERNAL,
+                        "config_path": config_path,
+                        "public_key_path": "/tmp/public.pem",
+                        "private_key_path": "/tmp/private.pem.enc",
+                        "data_directory": "/tmp/jacs_data",
+                        "key_directory": "/tmp/jacs_keys",
+                        "domain": "password.example.com",
+                        "dns_record": "",
+                    }
+                )
+
+        monkeypatch.setattr(jacs_client, "_JacsAgent", FakeAgent)
+        monkeypatch.setattr(jacs_client.os.path, "exists", lambda _path: True)
+        monkeypatch.setattr(
+            jacs_client,
+            "_resolve_private_key_password",
+            lambda config_path, explicit_password=None: "InnerP@ss123!#",
+        )
+
+        previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
+        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "OuterP@ss123!#"
+        try:
+            client = JacsClient()
+            client._load_from_config("./nested/jacs.config.json")
+
+            assert captured["password"] == "InnerP@ss123!#"
+            assert captured["config_path"] == os.path.abspath("./nested/jacs.config.json")
+            assert os.environ.get("JACS_PRIVATE_KEY_PASSWORD") == "OuterP@ss123!#"
+            assert client.agent_id == "agent-3"
+        finally:
+            if previous_password is None:
+                os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
+            else:
+                os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password

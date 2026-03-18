@@ -132,17 +132,18 @@ impl Task for StandaloneStringTask {
 // =============================================================================
 // JacsAgent Class - Primary API
 // =============================================================================
-// Each JacsAgent instance has its own independent state. This allows multiple
-// agents to be used concurrently in the same Node.js process without shared
-// mutable state. This is the recommended API for all code.
+// Each JacsAgent instance has its own loaded agent state. This allows multiple
+// agents to coexist in the same Node.js process. Password-protected operations
+// are synchronized internally while the Rust core still resolves decryption
+// passwords through JACS_PRIVATE_KEY_PASSWORD.
 //
 // The inner AgentWrapper is wrapped in Arc so async tasks can hold a reference
 // while running on the libuv thread pool.
 // =============================================================================
 
 /// JacsAgent is a handle to a JACS agent instance.
-/// Each instance maintains its own state and can be used independently.
-/// This allows multiple agents to be used concurrently in the same process.
+/// Each instance maintains its own loaded state and can be used independently.
+/// This allows multiple agents to be used in the same process.
 #[napi]
 pub struct JacsAgent {
     inner: Arc<AgentWrapper>,
@@ -174,6 +175,24 @@ impl JacsAgent {
     #[napi(js_name = "loadWithInfoSync")]
     pub fn load_with_info_sync(&self, config_path: String) -> Result<String> {
         self.inner.load_with_info(config_path).to_napi()
+    }
+
+    /// Configure a per-instance private-key password for later load/sign calls.
+    #[napi(js_name = "setPrivateKeyPassword")]
+    pub fn set_private_key_password(&self, password: Option<String>) -> Result<()> {
+        self.inner.set_private_key_password(password).to_napi()
+    }
+
+    /// Export the agent's identity JSON for P2P exchange (sync).
+    #[napi(js_name = "exportAgent")]
+    pub fn export_agent(&self) -> Result<String> {
+        self.inner.export_agent().to_napi()
+    }
+
+    /// Get the public key as a PEM string (sync).
+    #[napi(js_name = "getPublicKeyPem")]
+    pub fn get_public_key_pem(&self) -> Result<String> {
+        self.inner.get_public_key_pem().to_napi()
     }
 
     /// Create an ephemeral in-memory agent (sync, blocks event loop).

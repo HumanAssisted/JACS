@@ -76,8 +76,8 @@ export declare function legacyVerifyResponse(documentString: string): object
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
 /**
  * JacsAgent is a handle to a JACS agent instance.
- * Each instance maintains its own state and can be used independently.
- * This allows multiple agents to be used concurrently in the same process.
+ * Each instance maintains its own loaded state and can be used independently.
+ * This allows multiple agents to be used in the same process.
  */
 export declare class JacsAgent {
   /**
@@ -89,6 +89,12 @@ export declare class JacsAgent {
   loadSync(configPath: string): string
   /** Load an agent from a configuration file and return canonical metadata (sync). */
   loadWithInfoSync(configPath: string): string
+  /** Configure a per-instance private-key password for later load/sign calls. */
+  setPrivateKeyPassword(password?: string | undefined | null): void
+  /** Export the agent's identity JSON for P2P exchange (sync). */
+  exportAgent(): string
+  /** Get the public key as a PEM string (sync). */
+  getPublicKeyPem(): string
   /** Create an ephemeral in-memory agent (sync, blocks event loop). */
   ephemeralSync(algorithm?: string | undefined | null): string
   /** Sign an external agent's document (sync, blocks event loop). */

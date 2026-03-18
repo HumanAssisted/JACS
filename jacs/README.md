@@ -79,7 +79,10 @@ jacs verify doc.json     # Verify a document
 **Dependency audit**: To check Rust dependencies for known vulnerabilities, run: `cargo install cargo-audit && cargo audit`.
 
 **Best Practices**:
-- Do not put the private key password in config; set `JACS_PRIVATE_KEY_PASSWORD` only.
+- Do not put the private key password in config.
+- On desktops, prefer the OS keychain when available.
+- On Linux/headless services, prefer `JACS_PASSWORD_FILE` from a secret mount and set `JACS_KEYCHAIN_BACKEND=disabled`.
+- `JACS_PRIVATE_KEY_PASSWORD` is supported, but is less desirable for long-running service processes.
 - Use strong passwords (12+ characters with mixed case, numbers, symbols)
 - Store private keys securely with appropriate file permissions
 - Keep JACS and its dependencies updated

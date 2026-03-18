@@ -68,6 +68,27 @@ doc["content"]["status"] = "approved"
 updated_doc = jacs.update_document(signed.document_id, doc)
 ```
 
+### Headless / Embedded Loading Without Env Vars
+
+For Linux services or embedded apps that fetch secrets from a vault or secret
+manager, prefer passing the password in memory to the low-level binding instead
+of storing it in `JACS_PRIVATE_KEY_PASSWORD`:
+
+```python
+import json
+from jacs import JacsAgent
+
+secret = get_secret_from_manager()
+
+agent = JacsAgent()
+agent.set_private_key_password(secret)
+info = json.loads(agent.load_with_info("/srv/my-project/jacs.config.json"))
+```
+
+`jacs.simple.load()` and `JacsClient(...)` are convenient higher-level entry
+points, but the low-level `JacsAgent` API is the explicit path for in-memory
+secret injection.
+
 ## Core Operations
 
 The simplified API provides these core operations:

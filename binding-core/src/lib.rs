@@ -8,7 +8,6 @@
 
 use base64::Engine as _;
 use jacs::agent::agreement::Agreement;
-#[cfg(feature = "a2a")]
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::{DocumentTraits, JACSDocument};
 use jacs::agent::payloads::PayloadTraits;
@@ -21,8 +20,9 @@ use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 pub mod conversion;
 pub mod doc_wrapper;
@@ -290,6 +290,40 @@ fn ensure_editable_agreement_document(
 #[derive(Clone)]
 pub struct AgentWrapper {
     inner: Arc<Mutex<Agent>>,
+    private_key_password: Arc<Mutex<Option<String>>>,
+}
+
+struct ScopedPrivateKeyEnv {
+    previous: Option<OsString>,
+}
+
+impl ScopedPrivateKeyEnv {
+    fn set(password: &str) -> Self {
+        let previous = std::env::var_os("JACS_PRIVATE_KEY_PASSWORD");
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for ScopedPrivateKeyEnv {
+    fn drop(&mut self) {
+        if let Some(previous) = &self.previous {
+            unsafe {
+                std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", previous);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+            }
+        }
+    }
+}
+
+fn private_key_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 impl Default for AgentWrapper {
@@ -303,6 +337,7 @@ impl AgentWrapper {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(jacs::get_empty_agent())),
+            private_key_password: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -311,7 +346,10 @@ impl AgentWrapper {
     /// This is used by the Go FFI to share the agent handle's inner agent
     /// with binding-core's attestation methods.
     pub fn from_inner(inner: Arc<Mutex<Agent>>) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            private_key_password: Arc::new(Mutex::new(None)),
+        }
     }
 
     /// Get the inner `Arc<Mutex<Agent>>`.
@@ -327,25 +365,69 @@ impl AgentWrapper {
         self.inner.lock().map_err(BindingCoreError::from)
     }
 
+    fn configured_private_key_password(&self) -> BindingResult<Option<String>> {
+        self.private_key_password
+            .lock()
+            .map_err(BindingCoreError::from)
+            .map(|password| password.clone())
+    }
+
+    fn with_private_key_password<T>(
+        &self,
+        operation: impl FnOnce() -> BindingResult<T>,
+    ) -> BindingResult<T> {
+        if let Some(password) = self.configured_private_key_password()? {
+            let _lock = private_key_env_lock()
+                .lock()
+                .map_err(BindingCoreError::from)?;
+            let _guard = ScopedPrivateKeyEnv::set(&password);
+            operation()
+        } else {
+            operation()
+        }
+    }
+
+    /// Configure a per-wrapper private-key password for load/sign operations.
+    ///
+    /// This lets higher-level bindings keep per-instance passwords out of
+    /// process-global environment management while the current core library
+    /// still resolves decryption passwords through `JACS_PRIVATE_KEY_PASSWORD`.
+    pub fn set_private_key_password(&self, password: Option<String>) -> BindingResult<()> {
+        let mut slot = self
+            .private_key_password
+            .lock()
+            .map_err(BindingCoreError::from)?;
+        *slot = password.and_then(|value| if value.is_empty() { None } else { Some(value) });
+        Ok(())
+    }
+
     /// Load agent configuration from a file path.
     pub fn load(&self, config_path: String) -> BindingResult<String> {
-        let mut agent = self.lock()?;
-        agent
-            .load_by_config(config_path)
-            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
-        Ok("Agent loaded".to_string())
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agent.load_by_config(config_path).map_err(|e| {
+                BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
+            })?;
+            Ok("Agent loaded".to_string())
+        })
     }
 
     /// Load agent configuration and return canonical loaded-agent metadata.
     pub fn load_with_info(&self, config_path: String) -> BindingResult<String> {
         let resolved_config_path = resolve_existing_config_path(&config_path)?;
-        let mut agent = self.lock()?;
-        agent
-            .load_by_config(resolved_config_path.clone())
-            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
-        let info = jacs::simple::build_loaded_agent_info(&agent, &resolved_config_path)
-            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
-        serialize_agent_info(&info)
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agent
+                .load_by_config(resolved_config_path.clone())
+                .map_err(|e| {
+                    BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
+                })?;
+            let info = jacs::simple::build_loaded_agent_info(&agent, &resolved_config_path)
+                .map_err(|e| {
+                    BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
+                })?;
+            serialize_agent_info(&info)
+        })
     }
 
     /// Re-root the internal file storage at `root`.
@@ -369,41 +451,43 @@ impl AgentWrapper {
         public_key: Vec<u8>,
         public_key_enc_type: String,
     ) -> BindingResult<String> {
-        let mut agent = self.lock()?;
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
 
-        let mut external_agent: Value = agent
-            .validate_agent(agent_string)
-            .map_err(|e| BindingCoreError::validation(format!("Agent validation failed: {}", e)))?;
-
-        agent
-            .signature_verification_procedure(
-                &external_agent,
-                None,
-                &AGENT_SIGNATURE_FIELDNAME.to_string(),
-                public_key,
-                Some(public_key_enc_type),
-                None,
-                None,
-            )
-            .map_err(|e| {
-                BindingCoreError::verification_failed(format!(
-                    "Signature verification failed: {}",
-                    e
-                ))
+            let mut external_agent: Value = agent.validate_agent(agent_string).map_err(|e| {
+                BindingCoreError::validation(format!("Agent validation failed: {}", e))
             })?;
 
-        let registration_signature = agent
-            .signing_procedure(
-                &external_agent,
-                None,
-                &AGENT_REGISTRATION_SIGNATURE_FIELDNAME.to_string(),
-            )
-            .map_err(|e| {
-                BindingCoreError::signing_failed(format!("Signing procedure failed: {}", e))
-            })?;
+            agent
+                .signature_verification_procedure(
+                    &external_agent,
+                    None,
+                    &AGENT_SIGNATURE_FIELDNAME.to_string(),
+                    public_key,
+                    Some(public_key_enc_type),
+                    None,
+                    None,
+                )
+                .map_err(|e| {
+                    BindingCoreError::verification_failed(format!(
+                        "Signature verification failed: {}",
+                        e
+                    ))
+                })?;
 
-        external_agent[AGENT_REGISTRATION_SIGNATURE_FIELDNAME] = registration_signature;
-        Ok(external_agent.to_string())
+            let registration_signature = agent
+                .signing_procedure(
+                    &external_agent,
+                    None,
+                    &AGENT_REGISTRATION_SIGNATURE_FIELDNAME.to_string(),
+                )
+                .map_err(|e| {
+                    BindingCoreError::signing_failed(format!("Signing procedure failed: {}", e))
+                })?;
+
+            external_agent[AGENT_REGISTRATION_SIGNATURE_FIELDNAME] = registration_signature;
+            Ok(external_agent.to_string())
+        })
     }
 
     /// Verify a signature on arbitrary string data.
@@ -448,54 +532,60 @@ impl AgentWrapper {
 
     /// Sign arbitrary string data with this agent's private key.
     pub fn sign_string(&self, data: &str) -> BindingResult<String> {
-        let mut agent = self.lock()?;
-
-        agent
-            .sign_string(&data.to_string())
-            .map_err(|e| BindingCoreError::signing_failed(format!("Failed to sign string: {}", e)))
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agent.sign_string(&data.to_string()).map_err(|e| {
+                BindingCoreError::signing_failed(format!("Failed to sign string: {}", e))
+            })
+        })
     }
 
     /// Sign multiple messages in a single batch, decrypting the private key only once.
     pub fn sign_batch(&self, messages: Vec<String>) -> BindingResult<Vec<String>> {
-        let mut agent = self.lock()?;
-        let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
-        agent
-            .sign_batch(&refs)
-            .map_err(|e| BindingCoreError::signing_failed(format!("Batch sign failed: {}", e)))
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            let refs: Vec<&str> = messages.iter().map(|s| s.as_str()).collect();
+            agent
+                .sign_batch(&refs)
+                .map_err(|e| BindingCoreError::signing_failed(format!("Batch sign failed: {}", e)))
+        })
     }
 
     /// Verify this agent's signature and hash.
     pub fn verify_agent(&self, agentfile: Option<String>) -> BindingResult<bool> {
-        let mut agent = self.lock()?;
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
 
-        if let Some(file) = agentfile {
-            let loaded_agent = jacs::load_agent(Some(file)).map_err(|e| {
-                BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
+            if let Some(file) = agentfile {
+                let loaded_agent = jacs::load_agent(Some(file)).map_err(|e| {
+                    BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
+                })?;
+                *agent = loaded_agent;
+            }
+
+            agent.verify_self_signature().map_err(|e| {
+                BindingCoreError::verification_failed(format!(
+                    "Failed to verify agent signature: {}",
+                    e
+                ))
             })?;
-            *agent = loaded_agent;
-        }
 
-        agent.verify_self_signature().map_err(|e| {
-            BindingCoreError::verification_failed(format!(
-                "Failed to verify agent signature: {}",
-                e
-            ))
-        })?;
+            agent.verify_self_hash().map_err(|e| {
+                BindingCoreError::verification_failed(format!("Failed to verify agent hash: {}", e))
+            })?;
 
-        agent.verify_self_hash().map_err(|e| {
-            BindingCoreError::verification_failed(format!("Failed to verify agent hash: {}", e))
-        })?;
-
-        Ok(true)
+            Ok(true)
+        })
     }
 
     /// Update the agent document with new data.
     pub fn update_agent(&self, new_agent_string: &str) -> BindingResult<String> {
-        let mut agent = self.lock()?;
-
-        agent
-            .update_self(new_agent_string)
-            .map_err(|e| BindingCoreError::agent_load(format!("Failed to update agent: {}", e)))
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agent
+                .update_self(new_agent_string)
+                .map_err(|e| BindingCoreError::agent_load(format!("Failed to update agent: {}", e)))
+        })
     }
 
     /// Verify a document's signature and hash.
@@ -541,15 +631,17 @@ impl AgentWrapper {
         attachments: Option<Vec<String>>,
         embed: Option<bool>,
     ) -> BindingResult<String> {
-        let mut agent = self.lock()?;
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
 
-        let doc = agent
-            .update_document(document_key, new_document_string, attachments, embed)
-            .map_err(|e| {
-                BindingCoreError::document_failed(format!("Failed to update document: {}", e))
-            })?;
+            let doc = agent
+                .update_document(document_key, new_document_string, attachments, embed)
+                .map_err(|e| {
+                    BindingCoreError::document_failed(format!("Failed to update document: {}", e))
+                })?;
 
-        Ok(doc.to_string())
+            Ok(doc.to_string())
+        })
     }
 
     /// Verify a document's signature with an optional custom signature field.
@@ -625,31 +717,33 @@ impl AgentWrapper {
     ) -> BindingResult<String> {
         use jacs::agent::agreement::{Agreement, AgreementOptions};
 
-        let mut agent = self.lock()?;
-        let base_doc = ensure_editable_agreement_document(&mut agent, document_string)?;
-        let document_key = base_doc.getkey();
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            let base_doc = ensure_editable_agreement_document(&mut agent, document_string)?;
+            let document_key = base_doc.getkey();
 
-        let options = AgreementOptions {
-            timeout,
-            quorum,
-            required_algorithms,
-            minimum_strength,
-        };
+            let options = AgreementOptions {
+                timeout,
+                quorum,
+                required_algorithms,
+                minimum_strength,
+            };
 
-        let agreement_doc = agent
-            .create_agreement_with_options(
-                &document_key,
-                agentids.as_slice(),
-                question.as_deref(),
-                context.as_deref(),
-                agreement_fieldname,
-                &options,
-            )
-            .map_err(|e| {
-                BindingCoreError::agreement_failed(format!("Failed to create agreement: {}", e))
-            })?;
+            let agreement_doc = agent
+                .create_agreement_with_options(
+                    &document_key,
+                    agentids.as_slice(),
+                    question.as_deref(),
+                    context.as_deref(),
+                    agreement_fieldname,
+                    &options,
+                )
+                .map_err(|e| {
+                    BindingCoreError::agreement_failed(format!("Failed to create agreement: {}", e))
+                })?;
 
-        Ok(agreement_doc.value.to_string())
+            Ok(agreement_doc.value.to_string())
+        })
     }
 
     /// Sign an agreement on a document.
@@ -658,18 +752,20 @@ impl AgentWrapper {
         document_string: &str,
         agreement_fieldname: Option<String>,
     ) -> BindingResult<String> {
-        let mut agent = self.lock()?;
-        let doc = agent.load_document(document_string).map_err(|e| {
-            BindingCoreError::document_failed(format!("Failed to load document: {}", e))
-        })?;
-        let document_key = doc.getkey();
-        let signed_doc = agent
-            .sign_agreement(&document_key, agreement_fieldname)
-            .map_err(|e| {
-                BindingCoreError::agreement_failed(format!("Failed to sign agreement: {}", e))
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            let doc = agent.load_document(document_string).map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to load document: {}", e))
             })?;
+            let document_key = doc.getkey();
+            let signed_doc = agent
+                .sign_agreement(&document_key, agreement_fieldname)
+                .map_err(|e| {
+                    BindingCoreError::agreement_failed(format!("Failed to sign agreement: {}", e))
+                })?;
 
-        Ok(signed_doc.value.to_string())
+            Ok(signed_doc.value.to_string())
+        })
     }
 
     /// Create a new JACS document.
@@ -682,18 +778,22 @@ impl AgentWrapper {
         attachments: Option<&str>,
         embed: Option<bool>,
     ) -> BindingResult<String> {
-        let mut agent = self.lock()?;
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
 
-        jacs::shared::document_create(
-            &mut agent,
-            document_string,
-            custom_schema,
-            outputfilename,
-            no_save,
-            attachments,
-            embed,
-        )
-        .map_err(|e| BindingCoreError::document_failed(format!("Failed to create document: {}", e)))
+            jacs::shared::document_create(
+                &mut agent,
+                document_string,
+                custom_schema,
+                outputfilename,
+                no_save,
+                attachments,
+                embed,
+            )
+            .map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to create document: {}", e))
+            })
+        })
     }
 
     /// Persist an already-signed JACS document and return its lookup key.
@@ -821,29 +921,33 @@ impl AgentWrapper {
 
     /// Sign a request payload (wraps in a JACS document).
     pub fn sign_request(&self, payload_value: Value) -> BindingResult<String> {
-        let mut agent = self.lock()?;
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
 
-        let wrapper_value = serde_json::json!({
-            "jacs_payload": payload_value
-        });
+            let wrapper_value = serde_json::json!({
+                "jacs_payload": payload_value
+            });
 
-        let wrapper_string = serde_json::to_string(&wrapper_value).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize wrapper JSON: {}",
-                e
-            ))
-        })?;
+            let wrapper_string = serde_json::to_string(&wrapper_value).map_err(|e| {
+                BindingCoreError::serialization_failed(format!(
+                    "Failed to serialize wrapper JSON: {}",
+                    e
+                ))
+            })?;
 
-        jacs::shared::document_create(
-            &mut agent,
-            &wrapper_string,
-            None,
-            None,
-            true, // no_save
-            None,
-            Some(false),
-        )
-        .map_err(|e| BindingCoreError::document_failed(format!("Failed to create document: {}", e)))
+            jacs::shared::document_create(
+                &mut agent,
+                &wrapper_string,
+                None,
+                None,
+                true, // no_save
+                None,
+                Some(false),
+            )
+            .map_err(|e| {
+                BindingCoreError::document_failed(format!("Failed to create document: {}", e))
+            })
+        })
     }
 
     /// Verify a response payload and return the payload value.
@@ -1186,17 +1290,34 @@ impl AgentWrapper {
         })
     }
 
+    /// Export the loaded agent's full JSON document.
+    pub fn export_agent(&self) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let value = agent
+            .get_value()
+            .cloned()
+            .ok_or_else(|| BindingCoreError::agent_load("Agent not loaded. Call load() first."))?;
+        serde_json::to_string_pretty(&value).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize agent document: {}",
+                e
+            ))
+        })
+    }
+
+    /// Get the loaded agent's public key as a PEM string.
+    pub fn get_public_key_pem(&self) -> BindingResult<String> {
+        let agent = self.lock()?;
+        let public_key = BoilerPlate::get_public_key(&*agent)
+            .map_err(|e| BindingCoreError::generic(format!("Failed to get public key: {}", e)))?;
+        Ok(jacs::crypt::normalize_public_key_pem(&public_key))
+    }
+
     /// Get the agent's JSON representation as a string.
     ///
     /// Returns the agent's full JSON document.
     pub fn get_agent_json(&self) -> BindingResult<String> {
-        let agent = self.lock()?;
-        match agent.get_value() {
-            Some(value) => Ok(value.to_string()),
-            None => Err(BindingCoreError::agent_load(
-                "Agent not loaded. Call load() first.",
-            )),
-        }
+        self.export_agent()
     }
 }
 
