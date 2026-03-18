@@ -910,6 +910,49 @@ mod tests {
 
     #[test]
     #[serial]
+    fn test_loaded_info_stays_rooted_to_original_config_after_cwd_change() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        fn canonical_display(path: &std::path::Path) -> String {
+            std::fs::canonicalize(path)
+                .unwrap_or_else(|_| path.to_path_buf())
+                .to_string_lossy()
+                .to_string()
+        }
+
+        let (_agent, _info, tmp, _guard) = create_persistent_test_agent("loaded-info-root-test");
+        let expected_config_path = tmp.path().join("jacs.config.json");
+        let expected_data_dir = tmp.path().join("jacs_data");
+        let expected_key_dir = tmp.path().join("jacs_keys");
+
+        let loaded = SimpleAgent::load(Some("./jacs.config.json"), Some(true))
+            .expect("loading should succeed from relative config path");
+
+        let elsewhere = tempfile::tempdir().expect("create alternate cwd");
+        std::env::set_current_dir(elsewhere.path()).expect("cd away from config dir");
+
+        let info = loaded
+            .loaded_info()
+            .expect("loaded_info should stay rooted to the original config");
+
+        assert_eq!(
+            canonical_display(std::path::Path::new(&info.config_path)),
+            canonical_display(&expected_config_path)
+        );
+        assert_eq!(
+            canonical_display(std::path::Path::new(&info.data_directory)),
+            canonical_display(&expected_data_dir)
+        );
+        assert_eq!(
+            canonical_display(std::path::Path::new(&info.key_directory)),
+            canonical_display(&expected_key_dir)
+        );
+    }
+
+    #[test]
+    #[serial]
     fn test_embedded_export_writes_to_data_directory_only() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()

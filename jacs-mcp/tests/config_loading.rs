@@ -40,8 +40,14 @@ fn env_loader_resolves_relative_directories_from_jacs_config() -> anyhow::Result
     let _ = agent.get_agent_json()?;
 
     let (_agent, info) = jacs_mcp::load_agent_from_config_path_with_info(&config_path)?;
-    assert_eq!(PathBuf::from(info["data_directory"].as_str().expect("data dir")), workspace.join("jacs_data"));
-    assert_eq!(PathBuf::from(info["key_directory"].as_str().expect("key dir")), workspace.join("jacs_keys"));
+    assert_eq!(
+        PathBuf::from(info["data_directory"].as_str().expect("data dir")),
+        workspace.join("jacs_data")
+    );
+    assert_eq!(
+        PathBuf::from(info["key_directory"].as_str().expect("key dir")),
+        workspace.join("jacs_keys")
+    );
     assert!(get_env_var("JACS_DATA_DIRECTORY", false)?.is_none());
     assert!(get_env_var("JACS_KEY_DIRECTORY", false)?.is_none());
 

@@ -31,8 +31,8 @@ const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
 
 function resolveConfigRelativePath(configPath, candidate) {
   return path.isAbsolute(candidate)
-    ? candidate
-    : path.resolve(path.dirname(configPath), candidate);
+    ? fs.realpathSync(candidate)
+    : fs.realpathSync(path.resolve(path.dirname(configPath), candidate));
 }
 
 // Check if fixtures are loadable (password may not match)
@@ -148,6 +148,9 @@ describe('JacsClient', function () {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory);
         const keyDir = resolveConfigRelativePath(configPath, config.jacs_key_directory);
+        expect(client.info.configPath).to.equal(fs.realpathSync(configPath));
+        expect(client.info.dataDirectory).to.equal(dataDir);
+        expect(client.info.keyDirectory).to.equal(keyDir);
         expect(fs.existsSync(dataDir)).to.equal(true);
         expect(fs.existsSync(keyDir)).to.equal(true);
 

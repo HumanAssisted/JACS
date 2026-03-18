@@ -175,7 +175,10 @@ fn test_load_with_info_returns_resolved_metadata() {
     assert_same_path(&info["config_path"], &config_path);
     assert_same_path(&info["data_directory"], &data_dir);
     assert_same_path(&info["key_directory"], &key_dir);
-    assert_same_path(&info["public_key_path"], &PathBuf::from(&key_dir).join("jacs.public.pem"));
+    assert_same_path(
+        &info["public_key_path"],
+        &PathBuf::from(&key_dir).join("jacs.public.pem"),
+    );
     assert_same_path(
         &info["private_key_path"],
         &PathBuf::from(&key_dir).join("jacs.private.pem.enc"),
@@ -529,6 +532,7 @@ fn test_from_agent() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_create_with_params_json() {
     let tmp = tempfile::TempDir::new().unwrap();
     let data_dir = tmp.path().join("data");
@@ -552,9 +556,15 @@ fn test_create_with_params_json() {
     assert!(!info["agent_id"].as_str().unwrap_or("").is_empty());
 
     // Wrapper should be functional
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+    }
     let signed = wrapper
         .sign_message_json(r#"{"params_test": true}"#)
         .expect("signing should succeed after create_with_params");
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
     assert!(!signed.is_empty());
 }
 

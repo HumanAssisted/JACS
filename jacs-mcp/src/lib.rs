@@ -53,7 +53,8 @@ pub mod server;
 pub mod tools;
 
 pub use crate::config::{
-    load_agent_from_config_env, load_agent_from_config_path, load_agent_from_config_path_with_info,
+    load_agent_from_config_env, load_agent_from_config_env_with_info, load_agent_from_config_path,
+    load_agent_from_config_path_with_info,
 };
 #[cfg(feature = "mcp")]
 pub use crate::contract::{

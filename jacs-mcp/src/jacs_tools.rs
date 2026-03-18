@@ -104,7 +104,10 @@ fn absolute_from_cwd(path: &Path, cwd: &Path) -> PathBuf {
     }
 }
 
-fn validate_state_file_root(file_path: &str) -> Result<(), String> {
+fn validate_state_file_root_against_roots(
+    file_path: &str,
+    allowed_roots: &[PathBuf],
+) -> Result<(), String> {
     if arbitrary_state_files_allowed() {
         return Ok(());
     }
@@ -112,16 +115,6 @@ fn validate_state_file_root(file_path: &str) -> Result<(), String> {
     let cwd = std::env::current_dir()
         .map_err(|e| format!("Failed to determine working directory: {}", e))?;
     let requested = absolute_from_cwd(Path::new(file_path), &cwd);
-    let allowed_roots = configured_state_roots();
-
-    let lexically_allowed = allowed_roots.iter().any(|root| {
-        let root_abs = absolute_from_cwd(root, &cwd);
-        requested.starts_with(&root_abs)
-    });
-
-    if !lexically_allowed {
-        return Err("STATE_FILE_ACCESS_BLOCKED".to_string());
-    }
 
     if requested.exists() {
         let canonical_requested = requested
@@ -136,6 +129,17 @@ fn validate_state_file_root(file_path: &str) -> Result<(), String> {
         if !canonically_allowed {
             return Err("STATE_FILE_ACCESS_BLOCKED".to_string());
         }
+
+        return Ok(());
+    }
+
+    let lexically_allowed = allowed_roots.iter().any(|root| {
+        let root_abs = absolute_from_cwd(root, &cwd);
+        requested.starts_with(&root_abs)
+    });
+
+    if !lexically_allowed {
+        return Err("STATE_FILE_ACCESS_BLOCKED".to_string());
     }
 
     Ok(())
@@ -310,6 +314,8 @@ pub struct JacsMcpServer {
     agent: Arc<AgentWrapper>,
     /// Unified document service resolved from the loaded agent config.
     document_service: Option<Arc<dyn DocumentService>>,
+    /// Approved roots for MCP state-file operations.
+    state_roots: Vec<PathBuf>,
     /// Tool router for MCP tool dispatch.
     tool_router: ToolRouter<Self>,
     /// Whether agent creation is allowed (from JACS_MCP_ALLOW_REGISTRATION env var).
@@ -345,6 +351,15 @@ impl JacsMcpServer {
     ///
     /// Use this when the profile has been parsed from a CLI flag.
     pub fn with_profile(agent: AgentWrapper, profile: crate::profile::Profile) -> Self {
+        Self::with_profile_and_state_roots(agent, profile, Vec::new())
+    }
+
+    /// Create a new JACS MCP server with explicit state-file roots.
+    pub fn with_profile_and_state_roots(
+        agent: AgentWrapper,
+        profile: crate::profile::Profile,
+        state_roots: Vec<PathBuf>,
+    ) -> Self {
         let registration_allowed = is_registration_allowed();
         let untrust_allowed = is_untrust_allowed();
         let document_service = match jacs::document::service_from_agent(agent.inner_arc()) {
@@ -368,11 +383,23 @@ impl JacsMcpServer {
         Self {
             agent: Arc::new(agent),
             document_service,
+            state_roots,
             tool_router: Self::tool_router(),
             registration_allowed,
             untrust_allowed,
             profile,
         }
+    }
+
+    fn validate_state_file_root(&self, file_path: &str) -> Result<(), String> {
+        let env_roots;
+        let allowed_roots = if self.state_roots.is_empty() {
+            env_roots = configured_state_roots();
+            env_roots.as_slice()
+        } else {
+            self.state_roots.as_slice()
+        };
+        validate_state_file_root_against_roots(file_path, allowed_roots)
     }
 
     /// Get the list of all compiled-in tools (ignores runtime profile).
@@ -421,7 +448,7 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        if let Err(error_code) = validate_state_file_root(&params.file_path) {
+        if let Err(error_code) = self.validate_state_file_root(&params.file_path) {
             let result = SignStateResult {
                 success: false,
                 jacs_document_id: None,
@@ -1022,7 +1049,7 @@ impl JacsMcpServer {
                 .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
-        if let Err(error_code) = validate_state_file_root(&params.file_path) {
+        if let Err(error_code) = self.validate_state_file_root(&params.file_path) {
             let result = AdoptStateResult {
                 success: false,
                 jacs_document_id: None,

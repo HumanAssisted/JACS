@@ -566,29 +566,16 @@ export class JacsClient {
     );
     const result = JSON.parse(resultJson);
     const cfgPath = result.config_path || normalizedOptions.configPath || './jacs.config.json';
-    const dataDirectory = result.data_directory || normalizedOptions.dataDirectory || './jacs_data';
-    const keyDirectory = result.key_directory || normalizedOptions.keyDirectory || './jacs_keys';
-    const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
-    const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
-    this.info = {
-      agentId: result.agent_id || '',
-      name: result.name || normalizedOptions.name,
-      publicKeyPath,
-      configPath: cfgPath,
-      version: result.version || '',
-      algorithm: result.algorithm || normalizedOptions.algorithm || 'pq2025',
-      privateKeyPath,
-      dataDirectory,
-      keyDirectory,
-      domain: result.domain || normalizedOptions.domain || '',
-      dnsRecord: result.dns_record || '',
-    };
     this.agent = new JacsAgent();
     this.privateKeyPassword = resolvedPassword;
     await withTemporaryPasswordEnv(resolvedPassword, async () => {
-      await this.agent!.load(path.resolve(cfgPath));
+      const infoJson = await this.agent!.loadWithInfo(path.resolve(cfgPath));
+      this.info = parseLoadedAgentInfo(infoJson);
     });
-    return this.info;
+    if (this.info && result.dns_record && !this.info.dnsRecord) {
+      this.info.dnsRecord = result.dns_record;
+    }
+    return this.info!;
   }
 
   createSync(options: CreateAgentOptions): AgentInfo {
@@ -607,29 +594,16 @@ export class JacsClient {
     );
     const result = JSON.parse(resultJson);
     const cfgPath = result.config_path || normalizedOptions.configPath || './jacs.config.json';
-    const dataDirectory = result.data_directory || normalizedOptions.dataDirectory || './jacs_data';
-    const keyDirectory = result.key_directory || normalizedOptions.keyDirectory || './jacs_keys';
-    const publicKeyPath = result.public_key_path || `${keyDirectory}/jacs.public.pem`;
-    const privateKeyPath = result.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
-    this.info = {
-      agentId: result.agent_id || '',
-      name: result.name || normalizedOptions.name,
-      publicKeyPath,
-      configPath: cfgPath,
-      version: result.version || '',
-      algorithm: result.algorithm || normalizedOptions.algorithm || 'pq2025',
-      privateKeyPath,
-      dataDirectory,
-      keyDirectory,
-      domain: result.domain || normalizedOptions.domain || '',
-      dnsRecord: result.dns_record || '',
-    };
     this.agent = new JacsAgent();
     this.privateKeyPassword = resolvedPassword;
     withTemporaryPasswordEnvSync(resolvedPassword, () => {
-      this.agent!.loadSync(path.resolve(cfgPath));
+      const infoJson = this.agent!.loadWithInfoSync(path.resolve(cfgPath));
+      this.info = parseLoadedAgentInfo(infoJson);
     });
-    return this.info;
+    if (this.info && result.dns_record && !this.info.dnsRecord) {
+      this.info.dnsRecord = result.dns_record;
+    }
+    return this.info!;
   }
 
   reset(): void {

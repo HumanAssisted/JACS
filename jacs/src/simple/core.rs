@@ -762,10 +762,15 @@ impl SimpleAgent {
     #[must_use = "agent loading result must be checked for errors"]
     pub fn load(config_path: Option<&str>, strict: Option<bool>) -> Result<Self, JacsError> {
         let path = config_path.unwrap_or("./jacs.config.json");
+        let resolved_path = if Path::new(path).is_absolute() {
+            normalize_path(Path::new(path))
+        } else {
+            normalize_path(&std::env::current_dir()?.join(path))
+        };
 
         debug!("Loading agent from config: {}", path);
 
-        if !Path::new(path).exists() {
+        if !resolved_path.exists() {
             return Err(JacsError::ConfigNotFound {
                 path: path.to_string(),
             });
@@ -773,17 +778,17 @@ impl SimpleAgent {
 
         let mut agent = crate::get_empty_agent();
         agent
-            .load_by_config(path.to_string())
+            .load_by_config(resolved_path.to_string_lossy().into_owned())
             .map_err(|e| JacsError::ConfigInvalid {
                 field: "config".to_string(),
                 reason: e.to_string(),
             })?;
 
-        info!("Agent loaded successfully from {}", path);
+        info!("Agent loaded successfully from {}", resolved_path.display());
 
         Ok(Self {
             agent: Mutex::new(agent),
-            config_path: Some(path.to_string()),
+            config_path: Some(resolved_path.to_string_lossy().into_owned()),
             strict: resolve_strict(strict),
         })
     }

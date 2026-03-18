@@ -11,9 +11,14 @@ const MISSING_JACS_CONFIG_MESSAGE: &str = "JACS_CONFIG environment variable is n
              See the README for a Quick Start guide on creating an agent.";
 
 pub fn load_agent_from_config_env() -> anyhow::Result<AgentWrapper> {
+    let (agent_wrapper, _info) = load_agent_from_config_env_with_info()?;
+    Ok(agent_wrapper)
+}
+
+pub fn load_agent_from_config_env_with_info() -> anyhow::Result<(AgentWrapper, serde_json::Value)> {
     let cfg_path =
         std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
-    load_agent_from_config_path(cfg_path)
+    load_agent_from_config_path_with_info(cfg_path)
 }
 
 pub fn load_agent_from_config_path_with_info(

@@ -1559,8 +1559,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => {
                 let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
                 let profile = jacs_mcp::Profile::resolve(profile_str);
-                let agent = jacs_mcp::load_agent_from_config_env()?;
-                let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);
+                let (agent, info) = jacs_mcp::load_agent_from_config_env_with_info()?;
+                let state_roots = info["data_directory"]
+                    .as_str()
+                    .map(std::path::PathBuf::from)
+                    .into_iter()
+                    .collect();
+                let server = jacs_mcp::JacsMcpServer::with_profile_and_state_roots(
+                    agent,
+                    profile,
+                    state_roots,
+                );
                 let rt = tokio::runtime::Runtime::new()?;
                 rt.block_on(jacs_mcp::serve_stdio(server))?;
             }

@@ -47,8 +47,8 @@ const RISK_CATEGORIES = [
 
 function resolveConfigRelativePath(configPath, candidate) {
   return path.isAbsolute(candidate)
-    ? candidate
-    : path.resolve(path.dirname(configPath), candidate);
+    ? fs.realpathSync(candidate)
+    : fs.realpathSync(path.resolve(path.dirname(configPath), candidate));
 }
 
 // Helper to get a fresh simple module and load it in the fixtures directory (sync)
@@ -313,6 +313,9 @@ describe('JACS Simple API', function() {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory);
         const keyDir = resolveConfigRelativePath(configPath, config.jacs_key_directory);
+        expect(info.configPath).to.equal(fs.realpathSync(configPath));
+        expect(info.dataDirectory).to.equal(dataDir);
+        expect(info.keyDirectory).to.equal(keyDir);
         expect(fs.existsSync(dataDir)).to.equal(true);
         expect(fs.existsSync(keyDir)).to.equal(true);
 

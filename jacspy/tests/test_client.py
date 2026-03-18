@@ -138,8 +138,8 @@ class TestGlobalReset:
 
 def _resolved_config_path(config_path: Path, candidate: str) -> Path:
     if os.path.isabs(candidate):
-        return Path(candidate)
-    return (config_path.parent / candidate).resolve()
+        return Path(os.path.realpath(candidate))
+    return Path(os.path.realpath(config_path.parent / candidate))
 
 
 class TestPersistentQuickstart:
@@ -165,6 +165,10 @@ class TestPersistentQuickstart:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         data_dir = _resolved_config_path(config_path, config["jacs_data_directory"])
         key_dir = _resolved_config_path(config_path, config["jacs_key_directory"])
+        assert client._agent_info is not None
+        assert client._agent_info.config_path == os.path.realpath(config_path)
+        assert client._agent_info.data_directory == os.path.realpath(data_dir)
+        assert client._agent_info.key_directory == os.path.realpath(key_dir)
         assert data_dir.exists()
         assert key_dir.exists()
 
@@ -194,6 +198,9 @@ class TestPersistentQuickstart:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         data_dir = _resolved_config_path(config_path, config["jacs_data_directory"])
         key_dir = _resolved_config_path(config_path, config["jacs_key_directory"])
+        assert info.config_path == os.path.realpath(config_path)
+        assert info.data_directory == os.path.realpath(data_dir)
+        assert info.key_directory == os.path.realpath(key_dir)
         assert data_dir.exists()
         assert key_dir.exists()
 
