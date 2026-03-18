@@ -307,6 +307,7 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
 /// Resolve the private key password from all available sources.
 ///
 /// Resolution order (highest priority first):
+/// 0. `explicit_password` parameter (agent-scoped, no global state)
 /// 1. `JACS_PRIVATE_KEY_PASSWORD` environment variable
 /// 2. `JACS_PASSWORD_FILE` env var or legacy `./jacs_keys/.jacs_password` file
 /// 3. OS keychain (if `keychain` feature is enabled and not disabled via config/env)
@@ -314,7 +315,22 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
 ///
 /// This is the single source of truth for password resolution. All encryption/decryption
 /// code should call this instead of reading the env var directly.
-pub fn resolve_private_key_password() -> Result<String, JacsError> {
+///
+/// The `explicit_password` parameter enables agent-scoped password resolution:
+/// when an `Agent` carries a password, it passes `Some(&pw)` and the resolver
+/// returns it immediately without touching env/jenv. This is what makes
+/// concurrent multi-agent usage safe.
+pub fn resolve_private_key_password(explicit_password: Option<&str>) -> Result<String, JacsError> {
+    // 0. Explicit password (highest priority — agent-scoped, no global state)
+    if let Some(pw) = explicit_password {
+        if pw.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "Explicit password provided but empty or whitespace-only.".to_string(),
+            ));
+        }
+        return Ok(pw.to_string());
+    }
+
     // 1. Try env var (highest priority — explicit always wins)
     if let Ok(Some(pw)) = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false) {
         if pw.trim().is_empty() {
@@ -400,7 +416,7 @@ fn is_keychain_disabled() -> bool {
 /// the env var, OS keychain, and password file in priority order.
 pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, JacsError> {
     // Password is required and must be non-empty
-    let password = resolve_private_key_password()?;
+    let password = resolve_private_key_password(None)?;
 
     // Validate password strength
     validate_password(&password)?;
@@ -492,7 +508,7 @@ pub fn decrypt_private_key_secure(
     // 1. The password must match whatever was used during encryption
     // 2. Existing keys may have been encrypted with older/weaker passwords
     // Password strength is validated only during encrypt_private_key()
-    let password = resolve_private_key_password()?;
+    let password = resolve_private_key_password(None)?;
 
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
@@ -1426,5 +1442,61 @@ mod tests {
             decrypt_with_password(&encrypted, password).expect("decryption should succeed");
 
         assert_eq!(data.as_slice(), decrypted.as_slice());
+    }
+
+    // =========================================================================
+    // resolve_private_key_password explicit override tests (Task 002)
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_password_explicit_override() {
+        // Explicit password should be returned directly, no env needed
+        let result = resolve_private_key_password(Some("explicit_pass")).unwrap();
+        assert_eq!(result, "explicit_pass");
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_password_explicit_overrides_env() {
+        use crate::storage::jenv::set_env_var;
+        set_env_var("JACS_PRIVATE_KEY_PASSWORD", "env_pass").unwrap();
+
+        let result = resolve_private_key_password(Some("explicit_pass")).unwrap();
+        assert_eq!(result, "explicit_pass", "explicit should win over env");
+
+        let _ = crate::storage::jenv::clear_env_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_password_none_falls_back_to_env() {
+        use crate::storage::jenv::set_env_var;
+        set_env_var("JACS_PRIVATE_KEY_PASSWORD", "env_pass").unwrap();
+
+        let result = resolve_private_key_password(None).unwrap();
+        assert_eq!(result, "env_pass", "None should fall back to env");
+
+        let _ = crate::storage::jenv::clear_env_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+
+    #[test]
+    fn test_resolve_password_explicit_empty_fails() {
+        let result = resolve_private_key_password(Some(""));
+        assert!(result.is_err(), "empty explicit password should fail");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("empty or whitespace"),
+            "error should mention empty: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_resolve_password_explicit_whitespace_fails() {
+        let result = resolve_private_key_password(Some("   "));
+        assert!(
+            result.is_err(),
+            "whitespace-only explicit password should fail"
+        );
     }
 }

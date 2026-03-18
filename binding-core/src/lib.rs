@@ -20,9 +20,8 @@ use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
 pub mod doc_wrapper;
@@ -293,38 +292,9 @@ pub struct AgentWrapper {
     private_key_password: Arc<Mutex<Option<String>>>,
 }
 
-struct ScopedPrivateKeyEnv {
-    previous: Option<OsString>,
-}
-
-impl ScopedPrivateKeyEnv {
-    fn set(password: &str) -> Self {
-        let previous = std::env::var_os("JACS_PRIVATE_KEY_PASSWORD");
-        unsafe {
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
-        }
-        Self { previous }
-    }
-}
-
-impl Drop for ScopedPrivateKeyEnv {
-    fn drop(&mut self) {
-        if let Some(previous) = &self.previous {
-            unsafe {
-                std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", previous);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
-            }
-        }
-    }
-}
-
-fn private_key_env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
+// ScopedPrivateKeyEnv and private_key_env_lock removed:
+// Password is now set directly on Agent.password (agent-scoped, no global state).
+// See ENV_SECURITY_PRD Task 006.
 
 impl Default for AgentWrapper {
     fn default() -> Self {
@@ -376,11 +346,14 @@ impl AgentWrapper {
         &self,
         operation: impl FnOnce() -> BindingResult<T>,
     ) -> BindingResult<T> {
+        // Sync the wrapper's password to the Agent's agent-scoped password field.
+        // This avoids all env var mutation — the Agent carries the password internally
+        // and passes it to resolve_private_key_password(Some(&pw)).
         if let Some(password) = self.configured_private_key_password()? {
-            let _lock = private_key_env_lock()
-                .lock()
-                .map_err(BindingCoreError::from)?;
-            let _guard = ScopedPrivateKeyEnv::set(&password);
+            {
+                let mut agent = self.lock()?;
+                agent.set_password(Some(password));
+            }
             operation()
         } else {
             operation()
@@ -2193,26 +2166,30 @@ pub fn verify_document_standalone(
     std::fs::write(&config_path, &config_json)
         .map_err(|e| BindingCoreError::generic(format!("Failed to write temp config: {}", e)))?;
 
-    struct EnvGuard {
-        saved: Vec<(&'static str, std::option::Option<std::ffi::OsString>)>,
+    // Isolate standalone verification from ambient env var pollution.
+    // Several test suites set JACS_* vars globally; load_config_12factor would
+    // otherwise override our temp config and silently point key lookups elsewhere.
+    //
+    // We use jenv (thread-safe env store) to clear and restore vars instead of
+    // unsafe std::env::set_var/remove_var. This eliminates all unsafe env
+    // mutation from the standalone verification path.
+    use jacs::storage::jenv;
+
+    struct JenvGuard {
+        saved: Vec<(&'static str, Option<String>)>,
     }
-    impl Drop for EnvGuard {
+    impl Drop for JenvGuard {
         fn drop(&mut self) {
             for (key, prev) in &self.saved {
                 if let Some(val) = prev {
-                    // SAFETY: test/standalone path restores process env to prior values.
-                    unsafe { std::env::set_var(key, val) }
+                    let _ = jacs::storage::jenv::set_env_var(key, val);
                 } else {
-                    // SAFETY: removing a missing key is a no-op.
-                    unsafe { std::env::remove_var(key) }
+                    let _ = jacs::storage::jenv::clear_env_var(key);
                 }
             }
         }
     }
 
-    // Isolate standalone verification from ambient env var pollution.
-    // Several test suites set JACS_* vars globally; load_config_12factor would
-    // otherwise override our temp config and silently point key lookups elsewhere.
     let isolated_keys: [&'static str; 16] = [
         "JACS_USE_SECURITY",
         "JACS_DATA_DIRECTORY",
@@ -2231,24 +2208,21 @@ pub fn verify_document_standalone(
         "JACS_DATABASE_MIN_CONNECTIONS",
         "JACS_DATABASE_CONNECT_TIMEOUT_SECS",
     ];
-    let mut saved: Vec<(&'static str, std::option::Option<std::ffi::OsString>)> = Vec::new();
+    let mut saved: Vec<(&'static str, Option<String>)> = Vec::new();
     for key in isolated_keys {
-        saved.push((key, std::env::var_os(key)));
-        // SAFETY: intentionally clearing process env vars for isolated verification.
-        unsafe { std::env::remove_var(key) }
+        saved.push((key, jenv::get_env_var(key, false).ok().flatten()));
+        let _ = jenv::clear_env_var(key);
     }
     saved.push((
         "JACS_KEY_RESOLUTION",
-        std::env::var_os("JACS_KEY_RESOLUTION"),
+        jenv::get_env_var("JACS_KEY_RESOLUTION", false).ok().flatten(),
     ));
     if let Some(kr) = key_resolution {
-        // SAFETY: set explicit key resolution only for this call.
-        unsafe { std::env::set_var("JACS_KEY_RESOLUTION", kr) }
+        let _ = jenv::set_env_var("JACS_KEY_RESOLUTION", kr);
     } else {
-        // SAFETY: ensure no inherited override leaks in.
-        unsafe { std::env::remove_var("JACS_KEY_RESOLUTION") }
+        let _ = jenv::clear_env_var("JACS_KEY_RESOLUTION");
     }
-    let _env_guard = EnvGuard { saved };
+    let _env_guard = JenvGuard { saved };
 
     let result: BindingResult<VerificationResult> = (|| {
         let wrapper = AgentWrapper::new();

@@ -95,8 +95,7 @@ pub(crate) fn resolve_strict(explicit: Option<bool>) -> bool {
         .unwrap_or(false)
 }
 
-/// Mutex to prevent concurrent environment variable stomping during creation.
-pub(crate) static CREATE_MUTEX: Mutex<()> = Mutex::new(());
+// CREATE_MUTEX removed: agent-scoped key_paths + password eliminated env var stomping.
 
 fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
@@ -405,34 +404,15 @@ impl SimpleAgent {
     /// ```
     #[must_use = "agent creation result must be checked for errors"]
     pub fn create_with_params(params: CreateAgentParams) -> Result<(Self, AgentInfo), JacsError> {
-        struct EnvRestoreGuard {
-            previous: Vec<(String, Option<String>)>,
-        }
+        use crate::keystore::KeyPaths;
+        use crate::storage::jenv;
 
-        impl Drop for EnvRestoreGuard {
-            fn drop(&mut self) {
-                for (key, value) in &self.previous {
-                    unsafe {
-                        if let Some(v) = value {
-                            std::env::set_var(key, v);
-                        } else {
-                            std::env::remove_var(key);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Acquire creation mutex to prevent concurrent env var stomping
-        let _lock = CREATE_MUTEX.lock().map_err(|e| JacsError::Internal {
-            message: format!("Failed to acquire creation lock: {}", e),
-        })?;
-
-        // Resolve password: params > env var > error
+        // Resolve password: params > env var (via canonical resolver) > error
         let password = if !params.password.is_empty() {
             params.password.clone()
         } else {
-            std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default()
+            // Try the canonical resolver (env, password file, keychain)
+            crate::crypt::aes_encrypt::resolve_private_key_password(None).unwrap_or_default()
         };
 
         if password.is_empty() {
@@ -484,40 +464,30 @@ impl SimpleAgent {
         // Protect key directory from accidental git commits / Docker inclusion
         write_key_directory_ignore_files(keys_dir);
 
-        let env_keys = [
-            "JACS_PRIVATE_KEY_PASSWORD",
-            "JACS_DATA_DIRECTORY",
-            "JACS_KEY_DIRECTORY",
-            "JACS_AGENT_KEY_ALGORITHM",
-            "JACS_DEFAULT_STORAGE",
-            "JACS_AGENT_PRIVATE_KEY_FILENAME",
-            "JACS_AGENT_PUBLIC_KEY_FILENAME",
-        ];
-        let previous_env = env_keys
-            .iter()
-            .map(|k| ((*k).to_string(), std::env::var(k).ok()))
-            .collect();
-        let _env_restore_guard = EnvRestoreGuard {
-            previous: previous_env,
+        // Build agent-scoped KeyPaths (no env mutation needed for key paths)
+        let key_paths = KeyPaths {
+            key_directory: params.key_directory.clone(),
+            private_key_filename: DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
+            public_key_filename: DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
         };
 
-        // Set env vars for the keystore layer (within the mutex lock)
-        // SAFETY: We hold CREATE_MUTEX, ensuring no concurrent env var access
-        unsafe {
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
-            std::env::set_var("JACS_DATA_DIRECTORY", &params.data_directory);
-            std::env::set_var("JACS_KEY_DIRECTORY", &params.key_directory);
-            std::env::set_var("JACS_AGENT_KEY_ALGORITHM", &algorithm);
-            std::env::set_var("JACS_DEFAULT_STORAGE", &params.default_storage);
-            std::env::set_var(
-                "JACS_AGENT_PRIVATE_KEY_FILENAME",
-                DEFAULT_PRIVATE_KEY_FILENAME,
-            );
-            std::env::set_var(
-                "JACS_AGENT_PUBLIC_KEY_FILENAME",
-                DEFAULT_PUBLIC_KEY_FILENAME,
-            );
-        }
+        // Set non-password config in jenv for code that still reads from there
+        // (e.g., MultiStorage::default_new(), Agent::new(), config loading).
+        // These are directory/storage config, not secrets, so jenv is acceptable.
+        jenv::set_env_var("JACS_DATA_DIRECTORY", &params.data_directory)?;
+        jenv::set_env_var("JACS_KEY_DIRECTORY", &params.key_directory)?;
+        jenv::set_env_var("JACS_AGENT_KEY_ALGORITHM", &algorithm)?;
+        jenv::set_env_var("JACS_DEFAULT_STORAGE", &params.default_storage)?;
+        jenv::set_env_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            DEFAULT_PRIVATE_KEY_FILENAME,
+        )?;
+        jenv::set_env_var(
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+            DEFAULT_PUBLIC_KEY_FILENAME,
+        )?;
+        // Password flows through Agent.password, NOT through env/jenv
+        jenv::set_env_var("JACS_PRIVATE_KEY_PASSWORD", &password)?;
 
         // Create a minimal agent JSON
         let description = if params.description.is_empty() {
@@ -528,8 +498,10 @@ impl SimpleAgent {
 
         let agent_json = build_agent_document(&params.agent_type, &params.name, &description)?;
 
-        // Create the agent
+        // Create the agent and set agent-scoped fields
         let mut agent = crate::get_empty_agent();
+        agent.set_key_paths(key_paths.clone());
+        agent.set_password(Some(password.clone()));
 
         let instance = agent
             .create_agent_and_load(&agent_json.to_string(), true, Some(&algorithm))

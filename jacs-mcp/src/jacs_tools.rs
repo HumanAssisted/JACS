@@ -83,16 +83,30 @@ fn arbitrary_state_files_allowed() -> bool {
         .unwrap_or(false)
 }
 
-fn configured_state_roots() -> Vec<PathBuf> {
+fn configured_state_roots(data_directory: Option<&str>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
 
-    if let Ok(root) = std::env::var("JACS_DATA_DIRECTORY")
-        && !root.trim().is_empty()
-    {
-        roots.push(PathBuf::from(root));
+    // Prefer explicit data directory from loaded agent
+    if let Some(dir) = data_directory {
+        if !dir.trim().is_empty() {
+            roots.push(PathBuf::from(dir));
+        }
     }
 
-    roots.push(PathBuf::from("jacs_data"));
+    // Fall back to env var
+    if roots.is_empty() {
+        if let Ok(root) = std::env::var("JACS_DATA_DIRECTORY")
+            && !root.trim().is_empty()
+        {
+            roots.push(PathBuf::from(root));
+        }
+    }
+
+    // Default fallback
+    if roots.is_empty() {
+        roots.push(PathBuf::from("jacs_data"));
+    }
+
     roots
 }
 
@@ -394,7 +408,7 @@ impl JacsMcpServer {
     fn validate_state_file_root(&self, file_path: &str) -> Result<(), String> {
         let env_roots;
         let allowed_roots = if self.state_roots.is_empty() {
-            env_roots = configured_state_roots();
+            env_roots = configured_state_roots(None);
             env_roots.as_slice()
         } else {
             self.state_roots.as_slice()

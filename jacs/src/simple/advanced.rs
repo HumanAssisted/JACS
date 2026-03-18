@@ -652,7 +652,7 @@ pub fn quickstart(
     }
 
     // Resolve password from env var, OS keychain, or fail with helpful message.
-    let password = crate::crypt::aes_encrypt::resolve_private_key_password()?;
+    let password = crate::crypt::aes_encrypt::resolve_private_key_password(None)?;
 
     // Use create_with_params for full control
     let algo = match algorithm.unwrap_or("pq2025") {

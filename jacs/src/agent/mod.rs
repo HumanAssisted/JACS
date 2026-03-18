@@ -20,7 +20,7 @@ use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key}
 use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
-use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
+use crate::keystore::{FsEncryptedStore, KeyPaths, KeySpec, KeyStore};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dns::bootstrap::verify_registry_registration_sync;
@@ -274,6 +274,13 @@ pub struct Agent {
     dns_validate_enabled: Option<bool>,
     /// whether DNS validation is required (must have domain and successful DNS check)
     dns_required: Option<bool>,
+    /// Resolved filesystem paths for key material (set from Config at construction).
+    /// When `Some`, `FsEncryptedStore::new(paths)` uses these instead of env reads.
+    key_paths: Option<KeyPaths>,
+    /// Agent-scoped private key password. When `Some`, `resolve_private_key_password`
+    /// returns this immediately without touching env/jenv. Enables safe concurrent
+    /// multi-agent usage.
+    password: Option<String>,
     /// Evidence adapters for attestation (gated behind `attestation` feature).
     #[cfg(feature = "attestation")]
     pub adapters: Vec<Box<dyn crate::attestation::adapters::EvidenceAdapter>>,
@@ -300,6 +307,19 @@ impl Agent {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let config = Some(load_config_12factor_optional(None)?);
+        let key_paths =
+            config.as_ref().map(|c| KeyPaths {
+                key_directory: c
+                    .jacs_key_directory()
+                    .clone()
+                    .unwrap_or_else(|| "./jacs_keys".to_string()),
+                private_key_filename: c.jacs_agent_private_key_filename().clone().unwrap_or_else(
+                    || crate::simple::core::DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
+                ),
+                public_key_filename: c.jacs_agent_public_key_filename().clone().unwrap_or_else(
+                    || crate::simple::core::DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
+                ),
+            });
         Ok(Self {
             schema,
             value: None,
@@ -316,6 +336,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            key_paths,
+            password: None,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         })
@@ -347,6 +369,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            key_paths: None,
+            password: None,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         })
@@ -360,6 +384,41 @@ impl Agent {
     /// Get a reference to the agent's key store, if any.
     pub fn get_key_store(&self) -> Option<&dyn KeyStore> {
         self.key_store.as_deref()
+    }
+
+    /// Get the agent's resolved key paths, if any.
+    pub fn key_paths(&self) -> Option<&KeyPaths> {
+        self.key_paths.as_ref()
+    }
+
+    /// Set the agent's key paths explicitly.
+    pub fn set_key_paths(&mut self, paths: KeyPaths) {
+        self.key_paths = Some(paths);
+    }
+
+    /// Get the agent-scoped password, if set.
+    pub fn password(&self) -> Option<&str> {
+        self.password.as_deref()
+    }
+
+    /// Set the agent-scoped password.
+    pub fn set_password(&mut self, password: Option<String>) {
+        self.password = password;
+    }
+
+    /// Resolve the private key password using the agent-scoped password if available,
+    /// falling back to env/jenv/keychain.
+    pub fn resolve_password(&self) -> Result<String, JacsError> {
+        crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())
+    }
+
+    /// Build an `FsEncryptedStore` from the agent's `key_paths` (if set),
+    /// falling back to `KeyPaths::from_env()` for backward compatibility.
+    pub fn build_fs_store(&self) -> Result<FsEncryptedStore, JacsError> {
+        match self.key_paths.as_ref() {
+            Some(paths) => Ok(FsEncryptedStore::new(paths.clone())),
+            None => FsEncryptedStore::from_env(),
+        }
     }
 
     pub fn set_dns_strict(&mut self, strict: bool) {
@@ -1376,7 +1435,7 @@ impl Agent {
         let (new_private_key, new_public_key) = if let Some(ref ks) = self.key_store {
             ks.rotate(&old_version, &spec)?
         } else {
-            FsEncryptedStore.rotate(&old_version, &spec)?
+            self.build_fs_store()?.rotate(&old_version, &spec)?
         };
 
         // Set new keys on the agent
@@ -1820,6 +1879,21 @@ impl AgentBuilder {
 
         let document_schemas = Arc::new(Mutex::new(HashMap::new()));
 
+        // Build key paths from config
+        let key_paths =
+            config.as_ref().map(|c| KeyPaths {
+                key_directory: c
+                    .jacs_key_directory()
+                    .clone()
+                    .unwrap_or_else(|| "./jacs_keys".to_string()),
+                private_key_filename: c.jacs_agent_private_key_filename().clone().unwrap_or_else(
+                    || crate::simple::core::DEFAULT_PRIVATE_KEY_FILENAME.to_string(),
+                ),
+                public_key_filename: c.jacs_agent_public_key_filename().clone().unwrap_or_else(
+                    || crate::simple::core::DEFAULT_PUBLIC_KEY_FILENAME.to_string(),
+                ),
+            });
+
         // Create the agent
         let mut agent = Agent {
             schema,
@@ -1837,6 +1911,8 @@ impl AgentBuilder {
             dns_strict: self.dns_strict.unwrap_or(false),
             dns_validate_enabled: self.dns_validate,
             dns_required: self.dns_required,
+            key_paths,
+            password: None,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         };

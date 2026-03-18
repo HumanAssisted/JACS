@@ -384,12 +384,8 @@ fn handle_agent_create_inner(
             .map_err(|e| format!("Failed to initialize agent with defaults: {}", e))?
     };
 
-    // Publish config values to env vars so legacy code (e.g. FsEncryptedStore::key_paths())
-    // that reads JACS_* env vars directly can find them.
-    // SAFETY: CLI is single-threaded at this point.
-    if let Some(ref config) = agent.config {
-        unsafe { config.publish_to_env() };
-    }
+    // publish_to_env() removed: Agent now carries key_paths from config,
+    // so FsEncryptedStore uses Agent.key_paths() instead of env reads.
 
     // -- Get user input for agent type and SERVICE descriptions --
     let agent_type = request_string("Agent Type (e.g., ai, person, service, device)", "ai"); // Default to ai

@@ -83,7 +83,7 @@ pub fn base64_decode(encoded: &str) -> Result<Vec<u8>, JacsError> {
 
 use strum_macros::{AsRefStr, Display, EnumString};
 
-use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
+use crate::keystore::{KeySpec, KeyStore};
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone)]
 pub enum CryptoSigningAlgorithm {
@@ -251,7 +251,7 @@ impl Agent {
                 let algo = stored_algo.as_deref().unwrap_or("pq2025");
                 Box::new(crate::keystore::InMemoryKeyStore::new(algo))
             } else {
-                Box::new(FsEncryptedStore)
+                Box::new(self.build_fs_store()?)
             };
             (raw, ks)
         } else {
@@ -262,7 +262,7 @@ impl Agent {
                     })?;
             (
                 decrypted.as_slice().to_vec(),
-                Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+                Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
             )
         };
 
@@ -303,7 +303,7 @@ impl Agent {
 impl KeyManager for Agent {
     /// this necessatates updateding the version of the agent
     fn generate_keys(&mut self) -> Result<(), JacsError> {
-        self.generate_keys_with_store(&FsEncryptedStore)
+        self.generate_keys_with_store(&self.build_fs_store()?)
     }
 
     fn sign_string(&mut self, data: &str) -> Result<String, JacsError> {
@@ -352,7 +352,7 @@ impl KeyManager for Agent {
                     let algo = stored_algo.as_deref().unwrap_or("pq2025");
                     Box::new(crate::keystore::InMemoryKeyStore::new(algo))
                 } else {
-                    Box::new(FsEncryptedStore)
+                    Box::new(self.build_fs_store()?)
                 };
                 (raw, ks)
             } else {
@@ -367,7 +367,7 @@ impl KeyManager for Agent {
                         })?;
                 (
                     decrypted.as_slice().to_vec(),
-                    Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+                    Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
                 )
             };
 
@@ -447,7 +447,7 @@ impl KeyManager for Agent {
                 let algo = stored_algo.as_deref().unwrap_or("pq2025");
                 Box::new(crate::keystore::InMemoryKeyStore::new(algo))
             } else {
-                Box::new(FsEncryptedStore)
+                Box::new(self.build_fs_store()?)
             };
             (raw, ks)
         } else {
@@ -462,7 +462,7 @@ impl KeyManager for Agent {
                     })?;
             (
                 decrypted.as_slice().to_vec(),
-                Box::new(FsEncryptedStore) as Box<dyn KeyStore>,
+                Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
             )
         };
 

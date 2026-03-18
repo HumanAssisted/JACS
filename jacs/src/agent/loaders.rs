@@ -9,7 +9,6 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use secrecy::ExposeSecret;
 
-use crate::storage::jenv::get_env_var;
 use crate::time_utils;
 use crate::validation::require_relative_path_safe;
 use std::fs::OpenOptions;
@@ -614,18 +613,13 @@ impl FileLoader for Agent {
         private_key: &[u8],
     ) -> Result<String, JacsError> {
         // SECURITY: Require encryption password. Never write private keys unencrypted.
-        let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
-            .unwrap_or(None)
-            .unwrap_or_default();
-
-        if password.trim().is_empty() {
-            return Err(
+        // Use the canonical resolver which checks explicit, env var, password file, and keychain.
+        crate::crypt::aes_encrypt::resolve_private_key_password(None).map_err(|_| {
+            JacsError::from(
                 "SECURITY: Refusing to save private key without encryption. \
-                Set JACS_PRIVATE_KEY_PASSWORD environment variable to a strong password \
-                before saving keys to disk."
-                    .into(),
-            );
-        }
+                Set JACS_PRIVATE_KEY_PASSWORD, JACS_PASSWORD_FILE, or configure OS keychain.",
+            )
+        })?;
 
         let encrypted_key = encrypt_private_key(private_key)?;
         let final_path = if !full_filepath.ends_with(".enc") {

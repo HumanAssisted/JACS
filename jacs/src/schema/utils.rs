@@ -549,8 +549,11 @@ fn normalize_access_path(path: &str) -> Result<std::path::PathBuf, JacsError> {
 /// # Returns
 /// * `Ok(())` if filesystem access is allowed and the path is safe
 /// * `Err(JacsError)` if access is denied or the path is unsafe
-fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
-    // Check if filesystem schemas are enabled
+fn check_filesystem_schema_access(
+    path: &str,
+    config: Option<&crate::config::Config>,
+) -> Result<(), JacsError> {
+    // Check if filesystem schemas are enabled (process-level feature gate, stays as env read)
     let fs_enabled = std::env::var("JACS_ALLOW_FILESYSTEM_SCHEMAS")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false);
@@ -572,8 +575,10 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
         )));
     }
 
-    // Get allowed directories
-    let data_dir = std::env::var("JACS_DATA_DIRECTORY").ok();
+    // Get allowed directories — prefer Config values, fall back to env
+    let data_dir = config
+        .and_then(|c| c.jacs_data_directory().clone())
+        .or_else(|| std::env::var("JACS_DATA_DIRECTORY").ok());
     let schema_dir = std::env::var("JACS_SCHEMA_DIRECTORY").ok();
 
     // If specific directories are configured, check that the path is within them
@@ -663,7 +668,7 @@ pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, JacsError> {
         }
     } else {
         // Filesystem path - check security restrictions
-        check_filesystem_schema_access(path)?;
+        check_filesystem_schema_access(path, None)?;
 
         let storage = MultiStorage::default_new()
             .map_err(|e| JacsError::SchemaError(format!("Failed to initialize storage: {}", e)))?;
