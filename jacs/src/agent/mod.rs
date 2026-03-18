@@ -16,7 +16,6 @@ use crate::storage::MultiStorage;
 
 use crate::config::{Config, load_config_12factor, load_config_12factor_optional};
 
-use crate::crypt::aes_encrypt::decrypt_private_key_secure;
 use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
@@ -230,18 +229,6 @@ pub(crate) fn build_signature_content(
 // Just use Vec<u8> directly since it already implements the needed traits
 pub type PrivateKey = Vec<u8>;
 pub type SecretPrivateKey = SecretBox<Vec<u8>>;
-
-/// Decrypt a private key with automatic memory zeroization.
-///
-/// # Security
-/// Returns a `ZeroizingVec` that will securely erase the decrypted key
-/// from memory when it goes out of scope.
-///
-/// # Errors
-/// Returns an error if decryption fails (wrong password or corrupted data).
-pub fn use_secret(key: &[u8]) -> Result<ZeroizingVec, JacsError> {
-    decrypt_private_key_secure(key)
-}
 
 /// Decrypt a private key using an agent-scoped password if available.
 pub(crate) fn decrypt_with_agent_password(

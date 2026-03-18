@@ -715,9 +715,12 @@ fn verify_agent_self_signature(
         })?,
         None => {
             // Check if strict mode is enabled
-            let strict = std::env::var("JACS_REQUIRE_EXPLICIT_ALGORITHM")
-                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-                .unwrap_or(false);
+            let strict =
+                crate::storage::jenv::get_env_var("JACS_REQUIRE_EXPLICIT_ALGORITHM", false)
+                    .ok()
+                    .flatten()
+                    .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                    .unwrap_or(false);
             if strict {
                 return Err(JacsError::SignatureVerificationFailed {
                     reason: "Signature missing signingAlgorithm field. \
