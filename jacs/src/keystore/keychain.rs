@@ -12,14 +12,6 @@ use crate::error::JacsError;
 pub const SERVICE_NAME: &str = "jacs-private-key";
 pub const DEFAULT_USER: &str = "default";
 
-/// Returns `true` when the OS keychain has been explicitly disabled via
-/// `JACS_KEYCHAIN_BACKEND=disabled` (case-insensitive).
-fn is_runtime_disabled() -> bool {
-    std::env::var("JACS_KEYCHAIN_BACKEND")
-        .map(|v| v.eq_ignore_ascii_case("disabled"))
-        .unwrap_or(false)
-}
-
 // =============================================================================
 // Feature-enabled implementation
 // =============================================================================
@@ -28,6 +20,14 @@ fn is_runtime_disabled() -> bool {
 mod inner {
     use super::*;
     use keyring::{Entry, Error as KeyringError};
+
+    /// Returns `true` when the OS keychain has been explicitly disabled via
+    /// `JACS_KEYCHAIN_BACKEND=disabled` (case-insensitive).
+    fn is_runtime_disabled() -> bool {
+        std::env::var("JACS_KEYCHAIN_BACKEND")
+            .map(|v| v.eq_ignore_ascii_case("disabled"))
+            .unwrap_or(false)
+    }
 
     fn map_keyring_error(e: KeyringError) -> JacsError {
         match e {

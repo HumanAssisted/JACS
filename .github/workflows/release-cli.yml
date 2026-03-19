@@ -99,6 +99,8 @@ jobs:
             $_ -eq "$prefix/jacs/LICENSE" -or
             $_ -eq "$prefix/jacs/build.rs" -or
             $_ -like "$prefix/jacs/benches/*" -or
+            $_ -like "$prefix/jacs/examples/*.rs" -or
+            $_ -like "$prefix/jacs/examples/*.json" -or
             $_ -eq "$prefix/jacs-cli/Cargo.toml" -or
             $_ -eq "$prefix/jacs-mcp/Cargo.toml" -or
             $_ -eq "$prefix/jacs-mcp/README.md" -or

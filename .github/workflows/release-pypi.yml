@@ -46,7 +46,6 @@ jobs:
 
   build-wheels:
     needs: verify-version
-    continue-on-error: ${{ matrix.allow_failure }}
     strategy:
       fail-fast: false
       matrix:
@@ -112,16 +111,21 @@ jobs:
         run: pip install "maturin[zig]"
 
       - name: Build wheel
+        id: build_wheel
         if: ${{ !matrix.use_zig }}
+        continue-on-error: ${{ matrix.allow_failure }}
         working-directory: jacspy
         run: maturin build --release --target ${{ matrix.target }} --out dist
 
       - name: Build wheel (zig)
+        id: build_wheel_zig
         if: ${{ matrix.use_zig }}
+        continue-on-error: ${{ matrix.allow_failure }}
         working-directory: jacspy
         run: maturin build --release --target ${{ matrix.target }} --out dist --zig
 
       - uses: actions/upload-artifact@v4
+        if: ${{ steps.build_wheel.conclusion == 'success' || steps.build_wheel_zig.conclusion == 'success' }}
         with:
           name: wheels-${{ matrix.target }}
           path: jacspy/dist/*.whl
