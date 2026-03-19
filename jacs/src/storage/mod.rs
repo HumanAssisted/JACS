@@ -1082,7 +1082,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(cwd_env)]
     fn fs_storage_supports_absolute_paths() {
         let temp = tempfile::tempdir().expect("tempdir");
         let _cwd = chdir_guard(temp.path());
@@ -1106,7 +1106,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(cwd_env)]
     fn fs_storage_resolves_relative_paths_against_creation_cwd() {
         let home = tempfile::tempdir().expect("home tempdir");
         let elsewhere = tempfile::tempdir().expect("elsewhere tempdir");

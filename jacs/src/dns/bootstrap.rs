@@ -695,6 +695,7 @@ pub fn tld_requirement_text() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_verify_agent_dns_invalid_json() {
@@ -835,6 +836,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(jacs_env)]
     fn test_registry_verification_requires_jacs_registry_url() {
         // Ensure HAI_API_URL is NOT used as a fallback
         // SAFETY: test-only env var manipulation; tests run serially for env var tests

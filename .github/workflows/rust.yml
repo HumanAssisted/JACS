@@ -81,13 +81,20 @@ jobs:
       - name: Validate schema $id fields match file paths
         run: ./scripts/validate-schemas.sh
 
+      - name: Check no bare serial annotations
+        run: ./scripts/check-no-bare-serial.sh
+
   quick-jacs:
-    name: Quick jacs core (ubuntu)
+    name: Quick jacs ${{ matrix.shard }} (ubuntu)
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [lib, bin-shard-a, bin-shard-b]
 
     steps:
       - name: Checkout code
@@ -101,8 +108,8 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run quick Rust test suite (core)
-        run: make test-jacs-fast
+      - name: Run quick Rust test suite (core - ${{ matrix.shard }})
+        run: make test-jacs-fast-${{ matrix.shard }}
 
   quick-jacs-cli:
     name: Quick jacs CLI (ubuntu)

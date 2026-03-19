@@ -664,59 +664,72 @@ pub fn resolve_schema_with_config(
     config: Option<&crate::config::Config>,
 ) -> Result<Arc<Value>, JacsError> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
-    let path = rawpath.strip_prefix('/').unwrap_or(rawpath);
-    let cache_key = schema_cache_key(path);
+    let embedded_alias = rawpath.strip_prefix('/');
+    let cache_key = schema_cache_key(
+        DEFAULT_SCHEMA_STRINGS
+            .get(rawpath)
+            .map(|_| rawpath)
+            .or_else(|| {
+                embedded_alias.and_then(|alias| DEFAULT_SCHEMA_STRINGS.get(alias).map(|_| alias))
+            })
+            .unwrap_or(rawpath),
+    );
 
     if let Some(cached) = get_cached_schema(&cache_key) {
         return Ok(cached);
     }
 
     // Check embedded schemas first (always allowed, no security concerns)
-    let resolved = if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+    let resolved = if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(rawpath) {
         let schema_value: Value = serde_json::from_str(schema_json)?;
         Arc::new(schema_value)
-    } else if path.starts_with("http://") || path.starts_with("https://") {
-        debug!("Attempting to fetch schema from URL: {}", path);
-        if path.starts_with("https://hai.ai") {
-            let relative_path = path.trim_start_matches("https://hai.ai/");
+    } else if let Some(schema_json) =
+        embedded_alias.and_then(|alias| DEFAULT_SCHEMA_STRINGS.get(alias))
+    {
+        let schema_value: Value = serde_json::from_str(schema_json)?;
+        Arc::new(schema_value)
+    } else if rawpath.starts_with("http://") || rawpath.starts_with("https://") {
+        debug!("Attempting to fetch schema from URL: {}", rawpath);
+        if rawpath.starts_with("https://hai.ai") {
+            let relative_path = rawpath.trim_start_matches("https://hai.ai/");
             if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(relative_path) {
                 let schema_value: Value = serde_json::from_str(schema_json)?;
                 Arc::new(schema_value)
             } else {
                 return Err(JacsError::SchemaError(format!(
                     "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
-                    path,
+                    rawpath,
                     relative_path,
                     DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
                 )));
             }
         } else {
             // get_remote_schema already checks the domain allowlist
-            get_remote_schema(path)?
+            get_remote_schema(rawpath)?
         }
     } else {
         // Filesystem path - check security restrictions
-        check_filesystem_schema_access(path, config)?;
+        check_filesystem_schema_access(rawpath, config)?;
 
         let storage = MultiStorage::default_new()
             .map_err(|e| JacsError::SchemaError(format!("Failed to initialize storage: {}", e)))?;
-        if storage.file_exists(path, None).map_err(|e| {
+        if storage.file_exists(rawpath, None).map_err(|e| {
             JacsError::SchemaError(format!("Failed to check schema file existence: {}", e))
         })? {
-            let file_bytes = storage.get_file(path, None).map_err(|e| {
-                JacsError::SchemaError(format!("Failed to read schema file '{}': {}", path, e))
+            let file_bytes = storage.get_file(rawpath, None).map_err(|e| {
+                JacsError::SchemaError(format!("Failed to read schema file '{}': {}", rawpath, e))
             })?;
             let schema_json = String::from_utf8(file_bytes).map_err(|e| {
                 JacsError::SchemaError(format!(
                     "Schema file '{}' contains invalid UTF-8: {}",
-                    path, e
+                    rawpath, e
                 ))
             })?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;
             Arc::new(schema_value)
         } else {
             return Err(JacsError::FileNotFound {
-                path: path.to_string(),
+                path: rawpath.to_string(),
             });
         }
     };
@@ -753,6 +766,7 @@ fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
 #[cfg(test)]
 mod tests {
     use super::resolve_schema;
+    use serial_test::serial;
     use std::sync::Arc;
 
     #[test]
@@ -776,6 +790,45 @@ mod tests {
         assert!(
             Arc::ptr_eq(&relative, &via_url),
             "relative and hai URL lookups should share cached schema"
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn resolve_schema_allows_absolute_path_within_allowed_directory() {
+        let temp = tempfile::tempdir().expect("create tempdir");
+        let allowed_dir = temp.path().join("fixtures");
+        std::fs::create_dir_all(&allowed_dir).expect("create allowed dir");
+
+        let schema_path = allowed_dir.join("absolute.schema.json");
+        std::fs::write(
+            &schema_path,
+            r#"{"$schema":"http://json-schema.org/draft-07/schema#","type":"object"}"#,
+        )
+        .expect("write schema");
+
+        // SAFETY: serial test; env var mutations are isolated to this test's phase.
+        unsafe {
+            std::env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
+            std::env::set_var(
+                "JACS_DATA_DIRECTORY",
+                allowed_dir.to_string_lossy().to_string(),
+            );
+            std::env::remove_var("JACS_SCHEMA_DIRECTORY");
+        }
+
+        let result = resolve_schema(schema_path.to_string_lossy().as_ref());
+
+        // SAFETY: serial test; cleanup mirrors setup above.
+        unsafe {
+            std::env::remove_var("JACS_ALLOW_FILESYSTEM_SCHEMAS");
+            std::env::remove_var("JACS_DATA_DIRECTORY");
+            std::env::remove_var("JACS_SCHEMA_DIRECTORY");
+        }
+
+        assert!(
+            result.is_ok(),
+            "absolute schema path inside allowed directory should resolve"
         );
     }
 }

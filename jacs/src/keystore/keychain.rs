@@ -235,7 +235,7 @@ mod tests {
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_store_and_get_password() {
             cleanup();
             store_password("Test!Strong#Pass123").unwrap();
@@ -245,7 +245,7 @@ mod tests {
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_get_password_when_none_stored() {
             cleanup();
             let pw = get_password().unwrap();
@@ -253,7 +253,7 @@ mod tests {
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_delete_password() {
             cleanup();
             store_password("Test!Strong#Pass123").unwrap();
@@ -263,7 +263,7 @@ mod tests {
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_delete_when_none_stored() {
             cleanup();
             // Should not error — idempotent
@@ -271,13 +271,13 @@ mod tests {
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_is_available() {
             assert!(is_available());
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_store_empty_password_rejected() {
             cleanup();
             let result = store_password("");
@@ -285,7 +285,7 @@ mod tests {
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_store_overwrite() {
             cleanup();
             store_password("PasswordA!123").unwrap();
@@ -296,7 +296,7 @@ mod tests {
         }
 
         #[test]
-        #[serial]
+        #[serial(keychain_env)]
         fn test_agent_specific_password() {
             cleanup();
             store_password("Default!Pass123").unwrap();

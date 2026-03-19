@@ -1633,7 +1633,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_apply_env_overrides() {
         clear_jacs_env_vars();
 
@@ -1660,7 +1660,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_env_overrides_config_file() {
         clear_jacs_env_vars();
 
@@ -1722,7 +1722,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_load_config_12factor_no_file() {
         clear_jacs_env_vars();
 
@@ -1746,7 +1746,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_load_config_12factor_optional_missing_file() {
         clear_jacs_env_vars();
 
@@ -1765,7 +1765,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_boolean_env_var_parsing() {
         clear_jacs_env_vars();
 
@@ -1796,7 +1796,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_apply_env_overrides_ignores_empty_string_values() {
         clear_jacs_env_vars();
 
@@ -1812,7 +1812,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_apply_env_overrides_ignores_invalid_database_numbers() {
         clear_jacs_env_vars();
 
@@ -2160,7 +2160,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_default() {
         clear_jacs_env_vars();
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2173,7 +2173,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_local_only() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "local").unwrap();
@@ -2185,7 +2185,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_registry_only() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "registry").unwrap();
@@ -2197,7 +2197,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_hai_is_rejected() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "hai").unwrap();
@@ -2216,7 +2216,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_with_dns() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "local,dns,registry").unwrap();
@@ -2235,7 +2235,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_case_insensitive() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "LOCAL,DNS,REGISTRY").unwrap();
@@ -2254,7 +2254,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_skips_invalid() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "local,invalid,registry").unwrap();
@@ -2270,7 +2270,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_all_invalid_falls_back() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "invalid,also_invalid").unwrap();
@@ -2286,7 +2286,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_empty_string_falls_back() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "").unwrap();
@@ -2302,7 +2302,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_whitespace_handling() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", " local , registry ").unwrap();

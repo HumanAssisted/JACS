@@ -683,11 +683,11 @@ mod tests {
         // SAFETY: `env::set_var` is unsafe because concurrent reads from other threads
         // could observe a partially-written value or cause undefined behavior. This is
         // safe here because:
-        // 1. All tests using this helper are marked #[serial], ensuring single-threaded execution
+        // 1. All tests using this helper are marked #[serial(jacs_env)], ensuring single-threaded execution
         // 2. The password is set before any code reads JACS_PRIVATE_KEY_PASSWORD
         // 3. No background threads are spawned that might read this variable
-        // 4. The serial_test crate guarantees mutual exclusion with other #[serial] tests
-        // Violating these invariants (e.g., removing #[serial]) could cause data races.
+        // 4. The serial_test crate guarantees mutual exclusion with other #[serial(jacs_env)] tests
+        // Violating these invariants (e.g., removing #[serial(jacs_env)]) could cause data races.
         unsafe {
             env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
         }
@@ -696,17 +696,17 @@ mod tests {
     fn remove_test_password() {
         // SAFETY: `env::remove_var` is unsafe for the same reasons as `env::set_var`.
         // This is safe here because:
-        // 1. Called only from #[serial] tests ensuring single-threaded execution
+        // 1. Called only from #[serial(jacs_env)] tests ensuring single-threaded execution
         // 2. This is called in cleanup after the test completes, when no concurrent reads occur
         // 3. The serial_test crate ensures this completes before any other test starts
-        // If #[serial] is removed or background threads are added, this could cause UB.
+        // If #[serial(jacs_env)] is removed or background threads are added, this could cause UB.
         unsafe {
             env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
         }
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_encrypt_decrypt_roundtrip() {
         // Set test password
         set_test_password("test_password_123");
@@ -729,7 +729,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_wrong_password_fails() {
         // Set password for encryption
         set_test_password("correct_password");
@@ -748,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_truncated_data_fails() {
         set_test_password("test_password");
 
@@ -761,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_different_salts_produce_different_ciphertexts() {
         set_test_password("test_password");
 
@@ -784,7 +784,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_empty_password_rejected() {
         set_test_password("");
 
@@ -802,7 +802,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_whitespace_only_password_rejected() {
         set_test_password("   \t\n  ");
 
@@ -820,7 +820,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_short_password_rejected() {
         // Password with only 5 characters (less than MIN_PASSWORD_LENGTH of 8)
         set_test_password("short");
@@ -835,7 +835,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_minimum_length_password_accepted() {
         // Exactly 8 characters with variety - should be accepted
         // Note: "12345678" is rejected as a common weak password
@@ -1058,7 +1058,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_encryption_with_weak_password_fails() {
         // Try to encrypt with a weak password - should fail validation
         set_test_password("password");
@@ -1077,7 +1077,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_encryption_with_strong_password_succeeds() {
         // Use a properly strong password
         set_test_password("MyStr0ng!Pass#2024");
@@ -1098,7 +1098,7 @@ mod tests {
     // ==================== Additional Negative Tests for Security ====================
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_very_long_password_works_or_fails_gracefully() {
         // 100KB password - should work or fail gracefully (not crash/panic)
         let long_password = "A".repeat(100_000);
@@ -1122,7 +1122,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_corrupted_encrypted_data_fails_gracefully() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1171,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_all_zeros_encrypted_data_rejected() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1187,7 +1187,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_all_ones_encrypted_data_rejected() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1203,7 +1203,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_empty_plaintext_encryption() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1220,7 +1220,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_large_plaintext_encryption() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1359,7 +1359,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_decrypt_with_missing_password_env_var() {
         // Remove the password environment variable
         remove_test_password();
@@ -1471,7 +1471,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_resolve_password_explicit_overrides_env() {
         use crate::storage::jenv::set_env_var;
         set_env_var("JACS_PRIVATE_KEY_PASSWORD", "env_pass").unwrap();
@@ -1483,7 +1483,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_resolve_password_none_falls_back_to_env() {
         use crate::storage::jenv::set_env_var;
         set_env_var("JACS_PRIVATE_KEY_PASSWORD", "env_pass").unwrap();

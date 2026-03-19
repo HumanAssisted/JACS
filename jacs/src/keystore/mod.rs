@@ -969,7 +969,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_rotate_archives_old_keys() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let (dir_name, paths) = setup_fs_test_dir("archive");
@@ -1028,7 +1028,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_rotate_generates_new_keys() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let (dir_name, paths) = setup_fs_test_dir("newkeys");
@@ -1064,7 +1064,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_rotate_rollback_on_failure() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let (dir_name, paths) = setup_fs_test_dir("rollback");
@@ -1208,7 +1208,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_load_private_returns_locked_bytes() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let (dir_name, paths) = setup_fs_test_dir("locked_load");
@@ -1291,7 +1291,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_store_new_no_env() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         // Clear all JACS env vars to prove the struct paths are used
@@ -1345,7 +1345,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_store_load_no_env() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let (dir_name, paths) = setup_fs_test_dir("load_no_env");
@@ -1373,7 +1373,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_store_rotate_no_env() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let (dir_name, paths) = setup_fs_test_dir("rotate_no_env");
@@ -1424,7 +1424,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_key_paths_missing_private_filename() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         clear_fs_test_env();

@@ -74,7 +74,7 @@ macro_rules! storage_conformance_tests {
         use jacs::testing::make_test_doc;
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_store_and_retrieve() {
             let storage = $factory().await;
             let doc = make_test_doc("conf-sr-1", "v1", "agent", Some("agent-alpha"));
@@ -91,7 +91,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_document_exists() {
             let storage = $factory().await;
             let doc = make_test_doc("conf-de-1", "v1", "agent", None);
@@ -112,7 +112,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_document_not_found() {
             let storage = $factory().await;
             let result = storage.get_document("missing-doc:v1");
@@ -120,7 +120,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_remove_document() {
             let storage = $factory().await;
             let doc = make_test_doc("conf-rm-1", "v1", "config", None);
@@ -135,7 +135,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_get_document_versions() {
             let storage = $factory().await;
             storage
@@ -162,7 +162,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_get_latest_document() {
             let storage = $factory().await;
             storage
@@ -184,7 +184,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_merge_documents() {
             let storage = $factory().await;
             let result = storage.merge_documents("some-id", "v1", "v2");
@@ -192,7 +192,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_store_documents_bulk() {
             let storage = $factory().await;
             let docs = vec![
@@ -211,7 +211,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_get_documents_bulk() {
             let storage = $factory().await;
             let docs = vec![
@@ -228,7 +228,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_idempotent_store() {
             let storage = $factory().await;
             let doc = make_test_doc("conf-idem-1", "v1", "agent", None);
@@ -250,7 +250,7 @@ macro_rules! storage_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_invalid_key_format() {
             let storage = $factory().await;
             let result = storage.get_document("invalid-key-no-colon");
@@ -277,7 +277,7 @@ macro_rules! storage_conformance_tests {
 macro_rules! database_conformance_tests {
     ($factory:expr) => {
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_list_documents() {
             let storage = $factory().await;
             storage
@@ -297,7 +297,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_get_documents_by_agent() {
             let storage = $factory().await;
             storage
@@ -322,7 +322,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_query_by_type() {
             let storage = $factory().await;
             for i in 0..5 {
@@ -345,7 +345,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_query_by_field() {
             let storage = $factory().await;
 
@@ -369,7 +369,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_count_by_type() {
             let storage = $factory().await;
             for i in 0..4 {
@@ -398,7 +398,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_get_versions() {
             let storage = $factory().await;
             storage
@@ -418,7 +418,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_get_latest() {
             let storage = $factory().await;
             storage
@@ -434,7 +434,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_query_by_agent() {
             let storage = $factory().await;
             storage
@@ -459,7 +459,7 @@ macro_rules! database_conformance_tests {
         }
 
         #[tokio::test(flavor = "multi_thread")]
-        #[serial]
+        #[serial(storage_conformance)]
         async fn conformance_db_migrations_idempotent() {
             let storage = $factory().await;
             storage

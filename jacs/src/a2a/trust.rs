@@ -849,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial]
+    #[serial_test::serial(jacs_env)]
     fn test_strict_policy_rejects_unverified_a2a_card_bookmark() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         unsafe {

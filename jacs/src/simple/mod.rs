@@ -492,6 +492,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(jacs_env)]
     fn test_resolve_strict_env_var() {
         // SAFETY: Tests run single-threaded (serial_test or #[test] default)
         unsafe {
@@ -883,7 +884,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_load_roots_relative_paths_to_config_directory() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -909,7 +910,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_loaded_info_stays_rooted_to_original_config_after_cwd_change() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -952,7 +953,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_embedded_export_writes_to_data_directory_only() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -997,7 +998,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_load_handles_mixed_relative_data_and_absolute_key_directories() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1045,7 +1046,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_load_rejects_parent_directory_segments_in_storage_dirs() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1174,7 +1175,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_rotate_config_updated() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1497,7 +1498,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_migrate_already_current_agent_still_works() {
         // An agent that already has iat/jti should still migrate (no-op patch,
         // but still creates a new version).
@@ -1522,7 +1523,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_migrate_missing_config_returns_error() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1533,7 +1534,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_migrate_legacy_agent_missing_iat_jti() {
         // Simulate a truly legacy agent by creating an agent then stripping iat/jti
         // from the on-disk jacsSignature. Migration should recompute the hash,
