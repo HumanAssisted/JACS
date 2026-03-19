@@ -276,6 +276,12 @@ impl MultiStorage {
         }
     }
 
+    /// Returns the filesystem base directory, if this storage uses a filesystem backend.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn root(&self) -> Option<&std::path::Path> {
+        self.filesystem_base_dir.as_deref()
+    }
+
     /// Create a new `MultiStorage` with the default filesystem backend.
     pub fn default_new() -> Result<Self, ObjectStoreError> {
         let storage_type = "fs".to_string();

@@ -687,8 +687,25 @@ impl FileLoader for Agent {
                 )
             })?;
         data_dir = data_dir.strip_prefix("./").unwrap_or(data_dir);
-        debug!("data_dir {} filename {}", data_dir, filename);
-        let path = format!("{}/{}", data_dir, filename);
+
+        // When the data directory is absolute and falls within the storage root,
+        // strip the root prefix so the storage backend does not double it.
+        let data_path = std::path::Path::new(data_dir);
+        let relative_data_dir = if data_path.is_absolute() {
+            if let Some(root) = self.storage.root() {
+                data_path
+                    .strip_prefix(root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| data_dir.to_string())
+            } else {
+                data_dir.to_string()
+            }
+        } else {
+            data_dir.to_string()
+        };
+
+        debug!("data_dir {} filename {}", relative_data_dir, filename);
+        let path = format!("{}/{}", relative_data_dir, filename);
         debug!("Data directory path: {}", path);
         Ok(path)
     }
@@ -716,7 +733,23 @@ impl FileLoader for Agent {
                 )
             })?;
         key_dir = key_dir.strip_prefix("./").unwrap_or(key_dir);
-        let path = format!("{}/{}", key_dir, filename);
+
+        // When the key directory is absolute and falls within the storage root,
+        // strip the root prefix so the storage backend does not double it.
+        let key_path_obj = std::path::Path::new(key_dir);
+        let relative_key_dir = if key_path_obj.is_absolute() {
+            if let Some(root) = self.storage.root() {
+                key_path_obj
+                    .strip_prefix(root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| key_dir.to_string())
+            } else {
+                key_dir.to_string()
+            }
+        } else {
+            key_dir.to_string()
+        };
+        let path = format!("{}/{}", relative_key_dir, filename);
         debug!("Key directory path: {}", path);
         Ok(path)
     }
