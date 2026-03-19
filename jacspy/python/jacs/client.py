@@ -2,7 +2,7 @@
 JACS Client — Instance-based API
 
 A class-based interface that wraps its own JacsAgent, allowing multiple
-clients to coexist in a single process without shared global state.
+clients to coexist in a single process with independent loaded state.
 
 Example:
     from jacs.client import JacsClient
@@ -16,7 +16,6 @@ Example:
 import json
 import logging
 import os
-from contextlib import contextmanager
 from typing import Any, List, Optional, Union
 
 from .types import (
@@ -32,6 +31,7 @@ from .types import (
     VerificationError,
     VerificationResult,
 )
+from ._runtime import EphemeralAgentAdapter, write_key_directory_ignore_files
 
 logger = logging.getLogger("jacs.client")
 
@@ -119,40 +119,6 @@ def _resolve_private_key_password(
     return ""
 
 
-@contextmanager
-def _temporary_private_key_password(password: Optional[str]):
-    previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
-    try:
-        if password:
-            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
-        yield
-    finally:
-        if previous_password is None:
-            os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
-        else:
-            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password
-
-
-def _read_document_by_id(document_id: str, agent_info: Optional[AgentInfo]) -> Optional[dict]:
-    if agent_info is None or not agent_info.config_path:
-        return None
-    try:
-        config_path = os.path.abspath(agent_info.config_path)
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        data_dir = _resolve_config_relative_path(
-            config_path, config.get("jacs_data_directory", "./jacs_data")
-        )
-        doc_path = os.path.join(data_dir, "documents", f"{document_id}.json")
-        if not os.path.exists(doc_path):
-            return None
-        with open(doc_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
-
-
 def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
     sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
     return (
@@ -202,7 +168,7 @@ def _parse_signed_document(json_str: str) -> SignedDocument:
 class JacsClient:
     """Instance-based JACS client.
 
-    Each JacsClient wraps its own JacsAgent — no global state is shared.
+    Each JacsClient wraps its own JacsAgent and loaded agent state.
     Multiple clients can coexist in a single Python process.
 
     Usage:
@@ -287,6 +253,8 @@ class JacsClient:
                     f.write(password)
                 os.chmod(pw_path, 0o600)
 
+        write_key_directory_ignore_files(key_dir)
+
         algo = algorithm or "pq2025"
         _SimpleAgent.create_agent(
             name=name,
@@ -322,9 +290,7 @@ class JacsClient:
         native_agent, info_dict = _SimpleAgent.ephemeral(algorithm)
         # Wrap the SimpleAgent in an _EphemeralAgentAdapter so the
         # JacsClient methods that call JacsAgent APIs still work.
-        from .simple import _EphemeralAgentAdapter
-
-        instance._agent = _EphemeralAgentAdapter(native_agent)
+        instance._agent = EphemeralAgentAdapter(native_agent)
         instance._agent_info = AgentInfo(
             agent_id=info_dict.get("agent_id", ""),
             version=info_dict.get("version", ""),
@@ -351,46 +317,14 @@ class JacsClient:
                 "Run 'jacs create' or call jacs.create() to create a new agent."
             )
 
-        self._private_key_password = (
-            _resolve_private_key_password(config_path, password) or None
-        )
-        with _temporary_private_key_password(self._private_key_password):
-            self._agent.load(config_path)
-
-        with open(config_path, "r") as f:
-            config = json.load(f)
-
-        id_ver = config.get("jacs_agent_id_and_version", "")
-        parts = id_ver.split(":") if id_ver else ["", ""]
-        agent_id = parts[0] if parts else ""
-        version = parts[1] if len(parts) > 1 else ""
         resolved_config_path = os.path.abspath(config_path)
-        key_dir = _resolve_config_relative_path(
-            resolved_config_path,
-            config.get("jacs_key_directory", "./jacs_keys"),
+        self._private_key_password = (
+            _resolve_private_key_password(resolved_config_path, password) or None
         )
-        data_dir = _resolve_config_relative_path(
-            resolved_config_path,
-            config.get("jacs_data_directory", "./jacs_data"),
-        )
-        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
-        private_key_file = config.get(
-            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
-        )
+        self._agent.set_private_key_password(self._private_key_password)
+        info_json = self._agent.load_with_info(resolved_config_path)
 
-        self._agent_info = AgentInfo(
-            agent_id=agent_id,
-            version=version,
-            name=config.get("name"),
-            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
-            config_path=resolved_config_path,
-            public_key_path=os.path.join(key_dir, public_key_file),
-            private_key_path=os.path.join(key_dir, private_key_file),
-            data_directory=data_dir,
-            key_directory=key_dir,
-            domain=config.get("domain", ""),
-            dns_record=config.get("dns_record", ""),
-        )
+        self._agent_info = AgentInfo.from_dict(json.loads(info_json))
 
     def _require_agent(self):
         if self._agent is None:
@@ -398,8 +332,7 @@ class JacsClient:
         return self._agent
 
     def _call_with_password(self, func, *args, **kwargs):
-        with _temporary_private_key_password(self._private_key_password):
-            return func(*args, **kwargs)
+        return func(*args, **kwargs)
 
     # ------------------------------------------------------------------
     # Properties
@@ -434,6 +367,11 @@ class JacsClient:
     def reset(self) -> None:
         """Clear internal state. After calling reset() the client is
         no longer usable until re-initialised."""
+        if self._agent is not None:
+            try:
+                self._agent.set_private_key_password(None)
+            except Exception:
+                pass
         self._agent = None  # type: ignore[assignment]
         self._agent_info = None
         self._private_key_password = None

@@ -255,16 +255,18 @@ pub fn generate_new_docs() {
 }
 
 pub fn set_min_test_env_vars() {
-    let fixtures_dir = fixtures_dir_string();
-    let keys_dir = fixtures_keys_dir_string();
+    // Use relative paths from CARGO_MANIFEST_DIR (the jacs crate root, which
+    // is also the CWD when `cargo test -p jacs` runs). The FS storage backend
+    // roots at CWD, so absolute paths cause doubling when the storage prepends
+    // its root to paths that are already absolute.
     unsafe {
         env::set_var("JACS_USE_SECURITY", "false");
         env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_LEGACY);
-        env::set_var("JACS_KEY_DIRECTORY", &keys_dir);
+        env::set_var("JACS_KEY_DIRECTORY", "tests/fixtures/keys");
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
-        env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
+        env::set_var("JACS_DATA_DIRECTORY", "tests/fixtures");
         // Fixture signatures are historical; disable iat skew enforcement in fixture-based tests.
         env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");
         // Enable filesystem schema loading for tests that use custom schemas

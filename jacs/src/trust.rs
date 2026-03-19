@@ -715,9 +715,12 @@ fn verify_agent_self_signature(
         })?,
         None => {
             // Check if strict mode is enabled
-            let strict = std::env::var("JACS_REQUIRE_EXPLICIT_ALGORITHM")
-                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-                .unwrap_or(false);
+            let strict =
+                crate::storage::jenv::get_env_var("JACS_REQUIRE_EXPLICIT_ALGORITHM", false)
+                    .ok()
+                    .flatten()
+                    .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                    .unwrap_or(false);
             if strict {
                 return Err(JacsError::SignatureVerificationFailed {
                     reason: "Signature missing signingAlgorithm field. \
@@ -818,7 +821,7 @@ mod tests {
 
             // SAFETY: `env::set_var` is unsafe in Rust 2024+ due to potential data races when
             // other threads read environment variables concurrently. This is safe here because:
-            // 1. This function is only called from #[serial] tests which run single-threaded
+            // 1. This function is only called from #[serial(home_env)] tests which run single-threaded
             // 2. No other threads are spawned before this call completes
             // 3. The HOME variable is read only after this setup completes
             // 4. The TempDir lifetime ensures the path remains valid for the test duration
@@ -838,7 +841,7 @@ mod tests {
     impl Drop for TrustTestGuard {
         fn drop(&mut self) {
             // Restore original HOME even during panic unwinding.
-            // SAFETY: Same rationale as in new() - tests are #[serial] so no concurrent access.
+            // SAFETY: Same rationale as in new() - tests are #[serial(home_env)] so no concurrent access.
             unsafe {
                 match &self.original_home {
                     Some(home) => env::set_var("HOME", home),
@@ -897,7 +900,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_old_timestamp_rejected_when_expiry_enabled() {
         // When expiration is explicitly enabled, old timestamps should be rejected
         unsafe {
@@ -996,7 +999,7 @@ mod tests {
     // ==================== Trust Store Tests ====================
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_list_empty_trust_store() {
         let _temp = setup_test_trust_dir();
         let agents = list_trusted_agents().unwrap();
@@ -1004,14 +1007,14 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_is_trusted_unknown() {
         let _temp = setup_test_trust_dir();
         assert!(!is_trusted("unknown-agent-id"));
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_missing_signature() {
         let _temp = setup_test_trust_dir();
 
@@ -1032,7 +1035,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_invalid_public_key_hash() {
         let _temp = setup_test_trust_dir();
 
@@ -1057,7 +1060,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_accepts_split_jacs_id_and_version() {
         let _temp = setup_test_trust_dir();
 
@@ -1090,7 +1093,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_save_and_load_public_key_cache() {
         let _temp = setup_test_trust_dir();
 
@@ -1108,7 +1111,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_load_missing_public_key_cache() {
         let _temp = setup_test_trust_dir();
 
@@ -1131,7 +1134,7 @@ mod tests {
 
     /// Document-controlled publicKeyHash with path traversal must be rejected when resolving key from cache (verification/trust path).
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_load_public_key_from_cache_rejects_path_traversal_hash() {
         let _temp = setup_test_trust_dir();
         let result = load_public_key_from_cache("public_keys/../etc/passwd");
@@ -1250,7 +1253,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_invalid_json() {
         let _temp = setup_test_trust_dir();
 
@@ -1274,7 +1277,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_missing_jacs_id() {
         let _temp = setup_test_trust_dir();
 
@@ -1304,7 +1307,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_null_fields() {
         let _temp = setup_test_trust_dir();
 
@@ -1325,7 +1328,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_wrong_type_fields() {
         let _temp = setup_test_trust_dir();
 
@@ -1346,7 +1349,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_empty_signature() {
         let _temp = setup_test_trust_dir();
 
@@ -1369,7 +1372,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_malformed_base64_signature() {
         let _temp = setup_test_trust_dir();
 
@@ -1390,7 +1393,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_untrust_nonexistent_agent() {
         let _temp = setup_test_trust_dir();
 
@@ -1407,7 +1410,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_get_trusted_agent_nonexistent() {
         let _temp = setup_test_trust_dir();
 
@@ -1435,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_future_signature_timestamp() {
         let _temp = setup_test_trust_dir();
 
@@ -1490,7 +1493,7 @@ mod tests {
     // ==================== Path Traversal Security Tests ====================
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_trust_agent_rejects_path_traversal_agent_id() {
         let _temp = setup_test_trust_dir();
 
@@ -1529,7 +1532,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_untrust_rejects_path_traversal() {
         let _temp = setup_test_trust_dir();
 
@@ -1551,7 +1554,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_get_trusted_agent_rejects_path_traversal() {
         let _temp = setup_test_trust_dir();
 
@@ -1573,7 +1576,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_is_trusted_rejects_path_traversal() {
         let _temp = setup_test_trust_dir();
 
@@ -1585,7 +1588,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(home_env)]
     fn test_public_key_cache_rejects_path_traversal_hash() {
         let _temp = setup_test_trust_dir();
 

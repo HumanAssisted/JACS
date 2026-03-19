@@ -30,6 +30,7 @@ _JACS_PATH_ENV_VARS = (
     "JACS_AGENT_PUBLIC_KEY_FILENAME",
     "JACS_AGENT_ID_AND_VERSION",
     "JACS_AGENT_KEY_ALGORITHM",
+    "JACS_TRUST_STORE_DIR",
 )
 
 
@@ -151,10 +152,11 @@ def ensure_iat_skew_window():
 
 
 @pytest.fixture(autouse=True)
-def isolate_jacs_path_env(monkeypatch):
+def isolate_jacs_path_env(monkeypatch, tmp_path):
     """Prevent leaked path/config env vars from changing fixture resolution."""
     for key in _JACS_PATH_ENV_VARS:
         monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("JACS_TRUST_STORE_DIR", str(tmp_path / "jacs_trust_store"))
     if not os.environ.get("JACS_MAX_IAT_SKEW_SECONDS"):
         monkeypatch.setenv("JACS_MAX_IAT_SKEW_SECONDS", "7200")
     yield

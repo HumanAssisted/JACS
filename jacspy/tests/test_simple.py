@@ -105,14 +105,23 @@ def _pem_to_raw_key_bytes(public_key_pem: str, expected_hash: str) -> bytes:
 def seed_public_key_cache(agent_root: Path, agent_json: str, public_key_pem: str) -> None:
     """Write agent's public key to the local public_keys cache.
 
-    The cache must store the exact bytes that hash_public_key() used during signing.
+    Prefer the bytes already verified and cached by Rust trust logic. That avoids
+    duplicating PEM decoding rules for binary algorithms like pq2025.
     """
     agent_data = json.loads(agent_json)
     signature = agent_data.get("jacsSignature", {})
     key_hash = signature["publicKeyHash"]
     signing_algorithm = signature.get("signingAlgorithm", "RSA-PSS")
 
-    raw_bytes = _pem_to_raw_key_bytes(public_key_pem, key_hash)
+    raw_bytes = None
+    trust_store_dir = os.environ.get("JACS_TRUST_STORE_DIR", "").strip()
+    if trust_store_dir:
+        trusted_key_path = Path(trust_store_dir) / "keys" / f"{key_hash}.pem"
+        if trusted_key_path.exists():
+            raw_bytes = trusted_key_path.read_bytes()
+
+    if raw_bytes is None:
+        raw_bytes = _pem_to_raw_key_bytes(public_key_pem, key_hash)
 
     public_keys_dir = agent_root / "jacs_data" / "public_keys"
     public_keys_dir.mkdir(parents=True, exist_ok=True)

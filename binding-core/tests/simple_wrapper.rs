@@ -7,6 +7,40 @@
 use jacs_binding_core::SimpleAgentWrapper;
 use serde_json::Value;
 use serial_test::serial;
+use std::path::{Path, PathBuf};
+
+struct CwdGuard {
+    original: PathBuf,
+}
+
+impl CwdGuard {
+    fn change_to(path: &Path) -> Self {
+        let original = std::env::current_dir().expect("current dir should be available");
+        std::env::set_current_dir(path).expect("should change current dir");
+        Self { original }
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original);
+    }
+}
+
+fn canonical_display(path: &Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn assert_same_path(actual: &Value, expected: &Path) {
+    let actual_path = actual.as_str().expect("path value should be a string");
+    assert_eq!(
+        canonical_display(Path::new(actual_path)),
+        canonical_display(expected)
+    );
+}
 
 // =============================================================================
 // Helper
@@ -26,22 +60,15 @@ fn ephemeral_wrapper() -> SimpleAgentWrapper {
 #[serial]
 fn test_create_returns_wrapper_and_info_json() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let original_dir = std::env::current_dir().unwrap();
-    std::env::set_current_dir(tmp.path()).unwrap();
+    let _cwd_guard = CwdGuard::change_to(tmp.path());
 
+    // Post ENV_SECURITY_PRD: create_with_params uses KeyPaths from params,
+    // not env vars. Only password is still needed from env for the create() path.
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
-        std::env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent.private.pem.enc");
-        std::env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent.public.pem");
     }
 
     let result = SimpleAgentWrapper::create("test-agent", None, Some("ed25519"));
-    std::env::set_current_dir(&original_dir).unwrap();
-
-    unsafe {
-        std::env::remove_var("JACS_AGENT_PRIVATE_KEY_FILENAME");
-        std::env::remove_var("JACS_AGENT_PUBLIC_KEY_FILENAME");
-    }
 
     let (wrapper, info_json) = result.expect("create should succeed");
 
@@ -70,6 +97,7 @@ fn test_create_returns_wrapper_and_info_json() {
 fn test_load_roundtrips_with_create() {
     // Use unique key filenames to avoid env var pollution from parallel tests.
     let tmp = tempfile::TempDir::new().unwrap();
+    let _cwd_guard = CwdGuard::change_to(tmp.path());
     let data_dir = tmp.path().join("jacs_data");
     let key_dir = tmp.path().join("jacs_keys");
     let config_path = tmp.path().join("jacs.config.json");
@@ -86,25 +114,74 @@ fn test_load_roundtrips_with_create() {
     let (_agent, _info) =
         jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
 
-    // Set env vars only for the load step (load reads them for key/data dirs).
+    // Set only the password for the load step. Path resolution should come
+    // from the config-backed Rust load path, not wrapper-side env overrides.
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
-        std::env::set_var("JACS_DATA_DIRECTORY", data_dir.to_str().unwrap());
-        std::env::set_var("JACS_KEY_DIRECTORY", key_dir.to_str().unwrap());
     }
 
     let wrapper = SimpleAgentWrapper::load(Some(config_path.to_str().unwrap()), None)
         .expect("load should succeed");
 
-    // Clean up env vars immediately.
     unsafe {
-        std::env::remove_var("JACS_DATA_DIRECTORY");
-        std::env::remove_var("JACS_KEY_DIRECTORY");
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
     }
 
     let diag = wrapper.diagnostics();
     let diag_value: Value = serde_json::from_str(&diag).expect("diagnostics should be JSON");
     assert_eq!(diag_value["agent_loaded"], true);
+}
+
+#[test]
+#[serial]
+fn test_load_with_info_returns_resolved_metadata() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config_dir = tmp.path().join("nested");
+    let data_dir = config_dir.join("jacs_data");
+    let key_dir = config_dir.join("jacs_keys");
+    let config_path = config_dir.join("jacs.config.json");
+
+    let params = jacs::simple::CreateAgentParams::builder()
+        .name("load-with-info-test")
+        .password("TestP@ss123!#")
+        .algorithm("ring-Ed25519")
+        .data_directory(data_dir.to_str().unwrap())
+        .key_directory(key_dir.to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .domain("load-info.example.com")
+        .build();
+
+    let (_agent, created_info) =
+        jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
+
+    let _cwd_guard = CwdGuard::change_to(tmp.path());
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+    }
+
+    let (_wrapper, info_json) =
+        SimpleAgentWrapper::load_with_info(Some("./nested/jacs.config.json"), None)
+            .expect("load_with_info should succeed");
+
+    let info: Value = serde_json::from_str(&info_json).expect("info should be valid JSON");
+    assert_eq!(info["agent_id"], created_info.agent_id);
+    assert_eq!(info["version"], created_info.version);
+    assert_eq!(info["algorithm"], created_info.algorithm);
+    assert_same_path(&info["config_path"], &config_path);
+    assert_same_path(&info["data_directory"], &data_dir);
+    assert_same_path(&info["key_directory"], &key_dir);
+    assert_same_path(
+        &info["public_key_path"],
+        &PathBuf::from(&key_dir).join("jacs.public.pem"),
+    );
+    assert_same_path(
+        &info["private_key_path"],
+        &PathBuf::from(&key_dir).join("jacs.private.pem.enc"),
+    );
+
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
 }
 
 // =============================================================================
@@ -450,6 +527,7 @@ fn test_from_agent() {
 // =============================================================================
 
 #[test]
+#[serial]
 fn test_create_with_params_json() {
     let tmp = tempfile::TempDir::new().unwrap();
     let data_dir = tmp.path().join("data");
@@ -473,9 +551,15 @@ fn test_create_with_params_json() {
     assert!(!info["agent_id"].as_str().unwrap_or("").is_empty());
 
     // Wrapper should be functional
+    unsafe {
+        std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+    }
     let signed = wrapper
         .sign_message_json(r#"{"params_test": true}"#)
         .expect("signing should succeed after create_with_params");
+    unsafe {
+        std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
     assert!(!signed.is_empty());
 }
 

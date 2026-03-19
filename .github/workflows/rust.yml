@@ -81,13 +81,20 @@ jobs:
       - name: Validate schema $id fields match file paths
         run: ./scripts/validate-schemas.sh
 
+      - name: Check no bare serial annotations
+        run: ./scripts/check-no-bare-serial.sh
+
   quick-jacs:
-    name: Quick jacs core (ubuntu)
+    name: Quick jacs ${{ matrix.shard }} (ubuntu)
     if: |
       github.event_name == 'pull_request' ||
       (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full != 'true')
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [lib, bin-shard-a, bin-shard-b]
 
     steps:
       - name: Checkout code
@@ -101,8 +108,8 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run quick Rust test suite (core)
-        run: make test-jacs-fast
+      - name: Run quick Rust test suite (core - ${{ matrix.shard }})
+        run: make test-jacs-fast-${{ matrix.shard }}
 
   quick-jacs-cli:
     name: Quick jacs CLI (ubuntu)
@@ -116,6 +123,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install system dependencies (D-Bus for keychain support)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -126,6 +136,8 @@ jobs:
 
       - name: Run CLI integration tests
         run: make test-jacs-cli
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
   quick-binding-core:
     name: Quick binding-core (ubuntu)
@@ -216,6 +228,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install system dependencies (D-Bus for keychain support)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -232,14 +248,18 @@ jobs:
 
       - name: Run full jacs tests
         run: |
+          cargo build -p jacs-cli
           cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
           cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
-          cargo build -p jacs-cli
           cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run jacs-mcp tests (without attestation)
         run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run in-process backend crate tests (release)
         run: |
@@ -250,6 +270,10 @@ jobs:
       - name: Run jacs-postgresql tests (Linux only)
         if: runner.os == 'Linux'
         run: cargo test -p jacs-postgresql --lib --tests --verbose
+
+      - name: Keychain integration tests (macOS)
+        if: runner.os == 'macOS'
+        run: cargo test -p jacs --features keychain-tests -- keychain_macos --verbose
 
       - name: Run cross-language and observability suites
         run: |
@@ -264,6 +288,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install system dependencies (D-Bus for keychain support)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -280,11 +307,13 @@ jobs:
 
       - name: Run nightly full Rust tests
         run: |
+          cargo build -p jacs-cli
           cargo test -p jacs --features agreements,a2a,attestation,pq-tests --lib --tests --verbose
           cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
-          cargo build -p jacs-cli
           cargo test -p jacs-mcp --lib --tests --verbose
           cargo test -p jacs-cli --verbose
+        env:
+          JACS_KEYCHAIN_BACKEND: disabled
 
       - name: Run jacs-mcp tests (without attestation)
         run: cargo test -p jacs-mcp --no-default-features --features mcp --lib --tests --verbose

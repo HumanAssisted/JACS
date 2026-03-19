@@ -1,5 +1,6 @@
 """Tests for jacs.client.JacsClient instance-based API."""
 
+import builtins
 import json
 import os
 from pathlib import Path
@@ -137,8 +138,8 @@ class TestGlobalReset:
 
 def _resolved_config_path(config_path: Path, candidate: str) -> Path:
     if os.path.isabs(candidate):
-        return Path(candidate)
-    return (config_path.parent / candidate).resolve()
+        return Path(os.path.realpath(candidate))
+    return Path(os.path.realpath(config_path.parent / candidate))
 
 
 class TestPersistentQuickstart:
@@ -164,6 +165,10 @@ class TestPersistentQuickstart:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         data_dir = _resolved_config_path(config_path, config["jacs_data_directory"])
         key_dir = _resolved_config_path(config_path, config["jacs_key_directory"])
+        assert client._agent_info is not None
+        assert client._agent_info.config_path == os.path.realpath(config_path)
+        assert client._agent_info.data_directory == os.path.realpath(data_dir)
+        assert client._agent_info.key_directory == os.path.realpath(key_dir)
         assert data_dir.exists()
         assert key_dir.exists()
 
@@ -193,11 +198,96 @@ class TestPersistentQuickstart:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         data_dir = _resolved_config_path(config_path, config["jacs_data_directory"])
         key_dir = _resolved_config_path(config_path, config["jacs_key_directory"])
+        assert info.config_path == os.path.realpath(config_path)
+        assert info.data_directory == os.path.realpath(data_dir)
+        assert info.key_directory == os.path.realpath(key_dir)
         assert data_dir.exists()
         assert key_dir.exists()
 
         signed = jacs_simple.sign_message({"quickstart": True})
         assert signed.document_id
+        jacs_simple.reset()
+
+    def test_client_and_simple_load_return_same_resolved_metadata(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#")
+        jacs_simple.reset()
+
+        created = JacsClient.quickstart(
+            name="parity-agent",
+            domain="parity.example.com",
+            algorithm=TEST_ALGORITHM_INTERNAL,
+            config_path="nested/jacs.config.json",
+        )
+        config_path = tmp_path / "nested" / "jacs.config.json"
+
+        client = JacsClient(config_path=str(config_path))
+        simple_info = jacs_simple.load(str(config_path))
+
+        assert client.agent_id == simple_info.agent_id
+        assert client._agent_info is not None
+        assert client._agent_info.config_path == simple_info.config_path
+        assert client._agent_info.public_key_path == simple_info.public_key_path
+        assert client._agent_info.private_key_path == simple_info.private_key_path
+        assert client._agent_info.data_directory == simple_info.data_directory
+        assert client._agent_info.key_directory == simple_info.key_directory
+        assert client._agent_info.algorithm == simple_info.algorithm
+        assert created.agent_id == simple_info.agent_id
+
+    def test_client_load_does_not_reopen_config_in_python(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#")
+        config_path = tmp_path / "native" / "jacs.config.json"
+
+        JacsClient.quickstart(
+            name="client-native-load",
+            domain="client-native.example.com",
+            algorithm=TEST_ALGORITHM_INTERNAL,
+            config_path=str(config_path),
+        )
+
+        real_open = builtins.open
+
+        def guarded_open(file, *args, **kwargs):
+            if os.path.abspath(str(file)) == os.path.abspath(str(config_path)):
+                raise AssertionError("Python wrapper should not reopen config during load()")
+            return real_open(file, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", guarded_open)
+
+        client = JacsClient(config_path=str(config_path))
+        assert client.agent_id
+
+    def test_simple_load_does_not_reopen_config_in_python(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#")
+        jacs_simple.reset()
+        config_path = tmp_path / "native-simple" / "jacs.config.json"
+
+        JacsClient.quickstart(
+            name="simple-native-load",
+            domain="simple-native.example.com",
+            algorithm=TEST_ALGORITHM_INTERNAL,
+            config_path=str(config_path),
+        )
+
+        real_open = builtins.open
+
+        def guarded_open(file, *args, **kwargs):
+            if os.path.abspath(str(file)) == os.path.abspath(str(config_path)):
+                raise AssertionError("simple.py should not reopen config during load()")
+            return real_open(file, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "open", guarded_open)
+
+        info = jacs_simple.load(str(config_path))
+        assert info.agent_id
         jacs_simple.reset()
 
 
@@ -220,10 +310,10 @@ class TestVerifyByIdUsesNativeStorage:
                     }
                 )
 
-        def fail_read(*_args, **_kwargs):
-            raise AssertionError("_read_document_by_id should not be used")
+        def fail_open(*_args, **_kwargs):
+            raise AssertionError("verify_by_id should not perform Python file reads")
 
-        monkeypatch.setattr(jacs_client, "_read_document_by_id", fail_read)
+        monkeypatch.setattr(builtins, "open", fail_open)
         client = JacsClient.__new__(JacsClient)
         client._strict = False
         client._agent = FakeAgent()
@@ -254,10 +344,10 @@ class TestVerifyByIdUsesNativeStorage:
                     }
                 )
 
-        def fail_read(*_args, **_kwargs):
-            raise AssertionError("_read_document_by_id should not be used")
+        def fail_open(*_args, **_kwargs):
+            raise AssertionError("verify_by_id should not perform Python file reads")
 
-        monkeypatch.setattr(jacs_simple, "_read_document_by_id", fail_read)
+        monkeypatch.setattr(builtins, "open", fail_open)
         monkeypatch.setattr(jacs_simple, "_global_agent", FakeAgent())
         monkeypatch.setattr(
             jacs_simple,
@@ -272,3 +362,54 @@ class TestVerifyByIdUsesNativeStorage:
         assert result.signer_id == "agent-2"
         assert result.signer_public_key_hash == "pkh-2"
         assert result.timestamp == "2026-03-10T00:00:01Z"
+
+
+class TestPasswordConfiguration:
+    def test_client_load_configures_native_agent_password_store(self, monkeypatch):
+        captured = {}
+
+        class FakeAgent:
+            def set_private_key_password(self, password):
+                captured["password"] = password
+
+            def load_with_info(self, config_path):
+                captured["config_path"] = config_path
+                return json.dumps(
+                    {
+                        "agent_id": "agent-3",
+                        "version": "1",
+                        "name": "agent-3",
+                        "algorithm": TEST_ALGORITHM_INTERNAL,
+                        "config_path": config_path,
+                        "public_key_path": "/tmp/public.pem",
+                        "private_key_path": "/tmp/private.pem.enc",
+                        "data_directory": "/tmp/jacs_data",
+                        "key_directory": "/tmp/jacs_keys",
+                        "domain": "password.example.com",
+                        "dns_record": "",
+                    }
+                )
+
+        monkeypatch.setattr(jacs_client, "_JacsAgent", FakeAgent)
+        monkeypatch.setattr(jacs_client.os.path, "exists", lambda _path: True)
+        monkeypatch.setattr(
+            jacs_client,
+            "_resolve_private_key_password",
+            lambda config_path, explicit_password=None: "InnerP@ss123!#",
+        )
+
+        previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
+        os.environ["JACS_PRIVATE_KEY_PASSWORD"] = "OuterP@ss123!#"
+        try:
+            client = JacsClient()
+            client._load_from_config("./nested/jacs.config.json")
+
+            assert captured["password"] == "InnerP@ss123!#"
+            assert captured["config_path"] == os.path.abspath("./nested/jacs.config.json")
+            assert os.environ.get("JACS_PRIVATE_KEY_PASSWORD") == "OuterP@ss123!#"
+            assert client.agent_id == "agent-3"
+        finally:
+            if previous_password is None:
+                os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
+            else:
+                os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password

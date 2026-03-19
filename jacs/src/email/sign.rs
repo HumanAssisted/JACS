@@ -454,7 +454,7 @@ mod tests {
         b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Re: Test\r\nDate: Fri, 28 Feb 2026 13:00:00 +0000\r\nMessage-ID: <reply@example.com>\r\nIn-Reply-To: <original@example.com>\r\nReferences: <original@example.com> <thread@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nReply body\r\n".to_vec()
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_email_simple_text_attaches_jacs_signature() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -469,7 +469,7 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_email_produces_valid_jacs_document() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -487,7 +487,7 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_email_multipart_alternative_includes_both_body_parts() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -499,7 +499,7 @@ mod tests {
         assert!(payload.body_html.is_some());
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_email_with_attachments_includes_sorted_attachment_hashes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -512,7 +512,7 @@ mod tests {
         assert!(payload.attachments[0].content_hash.starts_with("sha256:"));
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_email_threaded_reply_includes_in_reply_to_and_references() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -524,7 +524,7 @@ mod tests {
         assert!(payload.headers.references.is_some());
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_email_sets_parent_signature_hash_null() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -535,7 +535,7 @@ mod tests {
         assert!(payload.parent_signature_hash.is_none());
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_email_document_has_jacs_fields() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -566,7 +566,7 @@ mod tests {
         assert_eq!(jacs_doc["jacsType"].as_str(), Some("message"));
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_roundtrip_hashes_are_valid_sha256() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();
@@ -600,7 +600,7 @@ mod tests {
         }
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_multipart_has_both_body_hashes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent();

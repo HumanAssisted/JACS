@@ -4,6 +4,7 @@
 //! with independent configs, keys, and signing operations.
 
 use jacs::simple::SimpleAgent;
+use jacs::simple::types::CreateAgentParams;
 use serde_json::json;
 use std::sync::Arc;
 use std::thread;
@@ -214,4 +215,58 @@ fn test_concurrent_different_algorithms() {
         .verify(&signed_rsa.raw)
         .expect("RSA verify failed");
     assert!(v_rsa.valid);
+}
+
+/// 5 persistent agents created concurrently with different passwords and directories.
+/// This is the definitive proof that agent-scoped password and key path threading works:
+/// no global env/jenv state involved in the password path.
+#[test]
+fn test_concurrent_persistent_agents_different_passwords() {
+    let handles: Vec<_> = (0..5)
+        .map(|i| {
+            thread::spawn(move || {
+                let dir = tempfile::tempdir().expect("tempdir");
+                let data_dir = dir.path().join("data");
+                let key_dir = dir.path().join("keys");
+                let config_path = dir.path().join("jacs.config.json");
+
+                let params = CreateAgentParams::builder()
+                    .name(&format!("concurrent-agent-{}", i))
+                    .password(&format!("UniqueP@ss!{}#Agent{}", i, i * 7))
+                    .algorithm("ed25519")
+                    .data_directory(&data_dir.to_string_lossy())
+                    .key_directory(&key_dir.to_string_lossy())
+                    .config_path(&config_path.to_string_lossy())
+                    .build();
+
+                let (agent, info) = SimpleAgent::create_with_params(params)
+                    .unwrap_or_else(|e| panic!("Agent {} creation failed: {}", i, e));
+
+                // Sign a document
+                let signed = agent
+                    .sign_message(&json!({"thread": i, "agent": info.agent_id}))
+                    .unwrap_or_else(|e| panic!("Agent {} signing failed: {}", i, e));
+
+                // Verify own signature
+                let result = agent
+                    .verify(&signed.raw)
+                    .unwrap_or_else(|e| panic!("Agent {} verification failed: {}", i, e));
+                assert!(result.valid, "Agent {} self-verification must succeed", i);
+
+                // Return the dir handle (keeps tempdir alive) and info
+                (dir, info.agent_id, signed.document_id)
+            })
+        })
+        .collect();
+
+    let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    assert_eq!(results.len(), 5);
+
+    // All agent IDs must be unique
+    let ids: std::collections::HashSet<_> = results.iter().map(|r| &r.1).collect();
+    assert_eq!(ids.len(), 5, "All 5 agent IDs must be unique");
+
+    // All document IDs must be unique
+    let doc_ids: std::collections::HashSet<_> = results.iter().map(|r| &r.2).collect();
+    assert_eq!(doc_ids.len(), 5, "All 5 document IDs must be unique");
 }

@@ -467,9 +467,9 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <h2 id="environment-variable-integration"><a class="header" href="#environment-variable-integration">Environment Variable Integration</a></h2>
 <p>The observability configuration works alongside JACS's core configuration system.</p>
 <h3 id="required-environment-variable"><a class="header" href="#required-environment-variable">Required Environment Variable</a></h3>
-<p>Only <strong>one</strong> environment variable is truly required:</p>
+<p>Only <strong>one</strong> environment variable is truly required (unless using the OS keychain):</p>
 <ul>
-<li><code>JACS_PRIVATE_KEY_PASSWORD</code> - Password for encrypting/decrypting private keys (required for cryptographic operations)</li>
+<li><code>JACS_PRIVATE_KEY_PASSWORD</code> - Password for encrypting/decrypting private keys (required for cryptographic operations, unless the password is stored in the OS keychain)</li>
 </ul>
 <h3 id="configuration-based-settings"><a class="header" href="#configuration-based-settings">Configuration-Based Settings</a></h3>
 <p>All other JACS settings are <strong>configuration file fields</strong> that have sensible defaults:</p>
@@ -478,8 +478,26 @@ console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
 <li><code>jacs_key_directory</code> - Where cryptographic keys are stored (default: <code>./jacs_keys</code>)</li>
 <li><code>jacs_agent_key_algorithm</code> - Cryptographic algorithm to use (default: <code>pq2025</code>)</li>
 <li><code>jacs_default_storage</code> - Storage backend (default: <code>fs</code>)</li>
+<li><code>jacs_keychain_backend</code> - OS keychain backend for password storage (default: <code>"auto"</code>). See below.</li>
 <li><code>jacs_use_security</code> / <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> - Enable filesystem quarantine of executable files (default: <code>false</code>). The env var <code>JACS_USE_SECURITY</code> is deprecated; use <code>JACS_ENABLE_FILESYSTEM_QUARANTINE</code> instead.</li>
 </ul>
+<h3 id="os-keychain-configuration"><a class="header" href="#os-keychain-configuration">OS Keychain Configuration</a></h3>
+<p>The <code>jacs_keychain_backend</code> field controls whether JACS looks up the private key password from the OS credential store (macOS Keychain or Linux Secret Service):</p>
+<pre><code class="language-json">{
+  "jacs_keychain_backend": "auto"
+}
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>"auto"</code></td><td>Detect the platform default (macOS Keychain or Linux Secret Service). This is the default when the field is omitted.</td></tr>
+<tr><td><code>"macos-keychain"</code></td><td>Explicitly use the macOS Keychain</td></tr>
+<tr><td><code>"linux-secret-service"</code></td><td>Explicitly use the Linux D-Bus Secret Service (GNOME Keyring, KDE Wallet, KeePassXC)</td></tr>
+<tr><td><code>"disabled"</code></td><td>Never consult the OS keychain. Recommended for CI, headless servers, and containers.</td></tr>
+</tbody></table>
+</div>
+<p>You can also override via environment variable:</p>
+<pre><code class="language-bash">export JACS_KEYCHAIN_BACKEND=disabled  # skip keychain in CI
+</code></pre>
+<p>When not set to <code>"disabled"</code>, password resolution checks: env var first, then OS keychain, then error. See the <a href="cli-commands.html#jacs-keychain">CLI keychain commands</a> for storing and managing passwords.</p>
 <p>These can be overridden by environment variables if needed, but they are primarily configured through the <code>jacs.config.json</code> file.</p>
 <p>The observability configuration is completely optional - JACS will work without any observability configuration.</p>
 <h2 id="storage-configuration"><a class="header" href="#storage-configuration">Storage Configuration</a></h2>

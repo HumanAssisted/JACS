@@ -211,6 +211,9 @@ CMD ["python", "main.py"]
 </code></pre>
 <h2 id="lambda-deployment"><a class="header" href="#lambda-deployment">Lambda Deployment</a></h2>
 <p>For AWS Lambda, include the JACS native library in a Lambda layer or bundle it in your deployment package. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> as a Lambda environment variable (use AWS Secrets Manager for production).</p>
+<blockquote>
+<p><strong>Headless environments (Docker, Lambda, CI):</strong> Set <code>JACS_KEYCHAIN_BACKEND=disabled</code> to skip OS keychain lookups, which are not available in containers or serverless runtimes. Use <code>JACS_PRIVATE_KEY_PASSWORD</code> or <code>JACS_PASSWORD_FILE</code> instead.</p>
+</blockquote>
 <h2 id="building-from-source"><a class="header" href="#building-from-source">Building from Source</a></h2>
 <p>If no pre-built binary exists for your platform:</p>
 <pre><code class="language-bash"># Python

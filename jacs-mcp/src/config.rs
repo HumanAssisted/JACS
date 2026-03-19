@@ -1,6 +1,6 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use jacs_binding_core::AgentWrapper;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const MISSING_JACS_CONFIG_MESSAGE: &str = "JACS_CONFIG environment variable is not set. \n\
              \n\
@@ -11,19 +11,24 @@ const MISSING_JACS_CONFIG_MESSAGE: &str = "JACS_CONFIG environment variable is n
              See the README for a Quick Start guide on creating an agent.";
 
 pub fn load_agent_from_config_env() -> anyhow::Result<AgentWrapper> {
-    let cfg_path =
-        std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
-    load_agent_from_config_path(cfg_path)
+    let (agent_wrapper, _info) = load_agent_from_config_env_with_info()?;
+    Ok(agent_wrapper)
 }
 
-pub fn load_agent_from_config_path(path: impl AsRef<Path>) -> anyhow::Result<AgentWrapper> {
+pub fn load_agent_from_config_env_with_info() -> anyhow::Result<(AgentWrapper, serde_json::Value)> {
+    let cfg_path =
+        std::env::var("JACS_CONFIG").map_err(|_| anyhow!(MISSING_JACS_CONFIG_MESSAGE))?;
+    load_agent_from_config_path_with_info(cfg_path)
+}
+
+pub fn load_agent_from_config_path_with_info(
+    path: impl AsRef<Path>,
+) -> anyhow::Result<(AgentWrapper, serde_json::Value)> {
     let config_path = path.as_ref();
     let config_path = if config_path.is_absolute() {
         config_path.to_path_buf()
     } else {
-        std::env::current_dir()
-            .context("Failed to determine current working directory")?
-            .join(config_path)
+        std::env::current_dir()?.join(config_path)
     };
 
     if !config_path.exists() {
@@ -36,81 +41,82 @@ pub fn load_agent_from_config_path(path: impl AsRef<Path>) -> anyhow::Result<Age
         ));
     }
 
-    let cfg_str = std::fs::read_to_string(&config_path).map_err(|e| {
-        anyhow!(
-            "Failed to read config file '{}': {}. Check file permissions.",
-            config_path.display(),
-            e
-        )
-    })?;
-
-    let resolved_cfg_str = resolve_relative_config_paths(&cfg_str, &config_path)?;
-
-    #[allow(deprecated)]
-    let _ = jacs::config::set_env_vars(true, Some(&resolved_cfg_str), false)
-        .map_err(|e| anyhow!("Invalid config file '{}': {}", config_path.display(), e))?;
-
     let agent_wrapper = AgentWrapper::new();
     tracing::info!(config_path = %config_path.display(), "Loading agent from config file");
-    agent_wrapper
-        .load(config_path.to_string_lossy().into_owned())
+    let info_json = agent_wrapper
+        .load_with_info(config_path.to_string_lossy().into_owned())
         .map_err(|e| anyhow!("Failed to load agent: {}", e))?;
+    let info: serde_json::Value = serde_json::from_str(&info_json)
+        .map_err(|e| anyhow!("Failed to parse loaded agent info: {}", e))?;
 
     tracing::info!("Agent loaded successfully from config");
-    Ok(agent_wrapper)
+    Ok((agent_wrapper, info))
 }
 
-fn resolve_relative_config_paths(config_json: &str, config_path: &Path) -> anyhow::Result<String> {
-    let mut value: serde_json::Value =
-        serde_json::from_str(config_json).context("Config file is not valid JSON")?;
-    let config_dir = config_path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    for field in ["jacs_data_directory", "jacs_key_directory"] {
-        if let Some(path_value) = value.get_mut(field) {
-            if let Some(path_str) = path_value.as_str() {
-                let path = Path::new(path_str);
-                if !path.is_absolute() {
-                    *path_value = serde_json::Value::String(
-                        config_dir.join(path).to_string_lossy().into_owned(),
-                    );
-                }
-            }
-        }
-    }
-
-    serde_json::to_string(&value).context("Failed to serialize resolved config")
+pub fn load_agent_from_config_path(path: impl AsRef<Path>) -> anyhow::Result<AgentWrapper> {
+    let (agent_wrapper, _info) = load_agent_from_config_path_with_info(path)?;
+    Ok(agent_wrapper)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_relative_config_paths;
-    use serde_json::json;
-    use std::path::Path;
+    use super::load_agent_from_config_path_with_info;
+    use std::sync::{Mutex, OnceLock};
+
+    fn test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
 
     #[test]
-    fn resolves_relative_directories_against_config_location() {
-        let config = json!({
-            "jacs_data_directory": "jacs_data",
-            "jacs_key_directory": "jacs_keys",
-        });
+    fn load_with_info_returns_resolved_directories() {
+        let _guard = test_lock().lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Canonicalize to resolve macOS /var -> /private/var symlink
+        let tmp_canonical = tmp
+            .path()
+            .canonicalize()
+            .unwrap_or_else(|_| tmp.path().to_path_buf());
+        let config_dir = tmp_canonical.join("nested");
+        let data_dir = config_dir.join("jacs_data");
+        let key_dir = config_dir.join("jacs_keys");
+        let config_path = config_dir.join("jacs.config.json");
 
-        let resolved = resolve_relative_config_paths(
-            &config.to_string(),
-            Path::new("/tmp/example/jacs.config.json"),
-        )
-        .unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&resolved).unwrap();
+        let params = jacs::simple::CreateAgentParams::builder()
+            .name("mcp-config-test")
+            .password("TestP@ss123!#")
+            .algorithm("ring-Ed25519")
+            .data_directory(data_dir.to_str().unwrap())
+            .key_directory(key_dir.to_str().unwrap())
+            .config_path(config_path.to_str().unwrap())
+            .build();
 
+        let (_agent, created_info) =
+            jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+        }
+
+        let (_wrapper, info) = load_agent_from_config_path_with_info("./nested/jacs.config.json")
+            .expect("load_with_info should succeed");
+
+        assert_eq!(info["agent_id"], created_info.agent_id);
         assert_eq!(
-            parsed["jacs_data_directory"].as_str(),
-            Some("/tmp/example/jacs_data")
+            info["config_path"],
+            config_path.to_string_lossy().to_string()
         );
         assert_eq!(
-            parsed["jacs_key_directory"].as_str(),
-            Some("/tmp/example/jacs_keys")
+            info["data_directory"],
+            data_dir.to_string_lossy().to_string()
         );
+        assert_eq!(info["key_directory"], key_dir.to_string_lossy().to_string());
+
+        std::env::set_current_dir(original_dir).unwrap();
+        unsafe {
+            std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+        }
     }
 }

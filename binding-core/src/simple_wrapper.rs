@@ -39,10 +39,7 @@ impl SimpleAgentWrapper {
     ) -> BindingResult<(Self, String)> {
         let (agent, info) = SimpleAgent::create(name, purpose, key_algorithm)
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to create agent: {}", e)))?;
-
-        let info_json = serde_json::to_string(&info).map_err(|e| {
-            BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e))
-        })?;
+        let info_json = crate::serialize_agent_info(&info)?;
 
         Ok((
             Self {
@@ -54,11 +51,30 @@ impl SimpleAgentWrapper {
 
     /// Load an existing agent from a config file.
     pub fn load(config_path: Option<&str>, strict: Option<bool>) -> BindingResult<Self> {
-        let agent = SimpleAgent::load(config_path, strict)
+        let (wrapper, _info_json) = Self::load_with_info(config_path, strict)?;
+        Ok(wrapper)
+    }
+
+    /// Load an existing agent from a config file and return canonical metadata.
+    pub fn load_with_info(
+        config_path: Option<&str>,
+        strict: Option<bool>,
+    ) -> BindingResult<(Self, String)> {
+        let requested_path = config_path.unwrap_or("./jacs.config.json");
+        let resolved_config_path = crate::resolve_existing_config_path(requested_path)?;
+        let agent = SimpleAgent::load(Some(&resolved_config_path), strict)
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
-        Ok(Self {
-            inner: Arc::new(agent),
-        })
+        let info = agent
+            .loaded_info()
+            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
+        let info_json = crate::serialize_agent_info(&info)?;
+
+        Ok((
+            Self {
+                inner: Arc::new(agent),
+            },
+            info_json,
+        ))
     }
 
     /// Create an ephemeral (in-memory, throwaway) agent.
@@ -68,10 +84,7 @@ impl SimpleAgentWrapper {
         let (agent, info) = SimpleAgent::ephemeral(algorithm).map_err(|e| {
             BindingCoreError::agent_load(format!("Failed to create ephemeral agent: {}", e))
         })?;
-
-        let info_json = serde_json::to_string(&info).map_err(|e| {
-            BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e))
-        })?;
+        let info_json = crate::serialize_agent_info(&info)?;
 
         Ok((
             Self {
@@ -96,10 +109,7 @@ impl SimpleAgentWrapper {
         let (agent, info) = SimpleAgent::create_with_params(params).map_err(|e| {
             BindingCoreError::agent_load(format!("Failed to create agent with params: {}", e))
         })?;
-
-        let info_json = serde_json::to_string(&info).map_err(|e| {
-            BindingCoreError::serialization_failed(format!("Failed to serialize AgentInfo: {}", e))
-        })?;
+        let info_json = crate::serialize_agent_info(&info)?;
 
         Ok((
             Self {

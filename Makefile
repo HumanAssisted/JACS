@@ -1,5 +1,5 @@
 .PHONY: build-jacs build-jacsbook build-jacsbook-pdf \
-        test test-all test-all-pq test-rust-pr test-bindings-fast test-rust-slow test-jacs test-jacs-fast test-jacs-features test-jacs-pq test-jacs-cli test-jacs-cross-language test-jacs-observability \
+        test test-all test-all-pq test-rust-pr test-bindings-fast test-rust-slow test-jacs test-jacs-fast test-jacs-fast-lib test-jacs-fast-bin-shard-a test-jacs-fast-bin-shard-b test-jacs-features test-jacs-pq test-jacs-cli test-jacs-cross-language test-jacs-observability \
         test-jacs-mcp test-jacs-binding-core test-jacs-binding-core-pq \
         test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
         test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
@@ -53,6 +53,11 @@ JACS_POSTGRESQL_VERSION := $(shell grep '^version' jacs-postgresql/Cargo.toml | 
 JACS_TEST_BINS := $(basename $(notdir $(shell find jacs/tests -maxdepth 1 -name '*.rs' -print | sort)))
 JACS_FAST_TEST_BINS := $(filter-out a2a_cross_language_tests attestation_cross_lang_tests cli_flags cli_tests cross_language_tests observability_oltp_meter observability_tests pq2025_tests pq_tests,$(JACS_TEST_BINS))
 
+# Alphabetical shard split for CI parallelization.
+# Shard A: test names starting with a-d.   Shard B: test names starting with e-z.
+JACS_FAST_BIN_SHARD_A := $(filter a% b% c% d%,$(JACS_FAST_TEST_BINS))
+JACS_FAST_BIN_SHARD_B := $(filter-out a% b% c% d%,$(JACS_FAST_TEST_BINS))
+
 # ============================================================================
 # BUILD
 # ============================================================================
@@ -84,6 +89,16 @@ test-jacs:
 # Fast test run: ed25519 only (no post-quantum keygen)
 test-jacs-fast:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib $(foreach test,$(JACS_FAST_TEST_BINS),--test $(test)) -- --nocapture
+
+# Sharded fast targets for CI parallelization (each maps to one local command).
+test-jacs-fast-lib:
+	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation --lib -- --nocapture
+
+test-jacs-fast-bin-shard-a:
+	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation $(foreach test,$(JACS_FAST_BIN_SHARD_A),--test $(test)) -- --nocapture
+
+test-jacs-fast-bin-shard-b:
+	cd jacs && RUST_BACKTRACE=1 cargo test --features agreements,a2a,attestation $(foreach test,$(JACS_FAST_BIN_SHARD_B),--test $(test)) -- --nocapture
 
 # Full test run: includes post-quantum algorithm tests (slow keygen)
 test-jacs-pq:

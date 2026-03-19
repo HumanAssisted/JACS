@@ -276,6 +276,12 @@ impl MultiStorage {
         }
     }
 
+    /// Returns the filesystem base directory, if this storage uses a filesystem backend.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn root(&self) -> Option<&std::path::Path> {
+        self.filesystem_base_dir.as_deref()
+    }
+
     /// Create a new `MultiStorage` with the default filesystem backend.
     pub fn default_new() -> Result<Self, ObjectStoreError> {
         let storage_type = "fs".to_string();
@@ -502,7 +508,30 @@ impl MultiStorage {
         while let Some(meta) = block_on(list_stream.next()) {
             let meta = meta?;
             debug!("Name: {}, size: {}", meta.location, meta.size);
-            file_list.push(meta.location.to_string());
+            let loc = meta.location.to_string();
+            // ObjectPath strips the leading '/' from absolute paths, so
+            // LocalFileSystem locations look like "Users/foo/bar" instead of
+            // "/Users/foo/bar". When the filesystem_base_dir is set, strip
+            // the root prefix (also without leading /) so callers get a
+            // path relative to the storage root for use with get_file().
+            #[cfg(not(target_arch = "wasm32"))]
+            let loc = if self.default_storage == StorageType::FS {
+                if let Some(ref base) = self.filesystem_base_dir {
+                    let base_str = base.to_string_lossy();
+                    // base is e.g. "/Users/foo/jacs", ObjectPath gives "Users/foo/jacs/..."
+                    let base_no_slash = base_str.strip_prefix('/').unwrap_or(&base_str);
+                    if let Some(relative) = loc.strip_prefix(base_no_slash) {
+                        relative.strip_prefix('/').unwrap_or(relative).to_string()
+                    } else {
+                        loc
+                    }
+                } else {
+                    loc
+                }
+            } else {
+                loc
+            };
+            file_list.push(loc);
         }
 
         Ok(file_list)
@@ -1053,7 +1082,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(cwd_env)]
     fn fs_storage_supports_absolute_paths() {
         let temp = tempfile::tempdir().expect("tempdir");
         let _cwd = chdir_guard(temp.path());
@@ -1077,7 +1106,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(cwd_env)]
     fn fs_storage_resolves_relative_paths_against_creation_cwd() {
         let home = tempfile::tempdir().expect("home tempdir");
         let elsewhere = tempfile::tempdir().expect("elsewhere tempdir");

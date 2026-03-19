@@ -1,6 +1,6 @@
 [package]
 name = "jacs-duckdb"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version.workspace = true
 description = "DuckDB storage backend for JACS documents"
@@ -13,7 +13,7 @@ keywords = ["cryptography", "json", "duckdb", "storage"]
 categories = ["database", "data-structures"]
 
 [dependencies]
-jacs = { version = "0.9.6", path = "../jacs", default-features = false }
+jacs = { version = "0.9.7", path = "../jacs", default-features = false }
 duckdb = { version = "1.4", features = ["bundled", "json"] }
 serde_json = "1.0"
 

@@ -35,6 +35,14 @@ struct RmcpSession {
 impl RmcpSession {
     async fn spawn(extra_env: &[(&str, &str)]) -> anyhow::Result<Self> {
         let (config, base) = prepare_temp_workspace();
+        Self::spawn_from_workspace(config, base, extra_env).await
+    }
+
+    async fn spawn_from_workspace(
+        config: PathBuf,
+        base: PathBuf,
+        extra_env: &[(&str, &str)],
+    ) -> anyhow::Result<Self> {
         let bin_path = support::jacs_cli_bin();
         let command = tokio::process::Command::new(&bin_path).configure(|cmd| {
             cmd.arg("mcp")
@@ -148,6 +156,17 @@ fn starts_server_with_agent_env() {
     let (output, base) = run_server_with_fixture(&[]);
     assert_server_reaches_initialized_request(&output, "default log environment");
     let _ = fs::remove_dir_all(&base);
+}
+
+fn prepare_nested_workspace() -> anyhow::Result<(PathBuf, PathBuf)> {
+    let (config, base) = prepare_temp_workspace();
+    let nested = base.join("nested");
+    fs::create_dir_all(&nested)?;
+    fs::rename(base.join("jacs_data"), nested.join("jacs_data"))?;
+    fs::rename(base.join("jacs_keys"), nested.join("jacs_keys"))?;
+    let nested_config = nested.join("jacs.config.json");
+    fs::rename(config, &nested_config)?;
+    Ok((nested_config, base))
 }
 
 #[tokio::test]
@@ -288,6 +307,45 @@ async fn mcp_state_round_trip_over_stdio() -> anyhow::Result<()> {
     );
 
     session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_nested_config_allows_state_files_under_loaded_data_root() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let (config, base) = prepare_nested_workspace()?;
+    let session =
+        RmcpSession::spawn_from_workspace(config, base, &[("JACS_MCP_PROFILE", "full")]).await?;
+
+    let state_dir = session
+        .workspace()
+        .join("nested")
+        .join("jacs_data")
+        .join("state");
+    fs::create_dir_all(&state_dir).expect("mkdir nested state dir");
+    let state_path = state_dir.join("memory.json");
+    fs::write(&state_path, "{\"topic\":\"nested probe\",\"value\":2}\n").expect("write state file");
+
+    let signed = session
+        .call_tool(
+            "jacs_sign_state",
+            serde_json::json!({
+                "file_path": "nested/jacs_data/state/memory.json",
+                "state_type": "memory",
+                "name": "Nested Probe Memory",
+                "description": "Created by nested MCP integration test",
+                "embed": true
+            }),
+        )
+        .await?;
+
+    assert_eq!(signed["success"], true, "sign_state failed: {}", signed);
+    assert!(
+        signed["jacs_document_id"].as_str().is_some(),
+        "expected jacs_document_id in nested sign_state response: {}",
+        signed
+    );
+
     Ok(())
 }
 

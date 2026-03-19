@@ -27,14 +27,14 @@ const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
 const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
 
 fn quickstart_password_bootstrap_help() -> &'static str {
-    "Password bootstrap options (set exactly one explicit source):
+    "Password bootstrap options (prefer exactly one explicit source):
   1) Direct env (recommended):
      export JACS_PRIVATE_KEY_PASSWORD='your-strong-password'
   2) Export from a secret file:
      export JACS_PRIVATE_KEY_PASSWORD=\"$(cat /path/to/password)\"
   3) CLI convenience (file path):
      export JACS_PASSWORD_FILE=/path/to/password
-If both JACS_PRIVATE_KEY_PASSWORD and JACS_PASSWORD_FILE are set, CLI fails to avoid ambiguity.
+If both JACS_PRIVATE_KEY_PASSWORD and JACS_PASSWORD_FILE are set, CLI warns and uses JACS_PRIVATE_KEY_PASSWORD.
 If neither is set, CLI will try legacy ./jacs_keys/.jacs_password when present."
 }
 
@@ -102,16 +102,18 @@ fn ensure_cli_private_key_password() -> Result<(), String> {
     let env_password = get_non_empty_env_var("JACS_PRIVATE_KEY_PASSWORD")?;
     let password_file = get_non_empty_env_var(CLI_PASSWORD_FILE_ENV)?;
 
-    if env_password.is_some() && password_file.is_some() {
-        return Err(format!(
-            "Multiple password sources configured: JACS_PRIVATE_KEY_PASSWORD and {}. \
-Configure exactly one source.\n\n{}",
-            CLI_PASSWORD_FILE_ENV,
-            quickstart_password_bootstrap_help()
-        ));
-    }
-
+    // 1. Env var wins (highest priority). If both env var and password file are
+    //    set, use the env var with a warning instead of erroring. This fixes
+    //    integrations (e.g. OpenClaw) that set JACS_PRIVATE_KEY_PASSWORD in
+    //    the process env while JACS_PASSWORD_FILE is also present.
     if let Some(password) = env_password {
+        if password_file.is_some() {
+            eprintln!(
+                "Warning: both JACS_PRIVATE_KEY_PASSWORD and {} are set. \
+                 Using JACS_PRIVATE_KEY_PASSWORD (highest priority).",
+                CLI_PASSWORD_FILE_ENV
+            );
+        }
         // SAFETY: CLI process is single-threaded for command handling at this point.
         unsafe {
             env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
@@ -119,6 +121,7 @@ Configure exactly one source.\n\n{}",
         return Ok(());
     }
 
+    // 2. Password file (explicit)
     if let Some(path) = password_file {
         let password = read_password_from_file(Path::new(path.trim()), CLI_PASSWORD_FILE_ENV)?;
         // SAFETY: CLI process is single-threaded for command handling at this point.
@@ -128,6 +131,7 @@ Configure exactly one source.\n\n{}",
         return Ok(());
     }
 
+    // 3. Legacy password file
     let legacy_path = Path::new(DEFAULT_LEGACY_PASSWORD_FILE);
     if legacy_path.exists() {
         let password = read_password_from_file(legacy_path, "legacy password file")?;
@@ -140,8 +144,23 @@ Configure exactly one source.\n\n{}",
             legacy_path.display(),
             CLI_PASSWORD_FILE_ENV
         );
+        // Warn about keychain migration opportunity
+        #[cfg(feature = "keychain")]
+        {
+            if jacs::keystore::keychain::is_available() {
+                eprintln!(
+                    "Warning: A plaintext password file '{}' was found. \
+                     Consider migrating to the OS keychain with `jacs keychain set` \
+                     and then deleting the password file.",
+                    legacy_path.display()
+                );
+            }
+        }
+        return Ok(());
     }
 
+    // 4. No CLI-level password found. The core layer's resolve_private_key_password()
+    //    will check the OS keychain automatically when encryption/decryption is needed.
     Ok(())
 }
 
@@ -1049,9 +1068,36 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         .value_parser(value_parser!(String))
                         .help("Directory containing public keys for verification"),
                 )
-        )
-        .arg_required_else_help(true)
-        .get_matches();
+        );
+
+    // OS keychain subcommand (only when keychain feature is enabled)
+    #[cfg(feature = "keychain")]
+    let matches = matches.subcommand(
+        Command::new("keychain")
+            .about("Manage private key passwords in the OS keychain")
+            .subcommand(
+                Command::new("set")
+                    .about("Store a password in the OS keychain")
+                    .arg(
+                        Arg::new("password")
+                            .long("password")
+                            .help("Password to store (if omitted, prompts interactively)")
+                            .value_name("PASSWORD"),
+                    ),
+            )
+            .subcommand(
+                Command::new("get").about("Retrieve the stored password (prints to stdout)"),
+            )
+            .subcommand(
+                Command::new("delete").about("Remove the stored password from the OS keychain"),
+            )
+            .subcommand(
+                Command::new("status").about("Check if a password is stored in the OS keychain"),
+            )
+            .arg_required_else_help(true),
+    );
+
+    let matches = matches.arg_required_else_help(true).get_matches();
 
     match matches.subcommand() {
         Some(("version", _sub_matches)) => {
@@ -1513,8 +1559,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => {
                 let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
                 let profile = jacs_mcp::Profile::resolve(profile_str);
-                let agent = jacs_mcp::load_agent_from_config_env()?;
-                let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);
+                let (agent, info) = jacs_mcp::load_agent_from_config_env_with_info()?;
+                let state_roots = info["data_directory"]
+                    .as_str()
+                    .map(std::path::PathBuf::from)
+                    .into_iter()
+                    .collect();
+                let server = jacs_mcp::JacsMcpServer::with_profile_and_state_roots(
+                    agent,
+                    profile,
+                    state_roots,
+                );
                 let rt = tokio::runtime::Runtime::new()?;
                 rt.block_on(jacs_mcp::serve_stdio(server))?;
             }
@@ -1963,13 +2018,54 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             let do_sign = *qs_matches.get_one::<bool>("sign").unwrap_or(&false);
             let sign_file = qs_matches.get_one::<String>("file");
 
-            ensure_cli_private_key_password().map_err(|e| -> Box<dyn Error> {
-                Box::new(std::io::Error::other(format!(
-                    "Password bootstrap failed: {}\n\n{}",
-                    e,
-                    quickstart_password_bootstrap_help()
-                )))
-            })?;
+            // Try to resolve password from existing sources (env var, password file, legacy file).
+            // If none found, prompt interactively and store in OS keychain.
+            if let Err(e) = ensure_cli_private_key_password() {
+                eprintln!("Note: {}", e);
+            }
+
+            // If still no password available, prompt interactively
+            if env::var("JACS_PRIVATE_KEY_PASSWORD")
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+            {
+                eprintln!("{}", jacs::crypt::aes_encrypt::password_requirements());
+                let password = loop {
+                    eprintln!("Enter a password for your JACS private key:");
+                    let pw =
+                        read_password().map_err(|e| format!("Failed to read password: {}", e))?;
+                    if pw.trim().is_empty() {
+                        eprintln!("Password cannot be empty. Please try again.");
+                        continue;
+                    }
+                    eprintln!("Confirm password:");
+                    let pw2 =
+                        read_password().map_err(|e| format!("Failed to read password: {}", e))?;
+                    if pw != pw2 {
+                        eprintln!("Passwords do not match. Please try again.");
+                        continue;
+                    }
+                    break pw;
+                };
+
+                // SAFETY: CLI is single-threaded at this point
+                unsafe {
+                    env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
+                }
+
+                // Store in OS keychain so future commands "just work"
+                #[cfg(feature = "keychain")]
+                {
+                    if jacs::keystore::keychain::is_available() {
+                        match jacs::keystore::keychain::store_password(&password) {
+                            Ok(()) => eprintln!("Password stored in OS keychain."),
+                            Err(e) => eprintln!("Warning: Could not store in OS keychain: {}", e),
+                        }
+                    }
+                }
+            }
+
             let (agent, info) =
                 jacs::simple::advanced::quickstart(name, domain, description, algorithm, None)
                     .map_err(|e| {
@@ -2401,6 +2497,66 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             handle_agent_create_auto(None, true, auto_yes)?;
             println!("\n--- JACS Initialization Complete ---");
         }
+        #[cfg(feature = "keychain")]
+        Some(("keychain", keychain_matches)) => {
+            use jacs::keystore::keychain;
+
+            match keychain_matches.subcommand() {
+                Some(("set", sub)) => {
+                    let password = if let Some(pw) = sub.get_one::<String>("password") {
+                        pw.clone()
+                    } else {
+                        eprintln!("Enter password to store in keychain:");
+                        read_password().map_err(|e| format!("Failed to read password: {}", e))?
+                    };
+                    if password.trim().is_empty() {
+                        eprintln!("Error: password cannot be empty.");
+                        process::exit(1);
+                    }
+                    // Validate password strength before storing
+                    if let Err(e) = jacs::crypt::aes_encrypt::check_password_strength(&password) {
+                        eprintln!("Error: {}", e);
+                        process::exit(1);
+                    }
+                    keychain::store_password(&password)?;
+                    eprintln!("Password stored in OS keychain.");
+                }
+                Some(("get", _)) => match keychain::get_password()? {
+                    Some(pw) => println!("{}", pw),
+                    None => {
+                        eprintln!("No password found in OS keychain.");
+                        process::exit(1);
+                    }
+                },
+                Some(("delete", _)) => {
+                    keychain::delete_password()?;
+                    eprintln!("Password removed from OS keychain.");
+                }
+                Some(("status", _)) => {
+                    if keychain::is_available() {
+                        match keychain::get_password() {
+                            Ok(Some(_)) => {
+                                eprintln!("Keychain backend: available");
+                                eprintln!("Password: stored");
+                            }
+                            Ok(None) => {
+                                eprintln!("Keychain backend: available");
+                                eprintln!("Password: not stored");
+                            }
+                            Err(e) => {
+                                eprintln!("Keychain backend: error ({})", e);
+                            }
+                        }
+                    } else {
+                        eprintln!("Keychain backend: not available (feature disabled)");
+                    }
+                }
+                _ => {
+                    eprintln!("Unknown keychain subcommand. Use: set, get, delete, status");
+                    process::exit(1);
+                }
+            }
+        }
         _ => {
             // This branch should ideally be unreachable after adding arg_required_else_help(true)
             eprintln!("Invalid command or no subcommand provided. Use --help for usage.");
@@ -2409,4 +2565,111 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::ffi::OsString;
+    use tempfile::tempdir;
+
+    struct EnvGuard {
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl EnvGuard {
+        fn capture(keys: &[&'static str]) -> Self {
+            Self {
+                saved: keys
+                    .iter()
+                    .map(|key| (*key, std::env::var_os(key)))
+                    .collect(),
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                match value {
+                    Some(value) => {
+                        // SAFETY: These unit tests are marked serial and restore prior process env.
+                        unsafe {
+                            std::env::set_var(key, value);
+                        }
+                    }
+                    None => {
+                        // SAFETY: These unit tests are marked serial and restore prior process env.
+                        unsafe {
+                            std::env::remove_var(key);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn quickstart_help_mentions_env_precedence_warning() {
+        let help = quickstart_password_bootstrap_help();
+        assert!(help.contains("prefer exactly one explicit source"));
+        assert!(help.contains("CLI warns and uses JACS_PRIVATE_KEY_PASSWORD"));
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_cli_private_key_password_reads_password_file_when_env_absent() {
+        let _guard = EnvGuard::capture(&["JACS_PRIVATE_KEY_PASSWORD", CLI_PASSWORD_FILE_ENV]);
+        let temp = tempdir().expect("tempdir");
+        let password_file = temp.path().join("password.txt");
+        std::fs::write(&password_file, "TestP@ss123!#\n").expect("write password file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&password_file, std::fs::Permissions::from_mode(0o600))
+                .expect("chmod password file");
+        }
+
+        // SAFETY: These unit tests are marked serial and restore prior process env.
+        unsafe {
+            std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
+            std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
+        }
+
+        ensure_cli_private_key_password().expect("password bootstrap should succeed");
+
+        assert_eq!(
+            std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
+            "TestP@ss123!#"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn ensure_cli_private_key_password_prefers_env_when_sources_are_ambiguous() {
+        let _guard = EnvGuard::capture(&["JACS_PRIVATE_KEY_PASSWORD", CLI_PASSWORD_FILE_ENV]);
+        let temp = tempdir().expect("tempdir");
+        let password_file = temp.path().join("password.txt");
+        std::fs::write(&password_file, "DifferentP@ss456$\n").expect("write password file");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&password_file, std::fs::Permissions::from_mode(0o600))
+                .expect("chmod password file");
+        }
+
+        // SAFETY: These unit tests are marked serial and restore prior process env.
+        unsafe {
+            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
+            std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
+        }
+
+        ensure_cli_private_key_password().expect("password bootstrap should succeed");
+
+        assert_eq!(
+            std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
+            "TestP@ss123!#"
+        );
+    }
 }

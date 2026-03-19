@@ -67,6 +67,26 @@ const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
+### Headless / Embedded Loading Without Env Vars
+
+For Linux services or embedded apps that fetch secrets from a vault or secret
+manager, prefer passing the password in memory to the low-level binding instead
+of storing it in `JACS_PRIVATE_KEY_PASSWORD`:
+
+```javascript
+const { JacsAgent } = require('@hai.ai/jacs');
+
+const secret = getSecretFromManager();
+
+const agent = new JacsAgent();
+agent.setPrivateKeyPassword(secret);
+const info = JSON.parse(await agent.loadWithInfo('/srv/my-project/jacs.config.json'));
+```
+
+`@hai.ai/jacs/simple` and `JacsClient` remain the easiest high-level APIs, but
+the low-level `JacsAgent` API is the explicit path for in-memory secret
+injection.
+
 ## Core API
 
 Every function that calls into NAPI has both async (default) and sync variants:

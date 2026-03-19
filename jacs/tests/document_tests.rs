@@ -15,7 +15,10 @@ use log::{error, info};
 static SCHEMA: &str = "custom.schema.json";
 
 fn get_raw_schema_path() -> String {
-    raw_fixture(SCHEMA).to_string_lossy().to_string()
+    // Use a relative path from the crate root (CWD during `cargo test`).
+    // Absolute paths get their leading '/' stripped by the schema resolver,
+    // then treated as relative by the storage backend, causing path doubling.
+    format!("tests/fixtures/raw/{}", SCHEMA)
 }
 
 #[cfg(test)]

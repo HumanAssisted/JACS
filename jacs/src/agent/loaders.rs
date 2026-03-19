@@ -1,7 +1,7 @@
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::SecurityTraits;
-use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+// encrypt/decrypt now use _with_password variants via agent-scoped resolution
 use crate::error::JacsError;
 use crate::rate_limit::RateLimiter;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -9,7 +9,6 @@ use flate2::Compression;
 use flate2::write::GzEncoder;
 use secrecy::ExposeSecret;
 
-use crate::storage::jenv::get_env_var;
 use crate::time_utils;
 use crate::validation::require_relative_path_safe;
 use std::fs::OpenOptions;
@@ -161,7 +160,7 @@ impl FileLoader for Agent {
         let binding = self.get_private_key()?;
         let borrowed_key = binding.expose_secret();
         // Use secure decryption - ZeroizingVec will be zeroized when it goes out of scope
-        let key_vec = decrypt_private_key_secure(borrowed_key)?;
+        let key_vec = super::decrypt_with_agent_password(borrowed_key, self.password.as_deref())?;
 
         self.save_private_key(&absolute_private_key_path, key_vec.as_slice())?;
 
@@ -592,7 +591,7 @@ impl FileLoader for Agent {
         })?;
         if filename.ends_with(".enc") {
             // Use secure decryption - the ZeroizingVec will be zeroized after we extract the bytes
-            let decrypted = decrypt_private_key_secure(&loaded_key).map_err(|e| {
+            let decrypted = super::decrypt_with_agent_password(&loaded_key, self.password.as_deref()).map_err(|e| {
                 format!(
                     "Failed to decrypt private key from '{}': {}. \
                     Verify that JACS_PRIVATE_KEY_PASSWORD is set to the correct password used during key generation.",
@@ -614,20 +613,20 @@ impl FileLoader for Agent {
         private_key: &[u8],
     ) -> Result<String, JacsError> {
         // SECURITY: Require encryption password. Never write private keys unencrypted.
-        let password = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false)
-            .unwrap_or(None)
-            .unwrap_or_default();
+        // Use agent-scoped password if available, otherwise resolve from env/jenv/keychain.
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())
+                .map_err(|_| {
+                    JacsError::from(
+                        "SECURITY: Refusing to save private key without encryption. \
+                Set JACS_PRIVATE_KEY_PASSWORD, JACS_PASSWORD_FILE, or configure OS keychain.",
+                    )
+                })?;
 
-        if password.trim().is_empty() {
-            return Err(
-                "SECURITY: Refusing to save private key without encryption. \
-                Set JACS_PRIVATE_KEY_PASSWORD environment variable to a strong password \
-                before saving keys to disk."
-                    .into(),
-            );
-        }
-
-        let encrypted_key = encrypt_private_key(private_key)?;
+        let encrypted_key = crate::crypt::aes_encrypt::encrypt_private_key_with_password(
+            private_key,
+            &resolved_pw,
+        )?;
         let final_path = if !full_filepath.ends_with(".enc") {
             format!("{}.enc", full_filepath)
         } else {
@@ -688,8 +687,25 @@ impl FileLoader for Agent {
                 )
             })?;
         data_dir = data_dir.strip_prefix("./").unwrap_or(data_dir);
-        debug!("data_dir {} filename {}", data_dir, filename);
-        let path = format!("{}/{}", data_dir, filename);
+
+        // When the data directory is absolute and falls within the storage root,
+        // strip the root prefix so the storage backend does not double it.
+        let data_path = std::path::Path::new(data_dir);
+        let relative_data_dir = if data_path.is_absolute() {
+            if let Some(root) = self.storage.root() {
+                data_path
+                    .strip_prefix(root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| data_dir.to_string())
+            } else {
+                data_dir.to_string()
+            }
+        } else {
+            data_dir.to_string()
+        };
+
+        debug!("data_dir {} filename {}", relative_data_dir, filename);
+        let path = format!("{}/{}", relative_data_dir, filename);
         debug!("Data directory path: {}", path);
         Ok(path)
     }
@@ -717,7 +733,23 @@ impl FileLoader for Agent {
                 )
             })?;
         key_dir = key_dir.strip_prefix("./").unwrap_or(key_dir);
-        let path = format!("{}/{}", key_dir, filename);
+
+        // When the key directory is absolute and falls within the storage root,
+        // strip the root prefix so the storage backend does not double it.
+        let key_path_obj = std::path::Path::new(key_dir);
+        let relative_key_dir = if key_path_obj.is_absolute() {
+            if let Some(root) = self.storage.root() {
+                key_path_obj
+                    .strip_prefix(root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| key_dir.to_string())
+            } else {
+                key_dir.to_string()
+            }
+        } else {
+            key_dir.to_string()
+        };
+        let path = format!("{}/{}", relative_key_dir, filename);
         debug!("Key directory path: {}", path);
         Ok(path)
     }
@@ -1244,7 +1276,7 @@ CDEF
         use serial_test::serial;
 
         #[test]
-        #[serial]
+        #[serial(keys_fetch_env)]
         fn test_resolve_keys_base_url_defaults_to_hai_root() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1257,7 +1289,7 @@ CDEF
         }
 
         #[test]
-        #[serial]
+        #[serial(keys_fetch_env)]
         fn test_resolve_keys_base_url_prefers_jacs_over_hai_alias() {
             // SAFETY: This test is isolated and restores environment afterwards.
             unsafe {
@@ -1290,7 +1322,7 @@ CDEF
         }
 
         #[test]
-        #[serial]
+        #[serial(keys_fetch_env)]
         fn test_fetch_public_key_invalid_url() {
             // Set an invalid base URL to test error handling
             // Disable retries for faster test execution
@@ -1327,7 +1359,7 @@ CDEF
         }
 
         #[test]
-        #[serial]
+        #[serial(keys_fetch_env)]
         fn test_fetch_public_key_default_url() {
             // Verify default URL is used when env var is not set
             // Disable retries for faster test execution
@@ -1360,7 +1392,7 @@ CDEF
         }
 
         #[test]
-        #[serial]
+        #[serial(keys_fetch_env)]
         fn test_fetch_public_key_retries_env_var() {
             // Test that JACS_KEY_FETCH_RETRIES is respected
             // SAFETY: This test is run in isolation

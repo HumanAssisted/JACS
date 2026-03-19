@@ -239,6 +239,42 @@ Signed at: 2026-02-10T12:00:00Z
 </code></pre>
 <p>If <code>./jacs.config.json</code> and agent keys exist in the current directory, the CLI uses them automatically. Otherwise it creates a temporary ephemeral verifier internally.</p>
 <p>See the <a href="../getting-started/verification.html">Verification Guide</a> for Python, Node.js, and DNS verification workflows.</p>
+<h3 id="jacs-keychain"><a class="header" href="#jacs-keychain"><code>jacs keychain</code></a></h3>
+<p>Manage private key passwords in the OS keychain (macOS Keychain or Linux Secret Service via D-Bus). This allows JACS to retrieve your private key password without environment variables or password files.</p>
+<blockquote>
+<p>Requires the <code>keychain</code> feature (enabled by default in <code>jacs-cli</code>).
+Set <code>JACS_KEYCHAIN_BACKEND=disabled</code> to skip keychain lookups in CI/headless environments.</p>
+</blockquote>
+<pre><code class="language-bash"># Store a password interactively (prompts for input)
+jacs keychain set
+
+# Store a password non-interactively (for scripting)
+jacs keychain set --password "YourStr0ng!Pass#Here"
+
+# Retrieve the stored password (prints to stdout, for piping)
+export JACS_PRIVATE_KEY_PASSWORD=$(jacs keychain get)
+
+# Remove the stored password
+jacs keychain delete
+
+# Check keychain availability and whether a password is stored
+jacs keychain status
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>jacs keychain set</code></td><td>Store a password (prompts interactively)</td></tr>
+<tr><td><code>jacs keychain set --password &lt;pw&gt;</code></td><td>Store a specific password (for scripting)</td></tr>
+<tr><td><code>jacs keychain get</code></td><td>Print stored password to stdout</td></tr>
+<tr><td><code>jacs keychain delete</code></td><td>Remove stored password from OS keychain</td></tr>
+<tr><td><code>jacs keychain status</code></td><td>Check keychain availability and storage state</td></tr>
+</tbody></table>
+</div>
+<p><strong>Output conventions:</strong> Human-friendly messages go to stderr; machine-friendly data goes to stdout. This means <code>jacs keychain get</code> output can be safely piped or captured in a variable.</p>
+<p><strong>Password resolution order:</strong> When JACS needs the private key password, it checks sources in this order:</p>
+<ol>
+<li><code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable (highest priority)</li>
+<li><code>JACS_PASSWORD_FILE</code> / legacy <code>.jacs_password</code> file</li>
+<li>OS keychain (if <code>keychain</code> feature is enabled and not disabled)</li>
+</ol>
 <h3 id="jacs-init"><a class="header" href="#jacs-init"><code>jacs init</code></a></h3>
 <p>Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.</p>
 <pre><code class="language-bash">jacs init

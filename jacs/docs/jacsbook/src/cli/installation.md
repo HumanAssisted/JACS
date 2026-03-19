@@ -24,7 +24,7 @@ You can use `jacs config read` to check the configs.
 
 You need to create an agent first.  Go to [cli/agent](./cli/agent)
 
-Note: Do not use `jacs_private_key_password` in production. Instead, use the environment variable `JACS_PRIVATE_KEY_PASSWORD` in a secure manner. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
+Note: Do not use `jacs_private_key_password` in production config files. Instead, use the environment variable `JACS_PRIVATE_KEY_PASSWORD` or the OS keychain (`jacs keychain set`) to provide the password securely. This encrypts a private key needed for signing documents. You can create a new version of your agent with a new key, but this is not ideal.
 
 
 

@@ -35,9 +35,10 @@ impl<T> ToPyResult<T> for BindingResult<T> {
 // =============================================================================
 // JacsAgent Class - Primary API for concurrent usage
 // =============================================================================
-// Each JacsAgent instance has its own independent state. This allows multiple
-// agents to be used concurrently in the same Python process without shared
-// mutable state. This is the recommended API for all code.
+// Each JacsAgent instance has its own loaded agent state. This allows multiple
+// agents to coexist in the same Python process. Password-protected operations
+// are synchronized internally while the Rust core still resolves decryption
+// passwords through JACS_PRIVATE_KEY_PASSWORD.
 //
 // The Arc<Mutex<Agent>> pattern ensures thread-safety:
 // - Arc allows shared ownership across Python references
@@ -47,8 +48,8 @@ impl<T> ToPyResult<T> for BindingResult<T> {
 
 /// A JACS agent instance for signing and verifying documents.
 ///
-/// Each JacsAgent has independent state, allowing multiple agents to be used
-/// concurrently. This is the recommended API for all code.
+/// Each JacsAgent has independent loaded state, allowing multiple agents to be
+/// used in the same process. This is the recommended API for all code.
 ///
 /// Example:
 /// ```python
@@ -73,6 +74,20 @@ impl JacsAgent {
     /// Load agent configuration from a file path.
     fn load(&self, config_path: String) -> PyResult<String> {
         self.inner.load(config_path).to_py()
+    }
+
+    /// Load agent configuration and return canonical loaded-agent metadata JSON.
+    fn load_with_info(&self, config_path: String) -> PyResult<String> {
+        self.inner.load_with_info(config_path).to_py()
+    }
+
+    /// Configure a per-instance private-key password for later load/sign calls.
+    ///
+    /// Pass ``None`` to clear the configured password and fall back to the
+    /// process environment / keychain behavior in the Rust core.
+    #[pyo3(signature = (password=None))]
+    fn set_private_key_password(&self, password: Option<String>) -> PyResult<()> {
+        self.inner.set_private_key_password(password).to_py()
     }
 
     /// Sign an external agent's document with this agent's registration signature.

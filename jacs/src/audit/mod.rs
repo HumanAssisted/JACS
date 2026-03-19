@@ -869,22 +869,31 @@ fn reverify_recent_documents(config: &Config, n: u32, result: &mut AuditResult) 
         return;
     }
 
-    let prev_kr = std::env::var_os("JACS_KEY_RESOLUTION");
-    // SAFETY: single-threaded audit; we restore the previous value immediately after load
-    unsafe {
-        std::env::set_var("JACS_KEY_RESOLUTION", &kr_str);
-    }
+    // Use jenv (thread-safe override store) instead of unsafe std::env mutation.
+    // Save whether a jenv override existed before to avoid manufacturing sticky
+    // overrides on restore (Issue 014 / Issue 015).
+    let kr_had_override = crate::storage::jenv::has_jenv_override("JACS_KEY_RESOLUTION");
+    let prev_kr = if kr_had_override {
+        crate::storage::jenv::get_env_var("JACS_KEY_RESOLUTION", false)
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    let _ = crate::storage::jenv::set_env_var("JACS_KEY_RESOLUTION", &kr_str);
 
     let agent_result =
         crate::simple::SimpleAgent::load(Some(temp_config_path.to_str().unwrap_or("")), None);
 
-    // SAFETY: restore env; audit is single-threaded
-    unsafe {
+    // Restore previous state
+    if kr_had_override {
         if let Some(ref v) = prev_kr {
-            std::env::set_var("JACS_KEY_RESOLUTION", v);
+            let _ = crate::storage::jenv::set_env_var("JACS_KEY_RESOLUTION", v);
         } else {
-            std::env::remove_var("JACS_KEY_RESOLUTION");
+            let _ = crate::storage::jenv::clear_env_var("JACS_KEY_RESOLUTION");
         }
+    } else {
+        let _ = crate::storage::jenv::clear_env_var("JACS_KEY_RESOLUTION");
     }
 
     let agent = match agent_result {

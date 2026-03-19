@@ -47,8 +47,8 @@ const RISK_CATEGORIES = [
 
 function resolveConfigRelativePath(configPath, candidate) {
   return path.isAbsolute(candidate)
-    ? candidate
-    : path.resolve(path.dirname(configPath), candidate);
+    ? fs.realpathSync(candidate)
+    : fs.realpathSync(path.resolve(path.dirname(configPath), candidate));
 }
 
 // Helper to get a fresh simple module and load it in the fixtures directory (sync)
@@ -313,11 +313,59 @@ describe('JACS Simple API', function() {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory);
         const keyDir = resolveConfigRelativePath(configPath, config.jacs_key_directory);
+        expect(info.configPath).to.equal(fs.realpathSync(configPath));
+        expect(info.dataDirectory).to.equal(dataDir);
+        expect(info.keyDirectory).to.equal(keyDir);
         expect(fs.existsSync(dataDir)).to.equal(true);
         expect(fs.existsSync(keyDir)).to.equal(true);
 
         const signed = await freshSimple.signMessage({ quickstart: true });
         expect(signed.documentId).to.be.a('string').and.not.empty;
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    (simpleExists ? it : it.skip)('should not reopen config in JS during simple load when password is already resolved', async function () {
+      this.timeout(30000);
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-native-load-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
+
+      try {
+        process.chdir(tmpDir);
+        await freshSimple.quickstart({
+          name: 'simple-native-load',
+          domain: 'simple-native.example.com',
+          algorithm: 'ring-Ed25519',
+          configPath: path.join('native', 'jacs.config.json'),
+        });
+
+        const configPath = path.join(tmpDir, 'native', 'jacs.config.json');
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          if (path.resolve(String(filePath)) === path.resolve(configPath)) {
+            throw new Error('simple load() should not reopen config in JS');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const info = await freshSimple.load(configPath);
+          expect(info.agentId).to.be.a('string').and.not.empty;
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+          freshSimple.reset();
+        }
       } finally {
         process.chdir(originalCwd);
         if (previousPassword === undefined) {
@@ -801,6 +849,52 @@ describe('JACS Simple API', function() {
       const result = freshSimple.verifySync(JSON.stringify(doc));
 
       expect(result.valid).to.be.false;
+    });
+  });
+
+  describe('exportAgent', () => {
+    (simpleExists ? it : it.skip)('should use native export instead of JS filesystem reads', async function () {
+      this.timeout(30000);
+      delete require.cache[require.resolve('../simple.js')];
+      const freshSimple = require('../simple.js');
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-export-agent-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
+
+      try {
+        process.chdir(tmpDir);
+        await freshSimple.quickstart({
+          name: 'simple-export-agent',
+          domain: 'simple-export-agent.example.com',
+          algorithm: 'ring-Ed25519',
+        });
+
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          const target = String(filePath);
+          if (target.endsWith('jacs.config.json') || target.includes(`${path.sep}agent${path.sep}`)) {
+            throw new Error('exportAgent should not depend on JS filesystem reads');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const info = freshSimple.getAgentInfo();
+          const agentDoc = JSON.parse(freshSimple.exportAgent());
+          expect(agentDoc.jacsId).to.equal(info.agentId);
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+        }
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 

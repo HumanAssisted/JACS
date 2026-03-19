@@ -8,7 +8,7 @@ use crate::crypt::constants::{
 };
 use crate::crypt::private_key::ZeroizingVec;
 use crate::error::JacsError;
-use crate::storage::jenv::get_required_env_var;
+use crate::storage::jenv::get_env_var;
 use aes_gcm::AeadCore;
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
@@ -304,6 +304,106 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
     derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS)
 }
 
+/// Resolve the private key password from all available sources.
+///
+/// Resolution order (highest priority first):
+/// 0. `explicit_password` parameter (agent-scoped, no global state)
+/// 1. `JACS_PRIVATE_KEY_PASSWORD` environment variable
+/// 2. `JACS_PASSWORD_FILE` env var or legacy `./jacs_keys/.jacs_password` file
+/// 3. OS keychain (if `keychain` feature is enabled and not disabled via config/env)
+/// 4. Error with helpful message
+///
+/// This is the single source of truth for password resolution. All encryption/decryption
+/// code should call this instead of reading the env var directly.
+///
+/// The `explicit_password` parameter enables agent-scoped password resolution:
+/// when an `Agent` carries a password, it passes `Some(&pw)` and the resolver
+/// returns it immediately without touching env/jenv. This is what makes
+/// concurrent multi-agent usage safe.
+pub fn resolve_private_key_password(explicit_password: Option<&str>) -> Result<String, JacsError> {
+    // 0. Explicit password (highest priority — agent-scoped, no global state)
+    if let Some(pw) = explicit_password {
+        if pw.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "Explicit password provided but empty or whitespace-only.".to_string(),
+            ));
+        }
+        return Ok(pw.to_string());
+    }
+
+    // 1. Try env var (highest priority — explicit always wins)
+    if let Ok(Some(pw)) = get_env_var("JACS_PRIVATE_KEY_PASSWORD", false) {
+        if pw.trim().is_empty() {
+            return Err(JacsError::ConfigError(
+                "JACS_PRIVATE_KEY_PASSWORD is set but empty or whitespace-only. \
+                 Provide a non-empty password."
+                    .to_string(),
+            ));
+        }
+        return Ok(pw);
+    }
+
+    // 2. Try password file (JACS_PASSWORD_FILE or legacy .jacs_password)
+    if let Ok(Some(path_str)) = get_env_var("JACS_PASSWORD_FILE", false) {
+        let path = std::path::Path::new(path_str.trim());
+        if path.exists() {
+            if let Ok(contents) = std::fs::read_to_string(path) {
+                let pw = contents.trim_end_matches(|c| c == '\n' || c == '\r');
+                if !pw.is_empty() {
+                    tracing::debug!("Using password from JACS_PASSWORD_FILE");
+                    return Ok(pw.to_string());
+                }
+            }
+        }
+    }
+    // Legacy fallback: ./jacs_keys/.jacs_password
+    let legacy_path = std::path::Path::new("./jacs_keys/.jacs_password");
+    if legacy_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(legacy_path) {
+            let pw = contents.trim_end_matches(|c| c == '\n' || c == '\r');
+            if !pw.is_empty() {
+                tracing::debug!("Using password from legacy .jacs_password file");
+                // Warn about migration opportunity when keychain is available
+                if !is_keychain_disabled() && crate::keystore::keychain::is_available() {
+                    tracing::warn!(
+                        "A plaintext .jacs_password file was found at '{}'. \
+                         Consider migrating to the OS keychain with `jacs keychain set` \
+                         and then deleting the password file.",
+                        legacy_path.display()
+                    );
+                }
+                return Ok(pw.to_string());
+            }
+        }
+    }
+
+    // 3. Try OS keychain (if not disabled)
+    if !is_keychain_disabled() {
+        if let Ok(Some(pw)) = crate::keystore::keychain::get_password() {
+            tracing::debug!("Using password from OS keychain");
+            return Ok(pw);
+        }
+    }
+
+    // 4. Fail with helpful message
+    Err(JacsError::ConfigError(
+        "No private key password available. Options:\n\
+         1. Set JACS_PRIVATE_KEY_PASSWORD environment variable\n\
+         2. Set JACS_PASSWORD_FILE to a file path containing the password\n\
+         3. Use `jacs keychain set` to store in OS keychain"
+            .to_string(),
+    ))
+}
+
+/// Check whether OS keychain lookups are disabled via env var or config.
+fn is_keychain_disabled() -> bool {
+    // Check env var (which may have been set by config loading)
+    if let Ok(Some(val)) = get_env_var("JACS_KEYCHAIN_BACKEND", false) {
+        return val.eq_ignore_ascii_case("disabled");
+    }
+    false
+}
+
 /// Encrypt a private key with a password using AES-256-GCM.
 ///
 /// The encrypted output format is: salt (16 bytes) || nonce (12 bytes) || ciphertext
@@ -312,16 +412,24 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
 ///
 /// # Security Requirements
 ///
-/// The password (from `JACS_PRIVATE_KEY_PASSWORD` environment variable) must:
-/// - Be at least 8 characters long
-/// - Not be empty or whitespace-only
+/// The password is resolved via `resolve_private_key_password()` which checks
+/// the env var, OS keychain, and password file in priority order.
 pub fn encrypt_private_key(private_key: &[u8]) -> Result<Vec<u8>, JacsError> {
-    // Password is required and must be non-empty
-    let password =
-        get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
+    let password = resolve_private_key_password(None)?;
+    encrypt_private_key_with_password(private_key, &password)
+}
 
+/// Encrypt a private key with an explicit password (agent-scoped, no global state).
+///
+/// Use this variant when you have a resolved password (e.g., from `Agent.password()`).
+/// The zero-arg `encrypt_private_key()` remains for backward compatibility and resolves
+/// the password from env/jenv/keychain.
+pub fn encrypt_private_key_with_password(
+    private_key: &[u8],
+    password: &str,
+) -> Result<Vec<u8>, JacsError> {
     // Validate password strength
-    validate_password(&password)?;
+    validate_password(password)?;
 
     // Generate a random salt
     let mut salt = [0u8; PBKDF2_SALT_SIZE];
@@ -405,14 +513,18 @@ pub fn decrypt_private_key(encrypted_key_with_salt_and_nonce: &[u8]) -> Result<V
 pub fn decrypt_private_key_secure(
     encrypted_key_with_salt_and_nonce: &[u8],
 ) -> Result<ZeroizingVec, JacsError> {
-    // Password is required and must be non-empty
-    // Note: We don't validate password strength during decryption because:
-    // 1. The password must match whatever was used during encryption
-    // 2. Existing keys may have been encrypted with older/weaker passwords
-    // Password strength is validated only during encrypt_private_key()
-    let password =
-        get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
+    let password = resolve_private_key_password(None)?;
+    decrypt_private_key_secure_with_password(encrypted_key_with_salt_and_nonce, &password)
+}
 
+/// Decrypt a private key with an explicit password (agent-scoped, no global state).
+///
+/// Use this variant when you have a resolved password (e.g., from `Agent.password()`).
+/// The zero-arg `decrypt_private_key_secure()` remains for backward compatibility.
+pub fn decrypt_private_key_secure_with_password(
+    encrypted_key_with_salt_and_nonce: &[u8],
+    password: &str,
+) -> Result<ZeroizingVec, JacsError> {
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
             "Encrypted private key file is corrupted or truncated: expected at least {} bytes, got {} bytes. \
@@ -571,11 +683,11 @@ mod tests {
         // SAFETY: `env::set_var` is unsafe because concurrent reads from other threads
         // could observe a partially-written value or cause undefined behavior. This is
         // safe here because:
-        // 1. All tests using this helper are marked #[serial], ensuring single-threaded execution
+        // 1. All tests using this helper are marked #[serial(jacs_env)], ensuring single-threaded execution
         // 2. The password is set before any code reads JACS_PRIVATE_KEY_PASSWORD
         // 3. No background threads are spawned that might read this variable
-        // 4. The serial_test crate guarantees mutual exclusion with other #[serial] tests
-        // Violating these invariants (e.g., removing #[serial]) could cause data races.
+        // 4. The serial_test crate guarantees mutual exclusion with other #[serial(jacs_env)] tests
+        // Violating these invariants (e.g., removing #[serial(jacs_env)]) could cause data races.
         unsafe {
             env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
         }
@@ -584,17 +696,17 @@ mod tests {
     fn remove_test_password() {
         // SAFETY: `env::remove_var` is unsafe for the same reasons as `env::set_var`.
         // This is safe here because:
-        // 1. Called only from #[serial] tests ensuring single-threaded execution
+        // 1. Called only from #[serial(jacs_env)] tests ensuring single-threaded execution
         // 2. This is called in cleanup after the test completes, when no concurrent reads occur
         // 3. The serial_test crate ensures this completes before any other test starts
-        // If #[serial] is removed or background threads are added, this could cause UB.
+        // If #[serial(jacs_env)] is removed or background threads are added, this could cause UB.
         unsafe {
             env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
         }
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_encrypt_decrypt_roundtrip() {
         // Set test password
         set_test_password("test_password_123");
@@ -617,7 +729,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_wrong_password_fails() {
         // Set password for encryption
         set_test_password("correct_password");
@@ -636,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_truncated_data_fails() {
         set_test_password("test_password");
 
@@ -649,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_different_salts_produce_different_ciphertexts() {
         set_test_password("test_password");
 
@@ -672,7 +784,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_empty_password_rejected() {
         set_test_password("");
 
@@ -680,13 +792,17 @@ mod tests {
         let result = encrypt_private_key(original_key);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("empty") || err_msg.contains("whitespace"));
+        assert!(
+            err_msg.contains("empty") || err_msg.contains("whitespace"),
+            "Expected error about empty/whitespace password, got: {}",
+            err_msg
+        );
 
         remove_test_password();
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_whitespace_only_password_rejected() {
         set_test_password("   \t\n  ");
 
@@ -694,13 +810,17 @@ mod tests {
         let result = encrypt_private_key(original_key);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("empty") || err_msg.contains("whitespace"));
+        assert!(
+            err_msg.contains("empty") || err_msg.contains("whitespace"),
+            "Expected error about empty/whitespace password, got: {}",
+            err_msg
+        );
 
         remove_test_password();
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_short_password_rejected() {
         // Password with only 5 characters (less than MIN_PASSWORD_LENGTH of 8)
         set_test_password("short");
@@ -715,7 +835,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_minimum_length_password_accepted() {
         // Exactly 8 characters with variety - should be accepted
         // Note: "12345678" is rejected as a common weak password
@@ -938,7 +1058,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_encryption_with_weak_password_fails() {
         // Try to encrypt with a weak password - should fail validation
         set_test_password("password");
@@ -957,7 +1077,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_encryption_with_strong_password_succeeds() {
         // Use a properly strong password
         set_test_password("MyStr0ng!Pass#2024");
@@ -978,7 +1098,7 @@ mod tests {
     // ==================== Additional Negative Tests for Security ====================
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_very_long_password_works_or_fails_gracefully() {
         // 100KB password - should work or fail gracefully (not crash/panic)
         let long_password = "A".repeat(100_000);
@@ -1002,7 +1122,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_corrupted_encrypted_data_fails_gracefully() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1051,7 +1171,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_all_zeros_encrypted_data_rejected() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1067,7 +1187,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_all_ones_encrypted_data_rejected() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1083,7 +1203,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_empty_plaintext_encryption() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1100,7 +1220,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_large_plaintext_encryption() {
         set_test_password("MyStr0ng!Pass#2024");
 
@@ -1239,7 +1359,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_decrypt_with_missing_password_env_var() {
         // Remove the password environment variable
         remove_test_password();
@@ -1337,5 +1457,61 @@ mod tests {
             decrypt_with_password(&encrypted, password).expect("decryption should succeed");
 
         assert_eq!(data.as_slice(), decrypted.as_slice());
+    }
+
+    // =========================================================================
+    // resolve_private_key_password explicit override tests (Task 002)
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_password_explicit_override() {
+        // Explicit password should be returned directly, no env needed
+        let result = resolve_private_key_password(Some("explicit_pass")).unwrap();
+        assert_eq!(result, "explicit_pass");
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_resolve_password_explicit_overrides_env() {
+        use crate::storage::jenv::set_env_var;
+        set_env_var("JACS_PRIVATE_KEY_PASSWORD", "env_pass").unwrap();
+
+        let result = resolve_private_key_password(Some("explicit_pass")).unwrap();
+        assert_eq!(result, "explicit_pass", "explicit should win over env");
+
+        let _ = crate::storage::jenv::clear_env_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_resolve_password_none_falls_back_to_env() {
+        use crate::storage::jenv::set_env_var;
+        set_env_var("JACS_PRIVATE_KEY_PASSWORD", "env_pass").unwrap();
+
+        let result = resolve_private_key_password(None).unwrap();
+        assert_eq!(result, "env_pass", "None should fall back to env");
+
+        let _ = crate::storage::jenv::clear_env_var("JACS_PRIVATE_KEY_PASSWORD");
+    }
+
+    #[test]
+    fn test_resolve_password_explicit_empty_fails() {
+        let result = resolve_private_key_password(Some(""));
+        assert!(result.is_err(), "empty explicit password should fail");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("empty or whitespace"),
+            "error should mention empty: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_resolve_password_explicit_whitespace_fails() {
+        let result = resolve_private_key_password(Some("   "));
+        assert!(
+            result.is_err(),
+            "whitespace-only explicit password should fail"
+        );
     }
 }

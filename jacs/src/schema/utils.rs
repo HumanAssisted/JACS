@@ -51,8 +51,9 @@ pub const DEFAULT_MAX_DOCUMENT_SIZE: usize = 10 * 1024 * 1024;
 /// export JACS_MAX_DOCUMENT_SIZE=52428800
 /// ```
 pub fn max_document_size() -> usize {
-    std::env::var("JACS_MAX_DOCUMENT_SIZE")
+    crate::storage::jenv::get_env_var("JACS_MAX_DOCUMENT_SIZE", false)
         .ok()
+        .flatten()
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_MAX_DOCUMENT_SIZE)
 }
@@ -425,7 +426,9 @@ impl ValueExt for Value {
 
 /// A schema retriever that primarily uses embedded schemas, with fallbacks to local filesystem
 /// and remote URLs.
-pub struct EmbeddedSchemaResolver {}
+pub struct EmbeddedSchemaResolver {
+    config: Option<crate::config::Config>,
+}
 
 impl Default for EmbeddedSchemaResolver {
     fn default() -> Self {
@@ -435,7 +438,14 @@ impl Default for EmbeddedSchemaResolver {
 
 impl EmbeddedSchemaResolver {
     pub fn new() -> Self {
-        EmbeddedSchemaResolver {}
+        EmbeddedSchemaResolver { config: None }
+    }
+
+    /// Create a resolver that carries an agent's config for filesystem schema access checks.
+    pub fn with_config(config: &crate::config::Config) -> Self {
+        EmbeddedSchemaResolver {
+            config: Some(config.clone()),
+        }
     }
 }
 
@@ -445,10 +455,12 @@ impl Retrieve for EmbeddedSchemaResolver {
         uri: &jsonschema::Uri<String>,
     ) -> Result<Value, Box<dyn Error + Send + Sync>> {
         let path = uri.path().as_str();
-        resolve_schema(path).map(|arc| (*arc).clone()).map_err(|e| {
-            let err_msg = e.to_string();
-            Box::new(std::io::Error::other(err_msg)) as Box<dyn Error + Send + Sync>
-        })
+        resolve_schema_with_config(path, self.config.as_ref())
+            .map(|arc| (*arc).clone())
+            .map_err(|e| {
+                let err_msg = e.to_string();
+                Box::new(std::io::Error::other(err_msg)) as Box<dyn Error + Send + Sync>
+            })
     }
 }
 
@@ -549,8 +561,11 @@ fn normalize_access_path(path: &str) -> Result<std::path::PathBuf, JacsError> {
 /// # Returns
 /// * `Ok(())` if filesystem access is allowed and the path is safe
 /// * `Err(JacsError)` if access is denied or the path is unsafe
-fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
-    // Check if filesystem schemas are enabled
+fn check_filesystem_schema_access(
+    path: &str,
+    config: Option<&crate::config::Config>,
+) -> Result<(), JacsError> {
+    // Check if filesystem schemas are enabled (process-level feature gate, stays as env read)
     let fs_enabled = std::env::var("JACS_ALLOW_FILESYSTEM_SCHEMAS")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false);
@@ -572,8 +587,10 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
         )));
     }
 
-    // Get allowed directories
-    let data_dir = std::env::var("JACS_DATA_DIRECTORY").ok();
+    // Get allowed directories — prefer Config values, fall back to env
+    let data_dir = config
+        .and_then(|c| c.jacs_data_directory().clone())
+        .or_else(|| std::env::var("JACS_DATA_DIRECTORY").ok());
     let schema_dir = std::env::var("JACS_SCHEMA_DIRECTORY").ok();
 
     // If specific directories are configured, check that the path is within them
@@ -629,61 +646,90 @@ fn check_filesystem_schema_access(path: &str) -> Result<(), JacsError> {
 /// - Filesystem access is disabled by default (opt-in via `JACS_ALLOW_FILESYSTEM_SCHEMAS`)
 /// - Path traversal (`..`) is blocked for filesystem paths
 /// - TLS certificate validation is enabled by default (can be relaxed for development)
+/// Resolve a schema without an agent config context.
+///
+/// Equivalent to `resolve_schema_with_config(rawpath, None)`.
 pub fn resolve_schema(rawpath: &str) -> Result<Arc<Value>, JacsError> {
+    resolve_schema_with_config(rawpath, None)
+}
+
+/// Resolve a schema, optionally using an agent's [`Config`] for filesystem
+/// access checks (allowed directories).
+///
+/// When `config` is `Some`, `check_filesystem_schema_access` can use the
+/// agent's configured `jacs_data_directory` instead of falling back to
+/// `std::env::var("JACS_DATA_DIRECTORY")`.
+pub fn resolve_schema_with_config(
+    rawpath: &str,
+    config: Option<&crate::config::Config>,
+) -> Result<Arc<Value>, JacsError> {
     debug!("Entering resolve_schema function with path: {}", rawpath);
-    let path = rawpath.strip_prefix('/').unwrap_or(rawpath);
-    let cache_key = schema_cache_key(path);
+    let embedded_alias = rawpath.strip_prefix('/');
+    let cache_key = schema_cache_key(
+        DEFAULT_SCHEMA_STRINGS
+            .get(rawpath)
+            .map(|_| rawpath)
+            .or_else(|| {
+                embedded_alias.and_then(|alias| DEFAULT_SCHEMA_STRINGS.get(alias).map(|_| alias))
+            })
+            .unwrap_or(rawpath),
+    );
 
     if let Some(cached) = get_cached_schema(&cache_key) {
         return Ok(cached);
     }
 
     // Check embedded schemas first (always allowed, no security concerns)
-    let resolved = if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(path) {
+    let resolved = if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(rawpath) {
         let schema_value: Value = serde_json::from_str(schema_json)?;
         Arc::new(schema_value)
-    } else if path.starts_with("http://") || path.starts_with("https://") {
-        debug!("Attempting to fetch schema from URL: {}", path);
-        if path.starts_with("https://hai.ai") {
-            let relative_path = path.trim_start_matches("https://hai.ai/");
+    } else if let Some(schema_json) =
+        embedded_alias.and_then(|alias| DEFAULT_SCHEMA_STRINGS.get(alias))
+    {
+        let schema_value: Value = serde_json::from_str(schema_json)?;
+        Arc::new(schema_value)
+    } else if rawpath.starts_with("http://") || rawpath.starts_with("https://") {
+        debug!("Attempting to fetch schema from URL: {}", rawpath);
+        if rawpath.starts_with("https://hai.ai") {
+            let relative_path = rawpath.trim_start_matches("https://hai.ai/");
             if let Some(schema_json) = DEFAULT_SCHEMA_STRINGS.get(relative_path) {
                 let schema_value: Value = serde_json::from_str(schema_json)?;
                 Arc::new(schema_value)
             } else {
                 return Err(JacsError::SchemaError(format!(
                     "Schema not found in embedded schemas: '{}' (relative path: '{}'). Available schemas: {:?}",
-                    path,
+                    rawpath,
                     relative_path,
                     DEFAULT_SCHEMA_STRINGS.keys().collect::<Vec<_>>()
                 )));
             }
         } else {
             // get_remote_schema already checks the domain allowlist
-            get_remote_schema(path)?
+            get_remote_schema(rawpath)?
         }
     } else {
         // Filesystem path - check security restrictions
-        check_filesystem_schema_access(path)?;
+        check_filesystem_schema_access(rawpath, config)?;
 
         let storage = MultiStorage::default_new()
             .map_err(|e| JacsError::SchemaError(format!("Failed to initialize storage: {}", e)))?;
-        if storage.file_exists(path, None).map_err(|e| {
+        if storage.file_exists(rawpath, None).map_err(|e| {
             JacsError::SchemaError(format!("Failed to check schema file existence: {}", e))
         })? {
-            let file_bytes = storage.get_file(path, None).map_err(|e| {
-                JacsError::SchemaError(format!("Failed to read schema file '{}': {}", path, e))
+            let file_bytes = storage.get_file(rawpath, None).map_err(|e| {
+                JacsError::SchemaError(format!("Failed to read schema file '{}': {}", rawpath, e))
             })?;
             let schema_json = String::from_utf8(file_bytes).map_err(|e| {
                 JacsError::SchemaError(format!(
                     "Schema file '{}' contains invalid UTF-8: {}",
-                    path, e
+                    rawpath, e
                 ))
             })?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;
             Arc::new(schema_value)
         } else {
             return Err(JacsError::FileNotFound {
-                path: path.to_string(),
+                path: rawpath.to_string(),
             });
         }
     };
@@ -720,6 +766,7 @@ fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
 #[cfg(test)]
 mod tests {
     use super::resolve_schema;
+    use serial_test::serial;
     use std::sync::Arc;
 
     #[test]
@@ -743,6 +790,45 @@ mod tests {
         assert!(
             Arc::ptr_eq(&relative, &via_url),
             "relative and hai URL lookups should share cached schema"
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn resolve_schema_allows_absolute_path_within_allowed_directory() {
+        let temp = tempfile::tempdir().expect("create tempdir");
+        let allowed_dir = temp.path().join("fixtures");
+        std::fs::create_dir_all(&allowed_dir).expect("create allowed dir");
+
+        let schema_path = allowed_dir.join("absolute.schema.json");
+        std::fs::write(
+            &schema_path,
+            r#"{"$schema":"http://json-schema.org/draft-07/schema#","type":"object"}"#,
+        )
+        .expect("write schema");
+
+        // SAFETY: serial test; env var mutations are isolated to this test's phase.
+        unsafe {
+            std::env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
+            std::env::set_var(
+                "JACS_DATA_DIRECTORY",
+                allowed_dir.to_string_lossy().to_string(),
+            );
+            std::env::remove_var("JACS_SCHEMA_DIRECTORY");
+        }
+
+        let result = resolve_schema(schema_path.to_string_lossy().as_ref());
+
+        // SAFETY: serial test; cleanup mirrors setup above.
+        unsafe {
+            std::env::remove_var("JACS_ALLOW_FILESYSTEM_SCHEMAS");
+            std::env::remove_var("JACS_DATA_DIRECTORY");
+            std::env::remove_var("JACS_SCHEMA_DIRECTORY");
+        }
+
+        assert!(
+            result.is_ok(),
+            "absolute schema path inside allowed directory should resolve"
         );
     }
 }

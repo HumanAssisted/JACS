@@ -76,8 +76,8 @@ export declare function legacyVerifyResponse(documentString: string): object
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
 /**
  * JacsAgent is a handle to a JACS agent instance.
- * Each instance maintains its own state and can be used independently.
- * This allows multiple agents to be used concurrently in the same process.
+ * Each instance maintains its own loaded state and can be used independently.
+ * This allows multiple agents to be used in the same process.
  */
 export declare class JacsAgent {
   /**
@@ -87,6 +87,14 @@ export declare class JacsAgent {
   constructor()
   /** Load an agent from a configuration file (sync, blocks event loop). */
   loadSync(configPath: string): string
+  /** Load an agent from a configuration file and return canonical metadata (sync). */
+  loadWithInfoSync(configPath: string): string
+  /** Configure a per-instance private-key password for later load/sign calls. */
+  setPrivateKeyPassword(password?: string | undefined | null): void
+  /** Export the agent's identity JSON for P2P exchange (sync). */
+  exportAgent(): string
+  /** Get the public key as a PEM string (sync). */
+  getPublicKeyPem(): string
   /** Create an ephemeral in-memory agent (sync, blocks event loop). */
   ephemeralSync(algorithm?: string | undefined | null): string
   /** Sign an external agent's document (sync, blocks event loop). */
@@ -145,6 +153,8 @@ export declare class JacsAgent {
   verifyResponseWithAgentId(documentString: string): object
   /** Load an agent from a configuration file. */
   load(configPath: string): Promise<string>
+  /** Load an agent from a configuration file and return canonical metadata. */
+  loadWithInfo(configPath: string): Promise<string>
   /** Create an ephemeral in-memory agent. */
   ephemeral(algorithm?: string | undefined | null): Promise<string>
   /** Sign an external agent's document. */
@@ -181,30 +191,6 @@ export declare class JacsAgent {
   getDocumentById(documentId: string): Promise<string>
   /** Re-encrypt the agent's private key with a new password. */
   reencryptKey(oldPassword: string, newPassword: string): Promise<void>
-  /** Export this agent as an A2A Agent Card (sync, blocks event loop). */
-  exportAgentCardSync(): string
-  /** Wrap an A2A artifact with JACS provenance signature (sync). */
-  wrapA2aArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
-  /** Sign an A2A artifact (sync). Alias for wrapA2aArtifactSync. */
-  signArtifactSync(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): string
-  /** Verify a JACS-wrapped A2A artifact (sync). */
-  verifyA2aArtifactSync(wrappedJson: string): string
-  /** Verify a JACS-wrapped A2A artifact with policy-aware trust assessment (sync). */
-  verifyA2aArtifactWithPolicySync(wrappedJson: string, agentCardJson: string, policy: string): string
-  /** Assess a remote agent's trust level based on its Agent Card and a policy (sync). */
-  assessA2aAgentSync(agentCardJson: string, policy: string): string
-  /** Export this agent as an A2A Agent Card. */
-  exportAgentCard(): Promise<string>
-  /** Wrap an A2A artifact with JACS provenance signature. */
-  wrapA2aArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
-  /** Sign an A2A artifact. Alias for wrapA2aArtifact. */
-  signArtifact(artifactJson: string, artifactType: string, parentSignaturesJson?: string | undefined | null): Promise<string>
-  /** Verify a JACS-wrapped A2A artifact. */
-  verifyA2aArtifact(wrappedJson: string): Promise<string>
-  /** Verify a JACS-wrapped A2A artifact with policy-aware trust assessment. */
-  verifyA2aArtifactWithPolicy(wrappedJson: string, agentCardJson: string, policy: string): Promise<string>
-  /** Assess a remote agent's trust level based on its Agent Card and a policy. */
-  assessA2aAgent(agentCardJson: string, policy: string): Promise<string>
   /** Build a JACS auth header for HTTP requests (sync, blocks event loop). */
   buildAuthHeaderSync(): string
   /** Deterministically serialize JSON per RFC 8785 / JCS (sync, blocks event loop). */
@@ -253,4 +239,65 @@ export declare class JacsAgent {
   liftToAttestation(signedDocJson: string, claimsJson: string): Promise<string>
   /** Export an attestation as a DSSE envelope (async). */
   exportAttestationDsse(attestationJson: string): Promise<string>
+}
+/**
+ * JacsSimpleAgent is a simplified JACS agent for the narrow contract.
+ *
+ * It exposes the same methods as Python's SimpleAgent and Go's simple API,
+ * all backed by `SimpleAgentWrapper` from `jacs-binding-core`.
+ */
+export declare class JacsSimpleAgent {
+  /**
+   * Create a new agent with persistent identity.
+   * Returns a JSON string with agent info (agent_id, name, public_key_path, config_path).
+   */
+  static create(name: string, purpose?: string | undefined | null, keyAlgorithm?: string | undefined | null): JacsSimpleAgent
+  /**
+   * Get the agent info JSON from the last create/ephemeral call.
+   * Must be called after create() or ephemeral().
+   */
+  getAgentId(): string
+  /** Load an existing agent from a config file. */
+  static load(configPath?: string | undefined | null, strict?: boolean | undefined | null): JacsSimpleAgent
+  /** Create an ephemeral (in-memory, throwaway) agent. */
+  static ephemeral(algorithm?: string | undefined | null): JacsSimpleAgent
+  /** Create an agent with full programmatic control via JSON parameters. */
+  static createWithParams(paramsJson: string): JacsSimpleAgent
+  /** Whether the agent is in strict mode. */
+  isStrict(): boolean
+  /** Config file path, if loaded from disk. */
+  configPath(): string | null
+  /** Get the JACS key ID (signing key identifier). */
+  keyId(): string
+  /** Export the agent's identity JSON for P2P exchange. */
+  exportAgent(): string
+  /** Get the public key as a PEM string. */
+  getPublicKeyPem(): string
+  /** Get the public key as base64-encoded raw bytes. */
+  getPublicKeyBase64(): string
+  /** Runtime diagnostic info as a JSON string. */
+  diagnostics(): string
+  /** Verify the agent's own document signature. Returns JSON VerificationResult. */
+  verifySelf(): string
+  /** Verify a signed document JSON string. Returns JSON VerificationResult. */
+  verify(signedDocument: string): string
+  /**
+   * Verify a signed document with an explicit public key (base64-encoded).
+   * Returns JSON VerificationResult.
+   */
+  verifyWithKey(signedDocument: string, publicKeyBase64: string): string
+  /**
+   * Verify a stored document by its ID (e.g., "uuid:version").
+   * Returns JSON VerificationResult.
+   */
+  verifyById(documentId: string): string
+  /** Sign a JSON message string. Returns the signed JACS document JSON. */
+  signMessage(dataJson: string): string
+  /** Sign raw bytes and return the signature as base64. */
+  signRawBytes(data: Buffer): string
+  /**
+   * Sign a file with optional content embedding.
+   * Returns the signed JACS document JSON.
+   */
+  signFile(filePath: string, embed: boolean): string
 }

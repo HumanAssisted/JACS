@@ -759,7 +759,7 @@ mod tests {
 
     // -- verify_email_document tests --
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_document_valid_signature() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-valid-sig");
@@ -773,7 +773,7 @@ mod tests {
         assert!(parts.body_plain.is_some());
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_document_missing_jacs_attachment() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-missing");
@@ -787,7 +787,7 @@ mod tests {
         }
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_document_tampered_content() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper");
@@ -817,7 +817,7 @@ mod tests {
 
     // -- verify_email_content tests --
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_content_all_pass() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-content-pass");
@@ -847,7 +847,7 @@ mod tests {
         assert_eq!(subject_result.status, FieldStatus::Pass);
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_content_tampered_from() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper-from");
@@ -870,7 +870,7 @@ mod tests {
         assert_eq!(from_result.status, FieldStatus::Fail);
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_content_tampered_body() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper-body");
@@ -893,7 +893,7 @@ mod tests {
         assert_eq!(body_result.status, FieldStatus::Fail);
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_content_message_id_unverifiable() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-mid");
@@ -912,7 +912,7 @@ mod tests {
         assert_eq!(mid_result.status, FieldStatus::Unverifiable);
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn verify_email_content_extra_attachment() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-extra-att");
@@ -944,7 +944,7 @@ mod tests {
 
     // -- Integration tests --
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_verify_roundtrip_valid() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-roundtrip");
@@ -968,7 +968,7 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn sign_tamper_from_verify_shows_fail() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-tamper-from2");
@@ -1026,7 +1026,7 @@ mod tests {
         (signed_by_b, agent_a, agent_b, tmp_a, tmp_b)
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn forward_renames_parent_signature() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (signed_by_b, _, _, _tmp_a, _tmp_b) = forwarded_email_from_b();
@@ -1047,7 +1047,7 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn forward_sets_parent_signature_hash() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (signed_by_b, _, _, _tmp_a, _tmp_b) = forwarded_email_from_b();
@@ -1063,7 +1063,7 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn forward_verify_chain_has_two_entries() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
@@ -1100,7 +1100,7 @@ mod tests {
         assert!(!result.chain[1].valid);
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn non_forwarded_email_has_single_chain_entry() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-chain-single");
@@ -1115,7 +1115,7 @@ mod tests {
         assert!(!result.chain[0].forwarded);
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn forward_parent_hash_matches_original_doc_bytes() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent_a, _tmp_a, _env_guard_a) = create_test_agent("agent-a-hash");
@@ -1141,7 +1141,7 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn deep_chain_a_to_b_to_c_has_three_entries() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -1202,7 +1202,7 @@ mod tests {
 
     // -- Security regression tests --
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn mime_header_tamper_on_body_causes_fail() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-mime-tamper");
@@ -1230,7 +1230,7 @@ mod tests {
         assert!(!result.valid, "MIME header tamper should invalidate result");
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn attachment_trailing_byte_tamper_detected() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-att-tamper");
@@ -1247,7 +1247,7 @@ mod tests {
         assert!(!result.valid, "Trailing byte tamper should be detected");
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn oversized_email_rejected_on_verify() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-oversize");
@@ -1262,7 +1262,7 @@ mod tests {
         }
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn parent_chain_entry_valid_is_false() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (signed_by_b, _, agent_b, _tmp_a, _tmp_b) = forwarded_email_from_b();
@@ -1279,7 +1279,6 @@ mod tests {
 
     // -- Pure function tests (no agent needed, no mutex needed) --
     #[test]
-    #[serial]
     fn address_match_extracts_mailbox_addr_spec() {
         assert!(addresses_match_case_insensitive(
             "\"Alice Agent\" <alice@example.com>",
@@ -1303,7 +1302,6 @@ mod tests {
         ));
     }
     #[test]
-    #[serial]
     fn extract_addr_specs_handles_rfc5322_edge_cases() {
         assert_eq!(
             extract_addr_specs("user@example.com"),
@@ -1327,7 +1325,7 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn chain_validity_gates_overall_valid() {
         let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let (agent, _tmp, _env_guard) = create_test_agent("verify-chain-gate");
@@ -1358,7 +1356,6 @@ mod tests {
         );
     }
     #[test]
-    #[serial]
     fn normalize_algorithm_handles_variants() {
         assert_eq!(normalize_algorithm("ed25519"), "ed25519");
         assert_eq!(normalize_algorithm("ring-ed25519"), "ed25519");

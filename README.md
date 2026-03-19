@@ -34,7 +34,16 @@ JACS has four core operations. Everything else builds on these:
 ### Password Setup
 
 ```bash
+# Developer / desktop workflow
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+```
+
+For Linux or other headless service environments, prefer a secret-mounted
+password file over keeping the password in the process environment:
+
+```bash
+export JACS_PASSWORD_FILE=/run/secrets/jacs-password
+export JACS_KEYCHAIN_BACKEND=disabled
 ```
 
 ### Python
@@ -196,6 +205,22 @@ jacs mcp --profile full     # start with all tools
 
 Set the profile via `--profile <name>` or `JACS_MCP_PROFILE` environment variable.
 
+The MCP server uses stdio only. It does not expose HTTP endpoints.
+
+For Linux/headless startup, provide both the config path and a non-interactive
+password source before launching:
+
+```bash
+export JACS_CONFIG=/srv/my-project/jacs.config.json
+export JACS_PASSWORD_FILE=/run/secrets/jacs-password
+export JACS_KEYCHAIN_BACKEND=disabled
+jacs mcp
+```
+
+For embedded Python/Node processes, prefer in-memory secret injection over
+environment variables when possible. The low-level bindings expose per-agent
+password setters for that use case.
+
 ## Integrations
 
 Framework adapters for signing AI outputs with zero infrastructure:
@@ -234,4 +259,4 @@ Framework adapters for signing AI outputs with zero infrastructure:
 
 ---
 
-v0.9.6 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
+v0.9.7 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)

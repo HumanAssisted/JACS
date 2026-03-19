@@ -35,6 +35,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install system dependencies (D-Bus for keychain support)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -50,3 +53,4 @@ jobs:
         run: cargo test -p jacs-mcp --features full-tools --verbose
         env:
           JACS_MCP_PROFILE: full
+          JACS_KEYCHAIN_BACKEND: disabled

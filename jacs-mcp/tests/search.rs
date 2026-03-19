@@ -45,7 +45,17 @@ impl Session {
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
                 .env("JACS_MAX_IAT_SKEW_SECONDS", "0")
-                .env("RUST_LOG", "warn");
+                .env("RUST_LOG", "warn")
+                // Remove env vars that may have been leaked by sqlite_ready_agent()
+                // or other in-process tests — stale values pointing to deleted temp
+                // dirs cause the child MCP server to crash on startup.
+                .env_remove("JACS_KEY_DIRECTORY")
+                .env_remove("JACS_DATA_DIRECTORY")
+                .env_remove("JACS_AGENT_ID_AND_VERSION")
+                .env_remove("JACS_AGENT_KEY_ALGORITHM")
+                .env_remove("JACS_AGENT_PRIVATE_KEY_FILENAME")
+                .env_remove("JACS_AGENT_PUBLIC_KEY_FILENAME")
+                .env_remove("JACS_DEFAULT_STORAGE");
         });
         let (transport, _) = TokioChildProcess::builder(cmd)
             .stderr(Stdio::null())

@@ -1,9 +1,11 @@
+pub mod keychain;
+
+use crate::crypt::private_key::LockedVec;
 use crate::error::JacsError;
 use std::fmt;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
-use zeroize::Zeroize;
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -70,6 +72,9 @@ pub enum KeyBackend {
     Pkcs11,
     IosKeychain,
     AndroidKeystore,
+    /// Desktop OS credential store (macOS Keychain / Linux Secret Service).
+    /// Used for storing the private key *password*, not the key itself.
+    OsKeychain,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -104,36 +109,92 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
     }
 }
 
-/// Check that `JACS_PRIVATE_KEY_PASSWORD` is set and non-empty.
+/// Check that a private key password is available from any source.
 ///
-/// Returns `Ok(())` if the password is available, or an error describing what
-/// the user needs to do. This is the single policy-enforcement point used by
-/// `save_private_key` to ensure keys are never written unencrypted.
-pub fn require_encryption_password() -> Result<(), JacsError> {
-    let password = std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap_or_default();
-    if password.trim().is_empty() {
-        return Err(
-            "SECURITY: JACS_PRIVATE_KEY_PASSWORD is not set or is empty. \
-            Private keys must be encrypted before writing to disk. \
-            Set this environment variable to a strong password."
-                .into(),
-        );
-    }
+/// Returns `Ok(())` if the password is available (env var, keychain, or password file),
+/// or an error describing what the user needs to do. This is the single
+/// policy-enforcement point used by `save_private_key` to ensure keys are
+/// never written unencrypted.
+pub fn require_encryption_password(explicit_password: Option<&str>) -> Result<(), JacsError> {
+    crate::crypt::aes_encrypt::resolve_private_key_password(explicit_password)?;
     Ok(())
 }
 
 // Default filesystem-encrypted backend placeholder.
 // Current code paths in Agent/crypt already implement FS behavior; this scaffold
 // exists for future refactors. For now these functions are unimplemented.
-use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
+// encrypt/decrypt now use _with_password variants via FsEncryptedStore.password
 use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
-use crate::storage::jenv::get_required_env_var;
+// get_required_env_var no longer needed — KeyPaths::from_env() deleted
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tracing::debug;
 
+/// Resolved filesystem paths for an agent's key material.
+///
+/// This struct replaces the pattern of reading `JACS_KEY_DIRECTORY`,
+/// `JACS_AGENT_PRIVATE_KEY_FILENAME`, and `JACS_AGENT_PUBLIC_KEY_FILENAME`
+/// from environment variables at every key operation. Instead, paths are
+/// resolved once at construction time and threaded through explicitly.
+#[derive(Debug, Clone)]
+pub struct KeyPaths {
+    pub key_directory: String,
+    pub private_key_filename: String,
+    pub public_key_filename: String,
+}
+
+impl KeyPaths {
+    /// Full path to the private key file (without `.enc` suffix).
+    pub fn private_key_path(&self) -> String {
+        format!(
+            "{}/{}",
+            self.key_directory.trim_start_matches("./"),
+            self.private_key_filename
+        )
+    }
+
+    /// Full path to the public key file.
+    pub fn public_key_path(&self) -> String {
+        format!(
+            "{}/{}",
+            self.key_directory.trim_start_matches("./"),
+            self.public_key_filename
+        )
+    }
+
+    /// Full path to the encrypted private key file (with `.enc` suffix).
+    pub fn private_key_enc_path(&self) -> String {
+        let p = self.private_key_path();
+        if p.ends_with(".enc") {
+            p
+        } else {
+            format!("{}.enc", p)
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct FsEncryptedStore;
+pub struct FsEncryptedStore {
+    paths: KeyPaths,
+    /// Agent-scoped password for encrypt/decrypt operations.
+    /// When `Some`, used directly instead of resolving from env/jenv.
+    password: Option<String>,
+}
+
+impl FsEncryptedStore {
+    /// Create a new `FsEncryptedStore` with explicit key paths and optional password.
+    pub fn new(paths: KeyPaths) -> Self {
+        Self {
+            paths,
+            password: None,
+        }
+    }
+
+    /// Create a new `FsEncryptedStore` with explicit key paths and agent-scoped password.
+    pub fn with_password(paths: KeyPaths, password: Option<String>) -> Self {
+        Self { paths, password }
+    }
+}
 impl FsEncryptedStore {
     fn storage_for_key_dir(key_dir: &str) -> Result<MultiStorage, JacsError> {
         let root = if std::path::Path::new(key_dir).is_absolute() {
@@ -150,22 +211,9 @@ impl FsEncryptedStore {
         })
     }
 
-    /// Compute the current on-disk paths for the private and public key files.
-    fn key_paths() -> Result<(String, String, String), JacsError> {
-        let key_dir =
-            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
-        let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
-        let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
-        let final_priv_path = if !priv_path.ends_with(".enc") {
-            format!("{}.enc", priv_path)
-        } else {
-            priv_path
-        };
-        Ok((final_priv_path, pub_path, key_dir))
+    /// Access the stored `KeyPaths`.
+    pub fn key_paths(&self) -> &KeyPaths {
+        &self.paths
     }
 
     /// Build versioned archive paths from the standard paths.
@@ -234,30 +282,27 @@ impl KeyStore for FsEncryptedStore {
             pub_len = pub_key.len(),
             "FsEncryptedStore::generate keys created"
         );
-        let key_dir =
-            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
-        let storage = Self::storage_for_key_dir(&key_dir)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
 
-        let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
-        let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
+        if self.paths.key_directory.is_empty() {
+            return Err(JacsError::ConfigError(
+                "FsEncryptedStore: key_directory is empty. Provide a valid key directory."
+                    .to_string(),
+            ));
+        }
 
-        let _password =
-            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
-        let enc = encrypt_private_key(&priv_key).map_err(|e| {
+        let key_dir = &self.paths.key_directory;
+        let storage = Self::storage_for_key_dir(key_dir)?;
+        let pub_path = self.paths.public_key_path();
+        let final_priv_path = self.paths.private_key_enc_path();
+
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let enc = crate::crypt::aes_encrypt::encrypt_private_key_with_password(&priv_key, &resolved_pw).map_err(|e| {
             format!(
                 "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
                 e
             )
         })?;
-        let final_priv_path = if !priv_path.ends_with(".enc") {
-            format!("{}.enc", priv_path)
-        } else {
-            priv_path.clone()
-        };
         write_private_key_securely(&final_priv_path, &enc).map_err(|e| {
             format!(
                 "Failed to save encrypted private key to '{}': {}. Check whether the file already exists or the directory '{}' is writable.",
@@ -277,19 +322,20 @@ impl KeyStore for FsEncryptedStore {
         set_secure_permissions(&pub_path, false)?;
         set_secure_permissions(&key_dir, true)?;
 
+        // Protect key directory from accidental git commits / Docker inclusion
+        let key_dir_path = std::path::Path::new(key_dir.trim_start_matches("./"));
+        crate::simple::core::write_key_directory_ignore_files(key_dir_path);
+
         Ok((priv_key, pub_key))
     }
 
     fn load_private(&self) -> Result<Vec<u8>, JacsError> {
-        let key_dir =
-            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
-        let storage = Self::storage_for_key_dir(&key_dir)?;
-        let priv_name = get_required_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
-        let priv_path = format!("{}/{}", key_dir.trim_start_matches("./"), priv_name);
-        let enc_path = format!("{}.enc", priv_path);
+        let key_dir = &self.paths.key_directory;
+        let storage = Self::storage_for_key_dir(key_dir)?;
+        let priv_path = self.paths.private_key_path();
+        let enc_path = self.paths.private_key_enc_path();
         let _password =
-            get_required_env_var("JACS_PRIVATE_KEY_PASSWORD", true).map_err(|e| e.to_string())?;
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
 
         let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
             storage.get_file(&enc_path, None).map_err(|e2| {
@@ -302,8 +348,14 @@ impl KeyStore for FsEncryptedStore {
             })
         })?;
 
-        // Use secure decryption - the ZeroizingVec will be zeroized when dropped
-        let decrypted = decrypt_private_key_secure(&bytes).map_err(|e| {
+        // Use secure decryption with agent-scoped password if available
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let decrypted = crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(
+            &bytes,
+            &resolved_pw,
+        )
+        .map_err(|e| {
             format!(
                 "Failed to decrypt private key from '{}': {}. \
                 Private keys must be encrypted and JACS_PRIVATE_KEY_PASSWORD must be set.",
@@ -315,16 +367,27 @@ impl KeyStore for FsEncryptedStore {
                 e
             )
         })?;
-        Ok(decrypted.as_slice().to_vec())
+        // Wrap in LockedVec so the decrypted bytes are mlock'd (pinned to RAM)
+        // during the brief window before being returned to the caller. The
+        // LockedVec is dropped at end of scope, which zeroizes + munlocks.
+        //
+        // SECURITY NOTE: The returned Vec<u8> is NOT mlock'd — the key material
+        // spends most of its lifetime in regular heap memory that could be swapped
+        // to disk or included in core dumps. InMemoryKeyStore avoids this by
+        // keeping keys in LockedVec for their full lifetime.
+        //
+        // TODO: When KeyStore::load_private() return type changes to LockedVec,
+        // this intermediate copy can be eliminated (breaking trait change).
+        let locked = LockedVec::new(decrypted.as_slice().to_vec());
+        let result = locked.as_slice().to_vec();
+        // locked is dropped here -> zeroize + munlock
+        Ok(result)
     }
 
     fn load_public(&self) -> Result<Vec<u8>, JacsError> {
-        let key_dir =
-            get_required_env_var("JACS_KEY_DIRECTORY", true).map_err(|e| e.to_string())?;
-        let storage = Self::storage_for_key_dir(&key_dir)?;
-        let pub_name = get_required_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", true)
-            .map_err(|e| e.to_string())?;
-        let pub_path = format!("{}/{}", key_dir.trim_start_matches("./"), pub_name);
+        let key_dir = &self.paths.key_directory;
+        let storage = Self::storage_for_key_dir(key_dir)?;
+        let pub_path = self.paths.public_key_path();
         let bytes = storage.get_file(&pub_path, None).map_err(|e| {
             format!(
                 "Failed to load public key from '{}': {}. \
@@ -384,7 +447,8 @@ impl KeyStore for FsEncryptedStore {
             "FsEncryptedStore::rotate called"
         );
 
-        let (priv_path, pub_path, _) = Self::key_paths()?;
+        let priv_path = self.paths.private_key_enc_path();
+        let pub_path = self.paths.public_key_path();
         let (archive_priv, archive_pub) = Self::archive_paths(&priv_path, &pub_path, old_version);
 
         // Step 1: Archive (rename) old key files
@@ -457,9 +521,10 @@ unimplemented_store!(IosKeychainStore);
 unimplemented_store!(AndroidKeystoreStore);
 
 /// In-memory key store for ephemeral agents. Keys never touch disk.
-/// Private key bytes are zeroized on Drop.
+/// Private key bytes are stored in mlock'd memory (via [`LockedVec`]) and
+/// zeroized on Drop.
 pub struct InMemoryKeyStore {
-    private_key: Mutex<Option<Vec<u8>>>,
+    private_key: Mutex<Option<LockedVec>>,
     public_key: Mutex<Option<Vec<u8>>>,
     algorithm: String,
 }
@@ -489,10 +554,10 @@ impl fmt::Debug for InMemoryKeyStore {
 
 impl Drop for InMemoryKeyStore {
     fn drop(&mut self) {
+        // LockedVec::drop() handles both zeroization and munlock automatically.
+        // We just need to take the value so it gets dropped.
         if let Ok(mut key) = self.private_key.lock() {
-            if let Some(ref mut bytes) = *key {
-                bytes.zeroize();
-            }
+            let _ = key.take();
         }
     }
 }
@@ -516,17 +581,22 @@ impl KeyStore for InMemoryKeyStore {
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
             CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
-        // Store copies in memory — no disk, no encryption
-        *self.private_key.lock().unwrap() = Some(priv_key.clone());
+        // Store copies in memory — no disk, no encryption.
+        // Private key is wrapped in LockedVec for mlock + zeroize-on-drop protection.
+        *self.private_key.lock().unwrap() = Some(LockedVec::new(priv_key.clone()));
         *self.public_key.lock().unwrap() = Some(pub_key.clone());
         Ok((priv_key, pub_key))
     }
 
     fn load_private(&self) -> Result<Vec<u8>, JacsError> {
+        // TODO: When KeyStore::load_private() return type changes to LockedVec,
+        // this clone can be eliminated. For now we clone out of locked storage
+        // into a transient Vec<u8> that callers will use briefly for signing.
         self.private_key
             .lock()
             .unwrap()
-            .clone()
+            .as_ref()
+            .map(|lv| lv.as_slice().to_vec())
             .ok_or_else(|| "InMemoryKeyStore: no private key generated yet".into())
     }
 
@@ -844,9 +914,10 @@ mod tests {
 
     /// Helper: set up an isolated temp directory and env overrides for
     /// `FsEncryptedStore`. Uses absolute paths to avoid CWD-related test races.
+    /// Returns `(dir_name, KeyPaths)`.
     ///
     /// Caller MUST hold `FS_TEST_MUTEX` before calling.
-    fn setup_fs_test_dir(label: &str) -> String {
+    fn setup_fs_test_dir(label: &str) -> (String, KeyPaths) {
         use crate::storage::jenv::set_env_var;
         use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -866,6 +937,7 @@ mod tests {
         std::fs::create_dir_all(format!("{}/agent", data_dir)).unwrap();
         std::fs::create_dir_all(format!("{}/public_keys", data_dir)).unwrap();
 
+        // Still set env vars for backward compatibility with code that reads them
         set_env_var("JACS_KEY_DIRECTORY", &key_dir).unwrap();
         set_env_var("JACS_DATA_DIRECTORY", &data_dir).unwrap();
         set_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "jacs.private.pem").unwrap();
@@ -873,7 +945,13 @@ mod tests {
         set_env_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123").unwrap();
         set_env_var("JACS_DEFAULT_STORAGE", "fs").unwrap();
 
-        dir_name
+        let paths = KeyPaths {
+            key_directory: key_dir,
+            private_key_filename: "jacs.private.pem".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+
+        (dir_name, paths)
     }
 
     fn clear_fs_test_env() {
@@ -891,13 +969,13 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_rotate_archives_old_keys() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
-        let dir_name = setup_fs_test_dir("archive");
+        let (dir_name, paths) = setup_fs_test_dir("archive");
         let key_dir = format!("{}/keys", dir_name);
 
-        let store = FsEncryptedStore;
+        let store = FsEncryptedStore::new(paths);
         let spec = KeySpec {
             algorithm: "ring-Ed25519".to_string(),
             key_id: None,
@@ -950,13 +1028,13 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_rotate_generates_new_keys() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
-        let dir_name = setup_fs_test_dir("newkeys");
+        let (dir_name, paths) = setup_fs_test_dir("newkeys");
         let key_dir = format!("{}/keys", dir_name);
 
-        let store = FsEncryptedStore;
+        let store = FsEncryptedStore::new(paths);
         let spec = KeySpec {
             algorithm: "ring-Ed25519".to_string(),
             key_id: None,
@@ -986,13 +1064,13 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_fs_encrypted_rotate_rollback_on_failure() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
-        let dir_name = setup_fs_test_dir("rollback");
+        let (dir_name, paths) = setup_fs_test_dir("rollback");
         let key_dir = format!("{}/keys", dir_name);
 
-        let store = FsEncryptedStore;
+        let store = FsEncryptedStore::new(paths);
         let spec = KeySpec {
             algorithm: "ring-Ed25519".to_string(),
             key_id: None,
@@ -1066,5 +1144,322 @@ mod tests {
             FsEncryptedStore::insert_version_in_path("nodir.pem", "v2"),
             "nodir.v2.pem"
         );
+    }
+
+    // =========================================================================
+    // LockedVec integration tests (Task 010: memory pinning)
+    // =========================================================================
+
+    #[test]
+    fn test_in_memory_keystore_uses_locked_storage() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let _ = ks.generate(&spec).unwrap();
+
+        // Verify the stored private key is in a LockedVec
+        let guard = ks.private_key.lock().unwrap();
+        let locked_vec = guard.as_ref().expect("private key should be stored");
+        assert!(
+            !locked_vec.is_empty(),
+            "stored private key should not be empty"
+        );
+        // On Unix, the memory should be mlock'd
+        if cfg!(unix) {
+            assert!(
+                locked_vec.is_locked(),
+                "InMemoryKeyStore private key should be in mlock'd memory on Unix"
+            );
+        }
+    }
+
+    #[test]
+    fn test_sign_with_locked_key_material() {
+        // Generate keys, load private key (which comes from LockedVec storage),
+        // sign a message, verify signature — ensures the locked memory path
+        // doesn't break signing.
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (_priv_key, pub_key) = ks.generate(&spec).unwrap();
+
+        // load_private() clones from the LockedVec
+        let loaded_priv = ks.load_private().unwrap();
+        assert!(
+            !loaded_priv.is_empty(),
+            "loaded private key should not be empty"
+        );
+
+        // Sign using the loaded key
+        let message = b"test message for locked key signing";
+        let sig_bytes = ks
+            .sign_detached(&loaded_priv, message, "ring-Ed25519")
+            .unwrap();
+        assert!(!sig_bytes.is_empty(), "signature should not be empty");
+
+        // Verify the signature with the public key
+        let sig_b64 = STANDARD.encode(&sig_bytes);
+        crypt::ringwrapper::verify_string(pub_key, "test message for locked key signing", &sig_b64)
+            .expect("signature from locked key material should verify");
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_fs_encrypted_load_private_returns_locked_bytes() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let (dir_name, paths) = setup_fs_test_dir("locked_load");
+        let _key_dir = format!("{}/keys", dir_name);
+
+        let store = FsEncryptedStore::new(paths);
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+
+        // Generate keys on disk
+        let (orig_priv, _) = store.generate(&spec).unwrap();
+
+        // load_private() decrypts through LockedVec internally
+        let loaded = store.load_private().unwrap();
+        assert_eq!(
+            orig_priv, loaded,
+            "loaded private key should match generated key"
+        );
+        assert!(!loaded.is_empty(), "loaded private key should not be empty");
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
+    }
+
+    // =========================================================================
+    // KeyPaths struct tests (Task 001)
+    // =========================================================================
+
+    #[test]
+    fn test_key_paths_private_key_path() {
+        let paths = KeyPaths {
+            key_directory: "my_keys".to_string(),
+            private_key_filename: "jacs.private.pem".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        assert_eq!(paths.private_key_path(), "my_keys/jacs.private.pem");
+    }
+
+    #[test]
+    fn test_key_paths_public_key_path() {
+        let paths = KeyPaths {
+            key_directory: "my_keys".to_string(),
+            private_key_filename: "jacs.private.pem".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        assert_eq!(paths.public_key_path(), "my_keys/jacs.public.pem");
+    }
+
+    #[test]
+    fn test_key_paths_enc_path() {
+        let paths = KeyPaths {
+            key_directory: "my_keys".to_string(),
+            private_key_filename: "jacs.private.pem".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        assert_eq!(paths.private_key_enc_path(), "my_keys/jacs.private.pem.enc");
+    }
+
+    #[test]
+    fn test_key_paths_enc_path_already_enc() {
+        let paths = KeyPaths {
+            key_directory: "my_keys".to_string(),
+            private_key_filename: "jacs.private.pem.enc".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        assert_eq!(paths.private_key_enc_path(), "my_keys/jacs.private.pem.enc");
+    }
+
+    #[test]
+    fn test_key_paths_trims_leading_dot_slash() {
+        let paths = KeyPaths {
+            key_directory: "./jacs_keys".to_string(),
+            private_key_filename: "jacs.private.pem".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        assert_eq!(paths.private_key_path(), "jacs_keys/jacs.private.pem");
+        assert_eq!(paths.public_key_path(), "jacs_keys/jacs.public.pem");
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_fs_encrypted_store_new_no_env() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        // Clear all JACS env vars to prove the struct paths are used
+        clear_fs_test_env();
+
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir_name = std::env::temp_dir()
+            .join(format!("jacs_test_new_no_env_{}", suffix))
+            .to_string_lossy()
+            .to_string();
+        let key_dir = format!("{}/keys", dir_name);
+        std::fs::create_dir_all(&key_dir).unwrap();
+
+        // Set only the password (still needed for encryption)
+        crate::storage::jenv::set_env_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123")
+            .unwrap();
+
+        let paths = KeyPaths {
+            key_directory: key_dir.clone(),
+            private_key_filename: "jacs.private.pem".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        let store = FsEncryptedStore::new(paths);
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+
+        // Should succeed using only struct paths, no env for key directory
+        let result = store.generate(&spec);
+        assert!(
+            result.is_ok(),
+            "generate should work without JACS_KEY_DIRECTORY env: {:?}",
+            result.err()
+        );
+
+        let enc_path = format!("{}/jacs.private.pem.enc", key_dir);
+        let pub_path = format!("{}/jacs.public.pem", key_dir);
+        assert!(
+            Path::new(&enc_path).exists(),
+            "encrypted private key should exist"
+        );
+        assert!(Path::new(&pub_path).exists(), "public key should exist");
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_fs_encrypted_store_load_no_env() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let (dir_name, paths) = setup_fs_test_dir("load_no_env");
+
+        let store = FsEncryptedStore::new(paths.clone());
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (orig_priv, orig_pub) = store.generate(&spec).unwrap();
+
+        // Clear env to prove load uses struct paths
+        clear_fs_test_env();
+        // Re-set only the password for decryption
+        crate::storage::jenv::set_env_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123")
+            .unwrap();
+
+        let loaded_priv = store.load_private().unwrap();
+        let loaded_pub = store.load_public().unwrap();
+        assert_eq!(orig_priv, loaded_priv, "loaded private key should match");
+        assert_eq!(orig_pub, loaded_pub, "loaded public key should match");
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_fs_encrypted_store_rotate_no_env() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let (dir_name, paths) = setup_fs_test_dir("rotate_no_env");
+
+        let store = FsEncryptedStore::new(paths.clone());
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let (old_priv, old_pub) = store.generate(&spec).unwrap();
+
+        // Clear env to prove rotate uses struct paths
+        clear_fs_test_env();
+        crate::storage::jenv::set_env_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123")
+            .unwrap();
+
+        let (new_priv, new_pub) = store.rotate("test-v-no-env", &spec).unwrap();
+        assert_ne!(old_priv, new_priv, "private key should change after rotate");
+        assert_ne!(old_pub, new_pub, "public key should change after rotate");
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
+    }
+
+    #[test]
+    fn test_key_paths_missing_key_directory() {
+        let paths = KeyPaths {
+            key_directory: "".to_string(),
+            private_key_filename: "jacs.private.pem".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        let store = FsEncryptedStore::new(paths);
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let result = store.generate(&spec);
+        assert!(
+            result.is_err(),
+            "generate with empty key_directory should fail"
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("key_directory is empty"),
+            "error should mention empty key_directory, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_key_paths_missing_private_filename() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        clear_fs_test_env();
+
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir_name = std::env::temp_dir()
+            .join(format!("jacs_test_missing_priv_{}", suffix))
+            .to_string_lossy()
+            .to_string();
+        let key_dir = format!("{}/keys", dir_name);
+        std::fs::create_dir_all(&key_dir).unwrap();
+
+        crate::storage::jenv::set_env_var("JACS_PRIVATE_KEY_PASSWORD", "Test!Secure#Pass123")
+            .unwrap();
+
+        let paths = KeyPaths {
+            key_directory: key_dir.clone(),
+            private_key_filename: "".to_string(),
+            public_key_filename: "jacs.public.pem".to_string(),
+        };
+        let store = FsEncryptedStore::new(paths);
+
+        // load_private on an empty filename should gracefully fail
+        // (there's no file at "keydir/.enc")
+        let result = store.load_private();
+        assert!(
+            result.is_err(),
+            "load_private with empty filename should fail"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir_name);
+        clear_fs_test_env();
     }
 }

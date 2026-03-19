@@ -31,8 +31,8 @@ const TEST_CONFIG = path.join(FIXTURES_DIR, 'jacs.config.json');
 
 function resolveConfigRelativePath(configPath, candidate) {
   return path.isAbsolute(candidate)
-    ? candidate
-    : path.resolve(path.dirname(configPath), candidate);
+    ? fs.realpathSync(candidate)
+    : fs.realpathSync(path.resolve(path.dirname(configPath), candidate));
 }
 
 // Check if fixtures are loadable (password may not match)
@@ -148,11 +148,98 @@ describe('JacsClient', function () {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         const dataDir = resolveConfigRelativePath(configPath, config.jacs_data_directory);
         const keyDir = resolveConfigRelativePath(configPath, config.jacs_key_directory);
+        expect(client.info.configPath).to.equal(fs.realpathSync(configPath));
+        expect(client.info.dataDirectory).to.equal(dataDir);
+        expect(client.info.keyDirectory).to.equal(keyDir);
         expect(fs.existsSync(dataDir)).to.equal(true);
         expect(fs.existsSync(keyDir)).to.equal(true);
 
         const signed = await client.signMessage({ quickstart: true });
         expect(signed.documentId).to.be.a('string').and.not.empty;
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    (available && simpleModule ? it : it.skip)('should return the same resolved metadata through client and simple load paths', async function () {
+      this.timeout(30000);
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-load-parity-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        await clientModule.JacsClient.quickstart({
+          name: 'parity-agent',
+          domain: 'parity.example.com',
+          algorithm: 'ring-Ed25519',
+          configPath: 'nested/jacs.config.json',
+        });
+
+        const configPath = path.join(tmpDir, 'nested', 'jacs.config.json');
+        const client = new clientModule.JacsClient();
+        const clientInfo = await client.load(configPath);
+        simpleModule.reset();
+        const simpleInfo = await simpleModule.load(configPath);
+
+        expect(simpleInfo.agentId).to.equal(clientInfo.agentId);
+        expect(simpleInfo.version).to.equal(clientInfo.version);
+        expect(simpleInfo.algorithm).to.equal(clientInfo.algorithm);
+        expect(simpleInfo.configPath).to.equal(clientInfo.configPath);
+        expect(simpleInfo.publicKeyPath).to.equal(clientInfo.publicKeyPath);
+        expect(simpleInfo.privateKeyPath).to.equal(clientInfo.privateKeyPath);
+        expect(simpleInfo.dataDirectory).to.equal(clientInfo.dataDirectory);
+        expect(simpleInfo.keyDirectory).to.equal(clientInfo.keyDirectory);
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    (available ? it : it.skip)('should not reopen config in JS during client load when password is already resolved', async function () {
+      this.timeout(30000);
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-native-load-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        await clientModule.JacsClient.quickstart({
+          name: 'client-native-load',
+          domain: 'client-native.example.com',
+          algorithm: 'ring-Ed25519',
+          configPath: 'native/jacs.config.json',
+        });
+
+        const configPath = path.join(tmpDir, 'native', 'jacs.config.json');
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          if (path.resolve(String(filePath)) === path.resolve(configPath)) {
+            throw new Error('client load() should not reopen config in JS');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const client = new clientModule.JacsClient();
+          const info = await client.load(configPath);
+          expect(info.agentId).to.be.a('string').and.not.empty;
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+        }
       } finally {
         process.chdir(originalCwd);
         if (previousPassword === undefined) {
@@ -204,6 +291,50 @@ describe('JacsClient', function () {
           expect(result.valid).to.equal(true);
           expect(result.signerId).to.equal(client.agentId);
           expect(result.timestamp).to.be.a('string').and.not.empty;
+        } finally {
+          fs.readFileSync = originalReadFileSync;
+        }
+      } finally {
+        process.chdir(originalCwd);
+        if (previousPassword === undefined) {
+          delete process.env.JACS_PRIVATE_KEY_PASSWORD;
+        } else {
+          process.env.JACS_PRIVATE_KEY_PASSWORD = previousPassword;
+        }
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('exportAgent', () => {
+    (available ? it : it.skip)('should use native export instead of JS filesystem reads', async function () {
+      this.timeout(30000);
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-export-agent-'));
+      const originalCwd = process.cwd();
+      const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
+      process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
+
+      try {
+        process.chdir(tmpDir);
+        const client = await clientModule.JacsClient.quickstart({
+          name: 'export-agent-client',
+          domain: 'export-agent-client.example.com',
+          algorithm: 'ring-Ed25519',
+        });
+
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+          const target = String(filePath);
+          if (target.endsWith('jacs.config.json') || target.includes(`${path.sep}agent${path.sep}`)) {
+            throw new Error('exportAgent should not depend on JS filesystem reads');
+          }
+          return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+          const agentJson = client.exportAgent();
+          const agent = JSON.parse(agentJson);
+          expect(agent.jacsId).to.equal(client.agentId);
         } finally {
           fs.readFileSync = originalReadFileSync;
         }

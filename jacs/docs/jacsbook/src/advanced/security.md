@@ -2,9 +2,9 @@
 
 JACS implements a comprehensive security model designed to ensure authenticity, integrity, and non-repudiation for all agent communications and documents.
 
-## Security Model (v0.6.0)
+## Security Model (v0.6.0+)
 
-- **Passwords**: The private key password must be set only via the `JACS_PRIVATE_KEY_PASSWORD` environment variable. It is never stored in config files.
+- **Passwords**: The private key password can be provided via `JACS_PRIVATE_KEY_PASSWORD` environment variable, `JACS_PASSWORD_FILE`, or the OS keychain (macOS Keychain / Linux Secret Service). It is never stored in config files.
 - **Keys**: Private keys are encrypted at rest (AES-256-GCM with PBKDF2, 600k iterations). Public keys and config may be stored on disk.
 - **Path validation**: All paths built from untrusted input (e.g. `publicKeyHash`, filenames) are validated via `require_relative_path_safe()` to prevent directory traversal. This single validation function is used in data and key directory path builders and the trust store. It rejects empty segments, `.`, `..`, null bytes, and Windows drive-prefixed paths.
 - **Trust ID canonicalization**: Trust-store operations normalize canonical agent docs (`jacsId` + `jacsVersion`) into a safe `UUID:VERSION_UUID` identifier before filesystem use, preserving path-safety checks while supporting standard agent document layout.
@@ -167,11 +167,45 @@ jacs_keys/
 Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-SHA256 (600,000 iterations). Never store the password in config files.
 
 ```bash
-# Set via environment variable only
+# Option 1: Environment variable (recommended for CI/servers)
 export JACS_PRIVATE_KEY_PASSWORD="secure-password"
+
+# Option 2: OS keychain (recommended for developer workstations)
+jacs keychain set
 ```
 
-> **Important**: The CLI can prompt for the password during `jacs init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable.
+> **Important**: The CLI can prompt for the password during `jacs init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable or use the OS keychain.
+
+**OS Keychain Integration**:
+
+On macOS and Linux desktops, JACS can store and retrieve the private key password from the OS credential store, eliminating the need for environment variables or plaintext password files during day-to-day development:
+
+- **macOS**: Uses Security.framework (Keychain Access)
+- **Linux**: Uses the freedesktop.org D-Bus Secret Service API (GNOME Keyring, KDE Wallet, KeePassXC)
+
+Store your password once with `jacs keychain set`, and all subsequent JACS operations will find it automatically. The password resolution order is:
+
+1. `JACS_PRIVATE_KEY_PASSWORD` env var (highest priority -- explicit always wins)
+2. `JACS_PASSWORD_FILE` / legacy `.jacs_password` file
+3. OS keychain (lowest priority among explicit sources)
+
+To disable keychain lookups (recommended for CI and headless environments):
+
+```bash
+export JACS_KEYCHAIN_BACKEND=disabled
+```
+
+Or in `jacs.config.json`:
+
+```json
+{
+  "jacs_keychain_backend": "disabled"
+}
+```
+
+The keychain stores the password under service name `jacs-private-key` with user `default`. Multiple agents on one machine can use agent-specific passwords via the `*_for_agent()` API variants.
+
+> **Security note**: The OS keychain is encrypted at rest by the OS and unlocked by the user's login session. It is the same mechanism used by `git`, `ssh-agent`, `docker`, and other CLI tools. The `keychain` feature is optional and not compiled into the `jacs` core crate by default -- it is enabled by default only in `jacs-cli`.
 
 **Password Entropy Requirements**:
 
@@ -526,8 +560,14 @@ chmod 600 ./jacs_keys/private.pem
 ### 2. Password Handling
 
 ```bash
-# Use environment variables
+# Option A: Use environment variables (CI, servers)
 export JACS_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
+
+# Option B: Use OS keychain (developer workstations)
+jacs keychain set  # stores password securely in OS credential store
+
+# Option C: Disable keychain for headless/CI environments
+export JACS_KEYCHAIN_BACKEND=disabled
 ```
 
 ### 3. Transport Security
@@ -576,7 +616,8 @@ Enable observability for security auditing:
 ### Production
 
 - [ ] Encrypt private keys at rest
-- [ ] Use environment variables for secrets (never store `jacs_private_key_password` in config)
+- [ ] Use environment variables or OS keychain for secrets (never store `jacs_private_key_password` in config)
+- [ ] Set `JACS_KEYCHAIN_BACKEND=disabled` on CI/headless servers
 - [ ] Enable DNS verification
 - [ ] Configure strict security mode
 - [ ] Enable audit logging

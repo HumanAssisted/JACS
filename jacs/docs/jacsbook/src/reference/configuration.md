@@ -360,9 +360,9 @@ The observability configuration works alongside JACS's core configuration system
 
 ### Required Environment Variable
 
-Only **one** environment variable is truly required:
+Only **one** environment variable is truly required (unless using the OS keychain):
 
-- `JACS_PRIVATE_KEY_PASSWORD` - Password for encrypting/decrypting private keys (required for cryptographic operations)
+- `JACS_PRIVATE_KEY_PASSWORD` - Password for encrypting/decrypting private keys (required for cryptographic operations, unless the password is stored in the OS keychain)
 
 ### Configuration-Based Settings
 
@@ -372,7 +372,33 @@ All other JACS settings are **configuration file fields** that have sensible def
 - `jacs_key_directory` - Where cryptographic keys are stored (default: `./jacs_keys`)
 - `jacs_agent_key_algorithm` - Cryptographic algorithm to use (default: `pq2025`)
 - `jacs_default_storage` - Storage backend (default: `fs`)
+- `jacs_keychain_backend` - OS keychain backend for password storage (default: `"auto"`). See below.
 - `jacs_use_security` / `JACS_ENABLE_FILESYSTEM_QUARANTINE` - Enable filesystem quarantine of executable files (default: `false`). The env var `JACS_USE_SECURITY` is deprecated; use `JACS_ENABLE_FILESYSTEM_QUARANTINE` instead.
+
+### OS Keychain Configuration
+
+The `jacs_keychain_backend` field controls whether JACS looks up the private key password from the OS credential store (macOS Keychain or Linux Secret Service):
+
+```json
+{
+  "jacs_keychain_backend": "auto"
+}
+```
+
+| Value | Description |
+|-------|-------------|
+| `"auto"` | Detect the platform default (macOS Keychain or Linux Secret Service). This is the default when the field is omitted. |
+| `"macos-keychain"` | Explicitly use the macOS Keychain |
+| `"linux-secret-service"` | Explicitly use the Linux D-Bus Secret Service (GNOME Keyring, KDE Wallet, KeePassXC) |
+| `"disabled"` | Never consult the OS keychain. Recommended for CI, headless servers, and containers. |
+
+You can also override via environment variable:
+
+```bash
+export JACS_KEYCHAIN_BACKEND=disabled  # skip keychain in CI
+```
+
+When not set to `"disabled"`, password resolution checks: env var first, then OS keychain, then error. See the [CLI keychain commands](cli-commands.md#jacs-keychain) for storing and managing passwords.
 
 These can be overridden by environment variables if needed, but they are primarily configured through the `jacs.config.json` file.
 

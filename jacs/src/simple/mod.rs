@@ -61,6 +61,7 @@ pub mod core;
 pub mod diagnostics;
 pub mod types;
 pub use core::SimpleAgent;
+pub use core::build_loaded_agent_info;
 pub use diagnostics::diagnostics;
 pub use types::*;
 
@@ -491,6 +492,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(jacs_env)]
     fn test_resolve_strict_env_var() {
         // SAFETY: Tests run single-threaded (serial_test or #[test] default)
         unsafe {
@@ -882,7 +884,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_load_roots_relative_paths_to_config_directory() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -908,7 +910,50 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
+    fn test_loaded_info_stays_rooted_to_original_config_after_cwd_change() {
+        let _lock = ROTATION_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        fn canonical_display(path: &std::path::Path) -> String {
+            std::fs::canonicalize(path)
+                .unwrap_or_else(|_| path.to_path_buf())
+                .to_string_lossy()
+                .to_string()
+        }
+
+        let (_agent, _info, tmp, _guard) = create_persistent_test_agent("loaded-info-root-test");
+        let expected_config_path = tmp.path().join("jacs.config.json");
+        let expected_data_dir = tmp.path().join("jacs_data");
+        let expected_key_dir = tmp.path().join("jacs_keys");
+
+        let loaded = SimpleAgent::load(Some("./jacs.config.json"), Some(true))
+            .expect("loading should succeed from relative config path");
+
+        let elsewhere = tempfile::tempdir().expect("create alternate cwd");
+        std::env::set_current_dir(elsewhere.path()).expect("cd away from config dir");
+
+        let info = loaded
+            .loaded_info()
+            .expect("loaded_info should stay rooted to the original config");
+
+        assert_eq!(
+            canonical_display(std::path::Path::new(&info.config_path)),
+            canonical_display(&expected_config_path)
+        );
+        assert_eq!(
+            canonical_display(std::path::Path::new(&info.data_directory)),
+            canonical_display(&expected_data_dir)
+        );
+        assert_eq!(
+            canonical_display(std::path::Path::new(&info.key_directory)),
+            canonical_display(&expected_key_dir)
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env, cwd_env)]
     fn test_embedded_export_writes_to_data_directory_only() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -953,7 +998,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_load_handles_mixed_relative_data_and_absolute_key_directories() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1001,7 +1046,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_load_rejects_parent_directory_segments_in_storage_dirs() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1130,7 +1175,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_rotate_config_updated() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1453,7 +1498,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_migrate_already_current_agent_still_works() {
         // An agent that already has iat/jti should still migrate (no-op patch,
         // but still creates a new version).
@@ -1478,7 +1523,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_migrate_missing_config_returns_error() {
         let _lock = ROTATION_TEST_MUTEX
             .lock()
@@ -1489,7 +1534,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env, cwd_env)]
     fn test_migrate_legacy_agent_missing_iat_jti() {
         // Simulate a truly legacy agent by creating an agent then stripping iat/jti
         // from the on-disk jacsSignature. Migration should recompute the hash,

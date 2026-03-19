@@ -177,7 +177,7 @@ let config = load_config_12factor(None)?;
 
 */
 
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Serialize, Deserialize, Debug, Clone, Getters)]
 pub struct Config {
     #[serde(rename = "$schema")]
     #[serde(default = "default_schema")]
@@ -222,6 +222,10 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     jacs_dns_required: Option<bool>,
+    /// OS keychain backend: "auto", "macos-keychain", "linux-secret-service", or "disabled".
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    jacs_keychain_backend: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityConfig>,
     // Database storage configuration
@@ -326,6 +330,7 @@ impl Default for Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -484,6 +489,7 @@ impl ConfigBuilder {
             jacs_dns_validate: self.dns_validate,
             jacs_dns_strict: self.dns_strict,
             jacs_dns_required: self.dns_required,
+            jacs_keychain_backend: None,
             observability: self.observability,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -547,6 +553,7 @@ impl Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -626,6 +633,7 @@ impl Config {
             jacs_dns_validate,
             jacs_dns_strict,
             jacs_dns_required,
+            jacs_keychain_backend,
             observability,
             jacs_database_url,
             jacs_database_max_connections,
@@ -654,6 +662,7 @@ impl Config {
         Self::replace_if_some(&mut self.jacs_dns_validate, jacs_dns_validate);
         Self::replace_if_some(&mut self.jacs_dns_strict, jacs_dns_strict);
         Self::replace_if_some(&mut self.jacs_dns_required, jacs_dns_required);
+        Self::replace_if_some(&mut self.jacs_keychain_backend, jacs_keychain_backend);
         Self::replace_if_some(&mut self.observability, observability);
         Self::replace_if_some(&mut self.jacs_database_url, jacs_database_url);
         Self::replace_if_some(
@@ -734,6 +743,10 @@ impl Config {
         // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
     }
 
+    // publish_to_env() deleted: Agent now carries key_paths from config,
+    // and FsEncryptedStore uses Agent.key_paths() instead of env reads.
+    // See ENV_SECURITY_PRD Task 008.
+
     /// Create a Config with only hardcoded defaults (no env var lookups).
     /// This is useful for testing or when you want explicit control.
     pub fn with_defaults() -> Self {
@@ -752,6 +765,7 @@ impl Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -885,6 +899,25 @@ pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, JacsErr
     config.apply_env_overrides();
 
     info!("Final config (12-Factor):{}", config);
+    Ok(config)
+}
+
+/// Load configuration from a config file only, **without** applying env/jenv overrides.
+///
+/// This is the isolation-safe counterpart of `load_config_12factor`: the caller
+/// already constructed a pristine config file and does not want ambient JACS_*
+/// environment variables to override it.  Used by standalone verification
+/// (Issue 008) so that concurrent callers cannot interfere through shared
+/// global jenv state.
+///
+/// # Arguments
+/// * `config_path` - Path to a JSON config file (required, must exist)
+pub fn load_config_file_only(config_path: &str) -> Result<Config, JacsError> {
+    let mut config = Config::with_defaults();
+    let file_config = Config::from_file(config_path)?;
+    config.merge(file_config);
+    // Deliberately skip apply_env_overrides() — the config file is authoritative.
+    info!("Loaded config (file-only, no env overrides): {}", config);
     Ok(config)
 }
 
@@ -1266,6 +1299,12 @@ pub fn set_env_vars(
     )
     .map_err(|e| JacsError::ConfigError(e.to_string()))?;
 
+    // Propagate keychain backend setting to env var if set in config
+    if let Some(ref backend) = config.jacs_keychain_backend {
+        set_env_var_override("JACS_KEYCHAIN_BACKEND", backend, do_override)
+            .map_err(|e| JacsError::ConfigError(e.to_string()))?;
+    }
+
     let message = format!("{}", config);
     info!("{}", message);
     check_env_vars(ignore_agent_id).map_err(|e| {
@@ -1567,6 +1606,7 @@ mod tests {
             jacs_dns_validate: Some(true),
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -1593,7 +1633,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_apply_env_overrides() {
         clear_jacs_env_vars();
 
@@ -1620,7 +1660,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_env_overrides_config_file() {
         clear_jacs_env_vars();
 
@@ -1646,6 +1686,7 @@ mod tests {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
@@ -1681,7 +1722,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_load_config_12factor_no_file() {
         clear_jacs_env_vars();
 
@@ -1705,7 +1746,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_load_config_12factor_optional_missing_file() {
         clear_jacs_env_vars();
 
@@ -1724,7 +1765,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_boolean_env_var_parsing() {
         clear_jacs_env_vars();
 
@@ -1755,7 +1796,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_apply_env_overrides_ignores_empty_string_values() {
         clear_jacs_env_vars();
 
@@ -1771,7 +1812,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_apply_env_overrides_ignores_invalid_database_numbers() {
         clear_jacs_env_vars();
 
@@ -2119,7 +2160,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_default() {
         clear_jacs_env_vars();
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
@@ -2132,7 +2173,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_local_only() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "local").unwrap();
@@ -2144,7 +2185,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_registry_only() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "registry").unwrap();
@@ -2156,7 +2197,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_hai_is_rejected() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "hai").unwrap();
@@ -2175,7 +2216,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_with_dns() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "local,dns,registry").unwrap();
@@ -2194,7 +2235,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_case_insensitive() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "LOCAL,DNS,REGISTRY").unwrap();
@@ -2213,7 +2254,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_skips_invalid() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "local,invalid,registry").unwrap();
@@ -2229,7 +2270,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_all_invalid_falls_back() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "invalid,also_invalid").unwrap();
@@ -2245,7 +2286,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_empty_string_falls_back() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", "").unwrap();
@@ -2261,7 +2302,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial(jacs_env)]
     fn test_get_key_resolution_order_whitespace_handling() {
         clear_jacs_env_vars();
         set_env_var("JACS_KEY_RESOLUTION", " local , registry ").unwrap();

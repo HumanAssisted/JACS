@@ -16,18 +16,17 @@ use crate::storage::MultiStorage;
 
 use crate::config::{Config, load_config_12factor, load_config_12factor_optional};
 
-use crate::crypt::aes_encrypt::{decrypt_private_key_secure, encrypt_private_key};
 use crate::crypt::private_key::ZeroizingVec;
 
 use crate::crypt::KeyManager;
-use crate::keystore::{FsEncryptedStore, KeySpec, KeyStore};
+use crate::keystore::{FsEncryptedStore, KeyPaths, KeySpec, KeyStore};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dns::bootstrap::verify_registry_registration_sync;
 use crate::dns::bootstrap::{pubkey_digest_hex, verify_pubkey_via_dns_or_embedded};
 use crate::observability::convenience::{record_agent_operation, record_signature_verification};
 use crate::schema::Schema;
-use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt, resolve_schema};
+use crate::schema::utils::{EmbeddedSchemaResolver, ValueExt};
 use crate::time_utils;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
@@ -231,16 +230,13 @@ pub(crate) fn build_signature_content(
 pub type PrivateKey = Vec<u8>;
 pub type SecretPrivateKey = SecretBox<Vec<u8>>;
 
-/// Decrypt a private key with automatic memory zeroization.
-///
-/// # Security
-/// Returns a `ZeroizingVec` that will securely erase the decrypted key
-/// from memory when it goes out of scope.
-///
-/// # Errors
-/// Returns an error if decryption fails (wrong password or corrupted data).
-pub fn use_secret(key: &[u8]) -> Result<ZeroizingVec, JacsError> {
-    decrypt_private_key_secure(key)
+/// Decrypt a private key using an agent-scoped password if available.
+pub(crate) fn decrypt_with_agent_password(
+    key: &[u8],
+    password: Option<&str>,
+) -> Result<ZeroizingVec, JacsError> {
+    let resolved = crate::crypt::aes_encrypt::resolve_private_key_password(password)?;
+    crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(key, &resolved)
 }
 
 #[derive(Debug)]
@@ -274,6 +270,13 @@ pub struct Agent {
     dns_validate_enabled: Option<bool>,
     /// whether DNS validation is required (must have domain and successful DNS check)
     dns_required: Option<bool>,
+    /// Resolved filesystem paths for key material (set from Config at construction).
+    /// When `Some`, `FsEncryptedStore::new(paths)` uses these instead of env reads.
+    key_paths: Option<KeyPaths>,
+    /// Agent-scoped private key password. When `Some`, `resolve_private_key_password`
+    /// returns this immediately without touching env/jenv. Enables safe concurrent
+    /// multi-agent usage.
+    password: Option<String>,
     /// Evidence adapters for attestation (gated behind `attestation` feature).
     #[cfg(feature = "attestation")]
     pub adapters: Vec<Box<dyn crate::attestation::adapters::EvidenceAdapter>>,
@@ -300,6 +303,7 @@ impl Agent {
         let schema = Schema::new(agentversion, headerversion, signature_version)?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
         let config = Some(load_config_12factor_optional(None)?);
+        let key_paths = config.as_ref().map(Self::key_paths_from_config);
         Ok(Self {
             schema,
             value: None,
@@ -316,6 +320,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            key_paths,
+            password: None,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         })
@@ -347,6 +353,8 @@ impl Agent {
             dns_strict: false,
             dns_validate_enabled: None,
             dns_required: None,
+            key_paths: None,
+            password: None,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         })
@@ -360,6 +368,79 @@ impl Agent {
     /// Get a reference to the agent's key store, if any.
     pub fn get_key_store(&self) -> Option<&dyn KeyStore> {
         self.key_store.as_deref()
+    }
+
+    /// Get the agent's resolved key paths, if any.
+    pub fn key_paths(&self) -> Option<&KeyPaths> {
+        self.key_paths.as_ref()
+    }
+
+    /// Set the agent's key paths explicitly.
+    pub fn set_key_paths(&mut self, paths: KeyPaths) {
+        self.key_paths = Some(paths);
+    }
+
+    /// Build `KeyPaths` from a `Config`.
+    ///
+    /// Used both at construction time (before `self` exists) and after config
+    /// updates.  Centralises the default-value logic so every call site stays
+    /// in sync.
+    fn key_paths_from_config(c: &Config) -> KeyPaths {
+        KeyPaths {
+            key_directory: c
+                .jacs_key_directory()
+                .clone()
+                .unwrap_or_else(|| "./jacs_keys".to_string()),
+            private_key_filename: c
+                .jacs_agent_private_key_filename()
+                .clone()
+                .unwrap_or_else(|| crate::simple::core::DEFAULT_PRIVATE_KEY_FILENAME.to_string()),
+            public_key_filename: c
+                .jacs_agent_public_key_filename()
+                .clone()
+                .unwrap_or_else(|| crate::simple::core::DEFAULT_PUBLIC_KEY_FILENAME.to_string()),
+        }
+    }
+
+    /// Rebuild `self.key_paths` from `self.config`.
+    ///
+    /// Must be called after every `self.config = Some(...)` assignment so that
+    /// `build_fs_store()` picks up the new key directory (Issue 012).
+    fn refresh_key_paths_from_config(&mut self) {
+        if let Some(ref c) = self.config {
+            self.key_paths = Some(Self::key_paths_from_config(c));
+        }
+    }
+
+    /// Get the agent-scoped password, if set.
+    pub fn password(&self) -> Option<&str> {
+        self.password.as_deref()
+    }
+
+    /// Set the agent-scoped password.
+    pub fn set_password(&mut self, password: Option<String>) {
+        self.password = password;
+    }
+
+    /// Resolve the private key password using the agent-scoped password if available,
+    /// falling back to env/jenv/keychain.
+    pub fn resolve_password(&self) -> Result<String, JacsError> {
+        crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())
+    }
+
+    /// Build an `FsEncryptedStore` from the agent's `key_paths` and `password`.
+    pub fn build_fs_store(&self) -> Result<FsEncryptedStore, JacsError> {
+        match self.key_paths.as_ref() {
+            Some(paths) => Ok(FsEncryptedStore::with_password(
+                paths.clone(),
+                self.password.clone(),
+            )),
+            None => Err(JacsError::ConfigError(
+                "Agent has no key_paths set. Ensure the agent was created with a config \
+                that includes jacs_key_directory, or call set_key_paths() before key operations."
+                    .to_string(),
+            )),
+        }
     }
 
     pub fn set_dns_strict(&mut self, strict: bool) {
@@ -401,6 +482,7 @@ impl Agent {
                 )
             })?,
         );
+        self.refresh_key_paths_from_config();
         debug!("load_by_id config {:?}", self.config);
 
         let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
@@ -557,6 +639,9 @@ impl Agent {
         };
 
         self.config = Some(config);
+        // Refresh key_paths from the new config so build_fs_store() uses the
+        // correct key directory, not stale paths from construction time (Issue 012).
+        self.refresh_key_paths_from_config();
         let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
             "fs".to_string()
         } else {
@@ -578,6 +663,160 @@ impl Agent {
             self.load(&agent_string).map_err(|e| {
                 let err_msg = format!(
                     "load_by_config failed: Agent '{}' validation or key loading failed (config '{}'): {}",
+                    lookup_id, path, e
+                );
+                JacsError::Internal { message: err_msg }
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Load agent configuration from a file **without** applying env/jenv overrides.
+    ///
+    /// This is the isolation-safe counterpart of `load_by_config`. It reads
+    /// configuration exclusively from the specified file, ignoring any ambient
+    /// `JACS_*` environment variables or jenv overrides. This eliminates the need
+    /// for save/clear/restore guard patterns around the load call (Issue 008).
+    #[must_use = "agent loading result must be checked for errors"]
+    pub fn load_by_config_file_only(&mut self, path: String) -> Result<(), JacsError> {
+        let mut config = crate::config::load_config_file_only(&path).map_err(|e| {
+            format!(
+                "load_by_config_file_only failed: Could not load configuration from '{}': {}",
+                path, e
+            )
+        })?;
+        let lookup_id: String = config
+            .jacs_agent_id_and_version()
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
+        let storage_type: String = config
+            .jacs_default_storage()
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
+        let uses_filesystem_paths = matches!(storage_type.as_str(), "fs" | "rusqlite" | "sqlite");
+        let storage_root = if uses_filesystem_paths {
+            let config_dir = std::path::Path::new(&path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            let config_dir_absolute = if config_dir.is_absolute() {
+                config_dir.to_path_buf()
+            } else {
+                std::env::current_dir()?.join(config_dir)
+            };
+            let normalize_path = |p: &std::path::Path| -> std::path::PathBuf {
+                let mut normalized = std::path::PathBuf::new();
+                for component in p.components() {
+                    match component {
+                        std::path::Component::CurDir => {}
+                        std::path::Component::ParentDir => {
+                            normalized.pop();
+                        }
+                        other => normalized.push(other.as_os_str()),
+                    }
+                }
+                normalized
+            };
+
+            let mut config_value = to_value(&config).map_err(|e| {
+                format!(
+                    "load_by_config_file_only failed: Could not serialize configuration from '{}': {}",
+                    path, e
+                )
+            })?;
+            let mut has_external_absolute = false;
+            for field in ["jacs_data_directory", "jacs_key_directory"] {
+                if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                    let dir_path = std::path::Path::new(dir);
+                    if dir_path
+                        .components()
+                        .any(|component| matches!(component, std::path::Component::ParentDir))
+                    {
+                        return Err(format!(
+                            "load_by_config_file_only failed: Config field '{}' in '{}' contains unsafe parent-directory segment ('..'): '{}'",
+                            field, path, dir
+                        )
+                        .into());
+                    }
+                    if dir_path.is_absolute() {
+                        let normalized_abs = normalize_path(dir_path);
+                        if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute)
+                        {
+                            let relative = relative_tail
+                                .to_string_lossy()
+                                .trim_start_matches('/')
+                                .to_string();
+                            if relative.is_empty() {
+                                has_external_absolute = true;
+                                config_value[field] =
+                                    json!(normalized_abs.to_string_lossy().to_string());
+                            } else {
+                                config_value[field] = json!(relative);
+                            }
+                        } else {
+                            has_external_absolute = true;
+                            config_value[field] =
+                                json!(normalized_abs.to_string_lossy().to_string());
+                        }
+                    } else {
+                        let normalized_rel = normalize_path(dir_path);
+                        config_value[field] = json!(normalized_rel.to_string_lossy().to_string());
+                    }
+                }
+            }
+
+            let storage_root = if has_external_absolute {
+                for field in ["jacs_data_directory", "jacs_key_directory"] {
+                    if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                        let dir_path = std::path::Path::new(dir);
+                        if !dir_path.is_absolute() {
+                            let abs = normalize_path(&config_dir_absolute.join(dir_path));
+                            config_value[field] = json!(abs.to_string_lossy().to_string());
+                        }
+                    }
+                }
+                std::path::PathBuf::from("/")
+            } else {
+                config_dir_absolute
+            };
+
+            config = serde_json::from_value(config_value).map_err(|e| {
+                format!(
+                    "load_by_config_file_only failed: Could not normalize filesystem directories in config '{}': {}",
+                    path, e
+                )
+            })?;
+            storage_root
+        } else {
+            std::env::current_dir()?
+        };
+
+        self.config = Some(config);
+        self.refresh_key_paths_from_config();
+        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
+            "fs".to_string()
+        } else {
+            storage_type.clone()
+        };
+        self.storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
+            format!(
+                "load_by_config_file_only failed: Could not initialize storage type '{}' (from config '{}'): {}",
+                storage_type, path, e
+            )
+        })?;
+        if !lookup_id.is_empty() {
+            let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
+                format!(
+                    "load_by_config_file_only failed: Could not load agent '{}' (specified in config '{}'): {}",
+                    lookup_id, path, e
+                )
+            })?;
+            self.load(&agent_string).map_err(|e| {
+                let err_msg = format!(
+                    "load_by_config_file_only failed: Agent '{}' validation or key loading failed (config '{}'): {}",
                     lookup_id, path, e
                 );
                 JacsError::Internal { message: err_msg }
@@ -676,7 +915,12 @@ impl Agent {
         public_key: Vec<u8>,
         key_algorithm: &str,
     ) -> Result<(), JacsError> {
-        let private_key_encrypted = encrypt_private_key(&private_key)?;
+        let resolved_pw =
+            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let private_key_encrypted = crate::crypt::aes_encrypt::encrypt_private_key_with_password(
+            &private_key,
+            &resolved_pw,
+        )?;
         // Box the Vec<u8> before creating SecretBox
         self.private_key = Some(SecretBox::new(Box::new(private_key_encrypted)));
         self.public_key = Some(public_key);
@@ -1376,7 +1620,7 @@ impl Agent {
         let (new_private_key, new_public_key) = if let Some(ref ks) = self.key_store {
             ks.rotate(&old_version, &spec)?
         } else {
-            FsEncryptedStore.rotate(&old_version, &spec)?
+            self.build_fs_store()?.rotate(&old_version, &spec)?
         };
 
         // Set new keys on the agent
@@ -1453,10 +1697,16 @@ impl Agent {
     pub fn load_custom_schemas(&mut self, schema_paths: &[String]) -> Result<(), String> {
         let mut schemas = self.document_schemas.lock().map_err(|e| e.to_string())?;
         for path in schema_paths {
-            let schema_value = resolve_schema(path).map_err(|e| e.to_string())?;
+            let schema_value =
+                crate::schema::utils::resolve_schema_with_config(path, self.config.as_ref())
+                    .map_err(|e| e.to_string())?;
+            let retriever = match self.config.as_ref() {
+                Some(c) => EmbeddedSchemaResolver::with_config(c),
+                None => EmbeddedSchemaResolver::new(),
+            };
             let schema = Validator::options()
                 .with_draft(Draft::Draft7)
-                .with_retriever(EmbeddedSchemaResolver::new())
+                .with_retriever(retriever)
                 .build(&schema_value)
                 .map_err(|e| e.to_string())?;
             schemas.insert(path.clone(), schema);
@@ -1820,6 +2070,9 @@ impl AgentBuilder {
 
         let document_schemas = Arc::new(Mutex::new(HashMap::new()));
 
+        // Build key paths from config
+        let key_paths = config.as_ref().map(Agent::key_paths_from_config);
+
         // Create the agent
         let mut agent = Agent {
             schema,
@@ -1837,6 +2090,8 @@ impl AgentBuilder {
             dns_strict: self.dns_strict.unwrap_or(false),
             dns_validate_enabled: self.dns_validate,
             dns_required: self.dns_required,
+            key_paths,
+            password: None,
             #[cfg(feature = "attestation")]
             adapters: crate::attestation::adapters::default_adapters(),
         };

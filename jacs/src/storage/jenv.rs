@@ -186,6 +186,22 @@ pub fn clear_env_var(key: &str) -> Result<(), EnvError> {
     Ok(())
 }
 
+/// Check whether a key has an explicit jenv override (i.e., was set via
+/// `set_env_var`), as opposed to only existing in the real process environment.
+///
+/// This is needed by save/restore guards: when saving previous state before
+/// temporarily overriding a key, we must distinguish "value came from a jenv
+/// override" (restore by writing it back) from "value came from process env
+/// passthrough" (restore by clearing the jenv override so passthrough resumes).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn has_jenv_override(key: &str) -> bool {
+    get_overrides()
+        .read()
+        .ok()
+        .map(|m| m.contains_key(key))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod tests {

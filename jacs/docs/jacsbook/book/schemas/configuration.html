@@ -195,6 +195,7 @@
 <tr><td><code>jacs_agent_public_key_filename</code></td><td>string</td><td>Public key filename</td></tr>
 <tr><td><code>jacs_agent_key_algorithm</code></td><td>string</td><td>Signing algorithm</td></tr>
 <tr><td><code>jacs_default_storage</code></td><td>string</td><td>Storage backend</td></tr>
+<tr><td><code>jacs_keychain_backend</code></td><td>string</td><td>OS keychain backend: <code>"auto"</code>, <code>"macos-keychain"</code>, <code>"linux-secret-service"</code>, <code>"disabled"</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="configuration-options"><a class="header" href="#configuration-options">Configuration Options</a></h2>
@@ -231,7 +232,7 @@
   "jacs_private_key_password": "your-password"
 }
 </code></pre>
-<p><strong>Warning</strong>: Do not store passwords in config files for production. Use the <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable instead.</p>
+<p><strong>Warning</strong>: Do not store passwords in config files for production. Use the <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable or <code>jacs keychain set</code> (OS keychain) instead. See <a href="../reference/configuration.html#os-keychain-configuration">OS Keychain Configuration</a>.</p>
 <h3 id="storage-configuration"><a class="header" href="#storage-configuration">Storage Configuration</a></h3>
 <h4 id="jacs_default_storage"><a class="header" href="#jacs_default_storage">jacs_default_storage</a></h4>
 <p>Specifies where documents are stored:</p>
@@ -293,6 +294,21 @@
 }
 </code></pre>
 <h3 id="security"><a class="header" href="#security">Security</a></h3>
+<h4 id="jacs_keychain_backend"><a class="header" href="#jacs_keychain_backend">jacs_keychain_backend</a></h4>
+<p>OS keychain backend for password storage. Controls whether JACS looks up the private key password from the OS credential store.</p>
+<pre><code class="language-json">{
+  "jacs_keychain_backend": "auto"
+}
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>Value</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>"auto"</code></td><td>Detect platform default (macOS Keychain or Linux Secret Service)</td></tr>
+<tr><td><code>"macos-keychain"</code></td><td>macOS Keychain</td></tr>
+<tr><td><code>"linux-secret-service"</code></td><td>Linux D-Bus Secret Service</td></tr>
+<tr><td><code>"disabled"</code></td><td>Never consult OS keychain (recommended for CI/headless)</td></tr>
+</tbody></table>
+</div>
+<p>Override with env var: <code>JACS_KEYCHAIN_BACKEND=disabled</code></p>
+<p>See <a href="../reference/configuration.html#os-keychain-configuration">OS Keychain Configuration</a> for full details.</p>
 <h4 id="jacs_use_security"><a class="header" href="#jacs_use_security">jacs_use_security</a></h4>
 <p>Enable strict security features:</p>
 <pre><code class="language-json">{
@@ -308,6 +324,7 @@
 <tr><td><code>JACS_PRIVATE_KEY_PASSWORD</code></td><td><code>jacs_private_key_password</code></td></tr>
 <tr><td><code>JACS_DATA_DIRECTORY</code></td><td><code>jacs_data_directory</code></td></tr>
 <tr><td><code>JACS_KEY_DIRECTORY</code></td><td><code>jacs_key_directory</code></td></tr>
+<tr><td><code>JACS_KEYCHAIN_BACKEND</code></td><td><code>jacs_keychain_backend</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>

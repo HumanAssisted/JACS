@@ -56,7 +56,6 @@ Example:
 import json
 import logging
 import os
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Union, List, Any
 
@@ -80,6 +79,10 @@ from .types import (
     TrustError,
     KeyNotFoundError,
     NetworkError,
+)
+from ._runtime import (
+    EphemeralAgentAdapter as _EphemeralAgentAdapter,
+    write_key_directory_ignore_files as _write_key_directory_ignore_files,
 )
 
 # Import the Rust bindings
@@ -111,7 +114,6 @@ except ImportError:
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
-_agent_password: Optional[str] = None
 _strict: bool = False
 
 
@@ -133,10 +135,14 @@ def reset():
     After calling reset(), you must call load() or create() again before
     using any signing or verification functions.
     """
-    global _global_agent, _agent_info, _agent_password, _strict
+    global _global_agent, _agent_info, _strict
+    if _global_agent is not None:
+        try:
+            _global_agent.set_private_key_password(None)
+        except Exception:
+            pass
     _global_agent = None
     _agent_info = None
-    _agent_password = None
     _strict = False
 
 
@@ -149,6 +155,17 @@ def _get_agent() -> JacsAgent:
             "No agent loaded. Call jacs.quickstart(name='my-agent', domain='agent.example.com') for zero-config setup, or jacs.load('path/to/config.json') for a persistent agent."
         )
     return _global_agent
+
+
+def _adopt_client_state(client) -> AgentInfo:
+    """Copy the loaded state from JacsClient into simple.py module globals."""
+    global _global_agent, _agent_info, _strict
+    _global_agent = client._agent
+    _agent_info = client._agent_info
+    _strict = client._strict
+    if _agent_info is None:
+        raise AgentNotLoadedError("No agent loaded on this JACS module instance.")
+    return _agent_info
 
 
 def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
@@ -202,45 +219,8 @@ def _resolve_private_key_password(
     return ""
 
 
-@contextmanager
-def _temporary_private_key_password(password: Optional[str]):
-    previous_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD")
-    try:
-        if password:
-            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = password
-        yield
-    finally:
-        if previous_password is None:
-            os.environ.pop("JACS_PRIVATE_KEY_PASSWORD", None)
-        else:
-            os.environ["JACS_PRIVATE_KEY_PASSWORD"] = previous_password
-
-
 def _call_with_agent_password(func, *args, **kwargs):
-    with _temporary_private_key_password(_agent_password):
-        return func(*args, **kwargs)
-
-
-def _read_document_by_id(document_id: str) -> Optional[dict]:
-    """Best-effort read of a stored document for metadata extraction."""
-    if _agent_info is None or not _agent_info.config_path:
-        return None
-
-    try:
-        config_path = os.path.abspath(_agent_info.config_path)
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        data_dir = _resolve_config_relative_path(
-            config_path, config.get("jacs_data_directory", "./jacs_data")
-        )
-        doc_path = os.path.join(data_dir, "documents", f"{document_id}.json")
-        if not os.path.exists(doc_path):
-            return None
-        with open(doc_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+    return func(*args, **kwargs)
 
 
 def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
@@ -349,7 +329,7 @@ def create(
         )
         print(f"Created agent: {agent.agent_id}")
     """
-    global _global_agent, _agent_info, _agent_password, _strict
+    global _global_agent, _agent_info, _strict
 
     _strict = _resolve_strict(strict)
 
@@ -383,10 +363,9 @@ def create(
             default_storage=default_storage,
         )
 
-        _agent_password = resolved_password
-        with _temporary_private_key_password(resolved_password):
-            _global_agent = JacsAgent()
-            _global_agent.load(config_path)
+        _global_agent = JacsAgent()
+        _global_agent.set_private_key_password(resolved_password)
+        _global_agent.load(config_path)
 
         _agent_info = AgentInfo(
             agent_id=info_dict.get("agent_id", ""),
@@ -436,252 +415,19 @@ def load(config_path: Optional[str] = None, strict: Optional[bool] = None) -> Ag
         agent = jacs.load("./jacs.config.json", strict=True)
         print(f"Loaded: {agent.name}")
     """
-    global _global_agent, _agent_info, _agent_password, _strict
+    from .client import JacsClient
 
-    _strict = _resolve_strict(strict)
-
-    # Use default config path if not provided
-    if config_path is None:
-        config_path = "./jacs.config.json"
-
-    logger.debug("load() called with config_path=%s", config_path)
-
-    # Check if config exists
-    if not os.path.exists(config_path):
-        logger.error("Config file not found: %s", config_path)
-        raise ConfigError(
-            f"Config file not found: {config_path}\n"
-            "Run 'jacs create' or call jacs.create() to create a new agent."
-        )
+    cfg_path = config_path or "./jacs.config.json"
+    logger.debug("load() called with config_path=%s", cfg_path)
 
     try:
-        # Create a new JacsAgent instance
-        _global_agent = JacsAgent()
-        _agent_password = _resolve_private_key_password(config_path)
-
-        # Load the agent from config
-        with _temporary_private_key_password(_agent_password):
-            _global_agent.load(config_path)
-
-        # Read config to get agent info
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-
-        # Extract agent ID from config
-        agent_id_version = config.get("jacs_agent_id_and_version", "")
-        parts = agent_id_version.split(":") if agent_id_version else ["", ""]
-        agent_id = parts[0] if parts else ""
-        version = parts[1] if len(parts) > 1 else ""
-
-        config_abs = os.path.abspath(config_path)
-        key_dir = _resolve_config_relative_path(
-            config_abs, config.get("jacs_key_directory", "./jacs_keys")
-        )
-        data_dir = _resolve_config_relative_path(
-            config_abs, config.get("jacs_data_directory", "./jacs_data")
-        )
-        public_key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
-        private_key_file = config.get(
-            "jacs_agent_private_key_filename", "jacs.private.pem.enc"
-        )
-        _agent_info = AgentInfo(
-            agent_id=agent_id,
-            version=version,
-            name=config.get("name"),
-            public_key_hash="",  # Will be populated after verification
-            created_at="",
-            algorithm=config.get("jacs_agent_key_algorithm", "pq2025"),
-            config_path=config_abs,
-            public_key_path=os.path.join(key_dir, public_key_file),
-            private_key_path=os.path.join(key_dir, private_key_file),
-            data_directory=data_dir,
-            key_directory=key_dir,
-            domain=config.get("domain", ""),
-            dns_record=config.get("dns_record", ""),
-        )
-
-        logger.info("Agent loaded: id=%s, name=%s", agent_id, config.get("name"))
-        return _agent_info
-
-    except FileNotFoundError:
-        logger.error("Config file not found: %s", config_path)
-        raise ConfigError(f"Config file not found: {config_path}")
-    except json.JSONDecodeError as e:
-        logger.error("Invalid config file: %s", e)
-        raise ConfigError(f"Invalid config file: {e}")
+        client = JacsClient(config_path=cfg_path, strict=strict)
+        info = _adopt_client_state(client)
+        logger.info("Agent loaded: id=%s, name=%s", info.agent_id, info.name)
+        return info
     except Exception as e:
         logger.error("Failed to load agent: %s", e)
-        raise JacsError(f"Failed to load agent: {e}")
-
-
-class _EphemeralAgentAdapter:
-    """Adapter that wraps a native SimpleAgent to provide the JacsAgent-compatible
-    interface expected by the simple.py module functions.
-
-    The simple.py functions call JacsAgent methods (create_document, verify_document,
-    verify_agent, etc.) on the global agent. The native SimpleAgent has a different
-    API (sign_message, verify, verify_self, etc.). This adapter bridges the gap.
-    """
-
-    def __init__(self, native_agent):
-        self._native = native_agent
-
-    def sign_string(self, data):
-        """Sign a raw string and return the base64-encoded signature.
-
-        Delegates to the native SimpleAgent.sign_string() method which
-        provides raw string signing (same as JacsAgent.sign_string()).
-        """
-        return self._native.sign_string(data)
-
-    def verify_agent(self, agentfile=None):
-        """Delegate to SimpleAgent.verify_self(); returns True or raises."""
-        result = self._native.verify_self()
-        if not result.get("valid", False):
-            errors = result.get("errors", [])
-            raise RuntimeError(f"Agent verification failed: {errors}")
-        return True
-
-    def create_document(self, document_string, custom_schema=None,
-                        outputfilename=None, no_save=None, attachments=None,
-                        embed=None):
-        """Delegate to SimpleAgent.sign_message() for message signing,
-        or sign_file() for file attachments."""
-        if attachments:
-            result = self._native.sign_file(attachments, embed or False)
-        else:
-            # Parse the document JSON and sign the value
-            data = json.loads(document_string)
-            result = self._native.sign_message(data)
-        return result.get("raw", "")
-
-    @staticmethod
-    def _unwrap_jacs_payload(data):
-        """Extract original request payload from JACS wrapper structures."""
-        if not isinstance(data, dict):
-            return data
-
-        if "jacs_payload" in data:
-            return data.get("jacs_payload")
-
-        jacs_document = data.get("jacsDocument")
-        if isinstance(jacs_document, dict) and "jacs_payload" in jacs_document:
-            return jacs_document.get("jacs_payload")
-
-        payload = data.get("payload")
-        if isinstance(payload, dict) and "jacs_payload" in payload:
-            return payload.get("jacs_payload")
-
-        return data
-
-    def sign_request(self, payload):
-        """JacsAgent-compatible request signing used by A2A integration."""
-        result = self._native.sign_message({"jacs_payload": payload})
-
-        if isinstance(result, str):
-            return result
-        if isinstance(result, dict):
-            raw = result.get("raw") or result.get("raw_json")
-            if isinstance(raw, str):
-                return raw
-        raise RuntimeError("Ephemeral sign_request returned an unexpected result shape")
-
-    def verify_response(self, document_string):
-        """JacsAgent-compatible response verification used by A2A integration."""
-        result = self._native.verify(document_string)
-        if not isinstance(result, dict):
-            raise RuntimeError("Ephemeral verify_response returned an unexpected result shape")
-
-        if not result.get("valid", False):
-            errors = result.get("errors")
-            if isinstance(errors, list) and errors:
-                message = "; ".join(str(e) for e in errors)
-            elif errors:
-                message = str(errors)
-            else:
-                message = "signature verification failed"
-            raise RuntimeError(message)
-
-        return self._unwrap_jacs_payload(result.get("data"))
-
-    def verify_document(self, document_string):
-        """Delegate to SimpleAgent.verify()."""
-        result = self._native.verify(document_string)
-        return result.get("valid", False)
-
-    def get_agent_json(self):
-        """Delegate to SimpleAgent.export_agent()."""
-        return self._native.export_agent()
-
-    def update_agent(self, new_agent_string):
-        raise JacsError(
-            "update_agent() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
-
-    def update_document(self, document_key, new_document_string,
-                        attachments=None, embed=None):
-        raise JacsError(
-            "update_document() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
-
-    def create_agreement(self, document_string, agentids, question=None,
-                         context=None, agreement_fieldname=None):
-        raise JacsError(
-            "create_agreement() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
-
-    def sign_agreement(self, document_string, agreement_fieldname=None):
-        raise JacsError(
-            "sign_agreement() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
-
-    def check_agreement(self, document_string, agreement_fieldname=None):
-        raise JacsError(
-            "check_agreement() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
-
-    def verify_document_by_id(self, document_id):
-        result = self._native.verify_by_id(document_id)
-        return result.get("valid", False)
-
-    def reencrypt_key(self, old_password, new_password):
-        return self._native.reencrypt_key(old_password, new_password)
-
-    def diagnostics(self):
-        return json.dumps({"agent_loaded": True, "ephemeral": True})
-
-    def get_setup_instructions(self, domain, ttl=3600):
-        raise JacsError(
-            "get_setup_instructions() is not supported on ephemeral agents. "
-            "Use jacs.create() or jacs.load() for a persistent agent."
-        )
-
-    # ----- Attestation methods (delegate to native SimpleAgent) -----
-
-    def create_attestation(self, params_json):
-        """Delegate to SimpleAgent.create_attestation()."""
-        return self._native.create_attestation(params_json)
-
-    def verify_attestation(self, document_key):
-        """Delegate to SimpleAgent.verify_attestation()."""
-        return self._native.verify_attestation(document_key)
-
-    def verify_attestation_full(self, document_key):
-        """Delegate to SimpleAgent.verify_attestation_full()."""
-        return self._native.verify_attestation_full(document_key)
-
-    def lift_to_attestation(self, signed_doc_json, claims_json):
-        """Delegate to SimpleAgent.lift_to_attestation()."""
-        return self._native.lift_to_attestation(signed_doc_json, claims_json)
-
-    def export_attestation_dsse(self, attestation_json):
-        """Delegate to SimpleAgent.export_dsse()."""
-        return self._native.export_dsse(attestation_json)
+        raise
 
 
 def quickstart(
@@ -716,63 +462,18 @@ def quickstart(
     Returns:
         AgentInfo with agent_id, name, algorithm, version
     """
-    global _global_agent, _agent_info, _strict
-
-    if not isinstance(name, str) or not name.strip():
-        raise ConfigError("quickstart() requires a non-empty 'name'.")
-    if not isinstance(domain, str) or not domain.strip():
-        raise ConfigError("quickstart() requires a non-empty 'domain'.")
-
-    _strict = _resolve_strict(strict)
-    cfg_path = config_path or "./jacs.config.json"
+    from .client import JacsClient
 
     try:
-        if os.path.exists(cfg_path):
-            # Load existing agent
-            logger.info("quickstart: found existing config at %s, loading", cfg_path)
-            return load(cfg_path, strict=strict)
-
-        # No existing config -- create a new persistent agent
-        logger.info("quickstart: no config at %s, creating new agent", cfg_path)
-
-        data_dir, key_dir = _resolve_create_directories(cfg_path)
-
-        # Ensure password is available
-        password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-        if not password:
-            import secrets
-            import string
-            # Generate a secure password meeting JACS requirements
-            chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
-            password = (
-                secrets.choice(string.ascii_uppercase)
-                + secrets.choice(string.ascii_lowercase)
-                + secrets.choice(string.digits)
-                + secrets.choice("!@#$%^&*()-_=+")
-                + ''.join(secrets.choice(chars) for _ in range(28))
-            )
-            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
-            if persist_password:
-                os.makedirs(key_dir, exist_ok=True)
-                pw_path = os.path.join(key_dir, ".jacs_password")
-                with open(pw_path, "w", encoding="utf-8") as f:
-                    f.write(password)
-                os.chmod(pw_path, 0o600)
-                logger.info("quickstart: generated password saved to %s", pw_path)
-
-        algo = algorithm or "pq2025"
-        return create(
+        client = JacsClient.quickstart(
             name=name,
-            password=password,
-            algorithm=algo,
-            data_directory=data_dir,
-            key_directory=key_dir,
-            description=description or "",
             domain=domain,
-            config_path=cfg_path,
+            description=description,
+            algorithm=algorithm,
+            config_path=config_path,
             strict=strict,
         )
-
+        return _adopt_client_state(client)
     except ImportError:
         raise JacsError(
             "Quickstart requires the full JACS native module. "
@@ -1436,7 +1137,7 @@ def get_public_key() -> str:
         raise AgentNotLoadedError("No agent loaded")
 
     # Try native binding first (available on SimpleAgent / _EphemeralAgentAdapter).
-    # Falls back to file reading for JacsAgent which lacks the method.
+    # Falls back to file reading only from the already-resolved metadata path.
     try:
         return _global_agent.get_public_key_pem()
     except AttributeError:
@@ -1448,15 +1149,6 @@ def get_public_key() -> str:
         key_candidates: List[str] = []
         if _agent_info.public_key_path:
             key_candidates.append(_agent_info.public_key_path)
-        if _agent_info.config_path and os.path.exists(_agent_info.config_path):
-            with open(_agent_info.config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-            config_path = os.path.abspath(_agent_info.config_path)
-            key_dir = _resolve_config_relative_path(
-                config_path, config.get("jacs_key_directory", "./jacs_keys")
-            )
-            key_file = config.get("jacs_agent_public_key_filename", "jacs.public.pem")
-            key_candidates.append(os.path.join(key_dir, key_file))
 
         for candidate in key_candidates:
             if os.path.exists(candidate):
