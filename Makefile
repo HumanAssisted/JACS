@@ -7,7 +7,7 @@
         publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
         publish-jacs-storage publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
         release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-all release-everything release-delete-tags \
-        retry-jacspy retry-jacsnpm retry-cli \
+        retry-jacs retry-jacspy retry-jacsnpm retry-cli retry-everything \
         bump-patch bump-minor bump-major \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
         install-githooks regen-cross-lang-fixtures \
@@ -452,6 +452,15 @@ release-delete-tags:
 	-git push origin --delete crate/v$(JACS_VERSION) pypi/v$(JACSPY_VERSION) npm/v$(JACSNPM_VERSION) cli/v$(JACS_VERSION)
 	@echo "Deleted release tags"
 
+# Retry a failed crates.io release: delete old tags (local+remote), retag, push
+retry-jacs:
+	@echo "Retrying crates.io release for v$(JACS_VERSION)..."
+	-git tag -d crate/v$(JACS_VERSION)
+	-git push origin --delete crate/v$(JACS_VERSION)
+	git tag crate/v$(JACS_VERSION)
+	git push origin crate/v$(JACS_VERSION)
+	@echo "✓ Re-tagged crate/v$(JACS_VERSION) - GitHub CI will retry crates.io publish"
+
 # Retry a failed PyPI release: delete old tags (local+remote), retag, push
 retry-jacspy:
 	@echo "Retrying PyPI release for v$(JACSPY_VERSION)..."
@@ -478,6 +487,82 @@ retry-cli:
 	git tag cli/v$(JACS_VERSION)
 	git push origin cli/v$(JACS_VERSION)
 	@echo "✓ Re-tagged cli/v$(JACS_VERSION) - GitHub CI will retry CLI binary release"
+
+# Smart retry: check each registry and only retry releases that haven't published yet.
+# Checks crates.io, PyPI, npm, and GitHub Releases for the current version.
+retry-everything:
+	@echo "Checking which releases need retrying for v$(JACS_VERSION)..."
+	@echo ""
+	@NEED_RETRY=""; \
+	if curl -sf "https://crates.io/api/v1/crates/jacs/$(JACS_VERSION)" > /dev/null 2>&1; then \
+		echo "  crates.io  jacs $(JACS_VERSION) — already published, skipping"; \
+	else \
+		echo "  crates.io  jacs $(JACS_VERSION) — NOT found, will retry"; \
+		NEED_RETRY="$$NEED_RETRY crate"; \
+	fi; \
+	if curl -sf "https://pypi.org/pypi/jacs/$(JACSPY_VERSION)/json" > /dev/null 2>&1; then \
+		echo "  PyPI       jacs $(JACSPY_VERSION) — already published, skipping"; \
+	else \
+		echo "  PyPI       jacs $(JACSPY_VERSION) — NOT found, will retry"; \
+		NEED_RETRY="$$NEED_RETRY pypi"; \
+	fi; \
+	if npm view "@hai.ai/jacs@$(JACSNPM_VERSION)" version > /dev/null 2>&1; then \
+		echo "  npm        @hai.ai/jacs $(JACSNPM_VERSION) — already published, skipping"; \
+	else \
+		echo "  npm        @hai.ai/jacs $(JACSNPM_VERSION) — NOT found, will retry"; \
+		NEED_RETRY="$$NEED_RETRY npm"; \
+	fi; \
+	if gh release view "cli/v$(JACS_VERSION)" --repo HumanAssisted/JACS > /dev/null 2>&1; then \
+		echo "  CLI        cli/v$(JACS_VERSION) — release exists, skipping"; \
+	else \
+		echo "  CLI        cli/v$(JACS_VERSION) — NOT found, will retry"; \
+		NEED_RETRY="$$NEED_RETRY cli"; \
+	fi; \
+	echo ""; \
+	if [ -z "$$NEED_RETRY" ]; then \
+		echo "✓ All releases already published for v$(JACS_VERSION). Nothing to retry."; \
+	else \
+		echo "Retrying:$$NEED_RETRY"; \
+		echo ""; \
+		for target in $$NEED_RETRY; do \
+			case $$target in \
+				crate) \
+					echo "--- Retrying crates.io ---"; \
+					git tag -d crate/v$(JACS_VERSION) 2>/dev/null || true; \
+					git push origin --delete crate/v$(JACS_VERSION) 2>/dev/null || true; \
+					git tag crate/v$(JACS_VERSION); \
+					git push origin crate/v$(JACS_VERSION); \
+					echo "✓ Re-tagged crate/v$(JACS_VERSION)"; \
+					;; \
+				pypi) \
+					echo "--- Retrying PyPI ---"; \
+					git tag -d pypi/v$(JACSPY_VERSION) 2>/dev/null || true; \
+					git push origin --delete pypi/v$(JACSPY_VERSION) 2>/dev/null || true; \
+					git tag pypi/v$(JACSPY_VERSION); \
+					git push origin pypi/v$(JACSPY_VERSION); \
+					echo "✓ Re-tagged pypi/v$(JACSPY_VERSION)"; \
+					;; \
+				npm) \
+					echo "--- Retrying npm ---"; \
+					git tag -d npm/v$(JACSNPM_VERSION) 2>/dev/null || true; \
+					git push origin --delete npm/v$(JACSNPM_VERSION) 2>/dev/null || true; \
+					git tag npm/v$(JACSNPM_VERSION); \
+					git push origin npm/v$(JACSNPM_VERSION); \
+					echo "✓ Re-tagged npm/v$(JACSNPM_VERSION)"; \
+					;; \
+				cli) \
+					echo "--- Retrying CLI ---"; \
+					git tag -d cli/v$(JACS_VERSION) 2>/dev/null || true; \
+					git push origin --delete cli/v$(JACS_VERSION) 2>/dev/null || true; \
+					git tag cli/v$(JACS_VERSION); \
+					git push origin cli/v$(JACS_VERSION); \
+					echo "✓ Re-tagged cli/v$(JACS_VERSION)"; \
+					;; \
+			esac; \
+		done; \
+		echo ""; \
+		echo "✓ Retry tags pushed. GitHub CI will handle publishing."; \
+	fi
 
 # ============================================================================
 # HELP
@@ -552,9 +637,11 @@ help:
 	@echo "  make release-all     Verify versions match, then release crates/PyPI/npm"
 	@echo "  make release-everything  Verify versions match, then release crates/PyPI/npm/CLI"
 	@echo "  make release-delete-tags  Delete release tags (for fixing failed releases)"
+	@echo "  make retry-jacs      Retry failed crates.io release (delete tags, retag, push)"
 	@echo "  make retry-jacspy    Retry failed PyPI release (delete tags, retag, push)"
 	@echo "  make retry-jacsnpm   Retry failed npm release (delete tags, retag, push)"
 	@echo "  make retry-cli       Retry failed CLI release (delete tags, retag, push)"
+	@echo "  make retry-everything  Smart retry: check registries, only retry unpublished"
 	@echo ""
 	@echo "Required GitHub Secrets:"
 	@echo "  CRATES_IO_TOKEN  - for crate/v* tags"
