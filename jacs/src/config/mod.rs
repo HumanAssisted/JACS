@@ -1715,6 +1715,32 @@ mod tests {
     }
 
     #[test]
+    #[serial(jacs_env)]
+    fn test_apply_env_overrides_preserves_config_dir() {
+        clear_jacs_env_vars();
+
+        let mut config = Config::with_defaults();
+        let test_dir = std::path::PathBuf::from("/some/config/dir");
+        config.set_config_dir(Some(test_dir.clone()));
+
+        // Set some env overrides to trigger actual work
+        set_env_var("JACS_DATA_DIRECTORY", "/env/data").unwrap();
+
+        config.apply_env_overrides();
+
+        // config_dir must survive apply_env_overrides — it is runtime metadata
+        // that Agent::from_config uses for storage_root calculation.
+        // If this is wiped, storage resolves to CWD or "/" (Issue 024).
+        assert_eq!(
+            config.config_dir(),
+            Some(test_dir.as_path()),
+            "config_dir must be preserved through apply_env_overrides"
+        );
+
+        clear_jacs_env_vars();
+    }
+
+    #[test]
     fn test_config_builder_defaults() {
         // Builder with no options set should produce sensible defaults
         let config = Config::builder().build();
