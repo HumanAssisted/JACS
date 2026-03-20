@@ -198,9 +198,15 @@ fn load_agent_with_cli_dns_policy(
     let (dns_validate, dns_required, dns_strict) =
         resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
     let mut agent = load_agent()?;
-    if let Some(v) = dns_validate { agent.set_dns_validate(v); }
-    if let Some(v) = dns_required { agent.set_dns_required(v); }
-    if let Some(v) = dns_strict { agent.set_dns_strict(v); }
+    if let Some(v) = dns_validate {
+        agent.set_dns_validate(v);
+    }
+    if let Some(v) = dns_required {
+        agent.set_dns_required(v);
+    }
+    if let Some(v) = dns_strict {
+        agent.set_dns_strict(v);
+    }
     Ok(agent)
 }
 
@@ -1398,9 +1404,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
-                let mut agent: Agent =
-                    load_agent()
-                        .expect("REASON");
+                let mut agent: Agent = load_agent().expect("REASON");
 
                 let _attachment_links = agent.parse_attachement_arg(attachments);
                 let _ = create_documents(
@@ -1429,9 +1433,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
-                let mut agent: Agent =
-                    load_agent()
-                        .expect("REASON");
+                let mut agent: Agent = load_agent().expect("REASON");
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
                 update_documents(
@@ -1450,9 +1452,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let _agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent =
-                    load_agent()
-                        .expect("REASON");
+                let mut agent: Agent = load_agent().expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
                 let _no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
@@ -1463,9 +1463,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
                 let _agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent =
-                    load_agent()
-                        .expect("REASON");
+                let mut agent: Agent = load_agent().expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
 
                 // Use updated set_file_list with storage
@@ -1487,9 +1485,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.to_string())
                     .collect();
 
-                let mut agent: Agent =
-                    load_agent()
-                        .expect("REASON");
+                let mut agent: Agent = load_agent().expect("REASON");
                 // Use updated set_file_list with storage
                 let _ =
                     create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
@@ -1500,9 +1496,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = verify_matches.get_one::<String>("directory");
                 let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let _agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent =
-                    load_agent()
-                        .expect("REASON");
+                let mut agent: Agent = load_agent().expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
                 verify_documents(&mut agent, schema, filename, directory)?;
@@ -1513,9 +1507,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = extract_matches.get_one::<String>("directory");
                 let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let _agentfile = extract_matches.get_one::<String>("agent-file");
-                let mut agent: Agent =
-                    load_agent()
-                        .expect("REASON");
+                let mut agent: Agent = load_agent().expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
                 let _files: Vec<String> = default_set_file_list(filename, directory, None)
