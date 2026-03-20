@@ -3,7 +3,7 @@
 
 use crate::error::JacsError;
 use crate::schema::utils::{CONFIG_SCHEMA_STRING, EmbeddedSchemaResolver};
-use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var, set_env_var_override};
+use crate::storage::jenv::{EnvError, get_env_var, get_required_env_var};
 use getset::Getters;
 use jsonschema::{Draft, Validator};
 use serde::Deserialize;
@@ -15,7 +15,7 @@ use std::fs;
 use std::str::FromStr;
 use tracing::{error, info, warn};
 
-use crate::validation::{are_valid_uuid_parts, split_agent_id};
+use crate::validation::split_agent_id;
 
 /// Source for resolving public keys during signature verification.
 ///
@@ -1191,180 +1191,6 @@ pub fn validate_config(config_json: &str) -> Result<Value, JacsError> {
     }
 
     Ok(instance)
-}
-
-/// DEPRECATED: Use `load_config_12factor_optional` instead.
-///
-/// Attempts to find and load a config file from the given path.
-/// Falls back to Config::default() if file not found.
-#[deprecated(
-    since = "0.2.0",
-    note = "Use load_config_12factor_optional() for 12-Factor compliant config loading"
-)]
-pub fn find_config(path: String) -> Result<Config, JacsError> {
-    let config: Config = match fs::read_to_string(format!("{}jacs.config.json", path)) {
-        Ok(content) => {
-            let validated_value = validate_config(&content)?;
-            serde_json::from_value(validated_value).map_err(|e| {
-                JacsError::ConfigError(format!("Failed to deserialize config: {}", e))
-            })?
-        }
-        Err(_) => Config::default(),
-    };
-    Ok(config)
-}
-
-/// DEPRECATED: Use `load_config_12factor` instead.
-///
-/// This function takes config file values and sets them as environment variables,
-/// which is the OPPOSITE of 12-Factor principles. Environment variables should
-/// be the source of truth, not the target.
-///
-/// This function is kept for backwards compatibility only. New code should use
-/// `load_config_12factor()` which reads env vars INTO config (correct direction).
-#[deprecated(
-    since = "0.2.0",
-    note = "Use load_config_12factor() - env vars should override config, not vice versa"
-)]
-pub fn set_env_vars(
-    do_override: bool,
-    config_json: Option<&str>,
-    ignore_agent_id: bool,
-) -> Result<String, JacsError> {
-    let config: Config = match config_json {
-        Some(json_str) => {
-            let validated_value = validate_config(json_str)?;
-            serde_json::from_value(validated_value).map_err(|e| {
-                JacsError::ConfigError(format!("Failed to deserialize config: {}", e))
-            })?
-        }
-        None => find_config(".".to_string())?,
-    };
-    // debug!("configs from file {:?}", config);
-    validate_config(
-        &serde_json::to_string(&config)
-            .map_err(|e| JacsError::ConfigError(format!("Failed to serialize config: {}", e)))?,
-    )?;
-
-    // Security: Password should come from environment variable, not config file
-    if config.jacs_private_key_password.is_some() {
-        warn!(
-            "SECURITY WARNING: Password found in config file. \
-            This is insecure - passwords should only be set via JACS_PRIVATE_KEY_PASSWORD \
-            environment variable. The password in the config file will be ignored."
-        );
-    }
-    // Do NOT set password from config - it must come from env var only
-    // The password will be read directly from env var when needed
-
-    let jacs_use_security = config
-        .jacs_use_security
-        .as_ref()
-        .unwrap_or(&"false".to_string())
-        .clone();
-    set_env_var_override("JACS_USE_SECURITY", &jacs_use_security, do_override)
-        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    let jacs_data_directory = config
-        .jacs_data_directory
-        .as_ref()
-        .unwrap_or(
-            &std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "./jacs_data".to_string()),
-        )
-        .clone();
-    set_env_var_override("JACS_DATA_DIRECTORY", &jacs_data_directory, do_override)
-        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    let jacs_key_directory = config
-        .jacs_key_directory
-        .as_ref()
-        .unwrap_or(&".".to_string())
-        .clone();
-    set_env_var_override("JACS_KEY_DIRECTORY", &jacs_key_directory, do_override)
-        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    let jacs_agent_private_key_filename = config
-        .jacs_agent_private_key_filename
-        .as_ref()
-        .unwrap_or(&"jacs.private.pem.enc".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_AGENT_PRIVATE_KEY_FILENAME",
-        &jacs_agent_private_key_filename,
-        do_override,
-    )
-    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    let jacs_agent_public_key_filename = config
-        .jacs_agent_public_key_filename
-        .as_ref()
-        .unwrap_or(&"jacs.public.pem".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_AGENT_PUBLIC_KEY_FILENAME",
-        &jacs_agent_public_key_filename,
-        do_override,
-    )
-    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    let jacs_agent_key_algorithm = config
-        .jacs_agent_key_algorithm
-        .as_ref()
-        .unwrap_or(&"pq2025".to_string())
-        .clone();
-    set_env_var_override(
-        "JACS_AGENT_KEY_ALGORITHM",
-        &jacs_agent_key_algorithm,
-        do_override,
-    )
-    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    let jacs_default_storage = config
-        .jacs_default_storage
-        .as_ref()
-        .unwrap_or(&"fs".to_string())
-        .clone();
-    set_env_var_override("JACS_DEFAULT_STORAGE", &jacs_default_storage, do_override)
-        .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    let jacs_agent_id_and_version = config
-        .jacs_agent_id_and_version
-        .as_ref()
-        .unwrap_or(&"".to_string())
-        .clone();
-
-    if !jacs_agent_id_and_version.is_empty() {
-        if let Some((id, version)) = split_agent_id(&jacs_agent_id_and_version) {
-            if !are_valid_uuid_parts(id, version) {
-                warn!("ID and Version must be in the form UUID:UUID");
-            }
-        } else {
-            warn!("ID and Version must be in the form UUID:UUID");
-        }
-    }
-
-    set_env_var_override(
-        "JACS_AGENT_ID_AND_VERSION",
-        &jacs_agent_id_and_version,
-        do_override,
-    )
-    .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-
-    // Propagate keychain backend setting to env var if set in config
-    if let Some(ref backend) = config.jacs_keychain_backend {
-        set_env_var_override("JACS_KEYCHAIN_BACKEND", backend, do_override)
-            .map_err(|e| JacsError::ConfigError(e.to_string()))?;
-    }
-
-    let message = format!("{}", config);
-    info!("{}", message);
-    check_env_vars(ignore_agent_id).map_err(|e| {
-        error!("Error checking environment variables: {}", e);
-        JacsError::ConfigError(e.to_string())
-    })?;
-    Ok(message)
 }
 
 pub fn check_env_vars(ignore_agent_id: bool) -> Result<String, EnvError> {
