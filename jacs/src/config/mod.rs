@@ -241,6 +241,11 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     jacs_database_connect_timeout_secs: Option<u64>,
+    /// Directory containing the config file. Set automatically by `Config::from_file()`.
+    /// Used by `load_by_config` to calculate `storage_root` without re-deriving from path.
+    /// Not serialized — this is runtime-only metadata.
+    #[serde(skip)]
+    config_dir: Option<std::path::PathBuf>,
 }
 
 fn default_schema() -> String {
@@ -336,6 +341,7 @@ impl Default for Config {
             jacs_database_max_connections: None,
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
+            config_dir: None,
         }
     }
 }
@@ -495,6 +501,7 @@ impl ConfigBuilder {
             jacs_database_max_connections: None,
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
+            config_dir: None,
         }
     }
 }
@@ -559,6 +566,7 @@ impl Config {
             jacs_database_max_connections: None,
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
+            config_dir: None,
         }
     }
 
@@ -570,6 +578,25 @@ impl Config {
         }
         get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)
             .map_err(|e| JacsError::ConfigError(e.to_string()))
+    }
+
+    /// Returns the directory containing the config file, if set.
+    ///
+    /// This is set automatically by `Config::from_file()` to the parent directory
+    /// of the config file path. It is used by `load_by_config` to correctly
+    /// calculate `storage_root` without requiring the caller to pass the original
+    /// path or set environment variables as a side-channel.
+    pub fn config_dir(&self) -> Option<&std::path::Path> {
+        self.config_dir.as_deref()
+    }
+
+    /// Sets the config directory explicitly.
+    ///
+    /// Normally set automatically by `Config::from_file()`. Use this when
+    /// constructing a Config programmatically and you need `load_by_config`
+    /// to resolve storage paths relative to a specific directory.
+    pub fn set_config_dir(&mut self, dir: Option<std::path::PathBuf>) {
+        self.config_dir = dir;
     }
 
     fn replace_if_some<T>(target: &mut Option<T>, incoming: Option<T>) {
@@ -639,6 +666,7 @@ impl Config {
             jacs_database_max_connections,
             jacs_database_min_connections,
             jacs_database_connect_timeout_secs,
+            config_dir,
         } = other;
 
         Self::replace_if_some(&mut self.jacs_use_security, jacs_use_security);
@@ -677,6 +705,8 @@ impl Config {
             &mut self.jacs_database_connect_timeout_secs,
             jacs_database_connect_timeout_secs,
         );
+        // config_dir from the incoming config takes precedence if set
+        Self::replace_if_some(&mut self.config_dir, config_dir);
     }
 
     /// Apply environment variable overrides to this config.
@@ -771,11 +801,14 @@ impl Config {
             jacs_database_max_connections: None,
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
+            config_dir: None,
         }
     }
 
     /// Load config from a JSON file without applying environment overrides.
-    /// Use `load_config_12factor` for the recommended 12-Factor compliant loading.
+    ///
+    /// This is the recommended way to load a config file. For 12-Factor compliance,
+    /// call `config.apply_env_overrides()` after loading, then `Agent::from_config(config, password)`.
     pub fn from_file(path: &str) -> Result<Config, JacsError> {
         let json_str = fs::read_to_string(path).map_err(|e| {
             let help = match e.kind() {
@@ -801,7 +834,7 @@ impl Config {
         })?;
         let validated_value: Value = validate_config(&json_str)
             .map_err(|e| JacsError::ConfigError(format!("Invalid config at '{}': {}", path, e)))?;
-        let config: Config = serde_json::from_value(validated_value.clone()).map_err(|e| {
+        let mut config: Config = serde_json::from_value(validated_value.clone()).map_err(|e| {
             // This can happen if the JSON structure doesn't match our Config struct
             JacsError::ConfigError(format!(
                 "Config structure error at '{}': {}. The JSON may have valid syntax but incorrect field types.",
@@ -818,6 +851,14 @@ impl Config {
                 path
             );
         }
+
+        // Set config_dir to the parent directory of the config file path.
+        // This allows load_by_config to resolve storage paths correctly
+        // without requiring callers to pass the path or use env var side-channels.
+        config.config_dir = std::path::Path::new(path)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(std::path::PathBuf::from);
 
         Ok(config)
     }
@@ -877,6 +918,10 @@ impl fmt::Display for Config {
 /// // Load with just defaults and env overrides
 /// let config = load_config_12factor(None)?;
 /// ```
+#[deprecated(
+    since = "0.9.8",
+    note = "Use Config::from_file(path) + config.apply_env_overrides() + Agent::from_config(config, password) instead"
+)]
 pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, JacsError> {
     // Step 1: Start with hardcoded defaults
     let mut config = Config::with_defaults();
@@ -912,6 +957,10 @@ pub fn load_config_12factor(config_path: Option<&str>) -> Result<Config, JacsErr
 ///
 /// # Arguments
 /// * `config_path` - Path to a JSON config file (required, must exist)
+#[deprecated(
+    since = "0.9.8",
+    note = "Use Config::from_file(path) directly. Skip apply_env_overrides() for file-only loading."
+)]
 pub fn load_config_file_only(config_path: &str) -> Result<Config, JacsError> {
     let mut config = Config::with_defaults();
     let file_config = Config::from_file(config_path)?;
@@ -928,6 +977,10 @@ pub fn load_config_file_only(config_path: &str) -> Result<Config, JacsError> {
 ///
 /// # Arguments
 /// * `config_path` - Optional path to a JSON config file (won't fail if missing)
+#[deprecated(
+    since = "0.9.8",
+    note = "Use Config::from_file(path) + config.apply_env_overrides() + Agent::from_config(config, password) instead"
+)]
 pub fn load_config_12factor_optional(config_path: Option<&str>) -> Result<Config, JacsError> {
     // Step 1: Start with hardcoded defaults
     let mut config = Config::with_defaults();
@@ -1612,6 +1665,7 @@ mod tests {
             jacs_database_max_connections: None,
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
+            config_dir: None,
         };
 
         base.merge(override_config);
@@ -1692,6 +1746,7 @@ mod tests {
             jacs_database_max_connections: None,
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
+            config_dir: None,
         };
         config.merge(file_config);
 

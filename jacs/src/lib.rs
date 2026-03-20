@@ -215,6 +215,7 @@ fn prepare_agent_for_agent_path(agent: &mut Agent, filepath: &str) {
     };
 
     let config_path_str = config_path.to_string_lossy().to_string();
+    #[allow(deprecated)]
     match crate::config::load_config_12factor_optional(Some(&config_path_str)) {
         Ok(config) => {
             debug!(

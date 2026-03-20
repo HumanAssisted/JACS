@@ -327,6 +327,213 @@ impl Agent {
         })
     }
 
+    /// Create and load an agent from a pre-built Config and optional password.
+    ///
+    /// This is the canonical one-call agent loading API. Callers compose their
+    /// own config (via `Config::from_file()` + optional `apply_env_overrides()`)
+    /// and pass the password directly -- no env var side-channels needed.
+    ///
+    /// # Arguments
+    /// * `config` - A pre-built Config (not re-read from file)
+    /// * `password` - Optional private key password. If None, falls back to
+    ///   `JACS_PRIVATE_KEY_PASSWORD` env var inside keystore operations.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let mut config = Config::from_file("jacs.config.json")?;
+    /// config.apply_env_overrides();
+    /// let agent = Agent::from_config(config, Some("my-password"))?;
+    /// ```
+    pub fn from_config(mut config: Config, password: Option<&str>) -> Result<Self, JacsError> {
+        let schema = Schema::new("v1", "v1", "v1")?;
+        let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
+
+        // Calculate storage root and normalize config directories
+        let (storage_root, normalized_config) =
+            Self::calculate_storage_root_and_normalize(config, "Agent::from_config")?;
+        config = normalized_config;
+
+        let storage_type: String = config
+            .jacs_default_storage()
+            .as_deref()
+            .unwrap_or("fs")
+            .to_string();
+        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
+            "fs".to_string()
+        } else {
+            storage_type.clone()
+        };
+
+        let storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
+            format!(
+                "Agent::from_config failed: Could not initialize storage type '{}': {}",
+                storage_type, e
+            )
+        })?;
+
+        let lookup_id: String = config
+            .jacs_agent_id_and_version()
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
+
+        let mut agent = Self {
+            schema,
+            value: None,
+            config: Some(config),
+            storage,
+            document_schemas: document_schemas_map,
+            id: None,
+            version: None,
+            key_algorithm: None,
+            public_key: None,
+            private_key: None,
+            key_store: None,
+            ephemeral: false,
+            dns_strict: false,
+            dns_validate_enabled: None,
+            dns_required: None,
+            key_paths: None,
+            password: password.map(String::from),
+            #[cfg(feature = "attestation")]
+            adapters: crate::attestation::adapters::default_adapters(),
+        };
+
+        // Compute key_paths from the normalized config
+        agent.refresh_key_paths_from_config();
+
+        if !lookup_id.is_empty() {
+            let agent_string = agent.fs_agent_load(&lookup_id).map_err(|e| {
+                format!(
+                    "Agent::from_config failed: Could not load agent '{}': {}",
+                    lookup_id, e
+                )
+            })?;
+            agent.load(&agent_string).map_err(|e| {
+                let err_msg = format!(
+                    "Agent::from_config failed: Agent '{}' validation or key loading failed: {}",
+                    lookup_id, e
+                );
+                JacsError::Internal { message: err_msg }
+            })?;
+        }
+
+        Ok(agent)
+    }
+
+    /// Calculate storage root from config and normalize directory paths.
+    ///
+    /// Returns `(storage_root, normalized_config)`. The config is modified
+    /// in place to normalize relative/absolute directory paths.
+    fn calculate_storage_root_and_normalize(
+        config: Config,
+        caller: &str,
+    ) -> Result<(std::path::PathBuf, Config), JacsError> {
+        let storage_type: String = config
+            .jacs_default_storage()
+            .as_deref()
+            .unwrap_or("")
+            .to_string();
+        let uses_filesystem_paths = matches!(storage_type.as_str(), "fs" | "rusqlite" | "sqlite");
+        if !uses_filesystem_paths {
+            return Ok((std::env::current_dir()?, config));
+        }
+
+        let config_dir = config
+            .config_dir()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let config_dir_absolute = if config_dir.is_absolute() {
+            config_dir.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(config_dir)
+        };
+
+        let normalize_path = |p: &std::path::Path| -> std::path::PathBuf {
+            let mut normalized = std::path::PathBuf::new();
+            for component in p.components() {
+                match component {
+                    std::path::Component::CurDir => {}
+                    std::path::Component::ParentDir => {
+                        normalized.pop();
+                    }
+                    other => normalized.push(other.as_os_str()),
+                }
+            }
+            normalized
+        };
+
+        let mut config_value = to_value(&config).map_err(|e| {
+            format!(
+                "{} failed: Could not serialize configuration: {}",
+                caller, e
+            )
+        })?;
+        let mut has_external_absolute = false;
+        for field in ["jacs_data_directory", "jacs_key_directory"] {
+            if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                let dir_path = std::path::Path::new(dir);
+                if dir_path
+                    .components()
+                    .any(|component| matches!(component, std::path::Component::ParentDir))
+                {
+                    return Err(format!(
+                        "{} failed: Config field '{}' contains unsafe parent-directory segment ('..'): '{}'",
+                        caller, field, dir
+                    )
+                    .into());
+                }
+                if dir_path.is_absolute() {
+                    let normalized_abs = normalize_path(dir_path);
+                    if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute) {
+                        let relative = relative_tail
+                            .to_string_lossy()
+                            .trim_start_matches('/')
+                            .to_string();
+                        if relative.is_empty() {
+                            has_external_absolute = true;
+                            config_value[field] =
+                                json!(normalized_abs.to_string_lossy().to_string());
+                        } else {
+                            config_value[field] = json!(relative);
+                        }
+                    } else {
+                        has_external_absolute = true;
+                        config_value[field] = json!(normalized_abs.to_string_lossy().to_string());
+                    }
+                } else {
+                    let normalized_rel = normalize_path(dir_path);
+                    config_value[field] = json!(normalized_rel.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        let storage_root = if has_external_absolute {
+            for field in ["jacs_data_directory", "jacs_key_directory"] {
+                if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
+                    let dir_path = std::path::Path::new(dir);
+                    if !dir_path.is_absolute() {
+                        let abs = normalize_path(&config_dir_absolute.join(dir_path));
+                        config_value[field] = json!(abs.to_string_lossy().to_string());
+                    }
+                }
+            }
+            std::path::PathBuf::from("/")
+        } else {
+            config_dir_absolute
+        };
+
+        let mut normalized_config: Config = serde_json::from_value(config_value).map_err(|e| {
+            format!(
+                "{} failed: Could not normalize filesystem directories in config: {}",
+                caller, e
+            )
+        })?;
+        // Preserve config_dir since serde(skip) drops it during round-trip
+        normalized_config.set_config_dir(config.config_dir().map(std::path::PathBuf::from));
+
+        Ok((storage_root, normalized_config))
+    }
+
     /// Create an ephemeral agent with in-memory keys and storage.
     /// No config file, no directories, no environment variables needed.
     pub fn ephemeral(algorithm: &str) -> Result<Self, JacsError> {
@@ -522,154 +729,18 @@ impl Agent {
                 path, e
             )
         })?;
-        // Clone values needed for error messages to avoid borrow conflicts
-        let lookup_id: String = config
-            .jacs_agent_id_and_version()
-            .as_deref()
-            .unwrap_or("")
-            .to_string();
-        let storage_type: String = config
-            .jacs_default_storage()
-            .as_deref()
-            .unwrap_or("")
-            .to_string();
-        let uses_filesystem_paths = matches!(storage_type.as_str(), "fs" | "rusqlite" | "sqlite");
-        let storage_root = if uses_filesystem_paths {
-            let config_dir = std::path::Path::new(&path)
+
+        // Ensure config_dir is set (fallback to path's parent if Config::from_file
+        // did not set it, e.g. when loaded via load_config_12factor).
+        if config.config_dir().is_none() {
+            let fallback_dir = std::path::Path::new(&path)
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or_else(|| std::path::Path::new("."));
-            let config_dir_absolute = if config_dir.is_absolute() {
-                config_dir.to_path_buf()
-            } else {
-                std::env::current_dir()?.join(config_dir)
-            };
-            let normalize_path = |p: &std::path::Path| -> std::path::PathBuf {
-                let mut normalized = std::path::PathBuf::new();
-                for component in p.components() {
-                    match component {
-                        std::path::Component::CurDir => {}
-                        std::path::Component::ParentDir => {
-                            normalized.pop();
-                        }
-                        other => normalized.push(other.as_os_str()),
-                    }
-                }
-                normalized
-            };
-
-            // Normalize configured filesystem directories.
-            // - Relative directories are treated as config-dir relative.
-            // - Absolute directories inside the config-dir root are rewritten
-            //   to relative paths so storage can stay rooted at config_dir.
-            // - Absolute directories outside config_dir require root "/".
-            let mut config_value = to_value(&config).map_err(|e| {
-                format!(
-                    "load_by_config failed: Could not serialize configuration from '{}': {}",
-                    path, e
-                )
-            })?;
-            let mut has_external_absolute = false;
-            for field in ["jacs_data_directory", "jacs_key_directory"] {
-                if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
-                    let dir_path = std::path::Path::new(dir);
-                    if dir_path
-                        .components()
-                        .any(|component| matches!(component, std::path::Component::ParentDir))
-                    {
-                        return Err(format!(
-                            "load_by_config failed: Config field '{}' in '{}' contains unsafe parent-directory segment ('..'): '{}'",
-                            field, path, dir
-                        )
-                        .into());
-                    }
-                    if dir_path.is_absolute() {
-                        let normalized_abs = normalize_path(dir_path);
-                        if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute)
-                        {
-                            let relative = relative_tail
-                                .to_string_lossy()
-                                .trim_start_matches('/')
-                                .to_string();
-                            if relative.is_empty() {
-                                has_external_absolute = true;
-                                config_value[field] =
-                                    json!(normalized_abs.to_string_lossy().to_string());
-                            } else {
-                                config_value[field] = json!(relative);
-                            }
-                        } else {
-                            has_external_absolute = true;
-                            config_value[field] =
-                                json!(normalized_abs.to_string_lossy().to_string());
-                        }
-                    } else {
-                        let normalized_rel = normalize_path(dir_path);
-                        config_value[field] = json!(normalized_rel.to_string_lossy().to_string());
-                    }
-                }
-            }
-
-            let storage_root = if has_external_absolute {
-                // When rooting at "/", convert any remaining relative dirs to
-                // absolute config-dir-based paths so they remain stable.
-                for field in ["jacs_data_directory", "jacs_key_directory"] {
-                    if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
-                        let dir_path = std::path::Path::new(dir);
-                        if !dir_path.is_absolute() {
-                            let abs = normalize_path(&config_dir_absolute.join(dir_path));
-                            config_value[field] = json!(abs.to_string_lossy().to_string());
-                        }
-                    }
-                }
-                std::path::PathBuf::from("/")
-            } else {
-                config_dir_absolute
-            };
-
-            config = serde_json::from_value(config_value).map_err(|e| {
-                format!(
-                    "load_by_config failed: Could not normalize filesystem directories in config '{}': {}",
-                    path, e
-                )
-            })?;
-            storage_root
-        } else {
-            std::env::current_dir()?
-        };
-
-        self.config = Some(config);
-        // Refresh key_paths from the new config so build_fs_store() uses the
-        // correct key directory, not stale paths from construction time (Issue 012).
-        self.refresh_key_paths_from_config();
-        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
-            "fs".to_string()
-        } else {
-            storage_type.clone()
-        };
-        self.storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
-            format!(
-                "load_by_config failed: Could not initialize storage type '{}' (from config '{}'): {}",
-                storage_type, path, e
-            )
-        })?;
-        if !lookup_id.is_empty() {
-            let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
-                format!(
-                    "load_by_config failed: Could not load agent '{}' (specified in config '{}'): {}",
-                    lookup_id, path, e
-                )
-            })?;
-            self.load(&agent_string).map_err(|e| {
-                let err_msg = format!(
-                    "load_by_config failed: Agent '{}' validation or key loading failed (config '{}'): {}",
-                    lookup_id, path, e
-                );
-                JacsError::Internal { message: err_msg }
-            })
-        } else {
-            Ok(())
+            config.set_config_dir(Some(fallback_dir.to_path_buf()));
         }
+
+        self.apply_config_and_load(config, "load_by_config", &path)
     }
 
     /// Load agent configuration from a file **without** applying env/jenv overrides.
@@ -686,6 +757,31 @@ impl Agent {
                 path, e
             )
         })?;
+
+        // Ensure config_dir is set (fallback to path's parent if Config::from_file
+        // did not set it, e.g. when loaded via load_config_file_only).
+        if config.config_dir().is_none() {
+            let fallback_dir = std::path::Path::new(&path)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            config.set_config_dir(Some(fallback_dir.to_path_buf()));
+        }
+
+        self.apply_config_and_load(config, "load_by_config_file_only", &path)
+    }
+
+    /// Shared helper for `load_by_config` and `load_by_config_file_only`.
+    ///
+    /// Takes a pre-loaded `Config` (with `config_dir` already set), calculates the
+    /// storage root via [`calculate_storage_root_and_normalize`], initializes storage,
+    /// and loads the agent identity if configured.
+    fn apply_config_and_load(
+        &mut self,
+        config: Config,
+        caller: &str,
+        path: &str,
+    ) -> Result<(), JacsError> {
         let lookup_id: String = config
             .jacs_agent_id_and_version()
             .as_deref()
@@ -696,105 +792,12 @@ impl Agent {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        let uses_filesystem_paths = matches!(storage_type.as_str(), "fs" | "rusqlite" | "sqlite");
-        let storage_root = if uses_filesystem_paths {
-            let config_dir = std::path::Path::new(&path)
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or_else(|| std::path::Path::new("."));
-            let config_dir_absolute = if config_dir.is_absolute() {
-                config_dir.to_path_buf()
-            } else {
-                std::env::current_dir()?.join(config_dir)
-            };
-            let normalize_path = |p: &std::path::Path| -> std::path::PathBuf {
-                let mut normalized = std::path::PathBuf::new();
-                for component in p.components() {
-                    match component {
-                        std::path::Component::CurDir => {}
-                        std::path::Component::ParentDir => {
-                            normalized.pop();
-                        }
-                        other => normalized.push(other.as_os_str()),
-                    }
-                }
-                normalized
-            };
 
-            let mut config_value = to_value(&config).map_err(|e| {
-                format!(
-                    "load_by_config_file_only failed: Could not serialize configuration from '{}': {}",
-                    path, e
-                )
-            })?;
-            let mut has_external_absolute = false;
-            for field in ["jacs_data_directory", "jacs_key_directory"] {
-                if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
-                    let dir_path = std::path::Path::new(dir);
-                    if dir_path
-                        .components()
-                        .any(|component| matches!(component, std::path::Component::ParentDir))
-                    {
-                        return Err(format!(
-                            "load_by_config_file_only failed: Config field '{}' in '{}' contains unsafe parent-directory segment ('..'): '{}'",
-                            field, path, dir
-                        )
-                        .into());
-                    }
-                    if dir_path.is_absolute() {
-                        let normalized_abs = normalize_path(dir_path);
-                        if let Ok(relative_tail) = normalized_abs.strip_prefix(&config_dir_absolute)
-                        {
-                            let relative = relative_tail
-                                .to_string_lossy()
-                                .trim_start_matches('/')
-                                .to_string();
-                            if relative.is_empty() {
-                                has_external_absolute = true;
-                                config_value[field] =
-                                    json!(normalized_abs.to_string_lossy().to_string());
-                            } else {
-                                config_value[field] = json!(relative);
-                            }
-                        } else {
-                            has_external_absolute = true;
-                            config_value[field] =
-                                json!(normalized_abs.to_string_lossy().to_string());
-                        }
-                    } else {
-                        let normalized_rel = normalize_path(dir_path);
-                        config_value[field] = json!(normalized_rel.to_string_lossy().to_string());
-                    }
-                }
-            }
-
-            let storage_root = if has_external_absolute {
-                for field in ["jacs_data_directory", "jacs_key_directory"] {
-                    if let Some(dir) = config_value.get(field).and_then(|v| v.as_str()) {
-                        let dir_path = std::path::Path::new(dir);
-                        if !dir_path.is_absolute() {
-                            let abs = normalize_path(&config_dir_absolute.join(dir_path));
-                            config_value[field] = json!(abs.to_string_lossy().to_string());
-                        }
-                    }
-                }
-                std::path::PathBuf::from("/")
-            } else {
-                config_dir_absolute
-            };
-
-            config = serde_json::from_value(config_value).map_err(|e| {
-                format!(
-                    "load_by_config_file_only failed: Could not normalize filesystem directories in config '{}': {}",
-                    path, e
-                )
-            })?;
-            storage_root
-        } else {
-            std::env::current_dir()?
-        };
+        let (storage_root, config) = Self::calculate_storage_root_and_normalize(config, caller)?;
 
         self.config = Some(config);
+        // Refresh key_paths from the new config so build_fs_store() uses the
+        // correct key directory, not stale paths from construction time (Issue 012).
         self.refresh_key_paths_from_config();
         let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
             "fs".to_string()
@@ -803,21 +806,21 @@ impl Agent {
         };
         self.storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
             format!(
-                "load_by_config_file_only failed: Could not initialize storage type '{}' (from config '{}'): {}",
-                storage_type, path, e
+                "{} failed: Could not initialize storage type '{}' (from config '{}'): {}",
+                caller, storage_type, path, e
             )
         })?;
         if !lookup_id.is_empty() {
             let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
                 format!(
-                    "load_by_config_file_only failed: Could not load agent '{}' (specified in config '{}'): {}",
-                    lookup_id, path, e
+                    "{} failed: Could not load agent '{}' (specified in config '{}'): {}",
+                    caller, lookup_id, path, e
                 )
             })?;
             self.load(&agent_string).map_err(|e| {
                 let err_msg = format!(
-                    "load_by_config_file_only failed: Agent '{}' validation or key loading failed (config '{}'): {}",
-                    lookup_id, path, e
+                    "{} failed: Agent '{}' validation or key loading failed (config '{}'): {}",
+                    caller, lookup_id, path, e
                 );
                 JacsError::Internal { message: err_msg }
             })

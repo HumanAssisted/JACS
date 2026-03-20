@@ -1,6 +1,6 @@
 [package]
 name = "jacs-binding-core"
-version = "0.9.7"
+version = "0.9.8"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -19,7 +19,7 @@ attestation = ["jacs/attestation"]
 pq-tests = []
 
 [dependencies]
-jacs = { version = "0.9.7", path = "../jacs" }
+jacs = { version = "0.9.8", path = "../jacs" }
 serde_json = "1.0"
 base64 = "0.22.1"
 serde = { version = "1.0", features = ["derive"] }
