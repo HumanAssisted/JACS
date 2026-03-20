@@ -96,7 +96,15 @@ fn get_non_empty_env_var(key: &str) -> Result<Option<String>, String> {
     }
 }
 
-fn ensure_cli_private_key_password() -> Result<(), String> {
+/// Resolve the private key password from CLI sources and return it.
+///
+/// Returns `Ok(Some(password))` when a password is found from env var,
+/// password file, or legacy file. Returns `Ok(None)` when no CLI-level
+/// password is available (the core layer will try the OS keychain).
+///
+/// Also sets the `JACS_PRIVATE_KEY_PASSWORD` env var as a side-effect
+/// for backward compatibility with code paths that still read it.
+fn ensure_cli_private_key_password() -> Result<Option<String>, String> {
     let env_password = get_non_empty_env_var("JACS_PRIVATE_KEY_PASSWORD")?;
     let password_file = get_non_empty_env_var(CLI_PASSWORD_FILE_ENV)?;
 
@@ -114,9 +122,9 @@ fn ensure_cli_private_key_password() -> Result<(), String> {
         }
         // SAFETY: CLI process is single-threaded for command handling at this point.
         unsafe {
-            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
         }
-        return Ok(());
+        return Ok(Some(password));
     }
 
     // 2. Password file (explicit)
@@ -124,9 +132,9 @@ fn ensure_cli_private_key_password() -> Result<(), String> {
         let password = read_password_from_file(Path::new(path.trim()), CLI_PASSWORD_FILE_ENV)?;
         // SAFETY: CLI process is single-threaded for command handling at this point.
         unsafe {
-            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
         }
-        return Ok(());
+        return Ok(Some(password));
     }
 
     // 3. Legacy password file
@@ -135,7 +143,7 @@ fn ensure_cli_private_key_password() -> Result<(), String> {
         let password = read_password_from_file(legacy_path, "legacy password file")?;
         // SAFETY: CLI process is single-threaded for command handling at this point.
         unsafe {
-            env::set_var("JACS_PRIVATE_KEY_PASSWORD", password);
+            env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
         }
         eprintln!(
             "Using legacy password source '{}'. Prefer JACS_PRIVATE_KEY_PASSWORD or {}.",
@@ -154,12 +162,12 @@ fn ensure_cli_private_key_password() -> Result<(), String> {
                 );
             }
         }
-        return Ok(());
+        return Ok(Some(password));
     }
 
     // 4. No CLI-level password found. The core layer's resolve_private_key_password()
     //    will check the OS keychain automatically when encryption/decryption is needed.
-    Ok(())
+    Ok(None)
 }
 
 fn resolve_dns_policy_overrides(
@@ -192,6 +200,7 @@ fn load_agent_with_cli_dns_policy(
         resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
     Ok(load_agent_from_config(
         agent_file.as_deref(),
+        None,
         dns_validate,
         dns_required,
         dns_strict,
@@ -201,9 +210,13 @@ fn load_agent_with_cli_dns_policy(
 /// Load an agent using the new Config + Agent::from_config pattern.
 ///
 /// Replaces the deprecated `load_agent` / `load_agent_with_dns_policy` calls.
-/// Password is resolved from env var (set by `ensure_cli_private_key_password`).
+/// When `password` is `Some`, it is passed directly to `Agent::from_config`.
+/// When `password` is `None`, the CLI password resolution chain is used
+/// (env var, password file, legacy file, keychain) and the resolved password
+/// is passed explicitly to `Agent::from_config`.
 fn load_agent_from_config(
     agent_file: Option<&str>,
+    password: Option<&str>,
     dns_validate: Option<bool>,
     dns_required: Option<bool>,
     dns_strict: Option<bool>,
@@ -218,7 +231,15 @@ fn load_agent_from_config(
     let mut config = jacs::config::Config::from_file(&config_path)?;
     config.apply_env_overrides();
 
-    let mut agent = Agent::from_config(config, None)?;
+    // Resolve password: use provided password, or fall back to CLI password resolution
+    let resolved_password: Option<String> = if password.is_some() {
+        password.map(String::from)
+    } else {
+        ensure_cli_private_key_password()
+            .map_err(|e| jacs::error::JacsError::Internal { message: e })?
+    };
+
+    let mut agent = Agent::from_config(config, resolved_password.as_deref())?;
 
     // Apply DNS policy overrides from CLI flags
     if let Some(validate) = dns_validate {
@@ -1383,7 +1404,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
         // Some(("task", task_matches)) => match task_matches.subcommand() {
         //     Some(("create", create_matches)) => {
         //         let agentfile = create_matches.get_one::<String>("agent-file");
-        //         let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+        //         let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None).expect("REASON");
         //         let name = create_matches.get_one::<String>("name").expect("REASON");
         //         let description = create_matches
         //             .get_one::<String>("description")
@@ -1410,7 +1431,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
                         .expect("REASON");
 
                 let _attachment_links = agent.parse_attachement_arg(attachments);
@@ -1441,7 +1462,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
                         .expect("REASON");
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
@@ -1462,7 +1483,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
                         .expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
                 let _no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
@@ -1475,7 +1496,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = create_matches.get_one::<String>("directory");
                 let agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
                         .expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
 
@@ -1499,7 +1520,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .collect();
 
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
                         .expect("REASON");
                 // Use updated set_file_list with storage
                 let _ =
@@ -1512,7 +1533,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = verify_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
                         .expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
@@ -1525,7 +1546,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = extract_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
                         .expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
@@ -2694,8 +2715,14 @@ mod tests {
             std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
         }
 
-        ensure_cli_private_key_password().expect("password bootstrap should succeed");
+        let resolved =
+            ensure_cli_private_key_password().expect("password bootstrap should succeed");
 
+        assert_eq!(
+            resolved.as_deref(),
+            Some("TestP@ss123!#"),
+            "resolved password should match password file content"
+        );
         assert_eq!(
             std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
             "TestP@ss123!#"
@@ -2722,8 +2749,14 @@ mod tests {
             std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
         }
 
-        ensure_cli_private_key_password().expect("password bootstrap should succeed");
+        let resolved =
+            ensure_cli_private_key_password().expect("password bootstrap should succeed");
 
+        assert_eq!(
+            resolved.as_deref(),
+            Some("TestP@ss123!#"),
+            "env var should win over password file"
+        );
         assert_eq!(
             std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
             "TestP@ss123!#"

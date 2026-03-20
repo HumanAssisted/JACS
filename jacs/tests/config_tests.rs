@@ -305,11 +305,11 @@ fn test_agent_from_config_sets_password() {
     config.apply_env_overrides();
 
     let agent = Agent::from_config(config, Some("my-test-password")).unwrap();
-    // The password should be set on the agent (we can verify this indirectly
-    // by checking the agent was created successfully without env var)
-    assert!(
-        agent.config.is_some(),
-        "Agent config should be set after from_config"
+    // Verify the password was actually stored on the agent
+    assert_eq!(
+        agent.password(),
+        Some("my-test-password"),
+        "Agent password should be set to the value passed to from_config"
     );
 
     clear_test_env_vars();
@@ -356,6 +356,73 @@ fn test_agent_from_config_none_password_uses_env_fallback() {
         agent.is_ok(),
         "Agent::from_config with None password should fall back to env: {:?}",
         agent.err()
+    );
+
+    clear_test_env_vars();
+}
+
+/// Test that config_dir is dropped by serde round-trip (justifying the explicit
+/// preservation step in calculate_storage_root_and_normalize).
+#[test]
+fn test_config_dir_dropped_by_serde_roundtrip() {
+    let mut config = Config::with_defaults();
+    config.set_config_dir(Some(std::path::PathBuf::from("/my/config/dir")));
+    assert_eq!(
+        config.config_dir(),
+        Some(std::path::Path::new("/my/config/dir")),
+        "config_dir should be set before round-trip"
+    );
+
+    // Serialize and deserialize (simulates the normalization round-trip)
+    let json = serde_json::to_value(&config).unwrap();
+    let roundtripped: Config = serde_json::from_value(json).unwrap();
+
+    // config_dir should be None after round-trip because of #[serde(skip)]
+    assert_eq!(
+        roundtripped.config_dir(),
+        None,
+        "config_dir should be None after serde round-trip (serde(skip) drops it)"
+    );
+}
+
+/// Test that two agents created with Agent::from_config using different passwords
+/// do not interfere with each other (no env var leakage).
+#[test]
+#[serial]
+fn test_concurrent_agents_with_different_passwords() {
+    clear_test_env_vars();
+    utils::set_min_test_env_vars();
+
+    let config_path = utils::raw_fixture("ring.jacs.config.json");
+
+    // Create first agent with password "alpha-password"
+    // apply_env_overrides to use safe test directories (fixture has ".." paths)
+    let mut config1 = Config::from_file(&config_path.to_string_lossy()).unwrap();
+    config1.apply_env_overrides();
+    let agent1 = Agent::from_config(config1, Some("alpha-password")).unwrap();
+
+    // Create second agent with a different password
+    let mut config2 = Config::from_file(&config_path.to_string_lossy()).unwrap();
+    config2.apply_env_overrides();
+    let agent2 = Agent::from_config(config2, Some("beta-password")).unwrap();
+
+    // Verify each agent has its own password (no cross-contamination)
+    assert_eq!(
+        agent1.password(),
+        Some("alpha-password"),
+        "Agent 1 should retain its password"
+    );
+    assert_eq!(
+        agent2.password(),
+        Some("beta-password"),
+        "Agent 2 should retain its password"
+    );
+
+    // Verify they are distinct agents with distinct passwords
+    assert_ne!(
+        agent1.password(),
+        agent2.password(),
+        "The two agents should have different passwords"
     );
 
     clear_test_env_vars();
