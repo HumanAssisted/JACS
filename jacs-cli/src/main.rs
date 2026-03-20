@@ -208,14 +208,12 @@ fn load_agent_from_config(
     dns_required: Option<bool>,
     dns_strict: Option<bool>,
 ) -> Result<Agent, jacs::error::JacsError> {
-    let config_path = agent_file
-        .map(String::from)
-        .unwrap_or_else(|| {
-            std::env::var("JACS_CONFIG")
-                .ok()
-                .filter(|v| !v.trim().is_empty())
-                .unwrap_or_else(|| "./jacs.config.json".to_string())
-        });
+    let config_path = agent_file.map(String::from).unwrap_or_else(|| {
+        std::env::var("JACS_CONFIG")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "./jacs.config.json".to_string())
+    });
 
     let mut config = jacs::config::Config::from_file(&config_path)?;
     config.apply_env_overrides();
@@ -1411,7 +1409,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
-                let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+                let mut agent: Agent =
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                        .expect("REASON");
 
                 let _attachment_links = agent.parse_attachement_arg(attachments);
                 let _ = create_documents(
@@ -1440,7 +1440,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str());
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
-                let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+                let mut agent: Agent =
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                        .expect("REASON");
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
                 update_documents(
@@ -1459,7 +1461,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+                let mut agent: Agent =
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                        .expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
                 let _no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
 
@@ -1470,7 +1474,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
                 let agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+                let mut agent: Agent =
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                        .expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
 
                 // Use updated set_file_list with storage
@@ -1492,7 +1498,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.to_string())
                     .collect();
 
-                let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+                let mut agent: Agent =
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                        .expect("REASON");
                 // Use updated set_file_list with storage
                 let _ =
                     create_agreement(&mut agent, agentids, filename, schema, no_save, directory);
@@ -1503,7 +1511,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = verify_matches.get_one::<String>("directory");
                 let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = verify_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+                let mut agent: Agent =
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                        .expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
                 verify_documents(&mut agent, schema, filename, directory)?;
@@ -1514,7 +1524,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = extract_matches.get_one::<String>("directory");
                 let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let agentfile = extract_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None).expect("REASON");
+                let mut agent: Agent =
+                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None)
+                        .expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
                 let _files: Vec<String> = default_set_file_list(filename, directory, None)

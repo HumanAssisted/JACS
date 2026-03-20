@@ -400,9 +400,7 @@ impl AgentWrapper {
         let new_agent =
             self.load_agent_from_config(&resolved_config_path, true, password.as_deref())?;
         let info = jacs::simple::build_loaded_agent_info(&new_agent, &resolved_config_path)
-            .map_err(|e| {
-                BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
-            })?;
+            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
         *self.lock()? = new_agent;
         serialize_agent_info(&info)
     }
@@ -417,15 +415,13 @@ impl AgentWrapper {
         apply_env: bool,
         password: Option<&str>,
     ) -> BindingResult<Agent> {
-        let mut config = Config::from_file(config_path).map_err(|e| {
-            BindingCoreError::agent_load(format!("Failed to load config: {}", e))
-        })?;
+        let mut config = Config::from_file(config_path)
+            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load config: {}", e)))?;
         if apply_env {
             config.apply_env_overrides();
         }
-        Agent::from_config(config, password).map_err(|e| {
-            BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
-        })
+        Agent::from_config(config, password)
+            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))
     }
 
     /// Re-root the internal file storage at `root`.
