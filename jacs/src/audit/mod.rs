@@ -180,6 +180,7 @@ pub fn audit(options: AuditOptions) -> Result<AuditResult, JacsError> {
     };
 
     // Load config: on failure push risk and continue with defaults
+    #[allow(deprecated)]
     let config = match crate::config::load_config_12factor(options.config_path.as_deref()) {
         Ok(c) => c,
         Err(e) => {

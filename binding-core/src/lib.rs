@@ -373,14 +373,14 @@ impl AgentWrapper {
     }
 
     /// Load agent configuration from a file path.
+    ///
+    /// Uses `Config::from_file` + `apply_env_overrides` + `Agent::from_config`
+    /// to avoid deprecated `load_by_config` and env var side-channels.
     pub fn load(&self, config_path: String) -> BindingResult<String> {
-        self.with_private_key_password(|| {
-            let mut agent = self.lock()?;
-            agent.load_by_config(config_path).map_err(|e| {
-                BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
-            })?;
-            Ok("Agent loaded".to_string())
-        })
+        let password = self.configured_private_key_password()?;
+        let new_agent = self.load_agent_from_config(&config_path, true, password.as_deref())?;
+        *self.lock()? = new_agent;
+        Ok("Agent loaded".to_string())
     }
 
     /// Load agent configuration from file only, **without** applying env/jenv
@@ -388,28 +388,43 @@ impl AgentWrapper {
     /// caller constructs a pristine config file and does not want ambient JACS_*
     /// environment variables to pollute it (Issue 008).
     pub fn load_file_only(&self, config_path: String) -> BindingResult<String> {
-        let mut agent = self.lock()?;
-        agent
-            .load_by_config_file_only(config_path)
-            .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
+        let new_agent = self.load_agent_from_config(&config_path, false, None)?;
+        *self.lock()? = new_agent;
         Ok("Agent loaded (file-only)".to_string())
     }
 
     /// Load agent configuration and return canonical loaded-agent metadata.
     pub fn load_with_info(&self, config_path: String) -> BindingResult<String> {
         let resolved_config_path = resolve_existing_config_path(&config_path)?;
-        self.with_private_key_password(|| {
-            let mut agent = self.lock()?;
-            agent
-                .load_by_config(resolved_config_path.clone())
-                .map_err(|e| {
-                    BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
-                })?;
-            let info = jacs::simple::build_loaded_agent_info(&agent, &resolved_config_path)
-                .map_err(|e| {
-                    BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
-                })?;
-            serialize_agent_info(&info)
+        let password = self.configured_private_key_password()?;
+        let new_agent =
+            self.load_agent_from_config(&resolved_config_path, true, password.as_deref())?;
+        let info = jacs::simple::build_loaded_agent_info(&new_agent, &resolved_config_path)
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
+            })?;
+        *self.lock()? = new_agent;
+        serialize_agent_info(&info)
+    }
+
+    /// Internal helper: load an agent from config using the new pattern.
+    ///
+    /// * `apply_env` - Whether to call `config.apply_env_overrides()` (false for file-only)
+    /// * `password` - Optional password to pass directly to Agent::from_config
+    fn load_agent_from_config(
+        &self,
+        config_path: &str,
+        apply_env: bool,
+        password: Option<&str>,
+    ) -> BindingResult<Agent> {
+        let mut config = Config::from_file(config_path).map_err(|e| {
+            BindingCoreError::agent_load(format!("Failed to load config: {}", e))
+        })?;
+        if apply_env {
+            config.apply_env_overrides();
+        }
+        Agent::from_config(config, password).map_err(|e| {
+            BindingCoreError::agent_load(format!("Failed to load agent: {}", e))
         })
     }
 

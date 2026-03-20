@@ -359,6 +359,7 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
     }
 
     // Step 1: Load config to find the agent file
+    #[allow(deprecated)]
     let config =
         crate::config::load_config_12factor(Some(path)).map_err(|e| JacsError::ConfigInvalid {
             field: "config".to_string(),

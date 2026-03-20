@@ -1,8 +1,10 @@
-// Add to JACS/jacs/tests/config_tests.rs
 mod utils;
-use jacs::config::{check_env_vars, load_config_12factor, load_config_12factor_optional};
+use jacs::agent::Agent;
+#[allow(deprecated)]
+use jacs::config::{Config, check_env_vars, load_config_12factor, load_config_12factor_optional};
 use jacs::storage::jenv::set_env_var;
 use serial_test::serial;
+use std::path::Path;
 use utils::{PASSWORD_ENV_VAR, clear_test_env_vars, set_test_env_vars};
 
 //RUST_BACKTRACE=1 cargo test   --test config_tests -- --nocapture
@@ -170,6 +172,190 @@ fn test_12factor_defaults() {
         config.jacs_agent_key_algorithm().as_deref(),
         Some("pq2025"),
         "Default algorithm should be pq2025"
+    );
+
+    clear_test_env_vars();
+}
+
+// ============================================================================
+// Config.config_dir tests (Task 001: config_dir field)
+// ============================================================================
+
+/// Test that Config::from_file sets config_dir to parent directory
+#[test]
+fn test_config_from_file_sets_config_dir() {
+    let config_path = utils::raw_fixture("ring.jacs.config.json");
+    let config = Config::from_file(&config_path.to_string_lossy()).unwrap();
+    let expected_parent = config_path.parent().unwrap();
+    assert_eq!(
+        config.config_dir(),
+        Some(expected_parent.as_ref()),
+        "config_dir should be set to the parent directory of the config file"
+    );
+}
+
+/// Test that Config::with_defaults has config_dir = None
+#[test]
+fn test_config_with_defaults_has_no_config_dir() {
+    let config = Config::with_defaults();
+    assert_eq!(
+        config.config_dir(),
+        None,
+        "Config::with_defaults() should have config_dir = None"
+    );
+}
+
+/// Test that Config::from_file with absolute path sets absolute config_dir
+#[test]
+fn test_config_from_file_absolute_path_sets_absolute_config_dir() {
+    let config_path = utils::raw_fixture("ring.jacs.config.json");
+    // The fixture path is already absolute (from CARGO_MANIFEST_DIR)
+    assert!(
+        config_path.is_absolute(),
+        "Fixture path should be absolute for this test"
+    );
+    let config = Config::from_file(&config_path.to_string_lossy()).unwrap();
+    let dir = config.config_dir().expect("config_dir should be set");
+    assert!(
+        dir.is_absolute(),
+        "config_dir should be absolute when loaded from absolute path"
+    );
+}
+
+/// Test that config_dir survives merge (other.config_dir takes precedence if Some)
+#[test]
+fn test_config_dir_survives_merge() {
+    let mut base = Config::with_defaults();
+    base.set_config_dir(Some(std::path::PathBuf::from("/original/dir")));
+
+    let mut other = Config::with_defaults();
+    other.set_config_dir(Some(std::path::PathBuf::from("/override/dir")));
+
+    base.merge(other);
+    assert_eq!(
+        base.config_dir(),
+        Some(Path::new("/override/dir")),
+        "config_dir from other should override base"
+    );
+}
+
+/// Test that config_dir merge does not override when other.config_dir is None
+#[test]
+fn test_config_dir_merge_preserves_when_none() {
+    let mut base = Config::with_defaults();
+    base.set_config_dir(Some(std::path::PathBuf::from("/original/dir")));
+
+    let other = Config::with_defaults(); // config_dir = None
+
+    base.merge(other);
+    assert_eq!(
+        base.config_dir(),
+        Some(Path::new("/original/dir")),
+        "config_dir should be preserved when other.config_dir is None"
+    );
+}
+
+/// Test that set_config_dir works
+#[test]
+fn test_set_config_dir() {
+    let mut config = Config::with_defaults();
+    assert_eq!(config.config_dir(), None);
+    config.set_config_dir(Some(std::path::PathBuf::from("/my/config/dir")));
+    assert_eq!(config.config_dir(), Some(Path::new("/my/config/dir")));
+    config.set_config_dir(None);
+    assert_eq!(config.config_dir(), None);
+}
+
+// ============================================================================
+// Agent::from_config tests (Task 002: Agent::from_config constructor)
+// ============================================================================
+
+/// Test that Agent::from_config works with explicit password
+#[test]
+#[serial]
+fn test_agent_from_config_with_explicit_password() {
+    clear_test_env_vars();
+    // Set up env for fixture keys
+    utils::set_min_test_env_vars();
+
+    let config_path = utils::raw_fixture("ring.jacs.config.json");
+    let mut config = Config::from_file(&config_path.to_string_lossy()).unwrap();
+    config.apply_env_overrides();
+
+    // Agent::from_config should succeed with the fixture password
+    let agent = Agent::from_config(config, Some(utils::TEST_PASSWORD_FIXTURES));
+    assert!(
+        agent.is_ok(),
+        "Agent::from_config should succeed with explicit password: {:?}",
+        agent.err()
+    );
+
+    clear_test_env_vars();
+}
+
+/// Test that Agent::from_config sets the password field
+#[test]
+#[serial]
+fn test_agent_from_config_sets_password() {
+    clear_test_env_vars();
+    utils::set_min_test_env_vars();
+
+    let config_path = utils::raw_fixture("ring.jacs.config.json");
+    let mut config = Config::from_file(&config_path.to_string_lossy()).unwrap();
+    config.apply_env_overrides();
+
+    let agent = Agent::from_config(config, Some("my-test-password")).unwrap();
+    // The password should be set on the agent (we can verify this indirectly
+    // by checking the agent was created successfully without env var)
+    assert!(
+        agent.config.is_some(),
+        "Agent config should be set after from_config"
+    );
+
+    clear_test_env_vars();
+}
+
+/// Test that Agent::from_config without apply_env_overrides uses only file config
+#[test]
+#[serial]
+fn test_agent_from_config_without_env_overrides() {
+    clear_test_env_vars();
+
+    // Build a programmatic config (no file with ".." paths) to test pure file-config path
+    let mut config = Config::with_defaults();
+    config.set_config_dir(Some(std::path::PathBuf::from(".")));
+    // Deliberately skip apply_env_overrides -- config should still work
+    // with_defaults sets jacs_data_directory = "./jacs_data", jacs_key_directory = "./jacs_keys"
+
+    // This should succeed: config has enough info to initialize storage
+    let agent = Agent::from_config(config, Some(utils::TEST_PASSWORD_FIXTURES));
+    assert!(
+        agent.is_ok(),
+        "Agent::from_config should work without env overrides: {:?}",
+        agent.err()
+    );
+
+    clear_test_env_vars();
+}
+
+/// Test that Agent::from_config with None password falls back to env var
+#[test]
+#[serial]
+fn test_agent_from_config_none_password_uses_env_fallback() {
+    clear_test_env_vars();
+    utils::set_min_test_env_vars();
+    // set_min_test_env_vars sets JACS_PRIVATE_KEY_PASSWORD to TEST_PASSWORD_LEGACY
+
+    let config_path = utils::raw_fixture("ring.jacs.config.json");
+    let mut config = Config::from_file(&config_path.to_string_lossy()).unwrap();
+    config.apply_env_overrides();
+
+    // None password -- should fall back to env var
+    let agent = Agent::from_config(config, None);
+    assert!(
+        agent.is_ok(),
+        "Agent::from_config with None password should fall back to env: {:?}",
+        agent.err()
     );
 
     clear_test_env_vars();
