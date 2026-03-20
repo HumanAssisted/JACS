@@ -190,7 +190,6 @@ fn resolve_dns_policy_overrides(
 }
 
 fn load_agent_with_cli_dns_policy(
-    agent_file: Option<String>,
     ignore_dns: bool,
     require_strict: bool,
     require_dns: bool,
@@ -198,61 +197,32 @@ fn load_agent_with_cli_dns_policy(
 ) -> Result<Agent, Box<dyn Error>> {
     let (dns_validate, dns_required, dns_strict) =
         resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
-    Ok(load_agent_from_config(
-        agent_file.as_deref(),
-        None,
-        dns_validate,
-        dns_required,
-        dns_strict,
-    )?)
+    let mut agent = load_agent()?;
+    if let Some(v) = dns_validate { agent.set_dns_validate(v); }
+    if let Some(v) = dns_required { agent.set_dns_required(v); }
+    if let Some(v) = dns_strict { agent.set_dns_strict(v); }
+    Ok(agent)
 }
 
 /// Load an agent using the new Config + Agent::from_config pattern.
 ///
 /// Replaces the deprecated `load_agent` / `load_agent_with_dns_policy` calls.
-/// When `password` is `Some`, it is passed directly to `Agent::from_config`.
-/// When `password` is `None`, the CLI password resolution chain is used
-/// (env var, password file, legacy file, keychain) and the resolved password
-/// is passed explicitly to `Agent::from_config`.
-fn load_agent_from_config(
-    agent_file: Option<&str>,
-    password: Option<&str>,
-    dns_validate: Option<bool>,
-    dns_required: Option<bool>,
-    dns_strict: Option<bool>,
-) -> Result<Agent, jacs::error::JacsError> {
-    let config_path = agent_file.map(String::from).unwrap_or_else(|| {
-        std::env::var("JACS_CONFIG")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| "./jacs.config.json".to_string())
-    });
+/// Resolve the JACS config path from JACS_CONFIG env var or default.
+fn resolve_config_path() -> String {
+    std::env::var("JACS_CONFIG")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "./jacs.config.json".to_string())
+}
 
-    let mut config = jacs::config::Config::from_file(&config_path)?;
+/// Load a JACS agent from the default config path with password from the
+/// CLI resolution chain (env var, password file, keychain, prompt).
+fn load_agent() -> Result<Agent, jacs::error::JacsError> {
+    let mut config = jacs::config::Config::from_file(&resolve_config_path())?;
     config.apply_env_overrides();
-
-    // Resolve password: use provided password, or fall back to CLI password resolution
-    let resolved_password: Option<String> = if password.is_some() {
-        password.map(String::from)
-    } else {
-        ensure_cli_private_key_password()
-            .map_err(|e| jacs::error::JacsError::Internal { message: e })?
-    };
-
-    let mut agent = Agent::from_config(config, resolved_password.as_deref())?;
-
-    // Apply DNS policy overrides from CLI flags
-    if let Some(validate) = dns_validate {
-        agent.set_dns_validate(validate);
-    }
-    if let Some(required) = dns_required {
-        agent.set_dns_required(required);
-    }
-    if let Some(strict) = dns_strict {
-        agent.set_dns_strict(strict);
-    }
-
-    Ok(agent)
+    let password = ensure_cli_private_key_password()
+        .map_err(|e| jacs::error::JacsError::Internal { message: e })?;
+    Agent::from_config(config, password.as_deref())
 }
 
 fn wrap_quickstart_error_with_password_help(
@@ -1199,7 +1169,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .unwrap_or("plain");
 
                 // Load agent from optional path, supporting non-strict DNS for propagation
-                let agent_file = sub_m.get_one::<String>("agent-file").cloned();
+                let _agent_file = sub_m.get_one::<String>("agent-file").cloned();
                 let non_strict = *sub_m.get_one::<bool>("no-dns").unwrap_or(&false);
                 let ignore_dns = *sub_m.get_one::<bool>("ignore-dns").unwrap_or(&false);
                 let require_strict = *sub_m
@@ -1207,13 +1177,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .unwrap_or(&false);
                 let require_dns = *sub_m.get_one::<bool>("require-dns").unwrap_or(&false);
                 let agent: Agent = load_agent_with_cli_dns_policy(
-                    agent_file,
                     ignore_dns,
                     require_strict,
                     require_dns,
                     non_strict,
                 )
-                .expect("Provide --agent-file or ensure config points to a readable agent");
+                .expect("Failed to load agent from config");
                 let agent_id = agent_id_arg.unwrap_or_else(|| agent.get_id().unwrap_or_default());
                 let pk = agent.get_public_key().expect("public key");
                 let digest = match enc {
@@ -1276,7 +1245,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 handle_agent_create(filename, create_keys)?;
             }
             Some(("verify", verify_matches)) => {
-                let agentfile = verify_matches.get_one::<String>("agent-file");
+                let _agentfile = verify_matches.get_one::<String>("agent-file");
                 let non_strict = *verify_matches.get_one::<bool>("no-dns").unwrap_or(&false);
                 let require_dns = *verify_matches
                     .get_one::<bool>("require-dns")
@@ -1288,13 +1257,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .get_one::<bool>("ignore-dns")
                     .unwrap_or(&false);
                 let mut agent: Agent = load_agent_with_cli_dns_policy(
-                    agentfile.cloned(),
                     ignore_dns,
                     require_strict,
                     require_dns,
                     non_strict,
                 )
-                .expect("agent file");
+                .expect("Failed to load agent from config");
                 agent
                     .verify_self_signature()
                     .expect("signature verification");
@@ -1403,8 +1371,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
         // Some(("task", task_matches)) => match task_matches.subcommand() {
         //     Some(("create", create_matches)) => {
-        //         let agentfile = create_matches.get_one::<String>("agent-file");
-        //         let mut agent: Agent = load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None).expect("REASON");
+        //         let _agentfile = create_matches.get_one::<String>("agent-file");
+        //         let mut agent: Agent = load_agent().expect("REASON");
         //         let name = create_matches.get_one::<String>("name").expect("REASON");
         //         let description = create_matches
         //             .get_one::<String>("description")
@@ -1423,7 +1391,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
-                let agentfile = create_matches.get_one::<String>("agent-file");
+                let _agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
                 let attachments = create_matches
                     .get_one::<String>("attach")
@@ -1431,7 +1399,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
+                    load_agent()
                         .expect("REASON");
 
                 let _attachment_links = agent.parse_attachement_arg(attachments);
@@ -1454,7 +1422,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let outputfilename = create_matches.get_one::<String>("output");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
-                let agentfile = create_matches.get_one::<String>("agent-file");
+                let _agentfile = create_matches.get_one::<String>("agent-file");
                 let schema = create_matches.get_one::<String>("schema");
                 let attachments = create_matches
                     .get_one::<String>("attach")
@@ -1462,7 +1430,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let embed: Option<bool> = create_matches.get_one::<bool>("embed").copied();
 
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
+                    load_agent()
                         .expect("REASON");
 
                 let attachment_links = agent.parse_attachement_arg(attachments);
@@ -1481,9 +1449,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
-                let agentfile = create_matches.get_one::<String>("agent-file");
+                let _agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
+                    load_agent()
                         .expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
                 let _no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
@@ -1494,9 +1462,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             Some(("check-agreement", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
-                let agentfile = create_matches.get_one::<String>("agent-file");
+                let _agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
+                    load_agent()
                         .expect("REASON");
                 let schema = create_matches.get_one::<String>("schema");
 
@@ -1509,7 +1477,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = create_matches.get_one::<String>("filename");
                 let directory = create_matches.get_one::<String>("directory");
                 let _verbose = *create_matches.get_one::<bool>("verbose").unwrap_or(&false);
-                let agentfile = create_matches.get_one::<String>("agent-file");
+                let _agentfile = create_matches.get_one::<String>("agent-file");
 
                 let schema = create_matches.get_one::<String>("schema");
                 let no_save = *create_matches.get_one::<bool>("no-save").unwrap_or(&false);
@@ -1520,7 +1488,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .collect();
 
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
+                    load_agent()
                         .expect("REASON");
                 // Use updated set_file_list with storage
                 let _ =
@@ -1531,9 +1499,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = verify_matches.get_one::<String>("filename");
                 let directory = verify_matches.get_one::<String>("directory");
                 let _verbose = *verify_matches.get_one::<bool>("verbose").unwrap_or(&false);
-                let agentfile = verify_matches.get_one::<String>("agent-file");
+                let _agentfile = verify_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
+                    load_agent()
                         .expect("REASON");
                 let schema = verify_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
@@ -1544,9 +1512,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let filename = extract_matches.get_one::<String>("filename");
                 let directory = extract_matches.get_one::<String>("directory");
                 let _verbose = *extract_matches.get_one::<bool>("verbose").unwrap_or(&false);
-                let agentfile = extract_matches.get_one::<String>("agent-file");
+                let _agentfile = extract_matches.get_one::<String>("agent-file");
                 let mut agent: Agent =
-                    load_agent_from_config(agentfile.map(|s| s.as_str()), None, None, None, None)
+                    load_agent()
                         .expect("REASON");
                 let schema = extract_matches.get_one::<String>("schema");
                 // Use updated set_file_list with storage
