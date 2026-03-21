@@ -1105,10 +1105,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(feature = "keychain")]
     let matches = matches.subcommand(
         Command::new("keychain")
-            .about("Manage private key passwords in the OS keychain")
+            .about("Manage private key passwords in the OS keychain (per-agent)")
             .subcommand(
                 Command::new("set")
-                    .about("Store a password in the OS keychain")
+                    .about("Store a password in the OS keychain for an agent")
+                    .arg(
+                        Arg::new("agent-id")
+                            .long("agent-id")
+                            .help("Agent ID to associate the password with")
+                            .value_name("AGENT_ID")
+                            .required(true),
+                    )
                     .arg(
                         Arg::new("password")
                             .long("password")
@@ -1117,13 +1124,37 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     ),
             )
             .subcommand(
-                Command::new("get").about("Retrieve the stored password (prints to stdout)"),
+                Command::new("get")
+                    .about("Retrieve the stored password for an agent (prints to stdout)")
+                    .arg(
+                        Arg::new("agent-id")
+                            .long("agent-id")
+                            .help("Agent ID to look up")
+                            .value_name("AGENT_ID")
+                            .required(true),
+                    ),
             )
             .subcommand(
-                Command::new("delete").about("Remove the stored password from the OS keychain"),
+                Command::new("delete")
+                    .about("Remove the stored password for an agent from the OS keychain")
+                    .arg(
+                        Arg::new("agent-id")
+                            .long("agent-id")
+                            .help("Agent ID whose password to delete")
+                            .value_name("AGENT_ID")
+                            .required(true),
+                    ),
             )
             .subcommand(
-                Command::new("status").about("Check if a password is stored in the OS keychain"),
+                Command::new("status")
+                    .about("Check if a password is stored for an agent in the OS keychain")
+                    .arg(
+                        Arg::new("agent-id")
+                            .long("agent-id")
+                            .help("Agent ID to check")
+                            .value_name("AGENT_ID")
+                            .required(true),
+                    ),
             )
             .arg_required_else_help(true),
     );
@@ -2092,16 +2123,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
                 }
 
-                // Store in OS keychain so future commands "just work"
-                #[cfg(feature = "keychain")]
-                {
-                    if jacs::keystore::keychain::is_available() {
-                        match jacs::keystore::keychain::store_password(&password) {
-                            Ok(()) => eprintln!("Password stored in OS keychain."),
-                            Err(e) => eprintln!("Warning: Could not store in OS keychain: {}", e),
-                        }
-                    }
-                }
+                // Note: keychain storage is handled by quickstart() after agent
+                // creation, when the agent_id is known.
             }
 
             let (agent, info) =
@@ -2541,6 +2564,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
             match keychain_matches.subcommand() {
                 Some(("set", sub)) => {
+                    let agent_id = sub.get_one::<String>("agent-id").unwrap();
                     let password = if let Some(pw) = sub.get_one::<String>("password") {
                         pw.clone()
                     } else {
@@ -2556,29 +2580,36 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         eprintln!("Error: {}", e);
                         process::exit(1);
                     }
-                    keychain::store_password(&password)?;
-                    eprintln!("Password stored in OS keychain.");
+                    keychain::store_password(agent_id, &password)?;
+                    eprintln!("Password stored in OS keychain for agent {}.", agent_id);
                 }
-                Some(("get", _)) => match keychain::get_password()? {
-                    Some(pw) => println!("{}", pw),
-                    None => {
-                        eprintln!("No password found in OS keychain.");
-                        process::exit(1);
+                Some(("get", sub)) => {
+                    let agent_id = sub.get_one::<String>("agent-id").unwrap();
+                    match keychain::get_password(agent_id)? {
+                        Some(pw) => println!("{}", pw),
+                        None => {
+                            eprintln!("No password found in OS keychain for agent {}.", agent_id);
+                            process::exit(1);
+                        }
                     }
-                },
-                Some(("delete", _)) => {
-                    keychain::delete_password()?;
-                    eprintln!("Password removed from OS keychain.");
                 }
-                Some(("status", _)) => {
+                Some(("delete", sub)) => {
+                    let agent_id = sub.get_one::<String>("agent-id").unwrap();
+                    keychain::delete_password(agent_id)?;
+                    eprintln!("Password removed from OS keychain for agent {}.", agent_id);
+                }
+                Some(("status", sub)) => {
+                    let agent_id = sub.get_one::<String>("agent-id").unwrap();
                     if keychain::is_available() {
-                        match keychain::get_password() {
+                        match keychain::get_password(agent_id) {
                             Ok(Some(_)) => {
                                 eprintln!("Keychain backend: available");
+                                eprintln!("Agent: {}", agent_id);
                                 eprintln!("Password: stored");
                             }
                             Ok(None) => {
                                 eprintln!("Keychain backend: available");
+                                eprintln!("Agent: {}", agent_id);
                                 eprintln!("Password: not stored");
                             }
                             Err(e) => {

@@ -245,27 +245,28 @@ Signed at: 2026-02-10T12:00:00Z
 <p>Requires the <code>keychain</code> feature (enabled by default in <code>jacs-cli</code>).
 Set <code>JACS_KEYCHAIN_BACKEND=disabled</code> to skip keychain lookups in CI/headless environments.</p>
 </blockquote>
+<p>Every keychain command requires <code>--agent-id</code> so that each agent's password is stored separately. This prevents collisions when multiple agents coexist on the same machine.</p>
 <pre><code class="language-bash"># Store a password interactively (prompts for input)
-jacs keychain set
+jacs keychain set --agent-id &lt;AGENT_UUID&gt;
 
 # Store a password non-interactively (for scripting)
-jacs keychain set --password "YourStr0ng!Pass#Here"
+jacs keychain set --agent-id &lt;AGENT_UUID&gt; --password "YourStr0ng!Pass#Here"
 
 # Retrieve the stored password (prints to stdout, for piping)
-export JACS_PRIVATE_KEY_PASSWORD=$(jacs keychain get)
+export JACS_PRIVATE_KEY_PASSWORD=$(jacs keychain get --agent-id &lt;AGENT_UUID&gt;)
 
 # Remove the stored password
-jacs keychain delete
+jacs keychain delete --agent-id &lt;AGENT_UUID&gt;
 
 # Check keychain availability and whether a password is stored
-jacs keychain status
+jacs keychain status --agent-id &lt;AGENT_UUID&gt;
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Subcommand</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>jacs keychain set</code></td><td>Store a password (prompts interactively)</td></tr>
-<tr><td><code>jacs keychain set --password &lt;pw&gt;</code></td><td>Store a specific password (for scripting)</td></tr>
-<tr><td><code>jacs keychain get</code></td><td>Print stored password to stdout</td></tr>
-<tr><td><code>jacs keychain delete</code></td><td>Remove stored password from OS keychain</td></tr>
-<tr><td><code>jacs keychain status</code></td><td>Check keychain availability and storage state</td></tr>
+<tr><td><code>jacs keychain set --agent-id &lt;ID&gt;</code></td><td>Store a password for an agent (prompts interactively)</td></tr>
+<tr><td><code>jacs keychain set --agent-id &lt;ID&gt; --password &lt;pw&gt;</code></td><td>Store a specific password (for scripting)</td></tr>
+<tr><td><code>jacs keychain get --agent-id &lt;ID&gt;</code></td><td>Print stored password to stdout</td></tr>
+<tr><td><code>jacs keychain delete --agent-id &lt;ID&gt;</code></td><td>Remove stored password from OS keychain</td></tr>
+<tr><td><code>jacs keychain status --agent-id &lt;ID&gt;</code></td><td>Check keychain availability and storage state</td></tr>
 </tbody></table>
 </div>
 <p><strong>Output conventions:</strong> Human-friendly messages go to stderr; machine-friendly data goes to stdout. This means <code>jacs keychain get</code> output can be safely piped or captured in a variable.</p>
@@ -273,7 +274,7 @@ jacs keychain status
 <ol>
 <li><code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable (highest priority)</li>
 <li><code>JACS_PASSWORD_FILE</code> / legacy <code>.jacs_password</code> file</li>
-<li>OS keychain (if <code>keychain</code> feature is enabled and not disabled)</li>
+<li>OS keychain keyed by agent ID (if <code>keychain</code> feature is enabled and not disabled)</li>
 </ol>
 <h3 id="jacs-init"><a class="header" href="#jacs-init"><code>jacs init</code></a></h3>
 <p>Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.</p>

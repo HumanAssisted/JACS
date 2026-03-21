@@ -87,37 +87,39 @@ Manage private key passwords in the OS keychain (macOS Keychain or Linux Secret 
 > Requires the `keychain` feature (enabled by default in `jacs-cli`).
 > Set `JACS_KEYCHAIN_BACKEND=disabled` to skip keychain lookups in CI/headless environments.
 
+Every keychain command requires `--agent-id` so that each agent's password is stored separately. This prevents collisions when multiple agents coexist on the same machine.
+
 ```bash
 # Store a password interactively (prompts for input)
-jacs keychain set
+jacs keychain set --agent-id <AGENT_UUID>
 
 # Store a password non-interactively (for scripting)
-jacs keychain set --password "YourStr0ng!Pass#Here"
+jacs keychain set --agent-id <AGENT_UUID> --password "YourStr0ng!Pass#Here"
 
 # Retrieve the stored password (prints to stdout, for piping)
-export JACS_PRIVATE_KEY_PASSWORD=$(jacs keychain get)
+export JACS_PRIVATE_KEY_PASSWORD=$(jacs keychain get --agent-id <AGENT_UUID>)
 
 # Remove the stored password
-jacs keychain delete
+jacs keychain delete --agent-id <AGENT_UUID>
 
 # Check keychain availability and whether a password is stored
-jacs keychain status
+jacs keychain status --agent-id <AGENT_UUID>
 ```
 
 | Subcommand | Description |
 |------------|-------------|
-| `jacs keychain set` | Store a password (prompts interactively) |
-| `jacs keychain set --password <pw>` | Store a specific password (for scripting) |
-| `jacs keychain get` | Print stored password to stdout |
-| `jacs keychain delete` | Remove stored password from OS keychain |
-| `jacs keychain status` | Check keychain availability and storage state |
+| `jacs keychain set --agent-id <ID>` | Store a password for an agent (prompts interactively) |
+| `jacs keychain set --agent-id <ID> --password <pw>` | Store a specific password (for scripting) |
+| `jacs keychain get --agent-id <ID>` | Print stored password to stdout |
+| `jacs keychain delete --agent-id <ID>` | Remove stored password from OS keychain |
+| `jacs keychain status --agent-id <ID>` | Check keychain availability and storage state |
 
 **Output conventions:** Human-friendly messages go to stderr; machine-friendly data goes to stdout. This means `jacs keychain get` output can be safely piped or captured in a variable.
 
 **Password resolution order:** When JACS needs the private key password, it checks sources in this order:
 1. `JACS_PRIVATE_KEY_PASSWORD` environment variable (highest priority)
 2. `JACS_PASSWORD_FILE` / legacy `.jacs_password` file
-3. OS keychain (if `keychain` feature is enabled and not disabled)
+3. OS keychain keyed by agent ID (if `keychain` feature is enabled and not disabled)
 
 ### `jacs init`
 Initialize JACS by creating both configuration and agent (with cryptographic keys). Use this for persistent agent setup.

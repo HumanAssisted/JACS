@@ -653,7 +653,7 @@ pub fn quickstart(
     }
 
     // Resolve password from env var, OS keychain, or fail with helpful message.
-    let password = crate::crypt::aes_encrypt::resolve_private_key_password(None)?;
+    let password = crate::crypt::aes_encrypt::resolve_private_key_password(None, None)?;
 
     // Use create_with_params for full control
     let algo = match algorithm.unwrap_or("pq2025") {
@@ -678,9 +678,12 @@ pub fn quickstart(
     // Store the password in the OS keychain when available (PRD Decision #1).
     // This means future operations "just work" without env vars or password files.
     if crate::keystore::keychain::is_available() {
-        match crate::keystore::keychain::store_password(&password) {
+        match crate::keystore::keychain::store_password(&result.1.agent_id, &password) {
             Ok(()) => {
-                info!("Password stored in OS keychain (service: jacs-private-key)");
+                info!(
+                    "Password stored in OS keychain (service: jacs-private-key, agent: {})",
+                    result.1.agent_id
+                );
             }
             Err(e) => {
                 warn!("Could not store password in OS keychain: {}", e);

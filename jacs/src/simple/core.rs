@@ -416,7 +416,7 @@ impl SimpleAgent {
         let password = if !params.password.is_empty() {
             params.password.clone()
         } else {
-            match crate::crypt::aes_encrypt::resolve_private_key_password(None) {
+            match crate::crypt::aes_encrypt::resolve_private_key_password(None, None) {
                 Ok(pw) if !pw.is_empty() => pw,
                 Ok(_) => {
                     return Err(JacsError::ConfigError(

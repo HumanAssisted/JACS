@@ -115,8 +115,11 @@ pub trait KeyStore: Send + Sync + fmt::Debug {
 /// or an error describing what the user needs to do. This is the single
 /// policy-enforcement point used by `save_private_key` to ensure keys are
 /// never written unencrypted.
-pub fn require_encryption_password(explicit_password: Option<&str>) -> Result<(), JacsError> {
-    crate::crypt::aes_encrypt::resolve_private_key_password(explicit_password)?;
+pub fn require_encryption_password(
+    explicit_password: Option<&str>,
+    agent_id: Option<&str>,
+) -> Result<(), JacsError> {
+    crate::crypt::aes_encrypt::resolve_private_key_password(explicit_password, agent_id)?;
     Ok(())
 }
 
@@ -295,8 +298,10 @@ impl KeyStore for FsEncryptedStore {
         let pub_path = self.paths.public_key_path();
         let final_priv_path = self.paths.private_key_enc_path();
 
-        let resolved_pw =
-            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let resolved_pw = crate::crypt::aes_encrypt::resolve_private_key_password(
+            self.password.as_deref(),
+            None,
+        )?;
         let enc = crate::crypt::aes_encrypt::encrypt_private_key_with_password(&priv_key, &resolved_pw).map_err(|e| {
             format!(
                 "Failed to encrypt private key for storage: {}. Check your JACS_PRIVATE_KEY_PASSWORD meets the security requirements.",
@@ -334,8 +339,10 @@ impl KeyStore for FsEncryptedStore {
         let storage = Self::storage_for_key_dir(key_dir)?;
         let priv_path = self.paths.private_key_path();
         let enc_path = self.paths.private_key_enc_path();
-        let _password =
-            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let _password = crate::crypt::aes_encrypt::resolve_private_key_password(
+            self.password.as_deref(),
+            None,
+        )?;
 
         let bytes = storage.get_file(&priv_path, None).or_else(|e1| {
             storage.get_file(&enc_path, None).map_err(|e2| {
@@ -349,8 +356,10 @@ impl KeyStore for FsEncryptedStore {
         })?;
 
         // Use secure decryption with agent-scoped password if available
-        let resolved_pw =
-            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let resolved_pw = crate::crypt::aes_encrypt::resolve_private_key_password(
+            self.password.as_deref(),
+            None,
+        )?;
         let decrypted = crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(
             &bytes,
             &resolved_pw,

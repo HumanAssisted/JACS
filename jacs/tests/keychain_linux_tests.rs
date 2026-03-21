@@ -1,7 +1,7 @@
 //! Linux keychain integration tests.
 //!
 //! These tests exercise the `keyring` crate's `sync-secret-service` backend
-//! (D-Bus Secret Service — GNOME Keyring, KDE Wallet, KeePassXC) on Linux.
+//! (D-Bus Secret Service -- GNOME Keyring, KDE Wallet, KeePassXC) on Linux.
 //!
 //! **Mock backend (CI-safe):**
 //! Tests gated with `#[cfg(all(target_os = "linux", feature = "keychain-tests"))]`
@@ -19,6 +19,9 @@
 use jacs::crypt::aes_encrypt::resolve_private_key_password;
 use jacs::keystore::keychain;
 use serial_test::serial;
+
+const TEST_AGENT: &str = "__test_linux_agent__";
+const TEST_PASSWORD: &str = "Test!LinuxKeychain#Str0ng2026";
 
 /// RAII guard that restores JACS_PRIVATE_KEY_PASSWORD env var on drop.
 struct EnvGuard {
@@ -65,37 +68,28 @@ impl Drop for EnvGuard {
 }
 
 fn cleanup() {
-    let _ = keychain::delete_password();
+    let _ = keychain::delete_password(TEST_AGENT);
 }
-
-const TEST_PASSWORD: &str = "Test!LinuxKeychain#Str0ng2026";
 
 // =============================================================================
 // Mock-backend tests (always safe to run in headless CI)
 // =============================================================================
-
-// NOTE: These tests exercise the keychain module's store/get/delete functions.
-// On Linux in CI, the real Secret Service backend may not be available.
-// The keychain module will return errors from Entry::new() if D-Bus is missing,
-// which is acceptable — these tests verify the code paths handle that gracefully.
-// For full end-to-end keychain testing on Linux, set JACS_TEST_REAL_KEYRING=1
-// and ensure a D-Bus session with keyring daemon is running.
 
 #[test]
 #[serial]
 fn test_linux_keychain_store_and_retrieve() {
     cleanup();
 
-    // Attempt to store — may fail if no D-Bus session
-    match keychain::store_password(TEST_PASSWORD) {
+    // Attempt to store -- may fail if no D-Bus session
+    match keychain::store_password(TEST_AGENT, TEST_PASSWORD) {
         Ok(()) => {
             // Stored successfully, verify retrieval
-            let pw = keychain::get_password().unwrap();
+            let pw = keychain::get_password(TEST_AGENT).unwrap();
             assert_eq!(pw, Some(TEST_PASSWORD.to_string()));
             cleanup();
         }
         Err(e) => {
-            // Expected in headless CI without D-Bus — the test verifies graceful error handling
+            // Expected in headless CI without D-Bus
             eprintln!("Skipping real keychain test (no D-Bus session): {}", e);
         }
     }
@@ -106,11 +100,11 @@ fn test_linux_keychain_store_and_retrieve() {
 fn test_linux_keychain_delete() {
     cleanup();
 
-    match keychain::store_password(TEST_PASSWORD) {
+    match keychain::store_password(TEST_AGENT, TEST_PASSWORD) {
         Ok(()) => {
             // Delete and verify
-            keychain::delete_password().unwrap();
-            let pw = keychain::get_password().unwrap();
+            keychain::delete_password(TEST_AGENT).unwrap();
+            let pw = keychain::get_password(TEST_AGENT).unwrap();
             assert!(pw.is_none());
         }
         Err(e) => {
@@ -128,12 +122,12 @@ fn test_linux_keychain_resolve_password_falls_back_to_keychain() {
     let _guard = EnvGuard::new();
     cleanup();
 
-    match keychain::store_password(TEST_PASSWORD) {
+    match keychain::store_password(TEST_AGENT, TEST_PASSWORD) {
         Ok(()) => {
             // Unset env var so resolve_private_key_password falls back to keychain
             _guard.unset_password();
 
-            let pw = resolve_private_key_password().unwrap();
+            let pw = resolve_private_key_password(None, Some(TEST_AGENT)).unwrap();
             assert_eq!(pw, TEST_PASSWORD);
 
             cleanup();
@@ -153,7 +147,7 @@ fn test_linux_keychain_env_var_takes_priority() {
     let _guard = EnvGuard::new();
     cleanup();
 
-    match keychain::store_password("KeychainPassword!Linux123") {
+    match keychain::store_password(TEST_AGENT, "KeychainPassword!Linux123") {
         Ok(()) => {
             // Set a different password in env var
             unsafe {
@@ -161,7 +155,7 @@ fn test_linux_keychain_env_var_takes_priority() {
             }
 
             // resolve should prefer env var
-            let pw = resolve_private_key_password().unwrap();
+            let pw = resolve_private_key_password(None, Some(TEST_AGENT)).unwrap();
             assert_eq!(pw, "EnvVarPassword!Linux456");
 
             cleanup();
@@ -178,7 +172,7 @@ fn test_linux_keychain_respects_disabled_backend() {
     let _guard = EnvGuard::new();
     cleanup();
 
-    match keychain::store_password(TEST_PASSWORD) {
+    match keychain::store_password(TEST_AGENT, TEST_PASSWORD) {
         Ok(()) => {
             // Unset password env var
             _guard.unset_password();
@@ -188,8 +182,8 @@ fn test_linux_keychain_respects_disabled_backend() {
                 std::env::set_var("JACS_KEYCHAIN_BACKEND", "disabled");
             }
 
-            // Should fail — keychain is disabled and no env var
-            let result = resolve_private_key_password();
+            // Should fail -- keychain is disabled and no env var
+            let result = resolve_private_key_password(None, Some(TEST_AGENT));
             assert!(result.is_err());
 
             cleanup();
@@ -226,14 +220,14 @@ mod real_backend_tests {
         }
         cleanup();
 
-        keychain::store_password(TEST_PASSWORD)
-            .expect("Failed to store in real keyring — is D-Bus session + daemon running?");
+        keychain::store_password(TEST_AGENT, TEST_PASSWORD)
+            .expect("Failed to store in real keyring -- is D-Bus session + daemon running?");
 
-        let pw = keychain::get_password().unwrap();
+        let pw = keychain::get_password(TEST_AGENT).unwrap();
         assert_eq!(pw, Some(TEST_PASSWORD.to_string()));
 
-        keychain::delete_password().unwrap();
-        let pw = keychain::get_password().unwrap();
+        keychain::delete_password(TEST_AGENT).unwrap();
+        let pw = keychain::get_password(TEST_AGENT).unwrap();
         assert!(pw.is_none());
     }
 }
