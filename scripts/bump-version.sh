@@ -53,7 +53,7 @@ MAIN_CARGO_FILES=(
 
 for f in "${MAIN_CARGO_FILES[@]}"; do
   # Replace only the first version = "..." line (package version)
-  sed -i '' "0,/^version = \"$CURRENT\"/s//version = \"$NEW_VERSION\"/" "$f"
+  sed -i '' "s/^version = \"$CURRENT\"/version = \"$NEW_VERSION\"/" "$f"
   echo "  $f: package version"
 done
 
@@ -120,7 +120,7 @@ for crate in "${STORAGE_CRATES[@]}"; do
   STORAGE_NEW=$(bump_patch "$STORAGE_CURRENT")
 
   # Bump package version
-  sed -i '' "0,/^version = \"$STORAGE_CURRENT\"/s//version = \"$STORAGE_NEW\"/" "$f"
+  sed -i '' "s/^version = \"$STORAGE_CURRENT\"/version = \"$STORAGE_NEW\"/" "$f"
 
   # Update jacs dependency version
   sed -i '' "s/jacs = { version = \"$CURRENT\"/jacs = { version = \"$NEW_VERSION\"/" "$f"
