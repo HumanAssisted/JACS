@@ -255,11 +255,12 @@ impl Agent {
             };
             (raw, ks)
         } else {
-            let decrypted =
-                crate::agent::decrypt_with_agent_password(binding.expose_secret(), self.password())
-                    .map_err(|e| {
-                        format!("Byte signing failed: could not decrypt private key: {}", e)
-                    })?;
+            let decrypted = crate::agent::decrypt_with_agent_password(
+                binding.expose_secret(),
+                self.password(),
+                self.id.as_deref(),
+            )
+            .map_err(|e| format!("Byte signing failed: could not decrypt private key: {}", e))?;
             (
                 decrypted.as_slice().to_vec(),
                 Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
@@ -359,6 +360,7 @@ impl KeyManager for Agent {
                 let decrypted = crate::agent::decrypt_with_agent_password(
                     binding.expose_secret(),
                     self.password(),
+                    self.id.as_deref(),
                 )
                 .map_err(|e| {
                     format!(
@@ -453,15 +455,18 @@ impl KeyManager for Agent {
             };
             (raw, ks)
         } else {
-            let decrypted =
-                crate::agent::decrypt_with_agent_password(binding.expose_secret(), self.password())
-                    .map_err(|e| {
-                        format!(
-                            "Batch signing failed: could not decrypt private key. \
+            let decrypted = crate::agent::decrypt_with_agent_password(
+                binding.expose_secret(),
+                self.password(),
+                self.id.as_deref(),
+            )
+            .map_err(|e| {
+                format!(
+                    "Batch signing failed: could not decrypt private key. \
                             Check that the password is correct. Error: {}",
-                            e
-                        )
-                    })?;
+                    e
+                )
+            })?;
             (
                 decrypted.as_slice().to_vec(),
                 Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,

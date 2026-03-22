@@ -171,7 +171,7 @@ Private keys are encrypted using AES-256-GCM with a key derived via PBKDF2-HMAC-
 export JACS_PRIVATE_KEY_PASSWORD="secure-password"
 
 # Option 2: OS keychain (recommended for developer workstations)
-jacs keychain set
+jacs keychain set --agent-id <YOUR_AGENT_UUID>
 ```
 
 > **Important**: The CLI can prompt for the password during `jacs init`, but scripts and servers must set `JACS_PRIVATE_KEY_PASSWORD` as an environment variable or use the OS keychain.
@@ -183,11 +183,11 @@ On macOS and Linux desktops, JACS can store and retrieve the private key passwor
 - **macOS**: Uses Security.framework (Keychain Access)
 - **Linux**: Uses the freedesktop.org D-Bus Secret Service API (GNOME Keyring, KDE Wallet, KeePassXC)
 
-Store your password once with `jacs keychain set`, and all subsequent JACS operations will find it automatically. The password resolution order is:
+Each password is keyed by agent ID, so multiple agents can coexist on the same machine without overwriting each other. Store your password once with `jacs keychain set --agent-id <ID>`, and all subsequent JACS operations will find it automatically. The password resolution order is:
 
 1. `JACS_PRIVATE_KEY_PASSWORD` env var (highest priority -- explicit always wins)
 2. `JACS_PASSWORD_FILE` / legacy `.jacs_password` file
-3. OS keychain (lowest priority among explicit sources)
+3. OS keychain keyed by agent ID (lowest priority among explicit sources)
 
 To disable keychain lookups (recommended for CI and headless environments):
 
@@ -564,7 +564,7 @@ chmod 600 ./jacs_keys/private.pem
 export JACS_PRIVATE_KEY_PASSWORD="$(pass show jacs/key-password)"
 
 # Option B: Use OS keychain (developer workstations)
-jacs keychain set  # stores password securely in OS credential store
+jacs keychain set --agent-id <AGENT_UUID>  # stores password securely in OS credential store
 
 # Option C: Disable keychain for headless/CI environments
 export JACS_KEYCHAIN_BACKEND=disabled

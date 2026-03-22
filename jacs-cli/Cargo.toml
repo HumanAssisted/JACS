@@ -1,6 +1,6 @@
 [package]
 name = "jacs-cli"
-version = "0.9.9"
+version = "0.9.10"
 edition = "2024"
 rust-version = "1.93"
 description = "JACS CLI: command-line interface for JSON AI Communication Standard"
@@ -23,8 +23,8 @@ attestation = ["jacs/attestation"]
 keychain = ["jacs/keychain"]
 
 [dependencies]
-jacs = { version = "0.9.9", path = "../jacs" }
-jacs-mcp = { version = "0.9.9", path = "../jacs-mcp", features = ["mcp", "full-tools"], optional = true }
+jacs = { version = "0.9.10", path = "../jacs" }
+jacs-mcp = { version = "0.9.10", path = "../jacs-mcp", features = ["mcp", "full-tools"], optional = true }
 clap = { version = "4.5.4", features = ["derive", "cargo"] }
 rpassword = "7.3.1"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }

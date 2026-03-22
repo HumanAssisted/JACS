@@ -234,8 +234,9 @@ pub type SecretPrivateKey = SecretBox<Vec<u8>>;
 pub(crate) fn decrypt_with_agent_password(
     key: &[u8],
     password: Option<&str>,
+    agent_id: Option<&str>,
 ) -> Result<ZeroizingVec, JacsError> {
-    let resolved = crate::crypt::aes_encrypt::resolve_private_key_password(password)?;
+    let resolved = crate::crypt::aes_encrypt::resolve_private_key_password(password, agent_id)?;
     crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(key, &resolved)
 }
 
@@ -255,7 +256,7 @@ pub struct Agent {
     /// the resolver might ahve trouble TEST
     document_schemas: Arc<Mutex<HashMap<String, Validator>>>,
     /// everything needed for the agent to sign things
-    id: Option<String>,
+    pub(crate) id: Option<String>,
     version: Option<String>,
     public_key: Option<Vec<u8>>,
     private_key: Option<SecretPrivateKey>,
@@ -632,7 +633,10 @@ impl Agent {
     /// Resolve the private key password using the agent-scoped password if available,
     /// falling back to env/jenv/keychain.
     pub fn resolve_password(&self) -> Result<String, JacsError> {
-        crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())
+        crate::crypt::aes_encrypt::resolve_private_key_password(
+            self.password.as_deref(),
+            self.id.as_deref(),
+        )
     }
 
     /// Build an `FsEncryptedStore` from the agent's `key_paths` and `password`.
@@ -918,8 +922,10 @@ impl Agent {
         public_key: Vec<u8>,
         key_algorithm: &str,
     ) -> Result<(), JacsError> {
-        let resolved_pw =
-            crate::crypt::aes_encrypt::resolve_private_key_password(self.password.as_deref())?;
+        let resolved_pw = crate::crypt::aes_encrypt::resolve_private_key_password(
+            self.password.as_deref(),
+            self.id.as_deref(),
+        )?;
         let private_key_encrypted = crate::crypt::aes_encrypt::encrypt_private_key_with_password(
             &private_key,
             &resolved_pw,

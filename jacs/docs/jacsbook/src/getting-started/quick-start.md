@@ -15,7 +15,7 @@ Rust CLI quickstart requires a password source. Choose one:
 export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
 
 # Option B: OS keychain (recommended for developer workstations)
-jacs keychain set   # prompts once, then all JACS commands find the password automatically
+jacs keychain set --agent-id <YOUR_AGENT_UUID>   # prompts once, then JACS finds the password automatically
 
 # Option C: Password file (CLI convenience)
 export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt

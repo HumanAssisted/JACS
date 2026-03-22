@@ -251,7 +251,7 @@ mod save_private_key_no_plaintext {
     #[serial]
     fn require_password_rejects_empty() {
         let _guard = EnvVarGuard::unset("JACS_PRIVATE_KEY_PASSWORD");
-        let result = jacs::keystore::require_encryption_password(None);
+        let result = jacs::keystore::require_encryption_password(None, None);
         assert!(
             result.is_err(),
             "Must reject missing JACS_PRIVATE_KEY_PASSWORD"
@@ -262,7 +262,7 @@ mod save_private_key_no_plaintext {
     #[serial]
     fn require_password_rejects_whitespace_only() {
         let _guard = EnvVarGuard::set("JACS_PRIVATE_KEY_PASSWORD", "   ");
-        let result = jacs::keystore::require_encryption_password(None);
+        let result = jacs::keystore::require_encryption_password(None, None);
         assert!(
             result.is_err(),
             "Must reject whitespace-only JACS_PRIVATE_KEY_PASSWORD"
@@ -273,7 +273,7 @@ mod save_private_key_no_plaintext {
     #[serial]
     fn require_password_accepts_valid() {
         let _guard = EnvVarGuard::set("JACS_PRIVATE_KEY_PASSWORD", "strong-password-123");
-        let result = jacs::keystore::require_encryption_password(None);
+        let result = jacs::keystore::require_encryption_password(None, None);
         assert!(result.is_ok(), "Must accept valid password");
     }
 }

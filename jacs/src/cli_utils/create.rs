@@ -121,11 +121,8 @@ fn resolve_cli_password_for_config_create() -> Result<Option<String>, JacsError>
         return Ok(Some(password));
     }
 
-    // Try OS keychain as a fallback
-    if let Ok(Some(pw)) = crate::keystore::keychain::get_password() {
-        println!("Using password from OS keychain.");
-        return Ok(Some(pw));
-    }
+    // Note: OS keychain lookup requires an agent_id and is handled at agent
+    // creation time, not during config creation.
 
     Ok(None)
 }
@@ -259,22 +256,8 @@ pub fn handle_config_create() -> Result<(), JacsError> {
         }
     };
 
-    // Store the password in the OS keychain when available so future
-    // operations "just work" without env vars or password files.
-    if crate::keystore::keychain::is_available() {
-        match crate::keystore::keychain::store_password(&jacs_private_key_password) {
-            Ok(()) => {
-                println!("Password stored in OS keychain.");
-            }
-            Err(e) => {
-                eprintln!(
-                    "Warning: Could not store password in OS keychain: {}. \
-                     You will need to set JACS_PRIVATE_KEY_PASSWORD for future operations.",
-                    e
-                );
-            }
-        }
-    }
+    // Note: keychain storage is deferred to agent creation, which has
+    // the agent_id needed for per-agent keychain entries.
 
     let jacs_use_security = request_string("Use experimental security features", "false");
     let jacs_data_directory = request_string("Directory for data storage", "./jacs");

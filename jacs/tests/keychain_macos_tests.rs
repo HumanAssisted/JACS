@@ -13,6 +13,9 @@ use jacs::simple::{CreateAgentParams, SimpleAgent};
 use serial_test::serial;
 use tempfile::TempDir;
 
+const TEST_AGENT: &str = "__test_macos_agent__";
+const TEST_PASSWORD: &str = "Test!Keychain#Str0ng2026";
+
 /// RAII guard that restores JACS_PRIVATE_KEY_PASSWORD and JACS_KEYCHAIN_BACKEND env vars on drop.
 struct EnvGuard {
     previous_password: Option<String>,
@@ -61,10 +64,8 @@ impl Drop for EnvGuard {
 }
 
 fn cleanup() {
-    let _ = keychain::delete_password();
+    let _ = keychain::delete_password(TEST_AGENT);
 }
-
-const TEST_PASSWORD: &str = "Test!Keychain#Str0ng2026";
 
 #[test]
 #[serial]
@@ -73,7 +74,7 @@ fn test_macos_keychain_resolve_password_prefers_env_var() {
     cleanup();
 
     // Store one password in keychain
-    keychain::store_password("KeychainPassword!123").unwrap();
+    keychain::store_password(TEST_AGENT, "KeychainPassword!123").unwrap();
 
     // Set a different password in env var
     unsafe {
@@ -81,7 +82,7 @@ fn test_macos_keychain_resolve_password_prefers_env_var() {
     }
 
     // resolve should prefer env var
-    let pw = resolve_private_key_password().unwrap();
+    let pw = resolve_private_key_password(None, Some(TEST_AGENT)).unwrap();
     assert_eq!(pw, "EnvVarPassword!456");
 
     cleanup();
@@ -94,13 +95,13 @@ fn test_macos_keychain_resolve_password_falls_back_to_keychain() {
     cleanup();
 
     // Store password in keychain
-    keychain::store_password(TEST_PASSWORD).unwrap();
+    keychain::store_password(TEST_AGENT, TEST_PASSWORD).unwrap();
 
     // Unset env var
     _guard.unset();
 
     // resolve should fall back to keychain
-    let pw = resolve_private_key_password().unwrap();
+    let pw = resolve_private_key_password(None, Some(TEST_AGENT)).unwrap();
     assert_eq!(pw, TEST_PASSWORD);
 
     cleanup();
@@ -115,10 +116,29 @@ fn test_macos_keychain_resolve_password_fails_when_both_empty() {
     // No env var, no keychain
     _guard.unset();
 
-    let result = resolve_private_key_password();
+    let result = resolve_private_key_password(None, Some(TEST_AGENT));
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("No private key password available"));
+
+    cleanup();
+}
+
+#[test]
+#[serial]
+fn test_macos_keychain_resolve_skips_keychain_without_agent_id() {
+    let _guard = EnvGuard::new();
+    cleanup();
+
+    // Store password in keychain
+    keychain::store_password(TEST_AGENT, TEST_PASSWORD).unwrap();
+
+    // Unset env var
+    _guard.unset();
+
+    // resolve with no agent_id should NOT find the keychain password
+    let result = resolve_private_key_password(None, None);
+    assert!(result.is_err());
 
     cleanup();
 }
@@ -130,7 +150,7 @@ fn test_macos_keychain_resolve_respects_disabled_backend() {
     cleanup();
 
     // Store password in keychain
-    keychain::store_password(TEST_PASSWORD).unwrap();
+    keychain::store_password(TEST_AGENT, TEST_PASSWORD).unwrap();
 
     // Unset password env var
     _guard.unset();
@@ -140,8 +160,8 @@ fn test_macos_keychain_resolve_respects_disabled_backend() {
         std::env::set_var("JACS_KEYCHAIN_BACKEND", "disabled");
     }
 
-    // Should fail — keychain is disabled and no env var
-    let result = resolve_private_key_password();
+    // Should fail -- keychain is disabled and no env var
+    let result = resolve_private_key_password(None, Some(TEST_AGENT));
     assert!(result.is_err());
 
     // EnvGuard restores JACS_KEYCHAIN_BACKEND on drop
@@ -149,7 +169,7 @@ fn test_macos_keychain_resolve_respects_disabled_backend() {
 }
 
 /// End-to-end test: store password in keychain FIRST, then create agent,
-/// sign, verify — all without JACS_PRIVATE_KEY_PASSWORD env var.
+/// sign, verify -- all without JACS_PRIVATE_KEY_PASSWORD env var.
 /// This proves the full stack works from keychain to signed document.
 #[test]
 #[serial]
@@ -159,16 +179,18 @@ fn test_macos_keychain_agent_sign_verify_no_env_var() {
 
     let password = "Test!EndToEnd#Str0ng2026";
 
-    // 1. Store password in keychain and unset env var
-    keychain::store_password(password).unwrap();
+    // 1. Store password in keychain under a known agent_id and unset env var
+    let agent_id = "__test_e2e_agent__";
+    keychain::store_password(agent_id, password).unwrap();
     _guard.unset(); // Remove JACS_PRIVATE_KEY_PASSWORD from env AND jenv store
 
     // Sanity check: keychain has the password, env var does not
     assert_eq!(
-        keychain::get_password().unwrap(),
+        keychain::get_password(agent_id).unwrap(),
         Some(password.to_string())
     );
-    let resolved = resolve_private_key_password().expect("resolve should find keychain password");
+    let resolved = resolve_private_key_password(None, Some(agent_id))
+        .expect("resolve should find keychain password");
     assert_eq!(resolved, password);
 
     // 2. Create agent in a temp directory. The password param is required for
@@ -188,13 +210,13 @@ fn test_macos_keychain_agent_sign_verify_no_env_var() {
         .config_path(config_path.to_str().unwrap())
         .build();
     let (_agent, _info) = SimpleAgent::create_with_params(params).expect("create agent");
-    // Drop the agent — we'll reload from disk to prove keychain path works
+    // Drop the agent -- we'll reload from disk to prove keychain path works
     drop(_agent);
 
     // 3. Ensure env var is still cleared (create_with_params restores on drop)
     _guard.unset();
 
-    // 4. Load agent from disk — password resolved via keychain
+    // 4. Load agent from disk -- password resolved via keychain
     let loaded_agent = SimpleAgent::load(Some(config_path.to_str().unwrap()), None)
         .expect("load agent from disk with keychain password");
 
@@ -211,5 +233,6 @@ fn test_macos_keychain_agent_sign_verify_no_env_var() {
         result.errors
     );
 
+    let _ = keychain::delete_password(agent_id);
     cleanup();
 }

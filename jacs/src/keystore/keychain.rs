@@ -4,13 +4,15 @@
 //! to store/retrieve JACS private key passwords in the OS credential store
 //! (macOS Keychain, Linux Secret Service via D-Bus).
 //!
+//! Every password is keyed by agent_id so that multiple agents can coexist
+//! without overwriting each other.
+//!
 //! When the feature is disabled, stub functions return `None`/errors so callers
 //! can call `keychain::get_password()` unconditionally without `#[cfg]` at every call site.
 
 use crate::error::JacsError;
 
 pub const SERVICE_NAME: &str = "jacs-private-key";
-pub const DEFAULT_USER: &str = "default";
 
 // =============================================================================
 // Feature-enabled implementation
@@ -45,24 +47,19 @@ mod inner {
         }
     }
 
-    fn make_entry(user: &str) -> Result<Entry, JacsError> {
-        Entry::new(SERVICE_NAME, user).map_err(map_keyring_error)
+    fn make_entry(agent_id: &str) -> Result<Entry, JacsError> {
+        Entry::new(SERVICE_NAME, agent_id).map_err(map_keyring_error)
     }
 
-    pub fn store_password(password: &str) -> Result<(), JacsError> {
+    pub fn store_password(agent_id: &str, password: &str) -> Result<(), JacsError> {
         if is_runtime_disabled() {
             return Ok(()); // silently skip when keychain is disabled
         }
-        if password.is_empty() {
+        if agent_id.is_empty() {
             return Err(JacsError::ConfigError(
-                "Cannot store an empty password in the OS keychain.".to_string(),
+                "Cannot store password in OS keychain without an agent_id.".to_string(),
             ));
         }
-        let entry = make_entry(DEFAULT_USER)?;
-        entry.set_password(password).map_err(map_keyring_error)
-    }
-
-    pub fn store_password_for_agent(agent_id: &str, password: &str) -> Result<(), JacsError> {
         if password.is_empty() {
             return Err(JacsError::ConfigError(
                 "Cannot store an empty password in the OS keychain.".to_string(),
@@ -72,19 +69,13 @@ mod inner {
         entry.set_password(password).map_err(map_keyring_error)
     }
 
-    pub fn get_password() -> Result<Option<String>, JacsError> {
+    pub fn get_password(agent_id: &str) -> Result<Option<String>, JacsError> {
         if is_runtime_disabled() {
             return Ok(None);
         }
-        let entry = make_entry(DEFAULT_USER)?;
-        match entry.get_password() {
-            Ok(pw) => Ok(Some(pw)),
-            Err(KeyringError::NoEntry) => Ok(None),
-            Err(e) => Err(map_keyring_error(e)),
+        if agent_id.is_empty() {
+            return Ok(None);
         }
-    }
-
-    pub fn get_password_for_agent(agent_id: &str) -> Result<Option<String>, JacsError> {
         let entry = make_entry(agent_id)?;
         match entry.get_password() {
             Ok(pw) => Ok(Some(pw)),
@@ -93,16 +84,12 @@ mod inner {
         }
     }
 
-    pub fn delete_password() -> Result<(), JacsError> {
-        let entry = make_entry(DEFAULT_USER)?;
-        match entry.delete_credential() {
-            Ok(()) => Ok(()),
-            Err(KeyringError::NoEntry) => Ok(()), // idempotent
-            Err(e) => Err(map_keyring_error(e)),
+    pub fn delete_password(agent_id: &str) -> Result<(), JacsError> {
+        if agent_id.is_empty() {
+            return Err(JacsError::ConfigError(
+                "Cannot delete password from OS keychain without an agent_id.".to_string(),
+            ));
         }
-    }
-
-    pub fn delete_password_for_agent(agent_id: &str) -> Result<(), JacsError> {
         let entry = make_entry(agent_id)?;
         match entry.delete_credential() {
             Ok(()) => Ok(()),
@@ -128,36 +115,18 @@ mod inner {
 mod inner {
     use super::*;
 
-    pub fn store_password(_password: &str) -> Result<(), JacsError> {
+    pub fn store_password(_agent_id: &str, _password: &str) -> Result<(), JacsError> {
         Err(JacsError::ConfigError(
             "OS keychain support is not enabled. Recompile with the 'keychain' feature flag."
                 .to_string(),
         ))
     }
 
-    pub fn store_password_for_agent(_agent_id: &str, _password: &str) -> Result<(), JacsError> {
-        Err(JacsError::ConfigError(
-            "OS keychain support is not enabled. Recompile with the 'keychain' feature flag."
-                .to_string(),
-        ))
-    }
-
-    pub fn get_password() -> Result<Option<String>, JacsError> {
+    pub fn get_password(_agent_id: &str) -> Result<Option<String>, JacsError> {
         Ok(None)
     }
 
-    pub fn get_password_for_agent(_agent_id: &str) -> Result<Option<String>, JacsError> {
-        Ok(None)
-    }
-
-    pub fn delete_password() -> Result<(), JacsError> {
-        Err(JacsError::ConfigError(
-            "OS keychain support is not enabled. Recompile with the 'keychain' feature flag."
-                .to_string(),
-        ))
-    }
-
-    pub fn delete_password_for_agent(_agent_id: &str) -> Result<(), JacsError> {
+    pub fn delete_password(_agent_id: &str) -> Result<(), JacsError> {
         Err(JacsError::ConfigError(
             "OS keychain support is not enabled. Recompile with the 'keychain' feature flag."
                 .to_string(),
@@ -191,12 +160,7 @@ mod tests {
 
         #[test]
         fn test_stub_get_returns_none() {
-            assert!(get_password().unwrap().is_none());
-        }
-
-        #[test]
-        fn test_stub_get_for_agent_returns_none() {
-            assert!(get_password_for_agent("test-agent").unwrap().is_none());
+            assert!(get_password("some-agent").unwrap().is_none());
         }
 
         #[test]
@@ -206,12 +170,12 @@ mod tests {
 
         #[test]
         fn test_stub_store_returns_error() {
-            assert!(store_password("test").is_err());
+            assert!(store_password("some-agent", "test").is_err());
         }
 
         #[test]
         fn test_stub_delete_returns_error() {
-            assert!(delete_password().is_err());
+            assert!(delete_password("some-agent").is_err());
         }
     }
 
@@ -224,22 +188,20 @@ mod tests {
         use super::*;
         use serial_test::serial;
 
-        // Use a unique service-scoped user to avoid collisions with real data.
-        // Tests clean up after themselves.
-        const TEST_USER: &str = "__jacs_test_keychain__";
-        const TEST_AGENT: &str = "__jacs_test_agent_id__";
+        const TEST_AGENT_A: &str = "__jacs_test_agent_a__";
+        const TEST_AGENT_B: &str = "__jacs_test_agent_b__";
 
         fn cleanup() {
-            let _ = delete_password();
-            let _ = delete_password_for_agent(TEST_AGENT);
+            let _ = delete_password(TEST_AGENT_A);
+            let _ = delete_password(TEST_AGENT_B);
         }
 
         #[test]
         #[serial(keychain_env)]
         fn test_store_and_get_password() {
             cleanup();
-            store_password("Test!Strong#Pass123").unwrap();
-            let pw = get_password().unwrap();
+            store_password(TEST_AGENT_A, "Test!Strong#Pass123").unwrap();
+            let pw = get_password(TEST_AGENT_A).unwrap();
             assert_eq!(pw, Some("Test!Strong#Pass123".to_string()));
             cleanup();
         }
@@ -248,7 +210,7 @@ mod tests {
         #[serial(keychain_env)]
         fn test_get_password_when_none_stored() {
             cleanup();
-            let pw = get_password().unwrap();
+            let pw = get_password(TEST_AGENT_A).unwrap();
             assert!(pw.is_none());
         }
 
@@ -256,9 +218,9 @@ mod tests {
         #[serial(keychain_env)]
         fn test_delete_password() {
             cleanup();
-            store_password("Test!Strong#Pass123").unwrap();
-            delete_password().unwrap();
-            let pw = get_password().unwrap();
+            store_password(TEST_AGENT_A, "Test!Strong#Pass123").unwrap();
+            delete_password(TEST_AGENT_A).unwrap();
+            let pw = get_password(TEST_AGENT_A).unwrap();
             assert!(pw.is_none());
         }
 
@@ -266,8 +228,8 @@ mod tests {
         #[serial(keychain_env)]
         fn test_delete_when_none_stored() {
             cleanup();
-            // Should not error — idempotent
-            delete_password().unwrap();
+            // Should not error -- idempotent
+            delete_password(TEST_AGENT_A).unwrap();
         }
 
         #[test]
@@ -280,7 +242,14 @@ mod tests {
         #[serial(keychain_env)]
         fn test_store_empty_password_rejected() {
             cleanup();
-            let result = store_password("");
+            let result = store_password(TEST_AGENT_A, "");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        #[serial(keychain_env)]
+        fn test_store_empty_agent_id_rejected() {
+            let result = store_password("", "SomePassword!123");
             assert!(result.is_err());
         }
 
@@ -288,30 +257,33 @@ mod tests {
         #[serial(keychain_env)]
         fn test_store_overwrite() {
             cleanup();
-            store_password("PasswordA!123").unwrap();
-            store_password("PasswordB!456").unwrap();
-            let pw = get_password().unwrap();
+            store_password(TEST_AGENT_A, "PasswordA!123").unwrap();
+            store_password(TEST_AGENT_A, "PasswordB!456").unwrap();
+            let pw = get_password(TEST_AGENT_A).unwrap();
             assert_eq!(pw, Some("PasswordB!456".to_string()));
             cleanup();
         }
 
         #[test]
         #[serial(keychain_env)]
-        fn test_agent_specific_password() {
+        fn test_agent_passwords_are_isolated() {
             cleanup();
-            store_password("Default!Pass123").unwrap();
-            store_password_for_agent(TEST_AGENT, "Agent!Pass456").unwrap();
+            store_password(TEST_AGENT_A, "PasswordA!123").unwrap();
+            store_password(TEST_AGENT_B, "PasswordB!456").unwrap();
 
-            assert_eq!(get_password().unwrap(), Some("Default!Pass123".to_string()));
             assert_eq!(
-                get_password_for_agent(TEST_AGENT).unwrap(),
-                Some("Agent!Pass456".to_string())
+                get_password(TEST_AGENT_A).unwrap(),
+                Some("PasswordA!123".to_string())
+            );
+            assert_eq!(
+                get_password(TEST_AGENT_B).unwrap(),
+                Some("PasswordB!456".to_string())
             );
 
-            delete_password_for_agent(TEST_AGENT).unwrap();
-            assert!(get_password_for_agent(TEST_AGENT).unwrap().is_none());
-            // Default still intact
-            assert!(get_password().unwrap().is_some());
+            delete_password(TEST_AGENT_B).unwrap();
+            assert!(get_password(TEST_AGENT_B).unwrap().is_none());
+            // Agent A still intact
+            assert!(get_password(TEST_AGENT_A).unwrap().is_some());
             cleanup();
         }
     }
@@ -329,16 +301,24 @@ mod tests {
 
         #[test]
         fn test_store_empty_password_rejected() {
-            let result = store_password("");
+            let result = store_password("test-agent", "");
             assert!(result.is_err());
             let err_msg = result.unwrap_err().to_string();
             assert!(err_msg.contains("empty"));
         }
 
         #[test]
-        fn test_store_empty_password_for_agent_rejected() {
-            let result = store_password_for_agent("test", "");
+        fn test_store_empty_agent_id_rejected() {
+            let result = store_password("", "SomePass!123");
             assert!(result.is_err());
+            let err_msg = result.unwrap_err().to_string();
+            assert!(err_msg.contains("agent_id"));
+        }
+
+        #[test]
+        fn test_get_empty_agent_id_returns_none() {
+            let result = get_password("").unwrap();
+            assert!(result.is_none());
         }
     }
 
