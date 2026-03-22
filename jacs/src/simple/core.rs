@@ -1100,6 +1100,30 @@ impl SimpleAgent {
         Ok(agent_id.to_string())
     }
 
+    /// Replace the agent's document storage backend.
+    ///
+    /// After loading an agent from a filesystem config, call this with a
+    /// `"memory"` backend to avoid filesystem writes for subsequent
+    /// `sign_message()` / `create_document_and_load()` calls.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use jacs::storage::MultiStorage;
+    ///
+    /// let agent = SimpleAgent::load(Some("./jacs.config.json"), None)?;
+    /// let mem = MultiStorage::new("memory".to_string())?;
+    /// agent.set_storage(mem)?;
+    /// // sign_message() now persists documents in-memory only
+    /// ```
+    pub fn set_storage(&self, storage: crate::storage::MultiStorage) -> Result<(), JacsError> {
+        let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        agent.set_storage(storage);
+        Ok(())
+    }
+
     /// Signs a file with optional content embedding.
     ///
     /// # IMPORTANT: Signing is Sacred
