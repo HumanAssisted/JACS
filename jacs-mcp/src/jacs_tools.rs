@@ -4170,35 +4170,61 @@ mod tests {
             "tools() count should match total_tool_count()"
         );
 
-        // Core tools are always present (core-tools is in default features)
-        assert!(names.contains(&"jacs_sign_state"));
-        assert!(names.contains(&"jacs_verify_state"));
-        assert!(names.contains(&"jacs_load_state"));
-        assert!(names.contains(&"jacs_update_state"));
-        assert!(names.contains(&"jacs_list_state"));
-        assert!(names.contains(&"jacs_adopt_state"));
-        assert!(names.contains(&"jacs_create_agent"));
-        assert!(names.contains(&"jacs_reencrypt_key"));
-        assert!(names.contains(&"jacs_audit"));
-        assert!(names.contains(&"jacs_audit_log"));
-        assert!(names.contains(&"jacs_audit_query"));
-        assert!(names.contains(&"jacs_audit_export"));
+        // Core tool families — present when their feature flag is enabled
+        // (all included via core-tools in default features)
+        #[cfg(feature = "state-tools")]
+        {
+            assert!(names.contains(&"jacs_sign_state"));
+            assert!(names.contains(&"jacs_verify_state"));
+            assert!(names.contains(&"jacs_load_state"));
+            assert!(names.contains(&"jacs_update_state"));
+            assert!(names.contains(&"jacs_list_state"));
+            assert!(names.contains(&"jacs_adopt_state"));
+        }
+
+        #[cfg(feature = "document-tools")]
+        {
+            assert!(names.contains(&"jacs_create_agent"));
+            assert!(names.contains(&"jacs_sign_document"));
+            assert!(names.contains(&"jacs_verify_document"));
+        }
+
+        #[cfg(feature = "key-tools")]
+        {
+            assert!(names.contains(&"jacs_reencrypt_key"));
+            assert!(names.contains(&"jacs_export_agent_card"));
+            assert!(names.contains(&"jacs_generate_well_known"));
+            assert!(names.contains(&"jacs_export_agent"));
+        }
+
+        #[cfg(feature = "audit-tools")]
+        {
+            assert!(names.contains(&"jacs_audit"));
+            assert!(names.contains(&"jacs_audit_log"));
+            assert!(names.contains(&"jacs_audit_query"));
+            assert!(names.contains(&"jacs_audit_export"));
+        }
+
+        #[cfg(feature = "search-tools")]
         assert!(names.contains(&"jacs_search"));
-        assert!(names.contains(&"jacs_sign_document"));
-        assert!(names.contains(&"jacs_verify_document"));
-        assert!(names.contains(&"jacs_export_agent_card"));
-        assert!(names.contains(&"jacs_generate_well_known"));
-        assert!(names.contains(&"jacs_export_agent"));
-        assert!(names.contains(&"jacs_trust_agent"));
-        assert!(names.contains(&"jacs_untrust_agent"));
-        assert!(names.contains(&"jacs_list_trusted_agents"));
-        assert!(names.contains(&"jacs_is_trusted"));
-        assert!(names.contains(&"jacs_get_trusted_agent"));
-        assert!(names.contains(&"jacs_memory_save"));
-        assert!(names.contains(&"jacs_memory_recall"));
-        assert!(names.contains(&"jacs_memory_list"));
-        assert!(names.contains(&"jacs_memory_forget"));
-        assert!(names.contains(&"jacs_memory_update"));
+
+        #[cfg(feature = "trust-tools")]
+        {
+            assert!(names.contains(&"jacs_trust_agent"));
+            assert!(names.contains(&"jacs_untrust_agent"));
+            assert!(names.contains(&"jacs_list_trusted_agents"));
+            assert!(names.contains(&"jacs_is_trusted"));
+            assert!(names.contains(&"jacs_get_trusted_agent"));
+        }
+
+        #[cfg(feature = "memory-tools")]
+        {
+            assert!(names.contains(&"jacs_memory_save"));
+            assert!(names.contains(&"jacs_memory_recall"));
+            assert!(names.contains(&"jacs_memory_list"));
+            assert!(names.contains(&"jacs_memory_forget"));
+            assert!(names.contains(&"jacs_memory_update"));
+        }
 
         // Advanced tools conditionally present based on feature flags
         #[cfg(feature = "messaging-tools")]
