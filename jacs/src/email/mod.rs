@@ -54,14 +54,16 @@ pub use types::{
 };
 
 // Signing: the primary sender-side function.
-pub use sign::{canonicalize_json_rfc8785, sign_email};
+pub use sign::{canonicalize_json_rfc8785, sign_email, sign_email_named};
 
 // Verification: one-call API + two-step API + content-only API.
 pub use verify::{normalize_algorithm, verify_email, verify_email_content, verify_email_document};
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).
 pub use attachment::{
-    JACS_SIGNATURE_FILENAME, add_jacs_attachment, get_jacs_attachment, remove_jacs_attachment,
+    DEFAULT_JACS_SIGNATURE_FILENAME, JACS_SIGNATURE_FILENAME, add_jacs_attachment,
+    add_jacs_attachment_named, get_jacs_attachment, get_jacs_attachment_named,
+    remove_jacs_attachment, remove_jacs_attachment_named,
 };
 
 // Canonicalization utilities (needed by fixture conformance tests).

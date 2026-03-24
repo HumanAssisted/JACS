@@ -1,8 +1,11 @@
 //! Email signing implementation for the JACS email system.
 //!
 //! Provides `sign_email()` which takes raw RFC 5322 email bytes and any
-//! [`JacsSigner`] implementor, and returns the email with a
-//! `hai.ai.signature.jacs.json` MIME attachment containing a real JACS document.
+//! [`JacsSigner`] implementor, and returns the email with a JACS signature
+//! MIME attachment containing a real JACS document.
+//!
+//! The attachment filename is configurable via `sign_email_named()`. The
+//! default `sign_email()` uses `DEFAULT_JACS_SIGNATURE_FILENAME`.
 //!
 //! All cryptographic operations are delegated to the [`JacsSigner`] via
 //! [`JacsSigner::sign_message()`]. The email module only handles hash
@@ -11,8 +14,9 @@
 use sha2::{Digest, Sha256};
 
 use super::attachment::{
-    add_jacs_attachment, ensure_multipart_mixed, get_jacs_attachment, remove_jacs_attachment,
-    rfind_bytes,
+    DEFAULT_JACS_SIGNATURE_FILENAME, add_jacs_attachment, add_jacs_attachment_named,
+    ensure_multipart_mixed, get_jacs_attachment, get_jacs_attachment_named, remove_jacs_attachment,
+    remove_jacs_attachment_named, rfind_bytes,
 };
 use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
@@ -25,7 +29,20 @@ use super::types::{
 
 use super::JacsSigner;
 
-/// Sign a raw RFC 5322 email and attach a `hai.ai.signature.jacs.json` document.
+/// Sign a raw RFC 5322 email with a custom attachment filename.
+///
+/// Same as [`sign_email`] but the caller specifies the JACS attachment
+/// filename. Use this when you need a branded attachment name (e.g.,
+/// `"hai.ai.signature.jacs.json"`) instead of the JACS default.
+pub fn sign_email_named(
+    raw_email: &[u8],
+    signer: &impl JacsSigner,
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
+    sign_email_inner(raw_email, signer, filename)
+}
+
+/// Sign a raw RFC 5322 email and attach a JACS signature document.
 ///
 /// This is the primary sender-side function. It:
 /// 1. Parses and canonicalizes the email
@@ -33,18 +50,27 @@ use super::JacsSigner;
 /// 3. Creates a real JACS document containing the hash payload via the signer
 /// 4. Attaches the signed JACS document as a MIME part
 ///
-/// All cryptographic operations are handled by the [`JacsSigner`] — no manual
-/// signing, hashing, or key management in this module.
+/// Uses `DEFAULT_JACS_SIGNATURE_FILENAME` (`jacs-signature.json`).
+/// For a custom name, use [`sign_email_named`].
 ///
 /// Accepts any type implementing [`JacsSigner`], including `SimpleAgent`.
 ///
 /// Returns the modified email bytes with the JACS attachment.
 pub fn sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>, EmailError> {
+    sign_email_inner(raw_email, signer, DEFAULT_JACS_SIGNATURE_FILENAME)
+}
+
+/// Inner implementation of email signing with configurable filename.
+fn sign_email_inner(
+    raw_email: &[u8],
+    signer: &impl JacsSigner,
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
     // Step 0: Size check
     check_email_size(raw_email)?;
 
     // Step 0b: Check for existing JACS signature (forwarding case)
-    let (email_for_signing, parent_signature_hash) = prepare_for_forwarding(raw_email)?;
+    let (email_for_signing, parent_signature_hash) = prepare_for_forwarding(raw_email, filename)?;
 
     // Step 0c: Ensure the email is multipart/mixed BEFORE parsing.
     // This guarantees that the MIME headers hashed during signing match what
@@ -126,21 +152,27 @@ pub fn sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>,
     // Step 6: Create a real JACS document containing the email hash payload
     let jacs_doc_json = build_jacs_email_document(&payload, signer)?;
 
-    // Step 7: Attach via add_jacs_attachment (to the wrapped email)
-    add_jacs_attachment(&wrapped_email, jacs_doc_json.as_bytes())
+    // Step 7: Attach via add_jacs_attachment_named (to the wrapped email)
+    add_jacs_attachment_named(&wrapped_email, jacs_doc_json.as_bytes(), filename)
 }
 
 /// Prepare an email for signing, handling the forwarding case.
 ///
 /// If the email already has a `hai.ai.signature.jacs.json` attachment:
 /// 1. Extract it and compute its SHA-256 hash (becomes parent_signature_hash)
-/// 2. Remove the active `hai.ai.signature.jacs.json`
-/// 3. Re-attach it as `hai.ai.signature.{N}.jacs.json` where N is the next index
+/// 2. Remove the active attachment
+/// 3. Re-attach it with a numbered name for the forwarding chain
+///
+/// `active_filename` is the filename to look for as the active signature
+/// (e.g., `"jacs-signature.json"` or `"hai.ai.signature.jacs.json"`).
 ///
 /// Returns (prepared_email_bytes, parent_signature_hash_option).
-fn prepare_for_forwarding(raw_email: &[u8]) -> Result<(Vec<u8>, Option<String>), EmailError> {
+fn prepare_for_forwarding(
+    raw_email: &[u8],
+    active_filename: &str,
+) -> Result<(Vec<u8>, Option<String>), EmailError> {
     // Try to extract the existing JACS signature attachment
-    let jacs_bytes = match get_jacs_attachment(raw_email) {
+    let jacs_bytes = match get_jacs_attachment_named(raw_email, active_filename) {
         Ok(bytes) => bytes,
         Err(EmailError::MissingJacsSignature) => {
             // No existing signature -- not a forward
@@ -169,15 +201,32 @@ fn prepare_for_forwarding(raw_email: &[u8]) -> Result<(Vec<u8>, Option<String>),
         })
         .count();
 
-    let new_name = format!("hai.ai.signature.{}.jacs.json", renamed_count);
+    // Derive the renamed filename from the active name's base pattern
+    let new_name = derive_forwarding_name(active_filename, renamed_count);
 
     // Remove the active JACS signature attachment
-    let email_without_active = remove_jacs_attachment(raw_email)?;
+    let email_without_active = remove_jacs_attachment_named(raw_email, active_filename)?;
 
     // Re-attach it with the new name
     let renamed_email = add_named_jacs_attachment(&email_without_active, &jacs_bytes, &new_name)?;
 
     Ok((renamed_email, Some(parent_hash)))
+}
+
+/// Derive a forwarding chain filename from the active filename.
+///
+/// For `"hai.ai.signature.jacs.json"` → `"hai.ai.signature.0.jacs.json"`, etc.
+/// For `"jacs-signature.json"` → `"jacs-signature-0.json"`, etc.
+fn derive_forwarding_name(active_filename: &str, index: usize) -> String {
+    if active_filename.ends_with(".jacs.json") {
+        let base = active_filename.trim_end_matches(".jacs.json");
+        format!("{}.{}.jacs.json", base, index)
+    } else if active_filename.ends_with(".json") {
+        let base = active_filename.trim_end_matches(".json");
+        format!("{}-{}.json", base, index)
+    } else {
+        format!("{}.{}", active_filename, index)
+    }
 }
 
 /// Add a named JACS attachment to a raw RFC 5322 email.
