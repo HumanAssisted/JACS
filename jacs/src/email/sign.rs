@@ -15,8 +15,7 @@ use sha2::{Digest, Sha256};
 
 use super::attachment::{
     DEFAULT_JACS_SIGNATURE_FILENAME, add_jacs_attachment, add_jacs_attachment_named,
-    ensure_multipart_mixed, get_jacs_attachment, get_jacs_attachment_named, remove_jacs_attachment,
-    remove_jacs_attachment_named, rfind_bytes,
+    ensure_multipart_mixed, get_jacs_attachment_named, remove_jacs_attachment_named, rfind_bytes,
 };
 use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,

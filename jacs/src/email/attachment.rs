@@ -478,11 +478,6 @@ fn build_jacs_mime_part_bytes_named(boundary: &str, doc: &[u8], filename: &str) 
     part
 }
 
-/// Build the MIME part for the JACS signature attachment (default name) as raw bytes.
-fn build_jacs_mime_part_bytes(boundary: &str, doc: &[u8]) -> Vec<u8> {
-    build_jacs_mime_part_bytes_named(boundary, doc, DEFAULT_JACS_SIGNATURE_FILENAME)
-}
-
 /// Build the MIME part for the JACS signature attachment (named variant, UTF-8 string).
 fn build_jacs_mime_part_named(boundary: &str, doc: &[u8], filename: &str) -> String {
     let bytes = build_jacs_mime_part_bytes_named(boundary, doc, filename);
