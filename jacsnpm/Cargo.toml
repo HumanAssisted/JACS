@@ -1,6 +1,6 @@
 [package]
 name = "jacsnpm"
-version = "0.9.11"
+version = "0.9.12"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
