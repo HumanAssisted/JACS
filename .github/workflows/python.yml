@@ -21,6 +21,10 @@ on:
       - ".github/workflows/python.yml"
   workflow_dispatch: # Allows manual triggering
 
+concurrency:
+  group: python-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -116,7 +120,7 @@ jobs:
           PY
 
   # Job to build wheels for CI coverage (PyPI package name is jacs)
-  # Only runs on pushes to main (not on PRs) to avoid slow QEMU aarch64 builds.
+  # macOS wheels built by release-pypi.yml on tagged releases only (macOS = 10x minute multiplier).
   build-jacs-wheels:
     name: Build jacs wheels on ${{ matrix.os }}
     if: github.event_name == 'push'
@@ -125,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, macos-latest] 
+        os: [ubuntu-latest]
 
     steps:
       - name: Checkout code

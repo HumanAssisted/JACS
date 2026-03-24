@@ -38,7 +38,7 @@ on:
         default: false
         type: boolean
   schedule:
-    - cron: "0 9 * * *"
+    - cron: "0 9 * * 1"  # Weekly on Monday (was daily — saves ~150 min/month)
 
 env:
   CARGO_TERM_COLOR: always

@@ -23,6 +23,10 @@ on:
       - ".github/workflows/jacs-mcp.yml"
   workflow_dispatch:
 
+concurrency:
+  group: mcp-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
