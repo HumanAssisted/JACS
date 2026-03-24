@@ -45,7 +45,7 @@ pub fn normalize_algorithm(algorithm: &str) -> String {
 /// payload and parsed email parts.
 ///
 /// Steps:
-/// 1. Extracts the `jacs-signature.json` attachment
+/// 1. Extracts the `hai.ai.signature.jacs.json` attachment
 /// 2. Removes the JACS attachment (the signature covers the email WITHOUT itself)
 /// 3. Verifies the JACS document signature using the provided public key
 /// 4. Extracts the email signature payload from the `content` field
@@ -157,14 +157,14 @@ pub fn verify_email_document(
 /// This is the primary API for email verification. It combines
 /// cryptographic signature validation and content hash comparison:
 ///
-/// 1. Extracts and verifies the `jacs-signature.json` JACS document
+/// 1. Extracts and verifies the `hai.ai.signature.jacs.json` JACS document
 /// 2. Compares every hash in the trusted JACS document against the actual
 ///    email content (headers, body parts, attachments)
 /// 3. Returns field-level results showing which fields pass, fail, or were
 ///    modified
 ///
 /// # Arguments
-/// * `raw_eml` - Raw RFC 5322 email bytes (with `jacs-signature.json` attached)
+/// * `raw_eml` - Raw RFC 5322 email bytes (with `hai.ai.signature.jacs.json` attached)
 /// * `verifier` - Any type implementing [`JacsSigner`] (e.g. `SimpleAgent`)
 /// * `public_key` - The signer's public key bytes (from registry, trust store, etc.)
 ///
@@ -289,7 +289,7 @@ pub fn verify_email_content(
     );
 
     // Verify attachments
-    // For forwarded emails, the renamed jacs-signature-N.json files appear as
+    // For forwarded emails, the renamed signature files appear as
     // regular attachments in the current email (parts.jacs_attachments) and
     // should be included when comparing against the signed attachment list.
     let mut all_current_attachments = parts.attachments.clone();
@@ -1035,10 +1035,10 @@ mod tests {
         let renamed = parts
             .jacs_attachments
             .iter()
-            .find(|a| a.filename == "jacs-signature-0.json");
+            .find(|a| a.filename == "hai.ai.signature.0.jacs.json");
         assert!(
             renamed.is_some(),
-            "Expected jacs-signature-0.json attachment, found: {:?}",
+            "Expected hai.ai.signature.0.jacs.json attachment, found: {:?}",
             parts
                 .jacs_attachments
                 .iter()

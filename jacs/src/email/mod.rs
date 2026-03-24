@@ -27,7 +27,7 @@
 //!   No manual crypto in the email module.
 //! - Verification uses [`JacsSigner::verify_with_key()`] for cryptographic
 //!   verification against an arbitrary sender's public key.
-//! - Forwarding is built-in: if the email already has a `jacs-signature.json`,
+//! - Forwarding is built-in: if the email already has a JACS signature attachment,
 //!   [`sign_email`] renames it and links via `parent_signature_hash`.
 //!
 //! See the full guide: `docs/jacsbook/src/guides/email-signing.md`
@@ -60,7 +60,9 @@ pub use sign::{canonicalize_json_rfc8785, sign_email};
 pub use verify::{normalize_algorithm, verify_email, verify_email_content, verify_email_document};
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).
-pub use attachment::{add_jacs_attachment, get_jacs_attachment, remove_jacs_attachment};
+pub use attachment::{
+    JACS_SIGNATURE_FILENAME, add_jacs_attachment, get_jacs_attachment, remove_jacs_attachment,
+};
 
 // Canonicalization utilities (needed by fixture conformance tests).
 pub use canonicalize::{canonicalize_header, extract_email_parts};

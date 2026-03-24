@@ -1,6 +1,6 @@
 //! JACS attachment operations for raw RFC 5322 email bytes.
 //!
-//! Implements add/get/remove operations for the `jacs-signature.json`
+//! Implements add/get/remove operations for the `hai.ai.signature.jacs.json`
 //! MIME attachment. Works entirely at the raw byte level -- no
 //! re-serialization libraries are used.
 
@@ -9,7 +9,7 @@ use mail_parser::{MessageParser, MimeHeaders as _};
 use super::error::EmailError;
 
 /// Name of the active JACS signature attachment.
-const JACS_SIGNATURE_FILENAME: &str = "jacs-signature.json";
+pub const JACS_SIGNATURE_FILENAME: &str = "hai.ai.signature.jacs.json";
 
 /// Find the last occurrence of `needle` in `haystack` (byte-level rfind).
 /// Returns the byte offset of the start of the match, or None.
@@ -22,7 +22,7 @@ pub(crate) fn rfind_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .find(|&i| &haystack[i..i + needle.len()] == needle)
 }
 
-/// Add a `jacs-signature.json` attachment to a raw RFC 5322 email.
+/// Add a `hai.ai.signature.jacs.json` attachment to a raw RFC 5322 email.
 ///
 /// - If the email is already `multipart/mixed`: insert a new MIME part before the closing boundary.
 /// - If the email is `multipart/alternative` or single-part: wrap in a new `multipart/mixed` envelope.
@@ -60,7 +60,7 @@ pub fn add_jacs_attachment(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
     }
 }
 
-/// Extract the `jacs-signature.json` attachment from a raw RFC 5322 email.
+/// Extract the `hai.ai.signature.jacs.json` attachment from a raw RFC 5322 email.
 ///
 /// Returns the raw bytes of the attachment content (MIME-decoded).
 pub fn get_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
@@ -83,7 +83,7 @@ pub fn get_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
     Err(EmailError::MissingJacsSignature)
 }
 
-/// Remove the `jacs-signature.json` MIME part from a raw email.
+/// Remove the `hai.ai.signature.jacs.json` MIME part from a raw email.
 ///
 /// Returns the email without the JACS attachment. The result is valid RFC 5322.
 pub fn remove_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
@@ -408,9 +408,19 @@ fn strip_line_ending(line: &[u8]) -> &[u8] {
 fn build_jacs_mime_part_bytes(boundary: &str, doc: &[u8]) -> Vec<u8> {
     let mut part = Vec::new();
     part.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    part.extend_from_slice(b"Content-Type: application/json; name=\"jacs-signature.json\"\r\n");
     part.extend_from_slice(
-        b"Content-Disposition: attachment; filename=\"jacs-signature.json\"\r\n",
+        format!(
+            "Content-Type: application/json; name=\"{}\"\r\n",
+            JACS_SIGNATURE_FILENAME
+        )
+        .as_bytes(),
+    );
+    part.extend_from_slice(
+        format!(
+            "Content-Disposition: attachment; filename=\"{}\"\r\n",
+            JACS_SIGNATURE_FILENAME
+        )
+        .as_bytes(),
     );
     part.extend_from_slice(b"Content-Transfer-Encoding: 7bit\r\n");
     part.extend_from_slice(b"\r\n");
@@ -477,7 +487,7 @@ mod tests {
         let doc = br#"{"test":"doc"}"#;
         let result = add_jacs_attachment(&email, doc).unwrap();
         let result_str = String::from_utf8_lossy(&result);
-        assert!(result_str.contains("jacs-signature.json"));
+        assert!(result_str.contains("hai.ai.signature.jacs.json"));
         assert!(result_str.contains(r#"{"test":"doc"}"#));
         // Should still be parseable
         assert!(MessageParser::default().parse(&result).is_some());
@@ -489,7 +499,7 @@ mod tests {
         let doc = br#"{"test":"doc"}"#;
         let result = add_jacs_attachment(&email, doc).unwrap();
         let result_str = String::from_utf8_lossy(&result);
-        assert!(result_str.contains("jacs-signature.json"));
+        assert!(result_str.contains("hai.ai.signature.jacs.json"));
         // Original content should be preserved
         assert!(result_str.contains("Plain text") || result_str.contains("<p>HTML</p>"));
     }
@@ -500,7 +510,7 @@ mod tests {
         let doc = br#"{"test":"doc"}"#;
         let result = add_jacs_attachment(&email, doc).unwrap();
         let result_str = String::from_utf8_lossy(&result);
-        assert!(result_str.contains("jacs-signature.json"));
+        assert!(result_str.contains("hai.ai.signature.jacs.json"));
         assert!(result_str.contains("multipart/mixed"));
         // Original body should be preserved
         assert!(result_str.contains("Hello World"));

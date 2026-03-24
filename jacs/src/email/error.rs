@@ -16,8 +16,8 @@ pub enum EmailError {
     #[error("Canonicalization failed: {0}")]
     CanonicalizationFailed(String),
 
-    /// No `jacs-signature.json` attachment was found in the email.
-    #[error("Missing jacs-signature.json attachment")]
+    /// No JACS signature attachment was found in the email.
+    #[error("Missing JACS signature attachment")]
     MissingJacsSignature,
 
     /// The extracted JACS document is malformed or its hash does not match.
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn missing_jacs_signature_error() {
         let err = EmailError::MissingJacsSignature;
-        assert_eq!(err.to_string(), "Missing jacs-signature.json attachment");
+        assert_eq!(err.to_string(), "Missing JACS signature attachment");
     }
 
     #[test]
@@ -215,7 +215,7 @@ mod tests {
             "MissingJacsSignature should map to ValidationError, got: {:?}",
             jacs_err
         );
-        assert!(format!("{}", jacs_err).contains("Missing jacs-signature.json"));
+        assert!(format!("{}", jacs_err).contains("Missing JACS signature attachment"));
 
         // Crypto errors
         let jacs_err: crate::error::JacsError =

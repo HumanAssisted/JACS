@@ -95,7 +95,10 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
             content_disposition: cd,
         };
 
-        if nfc_filename.starts_with("jacs-signature") && nfc_filename.ends_with(".json") {
+        // Classify JACS signature attachments (both new and legacy naming)
+        if (nfc_filename.starts_with("hai.ai.signature") && nfc_filename.ends_with(".jacs.json"))
+            || (nfc_filename.starts_with("jacs-signature") && nfc_filename.ends_with(".json"))
+        {
             jacs_attachments.push(parsed_att);
         } else {
             attachments.push(parsed_att);

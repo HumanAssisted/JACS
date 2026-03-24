@@ -2,7 +2,7 @@
 //!
 //! Provides `sign_email()` which takes raw RFC 5322 email bytes and any
 //! [`JacsSigner`] implementor, and returns the email with a
-//! `jacs-signature.json` MIME attachment containing a real JACS document.
+//! `hai.ai.signature.jacs.json` MIME attachment containing a real JACS document.
 //!
 //! All cryptographic operations are delegated to the [`JacsSigner`] via
 //! [`JacsSigner::sign_message()`]. The email module only handles hash
@@ -25,7 +25,7 @@ use super::types::{
 
 use super::JacsSigner;
 
-/// Sign a raw RFC 5322 email and attach a `jacs-signature.json` document.
+/// Sign a raw RFC 5322 email and attach a `hai.ai.signature.jacs.json` document.
 ///
 /// This is the primary sender-side function. It:
 /// 1. Parses and canonicalizes the email
@@ -132,14 +132,14 @@ pub fn sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>,
 
 /// Prepare an email for signing, handling the forwarding case.
 ///
-/// If the email already has a `jacs-signature.json` attachment:
+/// If the email already has a `hai.ai.signature.jacs.json` attachment:
 /// 1. Extract it and compute its SHA-256 hash (becomes parent_signature_hash)
-/// 2. Remove the active `jacs-signature.json`
-/// 3. Re-attach it as `jacs-signature-{N}.json` where N is the next index
+/// 2. Remove the active `hai.ai.signature.jacs.json`
+/// 3. Re-attach it as `hai.ai.signature.{N}.jacs.json` where N is the next index
 ///
 /// Returns (prepared_email_bytes, parent_signature_hash_option).
 fn prepare_for_forwarding(raw_email: &[u8]) -> Result<(Vec<u8>, Option<String>), EmailError> {
-    // Try to extract the existing jacs-signature.json
+    // Try to extract the existing JACS signature attachment
     let jacs_bytes = match get_jacs_attachment(raw_email) {
         Ok(bytes) => bytes,
         Err(EmailError::MissingJacsSignature) => {
@@ -149,7 +149,7 @@ fn prepare_for_forwarding(raw_email: &[u8]) -> Result<(Vec<u8>, Option<String>),
         Err(e) => return Err(e),
     };
 
-    // Compute parent_signature_hash = sha256(exact bytes of existing jacs-signature.json)
+    // Compute parent_signature_hash = sha256(exact bytes of existing JACS signature)
     let parent_hash = {
         let mut hasher = Sha256::new();
         hasher.update(&jacs_bytes);
@@ -159,17 +159,19 @@ fn prepare_for_forwarding(raw_email: &[u8]) -> Result<(Vec<u8>, Option<String>),
     // Count existing renamed JACS signatures to determine next index
     let parts = extract_email_parts(raw_email)?;
 
-    // Count only the renamed ones (jacs-signature-N.json pattern),
-    // not the active jacs-signature.json
+    // Count existing renamed JACS signatures (both old and new naming schemes)
     let renamed_count = parts
         .jacs_attachments
         .iter()
-        .filter(|a| a.filename.starts_with("jacs-signature-") && a.filename.ends_with(".json"))
+        .filter(|a| {
+            (a.filename.starts_with("hai.ai.signature.") && a.filename.ends_with(".jacs.json"))
+                || (a.filename.starts_with("jacs-signature-") && a.filename.ends_with(".json"))
+        })
         .count();
 
-    let new_name = format!("jacs-signature-{}.json", renamed_count);
+    let new_name = format!("hai.ai.signature.{}.jacs.json", renamed_count);
 
-    // Remove the active jacs-signature.json
+    // Remove the active JACS signature attachment
     let email_without_active = remove_jacs_attachment(raw_email)?;
 
     // Re-attach it with the new name
@@ -461,7 +463,7 @@ mod tests {
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
         let signed_str = String::from_utf8_lossy(&signed);
-        assert!(signed_str.contains("jacs-signature.json"));
+        assert!(signed_str.contains("hai.ai.signature.jacs.json"));
         assert!(
             mail_parser::MessageParser::default()
                 .parse(&signed)
