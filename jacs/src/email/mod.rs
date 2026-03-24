@@ -27,7 +27,7 @@
 //!   No manual crypto in the email module.
 //! - Verification uses [`JacsSigner::verify_with_key()`] for cryptographic
 //!   verification against an arbitrary sender's public key.
-//! - Forwarding is built-in: if the email already has a `jacs-signature.json`,
+//! - Forwarding is built-in: if the email already has a JACS signature attachment,
 //!   [`sign_email`] renames it and links via `parent_signature_hash`.
 //!
 //! See the full guide: `docs/jacsbook/src/guides/email-signing.md`
@@ -54,13 +54,21 @@ pub use types::{
 };
 
 // Signing: the primary sender-side function.
-pub use sign::{canonicalize_json_rfc8785, sign_email};
+pub use sign::{canonicalize_json_rfc8785, sign_email, sign_email_named};
 
 // Verification: one-call API + two-step API + content-only API.
-pub use verify::{normalize_algorithm, verify_email, verify_email_content, verify_email_document};
+// `_named` variants accept a custom attachment filename.
+pub use verify::{
+    normalize_algorithm, verify_email, verify_email_content, verify_email_document,
+    verify_email_document_named, verify_email_named,
+};
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).
-pub use attachment::{add_jacs_attachment, get_jacs_attachment, remove_jacs_attachment};
+pub use attachment::{
+    DEFAULT_JACS_SIGNATURE_FILENAME, JACS_SIGNATURE_FILENAME, add_jacs_attachment,
+    add_jacs_attachment_named, get_jacs_attachment, get_jacs_attachment_named,
+    remove_jacs_attachment, remove_jacs_attachment_named,
+};
 
 // Canonicalization utilities (needed by fixture conformance tests).
 pub use canonicalize::{canonicalize_header, extract_email_parts};

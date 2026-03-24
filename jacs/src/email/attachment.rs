@@ -1,15 +1,23 @@
 //! JACS attachment operations for raw RFC 5322 email bytes.
 //!
-//! Implements add/get/remove operations for the `jacs-signature.json`
-//! MIME attachment. Works entirely at the raw byte level -- no
-//! re-serialization libraries are used.
+//! Implements add/get/remove operations for JACS signature MIME attachments.
+//! The attachment filename is configurable -- callers pass their preferred
+//! name via `_named` variants. Works entirely at the raw byte level.
 
 use mail_parser::{MessageParser, MimeHeaders as _};
 
 use super::error::EmailError;
 
-/// Name of the active JACS signature attachment.
-const JACS_SIGNATURE_FILENAME: &str = "jacs-signature.json";
+/// Default name for the JACS signature attachment.
+///
+/// JACS is a generic library. Callers (e.g., HAI server, haisdk) may pass
+/// their own preferred filename via the `_named` variants of attachment
+/// functions.
+pub const DEFAULT_JACS_SIGNATURE_FILENAME: &str = "jacs-signature.json";
+
+/// Legacy constant alias -- points to the generic JACS default.
+/// Use `DEFAULT_JACS_SIGNATURE_FILENAME` for new code.
+pub const JACS_SIGNATURE_FILENAME: &str = DEFAULT_JACS_SIGNATURE_FILENAME;
 
 /// Find the last occurrence of `needle` in `haystack` (byte-level rfind).
 /// Returns the byte offset of the start of the match, or None.
@@ -22,13 +30,34 @@ pub(crate) fn rfind_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .find(|&i| &haystack[i..i + needle.len()] == needle)
 }
 
-/// Add a `jacs-signature.json` attachment to a raw RFC 5322 email.
+/// Add a JACS signature attachment with a custom filename to a raw RFC 5322 email.
 ///
 /// - If the email is already `multipart/mixed`: insert a new MIME part before the closing boundary.
 /// - If the email is `multipart/alternative` or single-part: wrap in a new `multipart/mixed` envelope.
 ///
 /// Returns the new raw email bytes with the attachment included.
+pub fn add_jacs_attachment_named(
+    raw_email: &[u8],
+    doc: &[u8],
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
+    add_jacs_attachment_inner(raw_email, doc, filename)
+}
+
+/// Add a JACS signature attachment with the default filename to a raw RFC 5322 email.
+///
+/// Uses `DEFAULT_JACS_SIGNATURE_FILENAME` (`jacs-signature.json`).
+/// For a custom name, use [`add_jacs_attachment_named`].
 pub fn add_jacs_attachment(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, EmailError> {
+    add_jacs_attachment_inner(raw_email, doc, DEFAULT_JACS_SIGNATURE_FILENAME)
+}
+
+/// Inner implementation: add a JACS attachment with the given filename.
+fn add_jacs_attachment_inner(
+    raw_email: &[u8],
+    doc: &[u8],
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
     let message = MessageParser::default().parse(raw_email).ok_or_else(|| {
         EmailError::InvalidEmailFormat("Cannot parse email for attachment injection".into())
     })?;
@@ -47,34 +76,34 @@ pub fn add_jacs_attachment(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
                     EmailError::InvalidEmailFormat("multipart/mixed without boundary".into())
                 })?
                 .to_string();
-            insert_part_before_closing_boundary(raw_email, &boundary, doc)
+            insert_part_before_closing_boundary_named(raw_email, &boundary, doc, filename)
         }
         Some(ct) if ct.starts_with("multipart/") => {
             // Wrap in multipart/mixed
-            wrap_in_multipart_mixed(raw_email, doc)
+            wrap_in_multipart_mixed_named(raw_email, doc, filename)
         }
         _ => {
             // Single-part email: wrap in multipart/mixed
-            wrap_in_multipart_mixed(raw_email, doc)
+            wrap_in_multipart_mixed_named(raw_email, doc, filename)
         }
     }
 }
 
-/// Extract the `jacs-signature.json` attachment from a raw RFC 5322 email.
+/// Extract a JACS signature attachment with a custom filename from a raw RFC 5322 email.
 ///
 /// Returns the raw bytes of the attachment content (MIME-decoded).
-pub fn get_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
+pub fn get_jacs_attachment_named(raw_email: &[u8], filename: &str) -> Result<Vec<u8>, EmailError> {
     let message = MessageParser::default().parse(raw_email).ok_or_else(|| {
         EmailError::InvalidEmailFormat("Cannot parse email for attachment extraction".into())
     })?;
 
     for part in message.parts.iter() {
-        let filename = part
+        let part_filename = part
             .attachment_name()
             .or_else(|| part.content_type().and_then(|ct| ct.attribute("name")));
 
-        if let Some(name) = filename {
-            if name == JACS_SIGNATURE_FILENAME {
+        if let Some(name) = part_filename {
+            if name == filename {
                 return Ok(part.contents().to_vec());
             }
         }
@@ -83,10 +112,21 @@ pub fn get_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
     Err(EmailError::MissingJacsSignature)
 }
 
-/// Remove the `jacs-signature.json` MIME part from a raw email.
+/// Extract the default JACS signature attachment from a raw RFC 5322 email.
 ///
-/// Returns the email without the JACS attachment. The result is valid RFC 5322.
-pub fn remove_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
+/// Looks for `DEFAULT_JACS_SIGNATURE_FILENAME` (`jacs-signature.json`).
+/// For a custom name, use [`get_jacs_attachment_named`].
+pub fn get_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
+    get_jacs_attachment_named(raw_email, DEFAULT_JACS_SIGNATURE_FILENAME)
+}
+
+/// Remove a JACS attachment with a custom filename from a raw email.
+///
+/// Returns the email without the named JACS attachment. The result is valid RFC 5322.
+pub fn remove_jacs_attachment_named(
+    raw_email: &[u8],
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
     let message = MessageParser::default().parse(raw_email).ok_or_else(|| {
         EmailError::InvalidEmailFormat("Cannot parse email for attachment removal".into())
     })?;
@@ -94,11 +134,11 @@ pub fn remove_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
     // Find the JACS part to remove
     let mut jacs_part_idx = None;
     for (idx, part) in message.parts.iter().enumerate() {
-        let filename = part
+        let part_filename = part
             .attachment_name()
             .or_else(|| part.content_type().and_then(|ct| ct.attribute("name")));
-        if let Some(name) = filename {
-            if name == JACS_SIGNATURE_FILENAME {
+        if let Some(name) = part_filename {
+            if name == filename {
                 jacs_part_idx = Some(idx);
                 break;
             }
@@ -143,11 +183,20 @@ pub fn remove_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
     Ok(result)
 }
 
-/// Insert a JACS part before the closing boundary of a multipart/mixed email.
-fn insert_part_before_closing_boundary(
+/// Remove the default JACS signature attachment from a raw email.
+///
+/// Looks for `DEFAULT_JACS_SIGNATURE_FILENAME` (`jacs-signature.json`).
+/// For a custom name, use [`remove_jacs_attachment_named`].
+pub fn remove_jacs_attachment(raw_email: &[u8]) -> Result<Vec<u8>, EmailError> {
+    remove_jacs_attachment_named(raw_email, DEFAULT_JACS_SIGNATURE_FILENAME)
+}
+
+/// Insert a JACS part before the closing boundary of a multipart/mixed email (named variant).
+fn insert_part_before_closing_boundary_named(
     raw_email: &[u8],
     boundary: &str,
     doc: &[u8],
+    filename: &str,
 ) -> Result<Vec<u8>, EmailError> {
     let closing = format!("--{}--", boundary);
 
@@ -156,7 +205,7 @@ fn insert_part_before_closing_boundary(
         EmailError::InvalidEmailFormat("Cannot find closing boundary in multipart/mixed".into())
     })?;
 
-    let jacs_part = build_jacs_mime_part(boundary, doc);
+    let jacs_part = build_jacs_mime_part_named(boundary, doc, filename);
 
     let mut result = Vec::new();
     result.extend_from_slice(&raw_email[..closing_pos]);
@@ -173,8 +222,12 @@ fn insert_part_before_closing_boundary(
     Ok(result)
 }
 
-/// Wrap a non-multipart/mixed email in a new multipart/mixed envelope.
-fn wrap_in_multipart_mixed(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, EmailError> {
+/// Wrap a non-multipart/mixed email in a new multipart/mixed envelope (named variant).
+fn wrap_in_multipart_mixed_named(
+    raw_email: &[u8],
+    doc: &[u8],
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
     let boundary = generate_boundary();
 
     // Find the header/body boundary
@@ -229,7 +282,7 @@ fn wrap_in_multipart_mixed(raw_email: &[u8], doc: &[u8]) -> Result<Vec<u8>, Emai
     }
 
     // JACS signature as second part
-    let jacs_part = build_jacs_mime_part_bytes(&boundary, doc);
+    let jacs_part = build_jacs_mime_part_bytes_named(&boundary, doc, filename);
     result.extend_from_slice(&jacs_part);
 
     // Closing boundary
@@ -404,13 +457,19 @@ fn strip_line_ending(line: &[u8]) -> &[u8] {
     &line[..end]
 }
 
-/// Build the MIME part for the JACS signature attachment as raw bytes.
-fn build_jacs_mime_part_bytes(boundary: &str, doc: &[u8]) -> Vec<u8> {
+/// Build the MIME part for a JACS signature attachment with a custom filename as raw bytes.
+fn build_jacs_mime_part_bytes_named(boundary: &str, doc: &[u8], filename: &str) -> Vec<u8> {
     let mut part = Vec::new();
     part.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    part.extend_from_slice(b"Content-Type: application/json; name=\"jacs-signature.json\"\r\n");
     part.extend_from_slice(
-        b"Content-Disposition: attachment; filename=\"jacs-signature.json\"\r\n",
+        format!("Content-Type: application/json; name=\"{}\"\r\n", filename).as_bytes(),
+    );
+    part.extend_from_slice(
+        format!(
+            "Content-Disposition: attachment; filename=\"{}\"\r\n",
+            filename
+        )
+        .as_bytes(),
     );
     part.extend_from_slice(b"Content-Transfer-Encoding: 7bit\r\n");
     part.extend_from_slice(b"\r\n");
@@ -419,9 +478,14 @@ fn build_jacs_mime_part_bytes(boundary: &str, doc: &[u8]) -> Vec<u8> {
     part
 }
 
-/// Build the MIME part for the JACS signature attachment.
-fn build_jacs_mime_part(boundary: &str, doc: &[u8]) -> String {
-    let bytes = build_jacs_mime_part_bytes(boundary, doc);
+/// Build the MIME part for the JACS signature attachment (default name) as raw bytes.
+fn build_jacs_mime_part_bytes(boundary: &str, doc: &[u8]) -> Vec<u8> {
+    build_jacs_mime_part_bytes_named(boundary, doc, DEFAULT_JACS_SIGNATURE_FILENAME)
+}
+
+/// Build the MIME part for the JACS signature attachment (named variant, UTF-8 string).
+fn build_jacs_mime_part_named(boundary: &str, doc: &[u8], filename: &str) -> String {
+    let bytes = build_jacs_mime_part_bytes_named(boundary, doc, filename);
     // JACS documents are JSON (valid UTF-8), so this conversion is safe.
     String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
@@ -477,7 +541,7 @@ mod tests {
         let doc = br#"{"test":"doc"}"#;
         let result = add_jacs_attachment(&email, doc).unwrap();
         let result_str = String::from_utf8_lossy(&result);
-        assert!(result_str.contains("jacs-signature.json"));
+        assert!(result_str.contains(DEFAULT_JACS_SIGNATURE_FILENAME));
         assert!(result_str.contains(r#"{"test":"doc"}"#));
         // Should still be parseable
         assert!(MessageParser::default().parse(&result).is_some());
@@ -489,7 +553,7 @@ mod tests {
         let doc = br#"{"test":"doc"}"#;
         let result = add_jacs_attachment(&email, doc).unwrap();
         let result_str = String::from_utf8_lossy(&result);
-        assert!(result_str.contains("jacs-signature.json"));
+        assert!(result_str.contains(DEFAULT_JACS_SIGNATURE_FILENAME));
         // Original content should be preserved
         assert!(result_str.contains("Plain text") || result_str.contains("<p>HTML</p>"));
     }
@@ -500,7 +564,7 @@ mod tests {
         let doc = br#"{"test":"doc"}"#;
         let result = add_jacs_attachment(&email, doc).unwrap();
         let result_str = String::from_utf8_lossy(&result);
-        assert!(result_str.contains("jacs-signature.json"));
+        assert!(result_str.contains(DEFAULT_JACS_SIGNATURE_FILENAME));
         assert!(result_str.contains("multipart/mixed"));
         // Original body should be preserved
         assert!(result_str.contains("Hello World"));
@@ -588,5 +652,64 @@ mod tests {
         // Result should be parseable by mail-parser
         let parsed = MessageParser::default().parse(&unsigned);
         assert!(parsed.is_some());
+    }
+
+    // =====================================================================
+    // _named variant tests
+    // =====================================================================
+
+    #[test]
+    fn add_jacs_attachment_named_custom_name() {
+        let email = simple_text_email();
+        let doc = br#"{"test":"custom"}"#;
+        let result = add_jacs_attachment_named(&email, doc, "hai.ai.signature.jacs.json").unwrap();
+        let result_str = String::from_utf8_lossy(&result);
+        assert!(result_str.contains("hai.ai.signature.jacs.json"));
+        assert!(result_str.contains(r#"{"test":"custom"}"#));
+    }
+
+    #[test]
+    fn get_jacs_attachment_named_finds_custom() {
+        let email = simple_text_email();
+        let doc = br#"{"version":"2.0"}"#;
+        let signed = add_jacs_attachment_named(&email, doc, "custom.jacs.json").unwrap();
+        let extracted = get_jacs_attachment_named(&signed, "custom.jacs.json").unwrap();
+        assert_eq!(extracted, doc);
+    }
+
+    #[test]
+    fn get_jacs_attachment_named_misses_wrong_name() {
+        let email = simple_text_email();
+        let doc = br#"{"v":"1"}"#;
+        let signed = add_jacs_attachment_named(&email, doc, "custom.jacs.json").unwrap();
+        // Looking for default name should fail
+        let result = get_jacs_attachment(&signed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn default_attachment_name_unchanged() {
+        // Default functions still use jacs-signature.json
+        let email = simple_text_email();
+        let doc = br#"{"test":"default"}"#;
+        let result = add_jacs_attachment(&email, doc).unwrap();
+        let result_str = String::from_utf8_lossy(&result);
+        assert!(
+            result_str.contains("jacs-signature.json"),
+            "Default should use jacs-signature.json, got: {}",
+            result_str
+        );
+    }
+
+    #[test]
+    fn remove_jacs_attachment_named_removes_custom() {
+        let email = simple_text_email();
+        let doc = br#"{"v":"1"}"#;
+        let signed = add_jacs_attachment_named(&email, doc, "hai.ai.signature.jacs.json").unwrap();
+        assert!(get_jacs_attachment_named(&signed, "hai.ai.signature.jacs.json").is_ok());
+
+        let unsigned = remove_jacs_attachment_named(&signed, "hai.ai.signature.jacs.json").unwrap();
+        assert!(get_jacs_attachment_named(&unsigned, "hai.ai.signature.jacs.json").is_err());
+        assert!(MessageParser::default().parse(&unsigned).is_some());
     }
 }

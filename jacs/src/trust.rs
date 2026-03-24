@@ -887,6 +887,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(home_env)]
     fn test_valid_old_timestamp() {
         // A timestamp from a year ago should be valid by default (no expiration)
         // JACS documents are designed to be idempotent and eternal
@@ -1229,6 +1230,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(home_env)]
     fn test_timestamp_unix_epoch_valid_by_default() {
         // Unix epoch (1970-01-01) should be valid by default (no expiration)
         // JACS documents are eternal
