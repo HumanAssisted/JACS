@@ -1,8 +1,8 @@
 //! JACS attachment operations for raw RFC 5322 email bytes.
 //!
-//! Implements add/get/remove operations for the `hai.ai.signature.jacs.json`
-//! MIME attachment. Works entirely at the raw byte level -- no
-//! re-serialization libraries are used.
+//! Implements add/get/remove operations for JACS signature MIME attachments.
+//! The attachment filename is configurable -- callers pass their preferred
+//! name via `_named` variants. Works entirely at the raw byte level.
 
 use mail_parser::{MessageParser, MimeHeaders as _};
 

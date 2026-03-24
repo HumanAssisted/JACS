@@ -158,13 +158,13 @@ fn sign_email_inner(
 
 /// Prepare an email for signing, handling the forwarding case.
 ///
-/// If the email already has a `hai.ai.signature.jacs.json` attachment:
+/// If the email already has an active JACS signature attachment:
 /// 1. Extract it and compute its SHA-256 hash (becomes parent_signature_hash)
 /// 2. Remove the active attachment
 /// 3. Re-attach it with a numbered name for the forwarding chain
 ///
 /// `active_filename` is the filename to look for as the active signature
-/// (e.g., `"jacs-signature.json"` or `"hai.ai.signature.jacs.json"`).
+/// (e.g., `"jacs-signature.json"` or a branded name).
 ///
 /// Returns (prepared_email_bytes, parent_signature_hash_option).
 fn prepare_for_forwarding(
@@ -191,14 +191,13 @@ fn prepare_for_forwarding(
     // Count existing renamed JACS signatures to determine next index
     let parts = extract_email_parts(raw_email)?;
 
-    // Count existing renamed JACS signatures (both old and new naming schemes)
+    // Count existing renamed JACS signatures (exclude the active one).
+    // jacs_attachments already filters to *.jacs.json and jacs-signature*.json;
+    // we just exclude the active filename itself to count only renamed/chain entries.
     let renamed_count = parts
         .jacs_attachments
         .iter()
-        .filter(|a| {
-            (a.filename.starts_with("hai.ai.signature.") && a.filename.ends_with(".jacs.json"))
-                || (a.filename.starts_with("jacs-signature-") && a.filename.ends_with(".json"))
-        })
+        .filter(|a| a.filename != active_filename)
         .count();
 
     // Derive the renamed filename from the active name's base pattern
@@ -215,7 +214,7 @@ fn prepare_for_forwarding(
 
 /// Derive a forwarding chain filename from the active filename.
 ///
-/// For `"hai.ai.signature.jacs.json"` → `"hai.ai.signature.0.jacs.json"`, etc.
+/// For `"custom.jacs.json"` → `"custom.0.jacs.json"`, etc.
 /// For `"jacs-signature.json"` → `"jacs-signature-0.json"`, etc.
 fn derive_forwarding_name(active_filename: &str, index: usize) -> String {
     if active_filename.ends_with(".jacs.json") {
@@ -512,7 +511,7 @@ mod tests {
         let email = simple_text_email();
         let signed = sign_email(&email, &agent).unwrap();
         let signed_str = String::from_utf8_lossy(&signed);
-        assert!(signed_str.contains("hai.ai.signature.jacs.json"));
+        assert!(signed_str.contains("jacs-signature.json"));
         assert!(
             mail_parser::MessageParser::default()
                 .parse(&signed)

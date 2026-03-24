@@ -57,7 +57,11 @@ pub use types::{
 pub use sign::{canonicalize_json_rfc8785, sign_email, sign_email_named};
 
 // Verification: one-call API + two-step API + content-only API.
-pub use verify::{normalize_algorithm, verify_email, verify_email_content, verify_email_document};
+// `_named` variants accept a custom attachment filename.
+pub use verify::{
+    normalize_algorithm, verify_email, verify_email_content, verify_email_document,
+    verify_email_document_named, verify_email_named,
+};
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).
 pub use attachment::{

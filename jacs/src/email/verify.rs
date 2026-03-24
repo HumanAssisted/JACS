@@ -6,7 +6,9 @@
 
 use sha2::{Digest, Sha256};
 
-use super::attachment::{get_jacs_attachment, remove_jacs_attachment};
+use super::attachment::{
+    DEFAULT_JACS_SIGNATURE_FILENAME, get_jacs_attachment_named, remove_jacs_attachment_named,
+};
 use super::canonicalize::{
     canonicalize_body, canonicalize_header, compute_attachment_hash, compute_body_hash,
     compute_header_entry, compute_mime_headers_hash, extract_email_parts,
@@ -38,32 +40,22 @@ pub fn normalize_algorithm(algorithm: &str) -> String {
     s
 }
 
-/// Extract and verify the JACS email signature document from a raw email.
+/// Extract and verify the JACS email signature document from a raw email,
+/// looking for a custom attachment filename.
 ///
-/// Uses [`JacsSigner::verify_with_key()`] to validate the JACS document
-/// signature against the supplied `public_key`, then extracts the email
-/// payload and parsed email parts.
-///
-/// Steps:
-/// 1. Extracts the `hai.ai.signature.jacs.json` attachment
-/// 2. Removes the JACS attachment (the signature covers the email WITHOUT itself)
-/// 3. Verifies the JACS document signature using the provided public key
-/// 4. Extracts the email signature payload from the `content` field
-/// 5. Returns a `JacsEmailSignatureDocument` and parsed email parts
-///
-/// # Arguments
-/// * `raw_email` - The raw RFC 5322 email bytes (with JACS attachment)
-/// * `verifier` - Any type implementing [`JacsSigner`] (e.g. `SimpleAgent`)
-/// * `public_key` - The signer's public key bytes (from registry, trust store, etc.)
-pub fn verify_email_document(
+/// Same as [`verify_email_document`] but accepts a custom JACS attachment
+/// filename. Use this when the email uses a branded attachment name
+/// instead of the JACS default.
+pub fn verify_email_document_named(
     raw_email: &[u8],
     verifier: &impl super::JacsSigner,
     public_key: &[u8],
+    filename: &str,
 ) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
     check_email_size(raw_email)?;
 
-    let jacs_bytes = get_jacs_attachment(raw_email)?;
-    let email_without_jacs = remove_jacs_attachment(raw_email)?;
+    let jacs_bytes = get_jacs_attachment_named(raw_email, filename)?;
+    let email_without_jacs = remove_jacs_attachment_named(raw_email, filename)?;
 
     let jacs_str = std::str::from_utf8(&jacs_bytes).map_err(|e| {
         EmailError::InvalidJacsDocument(format!("attachment is not valid UTF-8: {e}"))
@@ -152,32 +144,51 @@ pub fn verify_email_document(
     Ok((doc, parts))
 }
 
-/// Verify a JACS-signed .eml (RFC 5322) email in a single call.
+/// Extract and verify the JACS email signature document from a raw email.
 ///
-/// This is the primary API for email verification. It combines
-/// cryptographic signature validation and content hash comparison:
+/// Uses the default attachment filename ([`DEFAULT_JACS_SIGNATURE_FILENAME`]).
+/// For a custom filename, use [`verify_email_document_named`].
+pub fn verify_email_document(
+    raw_email: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
+    verify_email_document_named(
+        raw_email,
+        verifier,
+        public_key,
+        DEFAULT_JACS_SIGNATURE_FILENAME,
+    )
+}
+
+/// Verify a JACS-signed email with a custom attachment filename.
 ///
-/// 1. Extracts and verifies the `hai.ai.signature.jacs.json` JACS document
-/// 2. Compares every hash in the trusted JACS document against the actual
-///    email content (headers, body parts, attachments)
-/// 3. Returns field-level results showing which fields pass, fail, or were
-///    modified
+/// Same as [`verify_email`] but accepts a custom JACS attachment filename.
+pub fn verify_email_named(
+    raw_eml: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+    filename: &str,
+) -> Result<ContentVerificationResult, EmailError> {
+    let (doc, parts) = verify_email_document_named(raw_eml, verifier, public_key, filename)?;
+    Ok(verify_email_content(&doc, &parts))
+}
+
+/// Verify a JACS-signed email in a single call.
 ///
-/// # Arguments
-/// * `raw_eml` - Raw RFC 5322 email bytes (with `hai.ai.signature.jacs.json` attached)
-/// * `verifier` - Any type implementing [`JacsSigner`] (e.g. `SimpleAgent`)
-/// * `public_key` - The signer's public key bytes (from registry, trust store, etc.)
-///
-/// # Returns
-/// `ContentVerificationResult` with field-level results. Check `.valid` for
-/// overall pass/fail.
+/// Uses the default attachment filename ([`DEFAULT_JACS_SIGNATURE_FILENAME`]).
+/// For a custom filename, use [`verify_email_named`].
 pub fn verify_email(
     raw_eml: &[u8],
     verifier: &impl super::JacsSigner,
     public_key: &[u8],
 ) -> Result<ContentVerificationResult, EmailError> {
-    let (doc, parts) = verify_email_document(raw_eml, verifier, public_key)?;
-    Ok(verify_email_content(&doc, &parts))
+    verify_email_named(
+        raw_eml,
+        verifier,
+        public_key,
+        DEFAULT_JACS_SIGNATURE_FILENAME,
+    )
 }
 
 /// Compare trusted JACS document hashes against actual email content.
@@ -685,7 +696,8 @@ fn verify_attachments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::email::sign::sign_email;
+    use crate::email::canonicalize::extract_email_parts;
+    use crate::email::sign::{sign_email, sign_email_named};
     use crate::email::types::*;
     use crate::simple::SimpleAgent;
 
@@ -1035,10 +1047,10 @@ mod tests {
         let renamed = parts
             .jacs_attachments
             .iter()
-            .find(|a| a.filename == "hai.ai.signature.0.jacs.json");
+            .find(|a| a.filename == "jacs-signature-0.json");
         assert!(
             renamed.is_some(),
-            "Expected hai.ai.signature.0.jacs.json attachment, found: {:?}",
+            "Expected jacs-signature-0.json attachment, found: {:?}",
             parts
                 .jacs_attachments
                 .iter()
@@ -1198,6 +1210,92 @@ mod tests {
         assert!(!result.chain[2].forwarded);
         assert!(!result.chain[1].valid);
         assert!(!result.chain[2].valid);
+    }
+
+    // -- Custom-name forwarding tests --
+
+    #[test]
+    #[serial(jacs_env)]
+    fn sign_email_named_uses_custom_attachment_name() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("custom-name-sign");
+        let email = simple_text_email();
+        let signed = sign_email_named(&email, &agent, "myapp.jacs.json").unwrap();
+        let parts = extract_email_parts(&signed).unwrap();
+        assert!(
+            parts
+                .jacs_attachments
+                .iter()
+                .any(|a| a.filename == "myapp.jacs.json"),
+            "Expected custom attachment name 'myapp.jacs.json', found: {:?}",
+            parts
+                .jacs_attachments
+                .iter()
+                .map(|a| &a.filename)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn forward_with_custom_name_renames_correctly() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let custom_name = "myapp.jacs.json";
+
+        let (agent_a, _tmp_a, _env_guard_a) = create_test_agent("custom-fwd-a");
+        let original = b"From: a@example.com\r\nTo: b@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <custom@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n";
+        let signed_by_a = sign_email_named(original, &agent_a, custom_name).unwrap();
+
+        let (agent_b, _tmp_b, _env_guard_b) = create_test_agent("custom-fwd-b");
+        let signed_by_b = sign_email_named(&signed_by_a, &agent_b, custom_name).unwrap();
+
+        let parts = extract_email_parts(&signed_by_b).unwrap();
+        let filenames: Vec<&str> = parts
+            .jacs_attachments
+            .iter()
+            .map(|a| a.filename.as_str())
+            .collect();
+
+        // Active signature should be the custom name
+        assert!(
+            filenames.contains(&custom_name),
+            "Expected active '{}', found: {:?}",
+            custom_name,
+            filenames
+        );
+        // Renamed original should be `myapp.0.jacs.json`
+        assert!(
+            filenames.contains(&"myapp.0.jacs.json"),
+            "Expected forwarded 'myapp.0.jacs.json', found: {:?}",
+            filenames
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_email_named_works_with_custom_name() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let custom_name = "branded.jacs.json";
+
+        let (agent, _tmp, _env_guard) = create_test_agent("custom-verify");
+        let pubkey = get_pubkey(&agent);
+        let email = simple_text_email();
+        let signed = sign_email_named(&email, &agent, custom_name).unwrap();
+
+        // Default verify should fail (looks for jacs-signature.json)
+        assert!(
+            verify_email_document(&signed, &agent, &pubkey).is_err(),
+            "Default verify should not find custom-named attachment"
+        );
+
+        // Named verify should succeed
+        let result = verify_email_document_named(&signed, &agent, &pubkey, custom_name);
+        assert!(
+            result.is_ok(),
+            "Named verify should find '{}': {:?}",
+            custom_name,
+            result.err()
+        );
     }
 
     // -- Security regression tests --
