@@ -302,6 +302,50 @@ impl SimpleAgentWrapper {
             .map_err(|e| BindingCoreError::signing_failed(format!("Sign file failed: {}", e)))?;
         Ok(signed.raw)
     }
+
+    // =========================================================================
+    // Format Conversion (stateless -- no agent lock needed)
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    pub fn to_yaml(&self, json_str: &str) -> BindingResult<String> {
+        jacs::convert::jacs_to_yaml(json_str).map_err(|e| {
+            BindingCoreError::new(
+                crate::ErrorKind::SerializationFailed,
+                format!("to_yaml failed: {}", e),
+            )
+        })
+    }
+
+    /// Convert a YAML string to pretty-printed JSON.
+    pub fn from_yaml(&self, yaml_str: &str) -> BindingResult<String> {
+        jacs::convert::yaml_to_jacs(yaml_str).map_err(|e| {
+            BindingCoreError::new(
+                crate::ErrorKind::SerializationFailed,
+                format!("from_yaml failed: {}", e),
+            )
+        })
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    pub fn to_html(&self, json_str: &str) -> BindingResult<String> {
+        jacs::convert::jacs_to_html(json_str).map_err(|e| {
+            BindingCoreError::new(
+                crate::ErrorKind::SerializationFailed,
+                format!("to_html failed: {}", e),
+            )
+        })
+    }
+
+    /// Extract JSON from an HTML document produced by `to_html`.
+    pub fn from_html(&self, html_str: &str) -> BindingResult<String> {
+        jacs::convert::html_to_jacs(html_str).map_err(|e| {
+            BindingCoreError::new(
+                crate::ErrorKind::SerializationFailed,
+                format!("from_html failed: {}", e),
+            )
+        })
+    }
 }
 
 // =============================================================================

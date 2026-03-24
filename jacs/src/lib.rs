@@ -65,6 +65,7 @@ pub mod a2a;
 pub mod agent;
 pub mod audit;
 pub mod config;
+pub mod convert;
 pub mod crypt;
 pub mod dns;
 pub mod document;

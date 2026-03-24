@@ -57,6 +57,7 @@
 
 pub mod advanced;
 pub mod batch;
+pub mod convert;
 pub mod core;
 pub mod diagnostics;
 pub mod types;

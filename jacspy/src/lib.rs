@@ -1388,6 +1388,73 @@ impl SimpleAgent {
             ))
         })
     }
+
+    // =========================================================================
+    // Format Conversion
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    ///
+    /// Args:
+    ///     json_str: A valid JSON string
+    ///
+    /// Returns:
+    ///     YAML representation of the JSON document
+    #[pyo3(signature = (json_str))]
+    fn to_yaml(&self, json_str: &str) -> PyResult<String> {
+        self.inner.to_yaml(json_str).to_py()
+    }
+
+    /// Convert a YAML string to JSON.
+    ///
+    /// Args:
+    ///     yaml_str: A valid YAML string
+    ///
+    /// Returns:
+    ///     Pretty-printed JSON representation
+    #[pyo3(signature = (yaml_str))]
+    fn from_yaml(&self, yaml_str: &str) -> PyResult<String> {
+        self.inner.from_yaml(yaml_str).to_py()
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    ///
+    /// Args:
+    ///     json_str: A valid JSON string
+    ///
+    /// Returns:
+    ///     Self-contained HTML document with embedded JSON
+    #[pyo3(signature = (json_str))]
+    fn to_html(&self, json_str: &str) -> PyResult<String> {
+        self.inner.to_html(json_str).to_py()
+    }
+
+    /// Extract JSON from an HTML document produced by to_html().
+    ///
+    /// Args:
+    ///     html_str: An HTML string containing embedded JACS JSON
+    ///
+    /// Returns:
+    ///     The extracted JSON string
+    #[pyo3(signature = (html_str))]
+    fn from_html(&self, html_str: &str) -> PyResult<String> {
+        self.inner.from_html(html_str).to_py()
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    ///
+    /// This is equivalent to calling from_yaml() followed by verify().
+    ///
+    /// Args:
+    ///     yaml_str: A valid YAML string containing a signed JACS document
+    ///
+    /// Returns:
+    ///     Verification result JSON string
+    #[pyo3(signature = (yaml_str))]
+    fn verify_yaml(&self, yaml_str: &str) -> PyResult<String> {
+        let json_str = self.inner.from_yaml(yaml_str).to_py()?;
+        self.inner.verify_json(&json_str).to_py()
+    }
 }
 
 // =============================================================================

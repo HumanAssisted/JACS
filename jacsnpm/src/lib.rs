@@ -1365,6 +1365,42 @@ impl JacsSimpleAgent {
     pub fn sign_file(&self, file_path: String, embed: bool) -> Result<String> {
         self.inner.sign_file_json(&file_path, embed).to_napi()
     }
+
+    // =========================================================================
+    // Format Conversion
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    #[napi(js_name = "toYaml")]
+    pub fn to_yaml(&self, json_str: String) -> Result<String> {
+        self.inner.to_yaml(&json_str).to_napi()
+    }
+
+    /// Convert a YAML string to pretty-printed JSON.
+    #[napi(js_name = "fromYaml")]
+    pub fn from_yaml(&self, yaml_str: String) -> Result<String> {
+        self.inner.from_yaml(&yaml_str).to_napi()
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    #[napi(js_name = "toHtml")]
+    pub fn to_html(&self, json_str: String) -> Result<String> {
+        self.inner.to_html(&json_str).to_napi()
+    }
+
+    /// Extract JSON from an HTML document produced by toHtml().
+    #[napi(js_name = "fromHtml")]
+    pub fn from_html(&self, html_str: String) -> Result<String> {
+        self.inner.from_html(&html_str).to_napi()
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    /// Equivalent to calling fromYaml() followed by verify().
+    #[napi(js_name = "verifyYaml")]
+    pub fn verify_yaml(&self, yaml_str: String) -> Result<String> {
+        let json_str = self.inner.from_yaml(&yaml_str).to_napi()?;
+        self.inner.verify_json(&json_str).to_napi()
+    }
 }
 
 // ============================================================================
