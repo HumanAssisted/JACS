@@ -757,3 +757,26 @@ pub fn read_raw_fixture(filename: &str) -> Result<String, Box<dyn Error>> {
     let content = fs::read_to_string(&path)?;
     Ok(content)
 }
+
+/// Collect all `*.json` files from a directory (non-recursive), sorted by path.
+///
+/// Returns an empty Vec if the directory does not exist.
+pub fn collect_json_files(dir: &Path) -> Vec<PathBuf> {
+    if !dir.exists() {
+        return vec![];
+    }
+    let mut files: Vec<PathBuf> = fs::read_dir(dir)
+        .expect("should be able to read directory")
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+    files.sort();
+    files
+}

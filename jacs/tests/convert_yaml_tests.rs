@@ -7,28 +7,8 @@ mod utils;
 
 use jacs::convert::{jacs_to_yaml, yaml_to_jacs};
 use jacs::protocol::canonicalize_json;
-use std::path::{Path, PathBuf};
-
-/// Collect all `*.json` files from a directory (non-recursive).
-fn collect_json_files(dir: &Path) -> Vec<PathBuf> {
-    if !dir.exists() {
-        return vec![];
-    }
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .expect("should be able to read directory")
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .collect();
-    files.sort();
-    files
-}
+use jacs::simple::SimpleAgent;
+use utils::collect_json_files;
 
 /// Assert that a JSON string round-trips through YAML and the canonical form
 /// is byte-identical. Returns the filename on failure for diagnostics.
@@ -176,5 +156,26 @@ fn yaml_round_trip_golden_fixtures() {
         "yaml_round_trip_golden_fixtures: {}/{} files passed",
         passed,
         files.len()
+    );
+}
+
+/// Proves that YAML conversion does not break cryptographic verification.
+/// Signs a document, converts to YAML, converts back to JSON, and verifies
+/// the signature on the reconstituted document.
+#[test]
+fn yaml_round_trip_preserves_verification() {
+    let (agent, _info) =
+        SimpleAgent::ephemeral(Some("ed25519")).expect("should create ephemeral agent");
+    let signed = agent
+        .sign_message(&serde_json::json!({"fixture_test": true, "round_trip": "yaml"}))
+        .expect("sign should succeed");
+
+    let yaml = jacs_to_yaml(&signed.raw).expect("jacs_to_yaml should succeed");
+    let json_back = yaml_to_jacs(&yaml).expect("yaml_to_jacs should succeed");
+    let result = agent.verify(&json_back).expect("verify should not error");
+    assert!(
+        result.valid,
+        "Signed document should verify after YAML round-trip: {:?}",
+        result.errors
     );
 }

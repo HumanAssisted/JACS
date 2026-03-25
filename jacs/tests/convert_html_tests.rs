@@ -6,28 +6,7 @@
 mod utils;
 
 use jacs::convert::{html_to_jacs, jacs_to_html};
-use std::path::{Path, PathBuf};
-
-/// Collect all `*.json` files from a directory (non-recursive).
-fn collect_json_files(dir: &Path) -> Vec<PathBuf> {
-    if !dir.exists() {
-        return vec![];
-    }
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .expect("should be able to read directory")
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .collect();
-    files.sort();
-    files
-}
+use utils::collect_json_files;
 
 /// Assert that a JSON string round-trips through HTML and is extracted identically.
 fn assert_html_round_trip(json_str: &str, filename: &str) {

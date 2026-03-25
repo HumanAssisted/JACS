@@ -1183,7 +1183,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .long("file")
                     .required(true)
                     .value_parser(value_parser!(String))
-                    .help("Input file path"),
+                    .help("Input file path (use '-' for stdin)"),
             )
             .arg(
                 Arg::new("output")
@@ -2594,8 +2594,12 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             let output_path = convert_matches.get_one::<String>("output");
 
             // Auto-detect source format from extension if not explicitly provided
+            let is_stdin = file_path == "-";
             let detected_format = if let Some(fmt) = source_format {
                 fmt.clone()
+            } else if is_stdin {
+                eprintln!("When reading from stdin (-f -), --from is required to specify the source format.");
+                process::exit(1);
             } else {
                 let ext = std::path::Path::new(file_path)
                     .extension()
@@ -2615,9 +2619,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             };
 
-            // Read input
-            let input = std::fs::read_to_string(file_path)
-                .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?;
+            // Read input (from file or stdin)
+            let input = if is_stdin {
+                let mut buf = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)
+                    .map_err(|e| format!("Failed to read from stdin: {}", e))?;
+                buf
+            } else {
+                std::fs::read_to_string(file_path)
+                    .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?
+            };
 
             // Convert
             let output = match (detected_format.as_str(), target_format.as_str()) {

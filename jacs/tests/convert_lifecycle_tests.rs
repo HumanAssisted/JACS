@@ -156,6 +156,50 @@ fn tampered_yaml_fails_verification() {
     }
 }
 
+// =========================================================================
+// pq2025 lifecycle tests (feature-gated)
+// =========================================================================
+
+#[cfg(feature = "pq-tests")]
+#[test]
+fn sign_yaml_verify_pq2025() {
+    let agent = make_agent("pq2025");
+    let signed = agent
+        .sign_message(&serde_json::json!({"pq_yaml": "test", "algorithm": "pq2025"}))
+        .expect("sign should succeed");
+
+    let yaml = jacs_to_yaml(&signed.raw).expect("jacs_to_yaml");
+    let json_back = yaml_to_jacs(&yaml).expect("yaml_to_jacs");
+    let result = agent.verify(&json_back).expect("verify should succeed");
+    assert!(
+        result.valid,
+        "pq2025 sign -> YAML -> JSON -> verify should pass: {:?}",
+        result.errors
+    );
+}
+
+#[cfg(feature = "pq-tests")]
+#[test]
+fn sign_html_verify_pq2025() {
+    let agent = make_agent("pq2025");
+    let signed = agent
+        .sign_message(&serde_json::json!({"pq_html": "test", "algorithm": "pq2025"}))
+        .expect("sign should succeed");
+
+    let html = jacs_to_html(&signed.raw).expect("jacs_to_html");
+    let json_back = html_to_jacs(&html).expect("html_to_jacs");
+    let result = agent.verify(&json_back).expect("verify should succeed");
+    assert!(
+        result.valid,
+        "pq2025 sign -> HTML -> JSON -> verify should pass: {:?}",
+        result.errors
+    );
+}
+
+// =========================================================================
+// Tamper detection tests
+// =========================================================================
+
 #[test]
 fn tampered_html_embedded_json_fails_verification() {
     let agent = make_agent("ed25519");

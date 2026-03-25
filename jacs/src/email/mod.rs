@@ -54,7 +54,10 @@ pub use types::{
 };
 
 // Signing: the primary sender-side function.
-pub use sign::{canonicalize_json_rfc8785, sign_email, sign_email_named};
+pub use sign::{
+    canonicalize_json_rfc8785, sign_email, sign_email_html, sign_email_html_named,
+    sign_email_named, sign_email_yaml, sign_email_yaml_named,
+};
 
 // Verification: one-call API + two-step API + content-only API.
 // `_named` variants accept a custom attachment filename.

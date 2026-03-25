@@ -9,6 +9,8 @@ use tempfile::TempDir;
 
 fn fixtures_raw_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("jacs")
         .join("tests")
         .join("fixtures")
         .join("raw")

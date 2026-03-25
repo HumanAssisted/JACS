@@ -775,6 +775,47 @@ impl JacsAgent {
             })),
         })
     }
+
+    // =========================================================================
+    // Format Conversion (stateless -- no agent lock needed)
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    #[napi(js_name = "toYamlSync")]
+    pub fn to_yaml_sync(&self, json_str: String) -> Result<String> {
+        jacs::convert::jacs_to_yaml(&json_str)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Convert a YAML string to pretty-printed JSON.
+    #[napi(js_name = "fromYamlSync")]
+    pub fn from_yaml_sync(&self, yaml_str: String) -> Result<String> {
+        jacs::convert::yaml_to_jacs(&yaml_str)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    #[napi(js_name = "toHtmlSync")]
+    pub fn to_html_sync(&self, json_str: String) -> Result<String> {
+        jacs::convert::jacs_to_html(&json_str)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Extract JSON from an HTML document produced by toHtml().
+    #[napi(js_name = "fromHtmlSync")]
+    pub fn from_html_sync(&self, html_str: String) -> Result<String> {
+        jacs::convert::html_to_jacs(&html_str)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    /// Returns true if verification succeeds.
+    #[napi(js_name = "verifyYamlSync")]
+    pub fn verify_yaml_sync(&self, yaml_str: String) -> Result<bool> {
+        let json_str = jacs::convert::yaml_to_jacs(&yaml_str)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        self.inner.verify_document(&json_str).to_napi()
+    }
 }
 
 // =============================================================================

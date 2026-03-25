@@ -427,6 +427,82 @@ pub fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
     serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
+// =============================================================================
+// YAML/HTML email signing wrappers
+// =============================================================================
+
+/// Sign a raw RFC 5322 email and attach the JACS signature as a YAML document.
+///
+/// Same as [`sign_email`] but the JACS signature attachment is converted to YAML
+/// for human-readable viewing. The attachment filename defaults to
+/// `jacs-signature.yaml`.
+pub fn sign_email_yaml(
+    raw_email: &[u8],
+    signer: &impl super::JacsSigner,
+) -> Result<Vec<u8>, EmailError> {
+    sign_email_yaml_named(raw_email, signer, "jacs-signature.yaml")
+}
+
+/// Sign a raw RFC 5322 email and attach the JACS signature as a YAML document
+/// with a custom attachment filename.
+pub fn sign_email_yaml_named(
+    raw_email: &[u8],
+    signer: &impl super::JacsSigner,
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
+    // First sign normally to get the JACS document JSON
+    let signed_email = sign_email_inner(raw_email, signer, "jacs-signature.json")?;
+
+    // Extract the JSON JACS document from the signed email
+    let json_bytes = super::attachment::get_jacs_attachment(&signed_email)?;
+    let json_str = std::str::from_utf8(&json_bytes)
+        .map_err(|e| EmailError::InvalidJacsDocument(format!("not UTF-8: {}", e)))?;
+
+    // Convert to YAML
+    let yaml_str = crate::convert::jacs_to_yaml(json_str)
+        .map_err(|e| EmailError::InvalidJacsDocument(format!("YAML conversion: {}", e)))?;
+
+    // Remove the JSON attachment and add the YAML one
+    let without_json = super::attachment::remove_jacs_attachment(&signed_email)?;
+    add_jacs_attachment_named(&without_json, yaml_str.as_bytes(), filename)
+}
+
+/// Sign a raw RFC 5322 email and attach the JACS signature as an HTML document.
+///
+/// Same as [`sign_email`] but the JACS signature attachment is rendered as a
+/// self-contained HTML page with embedded JSON for lossless extraction.
+/// The attachment filename defaults to `jacs-signature.html`.
+pub fn sign_email_html(
+    raw_email: &[u8],
+    signer: &impl super::JacsSigner,
+) -> Result<Vec<u8>, EmailError> {
+    sign_email_html_named(raw_email, signer, "jacs-signature.html")
+}
+
+/// Sign a raw RFC 5322 email and attach the JACS signature as an HTML document
+/// with a custom attachment filename.
+pub fn sign_email_html_named(
+    raw_email: &[u8],
+    signer: &impl super::JacsSigner,
+    filename: &str,
+) -> Result<Vec<u8>, EmailError> {
+    // First sign normally to get the JACS document JSON
+    let signed_email = sign_email_inner(raw_email, signer, "jacs-signature.json")?;
+
+    // Extract the JSON JACS document from the signed email
+    let json_bytes = super::attachment::get_jacs_attachment(&signed_email)?;
+    let json_str = std::str::from_utf8(&json_bytes)
+        .map_err(|e| EmailError::InvalidJacsDocument(format!("not UTF-8: {}", e)))?;
+
+    // Convert to HTML
+    let html_str = crate::convert::jacs_to_html(json_str)
+        .map_err(|e| EmailError::InvalidJacsDocument(format!("HTML conversion: {}", e)))?;
+
+    // Remove the JSON attachment and add the HTML one
+    let without_json = super::attachment::remove_jacs_attachment(&signed_email)?;
+    add_jacs_attachment_named(&without_json, html_str.as_bytes(), filename)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -665,5 +741,105 @@ mod tests {
         assert!(plain.mime_headers_hash.starts_with("sha256:"));
         assert!(html.content_hash.starts_with("sha256:"));
         assert!(html.mime_headers_hash.starts_with("sha256:"));
+    }
+
+    // =========================================================================
+    // YAML/HTML email signing wrapper tests
+    // =========================================================================
+
+    #[test]
+    #[serial(jacs_env)]
+    fn sign_email_yaml_attaches_yaml_signature() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent();
+        let email = simple_text_email();
+        let signed = sign_email_yaml(&email, &agent).unwrap();
+        let signed_str = String::from_utf8_lossy(&signed);
+
+        // Should have YAML attachment, not JSON
+        assert!(
+            signed_str.contains("jacs-signature.yaml"),
+            "Should have jacs-signature.yaml attachment"
+        );
+        // Should be parseable
+        assert!(
+            mail_parser::MessageParser::default()
+                .parse(&signed)
+                .is_some()
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn sign_email_yaml_round_trips_to_verifiable_json() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent();
+        let email = simple_text_email();
+        let signed = sign_email_yaml(&email, &agent).unwrap();
+
+        // Extract the YAML attachment
+        let yaml_bytes =
+            super::super::attachment::get_jacs_attachment_named(&signed, "jacs-signature.yaml")
+                .unwrap();
+        let yaml_str = std::str::from_utf8(&yaml_bytes).unwrap();
+
+        // Convert back to JSON
+        let json_str = crate::convert::yaml_to_jacs(yaml_str).unwrap();
+
+        // Verify the reconstituted JSON
+        let result = agent.verify(&json_str).unwrap();
+        assert!(
+            result.valid,
+            "YAML attachment should round-trip to verifiable JSON: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn sign_email_html_attaches_html_signature() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent();
+        let email = simple_text_email();
+        let signed = sign_email_html(&email, &agent).unwrap();
+        let signed_str = String::from_utf8_lossy(&signed);
+
+        // Should have HTML attachment, not JSON
+        assert!(
+            signed_str.contains("jacs-signature.html"),
+            "Should have jacs-signature.html attachment"
+        );
+        // Should be parseable
+        assert!(
+            mail_parser::MessageParser::default()
+                .parse(&signed)
+                .is_some()
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn sign_email_html_contains_embedded_json_that_verifies() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent();
+        let email = simple_text_email();
+        let signed = sign_email_html(&email, &agent).unwrap();
+
+        // Extract the HTML attachment
+        let html_bytes =
+            super::super::attachment::get_jacs_attachment_named(&signed, "jacs-signature.html")
+                .unwrap();
+        let html_str = std::str::from_utf8(&html_bytes).unwrap();
+
+        // Extract JSON from HTML
+        let json_str = crate::convert::html_to_jacs(html_str).unwrap();
+
+        // Verify the extracted JSON
+        let result = agent.verify(&json_str).unwrap();
+        assert!(
+            result.valid,
+            "HTML attachment should contain verifiable JSON: {:?}",
+            result.errors
+        );
     }
 }

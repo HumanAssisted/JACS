@@ -633,6 +633,43 @@ impl JacsAgent {
             .unwrap_signed_event(event_json, server_keys_json)
             .to_py()
     }
+
+    // =========================================================================
+    // Format Conversion (stateless -- no agent lock needed)
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    fn to_yaml(&self, json_str: &str) -> PyResult<String> {
+        jacs_core::convert::jacs_to_yaml(json_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Convert a YAML string to pretty-printed JSON.
+    fn from_yaml(&self, yaml_str: &str) -> PyResult<String> {
+        jacs_core::convert::yaml_to_jacs(yaml_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    fn to_html(&self, json_str: &str) -> PyResult<String> {
+        jacs_core::convert::jacs_to_html(json_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Extract JSON from an HTML document produced by to_html().
+    fn from_html(&self, html_str: &str) -> PyResult<String> {
+        jacs_core::convert::html_to_jacs(html_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    ///
+    /// Returns True if verification succeeds.
+    fn verify_yaml(&self, yaml_str: &str) -> PyResult<bool> {
+        let json_str = jacs_core::convert::yaml_to_jacs(yaml_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        self.inner.verify_document(&json_str).to_py()
+    }
 }
 
 // =============================================================================

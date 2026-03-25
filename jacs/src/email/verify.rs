@@ -61,9 +61,24 @@ pub fn verify_email_document_named(
         EmailError::InvalidJacsDocument(format!("attachment is not valid UTF-8: {e}"))
     })?;
 
+    // Auto-detect format from filename extension and convert to JSON if needed.
+    // YAML attachments are converted via yaml_to_jacs, HTML via html_to_jacs.
+    // JSON attachments (or unrecognized extensions) are used as-is.
+    let jacs_json = if filename.ends_with(".yaml") || filename.ends_with(".yml") {
+        crate::convert::yaml_to_jacs(jacs_str).map_err(|e| {
+            EmailError::InvalidJacsDocument(format!("YAML to JSON conversion failed: {e}"))
+        })?
+    } else if filename.ends_with(".html") || filename.ends_with(".htm") {
+        crate::convert::html_to_jacs(jacs_str).map_err(|e| {
+            EmailError::InvalidJacsDocument(format!("HTML to JSON extraction failed: {e}"))
+        })?
+    } else {
+        jacs_str.to_string()
+    };
+
     // Verify the JACS document using the provided public key
     let result = verifier
-        .verify_with_key(jacs_str, public_key.to_vec())
+        .verify_with_key(&jacs_json, public_key.to_vec())
         .map_err(|e| {
             EmailError::SignatureVerificationFailed(format!(
                 "JACS document verification failed: {e}"
@@ -78,7 +93,7 @@ pub fn verify_email_document_named(
     }
 
     // Parse the JACS document to extract the email payload
-    let jacs_value: serde_json::Value = serde_json::from_str(jacs_str).map_err(|e| {
+    let jacs_value: serde_json::Value = serde_json::from_str(&jacs_json).map_err(|e| {
         EmailError::InvalidJacsDocument(format!("failed to parse JACS document: {e}"))
     })?;
 

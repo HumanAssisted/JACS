@@ -361,3 +361,121 @@ pub fn sign_message_json(wrapper: &SimpleAgentWrapper, data_json: &str) -> Bindi
 pub fn verify_json(wrapper: &SimpleAgentWrapper, signed_document: &str) -> BindingResult<String> {
     wrapper.verify_json(signed_document)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a wrapper for conversion tests. Conversion methods are stateless
+    /// so we only need a default wrapper (no agent loaded).
+    fn test_wrapper() -> SimpleAgentWrapper {
+        let (wrapper, _info) =
+            SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("ephemeral agent");
+        wrapper
+    }
+
+    #[test]
+    fn to_yaml_valid_json_succeeds() {
+        let wrapper = test_wrapper();
+        let result = wrapper.to_yaml(r#"{"key": "value"}"#);
+        assert!(result.is_ok(), "to_yaml should succeed for valid JSON");
+        let yaml = result.unwrap();
+        assert!(yaml.contains("key"), "YAML should contain 'key'");
+        assert!(yaml.contains("value"), "YAML should contain 'value'");
+    }
+
+    #[test]
+    fn from_yaml_valid_yaml_succeeds() {
+        let wrapper = test_wrapper();
+        let result = wrapper.from_yaml("key: value\n");
+        assert!(result.is_ok(), "from_yaml should succeed for valid YAML");
+        let json = result.unwrap();
+        assert!(json.contains("\"key\""), "JSON should contain key");
+        assert!(json.contains("\"value\""), "JSON should contain value");
+    }
+
+    #[test]
+    fn to_html_valid_json_succeeds() {
+        let wrapper = test_wrapper();
+        let result = wrapper.to_html(r#"{"key": "value"}"#);
+        assert!(result.is_ok(), "to_html should succeed for valid JSON");
+        let html = result.unwrap();
+        assert!(html.contains("<!DOCTYPE html>"), "HTML should have DOCTYPE");
+        assert!(
+            html.contains(r#"id="jacs-data">"#),
+            "HTML should have jacs-data script tag"
+        );
+    }
+
+    #[test]
+    fn from_html_valid_html_succeeds() {
+        let wrapper = test_wrapper();
+        let json = r#"{"key": "value"}"#;
+        let html = wrapper.to_html(json).unwrap();
+        let result = wrapper.from_html(&html);
+        assert!(result.is_ok(), "from_html should succeed for valid HTML");
+        assert_eq!(result.unwrap(), json, "Extracted JSON should match input");
+    }
+
+    #[test]
+    fn yaml_round_trip_preserves_content() {
+        let wrapper = test_wrapper();
+        let json = r#"{"hello": "world", "count": 42}"#;
+        let yaml = wrapper.to_yaml(json).unwrap();
+        let back = wrapper.from_yaml(&yaml).unwrap();
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        let reconstituted: serde_json::Value = serde_json::from_str(&back).unwrap();
+        assert_eq!(original, reconstituted, "YAML round-trip should preserve content");
+    }
+
+    #[test]
+    fn html_round_trip_preserves_content() {
+        let wrapper = test_wrapper();
+        let json = r#"{"hello": "world", "count": 42}"#;
+        let html = wrapper.to_html(json).unwrap();
+        let back = wrapper.from_html(&html).unwrap();
+        assert_eq!(back, json, "HTML round-trip should preserve exact JSON");
+    }
+
+    #[test]
+    fn to_yaml_invalid_json_returns_serialization_failed() {
+        let wrapper = test_wrapper();
+        let result = wrapper.to_yaml("{not valid json}");
+        assert!(result.is_err(), "to_yaml should fail for invalid JSON");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.kind,
+            crate::ErrorKind::SerializationFailed,
+            "Error should be SerializationFailed, got: {:?}",
+            err.kind
+        );
+    }
+
+    #[test]
+    fn from_yaml_invalid_yaml_returns_serialization_failed() {
+        let wrapper = test_wrapper();
+        let result = wrapper.from_yaml("{{{{ not yaml ::::");
+        assert!(result.is_err(), "from_yaml should fail for invalid YAML");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.kind,
+            crate::ErrorKind::SerializationFailed,
+            "Error should be SerializationFailed, got: {:?}",
+            err.kind
+        );
+    }
+
+    #[test]
+    fn from_html_no_script_tag_returns_serialization_failed() {
+        let wrapper = test_wrapper();
+        let result = wrapper.from_html("<html><body>No jacs data here</body></html>");
+        assert!(result.is_err(), "from_html should fail without jacs-data tag");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.kind,
+            crate::ErrorKind::SerializationFailed,
+            "Error should be SerializationFailed, got: {:?}",
+            err.kind
+        );
+    }
+}
