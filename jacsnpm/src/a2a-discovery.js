@@ -16,12 +16,17 @@
  * ```
  */
 
+const http = require('http');
+const https = require('https');
 const { JACS_EXTENSION_URI } = require('./a2a');
-const { fetchAgentCard } = require('../index.js');
+const { ensureNetworkAccess } = require('../index.js');
 const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
 
 /**
  * Fetch and parse a remote agent's A2A Agent Card.
+ *
+ * Uses Node.js native HTTP so the request is truly async and doesn't block
+ * the event loop (unlike the synchronous Rust FFI fetchAgentCard).
  *
  * @param {string} url - Base URL of the agent (e.g. "https://agent.example.com")
  * @param {Object} [options]
@@ -31,12 +36,49 @@ const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
  */
 async function discoverAgent(url, options = {}) {
   const timeoutMs = options.timeoutMs || 10000;
-  try {
-    return JSON.parse(fetchAgentCard(url, timeoutMs));
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(message);
+
+  // Enforce Rust-owned network access policy
+  ensureNetworkAccess('agent_card_fetch');
+
+  const trimmed = (url || '').trim().replace(/\/+$/, '');
+  if (!trimmed) {
+    throw new Error('Agent base URL cannot be empty');
   }
+  const cardUrl = `${trimmed}/.well-known/agent-card.json`;
+
+  return new Promise((resolve, reject) => {
+    const mod = cardUrl.startsWith('https') ? https : http;
+    const req = mod.get(cardUrl, { timeout: timeoutMs, headers: { Accept: 'application/json' } }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume(); // drain
+        reject(new Error(`Agent card fetch failed: ${res.statusCode} for ${cardUrl}`));
+        return;
+      }
+      const contentType = res.headers['content-type'] || '';
+      if (!contentType.includes('json')) {
+        res.resume();
+        reject(new Error(`Agent card response is not JSON (content-type: ${contentType}) for ${cardUrl}`));
+        return;
+      }
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch (e) {
+          reject(new Error(`Agent card response is not valid JSON for ${cardUrl}`));
+        }
+      });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Agent discovery timed out: ${cardUrl}`));
+    });
+    req.on('error', (err) => {
+      reject(new Error(`Agent discovery failed: ${err.message}`));
+    });
+  });
 }
 
 /**

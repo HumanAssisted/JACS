@@ -353,6 +353,16 @@ impl JacsAgent {
         self.inner.get_agent_json().to_py()
     }
 
+    /// Export the loaded agent's full JSON document.
+    fn export_agent(&self) -> PyResult<String> {
+        self.inner.export_agent().to_py()
+    }
+
+    /// Get the current agent's public key in PEM format.
+    fn get_public_key_pem(&self) -> PyResult<String> {
+        self.inner.get_public_key_pem().to_py()
+    }
+
     /// Get setup instructions for publishing DNS records and DNSSEC.
     ///
     /// Args:

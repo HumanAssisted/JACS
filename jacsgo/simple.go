@@ -274,6 +274,11 @@ func SignFile(filePath string, embed bool) (*SignedDocument, error) {
 		return nil, ErrAgentNotLoaded
 	}
 
+	// Check file exists before calling into Rust (which silently drops missing files)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, NewSimpleError("sign_file", fmt.Errorf("file not found: %s", filePath))
+	}
+
 	// Create document structure
 	docStruct := map[string]interface{}{
 		"jacsType":  "file",

@@ -153,7 +153,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         await discoverAgent('http://localhost:1', { timeoutMs: 2000 });
         expect.fail('Should have thrown');
       } catch (err) {
-        expect(err.message).to.match(/unreachable|timed out/i);
+        expect(err.message).to.match(/unreachable|timed out|failed|refused/i);
       }
     });
   });
@@ -346,7 +346,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         await discoverAndAssess('http://localhost:1', { timeoutMs: 2000 });
         expect.fail('Should have thrown');
       } catch (err) {
-        expect(err.message).to.match(/unreachable|timed out/i);
+        expect(err.message).to.match(/unreachable|timed out|failed|refused/i);
       }
     });
   });
