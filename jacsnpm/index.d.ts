@@ -75,6 +75,8 @@ export declare function legacyVerifyResponse(documentString: string): object
 /** @deprecated Use `new JacsAgent()` and instance methods instead. */
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
 export declare function ensureNetworkAccess(capability: string): void
+export declare function fetchAgentCard(baseUrl: string, timeoutMs?: number | undefined | null): string
+export declare function fetchRemoteKeyLookup(baseUrl?: string | undefined | null, jacsId?: string | undefined | null, version?: string | undefined | null, publicKeyHash?: string | undefined | null, timeoutMs?: number | undefined | null): string
 export declare function hashPublicKeyBase64(publicKeyBase64: string): string
 export declare function buildJwkSetFromPublicKey(publicKeyBase64: string, keyAlgorithm: string, keyId: string): string
 export declare function resolvePrivateKeyPassword(configPath?: string | undefined | null, keyDirectory?: string | undefined | null, explicitPassword?: string | undefined | null): string

@@ -1,37 +1,9 @@
 import json
 import logging
-import os
 
 from .types import JacsError
 
 logger = logging.getLogger("jacs")
-
-
-def write_key_directory_ignore_files(key_dir: str):
-    """Write ignore files in the key directory to keep secrets out of artifacts."""
-    ignore_content = (
-        "# JACS private key material -- do NOT commit or ship\n"
-        "*.pem\n"
-        "*.pem.enc\n"
-        ".jacs_password\n"
-        "*.key\n"
-        "*.key.enc\n"
-    )
-    os.makedirs(key_dir, exist_ok=True)
-    gitignore = os.path.join(key_dir, ".gitignore")
-    if not os.path.exists(gitignore):
-        try:
-            with open(gitignore, "w", encoding="utf-8") as f:
-                f.write(ignore_content)
-        except OSError as e:
-            logger.warning("Could not write %s: %s", gitignore, e)
-    dockerignore = os.path.join(key_dir, ".dockerignore")
-    if not os.path.exists(dockerignore):
-        try:
-            with open(dockerignore, "w", encoding="utf-8") as f:
-                f.write(ignore_content)
-        except OSError as e:
-            logger.warning("Could not write %s: %s", dockerignore, e)
 
 
 class EphemeralAgentAdapter:

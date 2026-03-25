@@ -36,7 +36,6 @@ import {
   quickstartPrivateKeyPassword as nativeQuickstartPrivateKeyPassword,
   resolvePrivateKeyPassword as nativeResolvePrivateKeyPassword,
 } from './index';
-import * as fs from 'fs';
 import * as path from 'path';
 import { warnDeprecated } from './deprecation';
 
@@ -273,6 +272,10 @@ function ensurePassword(configPath?: string | null, keyDirectory?: string | null
   );
 }
 
+function isConfigNotFoundError(error: unknown): boolean {
+  return String(error).toLowerCase().includes('config file not found');
+}
+
 // =============================================================================
 // JacsClient
 // =============================================================================
@@ -299,9 +302,13 @@ export class JacsClient {
     const paths = resolveCreatePaths(options?.configPath);
     const configPath = paths.configPath;
 
-    if (fs.existsSync(configPath)) {
+    try {
       await client.load(configPath);
       return client;
+    } catch (error) {
+      if (!isConfigNotFoundError(error)) {
+        throw error;
+      }
     }
 
     const password = ensurePassword(configPath, paths.keyDirectory);
@@ -328,9 +335,13 @@ export class JacsClient {
     const paths = resolveCreatePaths(options?.configPath);
     const configPath = paths.configPath;
 
-    if (fs.existsSync(configPath)) {
+    try {
       client.loadSync(configPath);
       return client;
+    } catch (error) {
+      if (!isConfigNotFoundError(error)) {
+        throw error;
+      }
     }
 
     const password = ensurePassword(configPath, paths.keyDirectory);
@@ -408,9 +419,6 @@ export class JacsClient {
     }
     const requestedPath = configPath || './jacs.config.json';
     const resolvedConfigPath = path.resolve(requestedPath);
-    if (!fs.existsSync(resolvedConfigPath)) {
-      throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
-    }
     const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath, null, null);
     this.agent = new JacsAgent();
     configurePrivateKeyPassword(this.agent, resolvedPassword || null);
@@ -425,9 +433,6 @@ export class JacsClient {
     }
     const requestedPath = configPath || './jacs.config.json';
     const resolvedConfigPath = path.resolve(requestedPath);
-    if (!fs.existsSync(resolvedConfigPath)) {
-      throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
-    }
     const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath, null, null);
     this.agent = new JacsAgent();
     configurePrivateKeyPassword(this.agent, resolvedPassword || null);
@@ -690,7 +695,6 @@ export class JacsClient {
 
   async signFile(filePath: string, embed: boolean = false): Promise<SignedDocument> {
     this.requireAgent();
-    if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
     const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
     return this.withPrivateKeyPassword(async (agent) => {
       const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, filePath, embed);
@@ -700,7 +704,6 @@ export class JacsClient {
 
   signFileSync(filePath: string, embed: boolean = false): SignedDocument {
     this.requireAgent();
-    if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
     const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
     return this.withPrivateKeyPasswordSync((agent) => {
       const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, filePath, embed);

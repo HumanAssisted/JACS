@@ -132,7 +132,6 @@ const index_1 = require("./index");
 Object.defineProperty(exports, "JacsAgent", { enumerable: true, get: function () { return index_1.JacsAgent; } });
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
-const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const deprecation_1 = require("./deprecation");
 // =============================================================================
@@ -229,11 +228,6 @@ function createRawDocumentPayload(jacsType, extra) {
         jacsLevel: 'raw',
         ...extra,
     });
-}
-function ensureFileExists(filePath) {
-    if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
-    }
 }
 function createDocumentImpl(agent, docContent, filePath, embed, isSync) {
     if (isSync) {
@@ -554,7 +548,6 @@ function updateDocumentSync(documentId, newDocumentData, attachments, embed) {
  */
 async function signFile(filePath, embed = false) {
     requireAgent();
-    ensureFileExists(filePath);
     const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
     });
@@ -568,7 +561,6 @@ async function signFile(filePath, embed = false) {
  */
 function signFileSync(filePath, embed = false) {
     requireAgent();
-    ensureFileExists(filePath);
     const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
     });

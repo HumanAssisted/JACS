@@ -18,6 +18,9 @@ use jacs::agent::{
 use jacs::config::Config;
 use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
+use reqwest::blocking::Client as BlockingClient;
+use reqwest::header::{ACCEPT, CONTENT_TYPE};
+use reqwest::{StatusCode, Url};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -257,6 +260,102 @@ fn truthy_env_var(name: &str) -> bool {
             value.eq_ignore_ascii_case("true") || value == "1"
         })
         .unwrap_or(false)
+}
+
+const DEFAULT_NETWORK_TIMEOUT_MS: u64 = 10_000;
+const DEFAULT_KEYS_BASE_URL: &str = "https://hai.ai";
+
+fn build_blocking_json_client(timeout_ms: u64) -> BindingResult<BlockingClient> {
+    BlockingClient::builder()
+        .timeout(std::time::Duration::from_millis(timeout_ms.max(1)))
+        .build()
+        .map_err(|e| {
+            BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e))
+        })
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(
+        host.trim().trim_matches(['[', ']']),
+        "localhost" | "127.0.0.1" | "::1"
+    )
+}
+
+fn validate_network_url(url: &Url, description: &str) -> BindingResult<()> {
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if url.host_str().is_some_and(is_loopback_host) => Ok(()),
+        "http" => Err(BindingCoreError::network_failed(format!(
+            "{} must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
+            description, url
+        ))),
+        other => Err(BindingCoreError::invalid_argument(format!(
+            "{} must use http or https (got scheme '{}')",
+            description, other
+        ))),
+    }
+}
+
+fn content_type_header(response: &reqwest::blocking::Response) -> String {
+    response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn parse_json_object_body(
+    body: &str,
+    invalid_json_message: String,
+    non_object_message: String,
+) -> BindingResult<String> {
+    let value: Value = serde_json::from_str(body)
+        .map_err(|e| BindingCoreError::validation(format!("{}: {}", invalid_json_message, e)))?;
+    if !value.is_object() {
+        return Err(BindingCoreError::validation(non_object_message));
+    }
+    serde_json::to_string(&value).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize JSON response: {}", e))
+    })
+}
+
+fn resolve_keys_base_url(override_base_url: Option<&str>) -> String {
+    if let Some(value) = override_base_url {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.trim_end_matches('/').to_string();
+        }
+    }
+
+    if let Ok(value) = std::env::var("JACS_KEYS_BASE_URL") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.trim_end_matches('/').to_string();
+        }
+    }
+
+    if let Ok(value) = std::env::var("HAI_KEYS_BASE_URL") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.trim_end_matches('/').to_string();
+        }
+    }
+    DEFAULT_KEYS_BASE_URL.to_string()
+}
+
+fn normalize_public_key_hash(public_key_hash: &str) -> BindingResult<String> {
+    let trimmed = public_key_hash.trim();
+    if trimmed.is_empty() {
+        return Err(BindingCoreError::invalid_argument(
+            "public_key_hash cannot be empty",
+        ));
+    }
+    if trimmed.starts_with("sha256:") {
+        Ok(trimmed.to_string())
+    } else {
+        Ok(format!("sha256:{}", trimmed))
+    }
 }
 
 fn decode_public_key_base64(public_key_b64: &str) -> BindingResult<Vec<u8>> {
@@ -2619,6 +2718,198 @@ pub fn ensure_network_access(capability: &str) -> BindingResult<()> {
         .map_err(BindingCoreError::invalid_argument)?;
     jacs::config::ensure_network_access(capability)
         .map_err(|e| BindingCoreError::network_failed(e.to_string()))
+}
+
+/// Fetch an A2A Agent Card JSON object using Rust-owned network policy and HTTP behavior.
+pub fn fetch_agent_card(base_url: &str, timeout_ms: Option<u64>) -> BindingResult<String> {
+    let trimmed = base_url.trim();
+    if trimmed.is_empty() {
+        return Err(BindingCoreError::invalid_argument(
+            "Agent base URL cannot be empty",
+        ));
+    }
+
+    let card_url = format!(
+        "{}/.well-known/agent-card.json",
+        trimmed.trim_end_matches('/')
+    );
+    let parsed_url = Url::parse(&card_url).map_err(|e| {
+        BindingCoreError::invalid_argument(format!("Invalid agent URL '{}': {}", base_url, e))
+    })?;
+    validate_network_url(&parsed_url, "Agent Card URL")?;
+    jacs::config::ensure_network_access(jacs::config::NetworkCapability::AgentCardFetch)
+        .map_err(|e| BindingCoreError::network_failed(e.to_string()))?;
+
+    let client = build_blocking_json_client(timeout_ms.unwrap_or(DEFAULT_NETWORK_TIMEOUT_MS))?;
+    let response = client
+        .get(parsed_url.clone())
+        .header(ACCEPT, "application/json")
+        .send()
+        .map_err(|e| {
+            if e.is_timeout() {
+                BindingCoreError::network_failed(format!(
+                    "Agent discovery timed out: {}",
+                    parsed_url
+                ))
+            } else {
+                BindingCoreError::network_failed(format!(
+                    "Agent unreachable: {} ({})",
+                    parsed_url, e
+                ))
+            }
+        })?;
+
+    if response.status() == StatusCode::NOT_FOUND {
+        return Err(BindingCoreError::network_failed(format!(
+            "Agent card not found (404): {}",
+            parsed_url
+        )));
+    }
+
+    if !response.status().is_success() {
+        return Err(BindingCoreError::network_failed(format!(
+            "Agent card request failed (HTTP {}): {}",
+            response.status(),
+            parsed_url
+        )));
+    }
+
+    let content_type = content_type_header(&response);
+    if !content_type.is_empty() && !content_type.to_ascii_lowercase().contains("json") {
+        return Err(BindingCoreError::validation(format!(
+            "Agent card response is not JSON (content-type: {}): {}",
+            content_type, parsed_url
+        )));
+    }
+
+    let body = response.text().map_err(|e| {
+        BindingCoreError::network_failed(format!(
+            "Failed to read Agent Card response from {}: {}",
+            parsed_url, e
+        ))
+    })?;
+
+    parse_json_object_body(
+        &body,
+        format!("Agent card is not valid JSON: {}", parsed_url),
+        format!("Agent card at {} is not a JSON object", parsed_url),
+    )
+}
+
+/// Fetch a remote key lookup JSON object using Rust-owned network policy and HTTP behavior.
+pub fn fetch_remote_key_lookup(
+    base_url: Option<&str>,
+    jacs_id: Option<&str>,
+    version: Option<&str>,
+    public_key_hash: Option<&str>,
+    timeout_ms: Option<u64>,
+) -> BindingResult<String> {
+    let resolved_base_url = resolve_keys_base_url(base_url);
+    let mut parsed_url = Url::parse(&resolved_base_url).map_err(|e| {
+        BindingCoreError::invalid_argument(format!(
+            "Invalid JACS key base URL '{}': {}",
+            resolved_base_url, e
+        ))
+    })?;
+    validate_network_url(&parsed_url, "JACS key lookup base URL")?;
+
+    {
+        let mut segments = parsed_url.path_segments_mut().map_err(|_| {
+            BindingCoreError::invalid_argument(format!(
+                "Invalid JACS key base URL '{}': cannot append path segments",
+                resolved_base_url
+            ))
+        })?;
+
+        if let Some(hash) = public_key_hash
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let normalized_hash = normalize_public_key_hash(hash)?;
+            segments.extend(["jacs", "v1", "keys", "by-hash"]);
+            segments.push(&normalized_hash);
+        } else {
+            let agent_id = jacs_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    BindingCoreError::invalid_argument(
+                        "fetch_remote_key_lookup requires jacs_id or public_key_hash",
+                    )
+                })?;
+            let resolved_version = version
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("latest");
+            segments.extend(["jacs", "v1", "agents"]);
+            segments.push(agent_id);
+            segments.push("keys");
+            segments.push(resolved_version);
+        }
+    }
+
+    jacs::config::ensure_network_access(jacs::config::NetworkCapability::RemoteKeyFetch)
+        .map_err(|e| BindingCoreError::network_failed(e.to_string()))?;
+
+    let client = build_blocking_json_client(timeout_ms.unwrap_or(DEFAULT_NETWORK_TIMEOUT_MS))?;
+    let response = client
+        .get(parsed_url.clone())
+        .header(ACCEPT, "application/json")
+        .send()
+        .map_err(|e| {
+            if e.is_timeout() {
+                BindingCoreError::network_failed(format!(
+                    "Remote key lookup timed out: {}",
+                    parsed_url
+                ))
+            } else {
+                BindingCoreError::network_failed(format!(
+                    "Failed to reach key lookup endpoint {}: {}",
+                    parsed_url, e
+                ))
+            }
+        })?;
+
+    let status = response.status();
+    let content_type = content_type_header(&response);
+    let body = response.text().map_err(|e| {
+        BindingCoreError::network_failed(format!(
+            "Failed to read key lookup response from {}: {}",
+            parsed_url, e
+        ))
+    })?;
+
+    if !status.is_success() {
+        let detail = if body.trim().is_empty() {
+            status.canonical_reason().unwrap_or("unknown error")
+        } else {
+            body.trim()
+        };
+        return Err(BindingCoreError::network_failed(format!(
+            "HTTP {} from key lookup endpoint: {}",
+            status.as_u16(),
+            detail
+        )));
+    }
+
+    if !content_type.is_empty() && !content_type.to_ascii_lowercase().contains("json") {
+        return Err(BindingCoreError::validation(format!(
+            "Key lookup endpoint returned non-JSON response: {}",
+            parsed_url
+        )));
+    }
+
+    parse_json_object_body(
+        &body,
+        format!(
+            "Key lookup endpoint returned non-JSON response: {}",
+            parsed_url
+        ),
+        format!(
+            "Key lookup endpoint returned a non-object response: {}",
+            parsed_url
+        ),
+    )
 }
 
 /// Resolve a private-key password using Rust-owned env, keychain, and filesystem rules.

@@ -56,7 +56,6 @@ Example:
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Optional, Union, List, Any
 
 # Configure module logger
@@ -860,10 +859,6 @@ def sign_file(
         print(f"Signed {signed.attachments[0].filename}")
     """
     agent = _get_agent()
-
-    # Check file exists
-    if not os.path.exists(file_path):
-        raise JacsError(f"File not found: {file_path}")
 
     try:
         # Create a minimal document that references the file

@@ -2043,6 +2043,29 @@ pub fn ensure_network_access_js(capability: String) -> Result<()> {
     jacs_binding_core::ensure_network_access(&capability).to_napi()
 }
 
+#[napi(js_name = "fetchAgentCard")]
+pub fn fetch_agent_card_js(base_url: String, timeout_ms: Option<u32>) -> Result<String> {
+    jacs_binding_core::fetch_agent_card(&base_url, timeout_ms.map(u64::from)).to_napi()
+}
+
+#[napi(js_name = "fetchRemoteKeyLookup")]
+pub fn fetch_remote_key_lookup_js(
+    base_url: Option<String>,
+    jacs_id: Option<String>,
+    version: Option<String>,
+    public_key_hash: Option<String>,
+    timeout_ms: Option<u32>,
+) -> Result<String> {
+    jacs_binding_core::fetch_remote_key_lookup(
+        base_url.as_deref(),
+        jacs_id.as_deref(),
+        version.as_deref(),
+        public_key_hash.as_deref(),
+        timeout_ms.map(u64::from),
+    )
+    .to_napi()
+}
+
 #[napi(js_name = "hashPublicKeyBase64")]
 pub fn hash_public_key_base64_js(public_key_base64: String) -> Result<String> {
     jacs_binding_core::hash_public_key_base64(&public_key_base64).to_napi()

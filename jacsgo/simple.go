@@ -142,11 +142,6 @@ func Load(configPath *string) error {
 		path = *configPath
 	}
 
-	// Check if config exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return NewSimpleErrorWithPath("load", path, ErrConfigNotFound)
-	}
-
 	// Create new agent instance
 	agent, err := NewJacsAgent()
 	if err != nil {
@@ -277,11 +272,6 @@ func SignFile(filePath string, embed bool) (*SignedDocument, error) {
 
 	if globalAgent == nil {
 		return nil, ErrAgentNotLoaded
-	}
-
-	// Check file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil, NewSimpleErrorWithPath("sign_file", filePath, ErrFileNotFound)
 	}
 
 	// Create document structure

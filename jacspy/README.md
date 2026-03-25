@@ -456,7 +456,7 @@ pip install jacs[anthropic]    # Anthropic / Claude SDK
 pip install jacs[all]          # All adapters + MCP + A2A
 
 # With A2A support
-pip install jacs[a2a]          # Discovery only (httpx)
+pip install jacs[a2a]          # Discovery helpers (native runtime, no extra Python deps)
 pip install jacs[a2a-server]   # A2A server with serve() (FastAPI + uvicorn)
 
 # With MCP support

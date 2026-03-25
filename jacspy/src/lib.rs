@@ -2059,6 +2059,31 @@ fn ensure_network_access(capability: &str) -> PyResult<()> {
 }
 
 #[pyfunction]
+#[pyo3(signature = (base_url, timeout_ms=None))]
+fn fetch_agent_card(base_url: &str, timeout_ms: Option<u64>) -> PyResult<String> {
+    jacs_binding_core::fetch_agent_card(base_url, timeout_ms).to_py()
+}
+
+#[pyfunction]
+#[pyo3(signature = (base_url=None, jacs_id=None, version=None, public_key_hash=None, timeout_ms=None))]
+fn fetch_remote_key_lookup(
+    base_url: Option<String>,
+    jacs_id: Option<String>,
+    version: Option<String>,
+    public_key_hash: Option<String>,
+    timeout_ms: Option<u64>,
+) -> PyResult<String> {
+    jacs_binding_core::fetch_remote_key_lookup(
+        base_url.as_deref(),
+        jacs_id.as_deref(),
+        version.as_deref(),
+        public_key_hash.as_deref(),
+        timeout_ms,
+    )
+    .to_py()
+}
+
+#[pyfunction]
 fn hash_public_key_base64(public_key_base64: &str) -> PyResult<String> {
     jacs_binding_core::hash_public_key_base64(public_key_base64).to_py()
 }
@@ -2126,6 +2151,8 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resolve_private_key_password, m)?)?;
     m.add_function(wrap_pyfunction!(quickstart_private_key_password, m)?)?;
     m.add_function(wrap_pyfunction!(ensure_network_access, m)?)?;
+    m.add_function(wrap_pyfunction!(fetch_agent_card, m)?)?;
+    m.add_function(wrap_pyfunction!(fetch_remote_key_lookup, m)?)?;
     m.add_function(wrap_pyfunction!(hash_public_key_base64, m)?)?;
     m.add_function(wrap_pyfunction!(build_jwk_set_from_public_key, m)?)?;
 

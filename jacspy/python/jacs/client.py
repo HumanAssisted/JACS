@@ -112,6 +112,10 @@ def _quickstart_private_key_password(
     )
 
 
+def _is_config_not_found_error(error: Exception) -> bool:
+    return "config file not found" in str(error).lower()
+
+
 def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
     sig_info = doc_data.get("jacsSignature", {}) if isinstance(doc_data, dict) else {}
     return (
@@ -218,9 +222,12 @@ class JacsClient:
         instance._agent = _JacsAgent()
         instance._agent_info = None
 
-        if os.path.exists(cfg_path):
+        try:
             instance._load_from_config(cfg_path)
             return instance
+        except Exception as e:
+            if not _is_config_not_found_error(e):
+                raise
 
         data_dir, key_dir = _resolve_create_directories(cfg_path)
 
@@ -282,20 +289,19 @@ class JacsClient:
     # ------------------------------------------------------------------
 
     def _load_from_config(self, config_path: str, password: Optional[str] = None) -> None:
-        if not os.path.exists(config_path):
-            raise ConfigError(
-                f"Config file not found: {config_path}\n"
-                "Run 'jacs create' or call jacs.create() to create a new agent."
-            )
-
         resolved_config_path = os.path.abspath(config_path)
-        self._private_key_password = (
-            _resolve_private_key_password(resolved_config_path, password) or None
-        )
-        self._agent.set_private_key_password(self._private_key_password)
-        info_json = self._agent.load_with_info(resolved_config_path)
-
-        self._agent_info = AgentInfo.from_dict(json.loads(info_json))
+        try:
+            self._private_key_password = (
+                _resolve_private_key_password(resolved_config_path, password) or None
+            )
+            self._agent.set_private_key_password(self._private_key_password)
+            info_json = self._agent.load_with_info(resolved_config_path)
+            self._agent_info = AgentInfo.from_dict(json.loads(info_json))
+        except Exception as e:
+            message = str(e)
+            if _is_config_not_found_error(e):
+                raise ConfigError(message) from e
+            raise JacsError(f"Failed to load agent: {message}") from e
 
     def _require_agent(self):
         if self._agent is None:
@@ -374,8 +380,6 @@ class JacsClient:
     def sign_file(self, path: str, embed: bool = False) -> SignedDocument:
         """Sign a file with optional content embedding."""
         agent = self._require_agent()
-        if not os.path.exists(path):
-            raise JacsError(f"File not found: {path}")
         try:
             doc_json = json.dumps(
                 {

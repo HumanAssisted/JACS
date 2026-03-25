@@ -17,7 +17,7 @@
  */
 
 const { JACS_EXTENSION_URI } = require('./a2a');
-const { ensureNetworkAccess } = require('../index.js');
+const { fetchAgentCard } = require('../index.js');
 const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
 
 /**
@@ -31,48 +31,12 @@ const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
  */
 async function discoverAgent(url, options = {}) {
   const timeoutMs = options.timeoutMs || 10000;
-  const baseUrl = url.replace(/\/+$/, '');
-  const cardUrl = `${baseUrl}/.well-known/agent-card.json`;
-  ensureNetworkAccess('agent_card_fetch');
-
-  let response;
   try {
-    response = await fetch(cardUrl, {
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: { Accept: 'application/json' },
-    });
+    return JSON.parse(fetchAgentCard(url, timeoutMs));
   } catch (err) {
-    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-      throw new Error(`Agent discovery timed out: ${cardUrl}`);
-    }
-    throw new Error(`Agent unreachable: ${cardUrl} (${err.message})`);
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(message);
   }
-
-  if (response.status === 404) {
-    throw new Error(`Agent card not found (404): ${cardUrl}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      `Agent card request failed (HTTP ${response.status}): ${cardUrl}`
-    );
-  }
-
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('json')) {
-    throw new Error(
-      `Agent card response is not JSON (content-type: ${contentType}): ${cardUrl}`
-    );
-  }
-
-  let card;
-  try {
-    card = await response.json();
-  } catch (err) {
-    throw new Error(`Agent card is not valid JSON: ${cardUrl} (${err.message})`);
-  }
-
-  return card;
 }
 
 /**

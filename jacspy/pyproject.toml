@@ -36,7 +36,7 @@ langgraph = ["langgraph>=1.0.0,<2.0.0"]
 crewai = ["crewai>=1.9.0,<2.0.0"]
 fastapi = ["fastapi>=0.115.0,<1.0.0", "starlette>=0.37.0"]
 anthropic = ["anthropic>=0.79.0"]
-a2a = ["httpx>=0.24.0"]
+a2a = []
 a2a-server = ["fastapi>=0.115.0,<1.0.0", "uvicorn>=0.30.0"]
 all = ["jacs[mcp,ws,langchain,langgraph,crewai,fastapi,anthropic,a2a,a2a-server]"]
 

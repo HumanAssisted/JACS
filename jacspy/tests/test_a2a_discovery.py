@@ -15,8 +15,6 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
-
 from jacs.a2a_discovery import (
     discover_agent,
     discover_and_assess,
@@ -66,17 +64,6 @@ def _allow_agent_card_fetch(monkeypatch):
     monkeypatch.setenv("JACS_ALLOW_AGENT_CARD_FETCH", "true")
 
 
-def _mock_response(status_code: int = 200, json_data=None, text: str = ""):
-    """Build a mock httpx.Response."""
-    resp = MagicMock(spec=httpx.Response)
-    resp.status_code = status_code
-    if json_data is not None:
-        resp.json.return_value = json_data
-    else:
-        resp.json.side_effect = json.JSONDecodeError("err", "", 0)
-    return resp
-
-
 # ---------------------------------------------------------------------------
 # Tests: discover_agent
 # ---------------------------------------------------------------------------
@@ -84,102 +71,63 @@ def _mock_response(status_code: int = 200, json_data=None, text: str = ""):
 class TestDiscoverAgent:
     @pytest.mark.asyncio
     async def test_fetches_and_returns_card(self):
-        mock_resp = _mock_response(200, json_data=SAMPLE_CARD)
-
-        with patch("jacs.a2a_discovery.httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.get.return_value = mock_resp
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
+        with patch("jacs.a2a_discovery._fetch_agent_card_json") as mock_fetch:
+            mock_fetch.return_value = json.dumps(SAMPLE_CARD)
             card = await discover_agent("https://agent.example.com")
 
         assert card["name"] == "Remote Bot"
-        instance.get.assert_called_once_with(
-            "https://agent.example.com/.well-known/agent-card.json"
-        )
+        mock_fetch.assert_called_once_with("https://agent.example.com", 10.0)
 
     @pytest.mark.asyncio
     async def test_strips_trailing_slash(self):
-        mock_resp = _mock_response(200, json_data=SAMPLE_CARD)
-
-        with patch("jacs.a2a_discovery.httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.get.return_value = mock_resp
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
+        with patch("jacs.a2a_discovery._fetch_agent_card_json") as mock_fetch:
+            mock_fetch.return_value = json.dumps(SAMPLE_CARD)
             await discover_agent("https://agent.example.com/")
 
-        instance.get.assert_called_once_with(
-            "https://agent.example.com/.well-known/agent-card.json"
-        )
+        mock_fetch.assert_called_once_with("https://agent.example.com/", 10.0)
 
     @pytest.mark.asyncio
     async def test_raises_on_404(self):
-        mock_resp = _mock_response(404)
-
-        with patch("jacs.a2a_discovery.httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.get.return_value = mock_resp
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
+        with patch("jacs.a2a_discovery._fetch_agent_card_json") as mock_fetch:
+            mock_fetch.side_effect = Exception(
+                "Agent card not found (404): https://gone.example.com/.well-known/agent-card.json"
+            )
             with pytest.raises(AgentUnreachableError, match="404"):
                 await discover_agent("https://gone.example.com")
 
     @pytest.mark.asyncio
     async def test_raises_on_connect_error(self):
-        with patch("jacs.a2a_discovery.httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.get.side_effect = httpx.ConnectError("refused")
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            with pytest.raises(AgentUnreachableError, match="Cannot reach"):
+        with patch("jacs.a2a_discovery._fetch_agent_card_json") as mock_fetch:
+            mock_fetch.side_effect = Exception(
+                "Agent unreachable: https://down.example.com/.well-known/agent-card.json (refused)"
+            )
+            with pytest.raises(AgentUnreachableError, match="unreachable"):
                 await discover_agent("https://down.example.com")
 
     @pytest.mark.asyncio
     async def test_raises_on_timeout(self):
-        with patch("jacs.a2a_discovery.httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.get.side_effect = httpx.TimeoutException("timed out")
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            with pytest.raises(AgentUnreachableError, match="Timeout"):
+        with patch("jacs.a2a_discovery._fetch_agent_card_json") as mock_fetch:
+            mock_fetch.side_effect = Exception(
+                "Agent discovery timed out: https://slow.example.com/.well-known/agent-card.json"
+            )
+            with pytest.raises(AgentUnreachableError, match="timed out"):
                 await discover_agent("https://slow.example.com")
 
     @pytest.mark.asyncio
     async def test_raises_on_non_json(self):
-        mock_resp = _mock_response(200)  # json() raises JSONDecodeError
-
-        with patch("jacs.a2a_discovery.httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.get.return_value = mock_resp
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
+        with patch("jacs.a2a_discovery._fetch_agent_card_json") as mock_fetch:
+            mock_fetch.side_effect = Exception(
+                "Agent card is not valid JSON: https://html.example.com/.well-known/agent-card.json"
+            )
             with pytest.raises(InvalidAgentCardError, match="not valid JSON"):
                 await discover_agent("https://html.example.com")
 
     @pytest.mark.asyncio
     async def test_raises_on_non_object(self):
-        mock_resp = _mock_response(200, json_data=["not", "an", "object"])
-
-        with patch("jacs.a2a_discovery.httpx.AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.get.return_value = mock_resp
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
+        with patch("jacs.a2a_discovery._fetch_agent_card_json") as mock_fetch:
+            mock_fetch.side_effect = Exception(
+                "Agent card at https://array.example.com/.well-known/agent-card.json is not a JSON object"
+            )
             with pytest.raises(InvalidAgentCardError, match="not a JSON object"):
                 await discover_agent("https://array.example.com")
 

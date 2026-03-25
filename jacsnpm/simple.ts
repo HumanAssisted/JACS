@@ -42,7 +42,6 @@ import {
   quickstartPrivateKeyPassword as nativeQuickstartPrivateKeyPassword,
   resolvePrivateKeyPassword as nativeResolvePrivateKeyPassword,
 } from './index';
-import * as fs from 'fs';
 import * as path from 'path';
 import { warnDeprecated } from './deprecation';
 
@@ -269,12 +268,6 @@ function createRawDocumentPayload(
     jacsLevel: 'raw',
     ...extra,
   });
-}
-
-function ensureFileExists(filePath: string): void {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`File not found: ${filePath}`);
-  }
 }
 
 function createDocumentImpl(
@@ -696,7 +689,6 @@ export function updateDocumentSync(
  */
 export async function signFile(filePath: string, embed: boolean = false): Promise<SignedDocument> {
   requireAgent();
-  ensureFileExists(filePath);
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),
@@ -712,7 +704,6 @@ export async function signFile(filePath: string, embed: boolean = false): Promis
  */
 export function signFileSync(filePath: string, embed: boolean = false): SignedDocument {
   requireAgent();
-  ensureFileExists(filePath);
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),
