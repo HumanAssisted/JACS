@@ -45,7 +45,8 @@ describe('Format Conversion', function () {
       const jsonBack = agent.fromYaml(yaml);
       const original = JSON.parse(signed);
       const reconstituted = JSON.parse(jsonBack);
-      expect(reconstituted.data || reconstituted.jacsOriginal).to.exist;
+      expect(reconstituted.content).to.exist;
+      expect(reconstituted.content.data).to.equal('test');
     });
 
     it('verifyYaml succeeds on valid document', function () {
