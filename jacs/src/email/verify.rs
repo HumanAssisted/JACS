@@ -61,9 +61,24 @@ pub fn verify_email_document_named(
         EmailError::InvalidJacsDocument(format!("attachment is not valid UTF-8: {e}"))
     })?;
 
+    // Auto-detect format from filename extension and convert to JSON if needed.
+    // YAML attachments are converted via yaml_to_jacs, HTML via html_to_jacs.
+    // JSON attachments (or unrecognized extensions) are used as-is.
+    let jacs_json = if filename.ends_with(".yaml") || filename.ends_with(".yml") {
+        crate::convert::yaml_to_jacs(jacs_str).map_err(|e| {
+            EmailError::InvalidJacsDocument(format!("YAML to JSON conversion failed: {e}"))
+        })?
+    } else if filename.ends_with(".html") || filename.ends_with(".htm") {
+        crate::convert::html_to_jacs(jacs_str).map_err(|e| {
+            EmailError::InvalidJacsDocument(format!("HTML to JSON extraction failed: {e}"))
+        })?
+    } else {
+        jacs_str.to_string()
+    };
+
     // Verify the JACS document using the provided public key
     let result = verifier
-        .verify_with_key(jacs_str, public_key.to_vec())
+        .verify_with_key(&jacs_json, public_key.to_vec())
         .map_err(|e| {
             EmailError::SignatureVerificationFailed(format!(
                 "JACS document verification failed: {e}"
@@ -78,7 +93,7 @@ pub fn verify_email_document_named(
     }
 
     // Parse the JACS document to extract the email payload
-    let jacs_value: serde_json::Value = serde_json::from_str(jacs_str).map_err(|e| {
+    let jacs_value: serde_json::Value = serde_json::from_str(&jacs_json).map_err(|e| {
         EmailError::InvalidJacsDocument(format!("failed to parse JACS document: {e}"))
     })?;
 
@@ -189,6 +204,64 @@ pub fn verify_email(
         public_key,
         DEFAULT_JACS_SIGNATURE_FILENAME,
     )
+}
+
+/// Verify a JACS-signed email whose signature attachment is in YAML format.
+///
+/// Looks for a `jacs-signature.yaml` attachment, converts it to JSON via
+/// [`crate::convert::yaml_to_jacs`], and delegates to the standard
+/// verification pipeline.
+///
+/// For a custom attachment filename, use [`verify_email_yaml_named`].
+pub fn verify_email_yaml(
+    raw_eml: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+) -> Result<ContentVerificationResult, EmailError> {
+    verify_email_yaml_named(raw_eml, verifier, public_key, "jacs-signature.yaml")
+}
+
+/// Verify a JACS-signed email whose YAML signature attachment has a custom filename.
+///
+/// Same as [`verify_email_yaml`] but accepts a custom attachment filename.
+pub fn verify_email_yaml_named(
+    raw_eml: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+    filename: &str,
+) -> Result<ContentVerificationResult, EmailError> {
+    // verify_email_document_named already handles YAML auto-detection by extension
+    let (doc, parts) = verify_email_document_named(raw_eml, verifier, public_key, filename)?;
+    Ok(verify_email_content(&doc, &parts))
+}
+
+/// Verify a JACS-signed email whose signature attachment is in HTML format.
+///
+/// Looks for a `jacs-signature.html` attachment, extracts the embedded JSON
+/// via [`crate::convert::html_to_jacs`], and delegates to the standard
+/// verification pipeline.
+///
+/// For a custom attachment filename, use [`verify_email_html_named`].
+pub fn verify_email_html(
+    raw_eml: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+) -> Result<ContentVerificationResult, EmailError> {
+    verify_email_html_named(raw_eml, verifier, public_key, "jacs-signature.html")
+}
+
+/// Verify a JACS-signed email whose HTML signature attachment has a custom filename.
+///
+/// Same as [`verify_email_html`] but accepts a custom attachment filename.
+pub fn verify_email_html_named(
+    raw_eml: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+    filename: &str,
+) -> Result<ContentVerificationResult, EmailError> {
+    // verify_email_document_named already handles HTML auto-detection by extension
+    let (doc, parts) = verify_email_document_named(raw_eml, verifier, public_key, filename)?;
+    Ok(verify_email_content(&doc, &parts))
 }
 
 /// Compare trusted JACS document hashes against actual email content.
@@ -1496,5 +1569,86 @@ mod tests {
         forwarded.extend_from_slice(b"\r\n\r\n");
         forwarded.extend_from_slice(body);
         forwarded
+    }
+
+    // =========================================================================
+    // verify_email_yaml / verify_email_html convenience function tests
+    // (conversion-related -- see also sign.rs email YAML/HTML signing tests)
+    // =========================================================================
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_email_yaml_round_trip() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-yaml-rt");
+        let pubkey = get_pubkey(&agent);
+        let email = simple_text_email();
+
+        // Sign with YAML attachment
+        let signed = crate::email::sign_email_yaml(&email, &agent).unwrap();
+
+        // Verify with the YAML convenience function
+        let result = verify_email_yaml(&signed, &agent, &pubkey).unwrap();
+        assert!(
+            result.valid,
+            "verify_email_yaml should succeed on sign_email_yaml output"
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_email_html_round_trip() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-html-rt");
+        let pubkey = get_pubkey(&agent);
+        let email = simple_text_email();
+
+        // Sign with HTML attachment
+        let signed = crate::email::sign_email_html(&email, &agent).unwrap();
+
+        // Verify with the HTML convenience function
+        let result = verify_email_html(&signed, &agent, &pubkey).unwrap();
+        assert!(
+            result.valid,
+            "verify_email_html should succeed on sign_email_html output"
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_email_yaml_fails_on_json_attachment() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-yaml-wrong");
+        let pubkey = get_pubkey(&agent);
+        let email = simple_text_email();
+
+        // Sign with default JSON attachment
+        let signed = sign_email(&email, &agent).unwrap();
+
+        // verify_email_yaml should fail (looks for jacs-signature.yaml, not .json)
+        let result = verify_email_yaml(&signed, &agent, &pubkey);
+        assert!(
+            result.is_err(),
+            "verify_email_yaml should fail when attachment is JSON, not YAML"
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_email_html_fails_on_json_attachment() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-html-wrong");
+        let pubkey = get_pubkey(&agent);
+        let email = simple_text_email();
+
+        // Sign with default JSON attachment
+        let signed = sign_email(&email, &agent).unwrap();
+
+        // verify_email_html should fail (looks for jacs-signature.html, not .json)
+        let result = verify_email_html(&signed, &agent, &pubkey);
+        assert!(
+            result.is_err(),
+            "verify_email_html should fail when attachment is JSON, not HTML"
+        );
     }
 }

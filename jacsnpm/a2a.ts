@@ -8,7 +8,11 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { createPublicKey, createHash, type KeyObject } from 'crypto';
+import {
+  hashString,
+  hashPublicKeyBase64,
+  buildJwkSetFromPublicKey,
+} from './index.js';
 import type { JacsClient } from './client.js';
 import type { Server } from 'http';
 import { warnDeprecated } from './deprecation.js';
@@ -42,7 +46,7 @@ export const DEFAULT_TRUST_POLICY: TrustPolicy = TRUST_POLICIES.VERIFIED;
 // =============================================================================
 
 export function sha256(data: string): string {
-  return createHash('sha256').update(data).digest('hex');
+  return hashString(data);
 }
 
 // =============================================================================
@@ -733,6 +737,33 @@ export class JACSA2AIntegration {
     publicKeyB64: string,
     agentData: AgentData,
   ): Record<string, Record<string, unknown>> {
+    const nativeGenerate = (this.client as any)._agent?.generateWellKnownDocumentsSync;
+    if (typeof nativeGenerate === 'function') {
+      try {
+        const nativeJson = nativeGenerate.call((this.client as any)._agent);
+        const nativePairs = JSON.parse(nativeJson) as Array<{ path?: string; document?: Record<string, unknown> }>;
+        const documents: Record<string, Record<string, unknown>> = {};
+        for (const item of nativePairs) {
+          if (item && typeof item.path === 'string' && item.document && typeof item.document === 'object') {
+            documents[item.path] = item.document;
+          }
+        }
+
+        const cardObj = JSON.parse(JSON.stringify(agentCard)) as Record<string, unknown>;
+        const nativeCard = documents['/.well-known/agent-card.json'];
+        if (nativeCard?.signatures && cardObj.signatures === undefined) {
+          cardObj.signatures = nativeCard.signatures;
+        }
+        if (jwsSignature) {
+          cardObj.signatures = [{ jws: jwsSignature }];
+        }
+        documents['/.well-known/agent-card.json'] = cardObj;
+        return documents;
+      } catch {
+        // Fall through to wrapper generation for mock clients and older bindings.
+      }
+    }
+
     const documents: Record<string, Record<string, unknown>> = {};
     const keyAlgorithm = agentData.keyAlgorithm || 'pq2025';
     const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);
@@ -748,7 +779,7 @@ export class JACSA2AIntegration {
       agentId: agentData.jacsId,
       agentVersion: agentData.jacsVersion,
       agentType: agentData.jacsAgentType,
-      publicKeyHash: sha256(publicKeyB64),
+      publicKeyHash: hashPublicKeyBase64(publicKeyB64),
       keyAlgorithm,
       capabilities: { signing: true, verification: true, postQuantum },
       schemas: {
@@ -761,7 +792,7 @@ export class JACSA2AIntegration {
 
     documents['/.well-known/jacs-pubkey.json'] = {
       publicKey: publicKeyB64,
-      publicKeyHash: sha256(publicKeyB64),
+      publicKeyHash: hashPublicKeyBase64(publicKeyB64),
       algorithm: keyAlgorithm,
       agentId: agentData.jacsId,
       agentVersion: agentData.jacsVersion,
@@ -1143,50 +1174,10 @@ export class JACSA2AIntegration {
     const kid = String(agentData.jacsId || 'jacs-agent');
 
     try {
-      const keyBytes = Buffer.from(publicKeyB64, 'base64');
-      if (keyBytes.length === 32) {
-        return {
-          keys: [
-            {
-              kty: 'OKP',
-              crv: 'Ed25519',
-              x: keyBytes.toString('base64url'),
-              kid,
-              use: 'sig',
-              alg: 'EdDSA',
-            },
-          ],
-        };
-      }
-
-      let keyObject: KeyObject;
-      try {
-        keyObject = createPublicKey({ key: keyBytes, format: 'der', type: 'spki' });
-      } catch {
-        keyObject = createPublicKey(keyBytes.toString('utf8'));
-      }
-
-      const jwk = keyObject.export({ format: 'jwk' });
-      const alg = this._inferJwsAlg(keyAlgorithm, jwk);
-      return {
-        keys: [{ ...jwk, kid, use: 'sig', ...(alg ? { alg } : {}) }],
-      };
+      return JSON.parse(buildJwkSetFromPublicKey(publicKeyB64, keyAlgorithm, kid));
     } catch {
       return { keys: [] };
     }
-  }
-
-  private _inferJwsAlg(
-    keyAlgorithm: string,
-    jwk: Record<string, unknown>,
-  ): string | undefined {
-    if (keyAlgorithm.includes('ring-ed25519') || keyAlgorithm.includes('ed25519')) return 'EdDSA';
-    if (keyAlgorithm.includes('rsa')) return 'RS256';
-    if (keyAlgorithm.includes('ecdsa') || keyAlgorithm.includes('es256')) return 'ES256';
-    if (jwk?.kty === 'RSA') return 'RS256';
-    if (jwk?.kty === 'OKP' && jwk?.crv === 'Ed25519') return 'EdDSA';
-    if (jwk?.kty === 'EC' && jwk?.crv === 'P-256') return 'ES256';
-    return undefined;
   }
 
   _slugify(name: string): string {

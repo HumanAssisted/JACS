@@ -75,8 +75,10 @@ describe('A2A Ecosystem Interop - [2.5.2]', function () {
   // -----------------------------------------------------------------------
   let plainA2AServer;   // A standard A2A server without JACS
   let jacsA2AServer;    // A JACS-powered A2A server
+  const previousAllowAgentCardFetch = process.env.JACS_ALLOW_AGENT_CARD_FETCH;
 
   before(async () => {
+    process.env.JACS_ALLOW_AGENT_CARD_FETCH = 'true';
     // 1. Plain A2A server: serves a valid agent card without JACS extension
     const plainApp = express();
     plainApp.get('/.well-known/agent-card.json', (_req, res) => {
@@ -96,6 +98,11 @@ describe('A2A Ecosystem Interop - [2.5.2]', function () {
   after(async () => {
     if (plainA2AServer) await plainA2AServer.close();
     if (jacsA2AServer) await jacsA2AServer.close();
+    if (previousAllowAgentCardFetch === undefined) {
+      delete process.env.JACS_ALLOW_AGENT_CARD_FETCH;
+    } else {
+      process.env.JACS_ALLOW_AGENT_CARD_FETCH = previousAllowAgentCardFetch;
+    }
   });
 
   // -----------------------------------------------------------------------

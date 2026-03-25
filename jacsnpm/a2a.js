@@ -11,7 +11,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.JACSA2AIntegration = exports.A2AAgentCard = exports.A2AAgentCardSignature = exports.A2AAgentCapabilities = exports.A2AAgentExtension = exports.A2AAgentSkill = exports.A2AAgentInterface = exports.DEFAULT_TRUST_POLICY = exports.TRUST_POLICIES = exports.JACS_ALGORITHMS = exports.JACS_EXTENSION_URI = exports.A2A_PROTOCOL_VERSION = void 0;
 exports.sha256 = sha256;
 const uuid_1 = require("uuid");
-const crypto_1 = require("crypto");
+const index_js_1 = require("./index.js");
 const deprecation_js_1 = require("./deprecation.js");
 // =============================================================================
 // Constants
@@ -33,7 +33,7 @@ exports.DEFAULT_TRUST_POLICY = exports.TRUST_POLICIES.VERIFIED;
 // Utility
 // =============================================================================
 function sha256(data) {
-    return (0, crypto_1.createHash)('sha256').update(data).digest('hex');
+    return (0, index_js_1.hashString)(data);
 }
 // =============================================================================
 // A2A Data Types (v0.4.0)
@@ -447,6 +447,32 @@ class JACSA2AIntegration {
         };
     }
     generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData) {
+        const nativeGenerate = this.client._agent?.generateWellKnownDocumentsSync;
+        if (typeof nativeGenerate === 'function') {
+            try {
+                const nativeJson = nativeGenerate.call(this.client._agent);
+                const nativePairs = JSON.parse(nativeJson);
+                const documents = {};
+                for (const item of nativePairs) {
+                    if (item && typeof item.path === 'string' && item.document && typeof item.document === 'object') {
+                        documents[item.path] = item.document;
+                    }
+                }
+                const cardObj = JSON.parse(JSON.stringify(agentCard));
+                const nativeCard = documents['/.well-known/agent-card.json'];
+                if (nativeCard?.signatures && cardObj.signatures === undefined) {
+                    cardObj.signatures = nativeCard.signatures;
+                }
+                if (jwsSignature) {
+                    cardObj.signatures = [{ jws: jwsSignature }];
+                }
+                documents['/.well-known/agent-card.json'] = cardObj;
+                return documents;
+            }
+            catch {
+                // Fall through to wrapper generation for mock clients and older bindings.
+            }
+        }
         const documents = {};
         const keyAlgorithm = agentData.keyAlgorithm || 'pq2025';
         const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);
@@ -459,7 +485,7 @@ class JACSA2AIntegration {
             agentId: agentData.jacsId,
             agentVersion: agentData.jacsVersion,
             agentType: agentData.jacsAgentType,
-            publicKeyHash: sha256(publicKeyB64),
+            publicKeyHash: (0, index_js_1.hashPublicKeyBase64)(publicKeyB64),
             keyAlgorithm,
             capabilities: { signing: true, verification: true, postQuantum },
             schemas: {
@@ -471,7 +497,7 @@ class JACSA2AIntegration {
         };
         documents['/.well-known/jacs-pubkey.json'] = {
             publicKey: publicKeyB64,
-            publicKeyHash: sha256(publicKeyB64),
+            publicKeyHash: (0, index_js_1.hashPublicKeyBase64)(publicKeyB64),
             algorithm: keyAlgorithm,
             agentId: agentData.jacsId,
             agentVersion: agentData.jacsVersion,
@@ -756,52 +782,11 @@ class JACSA2AIntegration {
         const keyAlgorithm = String(agentData.keyAlgorithm || '').toLowerCase();
         const kid = String(agentData.jacsId || 'jacs-agent');
         try {
-            const keyBytes = Buffer.from(publicKeyB64, 'base64');
-            if (keyBytes.length === 32) {
-                return {
-                    keys: [
-                        {
-                            kty: 'OKP',
-                            crv: 'Ed25519',
-                            x: keyBytes.toString('base64url'),
-                            kid,
-                            use: 'sig',
-                            alg: 'EdDSA',
-                        },
-                    ],
-                };
-            }
-            let keyObject;
-            try {
-                keyObject = (0, crypto_1.createPublicKey)({ key: keyBytes, format: 'der', type: 'spki' });
-            }
-            catch {
-                keyObject = (0, crypto_1.createPublicKey)(keyBytes.toString('utf8'));
-            }
-            const jwk = keyObject.export({ format: 'jwk' });
-            const alg = this._inferJwsAlg(keyAlgorithm, jwk);
-            return {
-                keys: [{ ...jwk, kid, use: 'sig', ...(alg ? { alg } : {}) }],
-            };
+            return JSON.parse((0, index_js_1.buildJwkSetFromPublicKey)(publicKeyB64, keyAlgorithm, kid));
         }
         catch {
             return { keys: [] };
         }
-    }
-    _inferJwsAlg(keyAlgorithm, jwk) {
-        if (keyAlgorithm.includes('ring-ed25519') || keyAlgorithm.includes('ed25519'))
-            return 'EdDSA';
-        if (keyAlgorithm.includes('rsa'))
-            return 'RS256';
-        if (keyAlgorithm.includes('ecdsa') || keyAlgorithm.includes('es256'))
-            return 'ES256';
-        if (jwk?.kty === 'RSA')
-            return 'RS256';
-        if (jwk?.kty === 'OKP' && jwk?.crv === 'Ed25519')
-            return 'EdDSA';
-        if (jwk?.kty === 'EC' && jwk?.crv === 'P-256')
-            return 'ES256';
-        return undefined;
     }
     _slugify(name) {
         return name

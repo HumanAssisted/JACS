@@ -775,6 +775,124 @@ impl JacsAgent {
             })),
         })
     }
+
+    // =========================================================================
+    // Format Conversion (stateless -- no agent lock needed)
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    #[napi(js_name = "toYamlSync")]
+    pub fn to_yaml_sync(&self, json_str: String) -> Result<String> {
+        jacs::convert::jacs_to_yaml(&json_str).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Convert a YAML string to pretty-printed JSON.
+    #[napi(js_name = "fromYamlSync")]
+    pub fn from_yaml_sync(&self, yaml_str: String) -> Result<String> {
+        jacs::convert::yaml_to_jacs(&yaml_str).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    #[napi(js_name = "toHtmlSync")]
+    pub fn to_html_sync(&self, json_str: String) -> Result<String> {
+        jacs::convert::jacs_to_html(&json_str).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Extract JSON from an HTML document produced by toHtml().
+    #[napi(js_name = "fromHtmlSync")]
+    pub fn from_html_sync(&self, html_str: String) -> Result<String> {
+        jacs::convert::html_to_jacs(&html_str).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    /// Returns true if verification succeeds.
+    #[napi(js_name = "verifyYamlSync")]
+    pub fn verify_yaml_sync(&self, yaml_str: String) -> Result<bool> {
+        let json_str = jacs::convert::yaml_to_jacs(&yaml_str)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        self.inner.verify_document(&json_str).to_napi()
+    }
+
+    // =========================================================================
+    // Format Conversion (async variants -- stateless, no agent lock needed)
+    // =========================================================================
+
+    /// Convert a JSON string to YAML (async).
+    #[napi(js_name = "toYaml", ts_return_type = "Promise<string>")]
+    pub fn to_yaml_async(&self, json_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::jacs_to_yaml(&json_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Convert a YAML string to pretty-printed JSON (async).
+    #[napi(js_name = "fromYaml", ts_return_type = "Promise<string>")]
+    pub fn from_yaml_async(&self, yaml_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::yaml_to_jacs(&yaml_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Convert a JSON string to a self-contained HTML document (async).
+    #[napi(js_name = "toHtml", ts_return_type = "Promise<string>")]
+    pub fn to_html_async(&self, json_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::jacs_to_html(&json_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Extract JSON from an HTML document produced by toHtml() (async).
+    #[napi(js_name = "fromHtml", ts_return_type = "Promise<string>")]
+    pub fn from_html_async(&self, html_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::html_to_jacs(&html_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document (async).
+    #[napi(js_name = "verifyYaml", ts_return_type = "Promise<boolean>")]
+    pub fn verify_yaml_async(&self, yaml_str: String) -> AsyncTask<AgentBoolTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentBoolTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json_str =
+                    jacs::convert::yaml_to_jacs(&yaml_str).map_err(|e| BindingCoreError {
+                        message: e.to_string(),
+                        kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                    })?;
+                a.verify_document(&json_str)
+            })),
+        })
+    }
 }
 
 // =============================================================================
@@ -792,6 +910,17 @@ impl JacsAgent {
     #[napi(js_name = "exportAgentCardSync")]
     pub fn export_agent_card_sync(&self) -> Result<String> {
         self.inner.export_agent_card().to_napi()
+    }
+
+    /// Generate the native .well-known A2A document set (sync, blocks event loop).
+    #[napi(js_name = "generateWellKnownDocumentsSync")]
+    pub fn generate_well_known_documents_sync(
+        &self,
+        a2a_algorithm: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .generate_well_known_documents(a2a_algorithm.as_deref())
+            .to_napi()
     }
 
     /// Wrap an A2A artifact with JACS provenance signature (sync).
@@ -867,6 +996,24 @@ impl JacsAgent {
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| a.export_agent_card())),
+        })
+    }
+
+    /// Generate the native .well-known A2A document set.
+    #[napi(
+        js_name = "generateWellKnownDocuments",
+        ts_return_type = "Promise<string>"
+    )]
+    pub fn generate_well_known_documents_async(
+        &self,
+        a2a_algorithm: Option<String>,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.generate_well_known_documents(a2a_algorithm.as_deref())
+            })),
         })
     }
 
@@ -1365,6 +1512,42 @@ impl JacsSimpleAgent {
     pub fn sign_file(&self, file_path: String, embed: bool) -> Result<String> {
         self.inner.sign_file_json(&file_path, embed).to_napi()
     }
+
+    // =========================================================================
+    // Format Conversion
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    #[napi(js_name = "toYaml")]
+    pub fn to_yaml(&self, json_str: String) -> Result<String> {
+        self.inner.to_yaml(&json_str).to_napi()
+    }
+
+    /// Convert a YAML string to pretty-printed JSON.
+    #[napi(js_name = "fromYaml")]
+    pub fn from_yaml(&self, yaml_str: String) -> Result<String> {
+        self.inner.from_yaml(&yaml_str).to_napi()
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    #[napi(js_name = "toHtml")]
+    pub fn to_html(&self, json_str: String) -> Result<String> {
+        self.inner.to_html(&json_str).to_napi()
+    }
+
+    /// Extract JSON from an HTML document produced by toHtml().
+    #[napi(js_name = "fromHtml")]
+    pub fn from_html(&self, html_str: String) -> Result<String> {
+        self.inner.from_html(&html_str).to_napi()
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    /// Equivalent to calling fromYaml() followed by verify().
+    #[napi(js_name = "verifyYaml")]
+    pub fn verify_yaml(&self, yaml_str: String) -> Result<String> {
+        let json_str = self.inner.from_yaml(&yaml_str).to_napi()?;
+        self.inner.verify_json(&json_str).to_napi()
+    }
 }
 
 // ============================================================================
@@ -1853,4 +2036,73 @@ pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -
     result_obj.set_named_property("agent_id", js_agent_id)?;
     result_obj.set_named_property("payload", js_payload)?;
     Ok(result_obj)
+}
+
+#[napi(js_name = "ensureNetworkAccess")]
+pub fn ensure_network_access_js(capability: String) -> Result<()> {
+    jacs_binding_core::ensure_network_access(&capability).to_napi()
+}
+
+#[napi(js_name = "fetchAgentCard")]
+pub fn fetch_agent_card_js(base_url: String, timeout_ms: Option<u32>) -> Result<String> {
+    jacs_binding_core::fetch_agent_card(&base_url, timeout_ms.map(u64::from)).to_napi()
+}
+
+#[napi(js_name = "fetchRemoteKeyLookup")]
+pub fn fetch_remote_key_lookup_js(
+    base_url: Option<String>,
+    jacs_id: Option<String>,
+    version: Option<String>,
+    public_key_hash: Option<String>,
+    timeout_ms: Option<u32>,
+) -> Result<String> {
+    jacs_binding_core::fetch_remote_key_lookup(
+        base_url.as_deref(),
+        jacs_id.as_deref(),
+        version.as_deref(),
+        public_key_hash.as_deref(),
+        timeout_ms.map(u64::from),
+    )
+    .to_napi()
+}
+
+#[napi(js_name = "hashPublicKeyBase64")]
+pub fn hash_public_key_base64_js(public_key_base64: String) -> Result<String> {
+    jacs_binding_core::hash_public_key_base64(&public_key_base64).to_napi()
+}
+
+#[napi(js_name = "buildJwkSetFromPublicKey")]
+pub fn build_jwk_set_from_public_key_js(
+    public_key_base64: String,
+    key_algorithm: String,
+    key_id: String,
+) -> Result<String> {
+    jacs_binding_core::build_jwk_set_from_public_key(&public_key_base64, &key_algorithm, &key_id)
+        .to_napi()
+}
+
+#[napi(js_name = "resolvePrivateKeyPassword")]
+pub fn resolve_private_key_password_js(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+    explicit_password: Option<String>,
+) -> Result<String> {
+    jacs_binding_core::resolve_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+        explicit_password.as_deref(),
+    )
+    .to_napi()
+}
+
+#[napi(js_name = "quickstartPrivateKeyPassword")]
+pub fn quickstart_private_key_password_js(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+) -> Result<String> {
+    jacs_binding_core::quickstart_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+    )
+    .to_napi()
 }

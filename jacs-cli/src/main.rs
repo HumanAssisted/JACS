@@ -1159,6 +1159,41 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             .arg_required_else_help(true),
     );
 
+    let matches = matches.subcommand(
+        Command::new("convert")
+            .about(
+                "Convert JACS documents between JSON, YAML, and HTML formats (no agent required)",
+            )
+            .arg(
+                Arg::new("to")
+                    .long("to")
+                    .required(true)
+                    .value_parser(["json", "yaml", "html"])
+                    .help("Target format: json, yaml, or html"),
+            )
+            .arg(
+                Arg::new("from")
+                    .long("from")
+                    .value_parser(["json", "yaml", "html"])
+                    .help("Source format (auto-detected from extension if omitted)"),
+            )
+            .arg(
+                Arg::new("file")
+                    .short('f')
+                    .long("file")
+                    .required(true)
+                    .value_parser(value_parser!(String))
+                    .help("Input file path (use '-' for stdin)"),
+            )
+            .arg(
+                Arg::new("output")
+                    .short('o')
+                    .long("output")
+                    .value_parser(value_parser!(String))
+                    .help("Output file path (defaults to stdout)"),
+            ),
+    );
+
     let matches = matches.arg_required_else_help(true).get_matches();
 
     match matches.subcommand() {
@@ -2548,6 +2583,86 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     }
                     process::exit(1);
                 }
+            }
+        }
+        Some(("convert", convert_matches)) => {
+            use jacs::convert::{html_to_jacs, jacs_to_html, jacs_to_yaml, yaml_to_jacs};
+
+            let target_format = convert_matches.get_one::<String>("to").unwrap();
+            let source_format = convert_matches.get_one::<String>("from");
+            let file_path = convert_matches.get_one::<String>("file").unwrap();
+            let output_path = convert_matches.get_one::<String>("output");
+
+            // Auto-detect source format from extension if not explicitly provided
+            let is_stdin = file_path == "-";
+            let detected_format = if let Some(fmt) = source_format {
+                fmt.clone()
+            } else if is_stdin {
+                eprintln!(
+                    "When reading from stdin (-f -), --from is required to specify the source format."
+                );
+                process::exit(1);
+            } else {
+                let ext = std::path::Path::new(file_path)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                match ext {
+                    "json" => "json".to_string(),
+                    "yaml" | "yml" => "yaml".to_string(),
+                    "html" | "htm" => "html".to_string(),
+                    _ => {
+                        eprintln!(
+                            "Cannot auto-detect format for extension '{}'. Use --from to specify.",
+                            ext
+                        );
+                        process::exit(1);
+                    }
+                }
+            };
+
+            // Read input (from file or stdin)
+            let input = if is_stdin {
+                let mut buf = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf)
+                    .map_err(|e| format!("Failed to read from stdin: {}", e))?;
+                buf
+            } else {
+                std::fs::read_to_string(file_path)
+                    .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?
+            };
+
+            // Convert
+            let output = match (detected_format.as_str(), target_format.as_str()) {
+                ("json", "yaml") => jacs_to_yaml(&input).map_err(|e| format!("{}", e))?,
+                ("yaml", "json") => yaml_to_jacs(&input).map_err(|e| format!("{}", e))?,
+                ("json", "html") => jacs_to_html(&input).map_err(|e| format!("{}", e))?,
+                ("html", "json") => html_to_jacs(&input).map_err(|e| format!("{}", e))?,
+                ("yaml", "html") => {
+                    let json = yaml_to_jacs(&input).map_err(|e| format!("{}", e))?;
+                    jacs_to_html(&json).map_err(|e| format!("{}", e))?
+                }
+                ("html", "yaml") => {
+                    let json = html_to_jacs(&input).map_err(|e| format!("{}", e))?;
+                    jacs_to_yaml(&json).map_err(|e| format!("{}", e))?
+                }
+                (src, dst) if src == dst => {
+                    // Same format -- just pass through
+                    input
+                }
+                (src, dst) => {
+                    eprintln!("Unsupported conversion: {} -> {}", src, dst);
+                    process::exit(1);
+                }
+            };
+
+            // Write output
+            if let Some(out_path) = output_path {
+                std::fs::write(out_path, &output)
+                    .map_err(|e| format!("Failed to write '{}': {}", out_path, e))?;
+                eprintln!("Written to {}", out_path);
+            } else {
+                print!("{}", output);
             }
         }
         Some(("init", init_matches)) => {

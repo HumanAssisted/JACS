@@ -39,8 +39,9 @@ import {
   verifyDocumentStandalone as nativeVerifyDocumentStandalone,
   auditSync as nativeAuditSync,
   audit as nativeAudit,
+  quickstartPrivateKeyPassword as nativeQuickstartPrivateKeyPassword,
+  resolvePrivateKeyPassword as nativeResolvePrivateKeyPassword,
 } from './index';
-import * as fs from 'fs';
 import * as path from 'path';
 import { warnDeprecated } from './deprecation';
 
@@ -176,13 +177,6 @@ export function isStrict(): boolean {
   return strictMode;
 }
 
-function resolveConfigRelativePath(configPath: string, candidate: string): string {
-  if (path.isAbsolute(candidate)) {
-    return candidate;
-  }
-  return path.resolve(path.dirname(configPath), candidate);
-}
-
 function resolveCreatePaths(
   configPath?: string | null,
   dataDirectory?: string | null,
@@ -199,38 +193,16 @@ function resolveCreatePaths(
   };
 }
 
-function readSavedPassword(configPath: string): string {
-  try {
-    const resolvedConfigPath = path.resolve(configPath);
-    const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
-    const keyDir = resolveConfigRelativePath(
-      resolvedConfigPath,
-      config.jacs_key_directory || './jacs_keys',
-    );
-    const passwordPath = path.join(keyDir, '.jacs_password');
-    if (!fs.existsSync(passwordPath)) {
-      return '';
-    }
-    return fs.readFileSync(passwordPath, 'utf8').trim();
-  } catch {
-    return '';
-  }
-}
-
 function resolvePrivateKeyPassword(
   configPath?: string | null,
+  keyDirectory?: string | null,
   explicitPassword?: string | null,
 ): string {
-  if (explicitPassword && explicitPassword.length > 0) {
-    return explicitPassword;
-  }
-  if (process.env.JACS_PRIVATE_KEY_PASSWORD) {
-    return process.env.JACS_PRIVATE_KEY_PASSWORD;
-  }
-  if (configPath) {
-    return readSavedPassword(configPath);
-  }
-  return '';
+  return nativeResolvePrivateKeyPassword(
+    configPath ? path.resolve(configPath) : null,
+    keyDirectory ?? null,
+    explicitPassword ?? null,
+  );
 }
 
 function normalizeDocumentInput(document: any): string {
@@ -298,12 +270,6 @@ function createRawDocumentPayload(
   });
 }
 
-function ensureFileExists(filePath: string): void {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`File not found: ${filePath}`);
-  }
-}
-
 function createDocumentImpl(
   agent: JacsAgent,
   docContent: string,
@@ -367,16 +333,14 @@ function parseCreateResult(resultJson: string, options: CreateAgentOptions): Age
   const configPath = info.config_path || options.configPath || './jacs.config.json';
   const dataDirectory = info.data_directory || options.dataDirectory || './jacs_data';
   const keyDirectory = info.key_directory || options.keyDirectory || './jacs_keys';
-  const publicKeyPath = info.public_key_path || `${keyDirectory}/jacs.public.pem`;
-  const privateKeyPath = info.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
   return {
     agentId: info.agent_id || '',
     name: info.name || options.name,
-    publicKeyPath,
+    publicKeyPath: info.public_key_path || '',
     configPath,
     version: info.version || '',
     algorithm: info.algorithm || options.algorithm || 'pq2025',
-    privateKeyPath,
+    privateKeyPath: info.private_key_path || '',
     dataDirectory,
     keyDirectory,
     domain: info.domain || options.domain || '',
@@ -506,62 +470,11 @@ export interface QuickstartInfo {
   domain: string;
 }
 
-/**
- * Write .gitignore and .dockerignore in the key directory to prevent
- * accidental exposure of private keys and password files.
- */
-function writeKeyDirectoryIgnoreFiles(keyDir: string): void {
-  const ignoreContent =
-    '# JACS private key material -- do NOT commit or ship\n' +
-    '*.pem\n*.pem.enc\n.jacs_password\n*.key\n*.key.enc\n';
-  fs.mkdirSync(keyDir, { recursive: true });
-  const gitignore = path.join(keyDir, '.gitignore');
-  if (!fs.existsSync(gitignore)) {
-    try {
-      fs.writeFileSync(gitignore, ignoreContent);
-    } catch (e) {
-      // Best-effort; don't fail agent creation
-    }
-  }
-  const dockerignore = path.join(keyDir, '.dockerignore');
-  if (!fs.existsSync(dockerignore)) {
-    try {
-      fs.writeFileSync(dockerignore, ignoreContent);
-    } catch (e) {
-      // Best-effort; don't fail agent creation
-    }
-  }
-}
-
-function ensurePassword(keyDirectory?: string): string {
-  let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
-  if (!password) {
-    const crypto = require('crypto');
-    const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const lower = 'abcdefghijklmnopqrstuvwxyz';
-    const digits = '0123456789';
-    const special = '!@#$%^&*()-_=+';
-    const all = upper + lower + digits + special;
-    password =
-      upper[crypto.randomInt(upper.length)] +
-      lower[crypto.randomInt(lower.length)] +
-      digits[crypto.randomInt(digits.length)] +
-      special[crypto.randomInt(special.length)];
-    for (let i = 4; i < 32; i++) {
-      password += all[crypto.randomInt(all.length)];
-    }
-
-    const persistPassword =
-      process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
-      process.env.JACS_SAVE_PASSWORD_FILE === 'true';
-    if (persistPassword) {
-      const keysDir = keyDirectory || './jacs_keys';
-      fs.mkdirSync(keysDir, { recursive: true });
-      const pwPath = path.join(keysDir, '.jacs_password');
-      fs.writeFileSync(pwPath, password, { mode: 0o600 });
-    }
-  }
-  return password;
+function ensurePassword(configPath?: string | null, keyDirectory?: string | null): string {
+  return nativeQuickstartPrivateKeyPassword(
+    configPath ? path.resolve(configPath) : null,
+    keyDirectory ?? null,
+  );
 }
 
 /**
@@ -601,7 +514,11 @@ export interface CreateAgentOptions {
 }
 
 function resolveCreatePassword(options: CreateAgentOptions): string {
-  const p = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
+  const p = resolvePrivateKeyPassword(
+    options.configPath ?? null,
+    options.keyDirectory ?? null,
+    options.password ?? null,
+  );
   if (!p) {
     throw new Error(
       'Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.',
@@ -772,7 +689,6 @@ export function updateDocumentSync(
  */
 export async function signFile(filePath: string, embed: boolean = false): Promise<SignedDocument> {
   requireAgent();
-  ensureFileExists(filePath);
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),
@@ -788,7 +704,6 @@ export async function signFile(filePath: string, embed: boolean = false): Promis
  */
 export function signFileSync(filePath: string, embed: boolean = false): SignedDocument {
   requireAgent();
-  ensureFileExists(filePath);
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),
@@ -900,6 +815,80 @@ export async function reencryptKey(oldPassword: string, newPassword: string): Pr
 export function reencryptKeySync(oldPassword: string, newPassword: string): void {
   const agent = requireAgent();
   agent.reencryptKeySync(oldPassword, newPassword);
+}
+
+// =============================================================================
+// Format Conversion (YAML / HTML)
+// =============================================================================
+
+/**
+ * Convert a JSON string to YAML (async).
+ */
+export async function toYaml(jsonStr: string): Promise<string> {
+  return requireAgent().toYaml(jsonStr);
+}
+
+/**
+ * Convert a JSON string to YAML (sync).
+ */
+export function toYamlSync(jsonStr: string): string {
+  return requireAgent().toYamlSync(jsonStr);
+}
+
+/**
+ * Convert a YAML string to pretty-printed JSON (async).
+ */
+export async function fromYaml(yamlStr: string): Promise<string> {
+  return requireAgent().fromYaml(yamlStr);
+}
+
+/**
+ * Convert a YAML string to pretty-printed JSON (sync).
+ */
+export function fromYamlSync(yamlStr: string): string {
+  return requireAgent().fromYamlSync(yamlStr);
+}
+
+/**
+ * Convert a JSON string to a self-contained HTML document (async).
+ */
+export async function toHtml(jsonStr: string): Promise<string> {
+  return requireAgent().toHtml(jsonStr);
+}
+
+/**
+ * Convert a JSON string to a self-contained HTML document (sync).
+ */
+export function toHtmlSync(jsonStr: string): string {
+  return requireAgent().toHtmlSync(jsonStr);
+}
+
+/**
+ * Extract JSON from an HTML document produced by toHtml() (async).
+ */
+export async function fromHtml(htmlStr: string): Promise<string> {
+  return requireAgent().fromHtml(htmlStr);
+}
+
+/**
+ * Extract JSON from an HTML document produced by toHtml() (sync).
+ */
+export function fromHtmlSync(htmlStr: string): string {
+  return requireAgent().fromHtmlSync(htmlStr);
+}
+
+/**
+ * Convert YAML to JSON and verify the resulting document (async).
+ */
+export async function verifyYaml(yamlStr: string): Promise<boolean> {
+  return requireAgent().verifyYaml(yamlStr);
+}
+
+/**
+ * Convert YAML to JSON and verify the resulting document (sync).
+ */
+export function verifyYamlSync(yamlStr: string): boolean {
+  return requireAgent().verifyYamlSync(yamlStr);
 }
 
 // =============================================================================

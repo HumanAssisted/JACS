@@ -2,6 +2,8 @@
 Tests for JACS A2A (Agent-to-Agent) Protocol Integration (v0.4.0)
 """
 
+import base64
+import hashlib
 import pytest
 import json
 import uuid
@@ -16,7 +18,6 @@ from jacs.a2a import (
     A2AAgentCard,
     A2AAgentInterface,
     A2AAgentCardSignature,
-    _sha256_hex,
 )
 
 
@@ -396,7 +397,7 @@ class TestJACSA2AIntegration:
         documents = a2a_integration.generate_well_known_documents(
             agent_card,
             "mock-jws-signature",
-            "mock-public-key-b64",
+            "bW9jay1wdWJsaWMta2V5",
             agent_data
         )
 
@@ -416,12 +417,14 @@ class TestJACSA2AIntegration:
         jacs_desc = documents["/.well-known/jacs-agent.json"]
         assert jacs_desc["agentId"] == "agent-123"
         assert jacs_desc["keyAlgorithm"] == "RSA-PSS"
-        expected_hash = _sha256_hex("mock-public-key-b64")
+        expected_hash = hashlib.sha256(
+            base64.b64decode("bW9jay1wdWJsaWMta2V5")
+        ).hexdigest()
         assert jacs_desc["publicKeyHash"] == expected_hash
 
         # Verify public key document
         pubkey_doc = documents["/.well-known/jacs-pubkey.json"]
-        assert pubkey_doc["publicKey"] == "mock-public-key-b64"
+        assert pubkey_doc["publicKey"] == "bW9jay1wdWJsaWMta2V5"
         assert pubkey_doc["algorithm"] == "RSA-PSS"
 
         # Verify JWKS is present for A2A verifiers

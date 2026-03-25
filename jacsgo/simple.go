@@ -111,9 +111,8 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 	}
 
 	info := &AgentInfo{
-		Name:          name,
-		PublicKeyPath: keyDir + "/jacs.public.pem",
-		ConfigPath:    configPath,
+		Name:       name,
+		ConfigPath: configPath,
 	}
 
 	if err := json.Unmarshal([]byte(resultJSON), info); err != nil {
@@ -121,9 +120,6 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 	}
 	if info.Name == "" {
 		info.Name = name
-	}
-	if info.PublicKeyPath == "" {
-		info.PublicKeyPath = keyDir + "/jacs.public.pem"
 	}
 	if info.ConfigPath == "" {
 		info.ConfigPath = configPath
@@ -144,11 +140,6 @@ func Load(configPath *string) error {
 	path := "./jacs.config.json"
 	if configPath != nil {
 		path = *configPath
-	}
-
-	// Check if config exists
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return NewSimpleErrorWithPath("load", path, ErrConfigNotFound)
 	}
 
 	// Create new agent instance
@@ -283,9 +274,9 @@ func SignFile(filePath string, embed bool) (*SignedDocument, error) {
 		return nil, ErrAgentNotLoaded
 	}
 
-	// Check file exists
+	// Check file exists before calling into Rust (which silently drops missing files)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil, NewSimpleErrorWithPath("sign_file", filePath, ErrFileNotFound)
+		return nil, NewSimpleError("sign_file", fmt.Errorf("file not found: %s", filePath))
 	}
 
 	// Create document structure
@@ -521,40 +512,6 @@ func ReencryptKey(oldPassword, newPassword string) error {
 		return ErrAgentNotLoaded
 	}
 
-	// Read config to find key path
-	configPath := "./jacs.config.json"
-	if agentInfo != nil && agentInfo.ConfigPath != "" {
-		configPath = agentInfo.ConfigPath
-	}
-
-	configData, err := os.ReadFile(configPath)
-	if err != nil {
-		return NewSimpleError("reencrypt_key", err)
-	}
-
-	var config map[string]interface{}
-	if err := json.Unmarshal(configData, &config); err != nil {
-		return NewSimpleError("reencrypt_key", err)
-	}
-
-	keyDir := "./jacs_keys"
-	if dir, ok := config["jacs_key_directory"].(string); ok && dir != "" {
-		keyDir = dir
-	}
-	keyFile := "jacs.private.pem.enc"
-	if file, ok := config["jacs_agent_private_key_filename"].(string); ok && file != "" {
-		keyFile = file
-	}
-	keyPath := keyDir + "/" + keyFile
-
-	// Read encrypted key
-	encryptedData, err := os.ReadFile(keyPath)
-	if err != nil {
-		return NewSimpleErrorWithPath("reencrypt_key", keyPath, err)
-	}
-
-	_ = encryptedData
-
 	return globalAgent.ReencryptKey(oldPassword, newPassword)
 }
 
@@ -579,14 +536,7 @@ func GetPublicKeyPEM() (string, error) {
 		return "", ErrAgentNotLoaded
 	}
 
-	// Read public key file
-	keyPath := "./jacs_keys/jacs.public.pem"
-	data, err := os.ReadFile(keyPath)
-	if err != nil {
-		return "", NewSimpleErrorWithPath("get_public_key", keyPath, ErrKeyNotFound)
-	}
-
-	return string(data), nil
+	return globalAgent.GetPublicKeyPEM()
 }
 
 // GetAgentInfo returns information about the currently loaded agent.

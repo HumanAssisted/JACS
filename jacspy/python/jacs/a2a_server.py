@@ -99,19 +99,10 @@ def jacs_a2a_routes(
     # Build the full well-known document set if we can; otherwise
     # serve what we have (agent card + extension are always available).
     try:
-        public_key_b64 = agent_data.get("jacsPublicKey", "")
-        if not public_key_b64:
-            # Try reading from the agent's key file path
-            info = client._agent_info
-            if info and getattr(info, "public_key_path", None):
-                import base64
-                with open(info.public_key_path, "rb") as f:
-                    public_key_b64 = base64.b64encode(f.read()).decode("utf-8")
-
         well_known_docs = integration.generate_well_known_documents(
             agent_card=card,
-            jws_signature="",  # JWS signing deferred to full setup
-            public_key_b64=public_key_b64 or "",
+            jws_signature="",
+            public_key_b64="",
             agent_data=agent_data,
         )
     except Exception:

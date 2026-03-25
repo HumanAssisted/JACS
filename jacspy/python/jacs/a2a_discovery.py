@@ -23,25 +23,16 @@ Usage::
     # Sync wrappers
     from jacs.a2a_discovery import discover_agent_sync, discover_and_assess_sync
     card = discover_agent_sync("https://agent.example.com")
-
-Requires ``httpx`` (install with ``pip install jacs[a2a]``).
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import warnings
 from typing import Any, Dict, Optional, TYPE_CHECKING
-
-try:
-    import httpx
-except ImportError as _exc:
-    raise ImportError(
-        "jacs.a2a_discovery requires httpx. "
-        "Install it with: pip install jacs[a2a]"
-    ) from _exc
 
 if TYPE_CHECKING:
     from .client import JacsClient
@@ -63,6 +54,39 @@ class AgentUnreachableError(DiscoveryError):
 
 class InvalidAgentCardError(DiscoveryError):
     """Response was not valid JSON or missing required fields."""
+
+
+def _ensure_rust_network_access(capability: str) -> None:
+    from . import ensure_network_access as _ensure_network_access
+
+    _ensure_network_access(capability)
+
+
+def _fetch_agent_card_json(url: str, timeout: float) -> str:
+    from . import fetch_agent_card as _fetch_agent_card_native
+
+    timeout_ms = max(1, int(timeout * 1000))
+    return _fetch_agent_card_native(url, timeout_ms)
+
+
+def _raise_discovery_error(exc: Exception) -> None:
+    message = str(exc)
+    lowered = message.lower()
+    if (
+        "not valid json" in lowered
+        or "not a json object" in lowered
+        or "not json" in lowered
+    ):
+        raise InvalidAgentCardError(message) from exc
+    if (
+        "404" in message
+        or "unreachable" in lowered
+        or "timed out" in lowered
+        or "request failed" in lowered
+        or "http " in lowered
+    ):
+        raise AgentUnreachableError(message) from exc
+    raise DiscoveryError(message) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -90,48 +114,22 @@ async def discover_agent(
         AgentUnreachableError: Network error or non-2xx status.
         InvalidAgentCardError: Response is not valid JSON.
     """
-    base = url.rstrip("/")
-    card_url = f"{base}{AGENT_CARD_PATH}"
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        try:
-            response = await client.get(card_url)
-        except httpx.ConnectError as e:
-            raise AgentUnreachableError(
-                f"Cannot reach agent at {card_url}: {e}"
-            ) from e
-        except httpx.TimeoutException as e:
-            raise AgentUnreachableError(
-                f"Timeout fetching agent card from {card_url}: {e}"
-            ) from e
-        except httpx.HTTPError as e:
-            raise AgentUnreachableError(
-                f"HTTP error fetching {card_url}: {e}"
-            ) from e
-
-    if response.status_code == 404:
-        raise AgentUnreachableError(
-            f"No agent card found at {card_url} (404)"
-        )
-
-    if response.status_code >= 400:
-        raise AgentUnreachableError(
-            f"Agent returned HTTP {response.status_code} for {card_url}"
-        )
+    try:
+        _ensure_rust_network_access("agent_card_fetch")
+    except Exception as e:
+        raise DiscoveryError(str(e)) from e
 
     try:
-        card = response.json()
+        card_json = await asyncio.to_thread(_fetch_agent_card_json, url, timeout)
+    except Exception as e:
+        _raise_discovery_error(e)
+
+    try:
+        return json.loads(card_json)
     except Exception as e:
         raise InvalidAgentCardError(
-            f"Response from {card_url} is not valid JSON: {e}"
+            f"Response from {url.rstrip('/')}{AGENT_CARD_PATH} is not valid JSON: {e}"
         ) from e
-
-    if not isinstance(card, dict):
-        raise InvalidAgentCardError(
-            f"Agent card at {card_url} is not a JSON object"
-        )
-
-    return card
 
 
 async def discover_and_assess(

@@ -353,6 +353,16 @@ impl JacsAgent {
         self.inner.get_agent_json().to_py()
     }
 
+    /// Export the loaded agent's full JSON document.
+    fn export_agent(&self) -> PyResult<String> {
+        self.inner.export_agent().to_py()
+    }
+
+    /// Get the current agent's public key in PEM format.
+    fn get_public_key_pem(&self) -> PyResult<String> {
+        self.inner.get_public_key_pem().to_py()
+    }
+
     /// Get setup instructions for publishing DNS records and DNSSEC.
     ///
     /// Args:
@@ -389,6 +399,15 @@ impl JacsAgent {
     #[cfg(feature = "a2a")]
     fn export_agent_card(&self) -> PyResult<String> {
         self.inner.export_agent_card().to_py()
+    }
+
+    /// Generate the native .well-known A2A document set for the loaded agent.
+    #[cfg(feature = "a2a")]
+    #[pyo3(signature = (a2a_algorithm=None))]
+    fn generate_well_known_documents(&self, a2a_algorithm: Option<&str>) -> PyResult<String> {
+        self.inner
+            .generate_well_known_documents(a2a_algorithm)
+            .to_py()
     }
 
     /// Wrap an A2A artifact with JACS provenance signature.
@@ -632,6 +651,43 @@ impl JacsAgent {
         self.inner
             .unwrap_signed_event(event_json, server_keys_json)
             .to_py()
+    }
+
+    // =========================================================================
+    // Format Conversion (stateless -- no agent lock needed)
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    fn to_yaml(&self, json_str: &str) -> PyResult<String> {
+        jacs_core::convert::jacs_to_yaml(json_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Convert a YAML string to pretty-printed JSON.
+    fn from_yaml(&self, yaml_str: &str) -> PyResult<String> {
+        jacs_core::convert::yaml_to_jacs(yaml_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    fn to_html(&self, json_str: &str) -> PyResult<String> {
+        jacs_core::convert::jacs_to_html(json_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Extract JSON from an HTML document produced by to_html().
+    fn from_html(&self, html_str: &str) -> PyResult<String> {
+        jacs_core::convert::html_to_jacs(html_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    ///
+    /// Returns True if verification succeeds.
+    fn verify_yaml(&self, yaml_str: &str) -> PyResult<bool> {
+        let json_str = jacs_core::convert::yaml_to_jacs(yaml_str)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        self.inner.verify_document(&json_str).to_py()
     }
 }
 
@@ -1388,6 +1444,73 @@ impl SimpleAgent {
             ))
         })
     }
+
+    // =========================================================================
+    // Format Conversion
+    // =========================================================================
+
+    /// Convert a JSON string to YAML.
+    ///
+    /// Args:
+    ///     json_str: A valid JSON string
+    ///
+    /// Returns:
+    ///     YAML representation of the JSON document
+    #[pyo3(signature = (json_str))]
+    fn to_yaml(&self, json_str: &str) -> PyResult<String> {
+        self.inner.to_yaml(json_str).to_py()
+    }
+
+    /// Convert a YAML string to JSON.
+    ///
+    /// Args:
+    ///     yaml_str: A valid YAML string
+    ///
+    /// Returns:
+    ///     Pretty-printed JSON representation
+    #[pyo3(signature = (yaml_str))]
+    fn from_yaml(&self, yaml_str: &str) -> PyResult<String> {
+        self.inner.from_yaml(yaml_str).to_py()
+    }
+
+    /// Convert a JSON string to a self-contained HTML document.
+    ///
+    /// Args:
+    ///     json_str: A valid JSON string
+    ///
+    /// Returns:
+    ///     Self-contained HTML document with embedded JSON
+    #[pyo3(signature = (json_str))]
+    fn to_html(&self, json_str: &str) -> PyResult<String> {
+        self.inner.to_html(json_str).to_py()
+    }
+
+    /// Extract JSON from an HTML document produced by to_html().
+    ///
+    /// Args:
+    ///     html_str: An HTML string containing embedded JACS JSON
+    ///
+    /// Returns:
+    ///     The extracted JSON string
+    #[pyo3(signature = (html_str))]
+    fn from_html(&self, html_str: &str) -> PyResult<String> {
+        self.inner.from_html(html_str).to_py()
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document.
+    ///
+    /// This is equivalent to calling from_yaml() followed by verify().
+    ///
+    /// Args:
+    ///     yaml_str: A valid YAML string containing a signed JACS document
+    ///
+    /// Returns:
+    ///     Verification result JSON string
+    #[pyo3(signature = (yaml_str))]
+    fn verify_yaml(&self, yaml_str: &str) -> PyResult<String> {
+        let json_str = self.inner.from_yaml(yaml_str).to_py()?;
+        self.inner.verify_json(&json_str).to_py()
+    }
 }
 
 // =============================================================================
@@ -1912,6 +2035,79 @@ fn get_public_key_pem_simple() -> PyResult<String> {
     ))
 }
 
+#[pyfunction]
+#[pyo3(signature = (config_path=None, key_directory=None, explicit_password=None))]
+fn resolve_private_key_password(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+    explicit_password: Option<String>,
+) -> PyResult<String> {
+    jacs_binding_core::resolve_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+        explicit_password.as_deref(),
+    )
+    .to_py()
+}
+
+#[pyfunction]
+#[pyo3(signature = (config_path=None, key_directory=None))]
+fn quickstart_private_key_password(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+) -> PyResult<String> {
+    jacs_binding_core::quickstart_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+    )
+    .to_py()
+}
+
+#[pyfunction]
+fn ensure_network_access(capability: &str) -> PyResult<()> {
+    jacs_binding_core::ensure_network_access(capability).to_py()
+}
+
+#[pyfunction]
+#[pyo3(signature = (base_url, timeout_ms=None))]
+fn fetch_agent_card(base_url: &str, timeout_ms: Option<u64>) -> PyResult<String> {
+    jacs_binding_core::fetch_agent_card(base_url, timeout_ms).to_py()
+}
+
+#[pyfunction]
+#[pyo3(signature = (base_url=None, jacs_id=None, version=None, public_key_hash=None, timeout_ms=None))]
+fn fetch_remote_key_lookup(
+    base_url: Option<String>,
+    jacs_id: Option<String>,
+    version: Option<String>,
+    public_key_hash: Option<String>,
+    timeout_ms: Option<u64>,
+) -> PyResult<String> {
+    jacs_binding_core::fetch_remote_key_lookup(
+        base_url.as_deref(),
+        jacs_id.as_deref(),
+        version.as_deref(),
+        public_key_hash.as_deref(),
+        timeout_ms,
+    )
+    .to_py()
+}
+
+#[pyfunction]
+fn hash_public_key_base64(public_key_base64: &str) -> PyResult<String> {
+    jacs_binding_core::hash_public_key_base64(public_key_base64).to_py()
+}
+
+#[pyfunction]
+fn build_jwk_set_from_public_key(
+    public_key_base64: &str,
+    key_algorithm: &str,
+    key_id: &str,
+) -> PyResult<String> {
+    jacs_binding_core::build_jwk_set_from_public_key(public_key_base64, key_algorithm, key_id)
+        .to_py()
+}
+
 // Deprecated trust functions with _simple suffix
 #[pyfunction]
 fn trust_agent_simple(agent_json: &str) -> PyResult<String> {
@@ -1962,6 +2158,13 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(create_config, m)?)?;
     m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
     m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
+    m.add_function(wrap_pyfunction!(resolve_private_key_password, m)?)?;
+    m.add_function(wrap_pyfunction!(quickstart_private_key_password, m)?)?;
+    m.add_function(wrap_pyfunction!(ensure_network_access, m)?)?;
+    m.add_function(wrap_pyfunction!(fetch_agent_card, m)?)?;
+    m.add_function(wrap_pyfunction!(fetch_remote_key_lookup, m)?)?;
+    m.add_function(wrap_pyfunction!(hash_public_key_base64, m)?)?;
+    m.add_function(wrap_pyfunction!(build_jwk_set_from_public_key, m)?)?;
 
     // =============================================================================
     // Trust Store Functions

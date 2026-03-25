@@ -6,11 +6,12 @@ Tests verify:
 - from_config() factory creates a JacsClient internally
 - wrap_artifact_with_provenance calls client._agent.sign_request (B-1)
 - verify_wrapped_artifact calls client._agent.verify_response with JSON string (B-2)
-- hash_string replaced with hashlib.sha256 (no jacs.hash_string calls)
+- native public-key hashing replaces wrapper-local crypto for well-known docs
 - SUPPORTED_ALGORITHMS matches JACS crypto stack (B-6)
 - Extension descriptor algorithms match SUPPORTED_ALGORITHMS (B-6)
 """
 
+import base64
 import hashlib
 import json
 
@@ -22,7 +23,7 @@ from jacs.a2a import (
     A2AAgentCard,
     A2AAgentCapabilities,
     A2AAgentInterface,
-    _sha256_hex,
+    _hash_public_key_base64,
 )
 from jacs.simple import _EphemeralAgentAdapter
 
@@ -175,17 +176,18 @@ class TestEphemeralAdapterParity:
 
 
 # ---------------------------------------------------------------------------
-# Test: hashlib.sha256 replaces jacs.hash_string
+# Test: native public-key hashing replaces wrapper-local crypto
 # ---------------------------------------------------------------------------
 
 class TestSha256Replacement:
-    def test_sha256_hex_matches_hashlib(self):
-        data = "hello world"
-        expected = hashlib.sha256(data.encode("utf-8")).hexdigest()
-        assert _sha256_hex(data) == expected
+    def test_hash_public_key_base64_matches_hashlib(self):
+        public_key_bytes = b"hello world"
+        public_key_b64 = base64.b64encode(public_key_bytes).decode("utf-8")
+        expected = hashlib.sha256(public_key_bytes).hexdigest()
+        assert _hash_public_key_base64(public_key_b64) == expected
 
     def test_well_known_uses_sha256(self):
-        """generate_well_known_documents should use _sha256_hex, not jacs.hash_string."""
+        """generate_well_known_documents should hash decoded public-key bytes."""
         client = _make_mock_client()
         a2a = JACSA2AIntegration(client)
 
@@ -207,7 +209,7 @@ class TestSha256Replacement:
             card, "jws-sig", "cHVia2V5", {"jacsId": "a1", "keyAlgorithm": "RSA-PSS"}
         )
 
-        expected_hash = _sha256_hex("cHVia2V5")
+        expected_hash = hashlib.sha256(base64.b64decode("cHVia2V5")).hexdigest()
         assert docs["/.well-known/jacs-agent.json"]["publicKeyHash"] == expected_hash
         assert docs["/.well-known/jacs-pubkey.json"]["publicKeyHash"] == expected_hash
 

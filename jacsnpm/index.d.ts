@@ -74,6 +74,13 @@ export declare function legacySignRequest(params: any): string
 export declare function legacyVerifyResponse(documentString: string): object
 /** @deprecated Use `new JacsAgent()` and instance methods instead. */
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
+export declare function ensureNetworkAccess(capability: string): void
+export declare function fetchAgentCard(baseUrl: string, timeoutMs?: number | undefined | null): string
+export declare function fetchRemoteKeyLookup(baseUrl?: string | undefined | null, jacsId?: string | undefined | null, version?: string | undefined | null, publicKeyHash?: string | undefined | null, timeoutMs?: number | undefined | null): string
+export declare function hashPublicKeyBase64(publicKeyBase64: string): string
+export declare function buildJwkSetFromPublicKey(publicKeyBase64: string, keyAlgorithm: string, keyId: string): string
+export declare function resolvePrivateKeyPassword(configPath?: string | undefined | null, keyDirectory?: string | undefined | null, explicitPassword?: string | undefined | null): string
+export declare function quickstartPrivateKeyPassword(configPath?: string | undefined | null, keyDirectory?: string | undefined | null): string
 /**
  * JacsAgent is a handle to a JACS agent instance.
  * Each instance maintains its own loaded state and can be used independently.
@@ -191,6 +198,29 @@ export declare class JacsAgent {
   getDocumentById(documentId: string): Promise<string>
   /** Re-encrypt the agent's private key with a new password. */
   reencryptKey(oldPassword: string, newPassword: string): Promise<void>
+  /** Convert a JSON string to YAML. */
+  toYamlSync(jsonStr: string): string
+  /** Convert a YAML string to pretty-printed JSON. */
+  fromYamlSync(yamlStr: string): string
+  /** Convert a JSON string to a self-contained HTML document. */
+  toHtmlSync(jsonStr: string): string
+  /** Extract JSON from an HTML document produced by toHtml(). */
+  fromHtmlSync(htmlStr: string): string
+  /**
+   * Convert a YAML string to JSON and verify the resulting document.
+   * Returns true if verification succeeds.
+   */
+  verifyYamlSync(yamlStr: string): boolean
+  /** Convert a JSON string to YAML (async). */
+  toYaml(jsonStr: string): Promise<string>
+  /** Convert a YAML string to pretty-printed JSON (async). */
+  fromYaml(yamlStr: string): Promise<string>
+  /** Convert a JSON string to a self-contained HTML document (async). */
+  toHtml(jsonStr: string): Promise<string>
+  /** Extract JSON from an HTML document produced by toHtml() (async). */
+  fromHtml(htmlStr: string): Promise<string>
+  /** Convert a YAML string to JSON and verify the resulting document (async). */
+  verifyYaml(yamlStr: string): Promise<boolean>
   /** Build a JACS auth header for HTTP requests (sync, blocks event loop). */
   buildAuthHeaderSync(): string
   /** Deterministically serialize JSON per RFC 8785 / JCS (sync, blocks event loop). */
@@ -300,4 +330,17 @@ export declare class JacsSimpleAgent {
    * Returns the signed JACS document JSON.
    */
   signFile(filePath: string, embed: boolean): string
+  /** Convert a JSON string to YAML. */
+  toYaml(jsonStr: string): string
+  /** Convert a YAML string to pretty-printed JSON. */
+  fromYaml(yamlStr: string): string
+  /** Convert a JSON string to a self-contained HTML document. */
+  toHtml(jsonStr: string): string
+  /** Extract JSON from an HTML document produced by toHtml(). */
+  fromHtml(htmlStr: string): string
+  /**
+   * Convert a YAML string to JSON and verify the resulting document.
+   * Equivalent to calling fromYaml() followed by verify().
+   */
+  verifyYaml(yamlStr: string): string
 }

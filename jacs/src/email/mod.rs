@@ -54,13 +54,17 @@ pub use types::{
 };
 
 // Signing: the primary sender-side function.
-pub use sign::{canonicalize_json_rfc8785, sign_email, sign_email_named};
+pub use sign::{
+    canonicalize_json_rfc8785, sign_email, sign_email_html, sign_email_html_named,
+    sign_email_named, sign_email_yaml, sign_email_yaml_named,
+};
 
 // Verification: one-call API + two-step API + content-only API.
 // `_named` variants accept a custom attachment filename.
 pub use verify::{
     normalize_algorithm, verify_email, verify_email_content, verify_email_document,
-    verify_email_document_named, verify_email_named,
+    verify_email_document_named, verify_email_html, verify_email_html_named, verify_email_named,
+    verify_email_yaml, verify_email_yaml_named,
 };
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).

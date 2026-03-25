@@ -56,7 +56,6 @@ Example:
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Optional, Union, List, Any
 
 # Configure module logger
@@ -82,7 +81,6 @@ from .types import (
 )
 from ._runtime import (
     EphemeralAgentAdapter as _EphemeralAgentAdapter,
-    write_key_directory_ignore_files as _write_key_directory_ignore_files,
 )
 
 # Import the Rust bindings
@@ -97,6 +95,7 @@ try:
     from .jacs import verify_document_standalone as _verify_document_standalone
     from .jacs import verify_agent_dns as _verify_agent_dns
     from .jacs import audit as _audit
+    from .jacs import resolve_private_key_password as _resolve_private_key_password_native
 except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
@@ -110,6 +109,7 @@ except ImportError:
     _is_trusted = _jacs_module.is_trusted
     _get_trusted_agent = _jacs_module.get_trusted_agent
     _audit = _jacs_module.audit
+    _resolve_private_key_password_native = _jacs_module.resolve_private_key_password
 
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
@@ -168,12 +168,6 @@ def _adopt_client_state(client) -> AgentInfo:
     return _agent_info
 
 
-def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
-    if os.path.isabs(candidate):
-        return candidate
-    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
-
-
 def _resolve_create_directories(
     config_path: str,
     data_directory: str = "./jacs_data",
@@ -189,34 +183,17 @@ def _resolve_create_directories(
     return data_directory, key_directory
 
 
-def _read_saved_password(config_path: str) -> str:
-    try:
-        resolved_config_path = os.path.abspath(config_path)
-        with open(resolved_config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        key_dir = _resolve_config_relative_path(
-            resolved_config_path, config.get("jacs_key_directory", "./jacs_keys")
-        )
-        password_path = os.path.join(key_dir, ".jacs_password")
-        if not os.path.exists(password_path):
-            return ""
-        with open(password_path, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
-
-
 def _resolve_private_key_password(
-    config_path: Optional[str] = None, explicit_password: Optional[str] = None
+    config_path: Optional[str] = None,
+    explicit_password: Optional[str] = None,
+    key_directory: Optional[str] = None,
 ) -> str:
-    if explicit_password:
-        return explicit_password
-    env_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-    if env_password:
-        return env_password
-    if config_path:
-        return _read_saved_password(config_path)
-    return ""
+    resolved_config_path = os.path.abspath(config_path) if config_path else None
+    return _resolve_private_key_password_native(
+        config_path=resolved_config_path,
+        key_directory=key_directory,
+        explicit_password=explicit_password,
+    )
 
 
 def _call_with_agent_password(func, *args, **kwargs):
@@ -338,7 +315,7 @@ def create(
     )
 
     # Resolve password
-    resolved_password = _resolve_private_key_password(config_path, password)
+    resolved_password = _resolve_private_key_password(config_path, password, key_directory)
     if not resolved_password:
         raise ConfigError(
             "Password is required for agent creation. "
@@ -443,8 +420,9 @@ def quickstart(
     If a config file already exists, loads the existing agent. Otherwise,
     creates a new agent with keys on disk and a minimal config file.
 
-    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated.
-    Set JACS_SAVE_PASSWORD_FILE=true to also persist it to ./jacs_keys/.jacs_password.
+    If JACS_PRIVATE_KEY_PASSWORD is not set, the native Rust layer
+    auto-generates a secure password. Set JACS_SAVE_PASSWORD_FILE=true
+    to also persist it to ./jacs_keys/.jacs_password.
 
     Example:
         import jacs.simple as jacs
@@ -882,10 +860,6 @@ def sign_file(
     """
     agent = _get_agent()
 
-    # Check file exists
-    if not os.path.exists(file_path):
-        raise JacsError(f"File not found: {file_path}")
-
     try:
         # Create a minimal document that references the file
         doc_json = json.dumps({
@@ -1115,6 +1089,115 @@ def reencrypt_key(old_password: str, new_password: str) -> None:
         raise JacsError(f"Failed to re-encrypt key: {e}")
 
 
+# =============================================================================
+# Format Conversion (YAML / HTML)
+# =============================================================================
+
+
+def to_yaml(json_str: str) -> str:
+    """Convert a JSON string to YAML.
+
+    Args:
+        json_str: A valid JSON string.
+
+    Returns:
+        The YAML representation.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the JSON input is invalid.
+
+    Example:
+        yaml = jacs.to_yaml(signed.raw_json)
+    """
+    agent = _get_agent()
+    return agent.to_yaml(json_str)
+
+
+def from_yaml(yaml_str: str) -> str:
+    """Convert a YAML string to pretty-printed JSON.
+
+    Args:
+        yaml_str: A valid YAML string.
+
+    Returns:
+        The JSON representation.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the YAML input is invalid.
+
+    Example:
+        json_str = jacs.from_yaml(yaml_string)
+    """
+    agent = _get_agent()
+    return agent.from_yaml(yaml_str)
+
+
+def to_html(json_str: str) -> str:
+    """Convert a JSON string to a self-contained HTML document.
+
+    The HTML embeds the exact JSON for lossless round-trip via ``from_html()``.
+
+    Args:
+        json_str: A valid JSON string.
+
+    Returns:
+        A self-contained HTML string.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the JSON input is invalid.
+
+    Example:
+        html = jacs.to_html(signed.raw_json)
+    """
+    agent = _get_agent()
+    return agent.to_html(json_str)
+
+
+def from_html(html_str: str) -> str:
+    """Extract JSON from an HTML document produced by ``to_html()``.
+
+    Args:
+        html_str: An HTML string containing embedded JACS JSON.
+
+    Returns:
+        The extracted JSON string.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the HTML does not contain embedded JACS JSON.
+
+    Example:
+        json_str = jacs.from_html(html_string)
+    """
+    agent = _get_agent()
+    return agent.from_html(html_str)
+
+
+def verify_yaml(yaml_str: str) -> bool:
+    """Convert YAML to JSON and verify the resulting document.
+
+    Equivalent to calling ``from_yaml()`` followed by ``verify()``,
+    but returns a simple boolean.
+
+    Args:
+        yaml_str: A valid YAML string containing a signed JACS document.
+
+    Returns:
+        True if the reconstituted JSON document passes verification.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+
+    Example:
+        is_valid = jacs.verify_yaml(yaml_string)
+    """
+    agent = _get_agent()
+    return agent.verify_yaml(yaml_str)
+
+
 def get_public_key() -> str:
     """Get the loaded agent's public key in PEM format.
 
@@ -1136,40 +1219,12 @@ def get_public_key() -> str:
     if _agent_info is None or _global_agent is None:
         raise AgentNotLoadedError("No agent loaded")
 
-    # Try native binding first (available on SimpleAgent / _EphemeralAgentAdapter).
-    # Falls back to file reading only from the already-resolved metadata path.
     try:
         return _global_agent.get_public_key_pem()
-    except AttributeError:
-        pass
-
-    # Fallback: read from key file and PEM-armor binary keys so the output
-    # is safe to pass to trust_agent_with_key().
-    try:
-        key_candidates: List[str] = []
-        if _agent_info.public_key_path:
-            key_candidates.append(_agent_info.public_key_path)
-
-        for candidate in key_candidates:
-            if os.path.exists(candidate):
-                with open(candidate, "rb") as f:
-                    raw = f.read()
-                try:
-                    return raw.decode("utf-8")
-                except UnicodeDecodeError:
-                    import base64
-                    b64 = base64.b64encode(raw).decode("ascii")
-                    return (
-                        "-----BEGIN PUBLIC KEY-----\n"
-                        + b64
-                        + "\n-----END PUBLIC KEY-----\n"
-                    )
-
-        raise JacsError(f"Could not find public key file in: {key_candidates}")
-    except JacsError:
-        raise
+    except AttributeError as e:
+        raise JacsError(f"Native public key export unavailable: {e}")
     except Exception as e:
-        raise JacsError(f"Failed to read public key: {e}")
+        raise JacsError(f"Failed to get public key: {e}")
 
 
 def export_agent() -> str:

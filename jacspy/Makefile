@@ -1,6 +1,28 @@
-.PHONY: build-jacspy build-jacspy-mac build-jacspy-linux build-wheel-mac publish-wheels build-wheel-linux test test-parallel test-python test-python-parallel
+.PHONY: build-jacspy build-jacspy-mac build-jacspy-linux build-wheel-mac publish-wheels build-wheel-linux test test-parallel test-python test-python-parallel sync-python-package
 
 PYTEST_XDIST_WORKERS ?= auto
+LOCAL_JACSPY_ENV = PYTHONPATH="$$(pwd)/python$${PYTHONPATH:+:$$PYTHONPATH}"
+
+define sync_python_package
+	@echo "Copying the compiled extension into the workspace Python package..."
+	@ext_path="$$(for candidate in ../target/debug/libjacspy.dylib ../target/debug/libjacspy.so ../target/debug/jacspy.pyd; do \
+		if [ -f "$$candidate" ]; then \
+			echo "$$candidate"; \
+			break; \
+		fi; \
+	done)"; \
+	if [ -z "$$ext_path" ]; then \
+		echo "Could not find jacspy debug extension artifact."; \
+		exit 1; \
+	fi; \
+	echo "Workspace jacspy extension: $$ext_path"; \
+	cp "$$ext_path" "python/jacs/jacs.abi3.so"
+endef
+
+# Sync the compiled extension into the workspace package so tests import the
+# current Python sources from ./python while still using the fresh native module.
+sync-python-package:
+	$(call sync_python_package)
 
 # =============================================================================
 # Development Commands (using uv - recommended)
@@ -16,13 +38,14 @@ setup:
 dev:
 	@echo "Building jacspy in development mode..."
 	uv run maturin develop
+	$(call sync_python_package)
 
 # Run all tests
 test: dev
 	@echo "Running tests..."
-	uv run python -m pytest tests/ -v
+	$(LOCAL_JACSPY_ENV) uv run python -m pytest tests/ -v
 	@if find python/jacs -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit | grep -q .; then \
-		uv run python -m pytest python/jacs/ -v; \
+		$(LOCAL_JACSPY_ENV) uv run python -m pytest python/jacs/ -v; \
 	else \
 		echo "No tests found under python/jacs; skipping second pytest run."; \
 	fi
@@ -31,12 +54,24 @@ test: dev
 # Cross-language fixture tests stay single-process to avoid write contention when fixtures are regenerated.
 test-parallel: dev
 	@echo "Running tests in parallel..."
-	uv run python -m pytest tests/ -v -n $(PYTEST_XDIST_WORKERS) --dist=loadfile -k "not cross_language"
+	@if uv run python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('xdist') else 1)" >/dev/null 2>&1; then \
+		PYTEST_PARALLEL_ARGS="-n $(PYTEST_XDIST_WORKERS) --dist=loadfile"; \
+		echo "pytest-xdist detected; running jacspy tests in parallel."; \
+	else \
+		PYTEST_PARALLEL_ARGS=""; \
+		echo "pytest-xdist not installed; falling back to serial jacspy tests."; \
+	fi; \
+	$(LOCAL_JACSPY_ENV) uv run python -m pytest tests/ -v $$PYTEST_PARALLEL_ARGS -k "not cross_language"
 	@if [ -f tests/test_cross_language.py ]; then \
-		uv run python -m pytest tests/test_cross_language.py -v; \
+		$(LOCAL_JACSPY_ENV) uv run python -m pytest tests/test_cross_language.py -v; \
 	fi
 	@if find python/jacs -type f \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit | grep -q .; then \
-		uv run python -m pytest python/jacs/ -v -n $(PYTEST_XDIST_WORKERS) --dist=loadfile; \
+		if uv run python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('xdist') else 1)" >/dev/null 2>&1; then \
+			PYTEST_PARALLEL_ARGS="-n $(PYTEST_XDIST_WORKERS) --dist=loadfile"; \
+		else \
+			PYTEST_PARALLEL_ARGS=""; \
+		fi; \
+		$(LOCAL_JACSPY_ENV) uv run python -m pytest python/jacs/ -v $$PYTEST_PARALLEL_ARGS; \
 	else \
 		echo "No tests found under python/jacs; skipping second pytest run."; \
 	fi
@@ -44,19 +79,19 @@ test-parallel: dev
 # Run Python tests only (assumes already built)
 test-py:
 	@echo "Running Python tests..."
-	uv run python -m pytest tests/ -v
+	$(LOCAL_JACSPY_ENV) uv run python -m pytest tests/ -v
 
 # Run HAI integration tests
 test-hai: dev
 	@echo "Running HAI integration tests..."
-	uv run python -m pytest python/jacs/test_register_new_agent.py -v
+	$(LOCAL_JACSPY_ENV) uv run python -m pytest python/jacs/test_register_new_agent.py -v
 
 # Verify imports work
 check-imports: dev
 	@echo "Checking imports..."
-	uv run python -c "from jacs import JacsAgent, HaiClient; print('OK: JacsAgent, HaiClient')"
-	uv run python -c "from jacs.hai import register_new_agent, verify_agent; print('OK: register_new_agent, verify_agent')"
-	uv run python -c "from jacs.simple import create, load, sign_message; print('OK: simple API')"
+	$(LOCAL_JACSPY_ENV) uv run python -c "from jacs import JacsAgent, HaiClient; print('OK: JacsAgent, HaiClient')"
+	$(LOCAL_JACSPY_ENV) uv run python -c "from jacs.hai import register_new_agent, verify_agent; print('OK: register_new_agent, verify_agent')"
+	$(LOCAL_JACSPY_ENV) uv run python -c "from jacs.simple import create, load, sign_message; print('OK: simple API')"
 
 # =============================================================================
 # Build Commands (for releases)
@@ -93,18 +128,26 @@ install-dev:
 	@echo "Installing jacspy in development mode using maturin..."
 	# This compiles the Rust code and installs it so Python can import it
 	maturin develop
+	$(call sync_python_package)
 
 # Run Python tests using pytest
 test-python: install-dev 
 	@echo "Running Python tests with pytest..."
-	 RUST_BACKTRACE=1 pytest -v tests/ -s
+	$(LOCAL_JACSPY_ENV) RUST_BACKTRACE=1 python -m pytest -v tests/ -s
 
 # Run Python tests with xdist workers for faster CI/local execution.
 test-python-parallel: install-dev
-	@echo "Running Python tests with pytest-xdist..."
-	RUST_BACKTRACE=1 pytest -v tests/ -s -n $(PYTEST_XDIST_WORKERS) --dist=loadfile -k "not cross_language"
+	@echo "Running Python tests with pytest-xdist when available..."
+	@if python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('xdist') else 1)" >/dev/null 2>&1; then \
+		PYTEST_PARALLEL_ARGS="-n $(PYTEST_XDIST_WORKERS) --dist=loadfile"; \
+		echo "pytest-xdist detected; running jacspy tests in parallel."; \
+	else \
+		PYTEST_PARALLEL_ARGS=""; \
+		echo "pytest-xdist not installed; falling back to serial jacspy tests."; \
+	fi; \
+	$(LOCAL_JACSPY_ENV) RUST_BACKTRACE=1 python -m pytest -v tests/ -s $$PYTEST_PARALLEL_ARGS -k "not cross_language"
 	@if [ -f tests/test_cross_language.py ]; then \
-		RUST_BACKTRACE=1 pytest -v tests/test_cross_language.py -s; \
+		$(LOCAL_JACSPY_ENV) RUST_BACKTRACE=1 python -m pytest -v tests/test_cross_language.py -s; \
 	fi
 
 test-mac-wheel: build-wheel-mac
@@ -114,7 +157,7 @@ test-mac-wheel: build-wheel-mac
 	# Assuming there's only one mac wheel, otherwise be more specific
 	uv pip install dist/jacs-*-macosx_*.whl
 	@echo "Running Python tests against the installed wheel..."
-	RUST_BACKTRACE=1 pytest -v tests/ -s
+	$(LOCAL_JACSPY_ENV) RUST_BACKTRACE=1 python -m pytest -v tests/ -s
 	@echo "Cleaning up installed package..."
 	uv pip uninstall jacs  || true
 

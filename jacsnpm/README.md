@@ -49,7 +49,7 @@ const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
-`quickstart(options)` creates a persistent agent with keys on disk and requires `options.name` and `options.domain` (with optional `description`). If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated in-process; set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+`quickstart(options)` creates a persistent agent with keys on disk and requires `options.name` and `options.domain` (with optional `description`). If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, the native Rust layer generates a secure password; set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
 
 **Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#multi-party-agreements) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 

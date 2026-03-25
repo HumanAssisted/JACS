@@ -57,7 +57,6 @@ exports.JacsClient = exports.createConfig = exports.hashString = void 0;
 const index_1 = require("./index");
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
-const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const deprecation_1 = require("./deprecation");
 // =============================================================================
@@ -70,12 +69,6 @@ function resolveStrict(explicit) {
     const envStrict = process.env.JACS_STRICT_MODE;
     return envStrict === 'true' || envStrict === '1';
 }
-function resolveConfigRelativePath(configPath, candidate) {
-    if (path.isAbsolute(candidate)) {
-        return candidate;
-    }
-    return path.resolve(path.dirname(configPath), candidate);
-}
 function resolveCreatePaths(configPath, dataDirectory, keyDirectory) {
     const resolvedConfigPath = configPath ?? './jacs.config.json';
     const configDir = path.dirname(path.resolve(resolvedConfigPath));
@@ -86,32 +79,8 @@ function resolveCreatePaths(configPath, dataDirectory, keyDirectory) {
         keyDirectory: keyDirectory ?? (configDir === cwd ? './jacs_keys' : path.join(configDir, 'jacs_keys')),
     };
 }
-function readSavedPassword(configPath) {
-    try {
-        const resolvedConfigPath = path.resolve(configPath);
-        const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
-        const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
-        const passwordPath = path.join(keyDir, '.jacs_password');
-        if (!fs.existsSync(passwordPath)) {
-            return '';
-        }
-        return fs.readFileSync(passwordPath, 'utf8').trim();
-    }
-    catch {
-        return '';
-    }
-}
-function resolvePrivateKeyPassword(configPath, explicitPassword) {
-    if (explicitPassword && explicitPassword.length > 0) {
-        return explicitPassword;
-    }
-    if (process.env.JACS_PRIVATE_KEY_PASSWORD) {
-        return process.env.JACS_PRIVATE_KEY_PASSWORD;
-    }
-    if (configPath) {
-        return readSavedPassword(configPath);
-    }
-    return '';
+function resolvePrivateKeyPassword(configPath, keyDirectory, explicitPassword) {
+    return (0, index_1.resolvePrivateKeyPassword)(configPath ? path.resolve(configPath) : null, keyDirectory ?? null, explicitPassword ?? null);
 }
 function configurePrivateKeyPassword(agent, password) {
     agent.setPrivateKeyPassword(password ?? null);
@@ -205,56 +174,11 @@ function extractAttachmentsFromDocument(doc) {
         content: (f.contents || f.content) ? Buffer.from(f.contents || f.content, 'base64') : undefined,
     }));
 }
-function ensurePassword(keyDirectory) {
-    let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
-    if (!password) {
-        const crypto = require('crypto');
-        const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const lower = 'abcdefghijklmnopqrstuvwxyz';
-        const digits = '0123456789';
-        const special = '!@#$%^&*()-_=+';
-        const all = upper + lower + digits + special;
-        password =
-            upper[crypto.randomInt(upper.length)] +
-                lower[crypto.randomInt(lower.length)] +
-                digits[crypto.randomInt(digits.length)] +
-                special[crypto.randomInt(special.length)];
-        for (let i = 4; i < 32; i++) {
-            password += all[crypto.randomInt(all.length)];
-        }
-        const persistPassword = process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
-            process.env.JACS_SAVE_PASSWORD_FILE === 'true';
-        if (persistPassword) {
-            const keysDir = keyDirectory || './jacs_keys';
-            fs.mkdirSync(keysDir, { recursive: true });
-            const pwPath = path.join(keysDir, '.jacs_password');
-            fs.writeFileSync(pwPath, password, { mode: 0o600 });
-        }
-    }
-    return password;
+function ensurePassword(configPath, keyDirectory) {
+    return (0, index_1.quickstartPrivateKeyPassword)(configPath ? path.resolve(configPath) : null, keyDirectory ?? null);
 }
-function writeKeyDirectoryIgnoreFiles(keyDir) {
-    const ignoreContent = '# JACS private key material -- do NOT commit or ship\n' +
-        '*.pem\n*.pem.enc\n.jacs_password\n*.key\n*.key.enc\n';
-    fs.mkdirSync(keyDir, { recursive: true });
-    const gitignore = path.join(keyDir, '.gitignore');
-    if (!fs.existsSync(gitignore)) {
-        try {
-            fs.writeFileSync(gitignore, ignoreContent);
-        }
-        catch (_) {
-            // Best-effort; don't fail agent creation.
-        }
-    }
-    const dockerignore = path.join(keyDir, '.dockerignore');
-    if (!fs.existsSync(dockerignore)) {
-        try {
-            fs.writeFileSync(dockerignore, ignoreContent);
-        }
-        catch (_) {
-            // Best-effort; don't fail agent creation.
-        }
-    }
+function isConfigNotFoundError(error) {
+    return String(error).toLowerCase().includes('config file not found');
 }
 // =============================================================================
 // JacsClient
@@ -277,12 +201,16 @@ class JacsClient {
         const client = new JacsClient({ strict: options?.strict });
         const paths = resolveCreatePaths(options?.configPath);
         const configPath = paths.configPath;
-        if (fs.existsSync(configPath)) {
+        try {
             await client.load(configPath);
             return client;
         }
-        const password = ensurePassword(paths.keyDirectory);
-        writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
+        catch (error) {
+            if (!isConfigNotFoundError(error)) {
+                throw error;
+            }
+        }
+        const password = ensurePassword(configPath, paths.keyDirectory);
         const algo = options?.algorithm || 'pq2025';
         await client.create({
             name,
@@ -304,12 +232,16 @@ class JacsClient {
         const client = new JacsClient({ strict: options?.strict });
         const paths = resolveCreatePaths(options?.configPath);
         const configPath = paths.configPath;
-        if (fs.existsSync(configPath)) {
+        try {
             client.loadSync(configPath);
             return client;
         }
-        const password = ensurePassword(paths.keyDirectory);
-        writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
+        catch (error) {
+            if (!isConfigNotFoundError(error)) {
+                throw error;
+            }
+        }
+        const password = ensurePassword(configPath, paths.keyDirectory);
         const algo = options?.algorithm || 'pq2025';
         client.createSync({
             name,
@@ -380,10 +312,7 @@ class JacsClient {
         }
         const requestedPath = configPath || './jacs.config.json';
         const resolvedConfigPath = path.resolve(requestedPath);
-        if (!fs.existsSync(resolvedConfigPath)) {
-            throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
-        }
-        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
+        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath, null, null);
         this.agent = new index_1.JacsAgent();
         configurePrivateKeyPassword(this.agent, resolvedPassword || null);
         const infoJson = await this.agent.loadWithInfo(resolvedConfigPath);
@@ -396,10 +325,7 @@ class JacsClient {
         }
         const requestedPath = configPath || './jacs.config.json';
         const resolvedConfigPath = path.resolve(requestedPath);
-        if (!fs.existsSync(resolvedConfigPath)) {
-            throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
-        }
-        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
+        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath, null, null);
         this.agent = new index_1.JacsAgent();
         configurePrivateKeyPassword(this.agent, resolvedPassword || null);
         const infoJson = this.agent.loadWithInfoSync(resolvedConfigPath);
@@ -407,7 +333,7 @@ class JacsClient {
         return this.info;
     }
     async create(options) {
-        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
+        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.keyDirectory ?? null, options.password ?? null);
         if (!resolvedPassword) {
             throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
         }
@@ -428,7 +354,7 @@ class JacsClient {
         return this.info;
     }
     createSync(options) {
-        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
+        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.keyDirectory ?? null, options.password ?? null);
         if (!resolvedPassword) {
             throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
         }
@@ -640,8 +566,6 @@ class JacsClient {
     // ---------------------------------------------------------------------------
     async signFile(filePath, embed = false) {
         this.requireAgent();
-        if (!fs.existsSync(filePath))
-            throw new Error(`File not found: ${filePath}`);
         const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
         return this.withPrivateKeyPassword(async (agent) => {
             const result = await agent.createDocument(JSON.stringify(docContent), null, null, true, filePath, embed);
@@ -650,13 +574,69 @@ class JacsClient {
     }
     signFileSync(filePath, embed = false) {
         this.requireAgent();
-        if (!fs.existsSync(filePath))
-            throw new Error(`File not found: ${filePath}`);
         const docContent = { jacsType: 'file', jacsLevel: 'raw', filename: path.basename(filePath) };
         return this.withPrivateKeyPasswordSync((agent) => {
             const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, filePath, embed);
             return parseSignedResult(result);
         });
+    }
+    // ---------------------------------------------------------------------------
+    // Format Conversion (YAML / HTML)
+    // ---------------------------------------------------------------------------
+    /**
+     * Convert a JSON string to YAML.
+     */
+    async toYaml(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toYaml(jsonStr);
+    }
+    toYamlSync(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toYamlSync(jsonStr);
+    }
+    /**
+     * Convert a YAML string to pretty-printed JSON.
+     */
+    async fromYaml(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.fromYaml(yamlStr);
+    }
+    fromYamlSync(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.fromYamlSync(yamlStr);
+    }
+    /**
+     * Convert a JSON string to a self-contained HTML document.
+     */
+    async toHtml(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toHtml(jsonStr);
+    }
+    toHtmlSync(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toHtmlSync(jsonStr);
+    }
+    /**
+     * Extract JSON from an HTML document produced by toHtml().
+     */
+    async fromHtml(htmlStr) {
+        const agent = this.requireAgent();
+        return agent.fromHtml(htmlStr);
+    }
+    fromHtmlSync(htmlStr) {
+        const agent = this.requireAgent();
+        return agent.fromHtmlSync(htmlStr);
+    }
+    /**
+     * Convert YAML to JSON and verify the resulting document.
+     */
+    async verifyYaml(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.verifyYaml(yamlStr);
+    }
+    verifyYamlSync(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.verifyYamlSync(yamlStr);
     }
     // ---------------------------------------------------------------------------
     // Agreements

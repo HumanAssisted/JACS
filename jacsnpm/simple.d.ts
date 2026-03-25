@@ -231,6 +231,46 @@ export declare function reencryptKey(oldPassword: string, newPassword: string): 
  * Re-encrypt the agent's private key (sync, blocks event loop).
  */
 export declare function reencryptKeySync(oldPassword: string, newPassword: string): void;
+/**
+ * Convert a JSON string to YAML (async).
+ */
+export declare function toYaml(jsonStr: string): Promise<string>;
+/**
+ * Convert a JSON string to YAML (sync).
+ */
+export declare function toYamlSync(jsonStr: string): string;
+/**
+ * Convert a YAML string to pretty-printed JSON (async).
+ */
+export declare function fromYaml(yamlStr: string): Promise<string>;
+/**
+ * Convert a YAML string to pretty-printed JSON (sync).
+ */
+export declare function fromYamlSync(yamlStr: string): string;
+/**
+ * Convert a JSON string to a self-contained HTML document (async).
+ */
+export declare function toHtml(jsonStr: string): Promise<string>;
+/**
+ * Convert a JSON string to a self-contained HTML document (sync).
+ */
+export declare function toHtmlSync(jsonStr: string): string;
+/**
+ * Extract JSON from an HTML document produced by toHtml() (async).
+ */
+export declare function fromHtml(htmlStr: string): Promise<string>;
+/**
+ * Extract JSON from an HTML document produced by toHtml() (sync).
+ */
+export declare function fromHtmlSync(htmlStr: string): string;
+/**
+ * Convert YAML to JSON and verify the resulting document (async).
+ */
+export declare function verifyYaml(yamlStr: string): Promise<boolean>;
+/**
+ * Convert YAML to JSON and verify the resulting document (sync).
+ */
+export declare function verifyYamlSync(yamlStr: string): boolean;
 export declare function getPublicKey(): string;
 export declare function exportAgent(): string;
 /** @deprecated Use getPublicKey() instead. */

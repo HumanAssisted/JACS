@@ -31,7 +31,7 @@ from .types import (
     VerificationError,
     VerificationResult,
 )
-from ._runtime import EphemeralAgentAdapter, write_key_directory_ignore_files
+from ._runtime import EphemeralAgentAdapter
 
 logger = logging.getLogger("jacs.client")
 
@@ -48,6 +48,10 @@ try:
     from .jacs import is_trusted as _is_trusted
     from .jacs import get_trusted_agent as _get_trusted_agent
     from .jacs import audit as _audit
+    from .jacs import (
+        quickstart_private_key_password as _quickstart_private_key_password_native,
+    )
+    from .jacs import resolve_private_key_password as _resolve_private_key_password_native
 except ImportError:
     import jacs as _jacs_module  # type: ignore[no-redef]
 
@@ -60,18 +64,14 @@ except ImportError:
     _is_trusted = _jacs_module.is_trusted
     _get_trusted_agent = _jacs_module.get_trusted_agent
     _audit = _jacs_module.audit
+    _quickstart_private_key_password_native = _jacs_module.quickstart_private_key_password
+    _resolve_private_key_password_native = _jacs_module.resolve_private_key_password
 
 
 def _resolve_strict(explicit: Optional[bool]) -> bool:
     if explicit is not None:
         return explicit
     return os.environ.get("JACS_STRICT_MODE", "").lower() in ("true", "1")
-
-
-def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
-    if os.path.isabs(candidate):
-        return candidate
-    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
 
 
 def _resolve_create_directories(
@@ -89,34 +89,31 @@ def _resolve_create_directories(
     return data_directory, key_directory
 
 
-def _read_saved_password(config_path: str) -> str:
-    try:
-        resolved_config_path = os.path.abspath(config_path)
-        with open(resolved_config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        key_dir = _resolve_config_relative_path(
-            resolved_config_path, config.get("jacs_key_directory", "./jacs_keys")
-        )
-        password_path = os.path.join(key_dir, ".jacs_password")
-        if not os.path.exists(password_path):
-            return ""
-        with open(password_path, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
-
-
 def _resolve_private_key_password(
-    config_path: Optional[str] = None, explicit_password: Optional[str] = None
+    config_path: Optional[str] = None,
+    explicit_password: Optional[str] = None,
+    key_directory: Optional[str] = None,
 ) -> str:
-    if explicit_password:
-        return explicit_password
-    env_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-    if env_password:
-        return env_password
-    if config_path:
-        return _read_saved_password(config_path)
-    return ""
+    resolved_config_path = os.path.abspath(config_path) if config_path else None
+    return _resolve_private_key_password_native(
+        config_path=resolved_config_path,
+        key_directory=key_directory,
+        explicit_password=explicit_password,
+    )
+
+
+def _quickstart_private_key_password(
+    config_path: Optional[str] = None, key_directory: Optional[str] = None
+) -> str:
+    resolved_config_path = os.path.abspath(config_path) if config_path else None
+    return _quickstart_private_key_password_native(
+        config_path=resolved_config_path,
+        key_directory=key_directory,
+    )
+
+
+def _is_config_not_found_error(error: Exception) -> bool:
+    return "config file not found" in str(error).lower()
 
 
 def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
@@ -225,35 +222,16 @@ class JacsClient:
         instance._agent = _JacsAgent()
         instance._agent_info = None
 
-        if os.path.exists(cfg_path):
+        try:
             instance._load_from_config(cfg_path)
             return instance
+        except Exception as e:
+            if not _is_config_not_found_error(e):
+                raise
 
         data_dir, key_dir = _resolve_create_directories(cfg_path)
 
-        # Create a new persistent agent via SimpleAgent
-        password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-        if not password:
-            import secrets
-            import string
-
-            chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
-            password = (
-                secrets.choice(string.ascii_uppercase)
-                + secrets.choice(string.ascii_lowercase)
-                + secrets.choice(string.digits)
-                + secrets.choice("!@#$%^&*()-_=+")
-                + "".join(secrets.choice(chars) for _ in range(28))
-            )
-            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
-            if persist_password:
-                os.makedirs(key_dir, exist_ok=True)
-                pw_path = os.path.join(key_dir, ".jacs_password")
-                with open(pw_path, "w", encoding="utf-8") as f:
-                    f.write(password)
-                os.chmod(pw_path, 0o600)
-
-        write_key_directory_ignore_files(key_dir)
+        password = _quickstart_private_key_password(cfg_path, key_dir)
 
         algo = algorithm or "pq2025"
         _SimpleAgent.create_agent(
@@ -311,20 +289,19 @@ class JacsClient:
     # ------------------------------------------------------------------
 
     def _load_from_config(self, config_path: str, password: Optional[str] = None) -> None:
-        if not os.path.exists(config_path):
-            raise ConfigError(
-                f"Config file not found: {config_path}\n"
-                "Run 'jacs create' or call jacs.create() to create a new agent."
-            )
-
         resolved_config_path = os.path.abspath(config_path)
-        self._private_key_password = (
-            _resolve_private_key_password(resolved_config_path, password) or None
-        )
-        self._agent.set_private_key_password(self._private_key_password)
-        info_json = self._agent.load_with_info(resolved_config_path)
-
-        self._agent_info = AgentInfo.from_dict(json.loads(info_json))
+        try:
+            self._private_key_password = (
+                _resolve_private_key_password(resolved_config_path, password) or None
+            )
+            self._agent.set_private_key_password(self._private_key_password)
+            info_json = self._agent.load_with_info(resolved_config_path)
+            self._agent_info = AgentInfo.from_dict(json.loads(info_json))
+        except Exception as e:
+            message = str(e)
+            if _is_config_not_found_error(e):
+                raise ConfigError(message) from e
+            raise JacsError(f"Failed to load agent: {message}") from e
 
     def _require_agent(self):
         if self._agent is None:
@@ -403,8 +380,6 @@ class JacsClient:
     def sign_file(self, path: str, embed: bool = False) -> SignedDocument:
         """Sign a file with optional content embedding."""
         agent = self._require_agent()
-        if not os.path.exists(path):
-            raise JacsError(f"File not found: {path}")
         try:
             doc_json = json.dumps(
                 {
@@ -694,15 +669,11 @@ class JacsClient:
 
     def get_public_key(self) -> str:
         """Return this agent's PEM public key."""
-        if self._agent_info is None or not self._agent_info.public_key_path:
-            raise AgentNotLoadedError("No loaded agent with public key metadata.")
-
-        key_path = self._agent_info.public_key_path
-        if not os.path.exists(key_path):
-            raise JacsError(f"Public key not found: {key_path}")
-
-        with open(key_path, "r", encoding="utf-8") as f:
-            return f.read()
+        agent = self._require_agent()
+        try:
+            return agent.get_public_key_pem()
+        except Exception as e:
+            raise JacsError(f"Failed to get public key: {e}")
 
     def share_public_key(self) -> str:
         """Alias for get_public_key() for framework/tool integrations."""
@@ -915,6 +886,80 @@ class JacsClient:
             return json.loads(result)
         except Exception as e:
             raise JacsError(f"Failed to export DSSE: {e}")
+
+    # ------------------------------------------------------------------
+    # A2A helpers
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Format Conversion (YAML / HTML)
+    # ------------------------------------------------------------------
+
+    def to_yaml(self, json_str: str) -> str:
+        """Convert a JSON string to YAML.
+
+        Args:
+            json_str: A valid JSON string.
+
+        Returns:
+            The YAML representation.
+        """
+        agent = self._require_agent()
+        return agent.to_yaml(json_str)
+
+    def from_yaml(self, yaml_str: str) -> str:
+        """Convert a YAML string to pretty-printed JSON.
+
+        Args:
+            yaml_str: A valid YAML string.
+
+        Returns:
+            The JSON representation.
+        """
+        agent = self._require_agent()
+        return agent.from_yaml(yaml_str)
+
+    def to_html(self, json_str: str) -> str:
+        """Convert a JSON string to a self-contained HTML document.
+
+        The HTML embeds the exact JSON in a ``<script>`` tag for
+        lossless round-trip extraction via :meth:`from_html`.
+
+        Args:
+            json_str: A valid JSON string.
+
+        Returns:
+            A self-contained HTML string.
+        """
+        agent = self._require_agent()
+        return agent.to_html(json_str)
+
+    def from_html(self, html_str: str) -> str:
+        """Extract JSON from an HTML document produced by :meth:`to_html`.
+
+        Args:
+            html_str: An HTML string containing embedded JACS JSON.
+
+        Returns:
+            The extracted JSON string.
+        """
+        agent = self._require_agent()
+        return agent.from_html(html_str)
+
+    def verify_yaml(self, yaml_str: str) -> bool:
+        """Convert YAML to JSON and verify the resulting document.
+
+        This is equivalent to calling :meth:`from_yaml` followed by
+        :meth:`verify`, but returns a simple boolean.
+
+        Args:
+            yaml_str: A valid YAML string containing a signed JACS document.
+
+        Returns:
+            True if the reconstituted JSON document passes verification.
+        """
+        agent = self._require_agent()
+        return agent.verify_yaml(yaml_str)
 
     # ------------------------------------------------------------------
     # A2A helpers

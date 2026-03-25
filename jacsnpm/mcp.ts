@@ -10,7 +10,7 @@
 //
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { JacsAgent } from './index.js';
+import { JacsAgent, fetchRemoteKeyLookup } from './index.js';
 import { JacsClient } from './client.js';
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,6 @@ const isStdioTransport = (transport: any): boolean => {
          transport.constructor.name === 'StdioClientTransport';
 };
 
-const DEFAULT_KEYS_BASE_URL = 'https://hai.ai';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
@@ -98,47 +97,6 @@ function assertLocalTransport(transport: any): void {
 
 function debugLog(proxyId: string, enabled: boolean, ...args: any[]): void {
   if (enabled) console.error(`[${proxyId}]`, ...args);
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
-}
-
-function resolveKeysBaseUrl(override?: unknown): string {
-  if (typeof override === 'string' && override.trim()) {
-    return normalizeBaseUrl(override);
-  }
-  if (process.env.JACS_KEYS_BASE_URL && process.env.JACS_KEYS_BASE_URL.trim()) {
-    return normalizeBaseUrl(process.env.JACS_KEYS_BASE_URL);
-  }
-  if (process.env.HAI_KEYS_BASE_URL && process.env.HAI_KEYS_BASE_URL.trim()) {
-    return normalizeBaseUrl(process.env.HAI_KEYS_BASE_URL);
-  }
-  return DEFAULT_KEYS_BASE_URL;
-}
-
-function normalizePublicKeyHash(publicKeyHash: string): string {
-  const trimmed = publicKeyHash.trim();
-  if (!trimmed) {
-    throw new Error('public_key_hash cannot be empty');
-  }
-  return trimmed.startsWith('sha256:') ? trimmed : `sha256:${trimmed}`;
-}
-
-async function fetchJson(url: string): Promise<any> {
-  if (typeof fetch !== 'function') {
-    throw new Error('Global fetch() is unavailable in this runtime');
-  }
-  const response = await fetch(url, { headers: { accept: 'application/json' } });
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} from key lookup endpoint: ${body || response.statusText}`);
-  }
-  try {
-    return JSON.parse(body);
-  } catch {
-    throw new Error(`Key lookup endpoint returned non-JSON response: ${url}`);
-  }
 }
 
 /**
@@ -868,26 +826,13 @@ export async function handleJacsMcpToolCall(
       }
 
       case 'fetch_agent_key': {
-        const baseUrl = resolveKeysBaseUrl(args.base_url);
-        const byHash = typeof args.public_key_hash === 'string' ? args.public_key_hash.trim() : '';
-        let lookupUrl: string;
-
-        if (byHash) {
-          const normalizedHash = normalizePublicKeyHash(byHash);
-          lookupUrl = `${baseUrl}/jacs/v1/keys/by-hash/${encodeURIComponent(normalizedHash)}`;
-        } else {
-          const jacsId = typeof args.jacs_id === 'string' ? args.jacs_id.trim() : '';
-          if (!jacsId) {
-            throw new Error('fetch_agent_key requires jacs_id or public_key_hash');
-          }
-          const version =
-            typeof args.version === 'string' && args.version.trim()
-              ? args.version.trim()
-              : 'latest';
-          lookupUrl = `${baseUrl}/jacs/v1/agents/${encodeURIComponent(jacsId)}/keys/${encodeURIComponent(version)}`;
-        }
-
-        const lookup = await fetchJson(lookupUrl);
+        const lookup = JSON.parse(fetchRemoteKeyLookup(
+          typeof args.base_url === 'string' ? args.base_url : null,
+          typeof args.jacs_id === 'string' ? args.jacs_id : null,
+          typeof args.version === 'string' ? args.version : null,
+          typeof args.public_key_hash === 'string' ? args.public_key_hash : null,
+          null,
+        ));
         return text(JSON.stringify({
           success: true,
           ...lookup,

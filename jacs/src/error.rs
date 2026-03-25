@@ -247,6 +247,20 @@ pub enum JacsError {
     #[cfg(feature = "attestation")]
     VerificationFailed { message: String },
 
+    // === Conversion Errors ===
+    /// Format conversion failed (e.g., JSON to YAML, JSON to HTML).
+    ///
+    /// Use this for errors related to:
+    /// - JSON to YAML conversion failures
+    /// - YAML to JSON conversion failures
+    /// - JSON to HTML conversion failures
+    /// - HTML to JSON extraction failures
+    ConversionError {
+        from: String,
+        to: String,
+        reason: String,
+    },
+
     // === Agent State Errors ===
     /// No agent is currently loaded. Call quickstart(), create(), or load() first.
     AgentNotLoaded,
@@ -481,6 +495,11 @@ impl fmt::Display for JacsError {
                 write!(f, "Attestation verification failed: {}", message)
             }
 
+            // Conversion
+            JacsError::ConversionError { from, to, reason } => {
+                write!(f, "Conversion from {} to {} failed: {}", from, to, reason)
+            }
+
             // Agent state
             JacsError::AgentNotLoaded => {
                 write!(
@@ -500,6 +519,15 @@ impl fmt::Display for JacsError {
 impl Error for JacsError {}
 
 impl JacsError {
+    /// Create a `ConversionError` with the given source format, target format, and reason.
+    pub fn conversion(from: &str, to: &str, reason: impl Into<String>) -> Self {
+        JacsError::ConversionError {
+            from: from.to_string(),
+            to: to.to_string(),
+            reason: reason.into(),
+        }
+    }
+
     /// Extracts a concise, actionable message from the error chain.
     ///
     /// For deeply nested error chains (common with `Box<dyn Error>` conversions),
@@ -1147,6 +1175,46 @@ mod tests {
         assert!(
             msg.contains("new agent"),
             "Should suggest creating new agent"
+        );
+    }
+
+    // ==========================================================================
+    // CONVERSION ERROR TESTS
+    // ==========================================================================
+
+    #[test]
+    fn test_conversion_error_display_includes_all_fields() {
+        let err = JacsError::ConversionError {
+            from: "JSON".to_string(),
+            to: "YAML".to_string(),
+            reason: "invalid syntax".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("JSON"), "Should include source format");
+        assert!(msg.contains("YAML"), "Should include target format");
+        assert!(msg.contains("invalid syntax"), "Should include reason");
+        assert!(
+            msg.contains("Conversion from JSON to YAML failed"),
+            "Should have structured message"
+        );
+    }
+
+    #[test]
+    fn test_conversion_error_convenience_constructor() {
+        let err = JacsError::conversion("HTML", "JSON", "no script tag found");
+        let msg = err.to_string();
+        assert!(msg.contains("HTML"), "Should include source format");
+        assert!(msg.contains("JSON"), "Should include target format");
+        assert!(msg.contains("no script tag found"), "Should include reason");
+    }
+
+    #[test]
+    fn test_conversion_error_from_string_still_works() {
+        // Ensure the From<String> conversion still produces Internal, not ConversionError
+        let err: JacsError = "conversion failed".to_string().into();
+        assert!(
+            matches!(err, JacsError::Internal { .. }),
+            "String conversion should still produce Internal"
         );
     }
 }

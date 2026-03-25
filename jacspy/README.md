@@ -33,7 +33,7 @@ result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 ```
 
-`quickstart(name, domain, ...)` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, a secure password is auto-generated in-process (set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`). Returned `AgentInfo` includes config and key file paths. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
+`quickstart(name, domain, ...)` creates a persistent agent with keys on disk. If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, the native Rust layer auto-generates a secure password (set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`). Returned `AgentInfo` includes config and key file paths. Pass `algorithm="ring-Ed25519"` or `algorithm="RSA-PSS"` to override the default (`pq2025`).
 
 **Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#agreements-with-timeout-and-quorum) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
@@ -456,7 +456,7 @@ pip install jacs[anthropic]    # Anthropic / Claude SDK
 pip install jacs[all]          # All adapters + MCP + A2A
 
 # With A2A support
-pip install jacs[a2a]          # Discovery only (httpx)
+pip install jacs[a2a]          # Discovery helpers (native runtime, no extra Python deps)
 pip install jacs[a2a-server]   # A2A server with serve() (FastAPI + uvicorn)
 
 # With MCP support

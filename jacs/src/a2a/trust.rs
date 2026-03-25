@@ -24,6 +24,7 @@ use crate::a2a::extension::verify_agent_card_jws;
 use crate::a2a::keys::Jwk;
 use crate::a2a::{AgentCard, JACS_EXTENSION_URI};
 use crate::agent::Agent;
+use crate::config::{NetworkCapability, ensure_network_access};
 use crate::trust;
 #[cfg(not(target_arch = "wasm32"))]
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -203,6 +204,34 @@ fn agent_card_origin(card: &AgentCard) -> Result<String, String> {
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_jwks(card: &AgentCard) -> Result<Vec<Jwk>, String> {
     let jwks_url = format!("{}/.well-known/jwks.json", agent_card_origin(card)?);
+
+    #[cfg(test)]
+    if agent_card_origin(card)
+        .ok()
+        .as_deref()
+        .is_some_and(|origin| origin == "https://local-jwks.invalid")
+    {
+        if let Ok(jwks_json) = std::env::var("JACS_TEST_JWKS_JSON") {
+            let value = serde_json::from_str::<serde_json::Value>(&jwks_json).map_err(|e| {
+                format!(
+                    "Failed to parse test JWKS JSON from JACS_TEST_JWKS_JSON: {}",
+                    e
+                )
+            })?;
+            let keys_value = value
+                .get("keys")
+                .ok_or_else(|| "Test JWKS JSON did not include a 'keys' array".to_string())?
+                .clone();
+            return serde_json::from_value::<Vec<Jwk>>(keys_value).map_err(|e| {
+                format!(
+                    "Failed to decode test JWKS keys from JACS_TEST_JWKS_JSON: {}",
+                    e
+                )
+            });
+        }
+    }
+
+    ensure_network_access(NetworkCapability::JwksFetch).map_err(|e| e.to_string())?;
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -445,9 +474,6 @@ mod tests {
         A2A_PROTOCOL_VERSION, AgentCapabilities, AgentCard, AgentExtension, AgentInterface,
     };
     use serde_json::json;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::thread;
 
     /// Create a minimal Agent Card for testing.
     fn make_card(
@@ -785,33 +811,7 @@ mod tests {
         assert_eq!(assessment.agent_id, None);
     }
 
-    fn serve_jwks_once(body: String) -> (String, thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind localhost listener");
-        let addr = listener.local_addr().expect("listener addr");
-        let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept request");
-            let mut buf = [0_u8; 4096];
-            let read = stream.read(&mut buf).expect("read request");
-            let request = String::from_utf8_lossy(&buf[..read]);
-            let (status, payload) = if request.starts_with("GET /.well-known/jwks.json ") {
-                ("200 OK", body)
-            } else {
-                ("404 Not Found", "{\"error\":\"not found\"}".to_string())
-            };
-            let response = format!(
-                "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                status,
-                payload.len(),
-                payload
-            );
-            stream
-                .write_all(response.as_bytes())
-                .expect("write response");
-        });
-        (format!("http://{}", addr), handle)
-    }
-
-    fn make_signed_card_with_local_jwks() -> (AgentCard, thread::JoinHandle<()>) {
+    fn make_signed_card_with_test_jwks() -> AgentCard {
         let agent_id = "550e8400-e29b-41d4-a716-446655440030";
         let version = "550e8400-e29b-41d4-a716-446655440031";
         let mut card = make_card("signed-jacs-agent", true, Some(agent_id), Some(version));
@@ -819,20 +819,24 @@ mod tests {
             crate::crypt::ringwrapper::generate_keys().expect("generate ed25519 keys");
         let jwk = export_as_jwk(&public_key, "ring-Ed25519", agent_id).expect("export jwk");
         let jwks = create_jwk_set(vec![jwk]).to_string();
-        let (origin, handle) = serve_jwks_once(jwks);
-        card.supported_interfaces[0].url = format!("{}/agent/{}", origin, agent_id);
+        unsafe {
+            std::env::set_var("JACS_TEST_JWKS_JSON", &jwks);
+        }
+        card.supported_interfaces[0].url = format!("https://local-jwks.invalid/agent/{}", agent_id);
         let jws =
             sign_agent_card_jws(&card, &private_key, "ring-Ed25519", agent_id).expect("sign card");
-        let signed_card = embed_signature_in_agent_card(&card, &jws, Some(agent_id));
-        (signed_card, handle)
+        embed_signature_in_agent_card(&card, &jws, Some(agent_id))
     }
 
     #[test]
+    #[serial_test::serial(jacs_env)]
     fn test_verified_policy_accepts_signed_jacs_agent() {
         let agent = test_agent();
-        let (card, server_handle) = make_signed_card_with_local_jwks();
+        let card = make_signed_card_with_test_jwks();
         let result = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
-        server_handle.join().expect("join jwks server");
+        unsafe {
+            std::env::remove_var("JACS_TEST_JWKS_JSON");
+        }
 
         assert!(
             result.allowed,

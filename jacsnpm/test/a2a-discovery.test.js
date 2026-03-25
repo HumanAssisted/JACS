@@ -41,6 +41,7 @@ function startServer(app) {
 
 describe('A2A Discovery Client - [2.3.3]', function () {
   this.timeout(15000);
+  const previousAllowAgentCardFetch = process.env.JACS_ALLOW_AGENT_CARD_FETCH;
 
   // -------------------------------------------------------------------------
   // Shared JACS agent server (serves agent card with JACS extension)
@@ -48,6 +49,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
   let jacsServer;
 
   before(async () => {
+    process.env.JACS_ALLOW_AGENT_CARD_FETCH = 'true';
     const client = createMockClient({ agentId: 'jacs-agent-1', name: 'JACS Agent' });
     const app = express();
     app.use(jacsA2AMiddleware(client, {
@@ -58,6 +60,11 @@ describe('A2A Discovery Client - [2.3.3]', function () {
 
   after(async () => {
     if (jacsServer) await jacsServer.close();
+    if (previousAllowAgentCardFetch === undefined) {
+      delete process.env.JACS_ALLOW_AGENT_CARD_FETCH;
+    } else {
+      process.env.JACS_ALLOW_AGENT_CARD_FETCH = previousAllowAgentCardFetch;
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -146,7 +153,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         await discoverAgent('http://localhost:1', { timeoutMs: 2000 });
         expect.fail('Should have thrown');
       } catch (err) {
-        expect(err.message).to.match(/unreachable|timed out/i);
+        expect(err.message).to.match(/unreachable|timed out|failed|refused/i);
       }
     });
   });
@@ -339,7 +346,7 @@ describe('A2A Discovery Client - [2.3.3]', function () {
         await discoverAndAssess('http://localhost:1', { timeoutMs: 2000 });
         expect.fail('Should have thrown');
       } catch (err) {
-        expect(err.message).to.match(/unreachable|timed out/i);
+        expect(err.message).to.match(/unreachable|timed out|failed|refused/i);
       }
     });
   });

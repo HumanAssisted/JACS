@@ -31,6 +31,13 @@ _JACS_PATH_ENV_VARS = (
     "JACS_AGENT_ID_AND_VERSION",
     "JACS_AGENT_KEY_ALGORITHM",
     "JACS_TRUST_STORE_DIR",
+    "JACS_ALLOW_NETWORK",
+    "JACS_ALLOW_DNS",
+    "JACS_ALLOW_REMOTE_KEY_FETCH",
+    "JACS_ALLOW_REGISTRY",
+    "JACS_ALLOW_REMOTE_SCHEMA_FETCH",
+    "JACS_ALLOW_JWKS_FETCH",
+    "JACS_ALLOW_AGENT_CARD_FETCH",
 )
 
 
@@ -50,9 +57,15 @@ def _ensure_loadable_agent_fixture(fixtures_dir: pathlib.Path) -> None:
     """
     config_path = fixtures_dir / "jacs.config.json"
     password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#")
+    skew_env = "JACS_MAX_IAT_SKEW_SECONDS"
+    previous_skew = os.environ.get(skew_env)
     original_cwd = os.getcwd()
 
     try:
+        if previous_skew is None:
+            # Keep fixture validation aligned with the bounded skew window used
+            # by the test session so stale repository fixtures are rebuilt.
+            os.environ[skew_env] = "7200"
         os.chdir(fixtures_dir)
         from jacs import simple
         import importlib
@@ -87,6 +100,8 @@ def _ensure_loadable_agent_fixture(fixtures_dir: pathlib.Path) -> None:
         simple.reset()
     finally:
         os.chdir(original_cwd)
+        if previous_skew is None:
+            os.environ.pop(skew_env, None)
 
 
 @pytest.fixture(scope="session")

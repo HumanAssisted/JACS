@@ -103,6 +103,11 @@ __all__ = [
     "SimpleAgent",
     # Stateless utilities
     "hash_string",
+    "hash_public_key_base64",
+    "build_jwk_set_from_public_key",
+    "ensure_network_access",
+    "resolve_private_key_password",
+    "quickstart_private_key_password",
     "verify_string",
     # Trust store
     "trust_agent",

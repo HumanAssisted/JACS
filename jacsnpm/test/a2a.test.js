@@ -393,7 +393,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       const documents = a2aIntegration.generateWellKnownDocuments(
         agentCard,
         'mock-jws-signature',
-        'mock-public-key-b64',
+        'bW9jay1wdWJsaWMta2V5',
         agentData
       );
 
@@ -420,7 +420,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
 
       // Verify public key document
       const pubkeyDoc = documents['/.well-known/jacs-pubkey.json'];
-      expect(pubkeyDoc.publicKey).to.equal('mock-public-key-b64');
+      expect(pubkeyDoc.publicKey).to.equal('bW9jay1wdWJsaWMta2V5');
       expect(pubkeyDoc.algorithm).to.equal('RSA-PSS');
 
       // Verify JWKS is present for A2A verifiers

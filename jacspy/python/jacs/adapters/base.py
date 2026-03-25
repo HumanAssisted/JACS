@@ -23,7 +23,6 @@ Example:
     attested = adapter.sign_output({"result": "ok"})
 """
 
-import hashlib
 import json
 import logging
 from typing import Any, Dict, List, Optional
@@ -118,7 +117,9 @@ class BaseJacsAdapter:
         else:
             data_str = json.dumps(data, sort_keys=True, default=str)
 
-        digest = hashlib.sha256(data_str.encode("utf-8")).hexdigest()
+        from .. import hash_string as _hash_string_native
+
+        digest = _hash_string_native(data_str)
 
         subject = {
             "type": "adapter_output",

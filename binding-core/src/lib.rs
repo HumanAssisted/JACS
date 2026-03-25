@@ -6,7 +6,7 @@
 //! by any language binding. Each binding implements the `BindingError` trait
 //! to convert errors to their native format.
 
-use base64::Engine as _;
+use base64::{Engine as _, engine::general_purpose};
 use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::{DocumentTraits, JACSDocument};
@@ -18,9 +18,14 @@ use jacs::agent::{
 use jacs::config::Config;
 use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
+use reqwest::blocking::Client as BlockingClient;
+use reqwest::header::{ACCEPT, CONTENT_TYPE};
+use reqwest::{StatusCode, Url};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
@@ -194,6 +199,359 @@ fn normalize_path(path: &Path) -> PathBuf {
         }
     }
     normalized
+}
+
+fn resolve_path_from_cwd(path: &str) -> BindingResult<PathBuf> {
+    let requested = Path::new(path);
+    if requested.is_absolute() {
+        return Ok(normalize_path(requested));
+    }
+
+    Ok(normalize_path(
+        &std::env::current_dir()
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!(
+                    "Failed to determine current working directory: {}",
+                    e
+                ))
+            })?
+            .join(requested),
+    ))
+}
+
+fn resolve_relative_to_config(config_path: &Path, candidate: &str) -> PathBuf {
+    let candidate_path = Path::new(candidate);
+    if candidate_path.is_absolute() {
+        return normalize_path(candidate_path);
+    }
+
+    let base_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
+    normalize_path(&base_dir.join(candidate_path))
+}
+
+fn read_password_file(path: &Path) -> BindingResult<Option<String>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(path).map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to read password file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    let password = contents.trim_end_matches(|c| c == '\n' || c == '\r').trim();
+    if password.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(password.to_string()))
+}
+
+fn missing_password_message(error: &str) -> bool {
+    error.contains("No private key password available")
+}
+
+fn truthy_env_var(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            let value = value.trim();
+            value.eq_ignore_ascii_case("true") || value == "1"
+        })
+        .unwrap_or(false)
+}
+
+const DEFAULT_NETWORK_TIMEOUT_MS: u64 = 10_000;
+const DEFAULT_KEYS_BASE_URL: &str = "https://hai.ai";
+
+fn build_blocking_json_client(timeout_ms: u64) -> BindingResult<BlockingClient> {
+    BlockingClient::builder()
+        .timeout(std::time::Duration::from_millis(timeout_ms.max(1)))
+        .build()
+        .map_err(|e| {
+            BindingCoreError::network_failed(format!("Failed to build HTTP client: {}", e))
+        })
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(
+        host.trim().trim_matches(['[', ']']),
+        "localhost" | "127.0.0.1" | "::1"
+    )
+}
+
+fn validate_network_url(url: &Url, description: &str) -> BindingResult<()> {
+    match url.scheme() {
+        "https" => Ok(()),
+        "http" if url.host_str().is_some_and(is_loopback_host) => Ok(()),
+        "http" => Err(BindingCoreError::network_failed(format!(
+            "{} must use HTTPS (got '{}'). Only localhost URLs are allowed over HTTP for testing.",
+            description, url
+        ))),
+        other => Err(BindingCoreError::invalid_argument(format!(
+            "{} must use http or https (got scheme '{}')",
+            description, other
+        ))),
+    }
+}
+
+fn content_type_header(response: &reqwest::blocking::Response) -> String {
+    response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn parse_json_object_body(
+    body: &str,
+    invalid_json_message: String,
+    non_object_message: String,
+) -> BindingResult<String> {
+    let value: Value = serde_json::from_str(body)
+        .map_err(|e| BindingCoreError::validation(format!("{}: {}", invalid_json_message, e)))?;
+    if !value.is_object() {
+        return Err(BindingCoreError::validation(non_object_message));
+    }
+    serde_json::to_string(&value).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize JSON response: {}", e))
+    })
+}
+
+fn resolve_keys_base_url(override_base_url: Option<&str>) -> String {
+    if let Some(value) = override_base_url {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.trim_end_matches('/').to_string();
+        }
+    }
+
+    if let Ok(value) = std::env::var("JACS_KEYS_BASE_URL") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.trim_end_matches('/').to_string();
+        }
+    }
+
+    if let Ok(value) = std::env::var("HAI_KEYS_BASE_URL") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.trim_end_matches('/').to_string();
+        }
+    }
+    DEFAULT_KEYS_BASE_URL.to_string()
+}
+
+fn normalize_public_key_hash(public_key_hash: &str) -> BindingResult<String> {
+    let trimmed = public_key_hash.trim();
+    if trimmed.is_empty() {
+        return Err(BindingCoreError::invalid_argument(
+            "public_key_hash cannot be empty",
+        ));
+    }
+    if trimmed.starts_with("sha256:") {
+        Ok(trimmed.to_string())
+    } else {
+        Ok(format!("sha256:{}", trimmed))
+    }
+}
+
+fn decode_public_key_base64(public_key_b64: &str) -> BindingResult<Vec<u8>> {
+    for engine in [
+        &general_purpose::STANDARD,
+        &general_purpose::STANDARD_NO_PAD,
+        &general_purpose::URL_SAFE,
+        &general_purpose::URL_SAFE_NO_PAD,
+    ] {
+        if let Ok(decoded) = engine.decode(public_key_b64) {
+            return Ok(decoded);
+        }
+    }
+
+    Err(BindingCoreError::invalid_argument(
+        "Public key must be valid base64 or base64url text.",
+    ))
+}
+
+fn build_jwk_set_from_public_key_bytes(
+    public_key: &[u8],
+    key_algorithm: &str,
+    key_id: &str,
+) -> BindingResult<Value> {
+    let normalized_algorithm = key_algorithm.trim().to_ascii_lowercase();
+
+    if normalized_algorithm.contains("ed25519")
+        || (normalized_algorithm.is_empty() && public_key.len() == 32)
+    {
+        if public_key.len() != 32 {
+            return Err(BindingCoreError::invalid_argument(format!(
+                "Ed25519 public key must be 32 bytes, got {} bytes.",
+                public_key.len()
+            )));
+        }
+
+        return Ok(json!({
+            "keys": [{
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": general_purpose::URL_SAFE_NO_PAD.encode(public_key),
+                "kid": key_id,
+                "use": "sig",
+                "alg": "EdDSA",
+            }]
+        }));
+    }
+
+    if normalized_algorithm.contains("rsa") || normalized_algorithm.is_empty() {
+        use rsa::traits::PublicKeyParts;
+        use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
+
+        let rsa_key = if let Ok(key) = RsaPublicKey::from_pkcs1_der(public_key) {
+            key
+        } else if let Ok(key) = RsaPublicKey::from_public_key_der(public_key) {
+            key
+        } else if let Ok(pem) = std::str::from_utf8(public_key) {
+            match RsaPublicKey::from_public_key_pem(pem) {
+                Ok(key) => key,
+                Err(e) if normalized_algorithm.contains("rsa") => {
+                    return Err(BindingCoreError::invalid_argument(format!(
+                        "Failed to parse RSA public key for JWK export: {}",
+                        e
+                    )));
+                }
+                Err(_) => return Ok(json!({ "keys": [] })),
+            }
+        } else if normalized_algorithm.contains("rsa") {
+            return Err(BindingCoreError::invalid_argument(
+                "Failed to parse RSA public key for JWK export.",
+            ));
+        } else {
+            return Ok(json!({ "keys": [] }));
+        };
+
+        return Ok(json!({
+            "keys": [{
+                "kty": "RSA",
+                "kid": key_id,
+                "alg": "RS256",
+                "use": "sig",
+                "n": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.n().to_bytes_be()),
+                "e": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.e().to_bytes_be()),
+            }]
+        }));
+    }
+
+    Ok(json!({ "keys": [] }))
+}
+
+fn resolve_password_context(
+    config_path: Option<&str>,
+    key_directory: Option<&str>,
+) -> BindingResult<(PathBuf, Option<String>)> {
+    let mut agent_id = None;
+
+    if let Some(config_path) = config_path {
+        let resolved_config_path = resolve_path_from_cwd(config_path)?;
+        if resolved_config_path.exists() {
+            let config = Config::from_file(resolved_config_path.to_string_lossy().as_ref())
+                .map_err(|e| {
+                    BindingCoreError::agent_load(format!(
+                        "Failed to load config from {}: {}",
+                        resolved_config_path.display(),
+                        e
+                    ))
+                })?;
+            let configured_key_dir = config
+                .jacs_key_directory()
+                .as_deref()
+                .unwrap_or("./jacs_keys");
+            let resolved_key_dir =
+                resolve_relative_to_config(&resolved_config_path, configured_key_dir);
+            agent_id = config.jacs_agent_id_and_version().clone();
+
+            if let Some(key_directory) = key_directory {
+                return Ok((resolve_path_from_cwd(key_directory)?, agent_id));
+            }
+            return Ok((resolved_key_dir, agent_id));
+        }
+
+        if let Some(key_directory) = key_directory {
+            return Ok((resolve_path_from_cwd(key_directory)?, None));
+        }
+
+        return Ok((
+            resolve_relative_to_config(&resolved_config_path, "./jacs_keys"),
+            None,
+        ));
+    }
+
+    if let Some(key_directory) = key_directory {
+        return Ok((resolve_path_from_cwd(key_directory)?, None));
+    }
+
+    Ok((resolve_path_from_cwd("./jacs_keys")?, agent_id))
+}
+
+fn generate_private_key_password_value() -> String {
+    use rand::Rng;
+
+    const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const LOWER: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+    const DIGITS: &[u8] = b"0123456789";
+    const SPECIAL: &[u8] = b"!@#$%^&*()-_=+";
+    const ALL: &[u8] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+";
+
+    let mut rng = rand::rng();
+    let mut password = String::with_capacity(32);
+
+    password.push(UPPER[rng.random_range(0..UPPER.len())] as char);
+    password.push(LOWER[rng.random_range(0..LOWER.len())] as char);
+    password.push(DIGITS[rng.random_range(0..DIGITS.len())] as char);
+    password.push(SPECIAL[rng.random_range(0..SPECIAL.len())] as char);
+
+    for _ in 4..32 {
+        password.push(ALL[rng.random_range(0..ALL.len())] as char);
+    }
+
+    password
+}
+
+fn persist_password_file(key_directory: &Path, password: &str) -> BindingResult<()> {
+    fs::create_dir_all(key_directory).map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to create key directory {}: {}",
+            key_directory.display(),
+            e
+        ))
+    })?;
+
+    let password_path = key_directory.join(".jacs_password");
+    fs::write(&password_path, password).map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to write password file {}: {}",
+            password_path.display(),
+            e
+        ))
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let permissions = std::fs::Permissions::from_mode(0o600);
+        fs::set_permissions(&password_path, permissions).map_err(|e| {
+            BindingCoreError::generic(format!(
+                "Failed to set password file permissions on {}: {}",
+                password_path.display(),
+                e
+            ))
+        })?;
+    }
+
+    Ok(())
 }
 
 fn is_editable_level(level: &str) -> bool {
@@ -2333,6 +2691,286 @@ pub fn verify_document_standalone(
 /// Hash a string using the JACS hash function (SHA-256).
 pub fn hash_string(data: &str) -> String {
     jacs_hash_string(&data.to_string())
+}
+
+/// Hash a base64-encoded public key using Rust-owned public-key hashing rules.
+pub fn hash_public_key_base64(public_key_b64: &str) -> BindingResult<String> {
+    let public_key = decode_public_key_base64(public_key_b64)?;
+    Ok(jacs::crypt::hash::hash_public_key(&public_key))
+}
+
+/// Build a JWK set from a base64-encoded public key using Rust-owned parsing rules.
+pub fn build_jwk_set_from_public_key(
+    public_key_b64: &str,
+    key_algorithm: &str,
+    key_id: &str,
+) -> BindingResult<String> {
+    let public_key = decode_public_key_base64(public_key_b64)?;
+    let jwk_set = build_jwk_set_from_public_key_bytes(&public_key, key_algorithm, key_id)?;
+    serde_json::to_string(&jwk_set).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize JWK set: {}", e))
+    })
+}
+
+/// Enforce the Rust-owned network access policy for a named capability.
+pub fn ensure_network_access(capability: &str) -> BindingResult<()> {
+    let capability = jacs::config::NetworkCapability::from_str(capability)
+        .map_err(BindingCoreError::invalid_argument)?;
+    jacs::config::ensure_network_access(capability)
+        .map_err(|e| BindingCoreError::network_failed(e.to_string()))
+}
+
+/// Fetch an A2A Agent Card JSON object using Rust-owned network policy and HTTP behavior.
+pub fn fetch_agent_card(base_url: &str, timeout_ms: Option<u64>) -> BindingResult<String> {
+    let trimmed = base_url.trim();
+    if trimmed.is_empty() {
+        return Err(BindingCoreError::invalid_argument(
+            "Agent base URL cannot be empty",
+        ));
+    }
+
+    let card_url = format!(
+        "{}/.well-known/agent-card.json",
+        trimmed.trim_end_matches('/')
+    );
+    let parsed_url = Url::parse(&card_url).map_err(|e| {
+        BindingCoreError::invalid_argument(format!("Invalid agent URL '{}': {}", base_url, e))
+    })?;
+    validate_network_url(&parsed_url, "Agent Card URL")?;
+    jacs::config::ensure_network_access(jacs::config::NetworkCapability::AgentCardFetch)
+        .map_err(|e| BindingCoreError::network_failed(e.to_string()))?;
+
+    let client = build_blocking_json_client(timeout_ms.unwrap_or(DEFAULT_NETWORK_TIMEOUT_MS))?;
+    let response = client
+        .get(parsed_url.clone())
+        .header(ACCEPT, "application/json")
+        .send()
+        .map_err(|e| {
+            if e.is_timeout() {
+                BindingCoreError::network_failed(format!(
+                    "Agent discovery timed out: {}",
+                    parsed_url
+                ))
+            } else {
+                BindingCoreError::network_failed(format!(
+                    "Agent unreachable: {} ({})",
+                    parsed_url, e
+                ))
+            }
+        })?;
+
+    if response.status() == StatusCode::NOT_FOUND {
+        return Err(BindingCoreError::network_failed(format!(
+            "Agent card not found (404): {}",
+            parsed_url
+        )));
+    }
+
+    if !response.status().is_success() {
+        return Err(BindingCoreError::network_failed(format!(
+            "Agent card request failed (HTTP {}): {}",
+            response.status(),
+            parsed_url
+        )));
+    }
+
+    let content_type = content_type_header(&response);
+    if !content_type.is_empty() && !content_type.to_ascii_lowercase().contains("json") {
+        return Err(BindingCoreError::validation(format!(
+            "Agent card response is not JSON (content-type: {}): {}",
+            content_type, parsed_url
+        )));
+    }
+
+    let body = response.text().map_err(|e| {
+        BindingCoreError::network_failed(format!(
+            "Failed to read Agent Card response from {}: {}",
+            parsed_url, e
+        ))
+    })?;
+
+    parse_json_object_body(
+        &body,
+        format!("Agent card is not valid JSON: {}", parsed_url),
+        format!("Agent card at {} is not a JSON object", parsed_url),
+    )
+}
+
+/// Fetch a remote key lookup JSON object using Rust-owned network policy and HTTP behavior.
+pub fn fetch_remote_key_lookup(
+    base_url: Option<&str>,
+    jacs_id: Option<&str>,
+    version: Option<&str>,
+    public_key_hash: Option<&str>,
+    timeout_ms: Option<u64>,
+) -> BindingResult<String> {
+    let resolved_base_url = resolve_keys_base_url(base_url);
+    let mut parsed_url = Url::parse(&resolved_base_url).map_err(|e| {
+        BindingCoreError::invalid_argument(format!(
+            "Invalid JACS key base URL '{}': {}",
+            resolved_base_url, e
+        ))
+    })?;
+    validate_network_url(&parsed_url, "JACS key lookup base URL")?;
+
+    {
+        let mut segments = parsed_url.path_segments_mut().map_err(|_| {
+            BindingCoreError::invalid_argument(format!(
+                "Invalid JACS key base URL '{}': cannot append path segments",
+                resolved_base_url
+            ))
+        })?;
+
+        if let Some(hash) = public_key_hash
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let normalized_hash = normalize_public_key_hash(hash)?;
+            segments.extend(["jacs", "v1", "keys", "by-hash"]);
+            segments.push(&normalized_hash);
+        } else {
+            let agent_id = jacs_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    BindingCoreError::invalid_argument(
+                        "fetch_remote_key_lookup requires jacs_id or public_key_hash",
+                    )
+                })?;
+            let resolved_version = version
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("latest");
+            segments.extend(["jacs", "v1", "agents"]);
+            segments.push(agent_id);
+            segments.push("keys");
+            segments.push(resolved_version);
+        }
+    }
+
+    jacs::config::ensure_network_access(jacs::config::NetworkCapability::RemoteKeyFetch)
+        .map_err(|e| BindingCoreError::network_failed(e.to_string()))?;
+
+    let client = build_blocking_json_client(timeout_ms.unwrap_or(DEFAULT_NETWORK_TIMEOUT_MS))?;
+    let response = client
+        .get(parsed_url.clone())
+        .header(ACCEPT, "application/json")
+        .send()
+        .map_err(|e| {
+            if e.is_timeout() {
+                BindingCoreError::network_failed(format!(
+                    "Remote key lookup timed out: {}",
+                    parsed_url
+                ))
+            } else {
+                BindingCoreError::network_failed(format!(
+                    "Failed to reach key lookup endpoint {}: {}",
+                    parsed_url, e
+                ))
+            }
+        })?;
+
+    let status = response.status();
+    let content_type = content_type_header(&response);
+    let body = response.text().map_err(|e| {
+        BindingCoreError::network_failed(format!(
+            "Failed to read key lookup response from {}: {}",
+            parsed_url, e
+        ))
+    })?;
+
+    if !status.is_success() {
+        let detail = if body.trim().is_empty() {
+            status.canonical_reason().unwrap_or("unknown error")
+        } else {
+            body.trim()
+        };
+        return Err(BindingCoreError::network_failed(format!(
+            "HTTP {} from key lookup endpoint: {}",
+            status.as_u16(),
+            detail
+        )));
+    }
+
+    if !content_type.is_empty() && !content_type.to_ascii_lowercase().contains("json") {
+        return Err(BindingCoreError::validation(format!(
+            "Key lookup endpoint returned non-JSON response: {}",
+            parsed_url
+        )));
+    }
+
+    parse_json_object_body(
+        &body,
+        format!(
+            "Key lookup endpoint returned non-JSON response: {}",
+            parsed_url
+        ),
+        format!(
+            "Key lookup endpoint returned a non-object response: {}",
+            parsed_url
+        ),
+    )
+}
+
+/// Resolve a private-key password using Rust-owned env, keychain, and filesystem rules.
+///
+/// Returns an empty string when no password source is available.
+pub fn resolve_private_key_password(
+    config_path: Option<&str>,
+    key_directory: Option<&str>,
+    explicit_password: Option<&str>,
+) -> BindingResult<String> {
+    if let Some(password) = explicit_password {
+        if password.trim().is_empty() {
+            return Err(BindingCoreError::invalid_argument(
+                "Explicit password provided but empty or whitespace-only.",
+            ));
+        }
+        return Ok(password.to_string());
+    }
+
+    if let Ok(password) = std::env::var("JACS_PRIVATE_KEY_PASSWORD") {
+        if password.trim().is_empty() {
+            return Err(BindingCoreError::invalid_argument(
+                "JACS_PRIVATE_KEY_PASSWORD is set but empty or whitespace-only.",
+            ));
+        }
+        return Ok(password);
+    }
+
+    let (resolved_key_directory, agent_id) = resolve_password_context(config_path, key_directory)?;
+
+    match jacs::crypt::aes_encrypt::resolve_private_key_password(None, agent_id.as_deref()) {
+        Ok(password) => Ok(password),
+        Err(e) if missing_password_message(&e.to_string()) => Ok(read_password_file(
+            &resolved_key_directory.join(".jacs_password"),
+        )?
+        .unwrap_or_default()),
+        Err(e) => Err(BindingCoreError::generic(format!(
+            "Failed to resolve private key password: {}",
+            e
+        ))),
+    }
+}
+
+/// Resolve an existing password for quickstart, or generate and optionally persist one in Rust.
+pub fn quickstart_private_key_password(
+    config_path: Option<&str>,
+    key_directory: Option<&str>,
+) -> BindingResult<String> {
+    let existing = resolve_private_key_password(config_path, key_directory, None)?;
+    if !existing.is_empty() {
+        return Ok(existing);
+    }
+
+    let password = generate_private_key_password_value();
+    if truthy_env_var("JACS_SAVE_PASSWORD_FILE") {
+        let (resolved_key_directory, _agent_id) =
+            resolve_password_context(config_path, key_directory)?;
+        persist_password_file(&resolved_key_directory, &password)?;
+    }
+
+    Ok(password)
 }
 
 /// Create a JACS configuration JSON string.

@@ -9,14 +9,12 @@ Implements A2A protocol v0.4.0 (September 2025).
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
 import warnings
 from typing import Dict, List, Optional, Any, TYPE_CHECKING, Set
 from dataclasses import dataclass, field
-import base64
 import uuid
 from datetime import datetime
 
@@ -112,9 +110,20 @@ class A2AAgentCard:
 # Integration Class
 # ---------------------------------------------------------------------------
 
-def _sha256_hex(data: str) -> str:
-    """Return the SHA-256 hex digest of a UTF-8 string."""
-    return hashlib.sha256(data.encode("utf-8")).hexdigest()
+def _hash_public_key_base64(public_key_b64: str) -> str:
+    from . import hash_public_key_base64 as _hash_public_key_base64_native
+
+    return _hash_public_key_base64_native(public_key_b64)
+
+
+def _build_jwk_set_from_public_key(
+    public_key_b64: str, key_algorithm: str, key_id: str
+) -> Dict[str, Any]:
+    from . import build_jwk_set_from_public_key as _build_jwk_set_from_public_key_native
+
+    return json.loads(
+        _build_jwk_set_from_public_key_native(public_key_b64, key_algorithm, key_id)
+    )
 
 
 def _build_trust_block(trust_assessment: Dict[str, Any]) -> Dict[str, Any]:
@@ -942,6 +951,34 @@ class JACSA2AIntegration:
         Returns:
             Dictionary mapping paths to document contents
         """
+        native_generate = _get_configured_callable(
+            getattr(self.client, "_agent", None),
+            "generate_well_known_documents",
+        )
+        if native_generate is not None:
+            try:
+                native_pairs = json.loads(native_generate())
+                documents = {
+                    item["path"]: item["document"]
+                    for item in native_pairs
+                    if isinstance(item, dict)
+                    and isinstance(item.get("path"), str)
+                    and "document" in item
+                }
+                card_dict = self.agent_card_to_dict(agent_card)
+                native_card = documents.get("/.well-known/agent-card.json")
+                if isinstance(native_card, dict) and "signatures" in native_card:
+                    card_dict.setdefault("signatures", native_card["signatures"])
+                if jws_signature:
+                    card_dict["signatures"] = [{"jws": jws_signature}]
+                documents["/.well-known/agent-card.json"] = card_dict
+                return documents
+            except Exception:
+                logger.debug(
+                    "Falling back to wrapper well-known generation; native helper unavailable",
+                    exc_info=True,
+                )
+
         documents = {}
         key_algorithm = agent_data.get("keyAlgorithm", "pq2025")
         post_quantum = any(
@@ -963,7 +1000,7 @@ class JACSA2AIntegration:
             "agentId": agent_data.get("jacsId"),
             "agentVersion": agent_data.get("jacsVersion"),
             "agentType": agent_data.get("jacsAgentType"),
-            "publicKeyHash": _sha256_hex(public_key_b64),
+            "publicKeyHash": _hash_public_key_base64(public_key_b64),
             "keyAlgorithm": key_algorithm,
             "capabilities": {
                 "signing": True,
@@ -985,7 +1022,7 @@ class JACSA2AIntegration:
         # 4. JACS Public Key
         documents["/.well-known/jacs-pubkey.json"] = {
             "publicKey": public_key_b64,
-            "publicKeyHash": _sha256_hex(public_key_b64),
+            "publicKeyHash": _hash_public_key_base64(public_key_b64),
             "algorithm": key_algorithm,
             "agentId": agent_data.get("jacsId"),
             "agentVersion": agent_data.get("jacsVersion"),
@@ -1133,43 +1170,13 @@ class JACSA2AIntegration:
             return {"keys": [jwk]}
 
         try:
-            key_bytes = base64.b64decode(public_key_b64, validate=False)
+            return _build_jwk_set_from_public_key(
+                public_key_b64,
+                str(agent_data.get("keyAlgorithm", "")),
+                str(agent_data.get("jacsId", "jacs-agent")),
+            )
         except Exception:
             return {"keys": []}
-
-        key_algorithm = str(agent_data.get("keyAlgorithm", "")).lower()
-        kid = str(agent_data.get("jacsId", "jacs-agent"))
-
-        if len(key_bytes) == 32:
-            return {
-                "keys": [
-                    {
-                        "kty": "OKP",
-                        "crv": "Ed25519",
-                        "x": base64.urlsafe_b64encode(key_bytes).decode("utf-8").rstrip("="),
-                        "kid": kid,
-                        "use": "sig",
-                        "alg": "EdDSA",
-                    }
-                ]
-            }
-
-        # For non-Ed25519 keys, callers can pass jwk/jwks in agent_data.
-        alg = self._infer_jws_alg(key_algorithm)
-        if alg:
-            return {"keys": [{"kid": kid, "use": "sig", "alg": alg}]}
-
-        return {"keys": []}
-
-    @staticmethod
-    def _infer_jws_alg(key_algorithm: str) -> Optional[str]:
-        if "ring-ed25519" in key_algorithm or "ed25519" in key_algorithm:
-            return "EdDSA"
-        if "rsa" in key_algorithm:
-            return "RS256"
-        if "ecdsa" in key_algorithm or "es256" in key_algorithm:
-            return "ES256"
-        return None
 
     @staticmethod
     def _slugify(name: str) -> str:

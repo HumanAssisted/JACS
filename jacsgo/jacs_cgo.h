@@ -18,6 +18,7 @@ char* jacs_agent_verify_a2a_artifact_with_policy(JacsAgentHandle handle, const c
 char* jacs_agent_assess_a2a_agent(JacsAgentHandle handle, const char* agent_card_json, const char* policy);
 
 // Protocol API
+char* jacs_agent_get_public_key_pem(JacsAgentHandle handle);
 char* jacs_agent_build_auth_header(JacsAgentHandle handle);
 char* jacs_agent_canonicalize_json(JacsAgentHandle handle, const char* json);
 char* jacs_agent_sign_response(JacsAgentHandle handle, const char* payload_json);
