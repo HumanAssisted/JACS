@@ -78,7 +78,7 @@ def _resolve_create_directories(
     config_path: str,
     data_directory: str = "./jacs_data",
     key_directory: str = "./jacs_keys",
-    ) -> tuple[str, str]:
+) -> tuple[str, str]:
     config_dir = os.path.dirname(os.path.abspath(config_path))
     cwd = os.path.abspath(os.getcwd())
     if config_dir != cwd:
@@ -87,14 +87,6 @@ def _resolve_create_directories(
         if key_directory == "./jacs_keys":
             key_directory = os.path.join(config_dir, "jacs_keys")
     return data_directory, key_directory
-
-
-def _read_saved_password(config_path: str) -> str:
-    return _resolve_private_key_password_native(
-        config_path=os.path.abspath(config_path),
-        key_directory=None,
-        explicit_password=None,
-    )
 
 
 def _resolve_private_key_password(
@@ -890,6 +882,80 @@ class JacsClient:
             return json.loads(result)
         except Exception as e:
             raise JacsError(f"Failed to export DSSE: {e}")
+
+    # ------------------------------------------------------------------
+    # A2A helpers
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Format Conversion (YAML / HTML)
+    # ------------------------------------------------------------------
+
+    def to_yaml(self, json_str: str) -> str:
+        """Convert a JSON string to YAML.
+
+        Args:
+            json_str: A valid JSON string.
+
+        Returns:
+            The YAML representation.
+        """
+        agent = self._require_agent()
+        return agent.to_yaml(json_str)
+
+    def from_yaml(self, yaml_str: str) -> str:
+        """Convert a YAML string to pretty-printed JSON.
+
+        Args:
+            yaml_str: A valid YAML string.
+
+        Returns:
+            The JSON representation.
+        """
+        agent = self._require_agent()
+        return agent.from_yaml(yaml_str)
+
+    def to_html(self, json_str: str) -> str:
+        """Convert a JSON string to a self-contained HTML document.
+
+        The HTML embeds the exact JSON in a ``<script>`` tag for
+        lossless round-trip extraction via :meth:`from_html`.
+
+        Args:
+            json_str: A valid JSON string.
+
+        Returns:
+            A self-contained HTML string.
+        """
+        agent = self._require_agent()
+        return agent.to_html(json_str)
+
+    def from_html(self, html_str: str) -> str:
+        """Extract JSON from an HTML document produced by :meth:`to_html`.
+
+        Args:
+            html_str: An HTML string containing embedded JACS JSON.
+
+        Returns:
+            The extracted JSON string.
+        """
+        agent = self._require_agent()
+        return agent.from_html(html_str)
+
+    def verify_yaml(self, yaml_str: str) -> bool:
+        """Convert YAML to JSON and verify the resulting document.
+
+        This is equivalent to calling :meth:`from_yaml` followed by
+        :meth:`verify`, but returns a simple boolean.
+
+        Args:
+            yaml_str: A valid YAML string containing a signed JACS document.
+
+        Returns:
+            True if the reconstituted JSON document passes verification.
+        """
+        agent = self._require_agent()
+        return agent.verify_yaml(yaml_str)
 
     # ------------------------------------------------------------------
     # A2A helpers

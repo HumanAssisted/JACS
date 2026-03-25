@@ -579,6 +579,64 @@ class JacsClient {
         });
     }
     // ---------------------------------------------------------------------------
+    // Format Conversion (YAML / HTML)
+    // ---------------------------------------------------------------------------
+    /**
+     * Convert a JSON string to YAML.
+     */
+    async toYaml(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toYaml(jsonStr);
+    }
+    toYamlSync(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toYamlSync(jsonStr);
+    }
+    /**
+     * Convert a YAML string to pretty-printed JSON.
+     */
+    async fromYaml(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.fromYaml(yamlStr);
+    }
+    fromYamlSync(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.fromYamlSync(yamlStr);
+    }
+    /**
+     * Convert a JSON string to a self-contained HTML document.
+     */
+    async toHtml(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toHtml(jsonStr);
+    }
+    toHtmlSync(jsonStr) {
+        const agent = this.requireAgent();
+        return agent.toHtmlSync(jsonStr);
+    }
+    /**
+     * Extract JSON from an HTML document produced by toHtml().
+     */
+    async fromHtml(htmlStr) {
+        const agent = this.requireAgent();
+        return agent.fromHtml(htmlStr);
+    }
+    fromHtmlSync(htmlStr) {
+        const agent = this.requireAgent();
+        return agent.fromHtmlSync(htmlStr);
+    }
+    /**
+     * Convert YAML to JSON and verify the resulting document.
+     */
+    async verifyYaml(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.verifyYaml(yamlStr);
+    }
+    verifyYamlSync(yamlStr) {
+        const agent = this.requireAgent();
+        return agent.verifyYamlSync(yamlStr);
+    }
+    // ---------------------------------------------------------------------------
     // Agreements
     // ---------------------------------------------------------------------------
     async createAgreement(document, agentIds, options) {

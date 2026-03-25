@@ -63,7 +63,8 @@ pub use sign::{
 // `_named` variants accept a custom attachment filename.
 pub use verify::{
     normalize_algorithm, verify_email, verify_email_content, verify_email_document,
-    verify_email_document_named, verify_email_named,
+    verify_email_document_named, verify_email_html, verify_email_html_named, verify_email_named,
+    verify_email_yaml, verify_email_yaml_named,
 };
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).

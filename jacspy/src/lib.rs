@@ -2058,6 +2058,21 @@ fn ensure_network_access(capability: &str) -> PyResult<()> {
     jacs_binding_core::ensure_network_access(capability).to_py()
 }
 
+#[pyfunction]
+fn hash_public_key_base64(public_key_base64: &str) -> PyResult<String> {
+    jacs_binding_core::hash_public_key_base64(public_key_base64).to_py()
+}
+
+#[pyfunction]
+fn build_jwk_set_from_public_key(
+    public_key_base64: &str,
+    key_algorithm: &str,
+    key_id: &str,
+) -> PyResult<String> {
+    jacs_binding_core::build_jwk_set_from_public_key(public_key_base64, key_algorithm, key_id)
+        .to_py()
+}
+
 // Deprecated trust functions with _simple suffix
 #[pyfunction]
 fn trust_agent_simple(agent_json: &str) -> PyResult<String> {
@@ -2111,6 +2126,8 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resolve_private_key_password, m)?)?;
     m.add_function(wrap_pyfunction!(quickstart_private_key_password, m)?)?;
     m.add_function(wrap_pyfunction!(ensure_network_access, m)?)?;
+    m.add_function(wrap_pyfunction!(hash_public_key_base64, m)?)?;
+    m.add_function(wrap_pyfunction!(build_jwk_set_from_public_key, m)?)?;
 
     // =============================================================================
     // Trust Store Functions

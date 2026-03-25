@@ -173,7 +173,7 @@ def _resolve_create_directories(
     config_path: str,
     data_directory: str = "./jacs_data",
     key_directory: str = "./jacs_keys",
-    ) -> tuple[str, str]:
+) -> tuple[str, str]:
     config_dir = os.path.dirname(os.path.abspath(config_path))
     cwd = os.path.abspath(os.getcwd())
     if config_dir != cwd:
@@ -182,14 +182,6 @@ def _resolve_create_directories(
         if key_directory == "./jacs_keys":
             key_directory = os.path.join(config_dir, "jacs_keys")
     return data_directory, key_directory
-
-
-def _read_saved_password(config_path: str) -> str:
-    return _resolve_private_key_password_native(
-        config_path=os.path.abspath(config_path),
-        key_directory=None,
-        explicit_password=None,
-    )
 
 
 def _resolve_private_key_password(
@@ -1100,6 +1092,115 @@ def reencrypt_key(old_password: str, new_password: str) -> None:
         logger.info("Private key re-encrypted successfully")
     except Exception as e:
         raise JacsError(f"Failed to re-encrypt key: {e}")
+
+
+# =============================================================================
+# Format Conversion (YAML / HTML)
+# =============================================================================
+
+
+def to_yaml(json_str: str) -> str:
+    """Convert a JSON string to YAML.
+
+    Args:
+        json_str: A valid JSON string.
+
+    Returns:
+        The YAML representation.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the JSON input is invalid.
+
+    Example:
+        yaml = jacs.to_yaml(signed.raw_json)
+    """
+    agent = _get_agent()
+    return agent.to_yaml(json_str)
+
+
+def from_yaml(yaml_str: str) -> str:
+    """Convert a YAML string to pretty-printed JSON.
+
+    Args:
+        yaml_str: A valid YAML string.
+
+    Returns:
+        The JSON representation.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the YAML input is invalid.
+
+    Example:
+        json_str = jacs.from_yaml(yaml_string)
+    """
+    agent = _get_agent()
+    return agent.from_yaml(yaml_str)
+
+
+def to_html(json_str: str) -> str:
+    """Convert a JSON string to a self-contained HTML document.
+
+    The HTML embeds the exact JSON for lossless round-trip via ``from_html()``.
+
+    Args:
+        json_str: A valid JSON string.
+
+    Returns:
+        A self-contained HTML string.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the JSON input is invalid.
+
+    Example:
+        html = jacs.to_html(signed.raw_json)
+    """
+    agent = _get_agent()
+    return agent.to_html(json_str)
+
+
+def from_html(html_str: str) -> str:
+    """Extract JSON from an HTML document produced by ``to_html()``.
+
+    Args:
+        html_str: An HTML string containing embedded JACS JSON.
+
+    Returns:
+        The extracted JSON string.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+        JacsError: If the HTML does not contain embedded JACS JSON.
+
+    Example:
+        json_str = jacs.from_html(html_string)
+    """
+    agent = _get_agent()
+    return agent.from_html(html_str)
+
+
+def verify_yaml(yaml_str: str) -> bool:
+    """Convert YAML to JSON and verify the resulting document.
+
+    Equivalent to calling ``from_yaml()`` followed by ``verify()``,
+    but returns a simple boolean.
+
+    Args:
+        yaml_str: A valid YAML string containing a signed JACS document.
+
+    Returns:
+        True if the reconstituted JSON document passes verification.
+
+    Raises:
+        AgentNotLoadedError: If no agent is loaded.
+
+    Example:
+        is_valid = jacs.verify_yaml(yaml_string)
+    """
+    agent = _get_agent()
+    return agent.verify_yaml(yaml_str)
 
 
 def get_public_key() -> str:

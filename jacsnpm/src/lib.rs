@@ -812,6 +812,87 @@ impl JacsAgent {
             .map_err(|e| Error::from_reason(e.to_string()))?;
         self.inner.verify_document(&json_str).to_napi()
     }
+
+    // =========================================================================
+    // Format Conversion (async variants -- stateless, no agent lock needed)
+    // =========================================================================
+
+    /// Convert a JSON string to YAML (async).
+    #[napi(js_name = "toYaml", ts_return_type = "Promise<string>")]
+    pub fn to_yaml_async(&self, json_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::jacs_to_yaml(&json_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Convert a YAML string to pretty-printed JSON (async).
+    #[napi(js_name = "fromYaml", ts_return_type = "Promise<string>")]
+    pub fn from_yaml_async(&self, yaml_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::yaml_to_jacs(&yaml_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Convert a JSON string to a self-contained HTML document (async).
+    #[napi(js_name = "toHtml", ts_return_type = "Promise<string>")]
+    pub fn to_html_async(&self, json_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::jacs_to_html(&json_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Extract JSON from an HTML document produced by toHtml() (async).
+    #[napi(js_name = "fromHtml", ts_return_type = "Promise<string>")]
+    pub fn from_html_async(&self, html_str: String) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |_| {
+                jacs::convert::html_to_jacs(&html_str).map_err(|e| BindingCoreError {
+                    message: e.to_string(),
+                    kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                })
+            })),
+        })
+    }
+
+    /// Convert a YAML string to JSON and verify the resulting document (async).
+    #[napi(js_name = "verifyYaml", ts_return_type = "Promise<boolean>")]
+    pub fn verify_yaml_async(&self, yaml_str: String) -> AsyncTask<AgentBoolTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentBoolTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json_str =
+                    jacs::convert::yaml_to_jacs(&yaml_str).map_err(|e| BindingCoreError {
+                        message: e.to_string(),
+                        kind: jacs_binding_core::ErrorKind::SerializationFailed,
+                    })?;
+                a.verify_document(&json_str)
+            })),
+        })
+    }
 }
 
 // =============================================================================
@@ -1960,6 +2041,21 @@ pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -
 #[napi(js_name = "ensureNetworkAccess")]
 pub fn ensure_network_access_js(capability: String) -> Result<()> {
     jacs_binding_core::ensure_network_access(&capability).to_napi()
+}
+
+#[napi(js_name = "hashPublicKeyBase64")]
+pub fn hash_public_key_base64_js(public_key_base64: String) -> Result<String> {
+    jacs_binding_core::hash_public_key_base64(&public_key_base64).to_napi()
+}
+
+#[napi(js_name = "buildJwkSetFromPublicKey")]
+pub fn build_jwk_set_from_public_key_js(
+    public_key_base64: String,
+    key_algorithm: String,
+    key_id: String,
+) -> Result<String> {
+    jacs_binding_core::build_jwk_set_from_public_key(&public_key_base64, &key_algorithm, &key_id)
+        .to_napi()
 }
 
 #[napi(js_name = "resolvePrivateKeyPassword")]

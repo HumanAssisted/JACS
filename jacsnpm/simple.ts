@@ -340,16 +340,14 @@ function parseCreateResult(resultJson: string, options: CreateAgentOptions): Age
   const configPath = info.config_path || options.configPath || './jacs.config.json';
   const dataDirectory = info.data_directory || options.dataDirectory || './jacs_data';
   const keyDirectory = info.key_directory || options.keyDirectory || './jacs_keys';
-  const publicKeyPath = info.public_key_path || `${keyDirectory}/jacs.public.pem`;
-  const privateKeyPath = info.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
   return {
     agentId: info.agent_id || '',
     name: info.name || options.name,
-    publicKeyPath,
+    publicKeyPath: info.public_key_path || '',
     configPath,
     version: info.version || '',
     algorithm: info.algorithm || options.algorithm || 'pq2025',
-    privateKeyPath,
+    privateKeyPath: info.private_key_path || '',
     dataDirectory,
     keyDirectory,
     domain: info.domain || options.domain || '',
@@ -826,6 +824,80 @@ export async function reencryptKey(oldPassword: string, newPassword: string): Pr
 export function reencryptKeySync(oldPassword: string, newPassword: string): void {
   const agent = requireAgent();
   agent.reencryptKeySync(oldPassword, newPassword);
+}
+
+// =============================================================================
+// Format Conversion (YAML / HTML)
+// =============================================================================
+
+/**
+ * Convert a JSON string to YAML (async).
+ */
+export async function toYaml(jsonStr: string): Promise<string> {
+  return requireAgent().toYaml(jsonStr);
+}
+
+/**
+ * Convert a JSON string to YAML (sync).
+ */
+export function toYamlSync(jsonStr: string): string {
+  return requireAgent().toYamlSync(jsonStr);
+}
+
+/**
+ * Convert a YAML string to pretty-printed JSON (async).
+ */
+export async function fromYaml(yamlStr: string): Promise<string> {
+  return requireAgent().fromYaml(yamlStr);
+}
+
+/**
+ * Convert a YAML string to pretty-printed JSON (sync).
+ */
+export function fromYamlSync(yamlStr: string): string {
+  return requireAgent().fromYamlSync(yamlStr);
+}
+
+/**
+ * Convert a JSON string to a self-contained HTML document (async).
+ */
+export async function toHtml(jsonStr: string): Promise<string> {
+  return requireAgent().toHtml(jsonStr);
+}
+
+/**
+ * Convert a JSON string to a self-contained HTML document (sync).
+ */
+export function toHtmlSync(jsonStr: string): string {
+  return requireAgent().toHtmlSync(jsonStr);
+}
+
+/**
+ * Extract JSON from an HTML document produced by toHtml() (async).
+ */
+export async function fromHtml(htmlStr: string): Promise<string> {
+  return requireAgent().fromHtml(htmlStr);
+}
+
+/**
+ * Extract JSON from an HTML document produced by toHtml() (sync).
+ */
+export function fromHtmlSync(htmlStr: string): string {
+  return requireAgent().fromHtmlSync(htmlStr);
+}
+
+/**
+ * Convert YAML to JSON and verify the resulting document (async).
+ */
+export async function verifyYaml(yamlStr: string): Promise<boolean> {
+  return requireAgent().verifyYaml(yamlStr);
+}
+
+/**
+ * Convert YAML to JSON and verify the resulting document (sync).
+ */
+export function verifyYamlSync(yamlStr: string): boolean {
+  return requireAgent().verifyYamlSync(yamlStr);
 }
 
 // =============================================================================

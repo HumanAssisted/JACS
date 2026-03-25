@@ -513,6 +513,71 @@ async def check_agreement(
 
 
 # =============================================================================
+# Format Conversion (YAML / HTML)
+# =============================================================================
+
+
+async def to_yaml(json_str: str) -> str:
+    """Convert a JSON string to YAML.
+
+    Args:
+        json_str: A valid JSON string.
+
+    Returns:
+        The YAML representation.
+    """
+    return await asyncio.to_thread(simple.to_yaml, json_str)
+
+
+async def from_yaml(yaml_str: str) -> str:
+    """Convert a YAML string to pretty-printed JSON.
+
+    Args:
+        yaml_str: A valid YAML string.
+
+    Returns:
+        The JSON representation.
+    """
+    return await asyncio.to_thread(simple.from_yaml, yaml_str)
+
+
+async def to_html(json_str: str) -> str:
+    """Convert a JSON string to a self-contained HTML document.
+
+    Args:
+        json_str: A valid JSON string.
+
+    Returns:
+        A self-contained HTML string.
+    """
+    return await asyncio.to_thread(simple.to_html, json_str)
+
+
+async def from_html(html_str: str) -> str:
+    """Extract JSON from an HTML document produced by ``to_html()``.
+
+    Args:
+        html_str: An HTML string containing embedded JACS JSON.
+
+    Returns:
+        The extracted JSON string.
+    """
+    return await asyncio.to_thread(simple.from_html, html_str)
+
+
+async def verify_yaml(yaml_str: str) -> bool:
+    """Convert YAML to JSON and verify the resulting document.
+
+    Args:
+        yaml_str: A YAML string containing a signed JACS document.
+
+    Returns:
+        True if verification succeeds.
+    """
+    return await asyncio.to_thread(simple.verify_yaml, yaml_str)
+
+
+# =============================================================================
 # Utility Functions
 # =============================================================================
 
@@ -712,6 +777,12 @@ __all__ = [
     "verify_by_id",
     "verify_standalone",
     "verify_dns",
+    # Format conversion
+    "to_yaml",
+    "from_yaml",
+    "to_html",
+    "from_html",
+    "verify_yaml",
     # Key management
     "reencrypt_key",
     # Agreements

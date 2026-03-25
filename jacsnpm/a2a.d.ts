@@ -252,7 +252,6 @@ export declare class JACSA2AIntegration {
     private _attachCompatibilityAliases;
     private _verifyWrappedArtifactInternal;
     private _buildJwks;
-    private _inferJwsAlg;
     _slugify(name: string): string;
     private _deriveTags;
     private _convertServicesToSkills;

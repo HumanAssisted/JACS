@@ -5,7 +5,7 @@
  * - Constructor accepts JacsClient (not config path)
  * - signRequest used via client._agent (B-3)
  * - verifyResponse used via client._agent with JSON.stringify (B-4)
- * - crypto.createHash('sha256') replaces jacs.hashString (B-5 related)
+ * - native hash helpers back A2A public-key metadata (B-5 related)
  * - wrapArtifactWithProvenance is async
  * - verifyWrappedArtifact is async
  * - JACS_ALGORITHMS has correct values (B-6)
@@ -217,7 +217,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 4: sha256 utility replaces jacs.hashString
+  // Test 4: hashing and public-key metadata use native helpers
   // -------------------------------------------------------------------------
   describe('sha256 utility', () => {
     it('should produce correct SHA-256 hex digest', () => {
@@ -226,7 +226,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
       expect(sha256(input)).to.equal(expected);
     });
 
-    it('should be used in generateWellKnownDocuments instead of jacs.hashString', () => {
+    it('should hash decoded public-key bytes in generateWellKnownDocuments', () => {
       const mockClient = createMockClient();
       const integration = new JACSA2AIntegration(mockClient);
 
@@ -247,7 +247,9 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
         agentCard, 'mock-jws', publicKeyB64, agentData
       );
 
-      const expectedHash = crypto.createHash('sha256').update(publicKeyB64).digest('hex');
+      const expectedHash = crypto.createHash('sha256')
+        .update(Buffer.from(publicKeyB64, 'base64'))
+        .digest('hex');
       expect(documents['/.well-known/jacs-agent.json'].publicKeyHash).to.equal(expectedHash);
       expect(documents['/.well-known/jacs-pubkey.json'].publicKeyHash).to.equal(expectedHash);
     });

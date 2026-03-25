@@ -25,6 +25,7 @@ base64 = "0.22.1"
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
 rand = "0.9"
+rsa = { version = "0.9.8", features = ["pem"] }
 
 [dev-dependencies]
 tempfile = "3"

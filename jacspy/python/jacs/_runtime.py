@@ -185,3 +185,18 @@ class EphemeralAgentAdapter:
 
     def export_attestation_dsse(self, attestation_json):
         return self._native.export_dsse(attestation_json)
+
+    def to_yaml(self, json_str):
+        return self._native.to_yaml(json_str)
+
+    def from_yaml(self, yaml_str):
+        return self._native.from_yaml(yaml_str)
+
+    def to_html(self, json_str):
+        return self._native.to_html(json_str)
+
+    def from_html(self, html_str):
+        return self._native.from_html(html_str)
+
+    def verify_yaml(self, yaml_str):
+        return self._native.verify_yaml(yaml_str)

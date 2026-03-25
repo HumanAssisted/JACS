@@ -6,7 +6,7 @@
 //! by any language binding. Each binding implements the `BindingError` trait
 //! to convert errors to their native format.
 
-use base64::Engine as _;
+use base64::{Engine as _, engine::general_purpose};
 use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::{DocumentTraits, JACSDocument};
@@ -257,6 +257,94 @@ fn truthy_env_var(name: &str) -> bool {
             value.eq_ignore_ascii_case("true") || value == "1"
         })
         .unwrap_or(false)
+}
+
+fn decode_public_key_base64(public_key_b64: &str) -> BindingResult<Vec<u8>> {
+    for engine in [
+        &general_purpose::STANDARD,
+        &general_purpose::STANDARD_NO_PAD,
+        &general_purpose::URL_SAFE,
+        &general_purpose::URL_SAFE_NO_PAD,
+    ] {
+        if let Ok(decoded) = engine.decode(public_key_b64) {
+            return Ok(decoded);
+        }
+    }
+
+    Err(BindingCoreError::invalid_argument(
+        "Public key must be valid base64 or base64url text.",
+    ))
+}
+
+fn build_jwk_set_from_public_key_bytes(
+    public_key: &[u8],
+    key_algorithm: &str,
+    key_id: &str,
+) -> BindingResult<Value> {
+    let normalized_algorithm = key_algorithm.trim().to_ascii_lowercase();
+
+    if normalized_algorithm.contains("ed25519")
+        || (normalized_algorithm.is_empty() && public_key.len() == 32)
+    {
+        if public_key.len() != 32 {
+            return Err(BindingCoreError::invalid_argument(format!(
+                "Ed25519 public key must be 32 bytes, got {} bytes.",
+                public_key.len()
+            )));
+        }
+
+        return Ok(json!({
+            "keys": [{
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": general_purpose::URL_SAFE_NO_PAD.encode(public_key),
+                "kid": key_id,
+                "use": "sig",
+                "alg": "EdDSA",
+            }]
+        }));
+    }
+
+    if normalized_algorithm.contains("rsa") || normalized_algorithm.is_empty() {
+        use rsa::traits::PublicKeyParts;
+        use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
+
+        let rsa_key = if let Ok(key) = RsaPublicKey::from_pkcs1_der(public_key) {
+            key
+        } else if let Ok(key) = RsaPublicKey::from_public_key_der(public_key) {
+            key
+        } else if let Ok(pem) = std::str::from_utf8(public_key) {
+            match RsaPublicKey::from_public_key_pem(pem) {
+                Ok(key) => key,
+                Err(e) if normalized_algorithm.contains("rsa") => {
+                    return Err(BindingCoreError::invalid_argument(format!(
+                        "Failed to parse RSA public key for JWK export: {}",
+                        e
+                    )));
+                }
+                Err(_) => return Ok(json!({ "keys": [] })),
+            }
+        } else if normalized_algorithm.contains("rsa") {
+            return Err(BindingCoreError::invalid_argument(
+                "Failed to parse RSA public key for JWK export.",
+            ));
+        } else {
+            return Ok(json!({ "keys": [] }));
+        };
+
+        return Ok(json!({
+            "keys": [{
+                "kty": "RSA",
+                "kid": key_id,
+                "alg": "RS256",
+                "use": "sig",
+                "n": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.n().to_bytes_be()),
+                "e": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.e().to_bytes_be()),
+            }]
+        }));
+    }
+
+    Ok(json!({ "keys": [] }))
 }
 
 fn resolve_password_context(
@@ -2504,6 +2592,25 @@ pub fn verify_document_standalone(
 /// Hash a string using the JACS hash function (SHA-256).
 pub fn hash_string(data: &str) -> String {
     jacs_hash_string(&data.to_string())
+}
+
+/// Hash a base64-encoded public key using Rust-owned public-key hashing rules.
+pub fn hash_public_key_base64(public_key_b64: &str) -> BindingResult<String> {
+    let public_key = decode_public_key_base64(public_key_b64)?;
+    Ok(jacs::crypt::hash::hash_public_key(&public_key))
+}
+
+/// Build a JWK set from a base64-encoded public key using Rust-owned parsing rules.
+pub fn build_jwk_set_from_public_key(
+    public_key_b64: &str,
+    key_algorithm: &str,
+    key_id: &str,
+) -> BindingResult<String> {
+    let public_key = decode_public_key_base64(public_key_b64)?;
+    let jwk_set = build_jwk_set_from_public_key_bytes(&public_key, key_algorithm, key_id)?;
+    serde_json::to_string(&jwk_set).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize JWK set: {}", e))
+    })
 }
 
 /// Enforce the Rust-owned network access policy for a named capability.

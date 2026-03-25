@@ -111,9 +111,8 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 	}
 
 	info := &AgentInfo{
-		Name:          name,
-		PublicKeyPath: keyDir + "/jacs.public.pem",
-		ConfigPath:    configPath,
+		Name:       name,
+		ConfigPath: configPath,
 	}
 
 	if err := json.Unmarshal([]byte(resultJSON), info); err != nil {
@@ -121,9 +120,6 @@ func Create(name string, opts *CreateAgentOptions) (*AgentInfo, error) {
 	}
 	if info.Name == "" {
 		info.Name = name
-	}
-	if info.PublicKeyPath == "" {
-		info.PublicKeyPath = keyDir + "/jacs.public.pem"
 	}
 	if info.ConfigPath == "" {
 		info.ConfigPath = configPath

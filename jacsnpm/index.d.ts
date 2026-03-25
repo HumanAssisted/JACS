@@ -75,6 +75,8 @@ export declare function legacyVerifyResponse(documentString: string): object
 /** @deprecated Use `new JacsAgent()` and instance methods instead. */
 export declare function legacyVerifyResponseWithAgentId(documentString: string): object
 export declare function ensureNetworkAccess(capability: string): void
+export declare function hashPublicKeyBase64(publicKeyBase64: string): string
+export declare function buildJwkSetFromPublicKey(publicKeyBase64: string, keyAlgorithm: string, keyId: string): string
 export declare function resolvePrivateKeyPassword(configPath?: string | undefined | null, keyDirectory?: string | undefined | null, explicitPassword?: string | undefined | null): string
 export declare function quickstartPrivateKeyPassword(configPath?: string | undefined | null, keyDirectory?: string | undefined | null): string
 /**
@@ -207,6 +209,16 @@ export declare class JacsAgent {
    * Returns true if verification succeeds.
    */
   verifyYamlSync(yamlStr: string): boolean
+  /** Convert a JSON string to YAML (async). */
+  toYaml(jsonStr: string): Promise<string>
+  /** Convert a YAML string to pretty-printed JSON (async). */
+  fromYaml(yamlStr: string): Promise<string>
+  /** Convert a JSON string to a self-contained HTML document (async). */
+  toHtml(jsonStr: string): Promise<string>
+  /** Extract JSON from an HTML document produced by toHtml() (async). */
+  fromHtml(htmlStr: string): Promise<string>
+  /** Convert a YAML string to JSON and verify the resulting document (async). */
+  verifyYaml(yamlStr: string): Promise<boolean>
   /** Build a JACS auth header for HTTP requests (sync, blocks event loop). */
   buildAuthHeaderSync(): string
   /** Deterministically serialize JSON per RFC 8785 / JCS (sync, blocks event loop). */

@@ -709,6 +709,75 @@ export class JacsClient {
   }
 
   // ---------------------------------------------------------------------------
+  // Format Conversion (YAML / HTML)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Convert a JSON string to YAML.
+   */
+  async toYaml(jsonStr: string): Promise<string> {
+    const agent = this.requireAgent();
+    return agent.toYaml(jsonStr);
+  }
+
+  toYamlSync(jsonStr: string): string {
+    const agent = this.requireAgent();
+    return agent.toYamlSync(jsonStr);
+  }
+
+  /**
+   * Convert a YAML string to pretty-printed JSON.
+   */
+  async fromYaml(yamlStr: string): Promise<string> {
+    const agent = this.requireAgent();
+    return agent.fromYaml(yamlStr);
+  }
+
+  fromYamlSync(yamlStr: string): string {
+    const agent = this.requireAgent();
+    return agent.fromYamlSync(yamlStr);
+  }
+
+  /**
+   * Convert a JSON string to a self-contained HTML document.
+   */
+  async toHtml(jsonStr: string): Promise<string> {
+    const agent = this.requireAgent();
+    return agent.toHtml(jsonStr);
+  }
+
+  toHtmlSync(jsonStr: string): string {
+    const agent = this.requireAgent();
+    return agent.toHtmlSync(jsonStr);
+  }
+
+  /**
+   * Extract JSON from an HTML document produced by toHtml().
+   */
+  async fromHtml(htmlStr: string): Promise<string> {
+    const agent = this.requireAgent();
+    return agent.fromHtml(htmlStr);
+  }
+
+  fromHtmlSync(htmlStr: string): string {
+    const agent = this.requireAgent();
+    return agent.fromHtmlSync(htmlStr);
+  }
+
+  /**
+   * Convert YAML to JSON and verify the resulting document.
+   */
+  async verifyYaml(yamlStr: string): Promise<boolean> {
+    const agent = this.requireAgent();
+    return agent.verifyYaml(yamlStr);
+  }
+
+  verifyYamlSync(yamlStr: string): boolean {
+    const agent = this.requireAgent();
+    return agent.verifyYamlSync(yamlStr);
+  }
+
+  // ---------------------------------------------------------------------------
   // Agreements
   // ---------------------------------------------------------------------------
 

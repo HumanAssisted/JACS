@@ -102,6 +102,31 @@ export declare class JacsClient {
     verifyByIdSync(documentId: string): VerificationResult;
     signFile(filePath: string, embed?: boolean): Promise<SignedDocument>;
     signFileSync(filePath: string, embed?: boolean): SignedDocument;
+    /**
+     * Convert a JSON string to YAML.
+     */
+    toYaml(jsonStr: string): Promise<string>;
+    toYamlSync(jsonStr: string): string;
+    /**
+     * Convert a YAML string to pretty-printed JSON.
+     */
+    fromYaml(yamlStr: string): Promise<string>;
+    fromYamlSync(yamlStr: string): string;
+    /**
+     * Convert a JSON string to a self-contained HTML document.
+     */
+    toHtml(jsonStr: string): Promise<string>;
+    toHtmlSync(jsonStr: string): string;
+    /**
+     * Extract JSON from an HTML document produced by toHtml().
+     */
+    fromHtml(htmlStr: string): Promise<string>;
+    fromHtmlSync(htmlStr: string): string;
+    /**
+     * Convert YAML to JSON and verify the resulting document.
+     */
+    verifyYaml(yamlStr: string): Promise<boolean>;
+    verifyYamlSync(yamlStr: string): boolean;
     createAgreement(document: any, agentIds: string[], options?: AgreementOptions): Promise<SignedDocument>;
     createAgreementSync(document: any, agentIds: string[], options?: AgreementOptions): SignedDocument;
     signAgreement(document: any, fieldName?: string): Promise<SignedDocument>;

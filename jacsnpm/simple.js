@@ -83,6 +83,16 @@ exports.verifyById = verifyById;
 exports.verifyByIdSync = verifyByIdSync;
 exports.reencryptKey = reencryptKey;
 exports.reencryptKeySync = reencryptKeySync;
+exports.toYaml = toYaml;
+exports.toYamlSync = toYamlSync;
+exports.fromYaml = fromYaml;
+exports.fromYamlSync = fromYamlSync;
+exports.toHtml = toHtml;
+exports.toHtmlSync = toHtmlSync;
+exports.fromHtml = fromHtml;
+exports.fromHtmlSync = fromHtmlSync;
+exports.verifyYaml = verifyYaml;
+exports.verifyYamlSync = verifyYamlSync;
 exports.getPublicKey = getPublicKey;
 exports.exportAgent = exportAgent;
 exports.sharePublicKey = sharePublicKey;
@@ -277,16 +287,14 @@ function parseCreateResult(resultJson, options) {
     const configPath = info.config_path || options.configPath || './jacs.config.json';
     const dataDirectory = info.data_directory || options.dataDirectory || './jacs_data';
     const keyDirectory = info.key_directory || options.keyDirectory || './jacs_keys';
-    const publicKeyPath = info.public_key_path || `${keyDirectory}/jacs.public.pem`;
-    const privateKeyPath = info.private_key_path || `${keyDirectory}/jacs.private.pem.enc`;
     return {
         agentId: info.agent_id || '',
         name: info.name || options.name,
-        publicKeyPath,
+        publicKeyPath: info.public_key_path || '',
         configPath,
         version: info.version || '',
         algorithm: info.algorithm || options.algorithm || 'pq2025',
-        privateKeyPath,
+        privateKeyPath: info.private_key_path || '',
         dataDirectory,
         keyDirectory,
         domain: info.domain || options.domain || '',
@@ -654,6 +662,69 @@ async function reencryptKey(oldPassword, newPassword) {
 function reencryptKeySync(oldPassword, newPassword) {
     const agent = requireAgent();
     agent.reencryptKeySync(oldPassword, newPassword);
+}
+// =============================================================================
+// Format Conversion (YAML / HTML)
+// =============================================================================
+/**
+ * Convert a JSON string to YAML (async).
+ */
+async function toYaml(jsonStr) {
+    return requireAgent().toYaml(jsonStr);
+}
+/**
+ * Convert a JSON string to YAML (sync).
+ */
+function toYamlSync(jsonStr) {
+    return requireAgent().toYamlSync(jsonStr);
+}
+/**
+ * Convert a YAML string to pretty-printed JSON (async).
+ */
+async function fromYaml(yamlStr) {
+    return requireAgent().fromYaml(yamlStr);
+}
+/**
+ * Convert a YAML string to pretty-printed JSON (sync).
+ */
+function fromYamlSync(yamlStr) {
+    return requireAgent().fromYamlSync(yamlStr);
+}
+/**
+ * Convert a JSON string to a self-contained HTML document (async).
+ */
+async function toHtml(jsonStr) {
+    return requireAgent().toHtml(jsonStr);
+}
+/**
+ * Convert a JSON string to a self-contained HTML document (sync).
+ */
+function toHtmlSync(jsonStr) {
+    return requireAgent().toHtmlSync(jsonStr);
+}
+/**
+ * Extract JSON from an HTML document produced by toHtml() (async).
+ */
+async function fromHtml(htmlStr) {
+    return requireAgent().fromHtml(htmlStr);
+}
+/**
+ * Extract JSON from an HTML document produced by toHtml() (sync).
+ */
+function fromHtmlSync(htmlStr) {
+    return requireAgent().fromHtmlSync(htmlStr);
+}
+/**
+ * Convert YAML to JSON and verify the resulting document (async).
+ */
+async function verifyYaml(yamlStr) {
+    return requireAgent().verifyYaml(yamlStr);
+}
+/**
+ * Convert YAML to JSON and verify the resulting document (sync).
+ */
+function verifyYamlSync(yamlStr) {
+    return requireAgent().verifyYamlSync(yamlStr);
 }
 // =============================================================================
 // Pure sync helpers (no NAPI calls, stay sync-only)
