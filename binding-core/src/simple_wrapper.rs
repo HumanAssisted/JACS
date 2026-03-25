@@ -425,7 +425,10 @@ mod tests {
         let back = wrapper.from_yaml(&yaml).unwrap();
         let original: serde_json::Value = serde_json::from_str(json).unwrap();
         let reconstituted: serde_json::Value = serde_json::from_str(&back).unwrap();
-        assert_eq!(original, reconstituted, "YAML round-trip should preserve content");
+        assert_eq!(
+            original, reconstituted,
+            "YAML round-trip should preserve content"
+        );
     }
 
     #[test]
@@ -469,7 +472,10 @@ mod tests {
     fn from_html_no_script_tag_returns_serialization_failed() {
         let wrapper = test_wrapper();
         let result = wrapper.from_html("<html><body>No jacs data here</body></html>");
-        assert!(result.is_err(), "from_html should fail without jacs-data tag");
+        assert!(
+            result.is_err(),
+            "from_html should fail without jacs-data tag"
+        );
         let err = result.unwrap_err();
         assert_eq!(
             err.kind,

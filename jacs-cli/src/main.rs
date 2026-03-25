@@ -2598,7 +2598,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             let detected_format = if let Some(fmt) = source_format {
                 fmt.clone()
             } else if is_stdin {
-                eprintln!("When reading from stdin (-f -), --from is required to specify the source format.");
+                eprintln!(
+                    "When reading from stdin (-f -), --from is required to specify the source format."
+                );
                 process::exit(1);
             } else {
                 let ext = std::path::Path::new(file_path)
