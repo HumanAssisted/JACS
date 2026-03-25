@@ -109,6 +109,7 @@ test-jacs-features: test-jacs-pq
 test-jacs-cli:
 	cargo build -p jacs-cli
 	cd jacs && RUST_BACKTRACE=1 cargo test --test cli_tests --test cli_flags -- --nocapture
+	RUST_BACKTRACE=1 cargo test -p jacs-cli --test cli_convert_tests -- --nocapture
 
 test-jacs-cross-language:
 	cd jacs && RUST_BACKTRACE=1 cargo test --features "agreements a2a attestation" --test cross_language_tests --test a2a_cross_language_tests --test attestation_cross_lang_tests -- --nocapture
