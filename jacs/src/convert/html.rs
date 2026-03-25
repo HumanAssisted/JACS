@@ -211,7 +211,13 @@ dd {{ margin: 0; }}
         metadata_section = metadata_section,
         content_section = content_section,
         files_section = files_section,
-        json_data = json_str,
+        // Escape all "</" sequences in JSON to prevent HTML injection (XSS).
+        // Any "</script>" (case-insensitive) in the JSON would prematurely close the
+        // <script> tag. The standard mitigation is to replace "</" with "<\/" which
+        // is safe because "\/" is a valid JSON escape for "/" (RFC 8259 Section 7).
+        // This escaping is reversed in html_to_jacs() after extraction to preserve
+        // byte-identical round-trip.
+        json_data = json_str.replace("</", r"<\/"),
     );
 
     Ok(html)
@@ -258,8 +264,12 @@ pub fn html_to_jacs(html_str: &str) -> Result<String, JacsError> {
 
     let json_str = &html_str[json_start..json_start + json_end];
 
+    // Reverse the "</" -> "<\/" escaping applied by jacs_to_html to prevent
+    // script injection. This restores the original JSON byte-for-byte.
+    let json_str = json_str.replace(r"<\/", "</");
+
     // Validate it is actually JSON
-    let _: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+    let _: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
         JacsError::conversion(
             "HTML",
             "JSON",
@@ -553,6 +563,71 @@ mod tests {
             result.is_err(),
             "Raw JSON should not be extractable as HTML"
         );
+    }
+
+    #[test]
+    fn html_round_trip_json_with_script_close_tag() {
+        // Regression test for XSS/injection via </script> in JSON values.
+        // A JSON value containing "</script>" must not break the HTML structure
+        // or enable script injection.
+        let json = r#"{"key": "</script><script>alert(1)</script>"}"#;
+        let html = jacs_to_html(json).unwrap();
+
+        // The raw "</script>" must NOT appear unescaped in the HTML output
+        // (outside the controlled closing tag). It should be escaped as "<\/script>".
+        let script_tag_start = html
+            .find(r#"<script type="application/json" id="jacs-data">"#)
+            .unwrap();
+        let after_open =
+            script_tag_start + r#"<script type="application/json" id="jacs-data">"#.len();
+        let embedded_region = &html[after_open..];
+        // The first unescaped </script> should be the actual closing tag, not injected
+        let first_close = embedded_region.find("</script>").unwrap();
+        // The embedded JSON should use the escaped form
+        assert!(
+            embedded_region[..first_close].contains(r"<\/script>"),
+            "Embedded JSON should have </script> escaped as <\\/script>"
+        );
+
+        // Round-trip must produce identical JSON
+        let extracted = html_to_jacs(&html).unwrap();
+        assert_eq!(
+            extracted, json,
+            "Round-trip should produce identical JSON even with </script> in values"
+        );
+    }
+
+    #[test]
+    fn html_script_injection_does_not_create_extra_script_tags() {
+        // Verify that malicious JSON cannot inject working script tags via </script> injection.
+        // The attack: JSON containing "</script>" would close the data script tag early,
+        // allowing an attacker to inject arbitrary <script> content.
+        let json = r#"{"payload": "</script><script>alert('xss')</script>"}"#;
+        let html = jacs_to_html(json).unwrap();
+
+        // The embedded JSON region should NOT contain an unescaped "</script>"
+        // (other than the actual closing tag placed by the template).
+        let open_tag = r#"<script type="application/json" id="jacs-data">"#;
+        let data_start = html.find(open_tag).unwrap() + open_tag.len();
+        let data_region = &html[data_start..];
+        // The first unescaped "</script>" should be the real closing tag,
+        // meaning everything before it is safely escaped JSON.
+        let first_close = data_region.find("</script>").unwrap();
+        let json_region = &data_region[..first_close];
+        // The JSON region must not contain unescaped "</script>"
+        assert!(
+            !json_region.contains("</script>"),
+            "JSON region should not contain unescaped </script>"
+        );
+        // But it should contain the escaped form
+        assert!(
+            json_region.contains(r"<\/script>"),
+            "JSON region should contain escaped <\\/script>"
+        );
+
+        // Extraction should still work correctly and produce identical JSON
+        let extracted = html_to_jacs(&html).unwrap();
+        assert_eq!(extracted, json);
     }
 
     #[test]

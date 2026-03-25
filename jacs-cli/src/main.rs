@@ -1159,39 +1159,40 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             .arg_required_else_help(true),
     );
 
-    let matches = matches
-        .subcommand(
-            Command::new("convert")
-                .about("Convert JACS documents between JSON, YAML, and HTML formats (no agent required)")
-                .arg(
-                    Arg::new("to")
-                        .long("to")
-                        .required(true)
-                        .value_parser(["json", "yaml", "html"])
-                        .help("Target format: json, yaml, or html"),
-                )
-                .arg(
-                    Arg::new("from")
-                        .long("from")
-                        .value_parser(["json", "yaml", "html"])
-                        .help("Source format (auto-detected from extension if omitted)"),
-                )
-                .arg(
-                    Arg::new("file")
-                        .short('f')
-                        .long("file")
-                        .required(true)
-                        .value_parser(value_parser!(String))
-                        .help("Input file path"),
-                )
-                .arg(
-                    Arg::new("output")
-                        .short('o')
-                        .long("output")
-                        .value_parser(value_parser!(String))
-                        .help("Output file path (defaults to stdout)"),
-                ),
-        );
+    let matches = matches.subcommand(
+        Command::new("convert")
+            .about(
+                "Convert JACS documents between JSON, YAML, and HTML formats (no agent required)",
+            )
+            .arg(
+                Arg::new("to")
+                    .long("to")
+                    .required(true)
+                    .value_parser(["json", "yaml", "html"])
+                    .help("Target format: json, yaml, or html"),
+            )
+            .arg(
+                Arg::new("from")
+                    .long("from")
+                    .value_parser(["json", "yaml", "html"])
+                    .help("Source format (auto-detected from extension if omitted)"),
+            )
+            .arg(
+                Arg::new("file")
+                    .short('f')
+                    .long("file")
+                    .required(true)
+                    .value_parser(value_parser!(String))
+                    .help("Input file path"),
+            )
+            .arg(
+                Arg::new("output")
+                    .short('o')
+                    .long("output")
+                    .value_parser(value_parser!(String))
+                    .help("Output file path (defaults to stdout)"),
+            ),
+    );
 
     let matches = matches.arg_required_else_help(true).get_matches();
 
@@ -2620,25 +2621,17 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
             // Convert
             let output = match (detected_format.as_str(), target_format.as_str()) {
-                ("json", "yaml") => jacs_to_yaml(&input)
-                    .map_err(|e| format!("{}", e))?,
-                ("yaml", "json") => yaml_to_jacs(&input)
-                    .map_err(|e| format!("{}", e))?,
-                ("json", "html") => jacs_to_html(&input)
-                    .map_err(|e| format!("{}", e))?,
-                ("html", "json") => html_to_jacs(&input)
-                    .map_err(|e| format!("{}", e))?,
+                ("json", "yaml") => jacs_to_yaml(&input).map_err(|e| format!("{}", e))?,
+                ("yaml", "json") => yaml_to_jacs(&input).map_err(|e| format!("{}", e))?,
+                ("json", "html") => jacs_to_html(&input).map_err(|e| format!("{}", e))?,
+                ("html", "json") => html_to_jacs(&input).map_err(|e| format!("{}", e))?,
                 ("yaml", "html") => {
-                    let json = yaml_to_jacs(&input)
-                        .map_err(|e| format!("{}", e))?;
-                    jacs_to_html(&json)
-                        .map_err(|e| format!("{}", e))?
+                    let json = yaml_to_jacs(&input).map_err(|e| format!("{}", e))?;
+                    jacs_to_html(&json).map_err(|e| format!("{}", e))?
                 }
                 ("html", "yaml") => {
-                    let json = html_to_jacs(&input)
-                        .map_err(|e| format!("{}", e))?;
-                    jacs_to_yaml(&json)
-                        .map_err(|e| format!("{}", e))?
+                    let json = html_to_jacs(&input).map_err(|e| format!("{}", e))?;
+                    jacs_to_yaml(&json).map_err(|e| format!("{}", e))?
                 }
                 (src, dst) if src == dst => {
                     // Same format -- just pass through
