@@ -391,6 +391,15 @@ impl JacsAgent {
         self.inner.export_agent_card().to_py()
     }
 
+    /// Generate the native .well-known A2A document set for the loaded agent.
+    #[cfg(feature = "a2a")]
+    #[pyo3(signature = (a2a_algorithm=None))]
+    fn generate_well_known_documents(&self, a2a_algorithm: Option<&str>) -> PyResult<String> {
+        self.inner
+            .generate_well_known_documents(a2a_algorithm)
+            .to_py()
+    }
+
     /// Wrap an A2A artifact with JACS provenance signature.
     ///
     /// Args:
@@ -2016,6 +2025,39 @@ fn get_public_key_pem_simple() -> PyResult<String> {
     ))
 }
 
+#[pyfunction]
+#[pyo3(signature = (config_path=None, key_directory=None, explicit_password=None))]
+fn resolve_private_key_password(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+    explicit_password: Option<String>,
+) -> PyResult<String> {
+    jacs_binding_core::resolve_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+        explicit_password.as_deref(),
+    )
+    .to_py()
+}
+
+#[pyfunction]
+#[pyo3(signature = (config_path=None, key_directory=None))]
+fn quickstart_private_key_password(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+) -> PyResult<String> {
+    jacs_binding_core::quickstart_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+    )
+    .to_py()
+}
+
+#[pyfunction]
+fn ensure_network_access(capability: &str) -> PyResult<()> {
+    jacs_binding_core::ensure_network_access(capability).to_py()
+}
+
 // Deprecated trust functions with _simple suffix
 #[pyfunction]
 fn trust_agent_simple(agent_json: &str) -> PyResult<String> {
@@ -2066,6 +2108,9 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(create_config, m)?)?;
     m.add_function(wrap_pyfunction!(handle_agent_create_py, m)?)?;
     m.add_function(wrap_pyfunction!(handle_config_create_py, m)?)?;
+    m.add_function(wrap_pyfunction!(resolve_private_key_password, m)?)?;
+    m.add_function(wrap_pyfunction!(quickstart_private_key_password, m)?)?;
+    m.add_function(wrap_pyfunction!(ensure_network_access, m)?)?;
 
     // =============================================================================
     // Trust Store Functions

@@ -747,6 +747,7 @@ async function handleJacsMcpToolCall(client, toolName, args) {
                 }));
             }
             case 'fetch_agent_key': {
+                (0, index_js_1.ensureNetworkAccess)('remote_key_fetch');
                 const baseUrl = resolveKeysBaseUrl(args.base_url);
                 const byHash = typeof args.public_key_hash === 'string' ? args.public_key_hash.trim() : '';
                 let lookupUrl;

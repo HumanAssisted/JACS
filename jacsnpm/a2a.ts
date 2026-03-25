@@ -733,6 +733,33 @@ export class JACSA2AIntegration {
     publicKeyB64: string,
     agentData: AgentData,
   ): Record<string, Record<string, unknown>> {
+    const nativeGenerate = (this.client as any)._agent?.generateWellKnownDocumentsSync;
+    if (typeof nativeGenerate === 'function') {
+      try {
+        const nativeJson = nativeGenerate.call((this.client as any)._agent);
+        const nativePairs = JSON.parse(nativeJson) as Array<{ path?: string; document?: Record<string, unknown> }>;
+        const documents: Record<string, Record<string, unknown>> = {};
+        for (const item of nativePairs) {
+          if (item && typeof item.path === 'string' && item.document && typeof item.document === 'object') {
+            documents[item.path] = item.document;
+          }
+        }
+
+        const cardObj = JSON.parse(JSON.stringify(agentCard)) as Record<string, unknown>;
+        const nativeCard = documents['/.well-known/agent-card.json'];
+        if (nativeCard?.signatures && cardObj.signatures === undefined) {
+          cardObj.signatures = nativeCard.signatures;
+        }
+        if (jwsSignature) {
+          cardObj.signatures = [{ jws: jwsSignature }];
+        }
+        documents['/.well-known/agent-card.json'] = cardObj;
+        return documents;
+      } catch {
+        // Fall through to wrapper generation for mock clients and older bindings.
+      }
+    }
+
     const documents: Record<string, Record<string, unknown>> = {};
     const keyAlgorithm = agentData.keyAlgorithm || 'pq2025';
     const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);

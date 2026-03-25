@@ -65,6 +65,12 @@ class InvalidAgentCardError(DiscoveryError):
     """Response was not valid JSON or missing required fields."""
 
 
+def _ensure_rust_network_access(capability: str) -> None:
+    from . import ensure_network_access as _ensure_network_access
+
+    _ensure_network_access(capability)
+
+
 # ---------------------------------------------------------------------------
 # Core async API
 # ---------------------------------------------------------------------------
@@ -92,6 +98,10 @@ async def discover_agent(
     """
     base = url.rstrip("/")
     card_url = f"{base}{AGENT_CARD_PATH}"
+    try:
+        _ensure_rust_network_access("agent_card_fetch")
+    except Exception as e:
+        raise DiscoveryError(str(e)) from e
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:

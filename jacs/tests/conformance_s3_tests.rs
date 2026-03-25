@@ -15,6 +15,7 @@ use jacs::storage::MultiStorage;
 use serial_test::serial;
 use std::path::PathBuf;
 use testcontainers::GenericImage;
+use testcontainers::ImageExt;
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 

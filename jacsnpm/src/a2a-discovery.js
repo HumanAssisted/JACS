@@ -17,6 +17,7 @@
  */
 
 const { JACS_EXTENSION_URI } = require('./a2a');
+const { ensureNetworkAccess } = require('../index.js');
 const VALID_TRUST_POLICIES = ['open', 'verified', 'strict'];
 
 /**
@@ -32,6 +33,7 @@ async function discoverAgent(url, options = {}) {
   const timeoutMs = options.timeoutMs || 10000;
   const baseUrl = url.replace(/\/+$/, '');
   const cardUrl = `${baseUrl}/.well-known/agent-card.json`;
+  ensureNetworkAccess('agent_card_fetch');
 
   let response;
   try {

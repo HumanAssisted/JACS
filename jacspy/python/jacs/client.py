@@ -31,7 +31,7 @@ from .types import (
     VerificationError,
     VerificationResult,
 )
-from ._runtime import EphemeralAgentAdapter, write_key_directory_ignore_files
+from ._runtime import EphemeralAgentAdapter
 
 logger = logging.getLogger("jacs.client")
 
@@ -48,6 +48,10 @@ try:
     from .jacs import is_trusted as _is_trusted
     from .jacs import get_trusted_agent as _get_trusted_agent
     from .jacs import audit as _audit
+    from .jacs import (
+        quickstart_private_key_password as _quickstart_private_key_password_native,
+    )
+    from .jacs import resolve_private_key_password as _resolve_private_key_password_native
 except ImportError:
     import jacs as _jacs_module  # type: ignore[no-redef]
 
@@ -60,6 +64,8 @@ except ImportError:
     _is_trusted = _jacs_module.is_trusted
     _get_trusted_agent = _jacs_module.get_trusted_agent
     _audit = _jacs_module.audit
+    _quickstart_private_key_password_native = _jacs_module.quickstart_private_key_password
+    _resolve_private_key_password_native = _jacs_module.resolve_private_key_password
 
 
 def _resolve_strict(explicit: Optional[bool]) -> bool:
@@ -68,17 +74,11 @@ def _resolve_strict(explicit: Optional[bool]) -> bool:
     return os.environ.get("JACS_STRICT_MODE", "").lower() in ("true", "1")
 
 
-def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
-    if os.path.isabs(candidate):
-        return candidate
-    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
-
-
 def _resolve_create_directories(
     config_path: str,
     data_directory: str = "./jacs_data",
     key_directory: str = "./jacs_keys",
-) -> tuple[str, str]:
+    ) -> tuple[str, str]:
     config_dir = os.path.dirname(os.path.abspath(config_path))
     cwd = os.path.abspath(os.getcwd())
     if config_dir != cwd:
@@ -90,33 +90,34 @@ def _resolve_create_directories(
 
 
 def _read_saved_password(config_path: str) -> str:
-    try:
-        resolved_config_path = os.path.abspath(config_path)
-        with open(resolved_config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        key_dir = _resolve_config_relative_path(
-            resolved_config_path, config.get("jacs_key_directory", "./jacs_keys")
-        )
-        password_path = os.path.join(key_dir, ".jacs_password")
-        if not os.path.exists(password_path):
-            return ""
-        with open(password_path, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
+    return _resolve_private_key_password_native(
+        config_path=os.path.abspath(config_path),
+        key_directory=None,
+        explicit_password=None,
+    )
 
 
 def _resolve_private_key_password(
-    config_path: Optional[str] = None, explicit_password: Optional[str] = None
+    config_path: Optional[str] = None,
+    explicit_password: Optional[str] = None,
+    key_directory: Optional[str] = None,
 ) -> str:
-    if explicit_password:
-        return explicit_password
-    env_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-    if env_password:
-        return env_password
-    if config_path:
-        return _read_saved_password(config_path)
-    return ""
+    resolved_config_path = os.path.abspath(config_path) if config_path else None
+    return _resolve_private_key_password_native(
+        config_path=resolved_config_path,
+        key_directory=key_directory,
+        explicit_password=explicit_password,
+    )
+
+
+def _quickstart_private_key_password(
+    config_path: Optional[str] = None, key_directory: Optional[str] = None
+) -> str:
+    resolved_config_path = os.path.abspath(config_path) if config_path else None
+    return _quickstart_private_key_password_native(
+        config_path=resolved_config_path,
+        key_directory=key_directory,
+    )
 
 
 def _extract_signature_metadata(doc_data: Optional[dict]) -> tuple[str, str, str]:
@@ -231,29 +232,7 @@ class JacsClient:
 
         data_dir, key_dir = _resolve_create_directories(cfg_path)
 
-        # Create a new persistent agent via SimpleAgent
-        password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-        if not password:
-            import secrets
-            import string
-
-            chars = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
-            password = (
-                secrets.choice(string.ascii_uppercase)
-                + secrets.choice(string.ascii_lowercase)
-                + secrets.choice(string.digits)
-                + secrets.choice("!@#$%^&*()-_=+")
-                + "".join(secrets.choice(chars) for _ in range(28))
-            )
-            persist_password = os.environ.get("JACS_SAVE_PASSWORD_FILE", "").lower() in ("1", "true")
-            if persist_password:
-                os.makedirs(key_dir, exist_ok=True)
-                pw_path = os.path.join(key_dir, ".jacs_password")
-                with open(pw_path, "w", encoding="utf-8") as f:
-                    f.write(password)
-                os.chmod(pw_path, 0o600)
-
-        write_key_directory_ignore_files(key_dir)
+        password = _quickstart_private_key_password(cfg_path, key_dir)
 
         algo = algorithm or "pq2025"
         _SimpleAgent.create_agent(
@@ -694,15 +673,11 @@ class JacsClient:
 
     def get_public_key(self) -> str:
         """Return this agent's PEM public key."""
-        if self._agent_info is None or not self._agent_info.public_key_path:
-            raise AgentNotLoadedError("No loaded agent with public key metadata.")
-
-        key_path = self._agent_info.public_key_path
-        if not os.path.exists(key_path):
-            raise JacsError(f"Public key not found: {key_path}")
-
-        with open(key_path, "r", encoding="utf-8") as f:
-            return f.read()
+        agent = self._require_agent()
+        try:
+            return agent.get_public_key_pem()
+        except Exception as e:
+            raise JacsError(f"Failed to get public key: {e}")
 
     def share_public_key(self) -> str:
         """Alias for get_public_key() for framework/tool integrations."""

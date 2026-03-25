@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { JacsAgent, JacsSimpleAgent, hashString, createConfig, createAgentSync, createAgent, trustAgent, trustAgentWithKey, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, auditSync, audit, legacyLoad, legacySignAgent, legacyVerifyString, legacySignString, legacyVerifyAgent, legacyUpdateAgent, verifyDocumentStandalone, legacyVerifyDocument, legacyUpdateDocument, legacyVerifySignature, legacyCreateAgreement, legacySignAgreement, legacyCreateDocument, legacyCheckAgreement, legacySignRequest, legacyVerifyResponse, legacyVerifyResponseWithAgentId } = nativeBinding
+const { JacsAgent, JacsSimpleAgent, hashString, createConfig, createAgentSync, createAgent, trustAgent, trustAgentWithKey, listTrustedAgents, untrustAgent, isTrusted, getTrustedAgent, auditSync, audit, legacyLoad, legacySignAgent, legacyVerifyString, legacySignString, legacyVerifyAgent, legacyUpdateAgent, verifyDocumentStandalone, legacyVerifyDocument, legacyUpdateDocument, legacyVerifySignature, legacyCreateAgreement, legacySignAgreement, legacyCreateDocument, legacyCheckAgreement, legacySignRequest, legacyVerifyResponse, legacyVerifyResponseWithAgentId, ensureNetworkAccess, resolvePrivateKeyPassword, quickstartPrivateKeyPassword } = nativeBinding
 
 module.exports.JacsAgent = JacsAgent
 module.exports.JacsSimpleAgent = JacsSimpleAgent
@@ -343,3 +343,6 @@ module.exports.legacyCheckAgreement = legacyCheckAgreement
 module.exports.legacySignRequest = legacySignRequest
 module.exports.legacyVerifyResponse = legacyVerifyResponse
 module.exports.legacyVerifyResponseWithAgentId = legacyVerifyResponseWithAgentId
+module.exports.ensureNetworkAccess = ensureNetworkAccess
+module.exports.resolvePrivateKeyPassword = resolvePrivateKeyPassword
+module.exports.quickstartPrivateKeyPassword = quickstartPrivateKeyPassword

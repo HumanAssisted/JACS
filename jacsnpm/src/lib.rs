@@ -831,6 +831,17 @@ impl JacsAgent {
         self.inner.export_agent_card().to_napi()
     }
 
+    /// Generate the native .well-known A2A document set (sync, blocks event loop).
+    #[napi(js_name = "generateWellKnownDocumentsSync")]
+    pub fn generate_well_known_documents_sync(
+        &self,
+        a2a_algorithm: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .generate_well_known_documents(a2a_algorithm.as_deref())
+            .to_napi()
+    }
+
     /// Wrap an A2A artifact with JACS provenance signature (sync).
     #[napi(js_name = "wrapA2aArtifactSync")]
     #[allow(deprecated)]
@@ -904,6 +915,24 @@ impl JacsAgent {
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| a.export_agent_card())),
+        })
+    }
+
+    /// Generate the native .well-known A2A document set.
+    #[napi(
+        js_name = "generateWellKnownDocuments",
+        ts_return_type = "Promise<string>"
+    )]
+    pub fn generate_well_known_documents_async(
+        &self,
+        a2a_algorithm: Option<String>,
+    ) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.generate_well_known_documents(a2a_algorithm.as_deref())
+            })),
         })
     }
 
@@ -1926,4 +1955,35 @@ pub fn legacy_verify_response_with_agent_id(env: Env, document_string: String) -
     result_obj.set_named_property("agent_id", js_agent_id)?;
     result_obj.set_named_property("payload", js_payload)?;
     Ok(result_obj)
+}
+
+#[napi(js_name = "ensureNetworkAccess")]
+pub fn ensure_network_access_js(capability: String) -> Result<()> {
+    jacs_binding_core::ensure_network_access(&capability).to_napi()
+}
+
+#[napi(js_name = "resolvePrivateKeyPassword")]
+pub fn resolve_private_key_password_js(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+    explicit_password: Option<String>,
+) -> Result<String> {
+    jacs_binding_core::resolve_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+        explicit_password.as_deref(),
+    )
+    .to_napi()
+}
+
+#[napi(js_name = "quickstartPrivateKeyPassword")]
+pub fn quickstart_private_key_password_js(
+    config_path: Option<String>,
+    key_directory: Option<String>,
+) -> Result<String> {
+    jacs_binding_core::quickstart_private_key_password(
+        config_path.as_deref(),
+        key_directory.as_deref(),
+    )
+    .to_napi()
 }

@@ -20,7 +20,9 @@ use jacs::crypt::KeyManager;
 use jacs::crypt::hash::hash_string as jacs_hash_string;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub mod conversion;
@@ -194,6 +196,175 @@ fn normalize_path(path: &Path) -> PathBuf {
         }
     }
     normalized
+}
+
+fn resolve_path_from_cwd(path: &str) -> BindingResult<PathBuf> {
+    let requested = Path::new(path);
+    if requested.is_absolute() {
+        return Ok(normalize_path(requested));
+    }
+
+    Ok(normalize_path(
+        &std::env::current_dir()
+            .map_err(|e| {
+                BindingCoreError::agent_load(format!(
+                    "Failed to determine current working directory: {}",
+                    e
+                ))
+            })?
+            .join(requested),
+    ))
+}
+
+fn resolve_relative_to_config(config_path: &Path, candidate: &str) -> PathBuf {
+    let candidate_path = Path::new(candidate);
+    if candidate_path.is_absolute() {
+        return normalize_path(candidate_path);
+    }
+
+    let base_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
+    normalize_path(&base_dir.join(candidate_path))
+}
+
+fn read_password_file(path: &Path) -> BindingResult<Option<String>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(path).map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to read password file {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    let password = contents.trim_end_matches(|c| c == '\n' || c == '\r').trim();
+    if password.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(password.to_string()))
+}
+
+fn missing_password_message(error: &str) -> bool {
+    error.contains("No private key password available")
+}
+
+fn truthy_env_var(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            let value = value.trim();
+            value.eq_ignore_ascii_case("true") || value == "1"
+        })
+        .unwrap_or(false)
+}
+
+fn resolve_password_context(
+    config_path: Option<&str>,
+    key_directory: Option<&str>,
+) -> BindingResult<(PathBuf, Option<String>)> {
+    let mut agent_id = None;
+
+    if let Some(config_path) = config_path {
+        let resolved_config_path = resolve_path_from_cwd(config_path)?;
+        if resolved_config_path.exists() {
+            let config = Config::from_file(resolved_config_path.to_string_lossy().as_ref())
+                .map_err(|e| {
+                    BindingCoreError::agent_load(format!(
+                        "Failed to load config from {}: {}",
+                        resolved_config_path.display(),
+                        e
+                    ))
+                })?;
+            let configured_key_dir = config
+                .jacs_key_directory()
+                .as_deref()
+                .unwrap_or("./jacs_keys");
+            let resolved_key_dir =
+                resolve_relative_to_config(&resolved_config_path, configured_key_dir);
+            agent_id = config.jacs_agent_id_and_version().clone();
+
+            if let Some(key_directory) = key_directory {
+                return Ok((resolve_path_from_cwd(key_directory)?, agent_id));
+            }
+            return Ok((resolved_key_dir, agent_id));
+        }
+
+        if let Some(key_directory) = key_directory {
+            return Ok((resolve_path_from_cwd(key_directory)?, None));
+        }
+
+        return Ok((
+            resolve_relative_to_config(&resolved_config_path, "./jacs_keys"),
+            None,
+        ));
+    }
+
+    if let Some(key_directory) = key_directory {
+        return Ok((resolve_path_from_cwd(key_directory)?, None));
+    }
+
+    Ok((resolve_path_from_cwd("./jacs_keys")?, agent_id))
+}
+
+fn generate_private_key_password_value() -> String {
+    use rand::Rng;
+
+    const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const LOWER: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+    const DIGITS: &[u8] = b"0123456789";
+    const SPECIAL: &[u8] = b"!@#$%^&*()-_=+";
+    const ALL: &[u8] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+";
+
+    let mut rng = rand::rng();
+    let mut password = String::with_capacity(32);
+
+    password.push(UPPER[rng.random_range(0..UPPER.len())] as char);
+    password.push(LOWER[rng.random_range(0..LOWER.len())] as char);
+    password.push(DIGITS[rng.random_range(0..DIGITS.len())] as char);
+    password.push(SPECIAL[rng.random_range(0..SPECIAL.len())] as char);
+
+    for _ in 4..32 {
+        password.push(ALL[rng.random_range(0..ALL.len())] as char);
+    }
+
+    password
+}
+
+fn persist_password_file(key_directory: &Path, password: &str) -> BindingResult<()> {
+    fs::create_dir_all(key_directory).map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to create key directory {}: {}",
+            key_directory.display(),
+            e
+        ))
+    })?;
+
+    let password_path = key_directory.join(".jacs_password");
+    fs::write(&password_path, password).map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to write password file {}: {}",
+            password_path.display(),
+            e
+        ))
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let permissions = std::fs::Permissions::from_mode(0o600);
+        fs::set_permissions(&password_path, permissions).map_err(|e| {
+            BindingCoreError::generic(format!(
+                "Failed to set password file permissions on {}: {}",
+                password_path.display(),
+                e
+            ))
+        })?;
+    }
+
+    Ok(())
 }
 
 fn is_editable_level(level: &str) -> bool {
@@ -2333,6 +2504,75 @@ pub fn verify_document_standalone(
 /// Hash a string using the JACS hash function (SHA-256).
 pub fn hash_string(data: &str) -> String {
     jacs_hash_string(&data.to_string())
+}
+
+/// Enforce the Rust-owned network access policy for a named capability.
+pub fn ensure_network_access(capability: &str) -> BindingResult<()> {
+    let capability = jacs::config::NetworkCapability::from_str(capability)
+        .map_err(BindingCoreError::invalid_argument)?;
+    jacs::config::ensure_network_access(capability)
+        .map_err(|e| BindingCoreError::network_failed(e.to_string()))
+}
+
+/// Resolve a private-key password using Rust-owned env, keychain, and filesystem rules.
+///
+/// Returns an empty string when no password source is available.
+pub fn resolve_private_key_password(
+    config_path: Option<&str>,
+    key_directory: Option<&str>,
+    explicit_password: Option<&str>,
+) -> BindingResult<String> {
+    if let Some(password) = explicit_password {
+        if password.trim().is_empty() {
+            return Err(BindingCoreError::invalid_argument(
+                "Explicit password provided but empty or whitespace-only.",
+            ));
+        }
+        return Ok(password.to_string());
+    }
+
+    if let Ok(password) = std::env::var("JACS_PRIVATE_KEY_PASSWORD") {
+        if password.trim().is_empty() {
+            return Err(BindingCoreError::invalid_argument(
+                "JACS_PRIVATE_KEY_PASSWORD is set but empty or whitespace-only.",
+            ));
+        }
+        return Ok(password);
+    }
+
+    let (resolved_key_directory, agent_id) = resolve_password_context(config_path, key_directory)?;
+
+    match jacs::crypt::aes_encrypt::resolve_private_key_password(None, agent_id.as_deref()) {
+        Ok(password) => Ok(password),
+        Err(e) if missing_password_message(&e.to_string()) => Ok(read_password_file(
+            &resolved_key_directory.join(".jacs_password"),
+        )?
+        .unwrap_or_default()),
+        Err(e) => Err(BindingCoreError::generic(format!(
+            "Failed to resolve private key password: {}",
+            e
+        ))),
+    }
+}
+
+/// Resolve an existing password for quickstart, or generate and optionally persist one in Rust.
+pub fn quickstart_private_key_password(
+    config_path: Option<&str>,
+    key_directory: Option<&str>,
+) -> BindingResult<String> {
+    let existing = resolve_private_key_password(config_path, key_directory, None)?;
+    if !existing.is_empty() {
+        return Ok(existing);
+    }
+
+    let password = generate_private_key_password_value();
+    if truthy_env_var("JACS_SAVE_PASSWORD_FILE") {
+        let (resolved_key_directory, _agent_id) =
+            resolve_password_context(config_path, key_directory)?;
+        persist_password_file(&resolved_key_directory, &password)?;
+    }
+
+    Ok(password)
 }
 
 /// Create a JACS configuration JSON string.

@@ -44,6 +44,104 @@ impl fmt::Display for KeyResolutionSource {
     }
 }
 
+/// Network capabilities that require explicit opt-in.
+///
+/// JACS keeps network access disabled by default. Callers must set either the
+/// capability-specific environment variable or the umbrella
+/// `JACS_ALLOW_NETWORK=true` override before any network activity is permitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NetworkCapability {
+    DnsLookup,
+    RemoteKeyFetch,
+    RegistryLookup,
+    RemoteSchemaFetch,
+    JwksFetch,
+    AgentCardFetch,
+}
+
+impl NetworkCapability {
+    pub fn env_var(self) -> &'static str {
+        match self {
+            NetworkCapability::DnsLookup => "JACS_ALLOW_DNS",
+            NetworkCapability::RemoteKeyFetch => "JACS_ALLOW_REMOTE_KEY_FETCH",
+            NetworkCapability::RegistryLookup => "JACS_ALLOW_REGISTRY",
+            NetworkCapability::RemoteSchemaFetch => "JACS_ALLOW_REMOTE_SCHEMA_FETCH",
+            NetworkCapability::JwksFetch => "JACS_ALLOW_JWKS_FETCH",
+            NetworkCapability::AgentCardFetch => "JACS_ALLOW_AGENT_CARD_FETCH",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            NetworkCapability::DnsLookup => "DNS lookup",
+            NetworkCapability::RemoteKeyFetch => "remote public-key fetch",
+            NetworkCapability::RegistryLookup => "registry lookup",
+            NetworkCapability::RemoteSchemaFetch => "remote schema fetch",
+            NetworkCapability::JwksFetch => "JWKS fetch",
+            NetworkCapability::AgentCardFetch => "A2A Agent Card fetch",
+        }
+    }
+}
+
+impl fmt::Display for NetworkCapability {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.description())
+    }
+}
+
+impl FromStr for NetworkCapability {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "dns" | "dns_lookup" => Ok(NetworkCapability::DnsLookup),
+            "remote_key_fetch" | "key_fetch" | "public_key_fetch" | "registry_key_fetch" => {
+                Ok(NetworkCapability::RemoteKeyFetch)
+            }
+            "registry" | "registry_lookup" => Ok(NetworkCapability::RegistryLookup),
+            "schema" | "schema_fetch" | "remote_schema_fetch" => {
+                Ok(NetworkCapability::RemoteSchemaFetch)
+            }
+            "jwks" | "jwks_fetch" => Ok(NetworkCapability::JwksFetch),
+            "agent_card" | "agent_card_fetch" | "a2a_discovery" | "agent_discovery" => {
+                Ok(NetworkCapability::AgentCardFetch)
+            }
+            other => Err(format!(
+                "Unknown network capability '{}'. Valid values are: dns, remote_key_fetch, registry, remote_schema_fetch, jwks, agent_card_fetch",
+                other
+            )),
+        }
+    }
+}
+
+fn env_var_truthy(key: &str) -> bool {
+    match get_env_var(key, false) {
+        Ok(Some(value)) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        _ => false,
+    }
+}
+
+/// Returns whether the requested network capability is explicitly allowed.
+pub fn is_network_access_allowed(capability: NetworkCapability) -> bool {
+    env_var_truthy("JACS_ALLOW_NETWORK") || env_var_truthy(capability.env_var())
+}
+
+/// Enforce explicit opt-in before any network access occurs.
+pub fn ensure_network_access(capability: NetworkCapability) -> Result<(), JacsError> {
+    if is_network_access_allowed(capability) {
+        return Ok(());
+    }
+
+    Err(JacsError::ConfigError(format!(
+        "{} is disabled by default. Set {}=true to allow it, or JACS_ALLOW_NETWORK=true to allow all JACS network access.",
+        capability.description(),
+        capability.env_var(),
+    )))
+}
+
 impl FromStr for KeyResolutionSource {
     type Err = String;
 
@@ -165,6 +263,13 @@ Environment Variables Supported:
 - JACS_DNS_STRICT
 - JACS_DNS_REQUIRED
 - JACS_KEY_RESOLUTION (comma-separated: local,dns,registry - controls key lookup order)
+- JACS_ALLOW_NETWORK
+- JACS_ALLOW_DNS
+- JACS_ALLOW_REMOTE_KEY_FETCH
+- JACS_ALLOW_REGISTRY
+- JACS_ALLOW_REMOTE_SCHEMA_FETCH
+- JACS_ALLOW_JWKS_FETCH
+- JACS_ALLOW_AGENT_CARD_FETCH
 
 Usage:
 ```rust
@@ -1447,9 +1552,19 @@ mod tests {
             "JACS_DNS_VALIDATE",
             "JACS_DNS_STRICT",
             "JACS_DNS_REQUIRED",
+            "JACS_ALLOW_NETWORK",
+            "JACS_ALLOW_DNS",
+            "JACS_ALLOW_REMOTE_KEY_FETCH",
+            "JACS_ALLOW_REGISTRY",
+            "JACS_ALLOW_REMOTE_SCHEMA_FETCH",
+            "JACS_ALLOW_JWKS_FETCH",
+            "JACS_ALLOW_AGENT_CARD_FETCH",
         ];
         for var in vars {
             let _ = clear_env_var(var);
+            unsafe {
+                std::env::remove_var(var);
+            }
         }
     }
 
@@ -2221,5 +2336,74 @@ mod tests {
         );
 
         let _ = clear_env_var("JACS_KEY_RESOLUTION");
+    }
+
+    #[test]
+    fn test_network_capability_from_str() {
+        assert_eq!(
+            NetworkCapability::from_str("dns").unwrap(),
+            NetworkCapability::DnsLookup
+        );
+        assert_eq!(
+            NetworkCapability::from_str("public_key_fetch").unwrap(),
+            NetworkCapability::RemoteKeyFetch
+        );
+        assert_eq!(
+            NetworkCapability::from_str("registry").unwrap(),
+            NetworkCapability::RegistryLookup
+        );
+        assert_eq!(
+            NetworkCapability::from_str("schema_fetch").unwrap(),
+            NetworkCapability::RemoteSchemaFetch
+        );
+        assert_eq!(
+            NetworkCapability::from_str("jwks").unwrap(),
+            NetworkCapability::JwksFetch
+        );
+        assert_eq!(
+            NetworkCapability::from_str("agent_card_fetch").unwrap(),
+            NetworkCapability::AgentCardFetch
+        );
+        assert!(NetworkCapability::from_str("unknown").is_err());
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_network_access_defaults_to_disabled() {
+        clear_jacs_env_vars();
+
+        assert!(!is_network_access_allowed(NetworkCapability::DnsLookup));
+        let err = ensure_network_access(NetworkCapability::DnsLookup).unwrap_err();
+        assert!(err.to_string().contains("JACS_ALLOW_DNS"));
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_network_access_capability_override() {
+        clear_jacs_env_vars();
+        set_env_var("JACS_ALLOW_JWKS_FETCH", "true").unwrap();
+
+        assert!(is_network_access_allowed(NetworkCapability::JwksFetch));
+        assert!(ensure_network_access(NetworkCapability::JwksFetch).is_ok());
+        assert!(!is_network_access_allowed(
+            NetworkCapability::RemoteKeyFetch
+        ));
+
+        let _ = clear_env_var("JACS_ALLOW_JWKS_FETCH");
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn test_network_access_global_override() {
+        clear_jacs_env_vars();
+        set_env_var("JACS_ALLOW_NETWORK", "true").unwrap();
+
+        assert!(is_network_access_allowed(NetworkCapability::DnsLookup));
+        assert!(is_network_access_allowed(
+            NetworkCapability::RemoteSchemaFetch
+        ));
+        assert!(ensure_network_access(NetworkCapability::AgentCardFetch).is_ok());
+
+        let _ = clear_env_var("JACS_ALLOW_NETWORK");
     }
 }

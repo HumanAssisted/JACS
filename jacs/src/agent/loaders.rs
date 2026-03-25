@@ -1,6 +1,7 @@
 use crate::agent::Agent;
 use crate::agent::boilerplate::BoilerPlate;
 use crate::agent::security::SecurityTraits;
+use crate::config::{NetworkCapability, ensure_network_access};
 // encrypt/decrypt now use _with_password variants via agent-scoped resolution
 use crate::error::JacsError;
 use crate::rate_limit::RateLimiter;
@@ -969,6 +970,8 @@ pub fn fetch_remote_public_key(agent_id: &str, version: &str) -> Result<PublicKe
 
     let url = build_remote_key_lookup_url(&base_url, agent_id, version);
 
+    ensure_network_access(NetworkCapability::RemoteKeyFetch)?;
+
     info!(
         "Fetching public key from remote service: agent_id={}, version={}",
         agent_id, version
@@ -1334,6 +1337,7 @@ CDEF
             // Disable retries for faster test execution
             // SAFETY: This test is run in isolation and the env var is cleaned up after
             unsafe {
+                std::env::set_var("JACS_ALLOW_REMOTE_KEY_FETCH", "true");
                 std::env::set_var("JACS_KEYS_BASE_URL", "http://localhost:1");
                 std::env::set_var("JACS_KEY_FETCH_RETRIES", "0");
             }
@@ -1345,6 +1349,7 @@ CDEF
 
             // Clean up first to ensure it happens even if assertions fail
             unsafe {
+                std::env::remove_var("JACS_ALLOW_REMOTE_KEY_FETCH");
                 std::env::remove_var("JACS_KEYS_BASE_URL");
                 std::env::remove_var("JACS_KEY_FETCH_RETRIES");
             }
@@ -1371,6 +1376,7 @@ CDEF
             // Disable retries for faster test execution
             // SAFETY: This test is run in isolation
             unsafe {
+                std::env::set_var("JACS_ALLOW_REMOTE_KEY_FETCH", "true");
                 std::env::remove_var("JACS_KEYS_BASE_URL");
                 std::env::remove_var("HAI_KEYS_BASE_URL");
                 std::env::set_var("JACS_KEY_FETCH_RETRIES", "0");
@@ -1384,6 +1390,7 @@ CDEF
 
             // Clean up
             unsafe {
+                std::env::remove_var("JACS_ALLOW_REMOTE_KEY_FETCH");
                 std::env::remove_var("JACS_KEY_FETCH_RETRIES");
             }
 
@@ -1403,6 +1410,7 @@ CDEF
             // Test that JACS_KEY_FETCH_RETRIES is respected
             // SAFETY: This test is run in isolation
             unsafe {
+                std::env::set_var("JACS_ALLOW_REMOTE_KEY_FETCH", "true");
                 std::env::set_var("JACS_KEY_FETCH_RETRIES", "1");
                 std::env::set_var("JACS_KEYS_BASE_URL", "http://localhost:1");
             }
@@ -1416,6 +1424,7 @@ CDEF
 
             // Clean up
             unsafe {
+                std::env::remove_var("JACS_ALLOW_REMOTE_KEY_FETCH");
                 std::env::remove_var("JACS_KEY_FETCH_RETRIES");
                 std::env::remove_var("JACS_KEYS_BASE_URL");
             }

@@ -61,6 +61,11 @@ SAMPLE_CARD_NO_JACS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _allow_agent_card_fetch(monkeypatch):
+    monkeypatch.setenv("JACS_ALLOW_AGENT_CARD_FETCH", "true")
+
+
 def _mock_response(status_code: int = 200, json_data=None, text: str = ""):
     """Build a mock httpx.Response."""
     resp = MagicMock(spec=httpx.Response)

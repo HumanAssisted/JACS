@@ -10,7 +10,7 @@
 //
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { JacsAgent } from './index.js';
+import { JacsAgent, ensureNetworkAccess } from './index.js';
 import { JacsClient } from './client.js';
 
 // ---------------------------------------------------------------------------
@@ -868,6 +868,7 @@ export async function handleJacsMcpToolCall(
       }
 
       case 'fetch_agent_key': {
+        ensureNetworkAccess('remote_key_fetch');
         const baseUrl = resolveKeysBaseUrl(args.base_url);
         const byHash = typeof args.public_key_hash === 'string' ? args.public_key_hash.trim() : '';
         let lookupUrl: string;

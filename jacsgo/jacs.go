@@ -26,6 +26,7 @@ int jacs_agent_verify_document(JacsAgentHandle handle, const char* document_stri
 int jacs_agent_verify_document_by_id(JacsAgentHandle handle, const char* document_id);
 int jacs_agent_reencrypt_key(JacsAgentHandle handle, const char* old_password, const char* new_password);
 char* jacs_agent_get_json(JacsAgentHandle handle);
+char* jacs_agent_get_public_key_pem(JacsAgentHandle handle);
 
 // Legacy global singleton API - Deprecated, use JacsAgent instead
 int jacs_load(const char* config_path);
@@ -433,6 +434,21 @@ func (a *JacsAgent) GetJSON() (string, error) {
 	result := C.jacs_agent_get_json(a.handle)
 	if result == nil {
 		return "", errors.New("failed to get agent JSON (agent may not be loaded)")
+	}
+	defer C.jacs_free_string(result)
+
+	return C.GoString(result), nil
+}
+
+// GetPublicKeyPEM returns the agent's public key in PEM format.
+func (a *JacsAgent) GetPublicKeyPEM() (string, error) {
+	if a.handle == nil {
+		return "", errors.New("JacsAgent is closed")
+	}
+
+	result := C.jacs_agent_get_public_key_pem(a.handle)
+	if result == nil {
+		return "", errors.New("failed to get public key PEM")
 	}
 	defer C.jacs_free_string(result)
 

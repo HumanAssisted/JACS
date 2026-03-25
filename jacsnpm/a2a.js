@@ -447,6 +447,32 @@ class JACSA2AIntegration {
         };
     }
     generateWellKnownDocuments(agentCard, jwsSignature, publicKeyB64, agentData) {
+        const nativeGenerate = this.client._agent?.generateWellKnownDocumentsSync;
+        if (typeof nativeGenerate === 'function') {
+            try {
+                const nativeJson = nativeGenerate.call(this.client._agent);
+                const nativePairs = JSON.parse(nativeJson);
+                const documents = {};
+                for (const item of nativePairs) {
+                    if (item && typeof item.path === 'string' && item.document && typeof item.document === 'object') {
+                        documents[item.path] = item.document;
+                    }
+                }
+                const cardObj = JSON.parse(JSON.stringify(agentCard));
+                const nativeCard = documents['/.well-known/agent-card.json'];
+                if (nativeCard?.signatures && cardObj.signatures === undefined) {
+                    cardObj.signatures = nativeCard.signatures;
+                }
+                if (jwsSignature) {
+                    cardObj.signatures = [{ jws: jwsSignature }];
+                }
+                documents['/.well-known/agent-card.json'] = cardObj;
+                return documents;
+            }
+            catch {
+                // Fall through to wrapper generation for mock clients and older bindings.
+            }
+        }
         const documents = {};
         const keyAlgorithm = agentData.keyAlgorithm || 'pq2025';
         const postQuantum = /(pq2025|ml-dsa)/i.test(keyAlgorithm);

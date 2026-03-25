@@ -942,6 +942,34 @@ class JACSA2AIntegration:
         Returns:
             Dictionary mapping paths to document contents
         """
+        native_generate = _get_configured_callable(
+            getattr(self.client, "_agent", None),
+            "generate_well_known_documents",
+        )
+        if native_generate is not None:
+            try:
+                native_pairs = json.loads(native_generate())
+                documents = {
+                    item["path"]: item["document"]
+                    for item in native_pairs
+                    if isinstance(item, dict)
+                    and isinstance(item.get("path"), str)
+                    and "document" in item
+                }
+                card_dict = self.agent_card_to_dict(agent_card)
+                native_card = documents.get("/.well-known/agent-card.json")
+                if isinstance(native_card, dict) and "signatures" in native_card:
+                    card_dict.setdefault("signatures", native_card["signatures"])
+                if jws_signature:
+                    card_dict["signatures"] = [{"jws": jws_signature}]
+                documents["/.well-known/agent-card.json"] = card_dict
+                return documents
+            except Exception:
+                logger.debug(
+                    "Falling back to wrapper well-known generation; native helper unavailable",
+                    exc_info=True,
+                )
+
         documents = {}
         key_algorithm = agent_data.get("keyAlgorithm", "pq2025")
         post_quantum = any(

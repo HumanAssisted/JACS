@@ -1,3 +1,4 @@
+use crate::config::{NetworkCapability, ensure_network_access};
 use crate::crypt::hash::{hash_bytes_raw, hash_public_key};
 use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
@@ -187,6 +188,7 @@ pub fn emit_cloudflare_curl(rr: &DnsRecord, zone_id_hint: &str) -> String {
 pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+    ensure_network_access(NetworkCapability::DnsLookup)?;
     let mut opts = ResolverOpts::default();
     opts.validate = true;
     let resolver =
@@ -218,6 +220,7 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
 pub fn resolve_txt_insecure(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+    ensure_network_access(NetworkCapability::DnsLookup)?;
     let mut opts = ResolverOpts::default();
     opts.validate = false; // allow unsigned answers
     let resolver =
@@ -454,6 +457,7 @@ pub fn verify_registry_registration_sync(
             api_url
         )));
     }
+    ensure_network_access(NetworkCapability::RegistryLookup)?;
     let url = format!("{}/v1/agents/{}", api_url.trim_end_matches('/'), agent_id);
 
     // Build blocking HTTP client with TLS

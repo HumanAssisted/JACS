@@ -521,40 +521,6 @@ func ReencryptKey(oldPassword, newPassword string) error {
 		return ErrAgentNotLoaded
 	}
 
-	// Read config to find key path
-	configPath := "./jacs.config.json"
-	if agentInfo != nil && agentInfo.ConfigPath != "" {
-		configPath = agentInfo.ConfigPath
-	}
-
-	configData, err := os.ReadFile(configPath)
-	if err != nil {
-		return NewSimpleError("reencrypt_key", err)
-	}
-
-	var config map[string]interface{}
-	if err := json.Unmarshal(configData, &config); err != nil {
-		return NewSimpleError("reencrypt_key", err)
-	}
-
-	keyDir := "./jacs_keys"
-	if dir, ok := config["jacs_key_directory"].(string); ok && dir != "" {
-		keyDir = dir
-	}
-	keyFile := "jacs.private.pem.enc"
-	if file, ok := config["jacs_agent_private_key_filename"].(string); ok && file != "" {
-		keyFile = file
-	}
-	keyPath := keyDir + "/" + keyFile
-
-	// Read encrypted key
-	encryptedData, err := os.ReadFile(keyPath)
-	if err != nil {
-		return NewSimpleErrorWithPath("reencrypt_key", keyPath, err)
-	}
-
-	_ = encryptedData
-
 	return globalAgent.ReencryptKey(oldPassword, newPassword)
 }
 
@@ -579,14 +545,7 @@ func GetPublicKeyPEM() (string, error) {
 		return "", ErrAgentNotLoaded
 	}
 
-	// Read public key file
-	keyPath := "./jacs_keys/jacs.public.pem"
-	data, err := os.ReadFile(keyPath)
-	if err != nil {
-		return "", NewSimpleErrorWithPath("get_public_key", keyPath, ErrKeyNotFound)
-	}
-
-	return string(data), nil
+	return globalAgent.GetPublicKeyPEM()
 }
 
 // GetAgentInfo returns information about the currently loaded agent.

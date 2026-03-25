@@ -70,12 +70,6 @@ function resolveStrict(explicit) {
     const envStrict = process.env.JACS_STRICT_MODE;
     return envStrict === 'true' || envStrict === '1';
 }
-function resolveConfigRelativePath(configPath, candidate) {
-    if (path.isAbsolute(candidate)) {
-        return candidate;
-    }
-    return path.resolve(path.dirname(configPath), candidate);
-}
 function resolveCreatePaths(configPath, dataDirectory, keyDirectory) {
     const resolvedConfigPath = configPath ?? './jacs.config.json';
     const configDir = path.dirname(path.resolve(resolvedConfigPath));
@@ -86,32 +80,8 @@ function resolveCreatePaths(configPath, dataDirectory, keyDirectory) {
         keyDirectory: keyDirectory ?? (configDir === cwd ? './jacs_keys' : path.join(configDir, 'jacs_keys')),
     };
 }
-function readSavedPassword(configPath) {
-    try {
-        const resolvedConfigPath = path.resolve(configPath);
-        const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
-        const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
-        const passwordPath = path.join(keyDir, '.jacs_password');
-        if (!fs.existsSync(passwordPath)) {
-            return '';
-        }
-        return fs.readFileSync(passwordPath, 'utf8').trim();
-    }
-    catch {
-        return '';
-    }
-}
-function resolvePrivateKeyPassword(configPath, explicitPassword) {
-    if (explicitPassword && explicitPassword.length > 0) {
-        return explicitPassword;
-    }
-    if (process.env.JACS_PRIVATE_KEY_PASSWORD) {
-        return process.env.JACS_PRIVATE_KEY_PASSWORD;
-    }
-    if (configPath) {
-        return readSavedPassword(configPath);
-    }
-    return '';
+function resolvePrivateKeyPassword(configPath, keyDirectory, explicitPassword) {
+    return (0, index_1.resolvePrivateKeyPassword)(configPath ? path.resolve(configPath) : null, keyDirectory ?? null, explicitPassword ?? null);
 }
 function configurePrivateKeyPassword(agent, password) {
     agent.setPrivateKeyPassword(password ?? null);
@@ -205,56 +175,8 @@ function extractAttachmentsFromDocument(doc) {
         content: (f.contents || f.content) ? Buffer.from(f.contents || f.content, 'base64') : undefined,
     }));
 }
-function ensurePassword(keyDirectory) {
-    let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
-    if (!password) {
-        const crypto = require('crypto');
-        const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const lower = 'abcdefghijklmnopqrstuvwxyz';
-        const digits = '0123456789';
-        const special = '!@#$%^&*()-_=+';
-        const all = upper + lower + digits + special;
-        password =
-            upper[crypto.randomInt(upper.length)] +
-                lower[crypto.randomInt(lower.length)] +
-                digits[crypto.randomInt(digits.length)] +
-                special[crypto.randomInt(special.length)];
-        for (let i = 4; i < 32; i++) {
-            password += all[crypto.randomInt(all.length)];
-        }
-        const persistPassword = process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
-            process.env.JACS_SAVE_PASSWORD_FILE === 'true';
-        if (persistPassword) {
-            const keysDir = keyDirectory || './jacs_keys';
-            fs.mkdirSync(keysDir, { recursive: true });
-            const pwPath = path.join(keysDir, '.jacs_password');
-            fs.writeFileSync(pwPath, password, { mode: 0o600 });
-        }
-    }
-    return password;
-}
-function writeKeyDirectoryIgnoreFiles(keyDir) {
-    const ignoreContent = '# JACS private key material -- do NOT commit or ship\n' +
-        '*.pem\n*.pem.enc\n.jacs_password\n*.key\n*.key.enc\n';
-    fs.mkdirSync(keyDir, { recursive: true });
-    const gitignore = path.join(keyDir, '.gitignore');
-    if (!fs.existsSync(gitignore)) {
-        try {
-            fs.writeFileSync(gitignore, ignoreContent);
-        }
-        catch (_) {
-            // Best-effort; don't fail agent creation.
-        }
-    }
-    const dockerignore = path.join(keyDir, '.dockerignore');
-    if (!fs.existsSync(dockerignore)) {
-        try {
-            fs.writeFileSync(dockerignore, ignoreContent);
-        }
-        catch (_) {
-            // Best-effort; don't fail agent creation.
-        }
-    }
+function ensurePassword(configPath, keyDirectory) {
+    return (0, index_1.quickstartPrivateKeyPassword)(configPath ? path.resolve(configPath) : null, keyDirectory ?? null);
 }
 // =============================================================================
 // JacsClient
@@ -281,8 +203,7 @@ class JacsClient {
             await client.load(configPath);
             return client;
         }
-        const password = ensurePassword(paths.keyDirectory);
-        writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
+        const password = ensurePassword(configPath, paths.keyDirectory);
         const algo = options?.algorithm || 'pq2025';
         await client.create({
             name,
@@ -308,8 +229,7 @@ class JacsClient {
             client.loadSync(configPath);
             return client;
         }
-        const password = ensurePassword(paths.keyDirectory);
-        writeKeyDirectoryIgnoreFiles(paths.keyDirectory || './jacs_keys');
+        const password = ensurePassword(configPath, paths.keyDirectory);
         const algo = options?.algorithm || 'pq2025';
         client.createSync({
             name,
@@ -383,7 +303,7 @@ class JacsClient {
         if (!fs.existsSync(resolvedConfigPath)) {
             throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
         }
-        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
+        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath, null, null);
         this.agent = new index_1.JacsAgent();
         configurePrivateKeyPassword(this.agent, resolvedPassword || null);
         const infoJson = await this.agent.loadWithInfo(resolvedConfigPath);
@@ -399,7 +319,7 @@ class JacsClient {
         if (!fs.existsSync(resolvedConfigPath)) {
             throw new Error(`Config file not found: ${requestedPath}\nRun 'jacs create' to create a new agent.`);
         }
-        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath);
+        const resolvedPassword = resolvePrivateKeyPassword(resolvedConfigPath, null, null);
         this.agent = new index_1.JacsAgent();
         configurePrivateKeyPassword(this.agent, resolvedPassword || null);
         const infoJson = this.agent.loadWithInfoSync(resolvedConfigPath);
@@ -407,7 +327,7 @@ class JacsClient {
         return this.info;
     }
     async create(options) {
-        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
+        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.keyDirectory ?? null, options.password ?? null);
         if (!resolvedPassword) {
             throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
         }
@@ -428,7 +348,7 @@ class JacsClient {
         return this.info;
     }
     createSync(options) {
-        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
+        const resolvedPassword = resolvePrivateKeyPassword(options.configPath ?? null, options.keyDirectory ?? null, options.password ?? null);
         if (!resolvedPassword) {
             throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
         }

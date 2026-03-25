@@ -82,7 +82,6 @@ from .types import (
 )
 from ._runtime import (
     EphemeralAgentAdapter as _EphemeralAgentAdapter,
-    write_key_directory_ignore_files as _write_key_directory_ignore_files,
 )
 
 # Import the Rust bindings
@@ -97,6 +96,7 @@ try:
     from .jacs import verify_document_standalone as _verify_document_standalone
     from .jacs import verify_agent_dns as _verify_agent_dns
     from .jacs import audit as _audit
+    from .jacs import resolve_private_key_password as _resolve_private_key_password_native
 except ImportError:
     # Fallback for when running directly
     import jacs as _jacs_module
@@ -110,6 +110,7 @@ except ImportError:
     _is_trusted = _jacs_module.is_trusted
     _get_trusted_agent = _jacs_module.get_trusted_agent
     _audit = _jacs_module.audit
+    _resolve_private_key_password_native = _jacs_module.resolve_private_key_password
 
 # Global agent instance for simplified API
 _global_agent: Optional[JacsAgent] = None
@@ -168,17 +169,11 @@ def _adopt_client_state(client) -> AgentInfo:
     return _agent_info
 
 
-def _resolve_config_relative_path(config_path: str, candidate: str) -> str:
-    if os.path.isabs(candidate):
-        return candidate
-    return os.path.abspath(os.path.join(os.path.dirname(config_path), candidate))
-
-
 def _resolve_create_directories(
     config_path: str,
     data_directory: str = "./jacs_data",
     key_directory: str = "./jacs_keys",
-) -> tuple[str, str]:
+    ) -> tuple[str, str]:
     config_dir = os.path.dirname(os.path.abspath(config_path))
     cwd = os.path.abspath(os.getcwd())
     if config_dir != cwd:
@@ -190,33 +185,24 @@ def _resolve_create_directories(
 
 
 def _read_saved_password(config_path: str) -> str:
-    try:
-        resolved_config_path = os.path.abspath(config_path)
-        with open(resolved_config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        key_dir = _resolve_config_relative_path(
-            resolved_config_path, config.get("jacs_key_directory", "./jacs_keys")
-        )
-        password_path = os.path.join(key_dir, ".jacs_password")
-        if not os.path.exists(password_path):
-            return ""
-        with open(password_path, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
+    return _resolve_private_key_password_native(
+        config_path=os.path.abspath(config_path),
+        key_directory=None,
+        explicit_password=None,
+    )
 
 
 def _resolve_private_key_password(
-    config_path: Optional[str] = None, explicit_password: Optional[str] = None
+    config_path: Optional[str] = None,
+    explicit_password: Optional[str] = None,
+    key_directory: Optional[str] = None,
 ) -> str:
-    if explicit_password:
-        return explicit_password
-    env_password = os.environ.get("JACS_PRIVATE_KEY_PASSWORD", "")
-    if env_password:
-        return env_password
-    if config_path:
-        return _read_saved_password(config_path)
-    return ""
+    resolved_config_path = os.path.abspath(config_path) if config_path else None
+    return _resolve_private_key_password_native(
+        config_path=resolved_config_path,
+        key_directory=key_directory,
+        explicit_password=explicit_password,
+    )
 
 
 def _call_with_agent_password(func, *args, **kwargs):
@@ -338,7 +324,7 @@ def create(
     )
 
     # Resolve password
-    resolved_password = _resolve_private_key_password(config_path, password)
+    resolved_password = _resolve_private_key_password(config_path, password, key_directory)
     if not resolved_password:
         raise ConfigError(
             "Password is required for agent creation. "
@@ -443,8 +429,9 @@ def quickstart(
     If a config file already exists, loads the existing agent. Otherwise,
     creates a new agent with keys on disk and a minimal config file.
 
-    If JACS_PRIVATE_KEY_PASSWORD is not set, a secure password is auto-generated.
-    Set JACS_SAVE_PASSWORD_FILE=true to also persist it to ./jacs_keys/.jacs_password.
+    If JACS_PRIVATE_KEY_PASSWORD is not set, the native Rust layer
+    auto-generates a secure password. Set JACS_SAVE_PASSWORD_FILE=true
+    to also persist it to ./jacs_keys/.jacs_password.
 
     Example:
         import jacs.simple as jacs
@@ -1136,40 +1123,12 @@ def get_public_key() -> str:
     if _agent_info is None or _global_agent is None:
         raise AgentNotLoadedError("No agent loaded")
 
-    # Try native binding first (available on SimpleAgent / _EphemeralAgentAdapter).
-    # Falls back to file reading only from the already-resolved metadata path.
     try:
         return _global_agent.get_public_key_pem()
-    except AttributeError:
-        pass
-
-    # Fallback: read from key file and PEM-armor binary keys so the output
-    # is safe to pass to trust_agent_with_key().
-    try:
-        key_candidates: List[str] = []
-        if _agent_info.public_key_path:
-            key_candidates.append(_agent_info.public_key_path)
-
-        for candidate in key_candidates:
-            if os.path.exists(candidate):
-                with open(candidate, "rb") as f:
-                    raw = f.read()
-                try:
-                    return raw.decode("utf-8")
-                except UnicodeDecodeError:
-                    import base64
-                    b64 = base64.b64encode(raw).decode("ascii")
-                    return (
-                        "-----BEGIN PUBLIC KEY-----\n"
-                        + b64
-                        + "\n-----END PUBLIC KEY-----\n"
-                    )
-
-        raise JacsError(f"Could not find public key file in: {key_candidates}")
-    except JacsError:
-        raise
+    except AttributeError as e:
+        raise JacsError(f"Native public key export unavailable: {e}")
     except Exception as e:
-        raise JacsError(f"Failed to read public key: {e}")
+        raise JacsError(f"Failed to get public key: {e}")
 
 
 def export_agent() -> str:

@@ -633,6 +633,26 @@ pub extern "C" fn jacs_agent_get_json(handle: *mut JacsAgentHandle) -> *mut c_ch
     }
 }
 
+/// Get the agent's public key as PEM text.
+/// Returns a C string that must be freed with jacs_free_string(), or null on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_get_public_key_pem(handle: *mut JacsAgentHandle) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+
+    let handle_ref = unsafe { &*handle };
+    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+
+    match wrapper.get_public_key_pem() {
+        Ok(result) => match CString::new(result) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        },
+        Err(_) => ptr::null_mut(),
+    }
+}
+
 // ============================================================================
 // Attestation API (feature-gated)
 // ============================================================================

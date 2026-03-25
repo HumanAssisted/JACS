@@ -1,3 +1,4 @@
+use crate::config::{NetworkCapability, ensure_network_access};
 use crate::error::JacsError;
 use crate::storage::MultiStorage;
 use jsonschema::Retrieve;
@@ -478,6 +479,7 @@ impl Retrieve for EmbeddedSchemaResolver {
 fn get_remote_schema(url: &str) -> Result<Arc<Value>, JacsError> {
     // Check if the URL is from an allowed domain
     is_schema_url_allowed(url)?;
+    ensure_network_access(NetworkCapability::RemoteSchemaFetch)?;
 
     let accept_invalid = should_accept_invalid_certs();
     let client = reqwest::blocking::Client::builder()

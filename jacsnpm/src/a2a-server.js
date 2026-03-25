@@ -26,9 +26,6 @@
 const {
   JACSA2AIntegration,
   A2AAgentSkill,
-  JACS_EXTENSION_URI,
-  A2A_PROTOCOL_VERSION,
-  sha256,
 } = require('./a2a');
 
 /**
@@ -84,53 +81,10 @@ function buildWellKnownDocuments(client, options = {}) {
 
   // 2. Extension descriptor
   const extensionJson = integration.createExtensionDescriptor();
-
-  // 3. JACS Agent Descriptor
-  const postQuantum = /(pq2025|ml-dsa)/i.test(
-    agentData.keyAlgorithm
-  );
-  const jacsAgentJson = {
-    jacsVersion: '1.0',
-    agentId: agentData.jacsId,
-    agentVersion: agentData.jacsVersion,
-    agentType: agentData.jacsAgentType,
-    keyAlgorithm: agentData.keyAlgorithm,
-    capabilities: {
-      signing: true,
-      verification: true,
-      postQuantum,
-    },
-    schemas: {
-      agent: 'https://jacs.ai/schemas/agent/v1/agent.schema.json',
-      header: 'https://jacs.ai/schemas/header/v1/header.schema.json',
-      signature:
-        'https://jacs.ai/schemas/components/signature/v1/signature.schema.json',
-    },
-    endpoints: {
-      verify: '/jacs/verify',
-      sign: '/jacs/sign',
-      agent: '/jacs/agent',
-    },
-  };
-
-  // 4. JWKS placeholder (real keys require public key export)
-  const jwksJson = { keys: [] };
-
-  // 5. JACS Public Key placeholder
-  const pubkeyJson = {
-    algorithm: agentData.keyAlgorithm,
-    agentId: agentData.jacsId,
-    agentVersion: agentData.jacsVersion,
-    timestamp: new Date().toISOString(),
-  };
-
-  return {
-    '/.well-known/agent-card.json': cardJson,
-    '/.well-known/jacs-extension.json': extensionJson,
-    '/.well-known/jacs-agent.json': jacsAgentJson,
-    '/.well-known/jwks.json': jwksJson,
-    '/.well-known/jacs-pubkey.json': pubkeyJson,
-  };
+  const documents = integration.generateWellKnownDocuments(cardJson, '', '', agentData);
+  documents['/.well-known/agent-card.json'] = cardJson;
+  documents['/.well-known/jacs-extension.json'] = extensionJson;
+  return documents;
 }
 
 /**

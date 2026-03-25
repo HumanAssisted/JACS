@@ -24,18 +24,11 @@ pub fn jacs_to_yaml(json_str: &str) -> Result<String, JacsError> {
     })
 }
 
-/// Convert a YAML string to pretty-printed JSON.
+/// Parse YAML into a `serde_json::Value`, rejecting bare scalars.
 ///
-/// Parses the YAML input into a `serde_json::Value`, then serializes it as
-/// pretty-printed JSON. This is the human-friendly output; for verification
-/// purposes, use [`yaml_to_jacs_canonical`].
-///
-/// # Errors
-///
-/// Returns `JacsError::ConversionError` if:
-/// - The input is not valid YAML
-/// - The YAML deserializes to a non-object/non-array top-level value (bare scalar)
-pub fn yaml_to_jacs(yaml_str: &str) -> Result<String, JacsError> {
+/// Shared helper used by [`yaml_to_jacs`] and [`yaml_to_jacs_canonical`] to
+/// avoid duplicating the YAML parsing and validation logic.
+fn parse_yaml_value(yaml_str: &str) -> Result<serde_json::Value, JacsError> {
     let value: serde_json::Value = serde_yaml_ng::from_str(yaml_str)
         .map_err(|e| JacsError::conversion("YAML", "JSON", format!("invalid YAML input: {}", e)))?;
 
@@ -48,6 +41,22 @@ pub fn yaml_to_jacs(yaml_str: &str) -> Result<String, JacsError> {
         ));
     }
 
+    Ok(value)
+}
+
+/// Convert a YAML string to pretty-printed JSON.
+///
+/// Parses the YAML input into a `serde_json::Value`, then serializes it as
+/// pretty-printed JSON. This is the human-friendly output; for verification
+/// purposes, use [`yaml_to_jacs_canonical`].
+///
+/// # Errors
+///
+/// Returns `JacsError::ConversionError` if:
+/// - The input is not valid YAML
+/// - The YAML deserializes to a non-object/non-array top-level value (bare scalar)
+pub fn yaml_to_jacs(yaml_str: &str) -> Result<String, JacsError> {
+    let value = parse_yaml_value(yaml_str)?;
     serde_json::to_string_pretty(&value).map_err(|e| {
         JacsError::conversion("YAML", "JSON", format!("JSON serialization failed: {}", e))
     })
@@ -62,17 +71,7 @@ pub fn yaml_to_jacs(yaml_str: &str) -> Result<String, JacsError> {
 ///
 /// Same as [`yaml_to_jacs`].
 pub fn yaml_to_jacs_canonical(yaml_str: &str) -> Result<String, JacsError> {
-    let value: serde_json::Value = serde_yaml_ng::from_str(yaml_str)
-        .map_err(|e| JacsError::conversion("YAML", "JSON", format!("invalid YAML input: {}", e)))?;
-
-    if !value.is_object() && !value.is_array() {
-        return Err(JacsError::conversion(
-            "YAML",
-            "JSON",
-            "YAML must deserialize to a JSON object or array, not a bare scalar",
-        ));
-    }
-
+    let value = parse_yaml_value(yaml_str)?;
     Ok(canonicalize_json(&value))
 }
 

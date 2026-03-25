@@ -623,6 +623,20 @@ describe('JACSTransportProxy', function () {
   // -------------------------------------------------------------------------
 
   describe('handleJacsMcpToolCall()', () => {
+    const previousAllowRemoteKeyFetch = process.env.JACS_ALLOW_REMOTE_KEY_FETCH;
+
+    before(() => {
+      process.env.JACS_ALLOW_REMOTE_KEY_FETCH = 'true';
+    });
+
+    after(() => {
+      if (previousAllowRemoteKeyFetch === undefined) {
+        delete process.env.JACS_ALLOW_REMOTE_KEY_FETCH;
+      } else {
+        process.env.JACS_ALLOW_REMOTE_KEY_FETCH = previousAllowRemoteKeyFetch;
+      }
+    });
+
     (available ? it : it.skip)('jacs_sign_document should sign data', async () => {
       const client = createMockJacsClient();
       const result = await mcpModule.handleJacsMcpToolCall(

@@ -744,7 +744,12 @@ mod tests {
     }
 
     // =========================================================================
-    // YAML/HTML email signing wrapper tests
+    // YAML/HTML email signing wrapper tests (conversion-related)
+    //
+    // These tests exercise the YAML/HTML format conversion integration with
+    // the email signing system. Run with:
+    //   cargo test -p jacs --features attestation -- sign_email_yaml
+    //   cargo test -p jacs --features attestation -- sign_email_html
     // =========================================================================
 
     #[test]

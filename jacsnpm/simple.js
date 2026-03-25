@@ -151,12 +151,6 @@ function resolveStrict(explicit) {
 function isStrict() {
     return strictMode;
 }
-function resolveConfigRelativePath(configPath, candidate) {
-    if (path.isAbsolute(candidate)) {
-        return candidate;
-    }
-    return path.resolve(path.dirname(configPath), candidate);
-}
 function resolveCreatePaths(configPath, dataDirectory, keyDirectory) {
     const resolvedConfigPath = configPath ?? './jacs.config.json';
     const configDir = path.dirname(path.resolve(resolvedConfigPath));
@@ -167,32 +161,8 @@ function resolveCreatePaths(configPath, dataDirectory, keyDirectory) {
         keyDirectory: keyDirectory ?? (configDir === cwd ? './jacs_keys' : path.join(configDir, 'jacs_keys')),
     };
 }
-function readSavedPassword(configPath) {
-    try {
-        const resolvedConfigPath = path.resolve(configPath);
-        const config = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf8'));
-        const keyDir = resolveConfigRelativePath(resolvedConfigPath, config.jacs_key_directory || './jacs_keys');
-        const passwordPath = path.join(keyDir, '.jacs_password');
-        if (!fs.existsSync(passwordPath)) {
-            return '';
-        }
-        return fs.readFileSync(passwordPath, 'utf8').trim();
-    }
-    catch {
-        return '';
-    }
-}
-function resolvePrivateKeyPassword(configPath, explicitPassword) {
-    if (explicitPassword && explicitPassword.length > 0) {
-        return explicitPassword;
-    }
-    if (process.env.JACS_PRIVATE_KEY_PASSWORD) {
-        return process.env.JACS_PRIVATE_KEY_PASSWORD;
-    }
-    if (configPath) {
-        return readSavedPassword(configPath);
-    }
-    return '';
+function resolvePrivateKeyPassword(configPath, keyDirectory, explicitPassword) {
+    return (0, index_1.resolvePrivateKeyPassword)(configPath ? path.resolve(configPath) : null, keyDirectory ?? null, explicitPassword ?? null);
 }
 function normalizeDocumentInput(document) {
     if (typeof document === 'string') {
@@ -410,60 +380,8 @@ function verifyImpl(signedDocument, agent, isSync) {
             .catch((e) => makeFailure(e));
     }
 }
-/**
- * Write .gitignore and .dockerignore in the key directory to prevent
- * accidental exposure of private keys and password files.
- */
-function writeKeyDirectoryIgnoreFiles(keyDir) {
-    const ignoreContent = '# JACS private key material -- do NOT commit or ship\n' +
-        '*.pem\n*.pem.enc\n.jacs_password\n*.key\n*.key.enc\n';
-    fs.mkdirSync(keyDir, { recursive: true });
-    const gitignore = path.join(keyDir, '.gitignore');
-    if (!fs.existsSync(gitignore)) {
-        try {
-            fs.writeFileSync(gitignore, ignoreContent);
-        }
-        catch (e) {
-            // Best-effort; don't fail agent creation
-        }
-    }
-    const dockerignore = path.join(keyDir, '.dockerignore');
-    if (!fs.existsSync(dockerignore)) {
-        try {
-            fs.writeFileSync(dockerignore, ignoreContent);
-        }
-        catch (e) {
-            // Best-effort; don't fail agent creation
-        }
-    }
-}
-function ensurePassword(keyDirectory) {
-    let password = process.env.JACS_PRIVATE_KEY_PASSWORD || '';
-    if (!password) {
-        const crypto = require('crypto');
-        const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const lower = 'abcdefghijklmnopqrstuvwxyz';
-        const digits = '0123456789';
-        const special = '!@#$%^&*()-_=+';
-        const all = upper + lower + digits + special;
-        password =
-            upper[crypto.randomInt(upper.length)] +
-                lower[crypto.randomInt(lower.length)] +
-                digits[crypto.randomInt(digits.length)] +
-                special[crypto.randomInt(special.length)];
-        for (let i = 4; i < 32; i++) {
-            password += all[crypto.randomInt(all.length)];
-        }
-        const persistPassword = process.env.JACS_SAVE_PASSWORD_FILE === '1' ||
-            process.env.JACS_SAVE_PASSWORD_FILE === 'true';
-        if (persistPassword) {
-            const keysDir = keyDirectory || './jacs_keys';
-            fs.mkdirSync(keysDir, { recursive: true });
-            const pwPath = path.join(keysDir, '.jacs_password');
-            fs.writeFileSync(pwPath, password, { mode: 0o600 });
-        }
-    }
-    return password;
+function ensurePassword(configPath, keyDirectory) {
+    return (0, index_1.quickstartPrivateKeyPassword)(configPath ? path.resolve(configPath) : null, keyDirectory ?? null);
 }
 /**
  * Quickstart: loads or creates a persistent agent.
@@ -483,7 +401,7 @@ function quickstartSync(options) {
     return toQuickstartInfo(adoptClientState(client));
 }
 function resolveCreatePassword(options) {
-    const p = resolvePrivateKeyPassword(options.configPath ?? null, options.password ?? null);
+    const p = resolvePrivateKeyPassword(options.configPath ?? null, options.keyDirectory ?? null, options.password ?? null);
     if (!p) {
         throw new Error('Missing private key password. Pass options.password or set JACS_PRIVATE_KEY_PASSWORD.');
     }
