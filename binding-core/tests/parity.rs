@@ -623,7 +623,11 @@ fn test_error_kinds_fixture_matches_enum() {
         .as_array()
         .expect("error_kinds should be an array in parity_inputs.json")
         .iter()
-        .map(|v| v.as_str().expect("each error kind should be a string").to_string())
+        .map(|v| {
+            v.as_str()
+                .expect("each error kind should be a string")
+                .to_string()
+        })
         .collect();
 
     // Hardcoded sorted list of all ErrorKind variants from binding-core/src/lib.rs.
@@ -647,7 +651,8 @@ fn test_error_kinds_fixture_matches_enum() {
     let known_strings: Vec<String> = known_kinds.iter().map(|s| s.to_string()).collect();
 
     assert_eq!(
-        fixture_kinds, known_strings,
+        fixture_kinds,
+        known_strings,
         "\nerror_kinds in parity_inputs.json does not match known ErrorKind variants.\n\
          \nFixture has {} kinds, known list has {} kinds.\n\
          \nIn fixture but not in known: {:?}\n\

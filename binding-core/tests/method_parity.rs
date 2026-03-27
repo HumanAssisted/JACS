@@ -66,7 +66,11 @@ fn test_method_parity_fixture_matches_impl() {
         .as_array()
         .expect("all_methods_flat should be an array")
         .iter()
-        .map(|v| v.as_str().expect("each method should be a string").to_string())
+        .map(|v| {
+            v.as_str()
+                .expect("each method should be a string")
+                .to_string()
+        })
         .collect();
 
     let known = known_methods();
@@ -74,7 +78,8 @@ fn test_method_parity_fixture_matches_impl() {
 
     // Both lists should already be sorted
     assert_eq!(
-        fixture_methods, known_strings,
+        fixture_methods,
+        known_strings,
         "\nFixture method list does not match known SimpleAgentWrapper methods.\n\
          \nFixture has {} methods, known list has {} methods.\n\
          \nIn fixture but not in known list: {:?}\n\
@@ -121,11 +126,16 @@ fn test_method_parity_fixture_categories_cover_all() {
         .as_array()
         .expect("all_methods_flat should be an array")
         .iter()
-        .map(|v| v.as_str().expect("each method should be a string").to_string())
+        .map(|v| {
+            v.as_str()
+                .expect("each method should be a string")
+                .to_string()
+        })
         .collect();
 
     assert_eq!(
-        category_methods, flat_methods,
+        category_methods,
+        flat_methods,
         "\nCategorized methods do not match all_methods_flat.\n\
          This means the fixture is internally inconsistent.\n\
          \nIn categories but not in flat: {:?}\n\

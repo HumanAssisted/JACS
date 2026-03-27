@@ -9,12 +9,13 @@
 use serde_json::Value;
 
 fn load_cli_commands_fixture() -> Value {
-    let fixture_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/contract/cli_commands.json"
-    );
-    let data = std::fs::read_to_string(fixture_path)
-        .unwrap_or_else(|e| panic!("Failed to read cli_commands.json at {}: {}", fixture_path, e));
+    let fixture_path = concat!(env!("CARGO_MANIFEST_DIR"), "/contract/cli_commands.json");
+    let data = std::fs::read_to_string(fixture_path).unwrap_or_else(|e| {
+        panic!(
+            "Failed to read cli_commands.json at {}: {}",
+            fixture_path, e
+        )
+    });
     serde_json::from_str(&data).expect("cli_commands.json should be valid JSON")
 }
 
@@ -92,7 +93,8 @@ fn test_cli_commands_snapshot_matches_fixture() {
     let known_strings: Vec<String> = known.iter().map(|s| s.to_string()).collect();
 
     assert_eq!(
-        fixture_paths, known_strings,
+        fixture_paths,
+        known_strings,
         "\nCLI commands fixture does not match known commands.\n\
          \nFixture has {} commands, known list has {} commands.\n\
          \nIn fixture but not in known: {:?}\n\
@@ -134,7 +136,8 @@ fn test_cli_feature_gated_commands_snapshot() {
     let known_strings: Vec<String> = known.iter().map(|s| s.to_string()).collect();
 
     assert_eq!(
-        fixture_paths, known_strings,
+        fixture_paths,
+        known_strings,
         "\nFeature-gated commands fixture does not match known commands.\n\
          \nIn fixture but not in known: {:?}\n\
          In known but not in fixture: {:?}",
