@@ -611,3 +611,75 @@ fn test_parity_create_with_params() {
         std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
     }
 }
+
+// =============================================================================
+// 11. Error kind parity: fixture must list all ErrorKind variants
+// =============================================================================
+
+#[test]
+fn test_error_kinds_fixture_matches_enum() {
+    let fixtures = load_parity_inputs();
+    let fixture_kinds: Vec<String> = fixtures["error_kinds"]
+        .as_array()
+        .expect("error_kinds should be an array in parity_inputs.json")
+        .iter()
+        .map(|v| v.as_str().expect("each error kind should be a string").to_string())
+        .collect();
+
+    // Hardcoded sorted list of all ErrorKind variants from binding-core/src/lib.rs.
+    // This MUST be updated when a variant is added or removed.
+    let known_kinds: Vec<&str> = vec![
+        "AgreementFailed",
+        "AgentLoad",
+        "DocumentFailed",
+        "Generic",
+        "InvalidArgument",
+        "KeyNotFound",
+        "LockFailed",
+        "NetworkFailed",
+        "SerializationFailed",
+        "SigningFailed",
+        "TrustFailed",
+        "Validation",
+        "VerificationFailed",
+    ];
+
+    let known_strings: Vec<String> = known_kinds.iter().map(|s| s.to_string()).collect();
+
+    assert_eq!(
+        fixture_kinds, known_strings,
+        "\nerror_kinds in parity_inputs.json does not match known ErrorKind variants.\n\
+         \nFixture has {} kinds, known list has {} kinds.\n\
+         \nIn fixture but not in known: {:?}\n\
+         In known but not in fixture: {:?}\n\
+         \nIf you added an ErrorKind variant, update BOTH:\n\
+         1. binding-core/tests/fixtures/parity_inputs.json (error_kinds array)\n\
+         2. The known_kinds list in this test",
+        fixture_kinds.len(),
+        known_strings.len(),
+        fixture_kinds
+            .iter()
+            .filter(|k| !known_strings.contains(k))
+            .collect::<Vec<_>>(),
+        known_strings
+            .iter()
+            .filter(|k| !fixture_kinds.contains(k))
+            .collect::<Vec<_>>(),
+    );
+}
+
+#[test]
+fn test_error_kinds_fixture_count() {
+    let fixtures = load_parity_inputs();
+    let error_kinds = fixtures["error_kinds"]
+        .as_array()
+        .expect("error_kinds should be an array");
+
+    assert_eq!(
+        error_kinds.len(),
+        13,
+        "ErrorKind should have exactly 13 variants. Found {}. \
+         If you added or removed a variant, update parity_inputs.json.",
+        error_kinds.len()
+    );
+}

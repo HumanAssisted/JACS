@@ -1,97 +1,59 @@
 # JACS: JSON Agent Communication Standard
 
-Cryptographic signing and verification for AI agents.
+Cryptographic identity, signing, and verification for AI agents.
 
-**[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://humanassisted.github.io/JACS/nodejs/api.html)**
+**[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://docs.rs/jacs/latest/jacs/)**
 
 ```bash
 cargo install jacs-cli
 ```
 
-## Quick Start
+## What it does
+
+| Capability | Description |
+|-----------|-------------|
+| **Agent Identity** | Generate a cryptographic keypair. Post-quantum (ML-DSA-87), Ed25519, or RSA-PSS. |
+| **Data Provenance** | Sign any JSON document or file with tamper-evident signatures. |
+| **Agent Trust** | Verify identities, manage trust stores, enforce trust policies across agents. |
+
+## Quick start (Rust)
 
 ```rust
 use jacs::simple::{load, sign_message, verify};
 
-// Load agent
 load(None)?;
 
-// Sign a message
 let signed = sign_message(&serde_json::json!({"action": "approve"}))?;
 
-// Verify it
 let result = verify(&signed.raw)?;
 assert!(result.valid);
 ```
 
-## 6 Core Operations
-
-| Operation | Description |
-|-----------|-------------|
-| `create()` | Create a new agent with keys |
-| `load()` | Load agent from config |
-| `verify_self()` | Verify agent integrity |
-| `sign_message()` | Sign JSON data |
-| `sign_file()` | Sign files with embedding |
-| `verify()` | Verify any signed document |
-
-## Features
-
-- RSA, Ed25519, and post-quantum (ML-DSA) cryptography
-- JSON Schema validation
-- Multi-agent agreements
-- Signed agent state (memory, skills, plans, configs, hooks, or any document)
-- Commitments (shared signed agreements between agents)
-- Todo lists (private signed task tracking with cross-references)
-- Conversation threading (ordered, signed message chains)
-- Verified document storage via filesystem and local `rusqlite` search/indexing
-- Trait-based storage interfaces with additional backends in separate crates
-- MCP and A2A protocol support
-- Python, Go, and NPM bindings
-
 ## CLI
 
 ```bash
-jacs create              # Create new agent
-jacs sign-message "hi"   # Sign a message
-jacs sign-file doc.pdf   # Sign a file
-jacs verify doc.json     # Verify a document
+jacs quickstart --name my-agent --domain example.com
+jacs document create -f mydata.json
+jacs verify signed-document.json
+jacs mcp                # start MCP server (stdio only)
 ```
 
 ## Security
 
-**Security Hardening**: This library includes:
-- Password entropy validation for key encryption (minimum 28 bits, 35 bits for single character class)
-- Thread-safe environment variable handling
-- TLS certificate validation (strict by default; set `JACS_STRICT_TLS=false` only for local development)
+- Password entropy validation for key encryption
 - Private key zeroization on drop
-- Algorithm identification embedded in signatures
-- Verification claim enforcement with downgrade prevention
-- DNSSEC-validated identity verification for verified agents
+- Algorithm identification embedded in signatures with downgrade prevention
+- DNSSEC-validated identity verification
+- MCP server uses stdio only — no network exposure
+- 260+ automated tests covering cryptographic operations and attack scenarios
 
-**Test Coverage**: JACS includes 260+ automated tests covering cryptographic operations (RSA, Ed25519, post-quantum ML-DSA), password validation, agent lifecycle, DNS identity verification, trust store operations, and claim-based security enforcement. Security-critical paths are tested with boundary conditions, failure cases, and attack scenarios (replay attacks, downgrade attempts, key mismatches).
-
-**Reporting Vulnerabilities**: Please report security issues responsibly.
-- Email: security@hai.ai
-- Do **not** open public issues for security vulnerabilities
-- We aim to respond within 48 hours
-
-**Dependency audit**: To check Rust dependencies for known vulnerabilities, run: `cargo install cargo-audit && cargo audit`.
-
-**Best Practices**:
-- Do not put the private key password in config.
-- On desktops, prefer the OS keychain when available.
-- On Linux/headless services, prefer `JACS_PASSWORD_FILE` from a secret mount and set `JACS_KEYCHAIN_BACKEND=disabled`.
-- `JACS_PRIVATE_KEY_PASSWORD` is supported, but is less desirable for long-running service processes.
-- Use strong passwords (12+ characters with mixed case, numbers, symbols)
-- Store private keys securely with appropriate file permissions
-- Keep JACS and its dependencies updated
+Report vulnerabilities to security@hai.ai.
 
 ## Links
 
 - [Documentation](https://humanassisted.github.io/JACS/)
 - [Rust API](https://docs.rs/jacs/latest/jacs/)
-- [Python](https://pypi.org/project/jacs/)
 - [Crates.io](https://crates.io/crates/jacs)
+- [Development Guide](../DEVELOPMENT.md)
 
 **Version**: 0.9.7 | [HAI.AI](https://hai.ai)

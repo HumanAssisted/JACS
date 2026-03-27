@@ -54,5 +54,20 @@
     "required": ["valid"],
     "optional": ["signer_id", "timestamp", "errors", "data", "attachments"]
   },
-  "algorithms": ["ed25519", "pq2025"]
+  "algorithms": ["ed25519", "pq2025"],
+  "error_kinds": [
+    "AgreementFailed",
+    "AgentLoad",
+    "DocumentFailed",
+    "Generic",
+    "InvalidArgument",
+    "KeyNotFound",
+    "LockFailed",
+    "NetworkFailed",
+    "SerializationFailed",
+    "SigningFailed",
+    "TrustFailed",
+    "Validation",
+    "VerificationFailed"
+  ]
 }

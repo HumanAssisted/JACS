@@ -1,0 +1,42 @@
+{
+  "_description": "Canonical list of JACS CLI commands. Update this file when adding/removing CLI commands. A snapshot test validates this fixture against the actual Clap command tree.",
+  "schema_version": 1,
+  "cli_name": "jacs",
+  "commands": [
+    {"path": "version", "about": "Prints version and build information"},
+    {"path": "config create", "about": "create a config file"},
+    {"path": "config read", "about": "read configuration and display to screen"},
+    {"path": "agent dns", "about": "emit DNS TXT commands for publishing agent fingerprint"},
+    {"path": "agent create", "about": "create an agent"},
+    {"path": "agent verify", "about": "verify an agent"},
+    {"path": "agent lookup", "about": "Look up another agent's public key and DNS info from their domain"},
+    {"path": "task create", "about": "create a new JACS Task file"},
+    {"path": "document create", "about": "create a new JACS file"},
+    {"path": "document update", "about": "create a new version of document"},
+    {"path": "document check-agreement", "about": "list agents that should sign document"},
+    {"path": "document create-agreement", "about": "create agreement for document"},
+    {"path": "document sign-agreement", "about": "sign the agreement section of a document"},
+    {"path": "document verify", "about": "verify document hash, signatures, and schema"},
+    {"path": "document extract", "about": "extract embedded contents from JACS document"},
+    {"path": "key reencrypt", "about": "Re-encrypt the private key with a new password"},
+    {"path": "mcp", "about": "Start the built-in JACS MCP server"},
+    {"path": "a2a assess", "about": "Assess trust level of a remote A2A Agent Card"},
+    {"path": "a2a trust", "about": "Add a remote A2A agent to the local trust store"},
+    {"path": "a2a discover", "about": "Discover a remote A2A agent via well-known Agent Card"},
+    {"path": "a2a serve", "about": "Serve well-known endpoints for A2A discovery"},
+    {"path": "a2a quickstart", "about": "Create/load agent and start serving A2A endpoints"},
+    {"path": "quickstart", "about": "Create or load a persistent agent for instant sign/verify"},
+    {"path": "init", "about": "Initialize JACS by creating both config and agent"},
+    {"path": "attest create", "about": "Create a signed attestation"},
+    {"path": "attest verify", "about": "Verify an attestation document"},
+    {"path": "attest export-dsse", "about": "Export an attestation as a DSSE envelope"},
+    {"path": "verify", "about": "Verify a signed JACS document (no agent required)"},
+    {"path": "convert", "about": "Convert JACS documents between JSON, YAML, and HTML formats"}
+  ],
+  "feature_gated_commands": [
+    {"path": "keychain set", "feature": "keychain", "about": "Store a password in the OS keychain for an agent"},
+    {"path": "keychain get", "feature": "keychain", "about": "Retrieve the stored password for an agent"},
+    {"path": "keychain delete", "feature": "keychain", "about": "Remove the stored password for an agent from the OS keychain"},
+    {"path": "keychain status", "feature": "keychain", "about": "Check if a password is stored for an agent in the OS keychain"}
+  ]
+}

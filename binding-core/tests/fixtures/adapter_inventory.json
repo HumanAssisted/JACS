@@ -1,0 +1,36 @@
+{
+  "_description": "Framework adapter inventory. Each binding must implement the adapters listed for its language. If a new adapter is added, update this file and add a corresponding test in the affected binding.",
+  "adapters": {
+    "python": {
+      "mcp": {
+        "module": "jacs.adapters.mcp",
+        "public_functions": ["register_jacs_tools", "register_trust_tools", "register_a2a_tools"]
+      },
+      "langchain": {
+        "module": "jacs.adapters.langchain",
+        "public_functions": ["jacs_wrap_tool_call", "jacs_awrap_tool_call", "jacs_signing_middleware", "JacsSigningMiddleware", "signed_tool", "with_jacs_signing"]
+      },
+      "crewai": {
+        "module": "jacs.adapters.crewai",
+        "public_functions": ["jacs_guardrail", "signed_task", "JacsSignedTool", "JacsVerifiedInput"]
+      },
+      "fastapi": {
+        "module": "jacs.adapters.fastapi",
+        "public_functions": ["JacsMiddleware", "jacs_route"]
+      },
+      "anthropic": {
+        "module": "jacs.adapters.anthropic",
+        "public_functions": ["signed_tool", "JacsToolHook"]
+      }
+    },
+    "node": {
+      "mcp": {
+        "module": "mcp",
+        "public_functions": ["registerJacsTools", "getJacsMcpToolDefinitions", "handleJacsMcpToolCall", "createJACSTransportProxy", "createJACSTransportProxyAsync", "JACSTransportProxy"]
+      }
+    },
+    "go": {
+      "_note": "Go has no framework adapters currently. MCP is consumed via the CLI binary."
+    }
+  }
+}

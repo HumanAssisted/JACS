@@ -1,0 +1,197 @@
+package jacs
+
+// MCP contract drift test for the Go binding.
+//
+// This test loads the canonical Rust MCP contract from
+// jacs-mcp/contract/jacs-mcp-contract.json and validates that Go's
+// understanding of the available MCP tools matches the contract.
+//
+// Go does not have a native MCP adapter with tool definitions; it
+// consumes the Rust MCP server via the CLI binary. This test ensures
+// that if Rust adds, removes, or renames an MCP tool, the Go
+// ecosystem is aware of the change.
+//
+// Pattern matches: jacspy/tests/test_mcp_contract_drift.py and
+// jacsnpm/test/mcp-contract.test.js.
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"testing"
+)
+
+const mcpContractRelPath = "../jacs-mcp/contract/jacs-mcp-contract.json"
+
+// mcpContract represents the top-level structure of the MCP contract JSON.
+type mcpContract struct {
+	SchemaVersion int       `json:"schema_version"`
+	Server        mcpServer `json:"server"`
+	Tools         []mcpTool `json:"tools"`
+}
+
+type mcpServer struct {
+	Name    string `json:"name"`
+	Title   string `json:"title"`
+	Version string `json:"version"`
+}
+
+type mcpTool struct {
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	InputSchema interface{} `json:"input_schema"`
+}
+
+func loadMcpContract(t *testing.T) mcpContract {
+	t.Helper()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	contractPath := filepath.Join(filepath.Dir(thisFile), mcpContractRelPath)
+
+	data, err := os.ReadFile(contractPath)
+	if err != nil {
+		t.Fatalf("failed to read MCP contract at %s: %v", contractPath, err)
+	}
+
+	var c mcpContract
+	if err := json.Unmarshal(data, &c); err != nil {
+		t.Fatalf("failed to parse MCP contract: %v", err)
+	}
+	return c
+}
+
+// TestMcpContractDrift validates that the canonical MCP contract tool names
+// match the expected set known to Go. If a tool is added or removed from the
+// Rust contract, this test fails until the expected sets below are updated.
+func TestMcpContractDrift(t *testing.T) {
+	contract := loadMcpContract(t)
+
+	// Extract tool names from contract
+	var contractTools []string
+	for _, tool := range contract.Tools {
+		contractTools = append(contractTools, tool.Name)
+	}
+	sort.Strings(contractTools)
+
+	// Expected tool names — must match the contract exactly.
+	// Update this list when tools are added/removed in Rust.
+	expectedTools := []string{
+		"jacs_adopt_state",
+		"jacs_assess_a2a_agent",
+		"jacs_attest_create",
+		"jacs_attest_export_dsse",
+		"jacs_attest_lift",
+		"jacs_attest_verify",
+		"jacs_audit",
+		"jacs_audit_export",
+		"jacs_audit_log",
+		"jacs_audit_query",
+		"jacs_check_agreement",
+		"jacs_create_agent",
+		"jacs_create_agreement",
+		"jacs_export_agent",
+		"jacs_export_agent_card",
+		"jacs_generate_well_known",
+		"jacs_get_trusted_agent",
+		"jacs_is_trusted",
+		"jacs_list_state",
+		"jacs_list_trusted_agents",
+		"jacs_load_state",
+		"jacs_memory_forget",
+		"jacs_memory_list",
+		"jacs_memory_recall",
+		"jacs_memory_save",
+		"jacs_memory_update",
+		"jacs_message_agree",
+		"jacs_message_receive",
+		"jacs_message_send",
+		"jacs_message_update",
+		"jacs_reencrypt_key",
+		"jacs_search",
+		"jacs_sign_agreement",
+		"jacs_sign_document",
+		"jacs_sign_state",
+		"jacs_trust_agent",
+		"jacs_untrust_agent",
+		"jacs_update_state",
+		"jacs_verify_a2a_artifact",
+		"jacs_verify_document",
+		"jacs_verify_state",
+		"jacs_wrap_a2a_artifact",
+	}
+	sort.Strings(expectedTools)
+
+	if len(contractTools) != len(expectedTools) {
+		t.Errorf("MCP contract has %d tools, expected %d.\nContract tools: %v\nExpected tools: %v",
+			len(contractTools), len(expectedTools), contractTools, expectedTools)
+	}
+
+	// Find differences
+	inContractOnly := diff(contractTools, expectedTools)
+	inExpectedOnly := diff(expectedTools, contractTools)
+
+	if len(inContractOnly) > 0 {
+		t.Errorf("Tools in MCP contract but not in Go expected set (need to add): %v", inContractOnly)
+	}
+	if len(inExpectedOnly) > 0 {
+		t.Errorf("Tools in Go expected set but not in MCP contract (need to remove): %v", inExpectedOnly)
+	}
+}
+
+// TestMcpContractStructure validates the contract JSON structure is well-formed.
+func TestMcpContractStructure(t *testing.T) {
+	contract := loadMcpContract(t)
+
+	if contract.SchemaVersion != 1 {
+		t.Errorf("expected schema_version 1, got %d", contract.SchemaVersion)
+	}
+	if contract.Server.Name != "jacs-mcp" {
+		t.Errorf("expected server.name 'jacs-mcp', got %q", contract.Server.Name)
+	}
+	if contract.Server.Version == "" {
+		t.Error("server.version should not be empty")
+	}
+	if len(contract.Tools) == 0 {
+		t.Error("contract should have at least one tool")
+	}
+
+	// Every tool should have a name and description
+	for i, tool := range contract.Tools {
+		if tool.Name == "" {
+			t.Errorf("tool[%d] has empty name", i)
+		}
+		if tool.Description == "" {
+			t.Errorf("tool[%d] (%s) has empty description", i, tool.Name)
+		}
+	}
+}
+
+// TestMcpContractToolCount validates the total number of tools.
+func TestMcpContractToolCount(t *testing.T) {
+	contract := loadMcpContract(t)
+
+	if len(contract.Tools) != 42 {
+		t.Errorf("expected 42 MCP tools, got %d. If tools were added/removed, update this test and TestMcpContractDrift.",
+			len(contract.Tools))
+	}
+}
+
+// diff returns elements in a that are not in b.
+func diff(a, b []string) []string {
+	bSet := make(map[string]bool, len(b))
+	for _, s := range b {
+		bSet[s] = true
+	}
+	var result []string
+	for _, s := range a {
+		if !bSet[s] {
+			result = append(result, s)
+		}
+	}
+	return result
+}

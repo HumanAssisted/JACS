@@ -1,0 +1,18 @@
+{
+  "_description": "Canonical list of SimpleAgentWrapper public methods. All language bindings must expose these methods (with documented exclusions). Update this file when adding/removing methods.",
+  "simple_agent_wrapper_methods": {
+    "constructors": ["create", "load", "load_with_info", "ephemeral", "create_with_params", "from_agent"],
+    "identity": ["get_agent_id", "key_id", "is_strict", "config_path", "export_agent", "get_public_key_pem", "get_public_key_base64", "diagnostics", "inner_ref"],
+    "verification": ["verify_self", "verify_json", "verify_with_key_json", "verify_by_id_json"],
+    "signing": ["sign_message_json", "sign_raw_bytes_base64", "sign_file_json"],
+    "conversion": ["to_yaml", "from_yaml", "to_html", "from_html"]
+  },
+  "all_methods_flat": [
+    "config_path", "create", "create_with_params", "diagnostics", "ephemeral",
+    "export_agent", "from_agent", "from_html", "from_yaml", "get_agent_id",
+    "get_public_key_base64", "get_public_key_pem", "inner_ref", "is_strict",
+    "key_id", "load", "load_with_info", "sign_file_json", "sign_message_json",
+    "sign_raw_bytes_base64", "to_html", "to_yaml", "verify_by_id_json",
+    "verify_json", "verify_self", "verify_with_key_json"
+  ]
+}
