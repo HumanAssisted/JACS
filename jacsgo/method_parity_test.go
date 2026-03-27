@@ -95,6 +95,16 @@ var goConstructors = map[string]bool{
 	"CreateSimpleAgentWithParams": true,
 }
 
+// goConstructorFuncs references actual constructor functions so the compiler
+// catches removals. If any constructor is renamed or deleted, this file fails
+// to compile -- no runtime test needed.
+var goConstructorFuncs = map[string]interface{}{
+	"NewSimpleAgent":              NewSimpleAgent,
+	"LoadSimpleAgent":             LoadSimpleAgent,
+	"EphemeralSimpleAgent":        EphemeralSimpleAgent,
+	"CreateSimpleAgentWithParams": CreateSimpleAgentWithParams,
+}
+
 // TestMethodParityAgainstFixture validates that all expected methods exist
 // on Go's JacsSimpleAgent.
 func TestMethodParityAgainstFixture(t *testing.T) {
@@ -120,10 +130,10 @@ func TestMethodParityAgainstFixture(t *testing.T) {
 		}
 
 		if goConstructors[goName] {
-			// Constructors are package-level functions. We can't easily
-			// check them via reflection without importing the function.
-			// Their existence is verified by compilation (they're used
-			// in other test files).
+			// Constructors are package-level functions, verified at
+			// compile time via goConstructorFuncs (references the actual
+			// functions). If a constructor is removed, this file fails
+			// to compile.
 			continue
 		}
 
@@ -177,6 +187,39 @@ func TestMethodParityNameMapCoversAll(t *testing.T) {
 
 	if len(unmapped) > 0 {
 		t.Errorf("Methods without goNameMap entry: %v. Add a mapping.", unmapped)
+	}
+}
+
+// TestMethodParityExclusionsAreStillNeeded checks if excluded methods
+// have since been exposed on *JacsSimpleAgent. If a method was excluded
+// because it wasn't in the CGo FFI layer but has since been added, this
+// test fails to prompt removal of the exclusion.
+func TestMethodParityExclusionsAreStillNeeded(t *testing.T) {
+	agentType := reflect.TypeOf(&JacsSimpleAgent{})
+
+	// Only check conversion-method exclusions (the ones likely to change).
+	// internal-only exclusions (inner_ref, from_agent, load_with_info) will
+	// never appear as Go methods.
+	conversionExclusions := map[string]string{
+		"to_yaml":  "ToYaml",
+		"from_yaml": "FromYaml",
+		"to_html":  "ToHtml",
+		"from_html": "FromHtml",
+	}
+
+	newlyAvailable := []string{}
+	for rustName, goName := range conversionExclusions {
+		_, found := agentType.MethodByName(goName)
+		if found {
+			newlyAvailable = append(newlyAvailable, rustName+" -> "+goName)
+		}
+	}
+
+	if len(newlyAvailable) > 0 {
+		sort.Strings(newlyAvailable)
+		t.Errorf("Excluded methods are now available on *JacsSimpleAgent. "+
+			"Remove them from excludedFromGo and verify they work:\n%s",
+			formatLines(newlyAvailable))
 	}
 }
 

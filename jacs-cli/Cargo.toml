@@ -12,6 +12,10 @@ repository = "https://github.com/HumanAssisted/JACS"
 keywords = ["cryptography", "json", "ai", "data", "ml-ops"]
 categories = ["cryptography", "text-processing", "data-structures"]
 
+[lib]
+name = "jacs_cli"
+path = "src/main.rs"
+
 [[bin]]
 name = "jacs"
 path = "src/main.rs"
@@ -35,8 +39,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 assert_cmd = "2"
+clap = { version = "4.5.4", features = ["derive", "cargo"] }
 predicates = "3.1"
 serial_test = "3.2.0"
+serde_json = "1.0"
 tempfile = "3"
 
 [package.metadata.cargo-install]

@@ -65,22 +65,12 @@ func loadMcpContract(t *testing.T) mcpContract {
 	return c
 }
 
-// TestMcpContractDrift validates that the canonical MCP contract tool names
-// match the expected set known to Go. If a tool is added or removed from the
-// Rust contract, this test fails until the expected sets below are updated.
-func TestMcpContractDrift(t *testing.T) {
-	contract := loadMcpContract(t)
-
-	// Extract tool names from contract
-	var contractTools []string
-	for _, tool := range contract.Tools {
-		contractTools = append(contractTools, tool.Name)
-	}
-	sort.Strings(contractTools)
-
-	// Expected tool names — must match the contract exactly.
-	// Update this list when tools are added/removed in Rust.
-	expectedTools := []string{
+// expectedMcpTools returns the canonical list of expected MCP tool names.
+// This is the single source of truth -- both TestMcpContractDrift and
+// TestMcpContractToolCount use it, so there is only one place to update
+// when tools are added or removed.
+func expectedMcpTools() []string {
+	tools := []string{
 		"jacs_adopt_state",
 		"jacs_assess_a2a_agent",
 		"jacs_attest_create",
@@ -124,7 +114,24 @@ func TestMcpContractDrift(t *testing.T) {
 		"jacs_verify_state",
 		"jacs_wrap_a2a_artifact",
 	}
-	sort.Strings(expectedTools)
+	sort.Strings(tools)
+	return tools
+}
+
+// TestMcpContractDrift validates that the canonical MCP contract tool names
+// match the expected set known to Go. If a tool is added or removed from the
+// Rust contract, this test fails until expectedMcpTools() is updated.
+func TestMcpContractDrift(t *testing.T) {
+	contract := loadMcpContract(t)
+
+	// Extract tool names from contract
+	var contractTools []string
+	for _, tool := range contract.Tools {
+		contractTools = append(contractTools, tool.Name)
+	}
+	sort.Strings(contractTools)
+
+	expectedTools := expectedMcpTools()
 
 	if len(contractTools) != len(expectedTools) {
 		t.Errorf("MCP contract has %d tools, expected %d.\nContract tools: %v\nExpected tools: %v",
@@ -172,12 +179,16 @@ func TestMcpContractStructure(t *testing.T) {
 }
 
 // TestMcpContractToolCount validates the total number of tools.
+// The expected count is derived from the expectedTools list in
+// TestMcpContractDrift, so there is only one place to update.
 func TestMcpContractToolCount(t *testing.T) {
 	contract := loadMcpContract(t)
 
-	if len(contract.Tools) != 42 {
-		t.Errorf("expected 42 MCP tools, got %d. If tools were added/removed, update this test and TestMcpContractDrift.",
-			len(contract.Tools))
+	// Use the same expected tool list as TestMcpContractDrift
+	expectedCount := len(expectedMcpTools())
+	if len(contract.Tools) != expectedCount {
+		t.Errorf("expected %d MCP tools, got %d. If tools were added/removed, update expectedMcpTools() and TestMcpContractDrift.",
+			expectedCount, len(contract.Tools))
 	}
 }
 

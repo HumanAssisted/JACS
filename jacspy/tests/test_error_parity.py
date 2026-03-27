@@ -10,6 +10,13 @@ The Rust ErrorKind enum has 13 variants. Python maps these through:
 2. Error message prefixes from the PyO3 native binding (RuntimeError)
 
 This test ensures the Python codebase recognizes all error kinds.
+
+KNOWN LIMITATION: Most error kinds (8 of 13) are validated structurally
+only (mapping existence in ERROR_KIND_MAP), not behaviorally (actually
+triggered at runtime). Only the 5 triggerable kinds are tested with
+runtime assertions. The untriggerable kinds require specific states
+(concurrent mutex poisoning, network calls, trust store setup, etc.)
+that are impractical to set up in unit tests.
 """
 
 from __future__ import annotations
@@ -184,3 +191,49 @@ def test_python_error_classes_match_map():
             f"ERROR_KIND_MAP references '{class_name}' for {kind}, "
             f"but jacs.types has no such class."
         )
+
+
+# =============================================================================
+# Runtime trigger tests for triggerable error kinds
+# =============================================================================
+
+try:
+    from jacs import SimpleAgent as _SA
+
+    _NATIVE_AVAILABLE = True
+except ImportError:
+    _NATIVE_AVAILABLE = False
+
+
+@pytest.mark.skipif(not _NATIVE_AVAILABLE, reason="native jacs module not built")
+class TestTriggerableErrorKinds:
+    """Actually trigger the error kinds marked as triggerable=True."""
+
+    @pytest.fixture(autouse=True)
+    def agent(self):
+        self.agent, _agent_json = _SA.ephemeral("ed25519")
+
+    def test_sign_message_handles_raw_strings(self):
+        """sign_message wraps non-JSON raw strings — should succeed, not throw."""
+        result = self.agent.sign_message("{{{bad json")
+        assert isinstance(result, dict), "sign_message should return a dict"
+        assert "raw" in result, "result should contain 'raw' key"
+        # Verify the signed raw-string document round-trips
+        self.agent.verify(result["raw"])
+
+    def test_verification_failed_bad_document(self):
+        """VerificationFailed: not a valid signed document."""
+        with pytest.raises(Exception, match=r"(?i)verif|malform"):
+            self.agent.verify("not a json document")
+
+    def test_serialization_failed_on_verify(self):
+        """SerializationFailed: verify with non-JSON input triggers parse error."""
+        with pytest.raises(Exception, match=r"(?i)malform|json|parse|key must be"):
+            self.agent.verify("not json at all {{{")
+
+    def test_invalid_argument_bad_base64_key(self):
+        """InvalidArgument: bad base64 key for verify_with_key."""
+        signed = self.agent.sign_message('{"test": 1}')
+        raw = signed["raw"]
+        with pytest.raises(Exception, match=r"(?i)invalid.*base64|base64"):
+            self.agent.verify_with_key(raw, "!!!notbase64!!!")

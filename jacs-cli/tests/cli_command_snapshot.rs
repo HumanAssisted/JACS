@@ -4,8 +4,15 @@
 //! CLI commands. If a command is added to or removed from the CLI without
 //! updating the fixture, this test fails.
 //!
+//! This test extracts commands programmatically from the Clap `Command` tree
+//! via `build_cli()`, so adding a new subcommand in `main.rs` without
+//! updating the fixture is caught automatically -- no hardcoded list to
+//! maintain.
+//!
 //! This is the CLI equivalent of the MCP contract snapshot test.
 
+use clap::Command;
+use jacs_cli::build_cli;
 use serde_json::Value;
 
 fn load_cli_commands_fixture() -> Value {
@@ -19,60 +26,53 @@ fn load_cli_commands_fixture() -> Value {
     serde_json::from_str(&data).expect("cli_commands.json should be valid JSON")
 }
 
-/// Hardcoded list of all CLI command paths.
+/// Extract all command paths from the Clap tree built by `build_cli()`.
 ///
-/// This MUST be updated when a command is added to or removed from
-/// `jacs-cli/src/main.rs`. It serves as a compile-time anchor.
-fn known_command_paths() -> Vec<&'static str> {
-    let mut paths = vec![
-        "version",
-        "config create",
-        "config read",
-        "agent dns",
-        "agent create",
-        "agent verify",
-        "agent lookup",
-        "task create",
-        "document create",
-        "document update",
-        "document check-agreement",
-        "document create-agreement",
-        "document sign-agreement",
-        "document verify",
-        "document extract",
-        "key reencrypt",
-        "mcp",
-        "a2a assess",
-        "a2a trust",
-        "a2a discover",
-        "a2a serve",
-        "a2a quickstart",
-        "quickstart",
-        "init",
-        "attest create",
-        "attest verify",
-        "attest export-dsse",
-        "verify",
-        "convert",
-    ];
-    paths.sort();
-    paths
-}
+/// Skips hidden (deprecated) subcommands. Feature-gated commands (like
+/// keychain) are separated into a second return value so that the fixture's
+/// `commands` vs `feature_gated_commands` can be validated independently.
+fn extract_clap_command_paths() -> Vec<String> {
+    let cli = build_cli();
+    let mut paths = Vec::new();
 
-/// Hardcoded list of feature-gated command paths.
-fn known_feature_gated_paths() -> Vec<&'static str> {
-    let mut paths = vec![
-        "keychain set",
-        "keychain get",
-        "keychain delete",
-        "keychain status",
-    ];
+    // Commands that belong in the feature_gated_commands section of the fixture.
+    // When compiled with the feature, they appear in the Clap tree, but the
+    // fixture tracks them separately.
+    let feature_gated_parents: std::collections::HashSet<&str> =
+        ["keychain"].iter().copied().collect();
+
+    for sub in cli.get_subcommands() {
+        let name = sub.get_name();
+
+        // Skip feature-gated parent commands (tracked separately in fixture)
+        if feature_gated_parents.contains(name) {
+            continue;
+        }
+
+        // Collect visible (non-hidden) children
+        let visible_children: Vec<&Command> = sub
+            .get_subcommands()
+            .filter(|c| !c.is_hide_set())
+            .collect();
+
+        if visible_children.is_empty() {
+            // Leaf command or command with only hidden subcommands
+            // (e.g., "mcp" has hidden deprecated install/run)
+            paths.push(name.to_string());
+        } else {
+            // Has visible subcommands (e.g., "config create", "config read")
+            for child in visible_children {
+                paths.push(format!("{} {}", name, child.get_name()));
+            }
+        }
+    }
+
     paths.sort();
     paths
 }
 
 #[test]
-fn test_cli_commands_snapshot_matches_fixture() {
+fn test_cli_commands_fixture_matches_clap_tree() {
     let fixture = load_cli_commands_fixture();
 
     // Extract command paths from fixture
@@ -89,26 +89,23 @@ fn test_cli_commands_snapshot_matches_fixture() {
         .collect();
     fixture_paths.sort();
 
-    let known = known_command_paths();
-    let known_strings: Vec<String> = known.iter().map(|s| s.to_string()).collect();
+    let clap_paths = extract_clap_command_paths();
 
     assert_eq!(
         fixture_paths,
-        known_strings,
-        "\nCLI commands fixture does not match known commands.\n\
-         \nFixture has {} commands, known list has {} commands.\n\
-         \nIn fixture but not in known: {:?}\n\
-         In known but not in fixture: {:?}\n\
-         \nIf you added a CLI command, update BOTH:\n\
-         1. jacs-cli/contract/cli_commands.json\n\
-         2. The known_command_paths() list in jacs-cli/tests/cli_command_snapshot.rs",
+        clap_paths,
+        "\nCLI commands fixture does not match the actual Clap command tree.\n\
+         \nFixture has {} commands, Clap tree has {} commands.\n\
+         \nIn fixture but not in Clap tree: {:?}\n\
+         In Clap tree but not in fixture: {:?}\n\
+         \nIf you added a CLI command, update jacs-cli/contract/cli_commands.json",
         fixture_paths.len(),
-        known_strings.len(),
+        clap_paths.len(),
         fixture_paths
             .iter()
-            .filter(|p| !known_strings.contains(p))
+            .filter(|p| !clap_paths.contains(p))
             .collect::<Vec<_>>(),
-        known_strings
+        clap_paths
             .iter()
             .filter(|p| !fixture_paths.contains(p))
             .collect::<Vec<_>>(),
@@ -116,7 +113,7 @@ fn test_cli_commands_snapshot_matches_fixture() {
 }
 
 #[test]
-fn test_cli_feature_gated_commands_snapshot() {
+fn test_cli_feature_gated_commands_in_fixture() {
     let fixture = load_cli_commands_fixture();
 
     let mut fixture_paths: Vec<String> = fixture["feature_gated_commands"]
@@ -132,20 +129,32 @@ fn test_cli_feature_gated_commands_snapshot() {
         .collect();
     fixture_paths.sort();
 
-    let known = known_feature_gated_paths();
-    let known_strings: Vec<String> = known.iter().map(|s| s.to_string()).collect();
+    // Feature-gated commands (keychain) are only in the Clap tree when
+    // compiled with --features keychain. We can't test them programmatically
+    // without that feature, so we validate the fixture has the expected set.
+    //
+    // When the keychain feature IS enabled at compile time, the commands
+    // will also appear in the Clap tree and be caught by the main test above.
+    let mut expected = vec![
+        "keychain set",
+        "keychain get",
+        "keychain delete",
+        "keychain status",
+    ];
+    expected.sort();
+    let expected_strings: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
 
     assert_eq!(
         fixture_paths,
-        known_strings,
-        "\nFeature-gated commands fixture does not match known commands.\n\
-         \nIn fixture but not in known: {:?}\n\
-         In known but not in fixture: {:?}",
+        expected_strings,
+        "\nFeature-gated commands fixture does not match expected.\n\
+         \nIn fixture but not expected: {:?}\n\
+         Expected but not in fixture: {:?}",
         fixture_paths
             .iter()
-            .filter(|p| !known_strings.contains(p))
+            .filter(|p| !expected_strings.contains(p))
             .collect::<Vec<_>>(),
-        known_strings
+        expected_strings
             .iter()
             .filter(|p| !fixture_paths.contains(p))
             .collect::<Vec<_>>(),
@@ -159,12 +168,15 @@ fn test_cli_commands_fixture_count() {
     let commands = fixture["commands"]
         .as_array()
         .expect("commands should be an array");
+
+    // Count should match what the Clap tree produces
+    let clap_count = extract_clap_command_paths().len();
     assert_eq!(
         commands.len(),
-        29,
-        "CLI should have exactly 29 commands. Found {}. \
-         If you added or removed a command, update cli_commands.json.",
-        commands.len()
+        clap_count,
+        "Fixture has {} commands but Clap tree has {}. Update cli_commands.json.",
+        commands.len(),
+        clap_count
     );
 
     let feature_gated = fixture["feature_gated_commands"]

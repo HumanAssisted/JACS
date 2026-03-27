@@ -12,6 +12,11 @@ package jacs
 //
 // This test complements, not duplicates, the behavioral error tests in
 // simple_agent_parity_test.go.
+//
+// KNOWN LIMITATION: 8 of 13 error kinds are validated structurally only
+// (mapping existence in errorKindMap), not behaviorally (actually triggered
+// at runtime). Untriggerable kinds require states impractical in unit tests
+// (e.g., mutex poisoning, network calls, trust store setup).
 
 import (
 	"encoding/json"

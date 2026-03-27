@@ -143,3 +143,30 @@ def test_python_name_map_has_no_stale_entries(method_parity: dict):
         f"PYTHON_NAME_MAP contains methods not in the fixture: {stale}. "
         "Remove stale mappings."
     )
+
+
+def test_python_exclusions_are_still_needed():
+    """Check if excluded methods now exist on SimpleAgent.
+
+    If an excluded method becomes available at runtime (e.g., after
+    rebuilding the native module), this test fails to prompt removal
+    of the exclusion. This turns the TODO in EXCLUDED_FROM_PYTHON
+    into an automated check.
+    """
+    newly_available = []
+    for method_name in EXCLUDED_FROM_PYTHON:
+        # Skip internal-only exclusions that will never appear on the class
+        if method_name in ("inner_ref", "from_agent", "load_with_info"):
+            continue
+        # Check if the method is now available on SimpleAgent
+        python_name = PYTHON_NAME_MAP.get(method_name, method_name)
+        if hasattr(SimpleAgent, python_name):
+            newly_available.append(
+                f"{method_name} (as '{python_name}') is now available on SimpleAgent"
+            )
+
+    assert not newly_available, (
+        "The following excluded methods are now available on SimpleAgent. "
+        "Remove them from EXCLUDED_FROM_PYTHON and add them to PYTHON_NAME_MAP:\n"
+        + "\n".join(f"  - {m}" for m in newly_available)
+    )

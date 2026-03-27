@@ -7,6 +7,11 @@ and expose the documented public functions.
 
 This test complements (does not duplicate) the MCP contract drift test
 or behavioral adapter tests. It validates API surface existence only.
+
+NOTE: Some adapter tests are skipped when optional dependencies are not
+installed (e.g., langchain, crewai). In CI, install with `pip install
+jacs[all]` to test all 5 adapters. The test_skip_count_guard test below
+warns if too many adapters are skipped.
 """
 
 from __future__ import annotations
@@ -107,3 +112,30 @@ def test_python_adapter_public_functions_exist(
         f"Adapter '{adapter_name}' ({module_name}) is missing public functions: {missing}. "
         f"Expected: {expected_functions}"
     )
+
+
+def test_skip_count_guard(python_adapters: dict):
+    """Warn if too many adapters are skipped due to missing dependencies.
+
+    If more than 1 adapter cannot be imported, it likely means optional
+    dependencies are not installed. In CI, ensure `pip install jacs[all]`
+    is used to fully test all adapters.
+    """
+    skipped = []
+    for adapter_name, adapter in python_adapters.items():
+        module_name = adapter["module"]
+        try:
+            importlib.import_module(module_name)
+        except ImportError:
+            skipped.append(adapter_name)
+
+    # Allow at most 1 skip (some environments may not have one framework)
+    if len(skipped) > 1:
+        import warnings
+
+        warnings.warn(
+            f"{len(skipped)} of {len(python_adapters)} Python adapters could not "
+            f"be imported: {skipped}. Install optional dependencies with "
+            f"`pip install jacs[all]` to fully test all adapters.",
+            stacklevel=1,
+        )

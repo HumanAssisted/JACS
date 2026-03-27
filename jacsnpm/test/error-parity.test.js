@@ -10,6 +10,12 @@
  *
  * This test complements, not duplicates, the behavioral error tests in
  * test_parity.js section 7.
+ *
+ * KNOWN LIMITATION: 8 of 13 error kinds are validated structurally only
+ * (mapping existence in ERROR_KIND_MAP), not behaviorally. Only the
+ * triggerable kinds are tested with runtime assertions. Untriggerable
+ * kinds require states that are impractical in unit tests (e.g., mutex
+ * poisoning, network calls, trust store setup).
  */
 
 const fs = require('fs');

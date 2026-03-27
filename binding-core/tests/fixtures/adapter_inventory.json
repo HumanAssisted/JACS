@@ -1,5 +1,6 @@
 {
   "_description": "Framework adapter inventory. Each binding must implement the adapters listed for its language. If a new adapter is added, update this file and add a corresponding test in the affected binding.",
+  "_scope_note": "This fixture lists all discovered public functions, which may exceed what the PRD (Task 011) originally specified. This is intentional -- the fixture reflects the actual code, not the minimum PRD spec.",
   "adapters": {
     "python": {
       "mcp": {
