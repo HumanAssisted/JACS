@@ -59,7 +59,10 @@ fn test_all_cli_commands_are_in_alignment_fixture() {
     let mut alignment_cli: HashSet<String> = HashSet::new();
 
     // From alignments (paired commands)
-    for entry in alignment["alignments"].as_array().expect("alignments array") {
+    for entry in alignment["alignments"]
+        .as_array()
+        .expect("alignments array")
+    {
         alignment_cli.insert(entry["cli_command"].as_str().unwrap().to_string());
     }
 
@@ -139,7 +142,10 @@ fn test_all_mcp_tools_are_in_alignment_fixture() {
     let mut alignment_mcp: HashSet<String> = HashSet::new();
 
     // From alignments (paired tools)
-    for entry in alignment["alignments"].as_array().expect("alignments array") {
+    for entry in alignment["alignments"]
+        .as_array()
+        .expect("alignments array")
+    {
         alignment_mcp.insert(entry["mcp_tool"].as_str().unwrap().to_string());
     }
 
@@ -183,9 +189,7 @@ fn test_alignment_summary_counts_are_accurate() {
         .as_array()
         .expect("cli_only_feature_gated array")
         .len();
-    let mcp_only_arr = alignment["mcp_only"]
-        .as_array()
-        .expect("mcp_only array");
+    let mcp_only_arr = alignment["mcp_only"].as_array().expect("mcp_only array");
     let mcp_only_count = mcp_only_arr.len();
 
     let mcp_only_intentional = mcp_only_arr
