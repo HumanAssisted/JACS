@@ -8,6 +8,33 @@ jacs/ is the directory with the core library.
 Look for examples in tests for how to use the library.
 README.md and CHANGELOG.md may be useful to understand some future goals and what has been done.
 
+## Feature Parity Enforcement
+
+Cross-language feature parity is enforced through canonical JSON fixtures that serve as the single source of truth. When you add or remove a method, error kind, CLI command, MCP tool, or adapter, you must update the relevant fixture — snapshot tests in all languages will fail otherwise.
+
+### Canonical fixtures
+
+| Fixture | What it tracks | Consumed by |
+|---------|---------------|-------------|
+| `binding-core/tests/fixtures/method_parity.json` | 26 `SimpleAgentWrapper` public methods | Rust, Python, Node, Go |
+| `binding-core/tests/fixtures/parity_inputs.json` | 13 `ErrorKind` variants + behavioral notes | Rust, Python, Node, Go |
+| `binding-core/tests/fixtures/adapter_inventory.json` | Framework adapter modules and public functions | Rust, Python, Node |
+| `binding-core/tests/fixtures/cli_mcp_alignment.json` | CLI-to-MCP tool mapping (aligned, CLI-only, MCP-only) | Rust |
+| `jacs-cli/contract/cli_commands.json` | 29 CLI commands + 4 feature-gated | Rust (extracted from Clap tree) |
+| `jacs-mcp/contract/jacs-mcp-contract.json` | 42 MCP tools with parameter schemas | Python, Node, Go |
+
+### What to update when
+
+| Change | Update these fixtures | Tests that will catch you |
+|--------|----------------------|--------------------------|
+| Add/remove a `SimpleAgentWrapper` method | `method_parity.json` | `method_parity.rs`, `test_method_parity.py`, `method-parity.test.js`, `method_parity_test.go` |
+| Add/remove an `ErrorKind` variant | `parity_inputs.json` (error_kinds array) | `parity.rs`, `test_error_parity.py`, `error-parity.test.js`, `error_parity_test.go` |
+| Add/remove a CLI command | `cli_commands.json` + `cli_mcp_alignment.json` | `cli_command_snapshot.rs`, `cli_mcp_alignment.rs` |
+| Add/remove an MCP tool | `jacs-mcp-contract.json` + `cli_mcp_alignment.json` | `mcp_contract.test.js`, `test_mcp_contract.py`, `mcp_contract_drift_test.go`, `cli_mcp_alignment.rs` |
+| Add/remove a framework adapter | `adapter_inventory.json` | `adapter_inventory.rs`, `test_adapter_inventory.py`, `adapter-inventory.test.js` |
+
+Each language defines its own exclusions and name mappings (e.g., `to_yaml` is excluded from Python/Go because those bindings don't expose it). The fixture is always the source of truth.
+
 ## Releasing
 
 See **[RELEASING.md](./RELEASING.md)** for the complete release process, including

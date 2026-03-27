@@ -379,6 +379,19 @@ cd jacsgo && make build
 | MCP (Rust, canonical) | `jacs mcp` | Stable |
 | A2A Protocol | `client.get_a2a()` | Experimental |
 
+## Feature Parity
+
+Cross-language feature parity is enforced by canonical JSON fixtures in `binding-core/tests/fixtures/` and contract files in `jacs-cli/contract/` and `jacs-mcp/contract/`. Snapshot tests in Rust, Python, Node, and Go validate that each binding covers the same methods, error kinds, CLI commands, MCP tools, and framework adapters.
+
+If you add or remove a public method, error kind, CLI command, MCP tool, or adapter, update the relevant fixture. Tests across all languages will fail until you do. See **[AGENTS.md](./AGENTS.md#feature-parity-enforcement)** for the full fixture inventory and update guide.
+
+Key fixtures:
+- `binding-core/tests/fixtures/method_parity.json` — SimpleAgentWrapper methods (all languages)
+- `binding-core/tests/fixtures/parity_inputs.json` — ErrorKind variants (all languages)
+- `binding-core/tests/fixtures/cli_mcp_alignment.json` — CLI-to-MCP mapping
+- `jacs-cli/contract/cli_commands.json` — CLI commands (validated against Clap tree)
+- `jacs-mcp/contract/jacs-mcp-contract.json` — MCP tool schemas
+
 ## Security
 
 ### Hardening
