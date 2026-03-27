@@ -214,7 +214,15 @@ class TestTriggerableErrorKinds:
         self.agent, _agent_json = _SA.ephemeral("ed25519")
 
     def test_sign_message_handles_raw_strings(self):
-        """sign_message wraps non-JSON raw strings — should succeed, not throw."""
+        """Python sign_message wraps non-JSON raw strings -- should succeed, not throw.
+
+        This is a KNOWN behavioral difference from Node/Go (see Issue 013):
+        - Python sign_message takes any Python object, converts to serde_json::Value,
+          then serializes. A Python string becomes a valid JSON string value.
+        - Node signMessage takes a JSON string directly, so invalid JSON is rejected.
+        - Both behaviors are correct for their respective API contracts.
+        See parity_inputs.json 'sign_message_invalid_json_behavior' for documentation.
+        """
         result = self.agent.sign_message("{{{bad json")
         assert isinstance(result, dict), "sign_message should return a dict"
         assert "raw" in result, "result should contain 'raw' key"

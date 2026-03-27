@@ -69,6 +69,13 @@ func loadMcpContract(t *testing.T) mcpContract {
 // This is the single source of truth -- both TestMcpContractDrift and
 // TestMcpContractToolCount use it, so there is only one place to update
 // when tools are added or removed.
+//
+// MAINTENANCE NOTE (Issue 015): Unlike Python and Node drift tests which
+// dynamically discover tools from their native MCP adapters, Go has no
+// native MCP adapter. This hardcoded list IS the test. When a tool is
+// added to or removed from jacs-mcp/contract/jacs-mcp-contract.json,
+// this list must be manually updated. The contract_snapshot.rs test in
+// Rust will fail first, signaling that this list also needs updating.
 func expectedMcpTools() []string {
 	tools := []string{
 		"jacs_adopt_state",

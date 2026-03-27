@@ -134,7 +134,14 @@ describe('Node.js error kind parity', function () {
 
     const agent = JacsSimpleAgent.ephemeral('ed25519');
 
-    // InvalidArgument: bad JSON input
+    // InvalidArgument: bad JSON input.
+    // This is a KNOWN behavioral difference from Python (see Issue 013):
+    // - Node signMessage passes raw string to binding-core sign_message_json, which
+    //   expects valid JSON. Invalid JSON is rejected with InvalidArgument.
+    // - Python sign_message takes any Python object and serializes it first, so a
+    //   raw string becomes a valid JSON string value and succeeds.
+    // - Both behaviors are correct for their respective API contracts.
+    // See parity_inputs.json 'sign_message_invalid_json_behavior' for documentation.
     expect(() => agent.signMessage('{{{bad')).to.throw(/Invalid/i);
 
     // VerificationFailed: malformed document

@@ -1453,7 +1453,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             Some(("create", create_matches)) => {
                 let _agentfile = create_matches.get_one::<String>("agent-file");
                 let mut agent: Agent = load_agent().expect("failed to load agent for task create");
-                let name = create_matches.get_one::<String>("name").expect("task name is required");
+                let name = create_matches
+                    .get_one::<String>("name")
+                    .expect("task name is required");
                 let description = create_matches
                     .get_one::<String>("description")
                     .expect("task description is required");

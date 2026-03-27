@@ -50,10 +50,8 @@ fn extract_clap_command_paths() -> Vec<String> {
         }
 
         // Collect visible (non-hidden) children
-        let visible_children: Vec<&Command> = sub
-            .get_subcommands()
-            .filter(|c| !c.is_hide_set())
-            .collect();
+        let visible_children: Vec<&Command> =
+            sub.get_subcommands().filter(|c| !c.is_hide_set()).collect();
 
         if visible_children.is_empty() {
             // Leaf command or command with only hidden subcommands
