@@ -419,6 +419,24 @@ pub fn build_cli() -> Command {
                             .value_parser(value_parser!(String)),
                     )
                 )
+                .subcommand(
+                    Command::new("update")
+                        .about("update an existing task document")
+                        .arg(
+                            Arg::new("filename")
+                                .short('f')
+                                .required(true)
+                                .help("Path to the updated task JSON file")
+                                .value_parser(value_parser!(String)),
+                        )
+                        .arg(
+                            Arg::new("task-key")
+                                .short('k')
+                                .required(true)
+                                .help("Task document key (id:version)")
+                                .value_parser(value_parser!(String)),
+                        )
+                )
             )
 
         .subcommand(
@@ -1462,6 +1480,22 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!(
                     "{}",
                     create_task(&mut agent, name.to_string(), description.to_string()).unwrap()
+                );
+            }
+            Some(("update", update_matches)) => {
+                let mut agent: Agent =
+                    load_agent().expect("failed to load agent for task update");
+                let task_key = update_matches
+                    .get_one::<String>("task-key")
+                    .expect("task key is required");
+                let filename = update_matches
+                    .get_one::<String>("filename")
+                    .expect("filename is required");
+                let updated_json = std::fs::read_to_string(filename)
+                    .unwrap_or_else(|e| panic!("Failed to read '{}': {}", filename, e));
+                println!(
+                    "{}",
+                    jacs::update_task(&mut agent, task_key, &updated_json).unwrap()
                 );
             }
             _ => println!("please enter subcommand see jacs task --help"),

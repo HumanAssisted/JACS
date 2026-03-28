@@ -138,7 +138,11 @@
     },
     {
       "cli_command": "task create",
-      "mcp_excluded_reason": "Creates a JACS Task file; may be a dead command (see Issue 001)"
+      "mcp_excluded_reason": "Task creation; could become MCP tool when task workflow matures"
+    },
+    {
+      "cli_command": "task update",
+      "mcp_excluded_reason": "Task update; could become MCP tool when task workflow matures"
     },
     {
       "cli_command": "quickstart",
@@ -348,11 +352,11 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 29,
+    "total_cli_commands": 30,
     "total_cli_feature_gated": 4,
     "total_mcp_tools": 42,
     "aligned_pairs": 16,
-    "cli_only_count": 15,
+    "cli_only_count": 16,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 27,
     "mcp_only_intentional": 17,

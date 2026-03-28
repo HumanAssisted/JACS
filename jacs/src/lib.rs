@@ -422,8 +422,33 @@ pub fn create_task(
     }
 }
 
-/// Update a task document (placeholder -- not yet implemented).
-pub fn update_task(_: String) -> Result<String, JacsError> {
-    // TODO: implement proper task update logic
-    Ok("".to_string())
+/// Update an existing task document.
+///
+/// Fetches the task by `task_key` (format: "id:version"), applies the caller's
+/// modifications from `updated_task_json`, re-signs, versions, and persists.
+/// The result is validated against the task schema before returning.
+pub fn update_task(
+    agent: &mut Agent,
+    task_key: &str,
+    updated_task_json: &str,
+) -> Result<String, JacsError> {
+    let jacs_doc = agent.update_document(task_key, updated_task_json, None, None)?;
+
+    let task_value = jacs_doc.value;
+    let validation_result = agent.schema.taskschema.validate(&task_value);
+    match validation_result {
+        Ok(_) => Ok(task_value.to_string()),
+        Err(err) => {
+            let schema_name = task_value
+                .get("$schema")
+                .and_then(|v| v.as_str())
+                .unwrap_or("task.schema.json");
+            let error_message = format!(
+                "Task update failed: {}",
+                schema::format_schema_validation_error(&err, schema_name, &task_value)
+            );
+            error!("{}", error_message);
+            Err(error_message.into())
+        }
+    }
 }
