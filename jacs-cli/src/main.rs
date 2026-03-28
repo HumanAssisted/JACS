@@ -1483,8 +1483,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 );
             }
             Some(("update", update_matches)) => {
-                let mut agent: Agent =
-                    load_agent().expect("failed to load agent for task update");
+                let mut agent: Agent = load_agent().expect("failed to load agent for task update");
                 let task_key = update_matches
                     .get_one::<String>("task-key")
                     .expect("task key is required");
