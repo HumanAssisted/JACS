@@ -39,14 +39,6 @@ EXCLUDED_FROM_PYTHON = {
     "from_agent",
     # load_with_info is an internal Rust helper; Python uses load() directly
     "load_with_info",
-    # Conversion methods are defined in Rust SimpleAgentWrapper and in the
-    # PyO3 source, but are not yet exposed at runtime on the compiled
-    # SimpleAgent class. They are available on JacsClient.
-    # TODO: Remove these exclusions after rebuilding the native module.
-    "to_yaml",
-    "from_yaml",
-    "to_html",
-    "from_html",
 }
 
 # Rust method name -> Python attribute name mapping.
@@ -71,6 +63,10 @@ PYTHON_NAME_MAP = {
     "sign_message_json": "sign_message",
     "sign_raw_bytes_base64": "sign_string",
     "sign_file_json": "sign_file",
+    "to_yaml": "to_yaml",
+    "from_yaml": "from_yaml",
+    "to_html": "to_html",
+    "from_html": "from_html",
 }
 
 
