@@ -85,7 +85,10 @@ pub struct KeySpec {
 
 pub trait KeyStore: Send + Sync + fmt::Debug {
     fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError>;
-    fn load_private(&self) -> Result<Vec<u8>, JacsError>;
+    /// Load the private key material. Returns `LockedVec` so that bytes remain
+    /// mlock'd (pinned to RAM, excluded from core dumps) for the caller's
+    /// entire usage lifetime.
+    fn load_private(&self) -> Result<LockedVec, JacsError>;
     fn load_public(&self) -> Result<Vec<u8>, JacsError>;
     fn sign_detached(
         &self,
@@ -334,7 +337,7 @@ impl KeyStore for FsEncryptedStore {
         Ok((priv_key, pub_key))
     }
 
-    fn load_private(&self) -> Result<Vec<u8>, JacsError> {
+    fn load_private(&self) -> Result<LockedVec, JacsError> {
         let key_dir = &self.paths.key_directory;
         let storage = Self::storage_for_key_dir(key_dir)?;
         let priv_path = self.paths.private_key_path();
@@ -376,21 +379,9 @@ impl KeyStore for FsEncryptedStore {
                 e
             )
         })?;
-        // Wrap in LockedVec so the decrypted bytes are mlock'd (pinned to RAM)
-        // during the brief window before being returned to the caller. The
-        // LockedVec is dropped at end of scope, which zeroizes + munlocks.
-        //
-        // SECURITY NOTE: The returned Vec<u8> is NOT mlock'd — the key material
-        // spends most of its lifetime in regular heap memory that could be swapped
-        // to disk or included in core dumps. InMemoryKeyStore avoids this by
-        // keeping keys in LockedVec for their full lifetime.
-        //
-        // TODO: When KeyStore::load_private() return type changes to LockedVec,
-        // this intermediate copy can be eliminated (breaking trait change).
-        let locked = LockedVec::new(decrypted.as_slice().to_vec());
-        let result = locked.as_slice().to_vec();
-        // locked is dropped here -> zeroize + munlock
-        Ok(result)
+        // Return LockedVec directly — key material stays mlock'd (pinned to
+        // RAM, excluded from core dumps) for the caller's entire usage lifetime.
+        Ok(LockedVec::new(decrypted.as_slice().to_vec()))
     }
 
     fn load_public(&self) -> Result<Vec<u8>, JacsError> {
@@ -503,7 +494,7 @@ macro_rules! unimplemented_store {
             fn generate(&self, _spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
-            fn load_private(&self) -> Result<Vec<u8>, JacsError> {
+            fn load_private(&self) -> Result<LockedVec, JacsError> {
                 Err(concat!(stringify!($name), " not implemented").into())
             }
             fn load_public(&self) -> Result<Vec<u8>, JacsError> {
@@ -597,15 +588,14 @@ impl KeyStore for InMemoryKeyStore {
         Ok((priv_key, pub_key))
     }
 
-    fn load_private(&self) -> Result<Vec<u8>, JacsError> {
-        // TODO: When KeyStore::load_private() return type changes to LockedVec,
-        // this clone can be eliminated. For now we clone out of locked storage
-        // into a transient Vec<u8> that callers will use briefly for signing.
+    fn load_private(&self) -> Result<LockedVec, JacsError> {
+        // Clone into a fresh LockedVec so the caller gets its own mlock'd copy
+        // without holding the Mutex beyond this scope.
         self.private_key
             .lock()
             .unwrap()
             .as_ref()
-            .map(|lv| lv.as_slice().to_vec())
+            .map(|lv| LockedVec::new(lv.as_slice().to_vec()))
             .ok_or_else(|| "InMemoryKeyStore: no private key generated yet".into())
     }
 
@@ -1196,17 +1186,17 @@ mod tests {
         };
         let (_priv_key, pub_key) = ks.generate(&spec).unwrap();
 
-        // load_private() clones from the LockedVec
+        // load_private() returns LockedVec — key material stays mlock'd
         let loaded_priv = ks.load_private().unwrap();
         assert!(
             !loaded_priv.is_empty(),
             "loaded private key should not be empty"
         );
 
-        // Sign using the loaded key
+        // Sign using the loaded key (LockedVec → &[u8] via as_ref)
         let message = b"test message for locked key signing";
         let sig_bytes = ks
-            .sign_detached(&loaded_priv, message, "ring-Ed25519")
+            .sign_detached(loaded_priv.as_ref(), message, "ring-Ed25519")
             .unwrap();
         assert!(!sig_bytes.is_empty(), "signature should not be empty");
 

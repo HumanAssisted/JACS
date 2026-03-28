@@ -241,12 +241,30 @@ pub(crate) fn decrypt_with_agent_password(
 }
 
 #[derive(Debug)]
+/// # Thread Safety
+///
+/// `Agent` is **not internally synchronized** by design. All mutable fields
+/// (value, id, version, keys, etc.) are unprotected because every production
+/// entry point wraps `Agent` in an external `Mutex`:
+///
+/// - `SimpleAgent` (`simple/core.rs`): `agent: Mutex<Agent>`
+/// - `AgentWrapper` (`binding-core`): `inner: Arc<Mutex<Agent>>`
+/// - `FilesystemDocumentService`: `Arc<Mutex<Agent>>`
+/// - `JacsMcpServer`: `Arc<AgentWrapper>` (which holds `Arc<Mutex<Agent>>`)
+///
+/// Adding field-level synchronization (e.g., `Arc<Mutex<Value>>` on each field)
+/// would double-lock with the external Mutex, adding overhead without benefit.
+/// The one exception is `document_schemas` which uses `Arc<Mutex<>>` because
+/// it was designed for independent schema loading that can outlive a single
+/// lock scope.
+///
+/// **If you use `Agent` directly (without `SimpleAgent` or `AgentWrapper`),
+/// you must provide your own synchronization.**
 pub struct Agent {
     /// the JSONSchema used
     /// todo use getter
     pub schema: Schema,
-    /// the agent JSON Struct
-    /// TODO make this threadsafe
+    /// the agent JSON struct — protected by external Mutex (see struct-level docs)
     value: Option<Value>,
     /// use getter
     pub config: Option<Config>,

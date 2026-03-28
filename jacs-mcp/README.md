@@ -1,10 +1,10 @@
 # JACS MCP Server
 
-A Model Context Protocol (MCP) server for **data provenance and cryptographic signing** of agent state, messaging, agreements, and A2A interoperability.
+MCP server for agent identity, data provenance, and trust — sign, verify, and manage agent state, documents, agreements, and A2A artifacts.
 
-This is the canonical full JACS MCP server. The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
+Uses **stdio transport only** for security — the server holds the agent's private key, so no HTTP endpoints are exposed.
 
-JACS (JSON Agent Communication Standard) ensures that every file, memory, or configuration an AI agent touches can be signed, verified, and traced back to its origin -- no server required.
+The checked-in contract snapshot for downstream adapters lives at [`contract/jacs-mcp-contract.json`](contract/jacs-mcp-contract.json).
 
 ## What can it do?
 

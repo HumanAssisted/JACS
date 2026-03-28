@@ -24,6 +24,11 @@ const _: () = {
 };
 
 impl SimpleAgentWrapper {
+    // WARNING: If you add or remove a public method here, update BOTH:
+    //   1. binding-core/tests/fixtures/method_parity.json  (canonical method list)
+    //   2. binding-core/tests/method_parity.rs::known_methods()  (compile-time anchor)
+    // All language bindings (Python, Node, Go) have parity tests against that fixture.
+
     // =========================================================================
     // Constructors
     // =========================================================================

@@ -1,3 +1,35 @@
+## 0.9.13
+
+### Cross-Language Feature Parity Enforcement
+
+Added an automated parity enforcement system that catches binding drift across Rust, Python, Node.js, and Go through canonical JSON fixtures and snapshot tests.
+
+**New fixtures (single source of truth for all languages):**
+- `binding-core/tests/fixtures/method_parity.json` — 26 `SimpleAgentWrapper` public methods
+- `binding-core/tests/fixtures/parity_inputs.json` — added `error_kinds` array (13 `ErrorKind` variants) and `sign_message_invalid_json_behavior` behavioral note
+- `binding-core/tests/fixtures/adapter_inventory.json` — framework adapter modules and exported functions
+- `binding-core/tests/fixtures/cli_mcp_alignment.json` — CLI-to-MCP tool mapping (16 aligned, 15 CLI-only, 27 MCP-only)
+- `jacs-cli/contract/cli_commands.json` — 29 CLI commands + 4 feature-gated, with `mcp_tool` and `mcp_excluded_reason` fields
+
+**New tests:**
+- Rust: `method_parity.rs` (3), `parity.rs` error kind tests (2), `adapter_inventory.rs` (5), `cli_command_snapshot.rs` (4), `cli_mcp_alignment.rs` (5) — 19 new tests
+- Python: `test_method_parity.py` (4), `test_error_parity.py` (9 incl. runtime triggers), `test_adapter_inventory.py` (5+) — 18+ new tests
+- Node.js: `method-parity.test.js` (5), `error-parity.test.js` (4), `adapter-inventory.test.js` (5) — 14 new tests
+- Go: `method_parity_test.go` (3), `error_parity_test.go` (4), `mcp_contract_drift_test.go` (3) — 10 new tests
+
+### CLI
+
+- Re-enabled `task create` command handler (was commented out; may be used by a2a)
+- Extracted `build_cli()` public function from `main()` so snapshot tests can walk the Clap tree programmatically
+
+### Documentation
+
+- Added `DEVELOPMENT.md` — full API reference for Rust, Python, Node.js, and Go with examples, feature flags, storage backends, security, and framework adapters
+- Added "Feature Parity Enforcement" section to `AGENTS.md` with fixture inventory and what-to-update-when guide
+- Added "Feature Parity" section to `DEVELOPMENT.md` linking to `AGENTS.md`
+- Updated `README.md` with refreshed messaging and streamlined content
+- Updated binding READMEs (`jacspy`, `jacsnpm`, `jacsgo`, `jacs-cli`, `jacs-mcp`) — consolidated to reference `DEVELOPMENT.md`
+
 ## 0.9.12
 
 (unreleased)

@@ -1,0 +1,43 @@
+{
+  "_description": "Canonical list of JACS CLI commands. Update this file when adding/removing CLI commands. A snapshot test validates this fixture against the actual Clap command tree. The mcp_tool and mcp_excluded_reason fields document CLI-MCP alignment (see also binding-core/tests/fixtures/cli_mcp_alignment.json).",
+  "schema_version": 1,
+  "cli_name": "jacs",
+  "commands": [
+    {"path": "version", "about": "Prints version and build information", "mcp_tool": null, "mcp_excluded_reason": "Meta command: prints version info, not applicable to MCP"},
+    {"path": "config create", "about": "create a config file", "mcp_tool": null, "mcp_excluded_reason": "Setup command: creates jacs.config.json interactively, not applicable to MCP runtime"},
+    {"path": "config read", "about": "read configuration and display to screen", "mcp_tool": null, "mcp_excluded_reason": "Diagnostic command: displays config to terminal, not applicable to MCP"},
+    {"path": "agent dns", "about": "emit DNS TXT commands for publishing agent fingerprint", "mcp_tool": null, "mcp_excluded_reason": "Emits DNS TXT record commands for manual DNS provisioning; requires shell access"},
+    {"path": "agent create", "about": "create an agent", "mcp_tool": "jacs_create_agent", "mcp_excluded_reason": null},
+    {"path": "agent verify", "about": "verify an agent", "mcp_tool": null, "mcp_excluded_reason": "Agent self-verification; MCP agents verify implicitly on load"},
+    {"path": "agent lookup", "about": "Look up another agent's public key and DNS info from their domain", "mcp_tool": null, "mcp_excluded_reason": "DNS discovery helper; could be an MCP tool but currently CLI-only"},
+    {"path": "task create", "about": "create a new JACS Task file", "mcp_tool": null, "mcp_excluded_reason": "Task creation; could become MCP tool when task workflow matures"},
+    {"path": "task update", "about": "update an existing task document", "mcp_tool": null, "mcp_excluded_reason": "Task update; could become MCP tool when task workflow matures"},
+    {"path": "document create", "about": "create a new JACS file", "mcp_tool": "jacs_sign_document", "mcp_excluded_reason": null},
+    {"path": "document update", "about": "create a new version of document", "mcp_tool": "jacs_update_state", "mcp_excluded_reason": null},
+    {"path": "document check-agreement", "about": "list agents that should sign document", "mcp_tool": "jacs_check_agreement", "mcp_excluded_reason": null},
+    {"path": "document create-agreement", "about": "create agreement for document", "mcp_tool": "jacs_create_agreement", "mcp_excluded_reason": null},
+    {"path": "document sign-agreement", "about": "sign the agreement section of a document", "mcp_tool": "jacs_sign_agreement", "mcp_excluded_reason": null},
+    {"path": "document verify", "about": "verify document hash, signatures, and schema", "mcp_tool": "jacs_verify_document", "mcp_excluded_reason": null},
+    {"path": "document extract", "about": "extract embedded contents from JACS document", "mcp_tool": null, "mcp_excluded_reason": "Could be an MCP tool in the future"},
+    {"path": "key reencrypt", "about": "Re-encrypt the private key with a new password", "mcp_tool": "jacs_reencrypt_key", "mcp_excluded_reason": null},
+    {"path": "mcp", "about": "Start the built-in JACS MCP server", "mcp_tool": null, "mcp_excluded_reason": "Meta command: starts the MCP server itself, cannot be an MCP tool"},
+    {"path": "a2a assess", "about": "Assess trust level of a remote A2A Agent Card", "mcp_tool": "jacs_assess_a2a_agent", "mcp_excluded_reason": null},
+    {"path": "a2a trust", "about": "Add a remote A2A agent to the local trust store", "mcp_tool": "jacs_trust_agent", "mcp_excluded_reason": null},
+    {"path": "a2a discover", "about": "Discover a remote A2A agent via well-known Agent Card", "mcp_tool": null, "mcp_excluded_reason": "Interactive CLI workflow for discovering remote A2A agents"},
+    {"path": "a2a serve", "about": "Serve well-known endpoints for A2A discovery", "mcp_tool": null, "mcp_excluded_reason": "Long-running HTTP server process, not suitable as MCP tool"},
+    {"path": "a2a quickstart", "about": "Create/load agent and start serving A2A endpoints", "mcp_tool": null, "mcp_excluded_reason": "Combined create-and-serve convenience; orchestration command not suitable for MCP"},
+    {"path": "quickstart", "about": "Create or load a persistent agent for instant sign/verify", "mcp_tool": null, "mcp_excluded_reason": "Setup command: creates/loads persistent agent, not applicable to MCP runtime"},
+    {"path": "init", "about": "Initialize JACS by creating both config and agent", "mcp_tool": null, "mcp_excluded_reason": "Setup command: initializes config and agent, not applicable to MCP runtime"},
+    {"path": "attest create", "about": "Create a signed attestation", "mcp_tool": "jacs_attest_create", "mcp_excluded_reason": null},
+    {"path": "attest verify", "about": "Verify an attestation document", "mcp_tool": "jacs_attest_verify", "mcp_excluded_reason": null},
+    {"path": "attest export-dsse", "about": "Export an attestation as a DSSE envelope", "mcp_tool": "jacs_attest_export_dsse", "mcp_excluded_reason": null},
+    {"path": "verify", "about": "Verify a signed JACS document (no agent required)", "mcp_tool": "jacs_verify_document", "mcp_excluded_reason": null},
+    {"path": "convert", "about": "Convert JACS documents between JSON, YAML, and HTML formats", "mcp_tool": null, "mcp_excluded_reason": "Format conversion could be an MCP tool in the future"}
+  ],
+  "feature_gated_commands": [
+    {"path": "keychain set", "feature": "keychain", "about": "Store a password in the OS keychain for an agent", "mcp_tool": null, "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"},
+    {"path": "keychain get", "feature": "keychain", "about": "Retrieve the stored password for an agent", "mcp_tool": null, "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"},
+    {"path": "keychain delete", "feature": "keychain", "about": "Remove the stored password for an agent from the OS keychain", "mcp_tool": null, "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"},
+    {"path": "keychain status", "feature": "keychain", "about": "Check if a password is stored for an agent in the OS keychain", "mcp_tool": null, "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"}
+  ]
+}

@@ -123,6 +123,26 @@ impl LockedVec {
     }
 }
 
+impl PartialEq for LockedVec {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl Eq for LockedVec {}
+
+impl PartialEq<Vec<u8>> for LockedVec {
+    fn eq(&self, other: &Vec<u8>) -> bool {
+        self.inner == *other
+    }
+}
+
+impl PartialEq<LockedVec> for Vec<u8> {
+    fn eq(&self, other: &LockedVec) -> bool {
+        *self == other.inner
+    }
+}
+
 impl AsRef<[u8]> for LockedVec {
     fn as_ref(&self) -> &[u8] {
         &self.inner

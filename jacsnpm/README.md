@@ -1,44 +1,16 @@
 # JACS for Node.js
 
-**Sign it. Prove it.**
-
-Cryptographic signatures for AI agent outputs -- so anyone can verify who said what and whether it was changed. No server. Three lines of code.
-
-[Which integration should I use?](https://humanassisted.github.io/JACS/getting-started/decision-tree.html) | [Full documentation](https://humanassisted.github.io/JACS/)
-
-**Dependencies**: The `overrides` in `package.json` for `body-parser` and `qs` are for security (CVE-2024-45590). Do not remove them without re-auditing.
-
-## Installation
+Cryptographic identity, signing, and verification for AI agents — from Node.js.
 
 ```bash
 npm install @hai.ai/jacs
 ```
 
-The npm package ships prebuilt native bindings for supported targets and does not compile Rust during `npm install`.
+Prebuilt native bindings. No Rust compilation during install.
 
-## v0.9.0: Attestation Support
+[Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
-New in v0.9.0: **attestation** -- evidence-based trust proofs on top of cryptographic signing. Create attestations with claims, evidence, and derivation chains. Verify locally (signature + hash) or fully (evidence + chain). Export as DSSE for in-toto/SLSA compatibility. All attestation APIs are available as async and sync variants.
-
-### v0.8.0: Framework Adapters
-
-First-class adapters for **Vercel AI SDK**, **Express**, **Koa**, **LangChain.js**, and a full **MCP tool suite**. All framework dependencies are optional peer deps -- install only what you use.
-
-### Async-First API
-
-All NAPI operations return Promises by default. Sync variants are available with a `Sync` suffix, following the Node.js convention (like `fs.readFile` vs `fs.readFileSync`).
-
-```javascript
-// Async (default, recommended -- does not block the event loop)
-const signed = await jacs.signMessage({ action: 'approve' });
-
-// Sync (blocks event loop, use in scripts or CLI tools)
-const signed = jacs.signMessageSync({ action: 'approve' });
-```
-
-## Quick Start
-
-Quickstart -- one call to start signing:
+## Quick start
 
 ```javascript
 const jacs = require('@hai.ai/jacs/simple');
@@ -49,550 +21,50 @@ const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
-`quickstart(options)` creates a persistent agent with keys on disk and requires `options.name` and `options.domain` (with optional `description`). If `./jacs.config.json` already exists, it loads it; otherwise it creates a new agent. Agent, keys, and config are saved to `./jacs_data`, `./jacs_keys`, and `./jacs.config.json`. If `JACS_PRIVATE_KEY_PASSWORD` is not set, the native Rust layer generates a secure password; set `JACS_SAVE_PASSWORD_FILE=true` to persist it at `./jacs_keys/.jacs_password`. Pass `{ algorithm: 'ring-Ed25519' }` to override the default (`pq2025`).
+All operations are async by default. Sync variants available with a `Sync` suffix (e.g. `signMessageSync`).
 
-**Signed your first document?** Next: [Verify it standalone](#standalone-verification-no-agent-required) | [Add framework adapters](#framework-adapters) | [Multi-agent agreements](#multi-party-agreements) | [Full docs](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
-
-### Advanced: Loading an existing agent
-
-If you already have an agent (e.g., created by a previous `quickstart({ name, domain })` call), load it explicitly:
-
-```javascript
-const jacs = require('@hai.ai/jacs/simple');
-
-await jacs.load('./jacs.config.json');
-
-const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
-const result = await jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
-```
-
-### Headless / Embedded Loading Without Env Vars
-
-For Linux services or embedded apps that fetch secrets from a vault or secret
-manager, prefer passing the password in memory to the low-level binding instead
-of storing it in `JACS_PRIVATE_KEY_PASSWORD`:
-
-```javascript
-const { JacsAgent } = require('@hai.ai/jacs');
-
-const secret = getSecretFromManager();
-
-const agent = new JacsAgent();
-agent.setPrivateKeyPassword(secret);
-const info = JSON.parse(await agent.loadWithInfo('/srv/my-project/jacs.config.json'));
-```
-
-`@hai.ai/jacs/simple` and `JacsClient` remain the easiest high-level APIs, but
-the low-level `JacsAgent` API is the explicit path for in-memory secret
-injection.
-
-## Core API
-
-Every function that calls into NAPI has both async (default) and sync variants:
-
-| Function | Sync Variant | Description |
-|----------|-------------|-------------|
-| `quickstart(options)` | `quickstartSync(options)` | Create a persistent agent with keys on disk |
-| `create(options)` | `createSync(options)` | Create a new agent programmatically |
-| `load(configPath)` | `loadSync(configPath)` | Load agent from config file |
-| `verifySelf()` | `verifySelfSync()` | Verify agent's own integrity |
-| `updateAgent(data)` | `updateAgentSync(data)` | Update agent document |
-| `updateDocument(id, data)` | `updateDocumentSync(id, data)` | Update existing document |
-| `signMessage(data)` | `signMessageSync(data)` | Sign any JSON data |
-| `signFile(path, embed)` | `signFileSync(path, embed)` | Sign a file |
-| `verify(doc)` | `verifySync(doc)` | Verify signed document |
-| `verifyById(id)` | `verifyByIdSync(id)` | Verify by storage ID |
-| `reencryptKey(old, new)` | `reencryptKeySync(old, new)` | Re-encrypt private key |
-| `getSetupInstructions(domain)` | `getSetupInstructionsSync(domain)` | Get DNS/well-known setup |
-| `createAgreement(doc, ids, ...)` | `createAgreementSync(doc, ids, ...)` | Create multi-party agreement |
-| `signAgreement(doc)` | `signAgreementSync(doc)` | Sign an agreement |
-| `checkAgreement(doc)` | `checkAgreementSync(doc)` | Check agreement status |
-| `audit(options?)` | `auditSync(options?)` | Run a security audit |
-| `createAttestation(params)` | `createAttestationSync(params)` | Create signed attestation |
-| `verifyAttestation(doc, opts?)` | `verifyAttestationSync(doc, opts?)` | Verify attestation (local or full) |
-| `liftToAttestation(signedDoc, claims)` | `liftToAttestationSync(signedDoc, claims)` | Lift signed doc to attestation |
-| `exportAttestationDsse(doc)` | `exportAttestationDsseSync(doc)` | Export attestation as DSSE |
-
-Pure sync functions (no NAPI call, no suffix needed):
+## Core operations
 
 | Function | Description |
 |----------|-------------|
-| `verifyStandalone(doc, opts?)` | Verify without loading an agent |
-| `getPublicKey()` | Get public key |
-| `isLoaded()` | Check if agent is loaded |
-| `getDnsRecord(domain, ttl?)` | Get DNS TXT record |
-| `getWellKnownJson()` | Get well-known JSON |
-| `trustAgent(json)` | Add agent to trust store |
-| `trustAgentWithKey(json, publicKeyPem)` | Add agent with explicit public key |
-| `listTrustedAgents()` | List trusted agent IDs |
-| `untrustAgent(id)` | Remove from trust store |
-| `isTrusted(id)` | Check if agent is trusted |
-| `getTrustedAgent(id)` | Get trusted agent's JSON |
+| `quickstart(options)` | Create a persistent agent with keys — zero config |
+| `load(configPath)` | Load agent from config file |
+| `signMessage(data)` | Sign any JSON data |
+| `signFile(path, embed)` | Sign a file |
+| `verify(doc)` | Verify signed document |
+| `verifyStandalone(doc, opts)` | Verify without loading an agent |
+| `audit()` | Run a security audit |
 
-## Types
-
-```typescript
-interface SignedDocument {
-  raw: string;        // Full JSON document
-  documentId: string; // UUID
-  agentId: string;    // Signer's ID
-  timestamp: string;  // ISO 8601
-}
-
-interface VerificationResult {
-  valid: boolean;
-  data?: any;
-  signerId: string;
-  timestamp: string;
-  attachments: Attachment[];
-  errors: string[];
-}
-```
-
-## Programmatic Agent Creation
-
-```typescript
-const jacs = require('@hai.ai/jacs/simple');
-
-const agent = await jacs.create({
-  name: 'my-agent',
-  password: process.env.JACS_PRIVATE_KEY_PASSWORD,  // required
-  algorithm: 'pq2025',                  // default; also: "ring-Ed25519", "RSA-PSS"
-  dataDirectory: './jacs_data',
-  keyDirectory: './jacs_keys',
-});
-console.log(`Created: ${agent.agentId}`);
-```
-
-### Standalone Verification (No Agent Required)
-
-Verify a signed document without loading an agent. Useful for one-off verification, CI/CD pipelines, or services that only need to verify, not sign.
+## Verify without an agent
 
 ```typescript
 import { verifyStandalone } from '@hai.ai/jacs/simple';
 
-const result = verifyStandalone(signedJson, {
-  keyResolution: 'local',
-  keyDirectory: './trusted-keys/',
-});
-if (result.valid) {
-  console.log(`Signed by: ${result.signerId}`);
-}
+const result = verifyStandalone(signedJson, { keyDirectory: './keys/' });
 ```
 
-Documents signed by Rust or Python agents verify identically in Node.js -- cross-language interop is tested on every commit with Ed25519 and pq2025 (ML-DSA-87). See the full [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) for CLI, DNS, and cross-language examples.
+Cross-language interop tested on every commit — documents signed in Rust or Python verify identically in Node.js.
 
-### Verify by Document ID
+## Framework adapters
 
-```javascript
-const result = await jacs.verifyById('550e8400-e29b-41d4-a716-446655440000:1');
-console.log(`Valid: ${result.valid}`);
-```
+Adapters for Vercel AI SDK, Express, Koa, LangChain.js, and MCP. All framework dependencies are optional peer deps.
 
-### Re-encrypt Private Key
+## Instance-based API
 
-```javascript
-await jacs.reencryptKey('old-password-123!', 'new-Str0ng-P@ss!');
-```
-
-### Password Requirements
-
-Passwords must be at least 8 characters and include uppercase, lowercase, a digit, and a special character.
-
-### Post-Quantum Algorithm
-
-Use `pq2025` (ML-DSA-87, FIPS-204) for post-quantum signing.
-
-## Examples
-
-### Sign and Verify
-
-```javascript
-const jacs = require('@hai.ai/jacs/simple');
-
-await jacs.load('./jacs.config.json');
-
-// Sign data
-const signed = await jacs.signMessage({
-  action: 'transfer',
-  amount: 500,
-  to: 'agent-123'
-});
-
-// Later, verify received data
-const result = await jacs.verify(receivedJson);
-if (result.valid) {
-  console.log(`Signed by: ${result.signerId}`);
-  console.log(`Data: ${JSON.stringify(result.data)}`);
-}
-```
-
-### Update Agent
-
-```javascript
-// Get current agent, modify, and update
-const agentDoc = JSON.parse(jacs.exportAgent());
-agentDoc.jacsAgentType = 'updated-service';
-const updated = await jacs.updateAgent(agentDoc);
-console.log('Agent updated with new version');
-```
-
-### Update Document
-
-```javascript
-// Create a document
-const signed = await jacs.signMessage({ status: 'pending', amount: 100 });
-
-// Later, update it
-const doc = JSON.parse(signed.raw);
-doc.content.status = 'approved';
-const updated = await jacs.updateDocument(signed.documentId, doc);
-console.log('Document updated with new version');
-```
-
-### File Signing
-
-```javascript
-// Reference only (stores hash)
-const signed = await jacs.signFile('contract.pdf', false);
-
-// Embed content (portable document)
-const embedded = await jacs.signFile('contract.pdf', true);
-```
-
-## Framework Adapters
-
-### Vercel AI SDK (`jacs/vercel-ai`)
-
-Sign AI model outputs with cryptographic provenance using the AI SDK's middleware pattern:
-
-```typescript
-import { JacsClient } from '@hai.ai/jacs/client';
-import { withProvenance } from '@hai.ai/jacs/vercel-ai';
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
-
-const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
-const model = withProvenance(openai('gpt-4o'), { client });
-
-const { text, providerMetadata } = await generateText({ model, prompt: 'Hello!' });
-console.log(providerMetadata?.jacs?.text?.documentId); // signed proof
-```
-
-Works with `generateText`, `streamText` (signs after stream completes), and tool calls. Compose with other middleware via `jacsProvenance()`.
-
-**Peer deps**: `npm install ai @ai-sdk/provider`
-
-### Express Middleware (`jacs/express`)
-
-Verify incoming signed requests, optionally auto-sign responses:
-
-```typescript
-import express from 'express';
-import { JacsClient } from '@hai.ai/jacs/client';
-import { jacsMiddleware } from '@hai.ai/jacs/express';
-
-const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
-const app = express();
-app.use(express.text({ type: 'application/json' }));
-app.use(jacsMiddleware({ client, verify: true }));
-
-app.post('/api/data', (req, res) => {
-  console.log(req.jacsPayload); // verified payload
-  // Manual signing via req.jacsClient:
-  req.jacsClient.signMessage({ status: 'ok' }).then(signed => {
-    res.type('text/plain').send(signed.raw);
-  });
-});
-```
-
-Options: `client`, `configPath`, `sign` (auto-sign, default false), `verify` (default true), `optional` (allow unsigned, default false). Supports Express v4 + v5.
-
-For auth-style endpoints, enable replay protection:
-
-```typescript
-app.use(
-  jacsMiddleware({
-    client,
-    verify: true,
-    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
-  }),
-);
-```
-
-**Peer dep**: `npm install express`
-
-### Koa Middleware (`jacs/koa`)
-
-```typescript
-import Koa from 'koa';
-import { jacsKoaMiddleware } from '@hai.ai/jacs/koa';
-
-const app = new Koa();
-app.use(jacsKoaMiddleware({ client, verify: true, sign: true }));
-app.use(async (ctx) => {
-  console.log(ctx.state.jacsPayload); // verified
-  ctx.body = { status: 'ok' };        // auto-signed when sign: true
-});
-```
-
-For auth-style endpoints, enable replay protection:
-
-```typescript
-app.use(
-  jacsKoaMiddleware({
-    client,
-    verify: true,
-    authReplay: { enabled: true, maxAgeSeconds: 30, clockSkewSeconds: 5 },
-  }),
-);
-```
-
-**Peer dep**: `npm install koa`
-
-### LangChain.js (`jacs/langchain`)
-
-Two integration patterns — full toolkit or auto-signing wrappers:
-
-**Full toolkit** — give your LangChain agent access to all JACS operations (sign, verify, agreements, trust, audit):
-
-```typescript
-import { JacsClient } from '@hai.ai/jacs/client';
-import { createJacsTools } from '@hai.ai/jacs/langchain';
-
-const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
-const jacsTools = createJacsTools({ client });
-
-// Bind to your LLM — agent can now sign, verify, create agreements, etc.
-const llm = model.bindTools([...myTools, ...jacsTools]);
-```
-
-Returns 14 tools: `jacs_sign`, `jacs_verify`, `jacs_create_agreement`, `jacs_sign_agreement`, `jacs_check_agreement`, `jacs_verify_self`, `jacs_trust_agent`, `jacs_trust_agent_with_key`, `jacs_list_trusted`, `jacs_is_trusted`, `jacs_share_public_key`, `jacs_share_agent`, `jacs_audit`, `jacs_agent_info`.
-
-**Auto-signing wrappers** — transparently sign existing tool outputs:
-
-```typescript
-import { signedTool, jacsToolNode } from '@hai.ai/jacs/langchain';
-
-// Wrap a single tool
-const signed = signedTool(myTool, { client });
-
-// Or wrap all tools in a ToolNode (LangGraph)
-const node = jacsToolNode([tool1, tool2], { client });
-```
-
-**Peer deps**: `npm install @langchain/core` (and optionally `@langchain/langgraph` for `jacsToolNode`)
-
-### MCP (`jacs/mcp`)
-
-Two integration patterns — transport proxy or partial tool compatibility registration.
-The canonical full MCP server is built into the `jacs` binary, launched via `jacs mcp`.
-
-**Transport proxy** — wrap any MCP transport with signing/verification:
-
-```typescript
-import { JacsClient } from '@hai.ai/jacs/client';
-import { createJACSTransportProxy } from '@hai.ai/jacs/mcp';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-
-const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
-const baseTransport = new StdioServerTransport();
-const secureTransport = createJACSTransportProxy(baseTransport, client, 'server');
-```
-
-**MCP tool registration** — add the jacsnpm compatibility tool set to your MCP server:
-
-```typescript
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { JacsClient } from '@hai.ai/jacs/client';
-import { registerJacsTools } from '@hai.ai/jacs/mcp';
-
-const server = new Server({ name: 'my-server', version: '1.0.0' }, { capabilities: { tools: {} } });
-const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
-registerJacsTools(server, client);
-```
-
-Registers a partial compatibility layer for signing, verification, agreements, trust, A2A, audit, and selected legacy helpers. Use `getJacsMcpToolDefinitions()` and `handleJacsMcpToolCall()` for custom integration. If you need the full canonical `jacs_*` MCP surface, use the Rust server.
-
-**Peer dep**: `npm install @modelcontextprotocol/sdk`
-
-### Legacy: `jacs/http`
-
-The old `JACSExpressMiddleware` and `JACSKoaMiddleware` are still available from `@hai.ai/jacs/http` for backward compatibility. New code should use `@hai.ai/jacs/express` and `@hai.ai/jacs/koa`.
-
-## JacsClient (Instance-Based API)
-
-`JacsClient` is the recommended API for new code. Each instance owns its own agent, so multiple clients can coexist in the same process without shared global state.
+For multiple agents in one process:
 
 ```typescript
 import { JacsClient } from '@hai.ai/jacs/client';
 
-// Zero-config: loads or creates a persistent agent
-const client = await JacsClient.quickstart({
-  name: 'my-agent',
-  domain: 'agent.example.com',
-  algorithm: 'ring-Ed25519'
-});
-
-const signed = await client.signMessage({ action: 'approve', amount: 100 });
-const result = await client.verify(signed.raw);
-console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
+const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'example.com' });
+const signed = await client.signMessage({ action: 'approve' });
 ```
 
-### Ephemeral Clients
+See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference, advanced usage (agreements, A2A, attestation, headless loading), framework adapter examples, and testing utilities.
 
-For testing or throwaway use, create an in-memory client with no files or env vars:
+## Links
 
-```typescript
-const client = await JacsClient.ephemeral('ring-Ed25519');
-const signed = await client.signMessage({ hello: 'world' });
-const result = await client.verify(signed.raw);
-```
-
-Sync variants are also available:
-
-```typescript
-const client = JacsClient.ephemeralSync('ring-Ed25519');
-const signed = client.signMessageSync({ hello: 'world' });
-const result = client.verifySync(signed.raw);
-```
-
-### Multi-Party Agreements
-
-Create agreements that require signatures from multiple agents, with optional constraints:
-
-```typescript
-const agreement = await client.createAgreement(
-  { action: 'deploy', version: '2.0' },
-  [agentA.agentId, agentB.agentId],
-  {
-    question: 'Approve deployment?',
-    timeout: '2026-03-01T00:00:00Z',    // ISO 8601 deadline
-    quorum: 2,                            // M-of-N signatures required
-    requiredAlgorithms: ['ring-Ed25519'], // restrict signing algorithms
-    minimumStrength: 'classical',         // "classical" or "post-quantum"
-  },
-);
-
-// Other agents sign the agreement
-const signed = await agentB.signAgreement(agreement.raw);
-
-// Check agreement status
-const status = await client.checkAgreement(signed.raw);
-console.log(`Complete: ${status.complete}, Signatures: ${status.signedCount}/${status.totalRequired}`);
-```
-
-### JacsClient API
-
-All instance methods have async (default) and sync variants:
-
-| Method | Sync Variant | Description |
-|--------|-------------|-------------|
-| `JacsClient.quickstart(options)` | `JacsClient.quickstartSync(options)` | Load or create a persistent agent |
-| `JacsClient.ephemeral(algorithm?)` | `JacsClient.ephemeralSync(algorithm?)` | Create an in-memory agent |
-| `client.load(configPath?)` | `client.loadSync(configPath?)` | Load agent from config file |
-| `client.create(options)` | `client.createSync(options)` | Create a new agent |
-| `client.signMessage(data)` | `client.signMessageSync(data)` | Sign any JSON data |
-| `client.verify(doc)` | `client.verifySync(doc)` | Verify a signed document |
-| `client.verifySelf()` | `client.verifySelfSync()` | Verify agent's own integrity |
-| `client.verifyById(id)` | `client.verifyByIdSync(id)` | Verify by storage ID |
-| `client.signFile(path, embed?)` | `client.signFileSync(path, embed?)` | Sign a file |
-| `client.createAgreement(...)` | `client.createAgreementSync(...)` | Create multi-party agreement |
-| `client.signAgreement(...)` | `client.signAgreementSync(...)` | Sign an agreement |
-| `client.checkAgreement(...)` | `client.checkAgreementSync(...)` | Check agreement status |
-| `client.updateAgent(data)` | `client.updateAgentSync(data)` | Update agent document |
-| `client.updateDocument(id, data)` | `client.updateDocumentSync(id, data)` | Update a document |
-| `client.exportAgentCard(agentData?)` | — | Export A2A Agent Card |
-| `client.signArtifact(artifact, type, parents?)` | — | Sign A2A artifact |
-| `client.verifyArtifact(wrapped)` | — | Verify A2A artifact |
-| `client.createAttestation(params)` | — | Create attestation |
-| `client.verifyAttestation(doc, opts?)` | — | Verify attestation |
-| `client.liftToAttestation(signedDoc, claims)` | — | Lift doc to attestation |
-| `client.exportAttestationDsse(doc)` | — | Export attestation as DSSE |
-
-See [`examples/multi_agent_agreement.ts`](./examples/multi_agent_agreement.ts) for a complete multi-agent agreement demo.
-
-## A2A Protocol Support
-
-Every JACS agent is an A2A agent -- zero additional configuration. JACS implements the [Agent-to-Agent (A2A)](https://github.com/a2aproject/A2A) protocol with cryptographic trust built in.
-For A2A security, JACS is an OAuth alternative for service-to-service agent trust (mTLS-like at the payload layer), not a replacement for OAuth/OIDC delegated user authorization.
-
-### Quick Start
-
-```typescript
-import { JacsClient } from '@hai.ai/jacs/client';
-
-const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
-const card = client.exportAgentCard();
-const signed = await client.signArtifact({ action: 'classify', input: 'hello' }, 'task');
-```
-
-### Using JACSA2AIntegration Directly
-
-For full A2A lifecycle control (well-known documents, chain of custody, extension descriptors):
-
-```typescript
-import { JacsClient } from '@hai.ai/jacs/client';
-
-const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'agent.example.com' });
-const a2a = client.getA2A();
-
-// Export an A2A Agent Card
-const card = a2a.exportAgentCard(agentData);
-
-// Sign an artifact with provenance
-const signed = await a2a.signArtifact({ taskId: 't-1', operation: 'classify' }, 'task');
-
-// Verify a received artifact
-const result = await a2a.verifyWrappedArtifact(signed);
-console.log(result.valid);
-
-// Build chain of custody across agents
-const step2 = await a2a.signArtifact(
-  { step: 2, data: 'processed' }, 'message',
-  [signed],  // parent signatures
-);
-```
-
-When using `a2a.listen(0)`, Node picks a free port automatically. Use `server.address().port` if you need to read it programmatically.
-
-### Trust Policies
-
-JACS trust policies control how your agent handles foreign signatures:
-
-| Policy | Behavior |
-|--------|----------|
-| `open` | Accept all signatures without key resolution |
-| `verified` | Require key resolution before accepting (**default**) |
-| `strict` | Require the signer to be in your local trust store |
-
-See the [A2A Guide](https://humanassisted.github.io/JACS/integrations/a2a.html) for well-known documents, cross-organization discovery, and chain-of-custody examples.
-
-## Testing
-
-The `@hai.ai/jacs/testing` module provides zero-setup test helpers:
-
-```typescript
-import { createTestClient, createTestClientSync } from '@hai.ai/jacs/testing';
-
-// Async (preferred)
-const client = await createTestClient('ring-Ed25519');
-const signed = await client.signMessage({ hello: 'test' });
-const result = await client.verify(signed.raw);
-assert(result.valid);
-
-// Sync
-const client2 = createTestClientSync('ring-Ed25519');
-const signed2 = client2.signMessageSync({ hello: 'test' });
-const result2 = client2.verifySync(signed2.raw);
-assert(result2.valid);
-```
-
-## See Also
-
-- [JACS Book](https://humanassisted.github.io/JACS/) - Full documentation (published book)
-- [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
-- [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html) - CLI, standalone, DNS verification
-- [Source](https://github.com/HumanAssisted/JACS) - GitHub repository
+- [JACS Documentation](https://humanassisted.github.io/JACS/)
+- [Verification Guide](https://humanassisted.github.io/JACS/getting-started/verification.html)
+- [Source](https://github.com/HumanAssisted/JACS)
 - [Examples](./examples/)

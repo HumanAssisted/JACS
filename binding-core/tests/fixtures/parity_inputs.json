@@ -54,5 +54,28 @@
     "required": ["valid"],
     "optional": ["signer_id", "timestamp", "errors", "data", "attachments"]
   },
-  "algorithms": ["ed25519", "pq2025"]
+  "sign_message_invalid_json_behavior": {
+    "_description": "Documents a known cross-language behavioral difference for sign_message with invalid JSON input. Python's sign_message takes any Python object and serializes it to JSON first (so a raw string becomes a valid JSON string value). Node's signMessage takes a JSON string directly and rejects invalid JSON. Both behaviors are correct for their API contracts.",
+    "input": "{{{bad json",
+    "rust_binding_core": "rejects (InvalidArgument: serde_json::from_str fails)",
+    "python": "succeeds (PyObject -> serde_json::Value serialization wraps string as JSON string value)",
+    "node": "rejects (passes raw string to binding-core sign_message_json which expects valid JSON)",
+    "go": "rejects (passes raw string to C FFI which calls sign_message_json)"
+  },
+  "algorithms": ["ed25519", "pq2025"],
+  "error_kinds": [
+    "AgreementFailed",
+    "AgentLoad",
+    "DocumentFailed",
+    "Generic",
+    "InvalidArgument",
+    "KeyNotFound",
+    "LockFailed",
+    "NetworkFailed",
+    "SerializationFailed",
+    "SigningFailed",
+    "TrustFailed",
+    "Validation",
+    "VerificationFailed"
+  ]
 }

@@ -1,0 +1,365 @@
+{
+  "_description": "CLI-to-MCP alignment mapping. Every CLI command and every MCP tool must appear here with a classification. If a new CLI command or MCP tool is added without updating this fixture, the alignment test fails.",
+  "schema_version": 1,
+  "alignments": [
+    {
+      "cli_command": "agent create",
+      "mcp_tool": "jacs_create_agent",
+      "status": "aligned",
+      "notes": "Both create a new agent with keys"
+    },
+    {
+      "cli_command": "document create",
+      "mcp_tool": "jacs_sign_document",
+      "status": "aligned",
+      "notes": "CLI 'create' signs a new document; MCP jacs_sign_document does the same"
+    },
+    {
+      "cli_command": "document create",
+      "mcp_tool": "jacs_sign_state",
+      "status": "aligned",
+      "notes": "jacs_sign_state is the state-file variant of document signing"
+    },
+    {
+      "cli_command": "document update",
+      "mcp_tool": "jacs_update_state",
+      "status": "aligned",
+      "notes": "Both create a new version of a signed document"
+    },
+    {
+      "cli_command": "document verify",
+      "mcp_tool": "jacs_verify_document",
+      "status": "aligned",
+      "notes": "Both verify document hash, signatures, and schema"
+    },
+    {
+      "cli_command": "document verify",
+      "mcp_tool": "jacs_verify_state",
+      "status": "aligned",
+      "notes": "jacs_verify_state is the state-file variant of document verification"
+    },
+    {
+      "cli_command": "document check-agreement",
+      "mcp_tool": "jacs_check_agreement",
+      "status": "aligned",
+      "notes": "Both list agents that should sign a document"
+    },
+    {
+      "cli_command": "document create-agreement",
+      "mcp_tool": "jacs_create_agreement",
+      "status": "aligned",
+      "notes": "Both create an agreement for a document"
+    },
+    {
+      "cli_command": "document sign-agreement",
+      "mcp_tool": "jacs_sign_agreement",
+      "status": "aligned",
+      "notes": "Both sign the agreement section of a document"
+    },
+    {
+      "cli_command": "key reencrypt",
+      "mcp_tool": "jacs_reencrypt_key",
+      "status": "aligned",
+      "notes": "Both re-encrypt the private key with a new password"
+    },
+    {
+      "cli_command": "attest create",
+      "mcp_tool": "jacs_attest_create",
+      "status": "aligned",
+      "notes": "Both create a signed attestation"
+    },
+    {
+      "cli_command": "attest verify",
+      "mcp_tool": "jacs_attest_verify",
+      "status": "aligned",
+      "notes": "Both verify an attestation document"
+    },
+    {
+      "cli_command": "attest export-dsse",
+      "mcp_tool": "jacs_attest_export_dsse",
+      "status": "aligned",
+      "notes": "Both export an attestation as a DSSE envelope"
+    },
+    {
+      "cli_command": "a2a assess",
+      "mcp_tool": "jacs_assess_a2a_agent",
+      "status": "aligned",
+      "notes": "Both assess trust level of a remote A2A Agent Card"
+    },
+    {
+      "cli_command": "a2a trust",
+      "mcp_tool": "jacs_trust_agent",
+      "status": "aligned",
+      "notes": "Both add a remote agent to the local trust store"
+    },
+    {
+      "cli_command": "verify",
+      "mcp_tool": "jacs_verify_document",
+      "status": "aligned",
+      "notes": "Standalone verify command (no agent required) maps to same MCP tool"
+    }
+  ],
+  "cli_only": [
+    {
+      "cli_command": "config create",
+      "mcp_excluded_reason": "Setup command: creates jacs.config.json interactively, not applicable to MCP runtime"
+    },
+    {
+      "cli_command": "config read",
+      "mcp_excluded_reason": "Diagnostic command: displays config to terminal, not applicable to MCP"
+    },
+    {
+      "cli_command": "agent dns",
+      "mcp_excluded_reason": "Emits DNS TXT record commands for manual DNS provisioning; requires shell access"
+    },
+    {
+      "cli_command": "agent lookup",
+      "mcp_excluded_reason": "DNS discovery helper; could be an MCP tool but currently CLI-only"
+    },
+    {
+      "cli_command": "agent verify",
+      "mcp_excluded_reason": "Agent self-verification; MCP agents verify implicitly on load"
+    },
+    {
+      "cli_command": "a2a discover",
+      "mcp_excluded_reason": "Discovers remote A2A agents via well-known URL; interactive CLI workflow"
+    },
+    {
+      "cli_command": "a2a serve",
+      "mcp_excluded_reason": "Starts HTTP server for A2A discovery endpoints; long-running process, not an MCP tool"
+    },
+    {
+      "cli_command": "a2a quickstart",
+      "mcp_excluded_reason": "Combined create-and-serve convenience; orchestration command not suitable for MCP"
+    },
+    {
+      "cli_command": "document extract",
+      "mcp_excluded_reason": "Extracts embedded content from JACS documents; could be an MCP tool in the future"
+    },
+    {
+      "cli_command": "task create",
+      "mcp_excluded_reason": "Task creation; could become MCP tool when task workflow matures"
+    },
+    {
+      "cli_command": "task update",
+      "mcp_excluded_reason": "Task update; could become MCP tool when task workflow matures"
+    },
+    {
+      "cli_command": "quickstart",
+      "mcp_excluded_reason": "Setup command: creates/loads persistent agent; not applicable to MCP runtime"
+    },
+    {
+      "cli_command": "init",
+      "mcp_excluded_reason": "Setup command: initializes config and agent; not applicable to MCP runtime"
+    },
+    {
+      "cli_command": "mcp",
+      "mcp_excluded_reason": "Meta command: starts the MCP server itself; cannot be an MCP tool"
+    },
+    {
+      "cli_command": "version",
+      "mcp_excluded_reason": "Meta command: prints version info; not applicable to MCP"
+    },
+    {
+      "cli_command": "convert",
+      "mcp_excluded_reason": "Format conversion (JSON/YAML/HTML); could be an MCP tool in the future"
+    }
+  ],
+  "cli_only_feature_gated": [
+    {
+      "cli_command": "keychain set",
+      "feature": "keychain",
+      "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"
+    },
+    {
+      "cli_command": "keychain get",
+      "feature": "keychain",
+      "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"
+    },
+    {
+      "cli_command": "keychain delete",
+      "feature": "keychain",
+      "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"
+    },
+    {
+      "cli_command": "keychain status",
+      "feature": "keychain",
+      "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"
+    }
+  ],
+  "mcp_only": [
+    {
+      "mcp_tool": "jacs_adopt_state",
+      "category": "state_management",
+      "classification": "intentional",
+      "reason": "MCP-centric: adopts external files as signed state within MCP workflows"
+    },
+    {
+      "mcp_tool": "jacs_list_state",
+      "category": "state_management",
+      "classification": "intentional",
+      "reason": "MCP-centric: lists signed state documents managed by the MCP server"
+    },
+    {
+      "mcp_tool": "jacs_load_state",
+      "category": "state_management",
+      "classification": "intentional",
+      "reason": "MCP-centric: loads a previously signed state document in the MCP server"
+    },
+    {
+      "mcp_tool": "jacs_memory_save",
+      "category": "memory",
+      "classification": "intentional",
+      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
+    },
+    {
+      "mcp_tool": "jacs_memory_recall",
+      "category": "memory",
+      "classification": "intentional",
+      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
+    },
+    {
+      "mcp_tool": "jacs_memory_list",
+      "category": "memory",
+      "classification": "intentional",
+      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
+    },
+    {
+      "mcp_tool": "jacs_memory_forget",
+      "category": "memory",
+      "classification": "intentional",
+      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
+    },
+    {
+      "mcp_tool": "jacs_memory_update",
+      "category": "memory",
+      "classification": "intentional",
+      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
+    },
+    {
+      "mcp_tool": "jacs_message_send",
+      "category": "messaging",
+      "classification": "intentional",
+      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
+    },
+    {
+      "mcp_tool": "jacs_message_receive",
+      "category": "messaging",
+      "classification": "intentional",
+      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
+    },
+    {
+      "mcp_tool": "jacs_message_agree",
+      "category": "messaging",
+      "classification": "intentional",
+      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
+    },
+    {
+      "mcp_tool": "jacs_message_update",
+      "category": "messaging",
+      "classification": "intentional",
+      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
+    },
+    {
+      "mcp_tool": "jacs_untrust_agent",
+      "category": "trust_store",
+      "classification": "gap",
+      "reason": "Trust store management should be available from CLI; recommend adding 'jacs trust remove' command"
+    },
+    {
+      "mcp_tool": "jacs_list_trusted_agents",
+      "category": "trust_store",
+      "classification": "gap",
+      "reason": "Trust store management should be available from CLI; recommend adding 'jacs trust list' command"
+    },
+    {
+      "mcp_tool": "jacs_is_trusted",
+      "category": "trust_store",
+      "classification": "gap",
+      "reason": "Trust store management should be available from CLI; recommend adding 'jacs trust check' command"
+    },
+    {
+      "mcp_tool": "jacs_get_trusted_agent",
+      "category": "trust_store",
+      "classification": "gap",
+      "reason": "Trust store management should be available from CLI; recommend adding 'jacs trust get' command"
+    },
+    {
+      "mcp_tool": "jacs_audit",
+      "category": "audit",
+      "classification": "gap",
+      "reason": "Security audit should be available from CLI; recommend adding 'jacs audit run' command"
+    },
+    {
+      "mcp_tool": "jacs_audit_log",
+      "category": "audit",
+      "classification": "gap",
+      "reason": "Audit trail logging should be available from CLI; recommend adding 'jacs audit log' command"
+    },
+    {
+      "mcp_tool": "jacs_audit_query",
+      "category": "audit",
+      "classification": "gap",
+      "reason": "Audit trail query should be available from CLI; recommend adding 'jacs audit query' command"
+    },
+    {
+      "mcp_tool": "jacs_audit_export",
+      "category": "audit",
+      "classification": "gap",
+      "reason": "Audit trail export should be available from CLI; recommend adding 'jacs audit export' command"
+    },
+    {
+      "mcp_tool": "jacs_search",
+      "category": "search",
+      "classification": "gap",
+      "reason": "Search across signed documents should be available from CLI; recommend adding 'jacs search' command"
+    },
+    {
+      "mcp_tool": "jacs_attest_lift",
+      "category": "attestation",
+      "classification": "gap",
+      "reason": "Lifting signed documents to attestations could be useful from CLI; recommend adding 'jacs attest lift' command"
+    },
+    {
+      "mcp_tool": "jacs_export_agent",
+      "category": "agent_export",
+      "classification": "intentional",
+      "reason": "MCP-centric: exports full agent JSON for MCP inter-agent sharing"
+    },
+    {
+      "mcp_tool": "jacs_export_agent_card",
+      "category": "agent_export",
+      "classification": "intentional",
+      "reason": "MCP-centric: exports A2A Agent Card; CLI has 'a2a serve' for discovery instead"
+    },
+    {
+      "mcp_tool": "jacs_generate_well_known",
+      "category": "agent_export",
+      "classification": "intentional",
+      "reason": "MCP-centric: generates well-known documents; CLI has 'a2a serve' for this"
+    },
+    {
+      "mcp_tool": "jacs_verify_a2a_artifact",
+      "category": "a2a_artifacts",
+      "classification": "intentional",
+      "reason": "A2A artifact verification is part of MCP multi-agent workflows"
+    },
+    {
+      "mcp_tool": "jacs_wrap_a2a_artifact",
+      "category": "a2a_artifacts",
+      "classification": "intentional",
+      "reason": "A2A artifact wrapping is part of MCP multi-agent workflows"
+    }
+  ],
+  "summary": {
+    "total_cli_commands": 30,
+    "total_cli_feature_gated": 4,
+    "total_mcp_tools": 42,
+    "aligned_pairs": 16,
+    "cli_only_count": 16,
+    "cli_only_feature_gated_count": 4,
+    "mcp_only_count": 27,
+    "mcp_only_intentional": 17,
+    "mcp_only_gap": 10
+  }
+}
