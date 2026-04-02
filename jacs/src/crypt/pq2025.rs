@@ -45,6 +45,10 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, JacsErr
             e
         ))
     })?;
+    // TODO(post-quantum-hardening): We currently sign with the empty ML-DSA
+    // context for compatibility. A future hardening pass could switch this to a
+    // fixed JACS domain-separation context (for example `b"jacs:document:v1"`)
+    // and record that context in signature metadata so verification can use it.
     let sig = sk
         .try_sign(data.as_bytes(), b"")
         .map_err(|e| JacsError::CryptoError(format!("ML-DSA-87 signing failed: {}", e)))?; // empty context - returns [u8; 4627]
@@ -93,6 +97,10 @@ pub fn verify_string(
             )
         })?;
 
+    // TODO(post-quantum-hardening): If JACS introduces a non-empty ML-DSA
+    // context, verification should read the stored context from signature
+    // metadata and fall back to `b""` for legacy documents signed before the
+    // migration.
     // verify() returns bool, not Result
     if pk.verify(data.as_bytes(), &sig_array, b"") {
         debug!("ML-DSA-87 signature verification succeeded");

@@ -143,7 +143,7 @@ walkdir = "2.5.0"
 object_store = { version ="0.12.0", features = ["serde","serde_json", "aws", "http"] }
 # Post-quantum 2025 standards (ML-DSA and ML-KEM)
 fips203 = "0.4.3"
-fips204 = "0.4.3"
+fips204 = "0.4.6"
 # SQLite storage via sqlx (optional). PostgreSQL has been extracted to jacs-postgresql.
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls"], optional = true }
 # rusqlite (sync SQLite bindings, optional -- lightweight alternative to sqlx SQLite)
