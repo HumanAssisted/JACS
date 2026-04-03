@@ -32,17 +32,17 @@ allow = [
 # Workspace crates without explicit license field use the workspace license
 [[licenses.clarify]]
 name = "jacsnpm"
-expression = "Apache-2.0 OR MIT"
+expression = "Apache-2.0"
 license-files = []
 
 [[licenses.clarify]]
 name = "jacspy"
-expression = "Apache-2.0 OR MIT"
+expression = "Apache-2.0"
 license-files = []
 
 [[licenses.clarify]]
 name = "jacsgo"
-expression = "Apache-2.0 OR MIT"
+expression = "Apache-2.0"
 license-files = []
 
 # ring contains legacy OpenSSL-licensed code alongside ISC/Apache-2.0

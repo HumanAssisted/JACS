@@ -374,4 +374,4 @@ As agent-to-agent communication protocols mature (Google A2A, Anthropic MCP), se
 
 ---
 
-*This response represents the views of the HAI.AI / JACS project team and is based on practical experience developing and deploying cryptographic security controls for AI agent systems. All capabilities described are implemented and tested in the JACS codebase (v0.9.2, Apache 2.0 OR MIT license, 1,200+ tests across 5 language targets).*
+*This response represents the views of the HAI.AI / JACS project team and is based on practical experience developing and deploying cryptographic security controls for AI agent systems. All capabilities described are implemented and tested in the JACS codebase (v0.9.2, Apache 2.0 license, 1,200+ tests across 5 language targets).*

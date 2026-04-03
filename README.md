@@ -136,4 +136,4 @@ Report vulnerabilities to security@hai.ai. Do not open public issues for securit
 
 ---
 
-v0.9.7 | [Apache-2.0 OR MIT](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
+v0.9.7 | [Apache-2.0](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
