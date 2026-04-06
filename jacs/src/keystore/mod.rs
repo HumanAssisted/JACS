@@ -537,6 +537,26 @@ impl InMemoryKeyStore {
             algorithm: algorithm.to_string(),
         }
     }
+
+    /// Poison the private_key mutex for testing. Only available in test builds.
+    #[cfg(test)]
+    fn poison_private_key_mutex(&self) {
+        let mutex = &self.private_key;
+        let _result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = mutex.lock().unwrap();
+            panic!("intentional panic to poison mutex");
+        }));
+    }
+
+    /// Poison the public_key mutex for testing. Only available in test builds.
+    #[cfg(test)]
+    fn poison_public_key_mutex(&self) {
+        let mutex = &self.public_key;
+        let _result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = mutex.lock().unwrap();
+            panic!("intentional panic to poison mutex");
+        }));
+    }
 }
 
 impl fmt::Debug for InMemoryKeyStore {
@@ -545,9 +565,12 @@ impl fmt::Debug for InMemoryKeyStore {
             .field("algorithm", &self.algorithm)
             .field(
                 "has_private_key",
-                &self.private_key.lock().unwrap().is_some(),
+                &self.private_key.lock().ok().as_ref().map(|g| g.is_some()),
             )
-            .field("has_public_key", &self.public_key.lock().unwrap().is_some())
+            .field(
+                "has_public_key",
+                &self.public_key.lock().ok().as_ref().map(|g| g.is_some()),
+            )
             .finish()
     }
 }
@@ -583,8 +606,12 @@ impl KeyStore for InMemoryKeyStore {
         };
         // Store copies in memory — no disk, no encryption.
         // Private key is wrapped in LockedVec for mlock + zeroize-on-drop protection.
-        *self.private_key.lock().unwrap() = Some(LockedVec::new(priv_key.clone()));
-        *self.public_key.lock().unwrap() = Some(pub_key.clone());
+        *self.private_key.lock().map_err(|e| {
+            JacsError::CryptoError(format!("KeyStore private_key mutex poisoned: {e}"))
+        })? = Some(LockedVec::new(priv_key.clone()));
+        *self.public_key.lock().map_err(|e| {
+            JacsError::CryptoError(format!("KeyStore public_key mutex poisoned: {e}"))
+        })? = Some(pub_key.clone());
         Ok((priv_key, pub_key))
     }
 
@@ -593,7 +620,9 @@ impl KeyStore for InMemoryKeyStore {
         // without holding the Mutex beyond this scope.
         self.private_key
             .lock()
-            .unwrap()
+            .map_err(|e| {
+                JacsError::CryptoError(format!("KeyStore private_key mutex poisoned: {e}"))
+            })?
             .as_ref()
             .map(|lv| LockedVec::new(lv.as_slice().to_vec()))
             .ok_or_else(|| "InMemoryKeyStore: no private key generated yet".into())
@@ -602,7 +631,9 @@ impl KeyStore for InMemoryKeyStore {
     fn load_public(&self) -> Result<Vec<u8>, JacsError> {
         self.public_key
             .lock()
-            .unwrap()
+            .map_err(|e| {
+                JacsError::CryptoError(format!("KeyStore public_key mutex poisoned: {e}"))
+            })?
             .clone()
             .ok_or_else(|| "InMemoryKeyStore: no public key generated yet".into())
     }
@@ -1460,5 +1491,76 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir_name);
         clear_fs_test_env();
+    }
+
+    // --- M7 fix: Mutex poison handling returns Err instead of panicking ---
+
+    #[test]
+    fn test_in_memory_generate_poisoned_mutex_returns_err() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        ks.poison_private_key_mutex();
+        let spec = KeySpec {
+            algorithm: "ring-Ed25519".to_string(),
+            key_id: None,
+        };
+        let result = ks.generate(&spec);
+        assert!(
+            result.is_err(),
+            "generate() should return Err on poisoned mutex, not panic"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("mutex poisoned"),
+            "Error should mention 'mutex poisoned', got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_in_memory_load_private_poisoned_mutex_returns_err() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        ks.poison_private_key_mutex();
+        let result = ks.load_private();
+        assert!(
+            result.is_err(),
+            "load_private() should return Err on poisoned mutex, not panic"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("mutex poisoned"),
+            "Error should mention 'mutex poisoned', got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_in_memory_load_public_poisoned_mutex_returns_err() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        ks.poison_public_key_mutex();
+        let result = ks.load_public();
+        assert!(
+            result.is_err(),
+            "load_public() should return Err on poisoned mutex, not panic"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("mutex poisoned"),
+            "Error should mention 'mutex poisoned', got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_in_memory_debug_poisoned_mutex_does_not_panic() {
+        let ks = InMemoryKeyStore::new("ring-Ed25519");
+        ks.poison_private_key_mutex();
+        ks.poison_public_key_mutex();
+        // Debug formatting should not panic even with poisoned mutexes
+        let debug_str = format!("{:?}", ks);
+        assert!(
+            debug_str.contains("InMemoryKeyStore"),
+            "Debug should still produce output, got: {}",
+            debug_str
+        );
     }
 }

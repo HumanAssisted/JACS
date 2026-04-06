@@ -184,6 +184,25 @@ pub fn emit_cloudflare_curl(rr: &DnsRecord, zone_id_hint: &str) -> String {
     )
 }
 
+/// Find the first JACS-formatted TXT record from a list of individual TXT record strings.
+///
+/// DNS lookups may return multiple TXT records (SPF, DKIM, DMARC, etc.) at the same
+/// domain name. This function filters for the record starting with `v=jacs` and ignores
+/// all others, preventing non-JACS records from corrupting the parsed result.
+///
+/// Returns `Err(JacsError::DnsRecordInvalid)` if no JACS record is found.
+pub fn find_jacs_txt_record(records: Vec<String>, domain: &str) -> Result<String, JacsError> {
+    for record in records {
+        if record.starts_with("v=jacs") {
+            return Ok(record);
+        }
+    }
+    Err(JacsError::DnsRecordInvalid {
+        domain: domain.to_string(),
+        reason: "No v=jacs TXT record found at this domain".to_string(),
+    })
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
@@ -202,18 +221,20 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
             domain: owner.to_string(),
             reason: format!("DNS lookup failed: {e}"),
         })?;
-    let mut s = String::new();
+    let mut records = Vec::new();
     for rr in resp.iter() {
+        let mut record = String::new();
         for part in rr.txt_data() {
-            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
+            record.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
                 JacsError::DnsRecordInvalid {
                     domain: owner.to_string(),
                     reason: format!("UTF-8 decode failed: {e}"),
                 }
             })?);
         }
+        records.push(record);
     }
-    Ok(s)
+    find_jacs_txt_record(records, owner)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -234,18 +255,20 @@ pub fn resolve_txt_insecure(owner: &str) -> Result<String, JacsError> {
             domain: owner.to_string(),
             reason: format!("DNS lookup failed: {e}"),
         })?;
-    let mut s = String::new();
+    let mut records = Vec::new();
     for rr in resp.iter() {
+        let mut record = String::new();
         for part in rr.txt_data() {
-            s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
+            record.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
                 JacsError::DnsRecordInvalid {
                     domain: owner.to_string(),
                     reason: format!("UTF-8 decode failed: {e}"),
                 }
             })?);
         }
+        records.push(record);
     }
-    Ok(s)
+    find_jacs_txt_record(records, owner)
 }
 
 pub fn verify_pubkey_via_dns_or_embedded(
@@ -866,6 +889,75 @@ mod tests {
         unsafe {
             std::env::remove_var("HAI_API_URL");
         }
+    }
+
+    // --- H1 fix: find_jacs_txt_record filters non-JACS TXT records ---
+
+    #[test]
+    fn test_find_jacs_txt_record_mixed_spf_and_jacs() {
+        let records = vec![
+            "v=spf1 include:_spf.google.com ~all".to_string(),
+            "v=jacs; jacs_agent_id=a1; alg=SHA-256; enc=base64; jac_public_key_hash=abc"
+                .to_string(),
+        ];
+        let result = find_jacs_txt_record(records, "example.com").unwrap();
+        assert!(
+            result.starts_with("v=jacs"),
+            "Should return JACS record, got: {}",
+            result
+        );
+        assert!(
+            result.contains("jacs_agent_id=a1"),
+            "Should contain agent ID, got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_find_jacs_txt_record_no_jacs_record() {
+        let records = vec![
+            "v=spf1 include:_spf.google.com ~all".to_string(),
+            "google-site-verification=abc123".to_string(),
+        ];
+        let result = find_jacs_txt_record(records, "example.com");
+        assert!(result.is_err(), "Should return error when no JACS record");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("No v=jacs TXT record"),
+            "Error should mention 'No v=jacs TXT record', got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_find_jacs_txt_record_empty_records() {
+        let records: Vec<String> = vec![];
+        let result = find_jacs_txt_record(records, "example.com");
+        assert!(result.is_err(), "Should return error for empty records");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("No v=jacs TXT record"),
+            "Error should mention 'No v=jacs TXT record', got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_find_jacs_txt_record_jacs_among_garbage() {
+        // JACS record between other unrelated TXT records
+        let records = vec![
+            "v=spf1 include:_spf.google.com ~all".to_string(),
+            "google-site-verification=abc123".to_string(),
+            "v=jacs; jacs_agent_id=agent-42; alg=SHA-256; enc=hex; jac_public_key_hash=deadbeef"
+                .to_string(),
+            "v=DMARC1; p=reject; rua=mailto:dmarc@example.com".to_string(),
+        ];
+        let result = find_jacs_txt_record(records, "example.com").unwrap();
+        assert!(
+            result.contains("jacs_agent_id=agent-42"),
+            "Should extract the JACS record, got: {}",
+            result
+        );
     }
 
     #[test]
