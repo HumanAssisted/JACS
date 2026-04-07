@@ -1097,7 +1097,7 @@ mod tests {
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
-        let result = advanced::rotate(&agent).expect("rotation should succeed");
+        let result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
         assert_eq!(
             result.jacs_id, original_id,
@@ -1114,7 +1114,7 @@ mod tests {
     fn test_rotate_new_key_signs_correctly() {
         let (agent, _info) = fresh_ephemeral();
 
-        let _result = advanced::rotate(&agent).expect("rotation should succeed");
+        let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
         // Sign a message with the rotated agent's new key
         let signed = agent
@@ -1135,7 +1135,7 @@ mod tests {
     fn test_rotate_returns_rotation_result() {
         let (agent, _info) = fresh_ephemeral();
 
-        let result = advanced::rotate(&agent).expect("rotation should succeed");
+        let result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
         // All fields should be non-empty
         assert!(!result.jacs_id.is_empty(), "jacs_id should not be empty");
@@ -1184,7 +1184,7 @@ mod tests {
 
         let (agent, info, _tmp, _guard) = create_persistent_test_agent("rotate-config-test");
 
-        let result = advanced::rotate(&agent).expect("rotation should succeed");
+        let result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
         // Read the config (CWD is still temp dir, so relative path works)
         let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
@@ -1204,7 +1204,7 @@ mod tests {
         let (agent, info) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
         let original_version = info.version.clone();
 
-        let result = advanced::rotate(&agent).expect("ephemeral rotation should succeed");
+        let result = advanced::rotate(&agent, None).expect("ephemeral rotation should succeed");
 
         assert_eq!(result.jacs_id, info.agent_id);
         assert_ne!(result.new_version, original_version);
@@ -1236,7 +1236,7 @@ mod tests {
         let old_public_key = agent.get_public_key().expect("get old public key");
 
         // Rotate
-        let _result = advanced::rotate(&agent).expect("rotation should succeed");
+        let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
         // Verify the pre-rotation doc using the old public key
         let verification = agent
@@ -1259,7 +1259,7 @@ mod tests {
         let signed_v1 = agent.sign_message(&json!({"version": 1})).expect("sign v1");
 
         // Phase 2: Rotate
-        let result = advanced::rotate(&agent).expect("rotation should succeed");
+        let result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
         // Phase 3: Sign with new key
         let signed_v2 = agent.sign_message(&json!({"version": 2})).expect("sign v2");
@@ -1309,7 +1309,7 @@ mod tests {
         let original_version = info.version.clone();
 
         // Step 2: rotate keys
-        let rot = advanced::rotate(&agent).expect("key rotation should succeed");
+        let rot = advanced::rotate(&agent, None).expect("key rotation should succeed");
 
         // jacsId MUST NOT change
         assert_eq!(
@@ -1414,7 +1414,7 @@ mod tests {
         let v1 = info.version.clone();
 
         // Step 2: rotate keys
-        let rot = advanced::rotate(&agent).expect("key rotation should succeed");
+        let rot = advanced::rotate(&agent, None).expect("key rotation should succeed");
         let v2 = rot.new_version.clone();
         assert_eq!(
             rot.jacs_id, original_id,

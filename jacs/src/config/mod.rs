@@ -704,6 +704,14 @@ impl Config {
             .map_err(|e| JacsError::ConfigError(e.to_string()))
     }
 
+    /// Set the key algorithm in the in-memory config.
+    ///
+    /// Used during cross-algorithm key rotation to update the config's algorithm
+    /// field after new keys have been generated with the overridden algorithm.
+    pub fn set_key_algorithm(&mut self, algorithm: String) {
+        self.jacs_agent_key_algorithm = Some(algorithm);
+    }
+
     /// Returns the directory containing the config file, if set.
     ///
     /// This is set automatically by `Config::from_file()` to the parent directory
@@ -792,8 +800,8 @@ impl Config {
             jacs_database_min_connections,
             jacs_database_connect_timeout_secs,
             config_dir,
-            is_signed: _,
-            raw_json: _,
+            is_signed,
+            raw_json,
         } = other;
 
         Self::replace_if_some(&mut self.jacs_use_security, jacs_use_security);
@@ -835,6 +843,16 @@ impl Config {
         );
         // config_dir from the incoming config takes precedence if set
         Self::replace_if_some(&mut self.config_dir, config_dir);
+
+        // Preserve signed-config metadata from the file config.
+        // These fields are set by Config::from_file and must survive merge
+        // so that warn_if_config_tampered can detect tampering.
+        if is_signed {
+            self.is_signed = true;
+        }
+        if raw_json.is_some() {
+            self.raw_json = raw_json;
+        }
     }
 
     /// Apply environment variable overrides to this config.

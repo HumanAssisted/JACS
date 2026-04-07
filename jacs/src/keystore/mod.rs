@@ -2,6 +2,7 @@ pub mod keychain;
 
 use crate::crypt::private_key::LockedVec;
 use crate::error::JacsError;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -683,6 +684,149 @@ impl KeyStore for InMemoryKeyStore {
     fn rotate(&self, _old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         // In-memory stores have no files to archive — just regenerate.
         self.generate(spec)
+    }
+}
+
+// =============================================================================
+// Rotation Journal (Write-Ahead Log for crash recovery)
+// =============================================================================
+
+/// A small JSON journal file that tracks key rotation progress.
+///
+/// Created before rotation begins, updated at each stage, and deleted on
+/// successful completion. If the process crashes mid-rotation, the journal
+/// file remains on disk so that the next agent load can detect the incomplete
+/// rotation and auto-repair (see `warn_if_config_tampered` in agent/mod.rs).
+///
+/// Stages: `started` -> `keys_rotated` -> `agent_saved` -> `config_signed` -> (deleted)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotationJournal {
+    /// Current stage of the rotation process.
+    pub stage: String,
+    /// ISO 8601 timestamp when the journal was created.
+    pub timestamp: String,
+    /// The agent's stable identity (UUID).
+    pub agent_id: String,
+    /// The agent version before rotation.
+    pub old_version: String,
+    /// SHA-256 hash of the old public key.
+    pub old_key_hash: String,
+    /// The signing algorithm used for rotation.
+    pub algorithm: String,
+    /// Path to the config file (for recovery).
+    pub config_path: String,
+    /// Path to this journal file on disk (transient, not serialized).
+    #[serde(skip)]
+    file_path: String,
+}
+
+impl RotationJournal {
+    /// Canonical journal filename.
+    const FILENAME: &'static str = ".jacs_rotation_journal.json";
+
+    /// Compute the full path to the journal file for a given key directory.
+    pub fn journal_path(key_directory: &str) -> String {
+        format!("{}/{}", key_directory.trim_end_matches('/'), Self::FILENAME)
+    }
+
+    /// Create a new journal file on disk at the start of rotation.
+    ///
+    /// The journal is written atomically: the JSON is serialized and written
+    /// in a single `fs::write` call. The initial stage is `"started"`.
+    pub fn create(
+        key_directory: &str,
+        agent_id: &str,
+        old_version: &str,
+        old_key_hash: &str,
+        algorithm: &str,
+        config_path: &str,
+    ) -> Result<Self, JacsError> {
+        let file_path = Self::journal_path(key_directory);
+
+        let journal = Self {
+            stage: "started".to_string(),
+            timestamp: crate::time_utils::now_rfc3339(),
+            agent_id: agent_id.to_string(),
+            old_version: old_version.to_string(),
+            old_key_hash: old_key_hash.to_string(),
+            algorithm: algorithm.to_string(),
+            config_path: config_path.to_string(),
+            file_path: file_path.clone(),
+        };
+
+        let json = serde_json::to_string_pretty(&journal).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize rotation journal: {}", e),
+        })?;
+
+        // Ensure parent directory exists
+        if let Some(parent) = std::path::Path::new(&file_path).parent() {
+            std::fs::create_dir_all(parent).map_err(|e| JacsError::Internal {
+                message: format!("Failed to create journal directory: {}", e),
+            })?;
+        }
+
+        std::fs::write(&file_path, json).map_err(|e| JacsError::Internal {
+            message: format!("Failed to write rotation journal to '{}': {}", file_path, e),
+        })?;
+
+        #[cfg(unix)]
+        {
+            // Journal contains agent ID and key hashes -- restrict permissions
+            let _ = set_secure_permissions(&file_path, false);
+        }
+
+        debug!(
+            "Rotation journal created at '{}' (stage: started)",
+            file_path
+        );
+        Ok(journal)
+    }
+
+    /// Load an existing journal from disk.
+    ///
+    /// Returns `None` if the file does not exist. Returns an error if the file
+    /// exists but cannot be read or parsed.
+    pub fn load(file_path: &str) -> Option<Self> {
+        let data = std::fs::read_to_string(file_path).ok()?;
+        let mut journal: Self = serde_json::from_str(&data).ok()?;
+        journal.file_path = file_path.to_string();
+        Some(journal)
+    }
+
+    /// Advance the journal to the next stage and write the update to disk.
+    pub fn advance(&mut self, new_stage: &str) -> Result<(), JacsError> {
+        self.stage = new_stage.to_string();
+
+        let json = serde_json::to_string_pretty(self).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize rotation journal: {}", e),
+        })?;
+
+        std::fs::write(&self.file_path, json).map_err(|e| JacsError::Internal {
+            message: format!(
+                "Failed to update rotation journal at '{}': {}",
+                self.file_path, e
+            ),
+        })?;
+
+        debug!(
+            "Rotation journal advanced to stage '{}' at '{}'",
+            new_stage, self.file_path
+        );
+        Ok(())
+    }
+
+    /// Delete the journal file from disk (called on successful rotation completion).
+    pub fn complete(&self) -> Result<(), JacsError> {
+        if std::path::Path::new(&self.file_path).exists() {
+            std::fs::remove_file(&self.file_path).map_err(|e| JacsError::Internal {
+                message: format!(
+                    "Failed to delete rotation journal at '{}': {}",
+                    self.file_path, e
+                ),
+            })?;
+            debug!("Rotation journal deleted at '{}'", self.file_path);
+        }
+        Ok(())
     }
 }
 
@@ -1561,6 +1705,137 @@ mod tests {
             debug_str.contains("InMemoryKeyStore"),
             "Debug should still produce output, got: {}",
             debug_str
+        );
+    }
+
+    // =========================================================================
+    // RotationJournal tests
+    // =========================================================================
+
+    #[test]
+    fn test_journal_path_computation() {
+        assert_eq!(
+            RotationJournal::journal_path("./jacs_keys"),
+            "./jacs_keys/.jacs_rotation_journal.json"
+        );
+        assert_eq!(
+            RotationJournal::journal_path("/tmp/keys/"),
+            "/tmp/keys/.jacs_rotation_journal.json"
+        );
+    }
+
+    #[test]
+    fn test_journal_write_creates_file() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let key_dir = tmp.path().to_str().unwrap();
+
+        let journal = RotationJournal::create(
+            key_dir,
+            "agent-123",
+            "v1",
+            "hash-old",
+            "ring-Ed25519",
+            "./jacs.config.json",
+        )
+        .expect("journal create should succeed");
+
+        assert_eq!(journal.stage, "started");
+        assert_eq!(journal.agent_id, "agent-123");
+        assert_eq!(journal.old_version, "v1");
+        assert_eq!(journal.old_key_hash, "hash-old");
+
+        let path = RotationJournal::journal_path(key_dir);
+        assert!(
+            Path::new(&path).exists(),
+            "Journal file should exist on disk"
+        );
+    }
+
+    #[test]
+    fn test_journal_advance_stage() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let key_dir = tmp.path().to_str().unwrap();
+
+        let mut journal = RotationJournal::create(
+            key_dir,
+            "agent-123",
+            "v1",
+            "hash-old",
+            "ring-Ed25519",
+            "./jacs.config.json",
+        )
+        .expect("journal create");
+
+        journal
+            .advance("keys_rotated")
+            .expect("advance should succeed");
+        assert_eq!(journal.stage, "keys_rotated");
+
+        // Re-read from disk to confirm persistence
+        let path = RotationJournal::journal_path(key_dir);
+        let reloaded = RotationJournal::load(&path).expect("should reload after advance");
+        assert_eq!(reloaded.stage, "keys_rotated");
+    }
+
+    #[test]
+    fn test_journal_delete() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let key_dir = tmp.path().to_str().unwrap();
+
+        let journal = RotationJournal::create(
+            key_dir,
+            "agent-123",
+            "v1",
+            "hash-old",
+            "ring-Ed25519",
+            "./jacs.config.json",
+        )
+        .expect("journal create");
+
+        let path = RotationJournal::journal_path(key_dir);
+        assert!(
+            Path::new(&path).exists(),
+            "Journal should exist before complete"
+        );
+
+        journal.complete().expect("complete should succeed");
+        assert!(
+            !Path::new(&path).exists(),
+            "Journal should be deleted after complete"
+        );
+    }
+
+    #[test]
+    fn test_journal_read_existing() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let key_dir = tmp.path().to_str().unwrap();
+
+        let _journal = RotationJournal::create(
+            key_dir,
+            "agent-456",
+            "v2",
+            "hash-xyz",
+            "pq2025",
+            "/some/config.json",
+        )
+        .expect("journal create");
+
+        let path = RotationJournal::journal_path(key_dir);
+        let loaded = RotationJournal::load(&path).expect("should load existing journal");
+        assert_eq!(loaded.stage, "started");
+        assert_eq!(loaded.agent_id, "agent-456");
+        assert_eq!(loaded.old_version, "v2");
+        assert_eq!(loaded.old_key_hash, "hash-xyz");
+        assert_eq!(loaded.algorithm, "pq2025");
+        assert_eq!(loaded.config_path, "/some/config.json");
+    }
+
+    #[test]
+    fn test_journal_load_missing_returns_none() {
+        let result = RotationJournal::load("/nonexistent/path/.jacs_rotation_journal.json");
+        assert!(
+            result.is_none(),
+            "Loading from nonexistent path should return None"
         );
     }
 }

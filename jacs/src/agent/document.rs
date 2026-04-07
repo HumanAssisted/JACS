@@ -38,6 +38,29 @@ pub struct JACSDocument {
 }
 
 pub const EDITABLE_JACS_DOCS: &[&str] = &["config", "artifact"];
+
+fn decode_embedded_gzip_base64(contents_b64: &str) -> Result<Vec<u8>, JacsError> {
+    let decoded_contents = STANDARD.decode(contents_b64)?;
+    let max_size = crate::schema::utils::max_document_size();
+    let limit = u64::try_from(max_size)
+        .ok()
+        .and_then(|size| size.checked_add(1))
+        .unwrap_or(u64::MAX);
+
+    let gz_decoder = GzDecoder::new(std::io::Cursor::new(decoded_contents));
+    let mut limited = gz_decoder.take(limit);
+    let mut inflated_contents = Vec::new();
+    limited.read_to_end(&mut inflated_contents)?;
+
+    if inflated_contents.len() > max_size {
+        return Err(JacsError::DocumentTooLarge {
+            size: inflated_contents.len(),
+            max_size,
+        });
+    }
+
+    Ok(inflated_contents)
+}
 pub const DEFAULT_JACS_DOC_LEVEL: &str = "raw";
 // extend with functions for types
 impl JACSDocument {
@@ -778,12 +801,7 @@ impl DocumentTraits for Agent {
                         .make_data_directory_path(path)
                         .map_err(|e| format!("Invalid embedded export path '{}': {}", path, e))?;
 
-                    let decoded_contents = STANDARD.decode(contents)?;
-
-                    // Inflate the gzip-compressed contents
-                    let mut gz_decoder = GzDecoder::new(std::io::Cursor::new(decoded_contents));
-                    let mut inflated_contents = Vec::new();
-                    gz_decoder.read_to_end(&mut inflated_contents)?;
+                    let inflated_contents = decode_embedded_gzip_base64(contents)?;
 
                     let storage = self.storage.clone();
 
@@ -1154,5 +1172,56 @@ impl DocumentTraits for Agent {
         );
 
         Ok(results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use serial_test::serial;
+    use std::io::Write;
+
+    fn gzip_base64(input: &[u8]) -> String {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(input).expect("gzip write");
+        let compressed = encoder.finish().expect("gzip finish");
+        STANDARD.encode(compressed)
+    }
+
+    #[test]
+    fn decode_embedded_gzip_base64_round_trips_small_payload() {
+        let original = b"hello embedded world";
+        let encoded = gzip_base64(original);
+
+        let decoded = decode_embedded_gzip_base64(&encoded).expect("decode embedded payload");
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn decode_embedded_gzip_base64_rejects_oversized_payload() {
+        // SAFETY: serial_test ensures this env mutation is isolated for the test.
+        unsafe {
+            std::env::set_var("JACS_MAX_DOCUMENT_SIZE", "128");
+        }
+
+        let oversized = vec![b'A'; 1024];
+        let encoded = gzip_base64(&oversized);
+        let result = decode_embedded_gzip_base64(&encoded);
+
+        // SAFETY: paired cleanup for the isolated env mutation above.
+        unsafe {
+            std::env::remove_var("JACS_MAX_DOCUMENT_SIZE");
+        }
+
+        match result {
+            Err(JacsError::DocumentTooLarge { size, max_size }) => {
+                assert!(size > max_size);
+                assert_eq!(max_size, 128);
+            }
+            other => panic!("expected DocumentTooLarge, got {:?}", other),
+        }
     }
 }

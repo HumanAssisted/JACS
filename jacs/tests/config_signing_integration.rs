@@ -110,7 +110,7 @@ fn test_rotation_re_signs_config() {
         .to_string();
 
     // Rotate keys
-    let _result = advanced::rotate(&agent).expect("rotation should succeed");
+    let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
     // Read config after rotation
     let config_after_str =
@@ -220,5 +220,318 @@ fn test_unsigned_config_loads_without_error() {
     assert!(
         !config.is_signed,
         "unsigned config should report is_signed == false"
+    );
+}
+
+// =============================================================================
+// Key Rotation Edge Case Tests (PRD: KEY_ROTATION_EDGE_CASES)
+// =============================================================================
+
+/// After a successful rotation, no journal file should remain on disk.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_rotate_creates_and_deletes_journal() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (_agent, _info, _tmp, _guard) = create_test_agent("journal-cleanup-test");
+
+    let _result = advanced::rotate(&_agent, None).expect("rotation should succeed");
+
+    // Journal should not exist after successful rotation
+    let journal_path = "./jacs_keys/.jacs_rotation_journal.json";
+    assert!(
+        !std::path::Path::new(journal_path).exists(),
+        "Journal file should be deleted after successful rotation"
+    );
+}
+
+/// Transition proof should be present in the rotation result.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_rotation_produces_transition_proof() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("transition-proof-test");
+
+    let result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    // Transition proof should be present
+    assert!(
+        result.transition_proof.is_some(),
+        "Rotation result must include transition_proof"
+    );
+
+    let proof_json: Value = serde_json::from_str(result.transition_proof.as_ref().unwrap())
+        .expect("transition_proof should be valid JSON");
+
+    // Verify proof structure
+    assert!(
+        proof_json.get("transitionMessage").is_some(),
+        "Proof must have transitionMessage"
+    );
+    assert!(
+        proof_json.get("signature").is_some(),
+        "Proof must have signature"
+    );
+    assert!(
+        proof_json.get("signingAlgorithm").is_some(),
+        "Proof must have signingAlgorithm"
+    );
+    assert!(
+        proof_json.get("oldPublicKeyHash").is_some(),
+        "Proof must have oldPublicKeyHash"
+    );
+    assert!(
+        proof_json.get("newPublicKeyHash").is_some(),
+        "Proof must have newPublicKeyHash"
+    );
+    assert!(
+        proof_json.get("timestamp").is_some(),
+        "Proof must have timestamp"
+    );
+
+    // Verify message format
+    let msg = proof_json["transitionMessage"].as_str().unwrap();
+    assert!(
+        msg.starts_with("JACS_KEY_ROTATION:"),
+        "Transition message must start with JACS_KEY_ROTATION prefix, got: {}",
+        msg
+    );
+}
+
+/// Transition proof should be embedded in the agent document.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_rotation_proof_in_agent_document() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("proof-in-doc-test");
+
+    let result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    // Parse the signed agent JSON
+    let agent_doc: Value =
+        serde_json::from_str(&result.signed_agent_json).expect("parse signed agent");
+
+    assert!(
+        agent_doc.get("jacsKeyRotationProof").is_some(),
+        "Agent document must contain jacsKeyRotationProof after rotation"
+    );
+
+    let proof = &agent_doc["jacsKeyRotationProof"];
+    assert_eq!(
+        proof["signingAlgorithm"].as_str().unwrap(),
+        "ring-Ed25519",
+        "Proof signing algorithm should be the OLD algorithm"
+    );
+}
+
+/// Cross-algorithm rotation: Ed25519 to pq2025.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_cross_algorithm_rotation_ed25519_to_pq2025() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("cross-algo-test");
+
+    // Rotate from Ed25519 (default in create_test_agent) to pq2025
+    let result =
+        advanced::rotate(&agent, Some("pq2025")).expect("cross-algo rotation should succeed");
+
+    // Verify the config on disk has the new algorithm
+    let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
+    let config: Value = serde_json::from_str(&config_str).expect("parse config");
+    assert_eq!(
+        config["jacs_agent_key_algorithm"].as_str(),
+        Some("pq2025"),
+        "Config should reflect new algorithm after cross-algo rotation"
+    );
+
+    // Verify the agent can sign and verify with the new algorithm
+    let signed = agent
+        .sign_message(&serde_json::json!({"after": "cross-algo rotation"}))
+        .expect("signing after cross-algo rotation should succeed");
+    let verification = agent.verify(&signed.raw).expect("verify should succeed");
+    assert!(
+        verification.valid,
+        "Message signed after cross-algo rotation should verify: {:?}",
+        verification.errors
+    );
+
+    // Verify the transition proof references the old algorithm
+    let proof: Value = serde_json::from_str(result.transition_proof.as_ref().unwrap())
+        .expect("parse transition proof");
+    assert_eq!(
+        proof["signingAlgorithm"].as_str().unwrap(),
+        "ring-Ed25519",
+        "Transition proof should be signed with old algorithm"
+    );
+}
+
+/// Same-algorithm rotation preserves the config field.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_same_algorithm_rotation_preserves_config_field() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("same-algo-test");
+
+    let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    let config_str = std::fs::read_to_string("./jacs.config.json").expect("read config");
+    let config: Value = serde_json::from_str(&config_str).expect("parse config");
+    assert_eq!(
+        config["jacs_agent_key_algorithm"].as_str(),
+        Some("ring-Ed25519"),
+        "Config algorithm should remain Ed25519 after same-algo rotation"
+    );
+}
+
+/// Crash recovery: simulate crash after rotation, verify auto-repair on reload.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_crash_recovery_full_flow() {
+    use jacs::keystore::RotationJournal;
+
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, info, _tmp, _guard) = create_test_agent("crash-recovery-test");
+
+    // Capture pre-rotation config
+    let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config before");
+
+    // Perform rotation (this produces a properly signed config)
+    let result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    // Simulate crash: overwrite the config with the pre-rotation version (stale)
+    std::fs::write("./jacs.config.json", &config_before)
+        .expect("overwrite config with stale version");
+
+    // Write a journal file to indicate incomplete rotation
+    let _journal = RotationJournal::create(
+        "./jacs_keys",
+        &info.agent_id,
+        &info.version,
+        "old-key-hash",
+        "ring-Ed25519",
+        "./jacs.config.json",
+    )
+    .expect("create journal");
+
+    // Reload the agent -- should auto-repair
+    let reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
+        .expect("agent should load and auto-repair");
+
+    // Verify the journal was deleted
+    let journal_path = RotationJournal::journal_path("./jacs_keys");
+    let journal_path_no_dot = RotationJournal::journal_path("jacs_keys");
+    assert!(
+        !std::path::Path::new(&journal_path).exists()
+            && !std::path::Path::new(&journal_path_no_dot).exists(),
+        "Journal should be deleted after auto-repair. Paths checked: '{}', '{}'",
+        journal_path,
+        journal_path_no_dot
+    );
+
+    // Verify the agent is functional after recovery
+    let signed = reloaded
+        .sign_message(&serde_json::json!({"after": "crash-recovery"}))
+        .expect("signing after crash recovery should succeed");
+    let verification = reloaded.verify(&signed.raw).expect("verify should succeed");
+    assert!(
+        verification.valid,
+        "Message signed after crash recovery should verify: {:?}",
+        verification.errors
+    );
+}
+
+/// Without a journal, tampered config preserves warn-only behavior (no auto-repair).
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_no_crash_recovery_without_journal() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("no-journal-test");
+
+    // Capture pre-rotation config
+    let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config before");
+
+    // Rotate
+    let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    // Tamper: overwrite config with pre-rotation version, but do NOT write a journal
+    std::fs::write("./jacs.config.json", &config_before)
+        .expect("overwrite config with stale version");
+
+    // Reload -- should succeed (warn-only) but config should NOT be auto-repaired
+    let _reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
+        .expect("agent should load with warn-only for tampered config");
+
+    // Config on disk should be unchanged (still the stale pre-rotation version)
+    let config_after = std::fs::read_to_string("./jacs.config.json").expect("read config after");
+    assert_eq!(
+        config_before, config_after,
+        "Without journal, config should NOT be modified (warn-only behavior)"
+    );
+}
+
+/// Double rotation: both rotations should produce transition proofs
+/// and the version chain should be correct.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_double_rotation_preserves_chain() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, info, _tmp, _guard) = create_test_agent("double-rotation-test");
+
+    let v0 = info.version.clone();
+
+    // First rotation
+    let result1 = advanced::rotate(&agent, None).expect("first rotation should succeed");
+    let v1 = result1.new_version.clone();
+    assert_ne!(v1, v0, "v1 must differ from v0");
+    assert!(
+        result1.transition_proof.is_some(),
+        "First rotation must produce transition proof"
+    );
+
+    // Second rotation
+    let result2 = advanced::rotate(&agent, None).expect("second rotation should succeed");
+    let v2 = result2.new_version.clone();
+    assert_ne!(v2, v1, "v2 must differ from v1");
+    assert_eq!(
+        result2.old_version, v1,
+        "Second rotation's old_version must be v1"
+    );
+    assert!(
+        result2.transition_proof.is_some(),
+        "Second rotation must produce transition proof"
+    );
+
+    // The signed agent doc should have the latest proof (v1->v2)
+    let doc: Value = serde_json::from_str(&result2.signed_agent_json).expect("parse signed agent");
+    let proof = &doc["jacsKeyRotationProof"];
+    let msg = proof["transitionMessage"].as_str().unwrap();
+    assert!(
+        msg.contains(
+            &result2
+                .transition_proof
+                .as_ref()
+                .unwrap()
+                .contains("newPublicKeyHash")
+                .to_string()
+        ) || msg.starts_with("JACS_KEY_ROTATION:"),
+        "Latest proof should be from the most recent rotation"
+    );
+
+    // Verify the agent is still functional
+    let signed = agent
+        .sign_message(&serde_json::json!({"after": "double-rotation"}))
+        .expect("signing after double rotation");
+    let verification = agent.verify(&signed.raw).expect("verify");
+    assert!(
+        verification.valid,
+        "Should verify after double rotation: {:?}",
+        verification.errors
     );
 }
