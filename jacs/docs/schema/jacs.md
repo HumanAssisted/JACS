@@ -33,6 +33,7 @@ Jacs Configuration File
 | [jacs\_dns\_validate](#jacs_dns_validate)                               | `boolean` | Optional | cannot be null | [Config](jacs-properties-jacs_dns_validate.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_validate")                             |
 | [jacs\_dns\_strict](#jacs_dns_strict)                                   | `boolean` | Optional | cannot be null | [Config](jacs-properties-jacs_dns_strict.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_strict")                                 |
 | [jacs\_dns\_required](#jacs_dns_required)                               | `boolean` | Optional | cannot be null | [Config](jacs-properties-jacs_dns_required.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_dns_required")                             |
+| [agent\_email](#agent_email)                                            | `string`  | Optional | cannot be null | [Config](jacs-properties-agent_email.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/agent_email")                                         |
 | [jacs\_keychain\_backend](#jacs_keychain_backend)                       | `string`  | Optional | cannot be null | [Config](jacs-properties-jacs_keychain_backend.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/jacs_keychain_backend")                     |
 | [observability](#observability)                                         | `object`  | Optional | cannot be null | [Config](jacs-properties-observability.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/observability")                                     |
 
@@ -332,6 +333,28 @@ If true, require a domain and DNS validation to be present; fail validation if m
 ### jacs\_dns\_required Type
 
 `boolean`
+
+## agent\_email
+
+Cached @hai.ai email address for this agent, persisted after registration or first email status fetch.
+
+`agent_email`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Config](jacs-properties-agent_email.md "https://hai.ai/schemas/jacs.config.schema.json#/properties/agent_email")
+
+### agent\_email Type
+
+`string`
+
+### agent\_email Constraints
+
+**email**: the string must be an email address, according to [RFC 5322, section 3.4.1](https://tools.ietf.org/html/rfc5322 "check the specification")
 
 ## jacs\_keychain\_backend
 

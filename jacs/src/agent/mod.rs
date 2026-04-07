@@ -364,6 +364,10 @@ impl Agent {
     /// let agent = Agent::from_config(config, Some("my-password"))?;
     /// ```
     pub fn from_config(mut config: Config, password: Option<&str>) -> Result<Self, JacsError> {
+        // Preserve signed-config metadata before from_config consumes it.
+        let config_is_signed = config.is_signed;
+        let config_raw_json = config.raw_json.clone();
+
         let schema = Schema::new("v1", "v1", "v1")?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
 
@@ -436,6 +440,8 @@ impl Agent {
                 JacsError::Internal { message: err_msg }
             })?;
         }
+
+        agent.warn_if_config_tampered(config_is_signed, &config_raw_json);
 
         Ok(agent)
     }
@@ -804,6 +810,10 @@ impl Agent {
         caller: &str,
         path: &str,
     ) -> Result<(), JacsError> {
+        // Preserve signed-config metadata before config is consumed.
+        let config_is_signed = config.is_signed;
+        let config_raw_json = config.raw_json.clone();
+
         let lookup_id: String = config
             .jacs_agent_id_and_version()
             .as_deref()
@@ -845,10 +855,11 @@ impl Agent {
                     caller, lookup_id, path, e
                 );
                 JacsError::Internal { message: err_msg }
-            })
-        } else {
-            Ok(())
+            })?;
         }
+
+        self.warn_if_config_tampered(config_is_signed, &config_raw_json);
+        Ok(())
     }
 
     /// Replace the internal storage with a pre-configured [`MultiStorage`].
@@ -859,6 +870,22 @@ impl Agent {
     /// # Example
     ///
     /// ```rust,ignore
+    /// Verify signed config integrity (tamper detection).
+    /// Warns on failure but does not block loading (graceful migration).
+    /// Called from both `from_config` and `apply_config_and_load`.
+    fn warn_if_config_tampered(&mut self, is_signed: bool, raw_json: &Option<Value>) {
+        if is_signed {
+            if let Some(json) = raw_json {
+                if let Err(e) = self.verify_config(json) {
+                    warn!(
+                        "Signed config failed verification: {}. Loading anyway (graceful migration).",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
     /// let storage = MultiStorage::new("memory".to_string())?;
     /// agent.set_storage(storage);
     /// ```
@@ -1814,6 +1841,66 @@ impl Agent {
         Ok(instance)
     }
 
+    /// Sign a config JSON value, producing a JACS document with header fields.
+    ///
+    /// Uses `Schema::create` for initial ID/version assignment.
+    /// The resulting JSON has `jacsType: "config"`, `jacsLevel: "config"`,
+    /// a `jacsSignature`, and `jacsSha256`.
+    pub fn sign_config(&mut self, config_json: &Value) -> Result<Value, JacsError> {
+        let json_str = serde_json::to_string(config_json)
+            .map_err(|e| JacsError::ConfigError(format!("serialize config: {e}")))?;
+        let mut instance = self.schema.create(&json_str)?;
+        instance["jacsType"] = json!("config");
+        instance["jacsLevel"] = json!("config");
+        instance["$schema"] = json!("https://hai.ai/schemas/jacs.config.schema.json");
+        instance[AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&instance, None, AGENT_SIGNATURE_FIELDNAME)?;
+        let document_hash = self.hash_doc(&instance)?;
+        instance[SHA256_FIELDNAME] = json!(document_hash);
+        Ok(instance)
+    }
+
+    /// Verify a previously signed config document using the standard JACS
+    /// document verification pipeline: schema validation + hash check +
+    /// signature verification. This is the same path `jacs verify` uses
+    /// for any JACS document.
+    pub fn verify_config(&mut self, config_json: &Value) -> Result<(), JacsError> {
+        let json_str = serde_json::to_string(config_json)
+            .map_err(|e| JacsError::ConfigError(format!("serialize config for verify: {e}")))?;
+        self.validate_header(&json_str)?;
+        Ok(())
+    }
+
+    /// Update and re-sign an existing signed config document.
+    ///
+    /// Bumps `jacsVersion`, sets `jacsPreviousVersion`, re-signs and re-hashes.
+    /// `jacsId` is preserved.
+    pub fn update_config(&mut self, config_json: &Value) -> Result<Value, JacsError> {
+        let mut doc = config_json.clone();
+        let prev_version = doc
+            .get("jacsVersion")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError("update_config: missing jacsVersion".to_string())
+            })?
+            .to_string();
+        let new_version = uuid::Uuid::new_v4().to_string();
+        doc["jacsPreviousVersion"] = json!(prev_version);
+        doc["jacsVersion"] = json!(new_version);
+        doc["jacsVersionDate"] = json!(crate::time_utils::now_rfc3339());
+
+        if let Some(obj) = doc.as_object_mut() {
+            obj.remove(AGENT_SIGNATURE_FIELDNAME);
+            obj.remove(SHA256_FIELDNAME);
+        }
+
+        doc[AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&doc, None, AGENT_SIGNATURE_FIELDNAME)?;
+        let document_hash = self.hash_doc(&doc)?;
+        doc[SHA256_FIELDNAME] = json!(document_hash);
+        Ok(doc)
+    }
+
     /// Returns an `AgentBuilder` for constructing an `Agent` with a fluent API.
     ///
     /// # Example
@@ -2575,5 +2662,104 @@ mod ephemeral_tests {
             "pq2025 ephemeral agent failed: {:?}",
             result.err()
         );
+    }
+
+    // =========================================================================
+    // Config signing / verification / update
+    // =========================================================================
+
+    fn make_config_json() -> serde_json::Value {
+        serde_json::json!({
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_private_key_filename": "priv.pem",
+            "jacs_agent_public_key_filename": "pub.pem",
+            "jacs_agent_key_algorithm": "ring-Ed25519",
+            "jacs_default_storage": "fs",
+            "agent_email": "bot@hai.ai"
+        })
+    }
+
+    fn ready_ephemeral_agent() -> Agent {
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let json = make_agent_json();
+        agent
+            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .unwrap();
+        agent
+    }
+
+    #[test]
+    fn test_sign_config_produces_header_fields() {
+        let mut agent = ready_ephemeral_agent();
+        let config = make_config_json();
+        let signed = agent.sign_config(&config).expect("sign_config");
+
+        assert!(signed.get("jacsId").is_some(), "must have jacsId");
+        assert!(signed.get("jacsVersion").is_some(), "must have jacsVersion");
+        assert!(
+            signed.get("jacsSignature").is_some(),
+            "must have jacsSignature"
+        );
+        assert!(signed.get("jacsSha256").is_some(), "must have jacsSha256");
+        assert_eq!(signed["jacsType"].as_str().unwrap(), "config");
+        assert_eq!(signed["jacsLevel"].as_str().unwrap(), "config");
+        assert_eq!(
+            signed["agent_email"].as_str().unwrap(),
+            "bot@hai.ai",
+            "original config field preserved"
+        );
+    }
+
+    #[test]
+    fn test_verify_config_valid() {
+        let mut agent = ready_ephemeral_agent();
+        let signed = agent.sign_config(&make_config_json()).unwrap();
+        agent
+            .verify_config(&signed)
+            .expect("valid config must verify");
+    }
+
+    #[test]
+    fn test_verify_config_detects_tampering() {
+        let mut agent = ready_ephemeral_agent();
+        let mut signed = agent.sign_config(&make_config_json()).unwrap();
+        signed["agent_email"] = json!("evil@attacker.com");
+        let result = agent.verify_config(&signed);
+        assert!(result.is_err(), "tampered config must fail verification");
+    }
+
+    #[test]
+    fn test_update_config_bumps_version() {
+        let mut agent = ready_ephemeral_agent();
+        let signed_v1 = agent.sign_config(&make_config_json()).unwrap();
+        let v1_id = signed_v1["jacsId"].as_str().unwrap().to_string();
+        let v1_version = signed_v1["jacsVersion"].as_str().unwrap().to_string();
+
+        let mut modified = signed_v1.clone();
+        modified["agent_email"] = json!("new@hai.ai");
+
+        let signed_v2 = agent.update_config(&modified).expect("update_config");
+
+        assert_eq!(
+            signed_v2["jacsId"].as_str().unwrap(),
+            v1_id,
+            "jacsId must be preserved"
+        );
+        assert_ne!(
+            signed_v2["jacsVersion"].as_str().unwrap(),
+            v1_version,
+            "jacsVersion must change"
+        );
+        assert_eq!(
+            signed_v2["jacsPreviousVersion"].as_str().unwrap(),
+            v1_version,
+            "must record previous version"
+        );
+        assert_eq!(signed_v2["agent_email"].as_str().unwrap(), "new@hai.ai");
+
+        agent
+            .verify_config(&signed_v2)
+            .expect("updated config must verify");
     }
 }

@@ -74,6 +74,11 @@
       "description": "If true, require a domain and DNS validation to be present; fail validation if missing.",
       "type": "boolean"
     },
+    "agent_email": {
+      "description": "Cached @hai.ai email address for this agent, persisted after registration or first email status fetch.",
+      "type": "string",
+      "format": "email"
+    },
     "jacs_keychain_backend": {
       "description": "OS keychain backend for password storage. 'auto' detects the platform default. 'disabled' skips keychain entirely (recommended for CI/headless).",
       "type": "string",

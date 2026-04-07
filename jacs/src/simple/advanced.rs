@@ -274,8 +274,22 @@ pub fn rotate(agent: &SimpleAgent) -> Result<RotationResult, JacsError> {
                 obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
             }
 
+            let signed_config = if config_value.get("jacsSignature").is_some() {
+                inner
+                    .update_config(&config_value)
+                    .map_err(|e| JacsError::Internal {
+                        message: format!("Failed to re-sign config after rotation: {}", e),
+                    })?
+            } else {
+                inner
+                    .sign_config(&config_value)
+                    .map_err(|e| JacsError::Internal {
+                        message: format!("Failed to sign config after rotation: {}", e),
+                    })?
+            };
+
             let updated_str =
-                serde_json::to_string_pretty(&config_value).map_err(|e| JacsError::Internal {
+                serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                     message: format!("Failed to serialize updated config: {}", e),
                 })?;
             fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
@@ -544,8 +558,26 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
             obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
         }
 
+        let mut inner = simple_agent.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock for config signing: {}", e),
+        })?;
+        let signed_config = if config_value.get("jacsSignature").is_some() {
+            inner
+                .update_config(&config_value)
+                .map_err(|e| JacsError::Internal {
+                    message: format!("Failed to re-sign config after migration: {}", e),
+                })?
+        } else {
+            inner
+                .sign_config(&config_value)
+                .map_err(|e| JacsError::Internal {
+                    message: format!("Failed to sign config after migration: {}", e),
+                })?
+        };
+        drop(inner);
+
         let updated_str =
-            serde_json::to_string_pretty(&config_value).map_err(|e| JacsError::Internal {
+            serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                 message: format!("Failed to serialize updated config: {}", e),
             })?;
         fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
