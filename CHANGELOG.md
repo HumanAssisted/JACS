@@ -1,3 +1,46 @@
+## 0.9.14
+
+### Config Signing and Key Rotation Hardening
+
+- Config signing/verification: configs signed on create, rotation, and migration; tamper detection on load
+- `rotate_with_mutex()` replaces per-binding rotation logic — CLI, binding-core, and MCP share the full pipeline (journal, save, config re-sign)
+- Write-ahead journal for crash-safe key rotation with rollback recovery
+- `jacsKeyRotationProof` in agent schema — cryptographically verifiable transition proofs signed with old key
+- `verify_transition_proof()` on Agent
+
+### Security
+
+- Bounded gzip inflation during embedded-file export (prevents decompression bombs via `JACS_MAX_DOCUMENT_SIZE`)
+- Atomic owner-only password file creation (0600); reject group/world-readable `.jacs_password` files
+- Symlink-safe journal writes
+- Upgraded fastmcp 2.14.0 -> 3.2.0 (CVE-2026-32871 SSRF/path traversal, CVE-2026-27124 OAuth confused deputy)
+- Removed transitive lupa vulnerability (CVE-2026-34444) by eliminating pydocket/fakeredis dep chain
+- Bumped hono 4.12.12, @hono/node-server 1.19.13, aiohttp 3.13.5, cryptography 46.0.7, Pygments 2.20.0
+- Removed vendored fastmcp 2.x submodule
+
+### Breaking
+
+- License simplified: dual Apache-2.0/MIT -> Apache-2.0 only
+- `JACSMCPServer` uses `http_app()` instead of `sse_app()` (fastmcp 3.x); deploy with `mcp.http_app()` for uvicorn
+
+### Bindings
+
+- `rotate_keys` wired through all bindings (Python, Node.js, Go, MCP)
+- `sign_file` / `signFileSync` now raise on non-existent files (Python + Node.js)
+
+### Fixes
+
+- Fixed `DocumentService` mock missing `verify` method (CI compile error)
+- Fixed example imports: `from mcp.server.fastmcp` -> `from fastmcp`
+- DNS TXT record parsing: filter for `v=jacs` records among SPF/DKIM/DMARC
+- Version-date ordering preferred over mtime for document versions
+
+### Tests
+
+- 10 rotation edge-case integration tests, proptest-based crypto fuzzing
+- Config signing integration tests (814 lines)
+- Cross-binding parity and MCP contract snapshot updates
+
 ## 0.9.13
 
 ### Cross-Language Feature Parity Enforcement
