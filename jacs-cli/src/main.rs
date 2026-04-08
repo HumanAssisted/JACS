@@ -1538,14 +1538,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str())
                     .unwrap_or("./jacs.config.json");
 
-                let config = jacs::config::Config::from_file(config_p).map_err(
-                    |e| -> Box<dyn Error> {
+                let config =
+                    jacs::config::Config::from_file(config_p).map_err(|e| -> Box<dyn Error> {
                         Box::new(std::io::Error::new(
                             std::io::ErrorKind::Other,
                             format!("Failed to load config: {}", e),
                         ))
-                    },
-                )?;
+                    })?;
 
                 let key_dir = config
                     .jacs_key_directory()
@@ -1561,16 +1560,14 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .unwrap_or("jacs.public.pem");
 
                 // Show active key
-                let active_path =
-                    std::path::Path::new(key_dir).join(pub_name);
+                let active_path = std::path::Path::new(key_dir).join(pub_name);
                 if active_path.exists() {
                     let meta = std::fs::metadata(&active_path).ok();
                     let modified = meta
                         .and_then(|m| m.modified().ok())
                         .map(|t| {
-                            let duration = t
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default();
+                            let duration =
+                                t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
                             format!("{}s since epoch", duration.as_secs())
                         })
                         .unwrap_or_else(|| "unknown".to_string());
@@ -1581,7 +1578,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         modified
                     );
                 } else {
-                    println!("Active:   (no public key found at {})", active_path.display());
+                    println!(
+                        "Active:   (no public key found at {})",
+                        active_path.display()
+                    );
                 }
 
                 // Scan for archived keys
@@ -1599,9 +1599,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                                 .ok()
                                 .and_then(|m| m.modified().ok())
                                 .map(|t| {
-                                    let duration = t
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default();
+                                    let duration =
+                                        t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
                                     format!("{}s since epoch", duration.as_secs())
                                 })
                                 .unwrap_or_else(|| "unknown".to_string());
@@ -1628,14 +1627,13 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map(|s| s.as_str())
                     .unwrap_or("./jacs.config.json");
 
-                let config = jacs::config::Config::from_file(config_p).map_err(
-                    |e| -> Box<dyn Error> {
+                let config =
+                    jacs::config::Config::from_file(config_p).map_err(|e| -> Box<dyn Error> {
                         Box::new(std::io::Error::new(
                             std::io::ErrorKind::Other,
                             format!("Failed to load config: {}", e),
                         ))
-                    },
-                )?;
+                    })?;
 
                 let key_dir = config
                     .jacs_key_directory()
@@ -1649,19 +1647,20 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         journal_path
                     );
                     // Loading the agent triggers warn_if_config_tampered -> auto-repair
-                    let _agent = SimpleAgent::load(Some(config_p), None).map_err(
-                        |e| -> Box<dyn Error> {
+                    let _agent =
+                        SimpleAgent::load(Some(config_p), None).map_err(|e| -> Box<dyn Error> {
                             Box::new(std::io::Error::new(
                                 std::io::ErrorKind::Other,
                                 format!("Repair failed: {}", e),
                             ))
-                        },
-                    )?;
+                        })?;
                     // Check if journal was cleaned up
                     if RotationJournal::load(&journal_path).is_none() {
                         println!("Config repaired successfully. Journal cleaned up.");
                     } else {
-                        println!("Warning: Journal still present after load. Manual intervention may be needed.");
+                        println!(
+                            "Warning: Journal still present after load. Manual intervention may be needed."
+                        );
                     }
                 } else {
                     println!("No incomplete rotation detected. Nothing to repair.");
