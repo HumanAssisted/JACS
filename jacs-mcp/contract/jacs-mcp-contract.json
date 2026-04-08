@@ -958,6 +958,22 @@
       }
     },
     {
+      "name": "jacs_rotate_keys",
+      "description": "Rotate the agent's cryptographic keys. Generates a new keypair, signs a transition proof with the old key, re-signs the agent document and config with the new key. Optionally change the signing algorithm.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for rotating the agent's cryptographic keys.",
+        "properties": {
+          "algorithm": {
+            "description": "Signing algorithm for the new keys (ring-Ed25519, RSA-PSS, pq2025). If omitted, keeps the current algorithm.",
+            "type": ["string", "null"]
+          }
+        },
+        "title": "RotateKeysParams",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_search",
       "description": "Search across all signed documents using the unified search interface. Supports fulltext search with optional filtering by document type. Results include relevance scores and matching snippets. The search method (fulltext, vector, or hybrid) is chosen automatically based on the storage backend.",
       "input_schema": {

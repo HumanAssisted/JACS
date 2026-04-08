@@ -1499,6 +1499,36 @@ impl AgentWrapper {
         Ok(())
     }
 
+    /// Rotate the agent's cryptographic keys.
+    ///
+    /// Optionally change the signing algorithm. Uses the full rotation
+    /// pipeline (journal, save, config re-sign) via `advanced::rotate_with_mutex`.
+    pub fn rotate_keys(&self, algorithm: Option<&str>) -> BindingResult<String> {
+        // Resolve config path from the agent's config_dir
+        let config_path = {
+            let agent = self.lock()?;
+            agent
+                .config
+                .as_ref()
+                .and_then(|c| c.config_dir())
+                .map(|dir| dir.join("jacs.config.json").display().to_string())
+        };
+
+        let result = jacs::simple::advanced::rotate_with_mutex(
+            &self.inner,
+            config_path.as_deref(),
+            algorithm,
+        )
+        .map_err(|e| BindingCoreError::generic(format!("Key rotation failed: {}", e)))?;
+
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize rotation result: {}",
+                e
+            ))
+        })
+    }
+
     /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
     ///
     /// Replaces the inner agent with a freshly created ephemeral agent that

@@ -42,6 +42,49 @@ pub struct ReencryptKeyResult {
     pub error: Option<String>,
 }
 
+/// Parameters for rotating the agent's cryptographic keys.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RotateKeysParams {
+    /// Signing algorithm for the new keys. If omitted, keeps the current algorithm.
+    #[schemars(
+        description = "Signing algorithm for the new keys (ring-Ed25519, RSA-PSS, pq2025). If omitted, keeps the current algorithm."
+    )]
+    pub algorithm: Option<String>,
+}
+
+/// Result of rotating the agent's keys.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RotateKeysResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+
+    /// The agent's stable identity (unchanged across rotations).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jacs_id: Option<String>,
+
+    /// The version string before rotation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_version: Option<String>,
+
+    /// The new version string assigned during rotation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_version: Option<String>,
+
+    /// SHA-256 hash of the new public key (hex-encoded).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_public_key_hash: Option<String>,
+
+    /// Whether a transition proof was generated.
+    pub has_transition_proof: bool,
+
+    /// Human-readable status message.
+    pub message: String,
+
+    /// Error message if the operation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// Parameters for exporting the local agent's A2A Agent Card (no params needed).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ExportAgentCardParams {}
@@ -131,6 +174,13 @@ pub fn tools() -> Vec<Tool> {
             "Re-encrypt the agent's private key with a new password. Use this to rotate \
              the password protecting the private key without changing the key itself.",
             schema_map::<ReencryptKeyParams>(),
+        ),
+        Tool::new(
+            "jacs_rotate_keys",
+            "Rotate the agent's cryptographic keys. Generates a new keypair, signs a \
+             transition proof with the old key, re-signs the agent document and config \
+             with the new key. Optionally change the signing algorithm.",
+            schema_map::<RotateKeysParams>(),
         ),
         Tool::new(
             "jacs_export_agent_card",

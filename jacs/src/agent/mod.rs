@@ -895,16 +895,18 @@ impl Agent {
 
         self.warn_if_config_tampered(config_is_signed, &config_raw_json, Some(path));
 
-        // If we successfully loaded with a journal present, the auto-repair in
-        // warn_if_config_tampered should have handled the config. If the lookup_id
-        // was changed (newer version found), the config repair will update it.
-        if journal_found && effective_lookup_id != lookup_id {
-            // Force config repair since we loaded a different version than config specified
+        // If warn_if_config_tampered already repaired and deleted the journal,
+        // skip the second repair to avoid overwriting the fixed config with stale data.
+        if journal_found
+            && effective_lookup_id != lookup_id
+            && crate::keystore::RotationJournal::load(&journal_path).is_some()
+        {
+            // Journal still present — warn_if_config_tampered didn't fully repair.
+            // Re-attempt with the correct version info.
             if let Some(json) = &config_raw_json {
                 match self.attempt_config_repair(json, path) {
                     Ok(()) => {
                         info!("Config repaired after journal-based version recovery.");
-                        // Delete journal
                         if let Some(j) = crate::keystore::RotationJournal::load(&journal_path) {
                             let _ = j.complete();
                         }
@@ -2005,6 +2007,60 @@ impl Agent {
         }
 
         Ok((new_version, new_public_key, new_doc))
+    }
+
+    /// Verify a `jacsKeyRotationProof` using the old public key.
+    ///
+    /// The proof contains a `transitionMessage` signed with the old key. This
+    /// function re-derives the expected message from the proof's metadata and
+    /// checks the cryptographic signature against `old_public_key_bytes`.
+    ///
+    /// Returns `Ok(())` if the proof is valid, or `Err` if verification fails.
+    pub fn verify_transition_proof(
+        proof: &Value,
+        old_public_key_bytes: &[u8],
+    ) -> Result<(), JacsError> {
+        let msg = proof["transitionMessage"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing transitionMessage".into()))?;
+        let sig_b64 = proof["signature"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing signature".into()))?;
+        let algorithm = proof["signingAlgorithm"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing signingAlgorithm".into()))?;
+
+        // Use the appropriate verify function based on algorithm
+        let verified = match algorithm {
+            "ring-Ed25519" => crate::crypt::ringwrapper::verify_string(
+                old_public_key_bytes.to_vec(),
+                msg,
+                sig_b64,
+            )
+            .is_ok(),
+            "pq2025" => {
+                crate::crypt::pq2025::verify_string(old_public_key_bytes.to_vec(), msg, sig_b64)
+                    .is_ok()
+            }
+            "RSA-PSS" => {
+                crate::crypt::rsawrapper::verify_string(old_public_key_bytes.to_vec(), msg, sig_b64)
+                    .is_ok()
+            }
+            _ => {
+                return Err(JacsError::ConfigError(format!(
+                    "Unknown algorithm in transition proof: {}",
+                    algorithm
+                )));
+            }
+        };
+
+        if verified {
+            Ok(())
+        } else {
+            Err(JacsError::ConfigError(
+                "Transition proof signature verification failed".into(),
+            ))
+        }
     }
 
     pub fn validate_header(&mut self, json: &str) -> Result<Value, JacsError> {

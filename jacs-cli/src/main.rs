@@ -383,6 +383,42 @@ pub fn build_cli() -> Command {
                                 .help("Require DNSSEC validation for DNS lookup")
                                 .action(ArgAction::SetTrue),
                         ),
+                )
+                .subcommand(
+                    Command::new("rotate-keys")
+                        .about("Rotate the agent's cryptographic keys")
+                        .arg(
+                            Arg::new("algorithm")
+                                .long("algorithm")
+                                .value_parser(["ring-Ed25519", "RSA-PSS", "pq2025"])
+                                .help("Signing algorithm for the new keys (defaults to current)"),
+                        )
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (default: ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("keys-list")
+                        .about("List active and archived key files")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (default: ./jacs.config.json)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("repair")
+                        .about("Repair config after an interrupted key rotation")
+                        .arg(
+                            Arg::new("config")
+                                .long("config")
+                                .value_parser(value_parser!(String))
+                                .help("Path to jacs.config.json (default: ./jacs.config.json)"),
+                        ),
                 ),
         )
 
@@ -1462,6 +1498,173 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     }
                 } else {
                     println!("DNS TXT Record: Skipped (--no-dns)");
+                }
+            }
+            Some(("rotate-keys", sub_m)) => {
+                use jacs::simple::SimpleAgent;
+
+                let config_path = sub_m.get_one::<String>("config").map(|s| s.as_str());
+                let algorithm = sub_m.get_one::<String>("algorithm").map(|s| s.as_str());
+
+                let agent =
+                    SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to load agent: {}", e),
+                        ))
+                    })?;
+
+                let result = jacs::simple::advanced::rotate(&agent, algorithm).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Key rotation failed: {}", e),
+                        ))
+                    },
+                )?;
+
+                println!("Key rotation successful.");
+                println!("  Agent ID:          {}", result.jacs_id);
+                println!("  Old version:       {}", result.old_version);
+                println!("  New version:       {}", result.new_version);
+                println!("  New key hash:      {}", result.new_public_key_hash);
+                if result.transition_proof.is_some() {
+                    println!("  Transition proof:  present");
+                }
+            }
+            Some(("keys-list", sub_m)) => {
+                let config_path = sub_m.get_one::<String>("config");
+                let config_p = config_path
+                    .map(|s| s.as_str())
+                    .unwrap_or("./jacs.config.json");
+
+                let config = jacs::config::Config::from_file(config_p).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to load config: {}", e),
+                        ))
+                    },
+                )?;
+
+                let key_dir = config
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys");
+                let algo = config
+                    .jacs_agent_key_algorithm()
+                    .as_deref()
+                    .unwrap_or("unknown");
+                let pub_name = config
+                    .jacs_agent_public_key_filename()
+                    .as_deref()
+                    .unwrap_or("jacs.public.pem");
+
+                // Show active key
+                let active_path =
+                    std::path::Path::new(key_dir).join(pub_name);
+                if active_path.exists() {
+                    let meta = std::fs::metadata(&active_path).ok();
+                    let modified = meta
+                        .and_then(|m| m.modified().ok())
+                        .map(|t| {
+                            let duration = t
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default();
+                            format!("{}s since epoch", duration.as_secs())
+                        })
+                        .unwrap_or_else(|| "unknown".to_string());
+                    println!(
+                        "Active:   {} (algorithm: {}, modified: {})",
+                        active_path.display(),
+                        algo,
+                        modified
+                    );
+                } else {
+                    println!("Active:   (no public key found at {})", active_path.display());
+                }
+
+                // Scan for archived keys
+                let mut archived: Vec<(String, String)> = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(key_dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        // Archived keys look like: jacs.public.{uuid}.pem
+                        if name.ends_with(".pem")
+                            && name.starts_with("jacs.public.")
+                            && name != pub_name
+                        {
+                            let modified = entry
+                                .metadata()
+                                .ok()
+                                .and_then(|m| m.modified().ok())
+                                .map(|t| {
+                                    let duration = t
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default();
+                                    format!("{}s since epoch", duration.as_secs())
+                                })
+                                .unwrap_or_else(|| "unknown".to_string());
+                            archived.push((name, modified));
+                        }
+                    }
+                }
+
+                if archived.is_empty() {
+                    println!("Archived: (none)");
+                } else {
+                    archived.sort_by(|a, b| b.1.cmp(&a.1));
+                    for (name, modified) in &archived {
+                        println!("Archived: {}/{} (modified: {})", key_dir, name, modified);
+                    }
+                }
+            }
+            Some(("repair", sub_m)) => {
+                use jacs::keystore::RotationJournal;
+                use jacs::simple::SimpleAgent;
+
+                let config_path = sub_m.get_one::<String>("config");
+                let config_p = config_path
+                    .map(|s| s.as_str())
+                    .unwrap_or("./jacs.config.json");
+
+                let config = jacs::config::Config::from_file(config_p).map_err(
+                    |e| -> Box<dyn Error> {
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to load config: {}", e),
+                        ))
+                    },
+                )?;
+
+                let key_dir = config
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys");
+
+                let journal_path = RotationJournal::journal_path(key_dir);
+                if RotationJournal::load(&journal_path).is_some() {
+                    println!(
+                        "Incomplete rotation detected (journal at {}). Loading agent to trigger auto-repair...",
+                        journal_path
+                    );
+                    // Loading the agent triggers warn_if_config_tampered -> auto-repair
+                    let _agent = SimpleAgent::load(Some(config_p), None).map_err(
+                        |e| -> Box<dyn Error> {
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Repair failed: {}", e),
+                            ))
+                        },
+                    )?;
+                    // Check if journal was cleaned up
+                    if RotationJournal::load(&journal_path).is_none() {
+                        println!("Config repaired successfully. Journal cleaned up.");
+                    } else {
+                        println!("Warning: Journal still present after load. Manual intervention may be needed.");
+                    }
+                } else {
+                    println!("No incomplete rotation detected. Nothing to repair.");
                 }
             }
             _ => println!("please enter subcommand see jacs agent --help"),

@@ -47,6 +47,8 @@ fn known_methods() -> Vec<&'static str> {
         "from_yaml",
         "to_html",
         "from_html",
+        // Key management
+        "rotate_keys",
     ];
     methods.sort();
     methods
@@ -160,8 +162,8 @@ fn test_method_parity_fixture_count() {
 
     assert_eq!(
         flat_methods.len(),
-        26,
-        "SimpleAgentWrapper should have exactly 26 public methods. \
+        27,
+        "SimpleAgentWrapper should have exactly 27 public methods. \
          Found {}. If you added or removed a method, update the fixture.",
         flat_methods.len()
     );

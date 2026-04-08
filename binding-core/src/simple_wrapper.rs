@@ -351,6 +351,29 @@ impl SimpleAgentWrapper {
             )
         })
     }
+
+    // =========================================================================
+    // Key rotation
+    // =========================================================================
+
+    /// Rotate the agent's cryptographic keys.
+    ///
+    /// Optionally change the signing algorithm. Returns a JSON string of the
+    /// `RotationResult` (jacs_id, old_version, new_version, key hash, proof).
+    pub fn rotate_keys(&self, algorithm: Option<&str>) -> BindingResult<String> {
+        let result = jacs::simple::advanced::rotate(&self.inner, algorithm).map_err(|e| {
+            BindingCoreError::new(
+                crate::ErrorKind::Generic,
+                format!("Key rotation failed: {}", e),
+            )
+        })?;
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::new(
+                crate::ErrorKind::SerializationFailed,
+                format!("Failed to serialize rotation result: {}", e),
+            )
+        })
+    }
 }
 
 // =============================================================================

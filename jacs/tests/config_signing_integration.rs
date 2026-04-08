@@ -445,7 +445,9 @@ fn test_crash_recovery_full_flow() {
     );
 }
 
-/// Without a journal, tampered config preserves warn-only behavior (no auto-repair).
+/// Without a journal, a stale config pointing to the old agent version fails to load.
+/// The journal is what enables crash recovery -- without it, there's no way to know
+/// that the inconsistency is from a crash rather than tampering.
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_no_crash_recovery_without_journal() {
@@ -463,15 +465,20 @@ fn test_no_crash_recovery_without_journal() {
     std::fs::write("./jacs.config.json", &config_before)
         .expect("overwrite config with stale version");
 
-    // Reload -- should succeed (warn-only) but config should NOT be auto-repaired
-    let _reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
-        .expect("agent should load with warn-only for tampered config");
+    // Reload -- should FAIL because the old agent version was signed with old keys
+    // but the keys on disk are new (old keys were archived during rotation).
+    // Without a journal, the system cannot auto-recover.
+    let load_result = SimpleAgent::load(Some("./jacs.config.json"), None);
+    assert!(
+        load_result.is_err(),
+        "Loading with stale config and no journal should fail"
+    );
 
-    // Config on disk should be unchanged (still the stale pre-rotation version)
+    // Config on disk should be unchanged (no auto-repair without journal)
     let config_after = std::fs::read_to_string("./jacs.config.json").expect("read config after");
     assert_eq!(
         config_before, config_after,
-        "Without journal, config should NOT be modified (warn-only behavior)"
+        "Without journal, config should NOT be modified"
     );
 }
 
@@ -513,15 +520,16 @@ fn test_double_rotation_preserves_chain() {
     let proof = &doc["jacsKeyRotationProof"];
     let msg = proof["transitionMessage"].as_str().unwrap();
     assert!(
-        msg.contains(
-            &result2
-                .transition_proof
-                .as_ref()
-                .unwrap()
-                .contains("newPublicKeyHash")
-                .to_string()
-        ) || msg.starts_with("JACS_KEY_ROTATION:"),
-        "Latest proof should be from the most recent rotation"
+        msg.starts_with("JACS_KEY_ROTATION:"),
+        "Transition message must start with JACS_KEY_ROTATION:, got: {}",
+        msg
+    );
+    // The proof should reference the second rotation's new key hash
+    assert!(
+        msg.contains(&result2.new_public_key_hash),
+        "Transition message must contain the new key hash {}, got: {}",
+        result2.new_public_key_hash,
+        msg
     );
 
     // Verify the agent is still functional
@@ -533,5 +541,44 @@ fn test_double_rotation_preserves_chain() {
         verification.valid,
         "Should verify after double rotation: {:?}",
         verification.errors
+    );
+}
+
+/// Verify that the transition proof can be cryptographically verified with the old key.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_transition_proof_verifiable_with_old_key() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("proof-verify-test");
+
+    // Capture old public key before rotation
+    let old_pub_key = agent.get_public_key().expect("get old public key");
+
+    // Rotate
+    let result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    // Extract the transition proof from the signed agent document
+    let doc: Value = serde_json::from_str(&result.signed_agent_json).expect("parse signed agent");
+    let proof = &doc["jacsKeyRotationProof"];
+    assert!(
+        proof.is_object(),
+        "Agent doc should have jacsKeyRotationProof"
+    );
+
+    // Verify the proof with the OLD public key — should succeed
+    let verify_result = jacs::agent::Agent::verify_transition_proof(proof, &old_pub_key);
+    assert!(
+        verify_result.is_ok(),
+        "Transition proof should verify with old key: {:?}",
+        verify_result.err()
+    );
+
+    // Verify the proof with the NEW public key — should fail
+    let new_pub_key = agent.get_public_key().expect("get new public key");
+    let bad_result = jacs::agent::Agent::verify_transition_proof(proof, &new_pub_key);
+    assert!(
+        bad_result.is_err(),
+        "Transition proof should NOT verify with new key"
     );
 }

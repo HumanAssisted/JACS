@@ -3,14 +3,14 @@
 use jacs_binding_core::AgentWrapper;
 use rmcp::ServerHandler;
 
-/// With default features (core-tools), exactly 28 core tools are registered.
+/// With default features (core-tools), exactly 29 core tools are registered.
 #[test]
 fn default_features_register_core_tools() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
-    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(4) = 28
-    let expected_core_count = 28;
+    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5) = 29
+    let expected_core_count = 29;
 
     // With default features only core tools are registered.
     // If full-tools is also enabled, advanced tools appear too.
@@ -132,7 +132,7 @@ fn full_tools_registers_all_42() {
     let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
     names.sort();
 
-    assert_eq!(tools.len(), 42, "full-tools should expose all 42 tools");
+    assert_eq!(tools.len(), 43, "full-tools should expose all 43 tools");
 
     let expected: Vec<&str> = vec![
         "jacs_adopt_state",
@@ -166,6 +166,7 @@ fn full_tools_registers_all_42() {
         "jacs_message_send",
         "jacs_message_update",
         "jacs_reencrypt_key",
+        "jacs_rotate_keys",
         "jacs_search",
         "jacs_sign_agreement",
         "jacs_sign_document",
@@ -214,6 +215,7 @@ fn tool_names_snapshot_core_sorted() {
         "jacs_memory_save",
         "jacs_memory_update",
         "jacs_reencrypt_key",
+        "jacs_rotate_keys",
         "jacs_search",
         "jacs_sign_document",
         "jacs_sign_state",

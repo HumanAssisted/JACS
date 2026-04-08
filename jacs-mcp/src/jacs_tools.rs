@@ -1353,6 +1353,47 @@ impl JacsMcpServer {
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
 
+    /// Rotate the agent's cryptographic keys.
+    ///
+    /// Generates a new keypair, signs a transition proof with the old key,
+    /// re-signs the agent document and config with the new key.
+    #[tool(
+        name = "jacs_rotate_keys",
+        description = "Rotate the agent's cryptographic keys with optional algorithm change."
+    )]
+    pub async fn jacs_rotate_keys(
+        &self,
+        Parameters(params): Parameters<key::RotateKeysParams>,
+    ) -> String {
+        let result = match self.agent.rotate_keys(params.algorithm.as_deref()) {
+            Ok(json_str) => {
+                let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
+                key::RotateKeysResult {
+                    success: true,
+                    jacs_id: parsed["jacs_id"].as_str().map(String::from),
+                    old_version: parsed["old_version"].as_str().map(String::from),
+                    new_version: parsed["new_version"].as_str().map(String::from),
+                    new_public_key_hash: parsed["new_public_key_hash"].as_str().map(String::from),
+                    has_transition_proof: parsed["transition_proof"].is_string(),
+                    message: "Key rotation successful".to_string(),
+                    error: None,
+                }
+            }
+            Err(e) => key::RotateKeysResult {
+                success: false,
+                jacs_id: None,
+                old_version: None,
+                new_version: None,
+                new_public_key_hash: None,
+                has_transition_proof: false,
+                message: "Key rotation failed".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
     /// Run a read-only JACS security audit. Returns JSON with risks, health_checks, summary.
     #[tool(
         name = "jacs_audit",

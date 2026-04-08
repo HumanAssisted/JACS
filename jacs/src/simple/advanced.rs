@@ -219,12 +219,28 @@ pub fn get_setup_instructions(
 /// println!("Rotated from {} to {}", rotation.old_version, rotation.new_version);
 /// ```
 pub fn rotate(agent: &SimpleAgent, algorithm: Option<&str>) -> Result<RotationResult, JacsError> {
+    let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+        message: format!("Failed to acquire agent lock: {}", e),
+    })?;
+    drop(inner); // Release before calling rotate_with_mutex which re-locks
+    rotate_with_mutex(&agent.agent, agent.config_path.as_deref(), algorithm)
+}
+
+/// Core rotation logic that operates on a `Mutex<Agent>` directly.
+///
+/// This is the single authoritative rotation path. Both `rotate()` (for
+/// `SimpleAgent`) and binding-core `AgentWrapper::rotate_keys()` call this.
+pub fn rotate_with_mutex(
+    agent_mutex: &std::sync::Mutex<crate::agent::Agent>,
+    config_path: Option<&str>,
+    algorithm: Option<&str>,
+) -> Result<RotationResult, JacsError> {
     use crate::crypt::hash::hash_public_key;
     use crate::keystore::RotationJournal;
 
     info!("Starting key rotation");
 
-    let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+    let mut inner = agent_mutex.lock().map_err(|e| JacsError::Internal {
         message: format!("Failed to acquire agent lock: {}", e),
     })?;
 
@@ -266,7 +282,7 @@ pub fn rotate(agent: &SimpleAgent, algorithm: Option<&str>) -> Result<RotationRe
             .as_ref()
             .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
             .unwrap_or_else(|| "./jacs_keys".to_string());
-        let config_path_str = agent.config_path.as_deref().unwrap_or("./jacs.config.json");
+        let config_path_str = config_path.unwrap_or("./jacs.config.json");
         Some(RotationJournal::create(
             &key_dir,
             &jacs_id,
@@ -305,8 +321,8 @@ pub fn rotate(agent: &SimpleAgent, algorithm: Option<&str>) -> Result<RotationRe
     }
 
     // 4. Update config file with the new version
-    if let Some(ref config_path) = agent.config_path {
-        let config_path_p = Path::new(config_path);
+    if let Some(config_p) = config_path {
+        let config_path_p = Path::new(config_p);
         if config_path_p.exists() {
             let config_str =
                 fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
