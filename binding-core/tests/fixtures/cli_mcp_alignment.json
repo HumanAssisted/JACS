@@ -81,6 +81,12 @@
       "notes": "Both export an attestation as a DSSE envelope"
     },
     {
+      "cli_command": "agent rotate-keys",
+      "mcp_tool": "jacs_rotate_keys",
+      "status": "aligned",
+      "notes": "Both rotate the agent's cryptographic keys with optional algorithm change"
+    },
+    {
       "cli_command": "a2a assess",
       "mcp_tool": "jacs_assess_a2a_agent",
       "status": "aligned",
@@ -163,6 +169,14 @@
     {
       "cli_command": "convert",
       "mcp_excluded_reason": "Format conversion (JSON/YAML/HTML); could be an MCP tool in the future"
+    },
+    {
+      "cli_command": "agent keys-list",
+      "mcp_excluded_reason": "Filesystem scan for archived keys; CLI-only diagnostic"
+    },
+    {
+      "cli_command": "agent repair",
+      "mcp_excluded_reason": "Crash recovery; requires filesystem access, CLI-only"
     }
   ],
   "cli_only_feature_gated": [
@@ -352,11 +366,11 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 30,
+    "total_cli_commands": 33,
     "total_cli_feature_gated": 4,
-    "total_mcp_tools": 42,
-    "aligned_pairs": 16,
-    "cli_only_count": 16,
+    "total_mcp_tools": 43,
+    "aligned_pairs": 17,
+    "cli_only_count": 18,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 27,
     "mcp_only_intentional": 17,

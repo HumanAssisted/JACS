@@ -551,6 +551,23 @@ fn handle_agent_create_inner(
             }
         }
 
+        // Sign the config with the agent's key (two-pass pattern: write fields,
+        // then sign). If the config already has a jacsSignature, update_config
+        // bumps the version; otherwise sign_config creates the initial signature.
+        let signed_config = if current_config.get("jacsSignature").is_some() {
+            agent.update_config(&current_config)
+        } else {
+            agent.sign_config(&current_config)
+        };
+        match signed_config {
+            Ok(signed) => {
+                current_config = signed;
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to sign config: {}. Writing unsigned.", e);
+            }
+        }
+
         // Use std::fs for writing
         match std::fs::write(
             config_path,

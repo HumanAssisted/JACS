@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional
 import jacs
 from jacs.mcp import JACSMCPServer
 from jacs.a2a import JACSA2AIntegration, A2AAgentCard
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 # Configuration
 JACS_CONFIG_PATH = os.environ.get("JACS_CONFIG_PATH", "jacs.config.json")

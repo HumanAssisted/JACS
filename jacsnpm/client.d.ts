@@ -36,6 +36,15 @@ export interface JacsClientOptions {
     algorithm?: string;
     strict?: boolean;
 }
+export interface RotationResult {
+    jacs_id: string;
+    old_version: string;
+    new_version: string;
+    new_public_key_pem: string;
+    new_public_key_hash: string;
+    signed_agent_json: string;
+    transition_proof: string | null;
+}
 export interface ClientArtifactVerificationResult {
     valid: boolean;
     /**
@@ -144,6 +153,24 @@ export declare class JacsClient {
     isTrusted(agentId: string): boolean;
     getTrustedAgent(agentId: string): string;
     getPublicKey(): string;
+    /**
+     * Rotate the agent's cryptographic keys.
+     *
+     * Generates a new keypair, archives the old keys, creates a new agent
+     * version, and re-signs the config file.
+     *
+     * @param options - Optional. `{ algorithm?: string }` to change the signing algorithm.
+     * @returns Rotation result with old_version, new_version, transition_proof, etc.
+     */
+    rotateKeys(options?: {
+        algorithm?: string;
+    }): Promise<RotationResult>;
+    /**
+     * Rotate the agent's cryptographic keys (sync variant).
+     */
+    rotateKeysSync(options?: {
+        algorithm?: string;
+    }): RotationResult;
     exportAgent(): string;
     /** @deprecated Use getPublicKey() instead. */
     sharePublicKey(): string;

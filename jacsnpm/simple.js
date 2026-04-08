@@ -133,6 +133,7 @@ Object.defineProperty(exports, "JacsAgent", { enumerable: true, get: function ()
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const path = __importStar(require("path"));
+const fs = require("fs");
 const deprecation_1 = require("./deprecation");
 // =============================================================================
 // Global State
@@ -548,6 +549,9 @@ function updateDocumentSync(documentId, newDocumentData, attachments, embed) {
  */
 async function signFile(filePath, embed = false) {
     requireAgent();
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found: ${filePath}`);
+    }
     const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
     });
@@ -561,6 +565,9 @@ async function signFile(filePath, embed = false) {
  */
 function signFileSync(filePath, embed = false) {
     requireAgent();
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found: ${filePath}`);
+    }
     const docContent = createRawDocumentPayload('file', {
         filename: path.basename(filePath),
     });

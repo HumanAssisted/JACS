@@ -639,8 +639,23 @@ impl SimpleAgent {
                 obj.insert("jacs_agent_id_and_version".to_string(), json!(lookup_id));
             }
 
+            // If the config already has a jacsSignature, use update_config to
+            // bump the version; otherwise sign_config creates the initial signature.
+            let signed_config = if existing.get("jacsSignature").is_some() {
+                agent
+                    .update_config(&existing)
+                    .map_err(|e| JacsError::Internal {
+                        message: format!("Failed to re-sign config: {}", e),
+                    })?
+            } else {
+                agent
+                    .sign_config(&existing)
+                    .map_err(|e| JacsError::Internal {
+                        message: format!("Failed to sign config: {}", e),
+                    })?
+            };
             let updated_str =
-                serde_json::to_string_pretty(&existing).map_err(|e| JacsError::Internal {
+                serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                     message: format!("Failed to serialize updated config: {}", e),
                 })?;
             fs::write(config_path, &updated_str).map_err(|e| JacsError::Internal {
@@ -681,9 +696,15 @@ impl SimpleAgent {
                 json!(DEFAULT_PUBLIC_KEY_FILENAME),
             );
             let config_json = Value::Object(config_map);
+            let signed_config =
+                agent
+                    .sign_config(&config_json)
+                    .map_err(|e| JacsError::Internal {
+                        message: format!("Failed to sign config: {}", e),
+                    })?;
 
             let new_str =
-                serde_json::to_string_pretty(&config_json).map_err(|e| JacsError::Internal {
+                serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                     message: format!("Failed to serialize config: {}", e),
                 })?;
             // Create parent directories if needed

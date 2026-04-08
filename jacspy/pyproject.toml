@@ -7,7 +7,7 @@ version = "0.9.13"
 description = "JACS - JSON AI Communication Standard: Cryptographic signing and verification for AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0 OR MIT" }
+license = { text = "Apache-2.0" }
 authors = [
     { name = "HAI.AI", email = "engineering@hai.io" },
 ]
@@ -29,7 +29,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-mcp = ["fastmcp>=0.1.0"]
+mcp = ["fastmcp>=3.2.0"]
 ws = ["websockets>=13.0"]
 langchain = ["langchain>=1.0.0,<2.0.0"]
 langgraph = ["langgraph>=1.0.0,<2.0.0"]
@@ -52,6 +52,13 @@ asyncio_mode = "auto"
 markers = [
     "asyncio: mark async tests that require an event loop",
     "contract: contract tests validating output against shared a2a-verification-result schema",
+]
+
+[tool.uv]
+constraint-dependencies = [
+    "aiohttp>=3.13.4",
+    "Pygments>=2.20.0",
+    "cryptography>=46.0.6",
 ]
 
 [tool.maturin]

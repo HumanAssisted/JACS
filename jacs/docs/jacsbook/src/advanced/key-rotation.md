@@ -136,23 +136,87 @@ This signed message:
 - Provides an audit trail
 - Binds old and new keys together cryptographically
 
-### CLI Commands (Planned)
-
-> **Note**: These CLI commands are planned for a future release. Currently, key rotation must be performed programmatically using the Rust API.
+### CLI Commands
 
 ```bash
-# Rotate keys with default algorithm (Coming Soon)
+# Rotate keys with default algorithm
 jacs agent rotate-keys
 
-# Rotate to post-quantum algorithm (Coming Soon)
+# Rotate to post-quantum algorithm
 jacs agent rotate-keys --algorithm pq2025
 
-# List key history (Coming Soon)
-jacs agent keys list
+# List key history (active and archived keys)
+jacs agent keys-list
+
+# Repair config after a crash during rotation
+jacs agent repair
 
 # Revoke a compromised key (Coming Soon)
 jacs agent keys revoke <key-hash>
 ```
+
+### Transition Signature
+
+During key rotation, JACS produces a cryptographic transition proof that binds the old key to the new key. This proof is embedded in the agent document as `jacsKeyRotationProof`:
+
+```json
+{
+  "jacsKeyRotationProof": {
+    "transitionMessage": "JACS_KEY_ROTATION:{agent_id}:{old_key_hash}:{new_key_hash}:{timestamp}",
+    "signature": "base64-encoded-signature-with-old-key",
+    "signingAlgorithm": "ring-Ed25519",
+    "oldPublicKeyHash": "sha256-of-old-key",
+    "newPublicKeyHash": "sha256-of-new-key",
+    "timestamp": "2026-04-07T10:00:00Z"
+  }
+}
+```
+
+The transition message is signed with the **old** private key before it is archived. This proves:
+- The rotation was authorized by the holder of the previous key
+- The old and new keys are cryptographically linked
+- An attacker cannot forge a rotation without the old private key
+
+You can verify a transition proof programmatically using `Agent::verify_transition_proof()`.
+
+### Crash Recovery
+
+JACS uses a write-ahead journal to recover from crashes during key rotation. Before rotation begins, a journal file is written to `{key_directory}/.jacs_rotation_journal.json`. The journal tracks the rotation stage:
+
+1. `started` - Rotation initiated
+2. `keys_rotated` - New keys generated, old keys archived
+3. `agent_saved` - New agent version saved to disk
+4. `config_signed` - Config re-signed with new key (journal deleted on success)
+
+If the process crashes mid-rotation, the next agent load detects the journal and automatically repairs the config by re-signing it with the current key. No manual intervention is required for the common case.
+
+For manual recovery: `jacs agent repair`
+
+### Cross-Algorithm Rotation
+
+You can change the signing algorithm during rotation:
+
+```bash
+# Rotate from Ed25519 to post-quantum
+jacs agent rotate-keys --algorithm pq2025
+```
+
+```rust
+// Rust API
+let result = advanced::rotate(&agent, Some("pq2025"))?;
+```
+
+```python
+# Python
+result = client.rotate_keys(algorithm="pq2025")
+```
+
+```typescript
+// Node.js
+const result = await client.rotateKeys({ algorithm: 'pq2025' });
+```
+
+After cross-algorithm rotation, the config file's `jacs_agent_key_algorithm` field is updated atomically. Documents signed before the rotation remain verifiable using the archived old key.
 
 ### Example Rotation Flow
 

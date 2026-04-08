@@ -407,6 +407,12 @@ impl JacsAgent {
         self.inner.get_document_by_id(&document_id).to_napi()
     }
 
+    /// Rotate the agent's keys (sync, blocks event loop).
+    #[napi(js_name = "rotateKeysSync")]
+    pub fn rotate_keys_sync(&self, algorithm: Option<String>) -> Result<String> {
+        self.inner.rotate_keys(algorithm.as_deref()).to_napi()
+    }
+
     /// Re-encrypt the agent's private key (sync, blocks event loop).
     #[napi(js_name = "reencryptKeySync")]
     pub fn reencrypt_key_sync(&self, old_password: String, new_password: String) -> Result<()> {
@@ -757,6 +763,16 @@ impl JacsAgent {
         AsyncTask::new(AgentStringTask {
             agent,
             func: Some(Box::new(move |a| a.get_document_by_id(&document_id))),
+        })
+    }
+
+    /// Rotate the agent's cryptographic keys.
+    #[napi(js_name = "rotateKeys", ts_return_type = "Promise<string>")]
+    pub fn rotate_keys_async(&self, algorithm: Option<String>) -> AsyncTask<AgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(AgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.rotate_keys(algorithm.as_deref()))),
         })
     }
 
@@ -1547,6 +1563,18 @@ impl JacsSimpleAgent {
     pub fn verify_yaml(&self, yaml_str: String) -> Result<String> {
         let json_str = self.inner.from_yaml(&yaml_str).to_napi()?;
         self.inner.verify_json(&json_str).to_napi()
+    }
+
+    // =========================================================================
+    // Key Management
+    // =========================================================================
+
+    /// Rotate the agent's cryptographic keys.
+    /// Optionally change the signing algorithm.
+    /// Returns a JSON string of the RotationResult.
+    #[napi(js_name = "rotateKeys")]
+    pub fn rotate_keys(&self, algorithm: Option<String>) -> Result<String> {
+        self.inner.rotate_keys(algorithm.as_deref()).to_napi()
     }
 }
 

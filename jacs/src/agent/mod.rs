@@ -39,7 +39,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::validation::are_valid_uuid_parts;
-use secrecy::SecretBox;
+use secrecy::{ExposeSecret, SecretBox};
 
 /// Normalize a verification claim value.
 ///
@@ -364,6 +364,10 @@ impl Agent {
     /// let agent = Agent::from_config(config, Some("my-password"))?;
     /// ```
     pub fn from_config(mut config: Config, password: Option<&str>) -> Result<Self, JacsError> {
+        // Preserve signed-config metadata before from_config consumes it.
+        let config_is_signed = config.is_signed;
+        let config_raw_json = config.raw_json.clone();
+
         let schema = Schema::new("v1", "v1", "v1")?;
         let document_schemas_map = Arc::new(Mutex::new(HashMap::new()));
 
@@ -436,6 +440,10 @@ impl Agent {
                 JacsError::Internal { message: err_msg }
             })?;
         }
+
+        // from_config doesn't have the original config file path, so auto-repair
+        // is not available. Pass None for config_path.
+        agent.warn_if_config_tampered(config_is_signed, &config_raw_json, None);
 
         Ok(agent)
     }
@@ -804,6 +812,10 @@ impl Agent {
         caller: &str,
         path: &str,
     ) -> Result<(), JacsError> {
+        // Preserve signed-config metadata before config is consumed.
+        let config_is_signed = config.is_signed;
+        let config_raw_json = config.raw_json.clone();
+
         let lookup_id: String = config
             .jacs_agent_id_and_version()
             .as_deref()
@@ -832,23 +844,83 @@ impl Agent {
                 caller, storage_type, path, e
             )
         })?;
-        if !lookup_id.is_empty() {
-            let agent_string = self.fs_agent_load(&lookup_id).map_err(|e| {
+
+        // Check for rotation journal before loading the agent. If a journal exists,
+        // the config may reference a stale agent version (crash during rotation).
+        // We attempt to find and load the newer version instead.
+        let mut effective_lookup_id = lookup_id.clone();
+        let key_dir = self
+            .config
+            .as_ref()
+            .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
+            .unwrap_or_else(|| "./jacs_keys".to_string());
+        let journal_path = crate::keystore::RotationJournal::journal_path(&key_dir);
+        let journal_found = if !lookup_id.is_empty() {
+            if let Some(journal) = crate::keystore::RotationJournal::load(&journal_path) {
+                info!(
+                    "Rotation journal found (stage: {}). Checking for newer agent version.",
+                    journal.stage
+                );
+                // Try to find a newer agent version on disk by scanning the data directory
+                if let Some(newer_id) = self.find_latest_agent_version_on_disk(&lookup_id) {
+                    info!(
+                        "Found newer agent version on disk: {} (config had: {})",
+                        newer_id, lookup_id
+                    );
+                    effective_lookup_id = newer_id;
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !effective_lookup_id.is_empty() {
+            let agent_string = self.fs_agent_load(&effective_lookup_id).map_err(|e| {
                 format!(
                     "{} failed: Could not load agent '{}' (specified in config '{}'): {}",
-                    caller, lookup_id, path, e
+                    caller, effective_lookup_id, path, e
                 )
             })?;
             self.load(&agent_string).map_err(|e| {
                 let err_msg = format!(
                     "{} failed: Agent '{}' validation or key loading failed (config '{}'): {}",
-                    caller, lookup_id, path, e
+                    caller, effective_lookup_id, path, e
                 );
                 JacsError::Internal { message: err_msg }
-            })
-        } else {
-            Ok(())
+            })?;
         }
+
+        self.warn_if_config_tampered(config_is_signed, &config_raw_json, Some(path));
+
+        // If warn_if_config_tampered already repaired and deleted the journal,
+        // skip the second repair to avoid overwriting the fixed config with stale data.
+        if journal_found
+            && effective_lookup_id != lookup_id
+            && crate::keystore::RotationJournal::load(&journal_path).is_some()
+        {
+            // Journal still present — warn_if_config_tampered didn't fully repair.
+            // Re-attempt with the correct version info.
+            if let Some(json) = &config_raw_json {
+                if let Some(journal) = crate::keystore::RotationJournal::load(&journal_path) {
+                    match self.attempt_rotation_recovery(json, path, &journal) {
+                        Ok(()) => {
+                            info!("Config repaired after journal-based version recovery.");
+                            if let Err(e) = journal.complete() {
+                                warn!("Failed to delete rotation journal: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Config repair after journal recovery failed: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Replace the internal storage with a pre-configured [`MultiStorage`].
@@ -859,6 +931,353 @@ impl Agent {
     /// # Example
     ///
     /// ```rust,ignore
+    /// Scan the agent data directory for the latest version of an agent.
+    ///
+    /// Given a lookup_id like `{agent_id}:{version}`, extracts the agent_id
+    /// and searches for all files matching `{agent_id}:*.json` in the agent
+    /// subdirectory. Returns the lookup_id of the file with the most recent
+    /// modification time.
+    ///
+    /// Used during crash recovery to find the newer agent version that was
+    /// saved to disk before the process crashed.
+    fn find_latest_agent_version_on_disk(&self, current_lookup_id: &str) -> Option<String> {
+        let parts: Vec<&str> = current_lookup_id.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            return None;
+        }
+        let agent_id = parts[0];
+
+        // Build the agent directory path from config
+        let data_dir = self
+            .config
+            .as_ref()?
+            .jacs_data_directory()
+            .as_deref()
+            .unwrap_or("jacs_data")
+            .to_string();
+
+        // The agent files are stored under {data_dir}/agent/
+        let agent_dir = std::path::Path::new(&data_dir).join("agent");
+        if !agent_dir.exists() {
+            return None;
+        }
+
+        let prefix = format!("{}:", agent_id);
+        let mut latest_id: Option<String> = None;
+        let mut latest_date: Option<String> = None;
+
+        if let Ok(entries) = std::fs::read_dir(&agent_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(&prefix) && name.ends_with(".json") {
+                        // Extract lookup_id from filename (strip .json)
+                        let lookup = name.trim_end_matches(".json");
+
+                        // Prefer jacsVersionDate from the document content for reliable ordering
+                        // (file mtime is unreliable across platforms and copy tools)
+                        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                            if let Ok(doc) = serde_json::from_str::<Value>(&content) {
+                                if let Some(date_str) = doc["jacsVersionDate"].as_str() {
+                                    if latest_date.is_none()
+                                        || date_str > latest_date.as_deref().unwrap_or("")
+                                    {
+                                        latest_date = Some(date_str.to_string());
+                                        latest_id = Some(lookup.to_string());
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Fallback to mtime if jacsVersionDate is not available
+                        if let Ok(metadata) = entry.metadata() {
+                            if let Ok(mtime) = metadata.modified() {
+                                // Only use mtime if we haven't found any jacsVersionDate-based entry
+                                if latest_date.is_none() {
+                                    let mtime_str = format!("{:?}", mtime);
+                                    if latest_id.is_none() {
+                                        latest_id = Some(lookup.to_string());
+                                    }
+                                    let _ = mtime_str; // suppress unused warning
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Only return if we found something different from the current
+        latest_id.filter(|id| id != current_lookup_id)
+    }
+
+    /// Verify signed config integrity (tamper detection).
+    /// Warns on failure but does not block loading (graceful migration).
+    /// Called from both `from_config` and `apply_config_and_load`.
+    ///
+    /// When a rotation journal exists alongside a config verification failure,
+    /// this indicates an incomplete key rotation (crash recovery scenario).
+    /// In that case, the config is auto-repaired: re-signed with the current
+    /// key, written to disk, and the journal is deleted.
+    ///
+    /// When no rotation journal exists, the original warn-only behavior is
+    /// preserved (potential tampering or legacy migration).
+    fn verify_config_signature_with_public_key(
+        &self,
+        config_json: &Value,
+        public_key: &[u8],
+    ) -> Result<(), JacsError> {
+        let json_str = serde_json::to_string(config_json).map_err(|e| {
+            JacsError::ConfigError(format!("serialize config for historical verification: {e}"))
+        })?;
+        let validated = self.schema.validate_header(&json_str)?;
+        let _ = self.verify_hash(&validated)?;
+        validate_signature_temporal_claims(config_json, AGENT_SIGNATURE_FIELDNAME)?;
+
+        let declared_public_key_hash = config_json
+            .get(AGENT_SIGNATURE_FIELDNAME)
+            .and_then(|sig| sig.get("publicKeyHash"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError("Config signature is missing publicKeyHash".to_string())
+            })?;
+        let actual_public_key_hash = hash_public_key(public_key);
+        if declared_public_key_hash != actual_public_key_hash {
+            return Err(JacsError::ConfigError(format!(
+                "Config signature publicKeyHash '{}' does not match the historical key '{}'.",
+                declared_public_key_hash, actual_public_key_hash
+            )));
+        }
+
+        let signature = config_json
+            .get(AGENT_SIGNATURE_FIELDNAME)
+            .and_then(|sig| sig.get("signature"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError("Config signature is missing signature bytes".to_string())
+            })?;
+        let algorithm = config_json
+            .get(AGENT_SIGNATURE_FIELDNAME)
+            .and_then(|sig| sig.get("signingAlgorithm"))
+            .and_then(|v| v.as_str())
+            .map(std::string::ToString::to_string);
+        let fields = extract_signature_fields(config_json, AGENT_SIGNATURE_FIELDNAME);
+        let (payload, _) = build_signature_content(
+            config_json,
+            fields,
+            AGENT_SIGNATURE_FIELDNAME,
+            SignatureContentMode::CanonicalV2,
+        )?;
+        self.verify_string(&payload, signature, public_key.to_vec(), algorithm)?;
+        Ok(())
+    }
+
+    fn validate_rotation_recovery_candidate(
+        &self,
+        config_json: &Value,
+        journal: &crate::keystore::RotationJournal,
+    ) -> Result<(), JacsError> {
+        let current_agent_id = self.id.as_deref().ok_or(JacsError::AgentNotLoaded)?;
+        if current_agent_id != journal.agent_id {
+            return Err(JacsError::ConfigError(format!(
+                "Rotation journal agent '{}' does not match loaded agent '{}'.",
+                journal.agent_id, current_agent_id
+            )));
+        }
+
+        let current_value = self.value.as_ref().ok_or(JacsError::AgentNotLoaded)?;
+        let previous_version = current_value
+            .get(JACS_PREVIOUS_VERSION_FIELDNAME)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError(
+                "Current agent document is missing jacsPreviousVersion required for crash recovery."
+                    .to_string(),
+            )
+            })?;
+        if previous_version != journal.old_version {
+            return Err(JacsError::ConfigError(format!(
+                "Rotation journal old_version '{}' does not match current agent previous version '{}'.",
+                journal.old_version, previous_version
+            )));
+        }
+
+        let transition_proof = current_value
+            .get("jacsKeyRotationProof")
+            .ok_or_else(|| JacsError::ConfigError(
+                "Current agent document is missing jacsKeyRotationProof required for crash recovery."
+                    .to_string(),
+            ))?;
+        let proof_old_hash = transition_proof
+            .get("oldPublicKeyHash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError("Transition proof is missing oldPublicKeyHash".to_string())
+            })?;
+        if proof_old_hash != journal.old_key_hash {
+            return Err(JacsError::ConfigError(format!(
+                "Rotation journal old_key_hash '{}' does not match transition proof hash '{}'.",
+                journal.old_key_hash, proof_old_hash
+            )));
+        }
+
+        let current_public_key = self.get_public_key()?;
+        let current_public_key_hash = hash_public_key(&current_public_key);
+        let proof_new_hash = transition_proof
+            .get("newPublicKeyHash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError("Transition proof is missing newPublicKeyHash".to_string())
+            })?;
+        if proof_new_hash != current_public_key_hash {
+            return Err(JacsError::ConfigError(format!(
+                "Transition proof newPublicKeyHash '{}' does not match the loaded agent key '{}'.",
+                proof_new_hash, current_public_key_hash
+            )));
+        }
+
+        let old_public_key = self
+            .fs_load_public_key(&journal.old_key_hash)
+            .map_err(|e| {
+                JacsError::ConfigError(format!(
+                    "Failed to load historical public key '{}' needed for crash recovery: {}",
+                    journal.old_key_hash, e
+                ))
+            })?;
+        Self::verify_transition_proof(transition_proof, &old_public_key).map_err(|e| {
+            JacsError::ConfigError(format!(
+                "Transition proof does not validate against the historical key: {}",
+                e
+            ))
+        })?;
+
+        let expected_lookup = format!("{}:{}", journal.agent_id, journal.old_version);
+        let actual_lookup = config_json
+            .get("jacs_agent_id_and_version")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError("Config is missing jacs_agent_id_and_version".to_string())
+            })?;
+        if actual_lookup != expected_lookup {
+            return Err(JacsError::ConfigError(format!(
+                "Config lookup '{}' does not match the stale pre-rotation identity '{}'.",
+                actual_lookup, expected_lookup
+            )));
+        }
+
+        self.verify_config_signature_with_public_key(config_json, &old_public_key)
+            .map_err(|e| {
+                JacsError::ConfigError(format!(
+                    "Config does not verify with the historical pre-rotation key: {}",
+                    e
+                ))
+            })?;
+
+        Ok(())
+    }
+
+    fn attempt_rotation_recovery(
+        &mut self,
+        config_json: &Value,
+        config_path: &str,
+        journal: &crate::keystore::RotationJournal,
+    ) -> Result<(), JacsError> {
+        self.validate_rotation_recovery_candidate(config_json, journal)?;
+        self.attempt_config_repair(config_json, config_path)
+    }
+
+    fn warn_if_config_tampered(
+        &mut self,
+        is_signed: bool,
+        raw_json: &Option<Value>,
+        config_path: Option<&str>,
+    ) {
+        if is_signed {
+            if let Some(json) = raw_json {
+                if let Err(e) = self.verify_config(json) {
+                    // Check for rotation journal to distinguish crash-during-rotation
+                    // from actual config tampering.
+                    if let Some(config_p) = config_path {
+                        let key_dir = self
+                            .config
+                            .as_ref()
+                            .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
+                            .unwrap_or_else(|| "./jacs_keys".to_string());
+                        let journal_path = crate::keystore::RotationJournal::journal_path(&key_dir);
+                        if let Some(journal) = crate::keystore::RotationJournal::load(&journal_path)
+                        {
+                            info!(
+                                "Detected incomplete rotation (journal stage: {}). Auto-repairing config.",
+                                journal.stage
+                            );
+                            match self.attempt_rotation_recovery(json, config_p, &journal) {
+                                Ok(()) => {
+                                    info!("Config auto-repaired after incomplete rotation.");
+                                    if let Err(del_err) = journal.complete() {
+                                        warn!("Failed to delete rotation journal: {}", del_err);
+                                    }
+                                    return;
+                                }
+                                Err(repair_err) => {
+                                    warn!(
+                                        "Auto-repair refused or failed: {}. Manual repair may be needed (jacs agent repair).",
+                                        repair_err
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    warn!(
+                        "Signed config failed verification: {}. Loading anyway (graceful migration).",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    /// Attempt to repair an inconsistent config after a crash during rotation.
+    ///
+    /// Re-signs the config with the current key, updates `jacs_agent_id_and_version`
+    /// to match the agent's current identity, and writes the repaired config to disk.
+    fn attempt_config_repair(
+        &mut self,
+        config_json: &Value,
+        config_path: &str,
+    ) -> Result<(), JacsError> {
+        let mut config_value = config_json.clone();
+
+        // Update jacs_agent_id_and_version to match current agent state
+        if let (Some(id), Some(ver)) = (self.id.as_ref(), self.version.as_ref()) {
+            if let Some(obj) = config_value.as_object_mut() {
+                obj.insert(
+                    "jacs_agent_id_and_version".to_string(),
+                    json!(format!("{}:{}", id, ver)),
+                );
+            }
+        }
+
+        // Re-sign config
+        let signed = if config_value.get("jacsSignature").is_some() {
+            self.update_config(&config_value)?
+        } else {
+            self.sign_config(&config_value)?
+        };
+
+        // Write to disk
+        let json_str = serde_json::to_string_pretty(&signed).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize repaired config: {}", e),
+        })?;
+        std::fs::write(config_path, json_str).map_err(|e| JacsError::Internal {
+            message: format!(
+                "Failed to write repaired config to '{}': {}",
+                config_path, e
+            ),
+        })?;
+
+        Ok(())
+    }
+
     /// let storage = MultiStorage::new("memory".to_string())?;
     /// agent.set_storage(storage);
     /// ```
@@ -1612,9 +2031,19 @@ impl Agent {
     /// 2. Generates a new keypair
     /// 3. Creates a new agent version
     /// 4. Signs the new document with the **new** key
+    /// 5. Produces a `jacsKeyRotationProof` signed with the **old** key
+    ///
+    /// # Arguments
+    ///
+    /// * `algorithm_override` - If `Some`, use this algorithm for the new keys
+    ///   instead of reading from config. The config's `jacs_agent_key_algorithm`
+    ///   is also updated in memory.
     ///
     /// Returns `(new_version, new_public_key_bytes, signed_agent_json)`.
-    pub fn rotate_self(&mut self) -> Result<(String, Vec<u8>, Value), JacsError> {
+    pub fn rotate_self(
+        &mut self,
+        algorithm_override: Option<&str>,
+    ) -> Result<(String, Vec<u8>, Value), JacsError> {
         // Clone the current agent value up front to avoid borrow conflicts
         let original_value = self
             .value
@@ -1632,10 +2061,49 @@ impl Agent {
             .get_str("jacsVersion")
             .ok_or("Agent has no jacsVersion")?;
 
-        // Determine key algorithm
-        let key_algorithm = {
+        let agent_id = original_value
+            .get_str("jacsId")
+            .ok_or("Agent has no jacsId")?;
+
+        // Capture old key material BEFORE rotation for transition proof
+        let old_public_key = self.get_public_key()?.clone();
+        let old_key_hash = hash_public_key(&old_public_key);
+        let old_algorithm = {
             let config = self.config.as_ref().ok_or("Agent config not initialized")?;
             config.get_key_algorithm()?
+        };
+
+        // Get old private key bytes for signing the transition proof
+        let old_private_key_bytes = {
+            let binding = self.get_private_key()?;
+            if self.ephemeral {
+                ZeroizingVec::new(binding.expose_secret().clone())
+            } else {
+                crate::agent::decrypt_with_agent_password(
+                    binding.expose_secret(),
+                    self.password(),
+                    self.id.as_deref(),
+                )?
+            }
+        };
+
+        // Determine key algorithm (with override support)
+        let key_algorithm = match algorithm_override {
+            Some(algo) => {
+                // Validate the algorithm against the known set
+                match algo {
+                    "RSA-PSS" | "ring-Ed25519" | "pq2025" => {}
+                    other => {
+                        return Err(format!(
+                            "Invalid algorithm '{}'. Supported: RSA-PSS, ring-Ed25519, pq2025",
+                            other
+                        )
+                        .into());
+                    }
+                }
+                algo.to_string()
+            }
+            None => old_algorithm.clone(),
         };
 
         let spec = KeySpec {
@@ -1650,11 +2118,50 @@ impl Agent {
             self.build_fs_store()?.rotate(&old_version, &spec)?
         };
 
+        // Compute new key hash for transition proof
+        let new_key_hash = hash_public_key(&new_public_key);
+
+        // Build transition proof BEFORE setting new keys (we still have old key bytes)
+        let timestamp = time_utils::now_rfc3339();
+        let transition_message = format!(
+            "JACS_KEY_ROTATION:{}:{}:{}:{}",
+            agent_id, old_key_hash, new_key_hash, timestamp
+        );
+
+        // Sign the transition message with the OLD private key
+        let old_ks: Box<dyn KeyStore> =
+            Box::new(crate::keystore::InMemoryKeyStore::new(&old_algorithm));
+        let sig_bytes = old_ks
+            .sign_detached(
+                old_private_key_bytes.as_slice(),
+                transition_message.as_bytes(),
+                &old_algorithm,
+            )
+            .map_err(|e| format!("Failed to sign transition proof with old key: {}", e))?;
+        let transition_signature =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &sig_bytes);
+
+        let transition_proof = json!({
+            "transitionMessage": transition_message,
+            "signature": transition_signature,
+            "signingAlgorithm": old_algorithm,
+            "oldPublicKeyHash": old_key_hash,
+            "newPublicKeyHash": new_key_hash,
+            "timestamp": timestamp,
+        });
+
         // Set new keys on the agent
         if self.ephemeral {
             self.set_keys_raw(new_private_key, new_public_key.clone(), &key_algorithm);
         } else {
             self.set_keys(new_private_key, new_public_key.clone(), &key_algorithm)?;
+        }
+
+        // Update config's algorithm in memory if override was provided
+        if algorithm_override.is_some() {
+            if let Some(ref mut config) = self.config {
+                config.set_key_algorithm(key_algorithm.clone())?;
+            }
         }
 
         // Build new version document
@@ -1665,6 +2172,9 @@ impl Agent {
         new_doc["jacsPreviousVersion"] = json!(old_version);
         new_doc["jacsVersion"] = json!(new_version.clone());
         new_doc["jacsVersionDate"] = json!(version_date);
+
+        // Embed transition proof in the new agent document
+        new_doc["jacsKeyRotationProof"] = transition_proof;
 
         // Remove old signature and hash — they will be regenerated with new key
         if let Some(obj) = new_doc.as_object_mut() {
@@ -1696,6 +2206,98 @@ impl Agent {
         }
 
         Ok((new_version, new_public_key, new_doc))
+    }
+
+    /// Verify a `jacsKeyRotationProof` using the old public key.
+    ///
+    /// The proof contains a `transitionMessage` signed with the old key. This
+    /// function re-derives the expected message from the proof's metadata and
+    /// checks the cryptographic signature against `old_public_key_bytes`.
+    ///
+    /// Returns `Ok(())` if the proof is valid, or `Err` if verification fails.
+    pub fn verify_transition_proof(
+        proof: &Value,
+        old_public_key_bytes: &[u8],
+    ) -> Result<(), JacsError> {
+        let msg = proof["transitionMessage"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing transitionMessage".into()))?;
+        let sig_b64 = proof["signature"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing signature".into()))?;
+        let algorithm = proof["signingAlgorithm"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing signingAlgorithm".into()))?;
+        let old_public_key_hash = proof["oldPublicKeyHash"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing oldPublicKeyHash".into()))?;
+        let new_public_key_hash = proof["newPublicKeyHash"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing newPublicKeyHash".into()))?;
+        let timestamp = proof["timestamp"]
+            .as_str()
+            .ok_or_else(|| JacsError::ConfigError("proof missing timestamp".into()))?;
+
+        let computed_old_hash = hash_public_key(old_public_key_bytes);
+        if computed_old_hash != old_public_key_hash {
+            return Err(JacsError::ConfigError(format!(
+                "Transition proof oldPublicKeyHash '{}' does not match the supplied historical key '{}'.",
+                old_public_key_hash, computed_old_hash
+            )));
+        }
+
+        const PREFIX: &str = "JACS_KEY_ROTATION:";
+        let expected_suffix = format!(
+            ":{}:{}:{}",
+            old_public_key_hash, new_public_key_hash, timestamp
+        );
+        let agent_id = msg
+            .strip_prefix(PREFIX)
+            .and_then(|rest| rest.strip_suffix(&expected_suffix))
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                JacsError::ConfigError(
+                    "Transition proof message does not match the structured proof fields.".into(),
+                )
+            })?;
+        uuid::Uuid::parse_str(agent_id).map_err(|e| {
+            JacsError::ConfigError(format!(
+                "Transition proof contains invalid agent ID '{}': {}",
+                agent_id, e
+            ))
+        })?;
+
+        // Use the appropriate verify function based on algorithm
+        let verified = match algorithm {
+            "ring-Ed25519" => crate::crypt::ringwrapper::verify_string(
+                old_public_key_bytes.to_vec(),
+                msg,
+                sig_b64,
+            )
+            .is_ok(),
+            "pq2025" => {
+                crate::crypt::pq2025::verify_string(old_public_key_bytes.to_vec(), msg, sig_b64)
+                    .is_ok()
+            }
+            "RSA-PSS" => {
+                crate::crypt::rsawrapper::verify_string(old_public_key_bytes.to_vec(), msg, sig_b64)
+                    .is_ok()
+            }
+            _ => {
+                return Err(JacsError::ConfigError(format!(
+                    "Unknown algorithm in transition proof: {}",
+                    algorithm
+                )));
+            }
+        };
+
+        if verified {
+            Ok(())
+        } else {
+            Err(JacsError::ConfigError(
+                "Transition proof signature verification failed".into(),
+            ))
+        }
     }
 
     pub fn validate_header(&mut self, json: &str) -> Result<Value, JacsError> {
@@ -1812,6 +2414,79 @@ impl Agent {
         self.value = Some(instance.clone());
         self.verify_self_signature()?;
         Ok(instance)
+    }
+
+    /// Sign a config JSON value, producing a JACS document with header fields.
+    ///
+    /// Uses `Schema::create` for initial ID/version assignment.
+    /// The resulting JSON has `jacsType: "config"`, `jacsLevel: "config"`,
+    /// a `jacsSignature`, and `jacsSha256`.
+    pub fn sign_config(&mut self, config_json: &Value) -> Result<Value, JacsError> {
+        let json_str = serde_json::to_string(config_json)
+            .map_err(|e| JacsError::ConfigError(format!("serialize config: {e}")))?;
+        let mut instance = self.schema.create(&json_str)?;
+        instance["jacsType"] = json!("config");
+        instance["jacsLevel"] = json!("config");
+        instance["$schema"] = json!("https://hai.ai/schemas/jacs.config.schema.json");
+        instance[AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&instance, None, AGENT_SIGNATURE_FIELDNAME)?;
+        let document_hash = self.hash_doc(&instance)?;
+        instance[SHA256_FIELDNAME] = json!(document_hash);
+        Ok(instance)
+    }
+
+    /// Verify a previously signed config document: schema + hash + signature.
+    ///
+    /// This mirrors the same checks that `SimpleAgent::verify()` performs:
+    /// 1. `validate_header` — schema validation + `verify_hash`
+    /// 2. `signature_verification_procedure` — cryptographic signature check
+    pub fn verify_config(&mut self, config_json: &Value) -> Result<(), JacsError> {
+        let json_str = serde_json::to_string(config_json)
+            .map_err(|e| JacsError::ConfigError(format!("serialize config for verify: {e}")))?;
+        self.validate_header(&json_str)?;
+
+        // Signature verification (matches SimpleAgent::verify path)
+        let public_key = self.get_public_key()?;
+        self.signature_verification_procedure(
+            config_json,
+            None,
+            AGENT_SIGNATURE_FIELDNAME,
+            public_key,
+            None,
+            None,
+            None,
+        )?;
+        Ok(())
+    }
+
+    /// Update and re-sign an existing signed config document.
+    ///
+    /// Bumps `jacsVersion`, sets `jacsPreviousVersion`, re-signs and re-hashes.
+    /// `jacsId` is preserved.
+    pub fn update_config(&mut self, config_json: &Value) -> Result<Value, JacsError> {
+        let mut doc = config_json.clone();
+        let prev_version = doc
+            .get("jacsVersion")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JacsError::ConfigError("update_config: missing jacsVersion".to_string())
+            })?
+            .to_string();
+        let new_version = uuid::Uuid::new_v4().to_string();
+        doc["jacsPreviousVersion"] = json!(prev_version);
+        doc["jacsVersion"] = json!(new_version);
+        doc["jacsVersionDate"] = json!(crate::time_utils::now_rfc3339());
+
+        if let Some(obj) = doc.as_object_mut() {
+            obj.remove(AGENT_SIGNATURE_FIELDNAME);
+            obj.remove(SHA256_FIELDNAME);
+        }
+
+        doc[AGENT_SIGNATURE_FIELDNAME] =
+            self.signing_procedure(&doc, None, AGENT_SIGNATURE_FIELDNAME)?;
+        let document_hash = self.hash_doc(&doc)?;
+        doc[SHA256_FIELDNAME] = json!(document_hash);
+        Ok(doc)
     }
 
     /// Returns an `AgentBuilder` for constructing an `Agent` with a fluent API.
@@ -2575,5 +3250,104 @@ mod ephemeral_tests {
             "pq2025 ephemeral agent failed: {:?}",
             result.err()
         );
+    }
+
+    // =========================================================================
+    // Config signing / verification / update
+    // =========================================================================
+
+    fn make_config_json() -> serde_json::Value {
+        serde_json::json!({
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_private_key_filename": "priv.pem",
+            "jacs_agent_public_key_filename": "pub.pem",
+            "jacs_agent_key_algorithm": "ring-Ed25519",
+            "jacs_default_storage": "fs",
+            "agent_email": "bot@hai.ai"
+        })
+    }
+
+    fn ready_ephemeral_agent() -> Agent {
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        let json = make_agent_json();
+        agent
+            .create_agent_and_load(&json, true, Some("ring-Ed25519"))
+            .unwrap();
+        agent
+    }
+
+    #[test]
+    fn test_sign_config_produces_header_fields() {
+        let mut agent = ready_ephemeral_agent();
+        let config = make_config_json();
+        let signed = agent.sign_config(&config).expect("sign_config");
+
+        assert!(signed.get("jacsId").is_some(), "must have jacsId");
+        assert!(signed.get("jacsVersion").is_some(), "must have jacsVersion");
+        assert!(
+            signed.get("jacsSignature").is_some(),
+            "must have jacsSignature"
+        );
+        assert!(signed.get("jacsSha256").is_some(), "must have jacsSha256");
+        assert_eq!(signed["jacsType"].as_str().unwrap(), "config");
+        assert_eq!(signed["jacsLevel"].as_str().unwrap(), "config");
+        assert_eq!(
+            signed["agent_email"].as_str().unwrap(),
+            "bot@hai.ai",
+            "original config field preserved"
+        );
+    }
+
+    #[test]
+    fn test_verify_config_valid() {
+        let mut agent = ready_ephemeral_agent();
+        let signed = agent.sign_config(&make_config_json()).unwrap();
+        agent
+            .verify_config(&signed)
+            .expect("valid config must verify");
+    }
+
+    #[test]
+    fn test_verify_config_detects_tampering() {
+        let mut agent = ready_ephemeral_agent();
+        let mut signed = agent.sign_config(&make_config_json()).unwrap();
+        signed["agent_email"] = json!("evil@attacker.com");
+        let result = agent.verify_config(&signed);
+        assert!(result.is_err(), "tampered config must fail verification");
+    }
+
+    #[test]
+    fn test_update_config_bumps_version() {
+        let mut agent = ready_ephemeral_agent();
+        let signed_v1 = agent.sign_config(&make_config_json()).unwrap();
+        let v1_id = signed_v1["jacsId"].as_str().unwrap().to_string();
+        let v1_version = signed_v1["jacsVersion"].as_str().unwrap().to_string();
+
+        let mut modified = signed_v1.clone();
+        modified["agent_email"] = json!("new@hai.ai");
+
+        let signed_v2 = agent.update_config(&modified).expect("update_config");
+
+        assert_eq!(
+            signed_v2["jacsId"].as_str().unwrap(),
+            v1_id,
+            "jacsId must be preserved"
+        );
+        assert_ne!(
+            signed_v2["jacsVersion"].as_str().unwrap(),
+            v1_version,
+            "jacsVersion must change"
+        );
+        assert_eq!(
+            signed_v2["jacsPreviousVersion"].as_str().unwrap(),
+            v1_version,
+            "must record previous version"
+        );
+        assert_eq!(signed_v2["agent_email"].as_str().unwrap(), "new@hai.ai");
+
+        agent
+            .verify_config(&signed_v2)
+            .expect("updated config must verify");
     }
 }

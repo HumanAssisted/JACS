@@ -12,21 +12,20 @@
 //! - Tamper detection on read (SQLite-specific: mutates rows directly)
 //! - SearchProvider capabilities
 //! - Error on nonexistent get/update
-//! - set_visibility in-place semantics (ignored, documented)
 //!
 //! ```sh
 //! cargo test --features sqlite --test document_sqlite
 //! ```
 
 use jacs::document::DocumentService;
-use jacs::document::types::{CreateOptions, DocumentVisibility, UpdateOptions};
+use jacs::document::types::{CreateOptions, UpdateOptions};
 use jacs::search::{SearchCapabilities, SearchProvider};
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs::storage::SqliteDocumentService;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
-/// Helper: create test JSON with the given fields (used by ignored test).
+/// Helper: create test JSON with the given fields.
 fn test_json(
     id: &str,
     version: &str,
@@ -167,38 +166,8 @@ fn update_nonexistent_document_returns_error() {
     );
 }
 
-// =============================================================================
-// Visibility (ignored — documented pre-existing issue)
-// =============================================================================
-
-#[test]
-#[ignore = "Pre-existing failure: uses SqliteDocumentService::in_memory() with empty agent (no keys). \
-            DocumentService::set_visibility() calls update() which requires a loaded agent for signing. \
-            The correct behavior (set_visibility creates successor version) is tested in \
-            document_lifecycle.rs::set_visibility_creates_successor_version via the cross-backend macro."]
-fn set_visibility_is_in_place_update_no_new_version() {
-    let svc = create_service();
-
-    let json1 = test_json("vip-1", "v1", "artifact", "visibility in-place test", None);
-    svc.create(
-        &json1,
-        CreateOptions {
-            visibility: DocumentVisibility::Private,
-            ..CreateOptions::default()
-        },
-    )
-    .unwrap();
-
-    svc.set_visibility("vip-1:v1", DocumentVisibility::Public)
-        .expect("set_visibility failed");
-
-    let versions = svc.versions("vip-1").expect("versions failed");
-    assert_eq!(
-        versions.len(),
-        1,
-        "set_visibility should NOT create a new version; visibility is storage-level metadata"
-    );
-
-    let vis = svc.visibility("vip-1:v1").expect("visibility failed");
-    assert_eq!(vis, DocumentVisibility::Public);
-}
+// NOTE: The previously-ignored `set_visibility_is_in_place_update_no_new_version`
+// test was removed. It encoded outdated in-place semantics that no longer match
+// the current implementation. The correct behavior (set_visibility creates a
+// successor version) is tested in the cross-backend lifecycle suite:
+//   document_lifecycle.rs::set_visibility_creates_successor_version

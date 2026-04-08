@@ -459,6 +459,10 @@ pub struct RotationResult {
     pub new_public_key_hash: String,
     /// The complete, self-signed agent JSON document with the new version.
     pub signed_agent_json: String,
+    /// JSON string of the `jacsKeyRotationProof` object (transition signature
+    /// proving the rotation was authorized by the old key holder).
+    /// `None` if the rotation was performed without transition proof generation.
+    pub transition_proof: Option<String>,
 }
 
 /// Result of a legacy agent migration operation.

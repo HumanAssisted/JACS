@@ -24,6 +24,10 @@ use reqwest::{StatusCode, Url};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -232,6 +236,32 @@ fn resolve_relative_to_config(config_path: &Path, candidate: &str) -> PathBuf {
 fn read_password_file(path: &Path) -> BindingResult<Option<String>> {
     if !path.exists() {
         return Ok(None);
+    }
+
+    #[cfg(unix)]
+    {
+        let metadata = fs::metadata(path).map_err(|e| {
+            BindingCoreError::generic(format!(
+                "Failed to inspect password file {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
+        let mode = metadata.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(BindingCoreError::generic(format!(
+                "Password file {} has insecure permissions (mode {:04o}). \
+                 File must not be group-readable or world-readable.",
+                path.display(),
+                mode
+            )));
+        }
+        if !metadata.is_file() {
+            return Err(BindingCoreError::generic(format!(
+                "Password file {} is not a regular file.",
+                path.display()
+            )));
+        }
     }
 
     let contents = fs::read_to_string(path).map_err(|e| {
@@ -529,9 +559,31 @@ fn persist_password_file(key_directory: &Path, password: &str) -> BindingResult<
     })?;
 
     let password_path = key_directory.join(".jacs_password");
-    fs::write(&password_path, password).map_err(|e| {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+
+    #[cfg(unix)]
+    {
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(&password_path).map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to create password file {} securely: {}",
+            password_path.display(),
+            e
+        ))
+    })?;
+    file.write_all(password.as_bytes()).map_err(|e| {
         BindingCoreError::generic(format!(
             "Failed to write password file {}: {}",
+            password_path.display(),
+            e
+        ))
+    })?;
+    file.sync_all().map_err(|e| {
+        BindingCoreError::generic(format!(
+            "Failed to flush password file {}: {}",
             password_path.display(),
             e
         ))
@@ -539,8 +591,6 @@ fn persist_password_file(key_directory: &Path, password: &str) -> BindingResult<
 
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-
         let permissions = std::fs::Permissions::from_mode(0o600);
         fs::set_permissions(&password_path, permissions).map_err(|e| {
             BindingCoreError::generic(format!(
@@ -1447,6 +1497,36 @@ impl AgentWrapper {
         })?;
 
         Ok(())
+    }
+
+    /// Rotate the agent's cryptographic keys.
+    ///
+    /// Optionally change the signing algorithm. Uses the full rotation
+    /// pipeline (journal, save, config re-sign) via `advanced::rotate_with_mutex`.
+    pub fn rotate_keys(&self, algorithm: Option<&str>) -> BindingResult<String> {
+        // Resolve config path from the agent's config_dir
+        let config_path = {
+            let agent = self.lock()?;
+            agent
+                .config
+                .as_ref()
+                .and_then(|c| c.config_dir())
+                .map(|dir| dir.join("jacs.config.json").display().to_string())
+        };
+
+        let result = jacs::simple::advanced::rotate_with_mutex(
+            &self.inner,
+            config_path.as_deref(),
+            algorithm,
+        )
+        .map_err(|e| BindingCoreError::generic(format!("Key rotation failed: {}", e)))?;
+
+        serde_json::to_string(&result).map_err(|e| {
+            BindingCoreError::serialization_failed(format!(
+                "Failed to serialize rotation result: {}",
+                e
+            ))
+        })
     }
 
     /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
@@ -3170,6 +3250,7 @@ pub use jacs;
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     fn cross_language_fixtures_dir() -> Option<PathBuf> {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3225,6 +3306,38 @@ mod tests {
         .unwrap();
         assert!(!result.valid);
         assert_eq!(result.signer_id, "some-agent");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_password_file_rejects_insecure_permissions() {
+        let tmp = tempdir().expect("tempdir");
+        let password_path = tmp.path().join(".jacs_password");
+        fs::write(&password_path, "TopSecret!123").expect("write password file");
+        fs::set_permissions(&password_path, std::fs::Permissions::from_mode(0o644))
+            .expect("set insecure permissions");
+
+        let result = read_password_file(&password_path);
+        assert!(result.is_err(), "insecure password file should be rejected");
+        assert!(
+            result.unwrap_err().message.contains("insecure permissions"),
+            "error should mention permissions"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn persist_password_file_creates_owner_only_password_file() {
+        let tmp = tempdir().expect("tempdir");
+        persist_password_file(tmp.path(), "TopSecret!123").expect("persist password file");
+
+        let password_path = tmp.path().join(".jacs_password");
+        let metadata = fs::metadata(&password_path).expect("stat password file");
+        let mode = metadata.permissions().mode() & 0o777;
+
+        assert_eq!(mode, 0o600, "password file should be created with 0600");
+        let saved = fs::read_to_string(&password_path).expect("read password file");
+        assert_eq!(saved, "TopSecret!123");
     }
 
     #[test]

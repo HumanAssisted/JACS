@@ -6,19 +6,9 @@ use jacs::crypt::KeyManager;
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use utils::load_test_agent_one;
 
-#[test]
-#[ignore]
-fn test_rsa_create() {
-    let mut agent = load_test_agent_one();
-    agent.generate_keys().expect("Reason");
-}
-
-#[test]
-#[ignore]
-fn test_rsa_save_encrypted() {
-    let mut agent = load_test_agent_one();
-    agent.fs_save_keys().expect("Reason");
-}
+// NOTE: test_rsa_create and test_rsa_save_encrypted were removed — they were
+// ignored, did not verify anything meaningful, and are superseded by
+// test_rsa_create_and_verify_signature below.
 
 #[test]
 fn test_rsa_create_and_verify_signature() {

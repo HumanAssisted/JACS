@@ -43,6 +43,7 @@ import {
   resolvePrivateKeyPassword as nativeResolvePrivateKeyPassword,
 } from './index';
 import * as path from 'path';
+import * as fs from 'fs';
 import { warnDeprecated } from './deprecation';
 
 // =============================================================================
@@ -689,6 +690,9 @@ export function updateDocumentSync(
  */
 export async function signFile(filePath: string, embed: boolean = false): Promise<SignedDocument> {
   requireAgent();
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),
@@ -704,6 +708,9 @@ export async function signFile(filePath: string, embed: boolean = false): Promis
  */
 export function signFileSync(filePath: string, embed: boolean = false): SignedDocument {
   requireAgent();
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
 
   const docContent = createRawDocumentPayload('file', {
     filename: path.basename(filePath),

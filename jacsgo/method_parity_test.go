@@ -57,10 +57,11 @@ var excludedFromGo = map[string]string{
 	"load_with_info": "internal helper, Go uses LoadSimpleAgent",
 	// Conversion methods are not exposed via the CGo FFI layer.
 	// They would require additional C wrapper functions.
-	"to_yaml":  "not exposed via CGo FFI",
-	"from_yaml": "not exposed via CGo FFI",
-	"to_html":  "not exposed via CGo FFI",
-	"from_html": "not exposed via CGo FFI",
+	"to_yaml":     "not exposed via CGo FFI",
+	"from_yaml":   "not exposed via CGo FFI",
+	"to_html":     "not exposed via CGo FFI",
+	"from_html":   "not exposed via CGo FFI",
+	"rotate_keys": "not exposed via CGo FFI",
 }
 
 // Rust snake_case -> Go PascalCase method name mapping.

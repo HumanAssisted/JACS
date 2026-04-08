@@ -327,6 +327,10 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     jacs_dns_required: Option<bool>,
+    /// Cached @hai.ai email address for this agent.
+    #[getset(get = "pub")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_email: Option<String>,
     /// OS keychain backend: "auto", "macos-keychain", "linux-secret-service", or "disabled".
     #[getset(get = "pub")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -351,6 +355,12 @@ pub struct Config {
     /// Not serialized — this is runtime-only metadata.
     #[serde(skip)]
     config_dir: Option<std::path::PathBuf>,
+    /// Whether this config was loaded from a signed JACS document.
+    #[serde(skip)]
+    pub is_signed: bool,
+    /// Raw JSON value from disk, retained for signature verification.
+    #[serde(skip)]
+    pub raw_json: Option<Value>,
 }
 
 fn default_schema() -> String {
@@ -440,6 +450,7 @@ impl Default for Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            agent_email: None,
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
@@ -447,6 +458,8 @@ impl Default for Config {
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
             config_dir: None,
+            is_signed: false,
+            raw_json: None,
         }
     }
 }
@@ -600,8 +613,11 @@ impl ConfigBuilder {
             jacs_dns_validate: self.dns_validate,
             jacs_dns_strict: self.dns_strict,
             jacs_dns_required: self.dns_required,
+            agent_email: None,
             jacs_keychain_backend: None,
             observability: self.observability,
+            is_signed: false,
+            raw_json: None,
             jacs_database_url: None,
             jacs_database_max_connections: None,
             jacs_database_min_connections: None,
@@ -665,6 +681,7 @@ impl Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            agent_email: None,
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
@@ -672,6 +689,8 @@ impl Config {
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
             config_dir: None,
+            is_signed: false,
+            raw_json: None,
         }
     }
 
@@ -683,6 +702,26 @@ impl Config {
         }
         get_required_env_var("JACS_AGENT_KEY_ALGORITHM", true)
             .map_err(|e| JacsError::ConfigError(e.to_string()))
+    }
+
+    /// Set the key algorithm in the in-memory config.
+    ///
+    /// Used during cross-algorithm key rotation to update the config's algorithm
+    /// field after new keys have been generated with the overridden algorithm.
+    ///
+    /// Returns an error if the algorithm is not one of the supported values:
+    /// `RSA-PSS`, `ring-Ed25519`, `pq2025`.
+    pub fn set_key_algorithm(&mut self, algorithm: String) -> Result<(), JacsError> {
+        match algorithm.as_str() {
+            "RSA-PSS" | "ring-Ed25519" | "pq2025" => {
+                self.jacs_agent_key_algorithm = Some(algorithm);
+                Ok(())
+            }
+            other => Err(JacsError::ConfigError(format!(
+                "Unsupported algorithm '{}'. Supported: RSA-PSS, ring-Ed25519, pq2025",
+                other
+            ))),
+        }
     }
 
     /// Returns the directory containing the config file, if set.
@@ -765,6 +804,7 @@ impl Config {
             jacs_dns_validate,
             jacs_dns_strict,
             jacs_dns_required,
+            agent_email,
             jacs_keychain_backend,
             observability,
             jacs_database_url,
@@ -772,6 +812,8 @@ impl Config {
             jacs_database_min_connections,
             jacs_database_connect_timeout_secs,
             config_dir,
+            is_signed,
+            raw_json,
         } = other;
 
         Self::replace_if_some(&mut self.jacs_use_security, jacs_use_security);
@@ -795,6 +837,7 @@ impl Config {
         Self::replace_if_some(&mut self.jacs_dns_validate, jacs_dns_validate);
         Self::replace_if_some(&mut self.jacs_dns_strict, jacs_dns_strict);
         Self::replace_if_some(&mut self.jacs_dns_required, jacs_dns_required);
+        Self::replace_if_some(&mut self.agent_email, agent_email);
         Self::replace_if_some(&mut self.jacs_keychain_backend, jacs_keychain_backend);
         Self::replace_if_some(&mut self.observability, observability);
         Self::replace_if_some(&mut self.jacs_database_url, jacs_database_url);
@@ -812,6 +855,16 @@ impl Config {
         );
         // config_dir from the incoming config takes precedence if set
         Self::replace_if_some(&mut self.config_dir, config_dir);
+
+        // Preserve signed-config metadata from the file config.
+        // These fields are set by Config::from_file and must survive merge
+        // so that warn_if_config_tampered can detect tampering.
+        if is_signed {
+            self.is_signed = true;
+        }
+        if raw_json.is_some() {
+            self.raw_json = raw_json;
+        }
     }
 
     /// Apply environment variable overrides to this config.
@@ -900,6 +953,7 @@ impl Config {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            agent_email: None,
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
@@ -907,6 +961,8 @@ impl Config {
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
             config_dir: None,
+            is_signed: false,
+            raw_json: None,
         }
     }
 
@@ -958,14 +1014,36 @@ impl Config {
         }
 
         // Set config_dir to the parent directory of the config file path.
-        // This allows load_by_config to resolve storage paths correctly
-        // without requiring callers to pass the path or use env var side-channels.
         config.config_dir = std::path::Path::new(path)
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .map(std::path::PathBuf::from);
 
+        config.is_signed = validated_value.get("jacsSignature").is_some();
+        config.raw_json = Some(validated_value);
+
+        if !config.is_signed {
+            info!(
+                "Config at '{}' is unsigned. It will be signed on next write.",
+                path
+            );
+        }
+
         Ok(config)
+    }
+
+    /// Verify this config's signature against the given agent.
+    /// Returns Ok(()) if valid, or Err if tampered or unsigned.
+    pub fn verify(&self, agent: &mut crate::agent::Agent) -> Result<(), JacsError> {
+        match &self.raw_json {
+            Some(json) if self.is_signed => agent.verify_config(json),
+            Some(_) => Err(JacsError::ConfigError(
+                "Config is not signed; cannot verify".to_string(),
+            )),
+            None => Err(JacsError::ConfigError(
+                "No raw JSON available for verification".to_string(),
+            )),
+        }
     }
 }
 
@@ -1600,6 +1678,7 @@ mod tests {
             jacs_dns_validate: Some(true),
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            agent_email: None,
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
@@ -1607,6 +1686,8 @@ mod tests {
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
             config_dir: None,
+            is_signed: false,
+            raw_json: None,
         };
 
         base.merge(override_config);
@@ -1681,6 +1762,7 @@ mod tests {
             jacs_dns_validate: None,
             jacs_dns_strict: None,
             jacs_dns_required: None,
+            agent_email: None,
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
@@ -1688,6 +1770,8 @@ mod tests {
             jacs_database_min_connections: None,
             jacs_database_connect_timeout_secs: None,
             config_dir: None,
+            is_signed: false,
+            raw_json: None,
         };
         config.merge(file_config);
 
@@ -2390,6 +2474,73 @@ mod tests {
         ));
 
         let _ = clear_env_var("JACS_ALLOW_JWKS_FETCH");
+    }
+
+    #[test]
+    fn test_config_deserializes_agent_email() {
+        let json = r#"{
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_private_key_filename": "priv.pem",
+            "jacs_agent_public_key_filename": "pub.pem",
+            "jacs_agent_key_algorithm": "ring-Ed25519",
+            "jacs_default_storage": "fs",
+            "agent_email": "bot@hai.ai"
+        }"#;
+        let val = validate_config(json).expect("valid config");
+        let config: Config = serde_json::from_value(val).expect("deserialize");
+        assert_eq!(config.agent_email, Some("bot@hai.ai".to_string()));
+    }
+
+    #[test]
+    fn test_config_is_signed_false_for_unsigned() {
+        let json = r#"{
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_private_key_filename": "priv.pem",
+            "jacs_agent_public_key_filename": "pub.pem",
+            "jacs_agent_key_algorithm": "ring-Ed25519",
+            "jacs_default_storage": "fs"
+        }"#;
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(tmp.path(), json).expect("write");
+        let config = Config::from_file(tmp.path().to_str().unwrap()).expect("load");
+        assert!(
+            !config.is_signed,
+            "unsigned config must report is_signed=false"
+        );
+    }
+
+    #[test]
+    fn test_config_is_signed_true_for_signed() {
+        let json = r#"{
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_private_key_filename": "priv.pem",
+            "jacs_agent_public_key_filename": "pub.pem",
+            "jacs_agent_key_algorithm": "ring-Ed25519",
+            "jacs_default_storage": "fs",
+            "jacsSignature": {"agentID": "test", "signature": "fake"}
+        }"#;
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(tmp.path(), json).expect("write");
+        let config = Config::from_file(tmp.path().to_str().unwrap()).expect("load");
+        assert!(config.is_signed, "signed config must report is_signed=true");
+    }
+
+    #[test]
+    fn test_config_agent_email_absent_is_none() {
+        let json = r#"{
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_private_key_filename": "priv.pem",
+            "jacs_agent_public_key_filename": "pub.pem",
+            "jacs_agent_key_algorithm": "ring-Ed25519",
+            "jacs_default_storage": "fs"
+        }"#;
+        let val = validate_config(json).expect("valid config");
+        let config: Config = serde_json::from_value(val).expect("deserialize");
+        assert_eq!(config.agent_email, None);
     }
 
     #[test]

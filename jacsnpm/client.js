@@ -737,6 +737,28 @@ class JacsClient {
     getPublicKey() {
         return this.requireAgent().getPublicKeyPem();
     }
+    /**
+     * Rotate the agent's cryptographic keys.
+     *
+     * Generates a new keypair, archives the old keys, creates a new agent
+     * version, and re-signs the config file.
+     *
+     * @param options - Optional. `{ algorithm?: string }` to change the signing algorithm.
+     * @returns Rotation result with old_version, new_version, transition_proof, etc.
+     */
+    async rotateKeys(options) {
+        const agent = this.requireAgent();
+        const resultJson = await agent.rotateKeys(options?.algorithm ?? null);
+        return JSON.parse(resultJson);
+    }
+    /**
+     * Rotate the agent's cryptographic keys (sync variant).
+     */
+    rotateKeysSync(options) {
+        const agent = this.requireAgent();
+        const resultJson = agent.rotateKeysSync(options?.algorithm ?? null);
+        return JSON.parse(resultJson);
+    }
     exportAgent() {
         return this.requireAgent().exportAgent();
     }

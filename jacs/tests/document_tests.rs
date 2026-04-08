@@ -178,19 +178,9 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     info!("Document validation completed.");
 }
 
-#[test]
-#[ignore]
-fn test_create() {
-    // RUST_BACKTRACE=1 cargo test  --test document_tests test_create  -- --nocapture
-    utils::generate_new_docs();
-}
-
-#[test]
-#[ignore]
-fn test_create_attachments() {
-    // RUST_BACKTRACE=1 cargo test --test document_tests test_create_attachments  -- --nocapture
-    utils::generate_new_docs_with_attachments(true);
-}
+// NOTE: test_create and test_create_attachments were removed — they were ignored
+// side-effectful document generators, not real tests. Document creation is tested
+// extensively in document_lifecycle.rs and document_fs.rs.
 
 #[test]
 fn test_create_attachments_no_save() {

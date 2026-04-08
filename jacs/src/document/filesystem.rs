@@ -608,6 +608,13 @@ impl DocumentService for FilesystemDocumentService {
         }
     }
 
+    fn verify(&self, key: &str) -> Result<(), JacsError> {
+        // get() already performs verify-on-read via verify_document_with_agent.
+        // If get() returns Ok, the document passed verification.
+        let _doc = self.get(key)?;
+        Ok(())
+    }
+
     fn visibility(&self, key: &str) -> Result<DocumentVisibility, JacsError> {
         let doc = self.get(key)?;
         let vis = doc

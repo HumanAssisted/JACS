@@ -865,8 +865,9 @@ impl StorageDocumentTraits for MultiStorage {
         _v1: &str,
         _v2: &str,
     ) -> Result<JACSDocument, JacsError> {
-        // Placeholder implementation
-        // TODO: Implement proper document merging logic
+        // TODO: Document merging not yet implemented.
+        // See docs/0403INCONCISTANCIES.md item L12.
+        // This is a known gap -- merging is not needed for launch.
         Err("Document merging not yet implemented: feature pending".into())
     }
 

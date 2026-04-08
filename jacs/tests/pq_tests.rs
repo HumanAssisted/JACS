@@ -16,15 +16,8 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
         .join("")
 }
 
-#[test]
-#[ignore]
-fn test_pq_create() {
-    let mut agent = create_pq2025_test_agent().expect("Failed to create pq2025 test agent");
-    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
-    let _result = agent.create_agent_and_load(&json_data, false, None);
-    // does this modify the agent sig?
-    agent.generate_keys().expect("Reason");
-}
+// NOTE: test_pq_create was removed — it was ignored, did not verify anything
+// meaningful, and is superseded by test_pq_create_and_verify_signature below.
 
 #[test]
 fn test_pq_create_and_verify_signature() {

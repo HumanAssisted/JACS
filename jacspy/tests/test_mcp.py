@@ -21,9 +21,9 @@ class TestJACSMCPServerWrapper:
         """Test that JACSMCPServer returns a modified server object."""
         from jacs.mcp import JACSMCPServer
 
-        # Create a mock FastMCP server
+        # Create a mock FastMCP server with http_app (fastmcp 3.x)
         mock_server = Mock()
-        mock_server.sse_app = Mock(return_value=Mock())
+        mock_server.http_app = Mock(return_value=Mock())
 
         # Wrap it
         wrapped_server = JACSMCPServer(
@@ -34,15 +34,16 @@ class TestJACSMCPServerWrapper:
         # The wrapper should return the same object (modified in place)
         assert wrapped_server is mock_server
 
-        # The sse_app should have been replaced
-        assert mock_server.sse_app is not None
+        # The http_app should have been replaced and middleware class stored
+        assert mock_server.http_app is not None
+        assert hasattr(mock_server, "_jacs_middleware_cls")
 
     def test_wrapper_preserves_server_attributes(self):
         """Test that the wrapper preserves other server attributes."""
         from jacs.mcp import JACSMCPServer
 
         mock_server = Mock()
-        mock_server.sse_app = Mock(return_value=Mock())
+        mock_server.http_app = Mock(return_value=Mock())
         mock_server.some_attribute = "test_value"
         mock_server.some_method = Mock(return_value="method_result")
 
@@ -169,17 +170,14 @@ class TestMCPSecurityDefaults:
 class TestMCPMiddlewareBehavior:
     """Test the middleware behavior of the MCP wrappers."""
 
-    def test_server_wrapper_creates_middleware(self):
-        """Test that the server wrapper creates authentication middleware."""
+    def test_server_wrapper_patches_http_app(self):
+        """Test that the server wrapper patches http_app to inject middleware."""
         from jacs.mcp import JACSMCPServer
 
-        # Create a mock that behaves like a FastMCP server
-        mock_app = Mock()
-        mock_app.middleware = Mock(return_value=lambda f: f)
+        original_http_app = Mock(return_value=Mock())
 
         mock_server = Mock()
-        original_sse_app = Mock(return_value=mock_app)
-        mock_server.sse_app = original_sse_app
+        mock_server.http_app = original_http_app
 
         # Wrap the server
         wrapped = JACSMCPServer(
@@ -187,20 +185,31 @@ class TestMCPMiddlewareBehavior:
             allow_unsigned_fallback=True,
         )
 
-        # Call the patched sse_app to trigger middleware creation
-        result_app = wrapped.sse_app()
+        # http_app should have been replaced with a patched version
+        assert wrapped.http_app is not original_http_app
 
-        # The middleware decorator should have been called
-        mock_app.middleware.assert_called_once_with("http")
+        # Call the patched http_app to trigger middleware injection
+        wrapped.http_app()
 
-    def test_server_wrapper_handles_missing_sse_app(self):
-        """Test behavior when server doesn't have sse_app."""
+        # The original http_app should have been called with middleware kwarg
+        original_http_app.assert_called_once()
+        _, call_kwargs = original_http_app.call_args
+        assert "middleware" in call_kwargs
+        assert len(call_kwargs["middleware"]) >= 1
+
+    def test_server_wrapper_stores_middleware_class(self):
+        """Test that the wrapper stores the JACS middleware class."""
         from jacs.mcp import JACSMCPServer
 
-        mock_server = Mock(spec=[])  # Empty spec means no attributes
+        mock_server = Mock()
+        mock_server.http_app = Mock(return_value=Mock())
 
-        with pytest.raises(AttributeError):
-            JACSMCPServer(mock_server)
+        wrapped = JACSMCPServer(
+            mock_server,
+            allow_unsigned_fallback=True,
+        )
+
+        assert hasattr(wrapped, "_jacs_middleware_cls")
 
 
 class TestMCPIntegrationTypes:

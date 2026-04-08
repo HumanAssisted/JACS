@@ -215,15 +215,32 @@ pub fn get_setup_instructions(
 /// use jacs::simple::advanced;
 ///
 /// let (agent, _info) = SimpleAgent::create("my-agent", None, None)?;
-/// let rotation = advanced::rotate(&agent)?;
+/// let rotation = advanced::rotate(&agent, None)?;
 /// println!("Rotated from {} to {}", rotation.old_version, rotation.new_version);
 /// ```
-pub fn rotate(agent: &SimpleAgent) -> Result<RotationResult, JacsError> {
+pub fn rotate(agent: &SimpleAgent, algorithm: Option<&str>) -> Result<RotationResult, JacsError> {
+    let inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+        message: format!("Failed to acquire agent lock: {}", e),
+    })?;
+    drop(inner); // Release before calling rotate_with_mutex which re-locks
+    rotate_with_mutex(&agent.agent, agent.config_path.as_deref(), algorithm)
+}
+
+/// Core rotation logic that operates on a `Mutex<Agent>` directly.
+///
+/// This is the single authoritative rotation path. Both `rotate()` (for
+/// `SimpleAgent`) and binding-core `AgentWrapper::rotate_keys()` call this.
+pub fn rotate_with_mutex(
+    agent_mutex: &std::sync::Mutex<crate::agent::Agent>,
+    config_path: Option<&str>,
+    algorithm: Option<&str>,
+) -> Result<RotationResult, JacsError> {
     use crate::crypt::hash::hash_public_key;
+    use crate::keystore::RotationJournal;
 
     info!("Starting key rotation");
 
-    let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+    let mut inner = agent_mutex.lock().map_err(|e| JacsError::Internal {
         message: format!("Failed to acquire agent lock: {}", e),
     })?;
 
@@ -243,11 +260,53 @@ pub fn rotate(agent: &SimpleAgent) -> Result<RotationResult, JacsError> {
         })?
         .to_string();
 
+    // Capture old public key hash for journal
+    let old_public_key = inner.get_public_key().map_err(|e| JacsError::Internal {
+        message: format!("Failed to get old public key: {}", e),
+    })?;
+    let old_key_hash = hash_public_key(&old_public_key);
+
+    // Resolve algorithm
+    let effective_algorithm = match algorithm {
+        Some(algo) => algo.to_string(),
+        None => {
+            let config = inner.config.as_ref().ok_or(JacsError::AgentNotLoaded)?;
+            config.get_key_algorithm()?
+        }
+    };
+
+    // 1a. Write rotation journal (non-ephemeral only)
+    let mut journal = if !inner.is_ephemeral() {
+        let key_dir = inner
+            .config
+            .as_ref()
+            .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
+            .unwrap_or_else(|| "./jacs_keys".to_string());
+        let config_path_str = config_path.unwrap_or("./jacs.config.json");
+        Some(RotationJournal::create(
+            &key_dir,
+            &jacs_id,
+            &old_version,
+            &old_key_hash,
+            &effective_algorithm,
+            config_path_str,
+        )?)
+    } else {
+        None
+    };
+
     // 2. Delegate to Agent::rotate_self() (archives keys, generates new, signs, verifies)
     let (new_version, new_public_key, new_doc) =
-        inner.rotate_self().map_err(|e| JacsError::Internal {
-            message: format!("Key rotation failed: {}", e),
-        })?;
+        inner
+            .rotate_self(algorithm)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Key rotation failed: {}", e),
+            })?;
+
+    // 2a. Advance journal to keys_rotated
+    if let Some(ref mut j) = journal {
+        j.advance("keys_rotated")?;
+    }
 
     // 3. Save agent document to disk (non-ephemeral only)
     if !inner.is_ephemeral() {
@@ -256,9 +315,14 @@ pub fn rotate(agent: &SimpleAgent) -> Result<RotationResult, JacsError> {
         })?;
     }
 
+    // 3a. Advance journal to agent_saved
+    if let Some(ref mut j) = journal {
+        j.advance("agent_saved")?;
+    }
+
     // 4. Update config file with the new version
-    if let Some(ref config_path) = agent.config_path {
-        let config_path_p = Path::new(config_path);
+    if let Some(config_p) = config_path {
+        let config_path_p = Path::new(config_p);
         if config_path_p.exists() {
             let config_str =
                 fs::read_to_string(config_path_p).map_err(|e| JacsError::Internal {
@@ -274,8 +338,32 @@ pub fn rotate(agent: &SimpleAgent) -> Result<RotationResult, JacsError> {
                 obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
             }
 
+            // If algorithm was overridden, update the config field
+            if algorithm.is_some() {
+                if let Some(obj) = config_value.as_object_mut() {
+                    obj.insert(
+                        "jacs_agent_key_algorithm".to_string(),
+                        json!(effective_algorithm),
+                    );
+                }
+            }
+
+            let signed_config = if config_value.get("jacsSignature").is_some() {
+                inner
+                    .update_config(&config_value)
+                    .map_err(|e| JacsError::Internal {
+                        message: format!("Failed to re-sign config after rotation: {}", e),
+                    })?
+            } else {
+                inner
+                    .sign_config(&config_value)
+                    .map_err(|e| JacsError::Internal {
+                        message: format!("Failed to sign config after rotation: {}", e),
+                    })?
+            };
+
             let updated_str =
-                serde_json::to_string_pretty(&config_value).map_err(|e| JacsError::Internal {
+                serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                     message: format!("Failed to serialize updated config: {}", e),
                 })?;
             fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {
@@ -289,8 +377,20 @@ pub fn rotate(agent: &SimpleAgent) -> Result<RotationResult, JacsError> {
         }
     }
 
+    // 4a. Advance journal to config_signed, then delete it
+    if let Some(ref mut j) = journal {
+        j.advance("config_signed")?;
+        j.complete()?;
+    }
+
     // 5. Build the PEM string for the new public key
     let new_public_key_pem = crate::crypt::normalize_public_key_pem(&new_public_key);
+
+    // Extract transition proof from the new document
+    let transition_proof = new_doc
+        .get("jacsKeyRotationProof")
+        .map(|p| serde_json::to_string(p).unwrap_or_default());
+
     drop(inner); // Release lock
 
     let new_public_key_hash = hash_public_key(&new_public_key);
@@ -311,6 +411,7 @@ pub fn rotate(agent: &SimpleAgent) -> Result<RotationResult, JacsError> {
         new_public_key_pem,
         new_public_key_hash,
         signed_agent_json,
+        transition_proof,
     })
 }
 
@@ -544,8 +645,26 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
             obj.insert("jacs_agent_id_and_version".to_string(), json!(new_lookup));
         }
 
+        let mut inner = simple_agent.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock for config signing: {}", e),
+        })?;
+        let signed_config = if config_value.get("jacsSignature").is_some() {
+            inner
+                .update_config(&config_value)
+                .map_err(|e| JacsError::Internal {
+                    message: format!("Failed to re-sign config after migration: {}", e),
+                })?
+        } else {
+            inner
+                .sign_config(&config_value)
+                .map_err(|e| JacsError::Internal {
+                    message: format!("Failed to sign config after migration: {}", e),
+                })?
+        };
+        drop(inner);
+
         let updated_str =
-            serde_json::to_string_pretty(&config_value).map_err(|e| JacsError::Internal {
+            serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                 message: format!("Failed to serialize updated config: {}", e),
             })?;
         fs::write(config_path_p, updated_str).map_err(|e| JacsError::Internal {

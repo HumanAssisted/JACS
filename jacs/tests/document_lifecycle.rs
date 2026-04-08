@@ -263,6 +263,44 @@ macro_rules! lifecycle_test_suite {
 
         $(#[$serial_attr])*
         #[test]
+        fn batch_partial_failure_surfaces_error_and_preserves_survivors() {
+            let b = backend();
+            let svc = b.create_service();
+
+            // Build a batch with 2 valid + 1 invalid document.
+            // The invalid one is "not valid JSON" which should fail parsing.
+            let valid1 = b.make_json(r#""content":"batch survivor 1""#);
+            let valid2 = b.make_json(r#""content":"batch survivor 2""#);
+            let invalid = "THIS IS NOT VALID JSON AT ALL {{{";
+
+            let docs: Vec<&str> = vec![&valid1, &valid2, invalid];
+            let result = svc.create_batch(&docs, CreateOptions::default());
+
+            // The batch should fail because one input is invalid
+            assert!(
+                result.is_err(),
+                "create_batch should return Err when any document fails"
+            );
+
+            // The two valid documents created before the failure should
+            // exist in storage. List all documents and verify at least
+            // 2 are present (the survivors).
+            let list = svc.list(ListFilter::default()).expect("list should work");
+            assert!(
+                list.len() >= 2,
+                "at least 2 survivor documents should exist in storage after partial failure, found {}",
+                list.len()
+            );
+
+            // Each survivor should be retrievable and verifiable via get()
+            for summary in &list {
+                let doc = svc.get(&summary.key).expect("survivor should be retrievable");
+                assert!(doc.value.get("jacsSignature").is_some(), "survivor should be signed");
+            }
+        }
+
+        $(#[$serial_attr])*
+        #[test]
         fn remove_tombstones_document_excluded_from_list() {
             let b = backend();
             let svc = b.create_service();
@@ -524,12 +562,11 @@ macro_rules! lifecycle_test_suite {
             }
             assert!(!state_list.is_empty());
 
-            // jacs_verify_state -> verify_document(key)
-            // NOTE: DocumentService does not yet expose a verify() method.
-            // The PRD Section 3.2.3 maps jacs_verify_state to verify_document(key),
-            // but this has not been added to the trait. When it is, add:
-            //   svc.verify(&state_doc.getkey()).expect("verify_state");
-            // Tracked by ARCHITECTURE_UPGRADE_ISSUE_025.
+            // jacs_verify_state -> verify(key)
+            svc.verify(&state_doc.getkey()).expect("verify_state should succeed for untampered state doc");
+
+            // Also verify the updated state doc
+            svc.verify(&updated.getkey()).expect("verify_state should succeed for updated state doc");
 
             // jacs_adopt_state -> create(kind="agentstate", source=external)
             let adopt_json = if b.needs_jacs_headers() {
@@ -821,6 +858,67 @@ macro_rules! lifecycle_test_suite {
         }
 
         // ================================================================
+        // Verification via DocumentService::verify()
+        // ================================================================
+
+        $(#[$serial_attr])*
+        #[test]
+        fn verify_succeeds_for_newly_created_document() {
+            let b = backend();
+            let svc = b.create_service();
+
+            let doc = svc
+                .create(
+                    &b.make_json(r#""content":"verify newly created""#),
+                    CreateOptions::default(),
+                )
+                .expect("create");
+
+            // verify() should succeed for an untampered newly-created document
+            svc.verify(&doc.getkey())
+                .expect("verify should succeed for newly created document");
+        }
+
+        $(#[$serial_attr])*
+        #[test]
+        fn verify_succeeds_for_updated_document() {
+            let b = backend();
+            let svc = b.create_service();
+
+            let v1 = svc
+                .create(
+                    &b.make_json(r#""content":"verify updated v1""#),
+                    CreateOptions::default(),
+                )
+                .expect("create v1");
+
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let v2 = svc
+                .update(
+                    &v1.id,
+                    &b.make_update_json(&v1.id, &v1.version, r#""content":"verify updated v2""#),
+                    UpdateOptions::default(),
+                )
+                .expect("update to v2");
+
+            // Both versions should verify
+            svc.verify(&v1.getkey())
+                .expect("verify v1 should succeed");
+            svc.verify(&v2.getkey())
+                .expect("verify v2 should succeed");
+        }
+
+        $(#[$serial_attr])*
+        #[test]
+        fn verify_nonexistent_returns_error() {
+            let b = backend();
+            let svc = b.create_service();
+
+            let result = svc.verify("nonexistent-id-verify:v1");
+            assert!(result.is_err(), "verify should fail for nonexistent document");
+        }
+
+        // ================================================================
         // Task 002: CRUD Parity & Error Shape contract tests
         // ================================================================
 
@@ -912,6 +1010,44 @@ macro_rules! lifecycle_test_suite {
                 non_agent_docs.is_empty(),
                 "fresh service should have no non-agent documents, found {}",
                 non_agent_docs.len()
+            );
+        }
+
+        // ================================================================
+        // P1: Concurrency coverage for document storage
+        // ================================================================
+
+        $(#[$serial_attr])*
+        #[test]
+        fn concurrent_create_multiple_documents() {
+            let b = backend();
+
+            // Create 5 documents concurrently using thread::scope
+            // This exercises thread-safety of the service's create path
+            let results: Vec<Result<_, _>> = std::thread::scope(|s| {
+                let handles: Vec<_> = (0..5)
+                    .map(|i| {
+                        let svc = b.create_service();
+                        s.spawn(move || {
+                            let json = format!(r#"{{"content":"concurrent doc {}"}}"#, i);
+                            svc.create(&json, CreateOptions::default())
+                        })
+                    })
+                    .collect();
+
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+
+            let mut success_count = 0;
+            for result in &results {
+                if result.is_ok() {
+                    success_count += 1;
+                }
+            }
+            assert!(
+                success_count >= 3,
+                "at least 3 of 5 concurrent creates should succeed, got {}",
+                success_count
             );
         }
 

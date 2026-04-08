@@ -2,7 +2,7 @@ import jacs
 import os
 from pathlib import Path
 import logging
-from mcp.server.fastmcp import FastMCP  # Make sure to import FastMCP
+from fastmcp import FastMCP
 from jacs.mcp import JACSMCPServer 
 import uvicorn
 
@@ -44,12 +44,10 @@ def echo_prompt(text: str) -> str:
     return text
 
 
-# --- Get the prepared ASGI app ---
-sse_app_with_middleware = mcp.sse_app()
-
 # --- Run with uvicorn ---
 if __name__ == "__main__":
     host = "localhost"
     port = 8000
-    print("Starting JACSFastMCP SSE server (auto-validate/sign)...")
-    uvicorn.run(sse_app_with_middleware, host=host, port=port)
+    print("Starting JACS FastMCP server...")
+    app = mcp.http_app()
+    uvicorn.run(app, host=host, port=port)
