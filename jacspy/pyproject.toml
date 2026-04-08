@@ -54,6 +54,13 @@ markers = [
     "contract: contract tests validating output against shared a2a-verification-result schema",
 ]
 
+[tool.uv]
+constraint-dependencies = [
+    "aiohttp>=3.13.4",
+    "Pygments>=2.20.0",
+    "cryptography>=46.0.6",
+]
+
 [tool.maturin]
 features = ["extension-module"] 
 module-name = "jacs"  
