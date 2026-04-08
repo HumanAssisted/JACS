@@ -57,6 +57,71 @@ fn write_private_key_securely(path: &str, key_bytes: &[u8]) -> Result<(), JacsEr
     Ok(())
 }
 
+/// Write a rotation journal file without following pre-existing path entries.
+///
+/// New journals must be created with `create_new(true)` so an unexpected
+/// existing file or symlink cannot be clobbered. Existing journals are updated
+/// only if the on-disk entry is a regular file.
+fn write_journal_file_securely(
+    path: &str,
+    contents: &[u8],
+    create_new: bool,
+) -> Result<(), JacsError> {
+    let path_obj = std::path::Path::new(path);
+
+    if let Some(parent) = path_obj.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    if !create_new {
+        let metadata = std::fs::symlink_metadata(path_obj).map_err(|e| JacsError::Internal {
+            message: format!("Failed to stat rotation journal '{}': {}", path, e),
+        })?;
+        if !metadata.file_type().is_file() {
+            return Err(JacsError::Internal {
+                message: format!(
+                    "Refusing to update rotation journal at '{}': path is not a regular file.",
+                    path
+                ),
+            });
+        }
+    }
+
+    let mut options = OpenOptions::new();
+    options.write(true);
+    if create_new {
+        options.create_new(true);
+    } else {
+        options.truncate(true);
+    }
+
+    #[cfg(unix)]
+    {
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(path_obj).map_err(|e| JacsError::Internal {
+        message: if create_new {
+            format!(
+                "Failed to create rotation journal at '{}': {}. \
+                 If a stale journal exists, repair it before starting another rotation.",
+                path, e
+            )
+        } else {
+            format!("Failed to update rotation journal at '{}': {}", path, e)
+        },
+    })?;
+    file.write_all(contents)?;
+    file.sync_all()?;
+
+    #[cfg(unix)]
+    {
+        let _ = set_secure_permissions(path, false);
+    }
+
+    Ok(())
+}
+
 /// No-op on non-Unix systems
 #[cfg(not(unix))]
 fn set_secure_permissions(_path: &str, _is_directory: bool) -> Result<(), JacsError> {
@@ -230,6 +295,22 @@ impl FsEncryptedStore {
         let archive_priv = Self::insert_version_in_path(priv_path, old_version);
         let archive_pub = Self::insert_version_in_path(pub_path, old_version);
         (archive_priv, archive_pub)
+    }
+
+    fn validate_archive_version_component(version: &str) -> Result<(), JacsError> {
+        if version.is_empty()
+            || version == "."
+            || version == ".."
+            || version.contains('/')
+            || version.contains('\\')
+            || version.contains('\0')
+        {
+            return Err(JacsError::ValidationError(format!(
+                "Unsafe key rotation version '{}': version identifiers used in archive filenames must not contain path separators or traversal markers.",
+                version
+            )));
+        }
+        Ok(())
     }
 
     /// Insert a version string before the PEM/key file extensions.
@@ -448,6 +529,7 @@ impl KeyStore for FsEncryptedStore {
             "FsEncryptedStore::rotate called"
         );
 
+        Self::validate_archive_version_component(old_version)?;
         let priv_path = self.paths.private_key_enc_path();
         let pub_path = self.paths.public_key_path();
         let (archive_priv, archive_pub) = Self::archive_paths(&priv_path, &pub_path, old_version);
@@ -757,23 +839,7 @@ impl RotationJournal {
         let json = serde_json::to_string_pretty(&journal).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize rotation journal: {}", e),
         })?;
-
-        // Ensure parent directory exists
-        if let Some(parent) = std::path::Path::new(&file_path).parent() {
-            std::fs::create_dir_all(parent).map_err(|e| JacsError::Internal {
-                message: format!("Failed to create journal directory: {}", e),
-            })?;
-        }
-
-        std::fs::write(&file_path, json).map_err(|e| JacsError::Internal {
-            message: format!("Failed to write rotation journal to '{}': {}", file_path, e),
-        })?;
-
-        #[cfg(unix)]
-        {
-            // Journal contains agent ID and key hashes -- restrict permissions
-            let _ = set_secure_permissions(&file_path, false);
-        }
+        write_journal_file_securely(&file_path, json.as_bytes(), true)?;
 
         debug!(
             "Rotation journal created at '{}' (stage: started)",
@@ -792,6 +858,23 @@ impl RotationJournal {
         let path = std::path::Path::new(file_path);
         if !path.exists() {
             return None;
+        }
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_file() => {}
+            Ok(_) => {
+                warn!(
+                    "Rotation journal path '{}' is not a regular file. Crash recovery may not work.",
+                    file_path
+                );
+                return None;
+            }
+            Err(e) => {
+                warn!(
+                    "Rotation journal exists at '{}' but could not be stat'ed: {}. Crash recovery may not work.",
+                    file_path, e
+                );
+                return None;
+            }
         }
         let data = match std::fs::read_to_string(file_path) {
             Ok(d) => d,
@@ -825,13 +908,7 @@ impl RotationJournal {
         let json = serde_json::to_string_pretty(self).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize rotation journal: {}", e),
         })?;
-
-        std::fs::write(&self.file_path, json).map_err(|e| JacsError::Internal {
-            message: format!(
-                "Failed to update rotation journal at '{}': {}",
-                self.file_path, e
-            ),
-        })?;
+        write_journal_file_securely(&self.file_path, json.as_bytes(), false)?;
 
         debug!(
             "Rotation journal advanced to stage '{}' at '{}'",
@@ -1853,6 +1930,35 @@ mod tests {
         assert_eq!(loaded.old_key_hash, "hash-xyz");
         assert_eq!(loaded.algorithm, "pq2025");
         assert_eq!(loaded.config_path, "/some/config.json");
+    }
+
+    #[test]
+    fn test_journal_create_refuses_overwrite() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let key_dir = tmp.path().to_str().unwrap();
+
+        let _journal = RotationJournal::create(
+            key_dir,
+            "agent-456",
+            "v2",
+            "hash-xyz",
+            "pq2025",
+            "/some/config.json",
+        )
+        .expect("first journal create");
+
+        let second = RotationJournal::create(
+            key_dir,
+            "agent-456",
+            "v2",
+            "hash-xyz",
+            "pq2025",
+            "/some/config.json",
+        );
+        assert!(
+            second.is_err(),
+            "Creating a second journal at the same path should fail"
+        );
     }
 
     #[test]

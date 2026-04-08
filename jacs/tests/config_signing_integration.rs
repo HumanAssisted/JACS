@@ -391,11 +391,14 @@ fn test_same_algorithm_rotation_preserves_config_field() {
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_crash_recovery_full_flow() {
+    use jacs::crypt::hash::hash_public_key;
     use jacs::keystore::RotationJournal;
 
     let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let (agent, info, _tmp, _guard) = create_test_agent("crash-recovery-test");
+    let old_public_key = agent.get_public_key().expect("get old public key");
+    let old_key_hash = hash_public_key(&old_public_key);
 
     // Capture pre-rotation config
     let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config before");
@@ -412,7 +415,7 @@ fn test_crash_recovery_full_flow() {
         "./jacs_keys",
         &info.agent_id,
         &info.version,
-        "old-key-hash",
+        &old_key_hash,
         "ring-Ed25519",
         "./jacs.config.json",
     )
@@ -601,6 +604,28 @@ fn test_transition_proof_verifiable_with_old_key() {
     );
 }
 
+/// Transition proof verification must reject proofs whose structured fields do
+/// not match the signed transition message.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_transition_proof_rejects_field_message_mismatch() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("proof-mismatch-test");
+    let old_pub_key = agent.get_public_key().expect("get old public key");
+
+    let result = advanced::rotate(&agent, None).expect("rotation should succeed");
+    let mut proof: Value =
+        serde_json::from_str(result.transition_proof.as_ref().unwrap()).expect("parse proof");
+    proof["newPublicKeyHash"] = serde_json::json!("tampered-new-key-hash");
+
+    let verify_result = jacs::agent::Agent::verify_transition_proof(&proof, &old_pub_key);
+    assert!(
+        verify_result.is_err(),
+        "Transition proof verification must fail when proof fields and signed message diverge"
+    );
+}
+
 /// Issue 008 test #1: Ephemeral agent rotation should NOT create a journal file.
 #[test]
 #[serial(jacs_env, cwd_env)]
@@ -664,11 +689,14 @@ fn test_rotate_self_invalid_algorithm_returns_error() {
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_crash_recovery_updates_id_and_version() {
+    use jacs::crypt::hash::hash_public_key;
     use jacs::keystore::RotationJournal;
 
     let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
 
     let (agent, info, _tmp, _guard) = create_test_agent("recovery-id-version-test");
+    let old_public_key = agent.get_public_key().expect("get old public key");
+    let old_key_hash = hash_public_key(&old_public_key);
 
     // Capture pre-rotation config
     let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config before");
@@ -685,7 +713,7 @@ fn test_crash_recovery_updates_id_and_version() {
         "./jacs_keys",
         &info.agent_id,
         &info.version,
-        "old-key-hash",
+        &old_key_hash,
         "ring-Ed25519",
         "./jacs.config.json",
     )
@@ -719,5 +747,68 @@ fn test_crash_recovery_updates_id_and_version() {
         id_and_version,
         format!("{}:{}", info.agent_id, info.version),
         "Repaired config should NOT reference the pre-rotation version"
+    );
+}
+
+/// A rotation journal must not cause arbitrary config tampering to be
+/// re-signed as if it were a legitimate crash-recovery case.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_crash_recovery_refuses_tampered_config_even_with_valid_journal() {
+    use jacs::crypt::hash::hash_public_key;
+    use jacs::keystore::RotationJournal;
+
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, info, _tmp, _guard) = create_test_agent("recovery-tamper-test");
+    let old_public_key = agent.get_public_key().expect("get old public key");
+    let old_key_hash = hash_public_key(&old_public_key);
+
+    let config_before_str =
+        std::fs::read_to_string("./jacs.config.json").expect("read config before rotation");
+    let mut tampered_config: Value =
+        serde_json::from_str(&config_before_str).expect("parse config before rotation");
+
+    let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    tampered_config["agent_email"] = serde_json::json!("attacker@example.com");
+    std::fs::write(
+        "./jacs.config.json",
+        serde_json::to_string_pretty(&tampered_config).expect("serialize tampered config"),
+    )
+    .expect("write tampered stale config");
+
+    let _journal = RotationJournal::create(
+        "./jacs_keys",
+        &info.agent_id,
+        &info.version,
+        &old_key_hash,
+        "ring-Ed25519",
+        "./jacs.config.json",
+    )
+    .expect("create journal");
+
+    let _reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
+        .expect("agent should still load even when auto-repair is refused");
+
+    let config_after_str =
+        std::fs::read_to_string("./jacs.config.json").expect("read config after load");
+    let config_after: Value =
+        serde_json::from_str(&config_after_str).expect("parse config after load");
+    let expected_stale_lookup = format!("{}:{}", info.agent_id, info.version);
+
+    assert_eq!(
+        config_after["jacs_agent_id_and_version"].as_str(),
+        Some(expected_stale_lookup.as_str()),
+        "Tampered config must not be auto-rewritten to the new rotation target"
+    );
+    assert_eq!(
+        config_after["agent_email"].as_str(),
+        Some("attacker@example.com"),
+        "Tampered config body should not be silently re-signed during crash recovery"
+    );
+    assert!(
+        std::path::Path::new(&RotationJournal::journal_path("./jacs_keys")).exists(),
+        "Journal should remain present when crash recovery is refused"
     );
 }

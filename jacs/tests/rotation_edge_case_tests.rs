@@ -67,10 +67,13 @@ fn create_test_agent(
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_crash_after_rotate_self_before_config_write() {
+    use jacs::crypt::hash::hash_public_key;
     use jacs::keystore::RotationJournal;
 
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let (agent, info, _tmp, _guard) = create_test_agent("crash-before-config", "ring-Ed25519");
+    let old_public_key = agent.get_public_key().expect("get old public key");
+    let old_key_hash = hash_public_key(&old_public_key);
 
     let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config");
 
@@ -83,7 +86,7 @@ fn test_crash_after_rotate_self_before_config_write() {
         "./jacs_keys",
         &info.agent_id,
         &info.version,
-        "old-key-hash",
+        &old_key_hash,
         "ring-Ed25519",
         "./jacs.config.json",
     )
@@ -418,10 +421,13 @@ fn test_create_rotate_sign_verify_lifecycle() {
 #[test]
 #[serial(jacs_env, cwd_env)]
 fn test_create_rotate_crash_recover_sign_lifecycle() {
+    use jacs::crypt::hash::hash_public_key;
     use jacs::keystore::RotationJournal;
 
     let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let (agent, info, _tmp, _guard) = create_test_agent("crash-lifecycle-test", "ring-Ed25519");
+    let old_public_key = agent.get_public_key().expect("get old public key");
+    let old_key_hash = hash_public_key(&old_public_key);
 
     // Capture pre-rotation config
     let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config");
@@ -435,7 +441,7 @@ fn test_create_rotate_crash_recover_sign_lifecycle() {
         "./jacs_keys",
         &info.agent_id,
         &info.version,
-        "old-key-hash",
+        &old_key_hash,
         "ring-Ed25519",
         "./jacs.config.json",
     )

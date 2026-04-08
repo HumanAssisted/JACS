@@ -860,6 +860,9 @@ def sign_file(
     """
     agent = _get_agent()
 
+    if not os.path.isfile(file_path):
+        raise SigningError(f"File not found: {file_path}")
+
     try:
         # Create a minimal document that references the file
         doc_json = json.dumps({
