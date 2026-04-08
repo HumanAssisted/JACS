@@ -20,6 +20,10 @@ Class-based server:
     mcp = FastMCP("My Server")
     mcp = JACSMCPServer(mcp, "jacs.config.json")
 
+    # For HTTP deployment with uvicorn:
+    app = mcp.http_app()
+    # uvicorn.run(app, host="localhost", port=8000)
+
 Requires (optional): fastmcp, mcp, starlette
 """
 
@@ -232,59 +236,25 @@ def JACSMCPClient(
     return Client(transport, **kwargs)
 
 
-def JACSMCPServer(
-    mcp_server,
-    config_path="./jacs.config.json",
-    strict=False,
-    local_only: Optional[bool] = None,
-    allow_unsigned_fallback: Optional[bool] = None,
-):
-    """Creates a FastMCP server with JACS signing/verification interceptors.
+def _build_jacs_starlette_middleware(agent, agent_ready, local_only, allow_unsigned_fallback):
+    """Build a Starlette-compatible ASGI middleware class for JACS auth.
 
-    Args:
-        mcp_server: A FastMCP server instance
-        config_path: Path to jacs.config.json
-        strict: If True, config failures raise instead of falling back to
-            unsigned passthrough. Also enabled by JACS_STRICT_MODE env var.
-        local_only: Reserved for compatibility. Local-only is always enforced.
-        allow_unsigned_fallback: If True, verification/signing failures
-            can pass through unsigned messages (default: False).
+    Returns a middleware class suitable for use with
+    ``starlette.middleware.Middleware`` or ``app.middleware("http")``.
     """
-    if not hasattr(mcp_server, "sse_app"):
-        raise AttributeError("mcp_server is missing required attribute 'sse_app'")
-
-    if JacsAgent is None:
-        raise ImportError("jacs native module is required for JACSMCPServer")
-
-    strict = _resolve_strict(strict)
-    local_only = _resolve_local_only(local_only)
-    allow_unsigned_fallback = _resolve_allow_unsigned_fallback(allow_unsigned_fallback)
-    agent = JacsAgent()
-    agent_ready = True
     try:
-        agent.load(config_path)
-    except Exception as e:
-        if strict or not allow_unsigned_fallback:
-            raise simple.ConfigError(
-                f"JACS secure mode: refusing to run unsigned. "
-                f"Fix config at '{config_path}' or set "
-                f"JACS_MCP_ALLOW_UNSIGNED_FALLBACK=true to allow unsigned "
-                f"passthrough. Error: {e}"
-            ) from e
-        LOGGER.warning(
-            "Failed to load JACS config '%s' for MCP server; middleware will pass through unsigned: %s",
-            config_path,
-            e,
+        from starlette.middleware.base import BaseHTTPMiddleware
+    except ImportError:
+        BaseHTTPMiddleware = None
+
+    if BaseHTTPMiddleware is None:
+        raise ImportError(
+            "starlette is required for JACS MCP server middleware. "
+            "Install with: pip install starlette"
         )
-        agent_ready = False
 
-    original_sse_app = mcp_server.sse_app
-
-    def patched_sse_app():
-        app = original_sse_app()
-
-        @app.middleware("http")
-        async def jacs_authentication_middleware(request, call_next):
+    class JACSAuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
             request_host = getattr(getattr(request, "client", None), "host", "") or ""
             if local_only and not _is_loopback_host(request_host):
                 if JSONResponse is not None:
@@ -344,9 +314,81 @@ def JACSMCPServer(
 
             return response
 
-        return app
+    return JACSAuthMiddleware
 
-    mcp_server.sse_app = patched_sse_app
+
+def JACSMCPServer(
+    mcp_server,
+    config_path="./jacs.config.json",
+    strict=False,
+    local_only: Optional[bool] = None,
+    allow_unsigned_fallback: Optional[bool] = None,
+):
+    """Creates a FastMCP server with JACS signing/verification interceptors.
+
+    Args:
+        mcp_server: A FastMCP server instance
+        config_path: Path to jacs.config.json
+        strict: If True, config failures raise instead of falling back to
+            unsigned passthrough. Also enabled by JACS_STRICT_MODE env var.
+        local_only: Reserved for compatibility. Local-only is always enforced.
+        allow_unsigned_fallback: If True, verification/signing failures
+            can pass through unsigned messages (default: False).
+
+    The returned server can be deployed via::
+
+        app = mcp_server.http_app()
+        uvicorn.run(app, host="localhost", port=8000)
+    """
+    if JacsAgent is None:
+        raise ImportError("jacs native module is required for JACSMCPServer")
+
+    strict = _resolve_strict(strict)
+    local_only = _resolve_local_only(local_only)
+    allow_unsigned_fallback = _resolve_allow_unsigned_fallback(allow_unsigned_fallback)
+    agent = JacsAgent()
+    agent_ready = True
+    try:
+        agent.load(config_path)
+    except Exception as e:
+        if strict or not allow_unsigned_fallback:
+            raise simple.ConfigError(
+                f"JACS secure mode: refusing to run unsigned. "
+                f"Fix config at '{config_path}' or set "
+                f"JACS_MCP_ALLOW_UNSIGNED_FALLBACK=true to allow unsigned "
+                f"passthrough. Error: {e}"
+            ) from e
+        LOGGER.warning(
+            "Failed to load JACS config '%s' for MCP server; middleware will pass through unsigned: %s",
+            config_path,
+            e,
+        )
+        agent_ready = False
+
+    # Build the Starlette middleware class for JACS auth
+    middleware_cls = _build_jacs_starlette_middleware(
+        agent, agent_ready, local_only, allow_unsigned_fallback
+    )
+
+    # Patch http_app to inject JACS middleware (fastmcp 3.x)
+    if hasattr(mcp_server, "http_app"):
+        original_http_app = mcp_server.http_app
+
+        def patched_http_app(*args, **kwargs):
+            # Merge JACS middleware with any user-supplied middleware
+            from starlette.middleware import Middleware
+
+            jacs_mw = Middleware(middleware_cls)
+            user_middleware = list(kwargs.pop("middleware", None) or [])
+            user_middleware.insert(0, jacs_mw)
+            kwargs["middleware"] = user_middleware
+            return original_http_app(*args, **kwargs)
+
+        mcp_server.http_app = patched_http_app
+
+    # Store middleware class on server for direct access
+    mcp_server._jacs_middleware_cls = middleware_cls
+
     return mcp_server
 
 
@@ -689,23 +731,32 @@ def create_jacs_mcp_server(
     # Create FastMCP server
     mcp_server = FastMCP(name)
 
-    # Wire JACS middleware into the SSE app
-    original_sse_app = mcp_server.sse_app
+    # Wire JACS middleware into http_app (fastmcp 3.x)
     middleware_fn = jacs_middleware(
         local_only=local_only,
         allow_unsigned_fallback=allow_unsigned_fallback,
     )
 
-    def patched_sse_app():
-        app = original_sse_app()
+    if hasattr(mcp_server, "http_app"):
+        original_http_app = mcp_server.http_app
 
-        @app.middleware("http")
-        async def _jacs_mw(request, call_next):
-            return await middleware_fn(request, call_next)
+        def patched_http_app(*args, **kwargs):
+            from starlette.middleware.base import BaseHTTPMiddleware
 
-        return app
+            class _JacsSimpleMW(BaseHTTPMiddleware):
+                async def dispatch(self, request, call_next):
+                    return await middleware_fn(request, call_next)
 
-    mcp_server.sse_app = patched_sse_app
+            from starlette.middleware import Middleware
+
+            jacs_mw = Middleware(_JacsSimpleMW)
+            user_middleware = list(kwargs.pop("middleware", None) or [])
+            user_middleware.insert(0, jacs_mw)
+            kwargs["middleware"] = user_middleware
+            return original_http_app(*args, **kwargs)
+
+        mcp_server.http_app = patched_http_app
+
     return mcp_server
 
 
