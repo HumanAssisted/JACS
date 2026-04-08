@@ -141,6 +141,8 @@ export declare class JacsAgent {
   verifyDocumentByIdSync(documentId: string): boolean
   /** Load a document by ID from storage (sync, blocks event loop). */
   getDocumentByIdSync(documentId: string): string
+  /** Rotate the agent's keys (sync, blocks event loop). */
+  rotateKeysSync(algorithm?: string | undefined | null): string
   /** Re-encrypt the agent's private key (sync, blocks event loop). */
   reencryptKeySync(oldPassword: string, newPassword: string): void
   /**
@@ -196,6 +198,8 @@ export declare class JacsAgent {
   verifyDocumentById(documentId: string): Promise<boolean>
   /** Load a document by ID from storage. */
   getDocumentById(documentId: string): Promise<string>
+  /** Rotate the agent's cryptographic keys. */
+  rotateKeys(algorithm?: string | undefined | null): Promise<string>
   /** Re-encrypt the agent's private key with a new password. */
   reencryptKey(oldPassword: string, newPassword: string): Promise<void>
   /** Convert a JSON string to YAML. */
@@ -343,4 +347,10 @@ export declare class JacsSimpleAgent {
    * Equivalent to calling fromYaml() followed by verify().
    */
   verifyYaml(yamlStr: string): string
+  /**
+   * Rotate the agent's cryptographic keys.
+   * Optionally change the signing algorithm.
+   * Returns a JSON string of the RotationResult.
+   */
+  rotateKeys(algorithm?: string | undefined | null): string
 }

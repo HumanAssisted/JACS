@@ -29,7 +29,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-mcp = ["fastmcp>=0.1.0"]
+mcp = ["fastmcp>=3.2.0"]
 ws = ["websockets>=13.0"]
 langchain = ["langchain>=1.0.0,<2.0.0"]
 langgraph = ["langgraph>=1.0.0,<2.0.0"]

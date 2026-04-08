@@ -1,4 +1,4 @@
 requests
 jacs
 uvicorn
-fastmcp
+fastmcp>=3.2.0

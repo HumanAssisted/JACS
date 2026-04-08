@@ -2,7 +2,7 @@
 
 use jacs_mcp::{JacsMcpContractSnapshot, canonical_contract_snapshot};
 
-/// The full contract snapshot test requires all 42 tools to be compiled in.
+/// The full contract snapshot test requires all 43 tools to be compiled in.
 /// The checked-in contract artifact contains all tools, so this test only
 /// makes sense with `full-tools`.
 #[cfg(feature = "full-tools")]

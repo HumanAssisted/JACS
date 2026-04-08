@@ -1564,6 +1564,18 @@ impl JacsSimpleAgent {
         let json_str = self.inner.from_yaml(&yaml_str).to_napi()?;
         self.inner.verify_json(&json_str).to_napi()
     }
+
+    // =========================================================================
+    // Key Management
+    // =========================================================================
+
+    /// Rotate the agent's cryptographic keys.
+    /// Optionally change the signing algorithm.
+    /// Returns a JSON string of the RotationResult.
+    #[napi(js_name = "rotateKeys")]
+    pub fn rotate_keys(&self, algorithm: Option<String>) -> Result<String> {
+        self.inner.rotate_keys(algorithm.as_deref()).to_napi()
+    }
 }
 
 // ============================================================================

@@ -16,7 +16,7 @@ langchain-openai>=0.2.0     # For OpenAI models
 jacs
 
 # FastMCP for running the JACS MCP server
-fastmcp>=0.1.0
+fastmcp>=3.2.0
 
 # Async support
 anyio>=4.0.0
