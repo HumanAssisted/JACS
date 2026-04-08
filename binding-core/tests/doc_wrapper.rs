@@ -199,6 +199,10 @@ impl DocumentService for MockDocumentService {
     fn set_visibility(&self, _key: &str, _visibility: DocumentVisibility) -> Result<(), JacsError> {
         Ok(())
     }
+
+    fn verify(&self, key: &str) -> Result<(), JacsError> {
+        self.get(key).map(|_| ())
+    }
 }
 
 // =============================================================================
