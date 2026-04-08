@@ -131,6 +131,7 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time"] }
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["minio"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls"] }
+proptest = "1.6"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

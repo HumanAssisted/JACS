@@ -474,6 +474,19 @@ pub trait DocumentService: Send + Sync {
         options: CreateOptions,
     ) -> Result<Vec<JACSDocument>, Vec<JacsError>>;
 
+    // === VERIFICATION ===
+
+    /// Verify a persisted document by its key (`id:version`).
+    ///
+    /// Loads the document from storage and verifies its signature and hash
+    /// integrity. Returns `Ok(())` on success or a verification error on
+    /// failure.
+    ///
+    /// This is distinct from `get()` in that it returns no document data —
+    /// it is a pure verification check intended for the `jacs_verify_state`
+    /// tool path.
+    fn verify(&self, key: &str) -> Result<(), JacsError>;
+
     // === VISIBILITY ===
 
     /// Get the visibility level of a document.

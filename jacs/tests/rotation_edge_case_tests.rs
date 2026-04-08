@@ -460,3 +460,54 @@ fn test_create_rotate_crash_recover_sign_lifecycle() {
     let v2 = recovered.verify(&doc2.raw).expect("verify doc2");
     assert!(v2.valid, "Post-recovery doc should verify: {:?}", v2.errors);
 }
+
+// =============================================================================
+// Rotation Stress: Repeated sign/verify after multiple rotations (P1 Task 5)
+// =============================================================================
+
+/// Rotate the agent 3 times, each time signing and verifying a document.
+/// This proves rotation does not corrupt subsequent sign/verify operations
+/// under repeated load.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_rotation_stress_repeated_sign_verify() {
+    let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, _info, _tmp, _guard) = create_test_agent("rotation-stress", "ring-Ed25519");
+
+    // Pre-rotation sign/verify baseline
+    let baseline = agent
+        .sign_message(&serde_json::json!({"stage": "before-any-rotation"}))
+        .expect("baseline sign");
+    let baseline_v = agent.verify(&baseline.raw).expect("baseline verify");
+    assert!(baseline_v.valid, "baseline should verify");
+
+    // Rotate 3 times, signing and verifying after each
+    for i in 0..3 {
+        let rotation = advanced::rotate(&agent, None)
+            .unwrap_or_else(|e| panic!("rotation {} should succeed: {}", i + 1, e));
+        assert!(
+            !rotation.new_public_key_hash.is_empty(),
+            "rotation {} should produce a new key hash",
+            i + 1
+        );
+
+        // Sign with new key
+        let signed = agent
+            .sign_message(&serde_json::json!({
+                "stage": format!("after-rotation-{}", i + 1),
+                "iteration": i + 1,
+            }))
+            .unwrap_or_else(|e| panic!("sign after rotation {} failed: {}", i + 1, e));
+
+        // Verify with new key
+        let verification = agent
+            .verify(&signed.raw)
+            .unwrap_or_else(|e| panic!("verify after rotation {} failed: {}", i + 1, e));
+        assert!(
+            verification.valid,
+            "verification after rotation {} should succeed: {:?}",
+            i + 1,
+            verification.errors
+        );
+    }
+}

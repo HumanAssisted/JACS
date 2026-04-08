@@ -2,7 +2,7 @@
 FastMCP Echo Server
 """
 import signal
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from lib import jacspy
 import sys
 # Create server
