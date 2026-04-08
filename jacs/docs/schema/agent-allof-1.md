@@ -21,6 +21,7 @@ https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1
 | [jacsAgentType](#jacsagenttype)                 | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagenttype.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentType")                 |
 | [jacsAgentDomain](#jacsagentdomain)             | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsagentdomain.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsAgentDomain")             |
 | [jacsVerificationClaim](#jacsverificationclaim) | `string` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacsverificationclaim.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsVerificationClaim") |
+| [jacsKeyRotationProof](#jacskeyrotationproof)   | `object` | Optional | cannot be null | [Agent](agent-allof-1-properties-jacskeyrotationproof.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsKeyRotationProof")   |
 
 ## jacsAgentType
 
@@ -105,3 +106,21 @@ The default value is:
 ```json
 "unverified"
 ```
+
+## jacsKeyRotationProof
+
+Cryptographic proof that a key rotation was authorized by the previous key holder. Present only on agent versions created by key rotation.
+
+`jacsKeyRotationProof`
+
+* is optional
+
+* Type: `object` ([Details](agent-allof-1-properties-jacskeyrotationproof.md))
+
+* cannot be null
+
+* defined in: [Agent](agent-allof-1-properties-jacskeyrotationproof.md "https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsKeyRotationProof")
+
+### jacsKeyRotationProof Type
+
+`object` ([Details](agent-allof-1-properties-jacskeyrotationproof.md))

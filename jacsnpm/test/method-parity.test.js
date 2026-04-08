@@ -53,6 +53,7 @@ const NODE_NAME_MAP = {
   'from_yaml': 'fromYaml',
   'to_html': 'toHtml',
   'from_html': 'fromHtml',
+  'rotate_keys': 'rotateKeys',
 };
 
 // Static methods (on the class itself, not on instances)

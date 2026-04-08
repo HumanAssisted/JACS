@@ -659,6 +659,27 @@ class JacsClient:
         except Exception as e:
             raise JacsError(f"Failed to update document: {e}")
 
+    def rotate_keys(self, algorithm: Optional[str] = None) -> dict:
+        """Rotate the agent's cryptographic keys.
+
+        Generates a new keypair, archives the old keys, creates a new agent
+        version, and re-signs the config file.
+
+        Args:
+            algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS",
+                      "pq2025"). If None, keeps the current algorithm.
+
+        Returns:
+            dict with keys: jacs_id, old_version, new_version,
+            new_public_key_pem, new_public_key_hash, transition_proof, etc.
+        """
+        agent = self._require_agent()
+        try:
+            result_json = agent.rotate_keys(algorithm)
+            return json.loads(result_json)
+        except Exception as e:
+            raise JacsError(f"Key rotation failed: {e}")
+
     def export_agent(self) -> str:
         """Export the agent document JSON for sharing."""
         agent = self._require_agent()

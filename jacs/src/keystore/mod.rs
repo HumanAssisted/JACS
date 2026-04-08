@@ -135,7 +135,7 @@ use crate::crypt::{self, CryptoSigningAlgorithm};
 use crate::storage::MultiStorage;
 // get_required_env_var no longer needed — KeyPaths::from_env() deleted
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Resolved filesystem paths for an agent's key material.
 ///
@@ -784,13 +784,38 @@ impl RotationJournal {
 
     /// Load an existing journal from disk.
     ///
-    /// Returns `None` if the file does not exist. Returns an error if the file
-    /// exists but cannot be read or parsed.
+    /// Returns `None` if the file does not exist. Logs a warning and returns
+    /// `None` if the file exists but cannot be read or parsed (corrupted
+    /// journal, permission issues, schema changes). This ensures crash
+    /// recovery failures are visible rather than silently swallowed.
     pub fn load(file_path: &str) -> Option<Self> {
-        let data = std::fs::read_to_string(file_path).ok()?;
-        let mut journal: Self = serde_json::from_str(&data).ok()?;
-        journal.file_path = file_path.to_string();
-        Some(journal)
+        let path = std::path::Path::new(file_path);
+        if !path.exists() {
+            return None;
+        }
+        let data = match std::fs::read_to_string(file_path) {
+            Ok(d) => d,
+            Err(e) => {
+                warn!(
+                    "Rotation journal exists at '{}' but cannot be read: {}. Crash recovery may not work.",
+                    file_path, e
+                );
+                return None;
+            }
+        };
+        match serde_json::from_str::<Self>(&data) {
+            Ok(mut journal) => {
+                journal.file_path = file_path.to_string();
+                Some(journal)
+            }
+            Err(e) => {
+                warn!(
+                    "Rotation journal at '{}' is corrupted: {}. Crash recovery may not work.",
+                    file_path, e
+                );
+                None
+            }
+        }
     }
 
     /// Advance the journal to the next stage and write the update to disk.

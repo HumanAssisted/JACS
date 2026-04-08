@@ -37,6 +37,45 @@
           "default": "unverified",
           "description": "Agent's claim about verification status. 'unverified' (default) allows relaxed DNS/TLS settings. 'verified' requires strict DNS with DNSSEC and domain must be set. 'verified-registry' requires registry verification. DEPRECATED: 'verified-hai.ai' is a deprecated alias for 'verified-registry' and will be removed in the next major version.",
           "hai": "meta"
+        },
+        "jacsKeyRotationProof": {
+          "type": "object",
+          "description": "Cryptographic proof that a key rotation was authorized by the previous key holder. Present only on agent versions created by key rotation.",
+          "properties": {
+            "transitionMessage": {
+              "type": "string",
+              "description": "The transition message string: JACS_KEY_ROTATION:{agent_id}:{old_key_hash}:{new_key_hash}:{timestamp}"
+            },
+            "signature": {
+              "type": "string",
+              "description": "Base64-encoded signature of the transition message, created with the OLD private key"
+            },
+            "signingAlgorithm": {
+              "type": "string",
+              "description": "The cryptographic algorithm used to create the transition signature (the OLD key's algorithm)"
+            },
+            "oldPublicKeyHash": {
+              "type": "string",
+              "description": "SHA-256 hash of the old (pre-rotation) public key"
+            },
+            "newPublicKeyHash": {
+              "type": "string",
+              "description": "SHA-256 hash of the new (post-rotation) public key"
+            },
+            "timestamp": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp of the rotation event"
+            }
+          },
+          "required": [
+            "transitionMessage",
+            "signature",
+            "signingAlgorithm",
+            "oldPublicKeyHash",
+            "newPublicKeyHash",
+            "timestamp"
+          ]
         }
       },
       "jacsServices": {

@@ -401,7 +401,7 @@ fn test_crash_recovery_full_flow() {
     let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config before");
 
     // Perform rotation (this produces a properly signed config)
-    let result = advanced::rotate(&agent, None).expect("rotation should succeed");
+    let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
 
     // Simulate crash: overwrite the config with the pre-rotation version (stale)
     std::fs::write("./jacs.config.json", &config_before)
@@ -532,6 +532,24 @@ fn test_double_rotation_preserves_chain() {
         msg
     );
 
+    // Chain linkage: second rotation's proof must reference first rotation's new key as oldPublicKeyHash
+    let proof2: Value =
+        serde_json::from_str(result2.transition_proof.as_ref().unwrap()).expect("parse proof2");
+    assert_eq!(
+        proof2["oldPublicKeyHash"].as_str().unwrap(),
+        result1.new_public_key_hash,
+        "Second rotation's proof must reference first rotation's new key as oldPublicKeyHash"
+    );
+
+    // Also verify first rotation's proof references first rotation's new key as newPublicKeyHash
+    let proof1: Value =
+        serde_json::from_str(result1.transition_proof.as_ref().unwrap()).expect("parse proof1");
+    assert_eq!(
+        proof1["newPublicKeyHash"].as_str().unwrap(),
+        result1.new_public_key_hash,
+        "First rotation's proof newPublicKeyHash must match result1.new_public_key_hash"
+    );
+
     // Verify the agent is still functional
     let signed = agent
         .sign_message(&serde_json::json!({"after": "double-rotation"}))
@@ -580,5 +598,126 @@ fn test_transition_proof_verifiable_with_old_key() {
     assert!(
         bad_result.is_err(),
         "Transition proof should NOT verify with new key"
+    );
+}
+
+/// Issue 008 test #1: Ephemeral agent rotation should NOT create a journal file.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_rotate_journal_not_created_for_ephemeral() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let saved_cwd = std::env::current_dir().expect("get cwd");
+    let tmp = tempfile::tempdir().expect("create temp dir");
+    std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
+    let _guard = CwdGuard { saved: saved_cwd };
+
+    // Create ephemeral agent (no disk state)
+    let (agent, _info) =
+        SimpleAgent::ephemeral(Some("ring-Ed25519")).expect("create ephemeral agent");
+
+    // Rotate the ephemeral agent
+    let result = advanced::rotate(&agent, None).expect("ephemeral rotation should succeed");
+    assert!(
+        !result.new_version.is_empty(),
+        "Ephemeral rotation should produce a new version"
+    );
+
+    // No journal file should exist anywhere in the temp dir
+    let journal_path = tmp.path().join("jacs_keys/.jacs_rotation_journal.json");
+    assert!(
+        !journal_path.exists(),
+        "Ephemeral agent rotation must not create a journal file"
+    );
+
+    // Also check current directory
+    assert!(
+        !std::path::Path::new(".jacs_rotation_journal.json").exists(),
+        "No journal file should exist in CWD for ephemeral agent"
+    );
+}
+
+/// Issue 008 test #8: Invalid algorithm string should return a clear error.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_rotate_self_invalid_algorithm_returns_error() {
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, _info, _tmp, _guard) = create_test_agent("invalid-algo-test");
+
+    // Attempt to rotate with an invalid algorithm
+    let result = advanced::rotate(&agent, Some("bogus-algo"));
+    assert!(
+        result.is_err(),
+        "Rotation with invalid algorithm should fail"
+    );
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(
+        err_msg.contains("Invalid algorithm") || err_msg.contains("bogus-algo"),
+        "Error should mention the invalid algorithm, got: {}",
+        err_msg
+    );
+}
+
+/// Issue 008 test #5: After crash recovery, config's jacs_agent_id_and_version
+/// should match the current agent's ID and version.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_crash_recovery_updates_id_and_version() {
+    use jacs::keystore::RotationJournal;
+
+    let _lock = CONFIG_SIGN_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let (agent, info, _tmp, _guard) = create_test_agent("recovery-id-version-test");
+
+    // Capture pre-rotation config
+    let config_before = std::fs::read_to_string("./jacs.config.json").expect("read config before");
+
+    // Perform rotation
+    let _result = advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    // Simulate crash: overwrite config with the pre-rotation version
+    std::fs::write("./jacs.config.json", &config_before)
+        .expect("overwrite config with stale version");
+
+    // Write a journal file
+    let _journal = RotationJournal::create(
+        "./jacs_keys",
+        &info.agent_id,
+        &info.version,
+        "old-key-hash",
+        "ring-Ed25519",
+        "./jacs.config.json",
+    )
+    .expect("create journal");
+
+    // Reload agent -- triggers auto-repair
+    let _reloaded = SimpleAgent::load(Some("./jacs.config.json"), None)
+        .expect("agent should load and auto-repair");
+
+    // Read repaired config and verify jacs_agent_id_and_version
+    let config_after_str =
+        std::fs::read_to_string("./jacs.config.json").expect("read config after repair");
+    let config_after: Value =
+        serde_json::from_str(&config_after_str).expect("parse config after repair");
+
+    let id_and_version = config_after["jacs_agent_id_and_version"]
+        .as_str()
+        .expect("config must have jacs_agent_id_and_version after repair");
+
+    // The ID should match the agent's stable ID
+    assert!(
+        id_and_version.starts_with(&info.agent_id),
+        "Repaired config's jacs_agent_id_and_version should start with the agent ID '{}', got: '{}'",
+        info.agent_id,
+        id_and_version
+    );
+
+    // The version should be the NEW version (from the rotation), not the old one
+    // After repair, the config should reference the latest agent version on disk
+    assert_ne!(
+        id_and_version,
+        format!("{}:{}", info.agent_id, info.version),
+        "Repaired config should NOT reference the pre-rotation version"
     );
 }

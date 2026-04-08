@@ -67,6 +67,7 @@ PYTHON_NAME_MAP = {
     "from_yaml": "from_yaml",
     "to_html": "to_html",
     "from_html": "from_html",
+    "rotate_keys": "rotate_keys",
 }
 
 

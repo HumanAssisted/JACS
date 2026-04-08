@@ -708,8 +708,20 @@ impl Config {
     ///
     /// Used during cross-algorithm key rotation to update the config's algorithm
     /// field after new keys have been generated with the overridden algorithm.
-    pub fn set_key_algorithm(&mut self, algorithm: String) {
-        self.jacs_agent_key_algorithm = Some(algorithm);
+    ///
+    /// Returns an error if the algorithm is not one of the supported values:
+    /// `RSA-PSS`, `ring-Ed25519`, `pq2025`.
+    pub fn set_key_algorithm(&mut self, algorithm: String) -> Result<(), JacsError> {
+        match algorithm.as_str() {
+            "RSA-PSS" | "ring-Ed25519" | "pq2025" => {
+                self.jacs_agent_key_algorithm = Some(algorithm);
+                Ok(())
+            }
+            other => Err(JacsError::ConfigError(format!(
+                "Unsupported algorithm '{}'. Supported: RSA-PSS, ring-Ed25519, pq2025",
+                other
+            ))),
+        }
     }
 
     /// Returns the directory containing the config file, if set.

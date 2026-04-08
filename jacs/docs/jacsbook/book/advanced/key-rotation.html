@@ -288,22 +288,69 @@ fn verify_signature(doc: &amp;Document) -&gt; Result&lt;()&gt; {
 <li>Provides an audit trail</li>
 <li>Binds old and new keys together cryptographically</li>
 </ul>
-<h3 id="cli-commands-planned"><a class="header" href="#cli-commands-planned">CLI Commands (Planned)</a></h3>
-<blockquote>
-<p><strong>Note</strong>: These CLI commands are planned for a future release. Currently, key rotation must be performed programmatically using the Rust API.</p>
-</blockquote>
-<pre><code class="language-bash"># Rotate keys with default algorithm (Coming Soon)
+<h3 id="cli-commands"><a class="header" href="#cli-commands">CLI Commands</a></h3>
+<pre><code class="language-bash"># Rotate keys with default algorithm
 jacs agent rotate-keys
 
-# Rotate to post-quantum algorithm (Coming Soon)
+# Rotate to post-quantum algorithm
 jacs agent rotate-keys --algorithm pq2025
 
-# List key history (Coming Soon)
-jacs agent keys list
+# List key history (active and archived keys)
+jacs agent keys-list
+
+# Repair config after a crash during rotation
+jacs agent repair
 
 # Revoke a compromised key (Coming Soon)
 jacs agent keys revoke &lt;key-hash&gt;
 </code></pre>
+<h3 id="transition-signature-1"><a class="header" href="#transition-signature-1">Transition Signature</a></h3>
+<p>During key rotation, JACS produces a cryptographic transition proof that binds the old key to the new key. This proof is embedded in the agent document as <code>jacsKeyRotationProof</code>:</p>
+<pre><code class="language-json">{
+  "jacsKeyRotationProof": {
+    "transitionMessage": "JACS_KEY_ROTATION:{agent_id}:{old_key_hash}:{new_key_hash}:{timestamp}",
+    "signature": "base64-encoded-signature-with-old-key",
+    "signingAlgorithm": "ring-Ed25519",
+    "oldPublicKeyHash": "sha256-of-old-key",
+    "newPublicKeyHash": "sha256-of-new-key",
+    "timestamp": "2026-04-07T10:00:00Z"
+  }
+}
+</code></pre>
+<p>The transition message is signed with the <strong>old</strong> private key before it is archived. This proves:</p>
+<ul>
+<li>The rotation was authorized by the holder of the previous key</li>
+<li>The old and new keys are cryptographically linked</li>
+<li>An attacker cannot forge a rotation without the old private key</li>
+</ul>
+<p>You can verify a transition proof programmatically using <code>Agent::verify_transition_proof()</code>.</p>
+<h3 id="crash-recovery"><a class="header" href="#crash-recovery">Crash Recovery</a></h3>
+<p>JACS uses a write-ahead journal to recover from crashes during key rotation. Before rotation begins, a journal file is written to <code>{key_directory}/.jacs_rotation_journal.json</code>. The journal tracks the rotation stage:</p>
+<ol>
+<li><code>started</code> - Rotation initiated</li>
+<li><code>keys_rotated</code> - New keys generated, old keys archived</li>
+<li><code>agent_saved</code> - New agent version saved to disk</li>
+<li><code>config_signed</code> - Config re-signed with new key (journal deleted on success)</li>
+</ol>
+<p>If the process crashes mid-rotation, the next agent load detects the journal and automatically repairs the config by re-signing it with the current key. No manual intervention is required for the common case.</p>
+<p>For manual recovery: <code>jacs agent repair</code></p>
+<h3 id="cross-algorithm-rotation"><a class="header" href="#cross-algorithm-rotation">Cross-Algorithm Rotation</a></h3>
+<p>You can change the signing algorithm during rotation:</p>
+<pre><code class="language-bash"># Rotate from Ed25519 to post-quantum
+jacs agent rotate-keys --algorithm pq2025
+</code></pre>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Rust API
+let result = advanced::rotate(&amp;agent, Some("pq2025"))?;
+<span class="boring">}</span></code></pre></pre>
+<pre><code class="language-python"># Python
+result = client.rotate_keys(algorithm="pq2025")
+</code></pre>
+<pre><code class="language-typescript">// Node.js
+const result = await client.rotateKeys({ algorithm: 'pq2025' });
+</code></pre>
+<p>After cross-algorithm rotation, the config file's <code>jacs_agent_key_algorithm</code> field is updated atomically. Documents signed before the rotation remain verifiable using the archived old key.</p>
 <h3 id="example-rotation-flow"><a class="header" href="#example-rotation-flow">Example Rotation Flow</a></h3>
 <pre><code>Time T0: Agent created
   - jacsId: "abc-123"

@@ -336,6 +336,23 @@ impl JacsAgent {
         self.inner.get_document_by_id(document_id).to_py()
     }
 
+    /// Rotate the agent's cryptographic keys.
+    ///
+    /// Generates a new keypair, archives the old keys, creates a new agent version,
+    /// and re-signs the config file. Optionally changes the signing algorithm.
+    ///
+    /// Args:
+    ///     algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS", "pq2025").
+    ///               If None, keeps the current algorithm.
+    ///
+    /// Returns:
+    ///     JSON string containing the RotationResult (old_version, new_version,
+    ///     new_public_key_hash, transition_proof, etc.)
+    #[pyo3(signature = (algorithm=None))]
+    fn rotate_keys(&self, algorithm: Option<&str>) -> PyResult<String> {
+        self.inner.rotate_keys(algorithm).to_py()
+    }
+
     /// Re-encrypt the agent's private key with a new password.
     ///
     /// Args:
@@ -1336,6 +1353,34 @@ impl SimpleAgent {
         let py_data = conversion_utils::value_to_pyobject(py, &data_value)?;
         dict.set_item("data", py_data)?;
         Ok(dict.into())
+    }
+
+    /// Rotate the agent's cryptographic keys.
+    ///
+    /// Generates a new keypair, archives the old keys, creates a new agent version,
+    /// and re-signs the config file. Optionally changes the signing algorithm.
+    ///
+    /// Args:
+    ///     algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS", "pq2025").
+    ///               If None, keeps the current algorithm.
+    ///
+    /// Returns:
+    ///     JSON string containing the RotationResult
+    #[pyo3(signature = (algorithm=None))]
+    fn rotate_keys(&self, algorithm: Option<&str>) -> PyResult<String> {
+        let result = jacs_core::simple::advanced::rotate(self.inner.inner_ref(), algorithm)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Key rotation failed: {}",
+                    e
+                ))
+            })?;
+        serde_json::to_string(&result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to serialize rotation result: {}",
+                e
+            ))
+        })
     }
 
     /// Re-encrypt the agent's private key with a new password.

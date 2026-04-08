@@ -32,8 +32,8 @@ fn compile_time_default_features_yield_core_tools() {
     #[cfg(feature = "full-tools")]
     assert_eq!(
         tools.len(),
-        42,
-        "full-tools feature should register all 42 tools"
+        43,
+        "full-tools feature should register all 43 tools"
     );
 }
 

@@ -66,6 +66,8 @@
 
 * [Untitled object in Agent](./agent-allof-1.md) – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1`
 
+* [Untitled object in Agent](./agent-allof-1-properties-jacskeyrotationproof.md "Cryptographic proof that a key rotation was authorized by the previous key holder") – `https://hai.ai/schemas/agent/v1/agent.schema.json#/allOf/1/properties/jacsKeyRotationProof`
+
 * [Untitled object in Attestation](./attestation-properties-attestation.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation`
 
 * [Untitled object in Attestation](./attestation-properties-attestation-properties-subject.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/subject`

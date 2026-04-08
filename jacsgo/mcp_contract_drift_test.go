@@ -109,6 +109,7 @@ func expectedMcpTools() []string {
 		"jacs_message_send",
 		"jacs_message_update",
 		"jacs_reencrypt_key",
+		"jacs_rotate_keys",
 		"jacs_search",
 		"jacs_sign_agreement",
 		"jacs_sign_document",

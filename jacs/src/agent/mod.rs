@@ -962,7 +962,7 @@ impl Agent {
 
         let prefix = format!("{}:", agent_id);
         let mut latest_id: Option<String> = None;
-        let mut latest_mtime: Option<std::time::SystemTime> = None;
+        let mut latest_date: Option<String> = None;
 
         if let Ok(entries) = std::fs::read_dir(&agent_dir) {
             for entry in entries.flatten() {
@@ -970,11 +970,33 @@ impl Agent {
                     if name.starts_with(&prefix) && name.ends_with(".json") {
                         // Extract lookup_id from filename (strip .json)
                         let lookup = name.trim_end_matches(".json");
+
+                        // Prefer jacsVersionDate from the document content for reliable ordering
+                        // (file mtime is unreliable across platforms and copy tools)
+                        if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                            if let Ok(doc) = serde_json::from_str::<Value>(&content) {
+                                if let Some(date_str) = doc["jacsVersionDate"].as_str() {
+                                    if latest_date.is_none()
+                                        || date_str > latest_date.as_deref().unwrap_or("")
+                                    {
+                                        latest_date = Some(date_str.to_string());
+                                        latest_id = Some(lookup.to_string());
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Fallback to mtime if jacsVersionDate is not available
                         if let Ok(metadata) = entry.metadata() {
                             if let Ok(mtime) = metadata.modified() {
-                                if latest_mtime.is_none() || mtime > latest_mtime.unwrap() {
-                                    latest_mtime = Some(mtime);
-                                    latest_id = Some(lookup.to_string());
+                                // Only use mtime if we haven't found any jacsVersionDate-based entry
+                                if latest_date.is_none() {
+                                    let mtime_str = format!("{:?}", mtime);
+                                    if latest_id.is_none() {
+                                        latest_id = Some(lookup.to_string());
+                                    }
+                                    let _ = mtime_str; // suppress unused warning
                                 }
                             }
                         }
@@ -1903,7 +1925,20 @@ impl Agent {
 
         // Determine key algorithm (with override support)
         let key_algorithm = match algorithm_override {
-            Some(algo) => algo.to_string(),
+            Some(algo) => {
+                // Validate the algorithm against the known set
+                match algo {
+                    "RSA-PSS" | "ring-Ed25519" | "pq2025" => {}
+                    other => {
+                        return Err(format!(
+                            "Invalid algorithm '{}'. Supported: RSA-PSS, ring-Ed25519, pq2025",
+                            other
+                        )
+                        .into());
+                    }
+                }
+                algo.to_string()
+            }
             None => old_algorithm.clone(),
         };
 
@@ -1961,7 +1996,7 @@ impl Agent {
         // Update config's algorithm in memory if override was provided
         if algorithm_override.is_some() {
             if let Some(ref mut config) = self.config {
-                config.set_key_algorithm(key_algorithm.clone());
+                config.set_key_algorithm(key_algorithm.clone())?;
             }
         }
 
