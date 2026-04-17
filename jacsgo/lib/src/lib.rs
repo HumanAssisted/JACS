@@ -999,7 +999,7 @@ pub extern "C" fn jacs_agent_assess_a2a_agent(
 
 // ============================================================================
 // Protocol API - build_auth_header, canonicalize_json, sign_response,
-// generate_verify_link, unwrap_signed_event
+// unwrap_signed_event
 // ============================================================================
 
 /// Build an Authorization header value for the current agent.

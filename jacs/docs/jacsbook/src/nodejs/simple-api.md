@@ -88,7 +88,6 @@ Pure sync functions (no NAPI call, no suffix needed):
 | `untrustAgent(id)` | Remove from trust store |
 | `isTrusted(id)` | Check if agent is trusted |
 | `getTrustedAgent(id)` | Get trusted agent's JSON |
-| `generateVerifyLink(doc, baseUrl?)` | Generate verification URL |
 
 ---
 

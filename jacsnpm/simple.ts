@@ -1340,11 +1340,3 @@ export function exportAttestationDsseSync(
   });
 }
 
-// =============================================================================
-// Verification Link
-// =============================================================================
-
-export function generateVerifyLink(doc: string, baseUrl?: string): string {
-  const encoded = Buffer.from(doc).toString('base64url');
-  return `${baseUrl || 'https://hai.ai/jacs/verify'}?s=${encoded}`;
-}

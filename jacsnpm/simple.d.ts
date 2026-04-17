@@ -402,4 +402,3 @@ export declare function exportAttestationDsse(attestationJson: string): Promise<
  * @returns The DSSE envelope as a parsed object.
  */
 export declare function exportAttestationDsseSync(attestationJson: string): DsseEnvelope;
-export declare function generateVerifyLink(doc: string, baseUrl?: string): string;

@@ -20,11 +20,13 @@ use serde_json::json;
 use std::collections::HashSet;
 use tracing::{debug, info, warn};
 
-// WARNING: This module uses `.expect()` in multiple signing/verification
-// paths (12+ call sites). These will panic on malformed input.
-// Acceptable because agreements are NOT in the launch path (2026-04-06).
-// TODO: Convert all `.expect()` calls to `?` error propagation before
-// enabling agreements in production. See docs/0403INCONCISTANCIES.md item B5.
+// WARNING: This module uses `.expect()` in 14 signing/verification call sites.
+// These will panic on malformed input. Agreements are not in the shipped launch
+// path — callers are gated behind the `agreements` feature flag — so the panics
+// are not reachable in production builds.
+//
+// Before enabling the `agreements` feature by default or promoting this module
+// to a user-facing API, convert every `.expect()` to `?` error propagation.
 
 /// Options for creating and checking agreements.
 ///

@@ -341,15 +341,6 @@ pub struct Config {
     #[getset(get = "pub")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     jacs_database_url: Option<String>,
-    #[getset(get = "pub")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    jacs_database_max_connections: Option<u32>,
-    #[getset(get = "pub")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    jacs_database_min_connections: Option<u32>,
-    #[getset(get = "pub")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    jacs_database_connect_timeout_secs: Option<u64>,
     /// Directory containing the config file. Set automatically by `Config::from_file()`.
     /// Used by `load_by_config` to calculate `storage_root` without re-deriving from path.
     /// Not serialized — this is runtime-only metadata.
@@ -454,9 +445,6 @@ impl Default for Config {
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
-            jacs_database_max_connections: None,
-            jacs_database_min_connections: None,
-            jacs_database_connect_timeout_secs: None,
             config_dir: None,
             is_signed: false,
             raw_json: None,
@@ -619,9 +607,6 @@ impl ConfigBuilder {
             is_signed: false,
             raw_json: None,
             jacs_database_url: None,
-            jacs_database_max_connections: None,
-            jacs_database_min_connections: None,
-            jacs_database_connect_timeout_secs: None,
             config_dir: None,
         }
     }
@@ -685,9 +670,6 @@ impl Config {
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
-            jacs_database_max_connections: None,
-            jacs_database_min_connections: None,
-            jacs_database_connect_timeout_secs: None,
             config_dir: None,
             is_signed: false,
             raw_json: None,
@@ -775,17 +757,6 @@ impl Config {
         }
     }
 
-    fn apply_parsed_override<T>(target: &mut Option<T>, key: &str)
-    where
-        T: std::str::FromStr,
-    {
-        if let Some(val) = Self::env_opt(key)
-            && let Ok(parsed) = val.parse::<T>()
-        {
-            *target = Some(parsed);
-        }
-    }
-
     /// Merge another config into this one.
     /// Values from `other` will override values in `self` if they are Some.
     pub fn merge(&mut self, other: Config) {
@@ -808,9 +779,6 @@ impl Config {
             jacs_keychain_backend,
             observability,
             jacs_database_url,
-            jacs_database_max_connections,
-            jacs_database_min_connections,
-            jacs_database_connect_timeout_secs,
             config_dir,
             is_signed,
             raw_json,
@@ -841,18 +809,6 @@ impl Config {
         Self::replace_if_some(&mut self.jacs_keychain_backend, jacs_keychain_backend);
         Self::replace_if_some(&mut self.observability, observability);
         Self::replace_if_some(&mut self.jacs_database_url, jacs_database_url);
-        Self::replace_if_some(
-            &mut self.jacs_database_max_connections,
-            jacs_database_max_connections,
-        );
-        Self::replace_if_some(
-            &mut self.jacs_database_min_connections,
-            jacs_database_min_connections,
-        );
-        Self::replace_if_some(
-            &mut self.jacs_database_connect_timeout_secs,
-            jacs_database_connect_timeout_secs,
-        );
         // config_dir from the incoming config takes precedence if set
         Self::replace_if_some(&mut self.config_dir, config_dir);
 
@@ -914,18 +870,6 @@ impl Config {
         Self::apply_bool_override(&mut self.jacs_dns_required, "JACS_DNS_REQUIRED");
 
         Self::apply_string_override(&mut self.jacs_database_url, "JACS_DATABASE_URL");
-        Self::apply_parsed_override(
-            &mut self.jacs_database_max_connections,
-            "JACS_DATABASE_MAX_CONNECTIONS",
-        );
-        Self::apply_parsed_override(
-            &mut self.jacs_database_min_connections,
-            "JACS_DATABASE_MIN_CONNECTIONS",
-        );
-        Self::apply_parsed_override(
-            &mut self.jacs_database_connect_timeout_secs,
-            "JACS_DATABASE_CONNECT_TIMEOUT_SECS",
-        );
 
         // Note: Password is intentionally NOT loaded from env into config
         // It should be read directly from env when needed via get_env_var("JACS_PRIVATE_KEY_PASSWORD", true)
@@ -957,9 +901,6 @@ impl Config {
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
-            jacs_database_max_connections: None,
-            jacs_database_min_connections: None,
-            jacs_database_connect_timeout_secs: None,
             config_dir: None,
             is_signed: false,
             raw_json: None,
@@ -1682,9 +1623,6 @@ mod tests {
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
-            jacs_database_max_connections: None,
-            jacs_database_min_connections: None,
-            jacs_database_connect_timeout_secs: None,
             config_dir: None,
             is_signed: false,
             raw_json: None,
@@ -1766,9 +1704,6 @@ mod tests {
             jacs_keychain_backend: None,
             observability: None,
             jacs_database_url: None,
-            jacs_database_max_connections: None,
-            jacs_database_min_connections: None,
-            jacs_database_connect_timeout_secs: None,
             config_dir: None,
             is_signed: false,
             raw_json: None,
@@ -1887,28 +1822,6 @@ mod tests {
         config.apply_env_overrides();
 
         assert_eq!(config.jacs_data_directory, original_data_dir);
-
-        clear_jacs_env_vars();
-    }
-
-    #[test]
-    #[serial(jacs_env)]
-    fn test_apply_env_overrides_ignores_invalid_database_numbers() {
-        clear_jacs_env_vars();
-
-        let mut config = Config::with_defaults();
-        config.jacs_database_max_connections = Some(10);
-        config.jacs_database_min_connections = Some(2);
-        config.jacs_database_connect_timeout_secs = Some(30);
-
-        set_env_var("JACS_DATABASE_MAX_CONNECTIONS", "not-a-number").unwrap();
-        set_env_var("JACS_DATABASE_MIN_CONNECTIONS", "bad").unwrap();
-        set_env_var("JACS_DATABASE_CONNECT_TIMEOUT_SECS", "oops").unwrap();
-        config.apply_env_overrides();
-
-        assert_eq!(config.jacs_database_max_connections, Some(10));
-        assert_eq!(config.jacs_database_min_connections, Some(2));
-        assert_eq!(config.jacs_database_connect_timeout_secs, Some(30));
 
         clear_jacs_env_vars();
     }

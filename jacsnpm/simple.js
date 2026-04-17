@@ -127,13 +127,12 @@ exports.liftToAttestation = liftToAttestation;
 exports.liftToAttestationSync = liftToAttestationSync;
 exports.exportAttestationDsse = exportAttestationDsse;
 exports.exportAttestationDsseSync = exportAttestationDsseSync;
-exports.generateVerifyLink = generateVerifyLink;
 const index_1 = require("./index");
 Object.defineProperty(exports, "JacsAgent", { enumerable: true, get: function () { return index_1.JacsAgent; } });
 Object.defineProperty(exports, "hashString", { enumerable: true, get: function () { return index_1.hashString; } });
 Object.defineProperty(exports, "createConfig", { enumerable: true, get: function () { return index_1.createConfig; } });
 const path = __importStar(require("path"));
-const fs = require("fs");
+const fs = __importStar(require("fs"));
 const deprecation_1 = require("./deprecation");
 // =============================================================================
 // Global State
@@ -1045,12 +1044,5 @@ function exportAttestationDsseSync(attestationJson) {
         const raw = agent.exportAttestationDsseSync(attestationJson);
         return JSON.parse(raw);
     });
-}
-// =============================================================================
-// Verification Link
-// =============================================================================
-function generateVerifyLink(doc, baseUrl) {
-    const encoded = Buffer.from(doc).toString('base64url');
-    return `${baseUrl || 'https://hai.ai/jacs/verify'}?s=${encoded}`;
 }
 //# sourceMappingURL=simple.js.map
