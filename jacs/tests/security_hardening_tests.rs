@@ -131,6 +131,68 @@ mod sign_detached_non_utf8 {
 }
 
 // =============================================================================
+// Finding 5: RSA private-key operations must be disabled until upstream fix
+// =============================================================================
+
+mod rsa_private_key_operations_disabled {
+    use jacs::keystore::{InMemoryKeyStore, KeySpec, KeyStore};
+    use jacs::simple::SimpleAgent;
+
+    #[test]
+    fn rejects_rsa_ephemeral_agent_creation() {
+        let err = SimpleAgent::ephemeral(Some("rsa-pss"))
+            .err()
+            .expect("RSA ephemeral should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn rejects_rsa_keystore_generation() {
+        let store = InMemoryKeyStore::new("RSA-PSS");
+        let err = store
+            .generate(&KeySpec {
+                algorithm: "RSA-PSS".to_string(),
+                key_id: None,
+            })
+            .expect_err("RSA key generation should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
+    }
+
+    #[cfg(feature = "a2a")]
+    #[test]
+    fn rejects_rsa_a2a_key_generation_and_signing() {
+        use jacs::a2a::keys::{create_jwk_keys, sign_jws};
+
+        let err = create_jwk_keys(Some("rsa"), Some("rsa"))
+            .err()
+            .expect("RSA A2A key generation should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
+
+        let (private_key, _public_key) =
+            jacs::crypt::ringwrapper::generate_keys().expect("ed25519 key generation should work");
+        let err = sign_jws(br#"{"sub":"test"}"#, &private_key, "rsa", "kid")
+            .expect_err("RSA A2A signing should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
+    }
+}
+
+// =============================================================================
 // Finding 3: trust_a2a_card must warn about unverified cards
 // =============================================================================
 

@@ -390,7 +390,7 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("algorithm")
                                 .long("algorithm")
-                                .value_parser(["ring-Ed25519", "RSA-PSS", "pq2025"])
+                                .value_parser(["ring-Ed25519", "pq2025"])
                                 .help("Signing algorithm for the new keys (defaults to current)"),
                         )
                         .arg(
@@ -958,7 +958,7 @@ pub fn build_cli() -> Command {
                             Arg::new("algorithm")
                                 .long("algorithm")
                                 .short('a')
-                                .value_parser(["pq2025", "ring-Ed25519", "RSA-PSS"])
+                                .value_parser(["pq2025", "ring-Ed25519"])
                                 .help("Signing algorithm (default: pq2025)"),
                         ),
                 ),
@@ -991,7 +991,7 @@ pub fn build_cli() -> Command {
                     Arg::new("algorithm")
                         .long("algorithm")
                         .short('a')
-                        .value_parser(["ed25519", "rsa-pss", "pq2025"])
+                        .value_parser(["ed25519", "pq2025"])
                         .default_value("pq2025")
                         .help("Signing algorithm (default: pq2025)"),
                 )

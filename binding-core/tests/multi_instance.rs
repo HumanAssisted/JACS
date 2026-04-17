@@ -21,7 +21,7 @@ fn create_ephemeral_wrapper(algo: &str) -> (AgentWrapper, String) {
 #[test]
 fn test_two_wrappers_different_ids() {
     let (_, id_a) = create_ephemeral_wrapper("ed25519");
-    let (_, id_b) = create_ephemeral_wrapper("rsa-pss");
+    let (_, id_b) = create_ephemeral_wrapper("pq2025");
 
     assert_ne!(id_a, id_b, "Two AgentWrappers must have different IDs");
 }

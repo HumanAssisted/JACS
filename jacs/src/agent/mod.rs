@@ -2072,6 +2072,10 @@ impl Agent {
             let config = self.config.as_ref().ok_or("Agent config not initialized")?;
             config.get_key_algorithm()?
         };
+        crate::crypt::ensure_private_key_operation_allowed(
+            &old_algorithm,
+            "rotation proof signing",
+        )?;
 
         // Get old private key bytes for signing the transition proof
         let old_private_key_bytes = {
@@ -2105,6 +2109,7 @@ impl Agent {
             }
             None => old_algorithm.clone(),
         };
+        crate::crypt::ensure_private_key_operation_allowed(&key_algorithm, "key rotation")?;
 
         let spec = KeySpec {
             algorithm: key_algorithm.clone(),

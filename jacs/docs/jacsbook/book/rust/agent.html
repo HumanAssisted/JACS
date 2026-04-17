@@ -311,11 +311,12 @@ jacs agent create --create-keys true
 <p>JACS supports multiple cryptographic algorithms:</p>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Description</th><th>Recommended For</th></tr></thead><tbody>
 <tr><td><code>ring-Ed25519</code></td><td>Fast elliptic curve signatures</td><td>General use (default)</td></tr>
-<tr><td><code>RSA-PSS</code></td><td>Traditional RSA signatures</td><td>Legacy compatibility</td></tr>
+<tr><td><code>RSA-PSS</code></td><td>Traditional RSA signatures</td><td>Legacy verification only</td></tr>
 <tr><td><code>pq2025</code></td><td>Post-quantum ML-DSA-87 signatures</td><td>Future-proof security</td></tr>
 <tr><td><code>pq-dilithium</code></td><td>Legacy post-quantum signatures</td><td>Backward compatibility only (deprecated)</td></tr>
 </tbody></table>
 </div>
+<p>Create new agents with <code>ring-Ed25519</code> or <code>pq2025</code>. <code>RSA-PSS</code> is accepted only so older agents and documents can still be verified.</p>
 <h3 id="configure-key-algorithm"><a class="header" href="#configure-key-algorithm">Configure Key Algorithm</a></h3>
 <p>In <code>jacs.config.json</code>:</p>
 <pre><code class="language-json">{

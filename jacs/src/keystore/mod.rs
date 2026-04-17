@@ -350,6 +350,7 @@ impl KeyStore for FsEncryptedStore {
             algorithm = %spec.algorithm,
             "FsEncryptedStore::generate called"
         );
+        crate::crypt::ensure_private_key_operation_allowed(&spec.algorithm, "key generation")?;
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -486,6 +487,7 @@ impl KeyStore for FsEncryptedStore {
         message: &[u8],
         algorithm: &str,
     ) -> Result<Vec<u8>, JacsError> {
+        crate::crypt::ensure_private_key_operation_allowed(algorithm, "signing")?;
         let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -528,6 +530,7 @@ impl KeyStore for FsEncryptedStore {
             algorithm = %spec.algorithm,
             "FsEncryptedStore::rotate called"
         );
+        crate::crypt::ensure_private_key_operation_allowed(&spec.algorithm, "key rotation")?;
 
         Self::validate_archive_version_component(old_version)?;
         let priv_path = self.paths.private_key_enc_path();
@@ -670,6 +673,7 @@ impl Drop for InMemoryKeyStore {
 
 impl KeyStore for InMemoryKeyStore {
     fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
+        crate::crypt::ensure_private_key_operation_allowed(&spec.algorithm, "key generation")?;
         let algo = match spec.algorithm.as_str() {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -727,6 +731,7 @@ impl KeyStore for InMemoryKeyStore {
         message: &[u8],
         algorithm: &str,
     ) -> Result<Vec<u8>, JacsError> {
+        crate::crypt::ensure_private_key_operation_allowed(algorithm, "signing")?;
         let algo = match algorithm {
             "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
@@ -765,6 +770,7 @@ impl KeyStore for InMemoryKeyStore {
 
     fn rotate(&self, _old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         // In-memory stores have no files to archive — just regenerate.
+        crate::crypt::ensure_private_key_operation_allowed(&spec.algorithm, "key rotation")?;
         self.generate(spec)
     }
 }

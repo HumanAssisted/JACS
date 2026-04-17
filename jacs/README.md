@@ -12,7 +12,7 @@ cargo install jacs-cli
 
 | Capability | Description |
 |-----------|-------------|
-| **Agent Identity** | Generate a cryptographic keypair. Post-quantum (ML-DSA-87), Ed25519, or RSA-PSS. |
+| **Agent Identity** | Generate a cryptographic keypair. Post-quantum (ML-DSA-87) or Ed25519 for new agents; RSA-PSS remains verification-only for legacy artifacts. |
 | **Data Provenance** | Sign any JSON document or file with tamper-evident signatures. |
 | **Agent Trust** | Verify identities, manage trust stores, enforce trust policies across agents. |
 

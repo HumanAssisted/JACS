@@ -219,7 +219,7 @@ std::fs::write("outgoing_signed.eml", &amp;signed_eml)?;
     fn algorithm(&amp;self) -&gt; &amp;str;
 }
 <span class="boring">}</span></code></pre></pre>
-<p>The algorithm value (e.g. <code>"ed25519"</code>, <code>"rsa-pss"</code>, <code>"pq2025"</code>) is read from
+<p>The algorithm value (e.g. <code>"ed25519"</code>, <code>"pq2025"</code>, or legacy <code>"rsa-pss"</code> when verifying older mail signatures) is read from
 your JACS agent's key metadata at runtime. <code>sign_email</code> records it in the
 <code>jacs-signature.json</code> document so the verifier knows which algorithm to use.</p>
 <h3 id="what-sign_email-does-internally"><a class="header" href="#what-sign_email-does-internally">What <code>sign_email</code> does internally</a></h3>

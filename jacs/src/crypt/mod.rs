@@ -100,9 +100,38 @@ pub fn supported_verification_algorithms() -> Vec<&'static str> {
     vec!["ring-Ed25519", "RSA-PSS", "pq2025"]
 }
 
+/// Returns the list of algorithms still permitted for new private-key use.
+pub fn supported_private_key_algorithms() -> Vec<&'static str> {
+    vec!["ring-Ed25519", "pq2025"]
+}
+
 /// Returns the list of post-quantum algorithms actually implemented in JACS.
 pub fn supported_pq_algorithms() -> Vec<&'static str> {
     vec!["pq2025"]
+}
+
+fn rsa_private_key_operations_disabled(algorithm: &str) -> bool {
+    matches!(
+        algorithm.trim().to_ascii_lowercase().as_str(),
+        "rsa" | "rsa-pss"
+    )
+}
+
+/// Reject new RSA private-key operations while preserving verification support.
+pub fn ensure_private_key_operation_allowed(
+    algorithm: &str,
+    operation: &str,
+) -> Result<(), JacsError> {
+    if rsa_private_key_operations_disabled(algorithm) {
+        let allowed = supported_private_key_algorithms().join(", ");
+        return Err(JacsError::CryptoError(format!(
+            "RSA private-key {} is disabled due to RUSTSEC-2023-0071 \
+             (Marvin timing sidechannel). Use one of [{}] for new signing keys. \
+             RSA verification remains supported for existing artifacts.",
+            operation, allowed
+        )));
+    }
+    Ok(())
 }
 
 pub const JACS_AGENT_PRIVATE_KEY_FILENAME: &str = "JACS_AGENT_PRIVATE_KEY_FILENAME";
@@ -237,6 +266,7 @@ impl Agent {
                 e
             )
         })?;
+        ensure_private_key_operation_allowed(&key_algorithm, "signing")?;
 
         let binding = self
             .get_private_key()
@@ -285,6 +315,7 @@ impl Agent {
     pub fn generate_keys_with_store(&mut self, ks: &dyn KeyStore) -> Result<(), JacsError> {
         let config = self.config.as_ref().ok_or("Agent config not initialized")?;
         let key_algorithm = config.get_key_algorithm()?;
+        ensure_private_key_operation_allowed(&key_algorithm, "key generation")?;
         info!(algorithm = %key_algorithm, "Generating new keypair");
         let spec = KeySpec {
             algorithm: key_algorithm.clone(),
@@ -319,6 +350,7 @@ impl KeyManager for Agent {
                 e
             )
         })?;
+        ensure_private_key_operation_allowed(&key_algorithm, "signing")?;
         trace!(
             algorithm = %key_algorithm,
             data_len = data.len(),
@@ -416,6 +448,7 @@ impl KeyManager for Agent {
                 e
             )
         })?;
+        ensure_private_key_operation_allowed(&key_algorithm, "signing")?;
 
         let batch_start = std::time::Instant::now();
         info!(

@@ -332,7 +332,7 @@ impl SimpleAgent {
     ///
     /// * `name` - Human-readable name for the agent
     /// * `purpose` - Optional description of the agent's purpose
-    /// * `key_algorithm` - Signing algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
+    /// * `key_algorithm` - Signing algorithm: "pq2025" (default) or "ed25519"
     ///
     /// # Returns
     ///
@@ -449,6 +449,7 @@ impl SimpleAgent {
                 other => other.to_string(),
             }
         };
+        crate::crypt::ensure_private_key_operation_allowed(&algorithm, "key generation")?;
 
         info!(
             "Creating new agent '{}' with algorithm '{}' (programmatic)",
@@ -867,7 +868,7 @@ impl SimpleAgent {
     ///
     /// # Arguments
     ///
-    /// * `algorithm` - Signing algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
+    /// * `algorithm` - Signing algorithm: "pq2025" (default) or "ed25519"
     ///
     /// # Returns
     ///
@@ -891,6 +892,7 @@ impl SimpleAgent {
             "pq2025" => "pq2025",
             other => other,
         };
+        crate::crypt::ensure_private_key_operation_allowed(algo, "key generation")?;
 
         let mut agent = Agent::ephemeral(algo).map_err(|e| JacsError::Internal {
             message: format!("Failed to create ephemeral agent: {}", e),

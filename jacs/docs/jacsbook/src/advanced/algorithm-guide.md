@@ -7,9 +7,11 @@ Choosing the right signing algorithm affects key size, signature size, verificat
 | Algorithm | Config Value | Public Key | Signature | Best For |
 |-----------|-------------|------------|-----------|----------|
 | Ed25519 | `ring-Ed25519` | 32 bytes | 64 bytes | Speed, small signatures |
-| RSA-PSS | `RSA-PSS` | ~550 bytes (4096-bit) | ~512 bytes | Broad compatibility |
+| RSA-PSS | `RSA-PSS` | ~550 bytes (4096-bit) | ~512 bytes | Legacy verification only |
 | ML-DSA-87 | `pq2025` | 2,592 bytes | 4,627 bytes | Post-quantum compliance (FIPS-204) |
 | Dilithium | `pq-dilithium` | >1,000 bytes | ~3,293-4,644 bytes | **Deprecated** -- use `pq2025` |
+
+`RSA-PSS` is kept only so JACS can load and verify older artifacts. New RSA key generation, signing, and rotation are disabled.
 
 ## How to Choose
 
@@ -17,13 +19,13 @@ Choosing the right signing algorithm affects key size, signature size, verificat
 Do you need FIPS/NIST post-quantum compliance?
   ├── Yes → pq2025
   └── No
-       ├── Need maximum interop with existing PKI/TLS systems? → RSA-PSS
-       └── Need speed and small payloads? → ring-Ed25519
+       ├── Need a compact classical algorithm for new keys? → ring-Ed25519
+       └── Need to verify historical RSA artifacts? → Keep RSA-PSS verification enabled, but create new keys with ring-Ed25519 or pq2025
 ```
 
 **Default recommendation for new projects: `pq2025`**
 
-Ed25519 and RSA-PSS are well-understood and widely deployed, but neither is quantum-resistant. If you don't have a specific reason to choose one of them, start with `pq2025` so you don't have to migrate later.
+Ed25519 is well-understood and widely deployed, but it is not quantum-resistant. If you don't have a specific reason to stay classical, start with `pq2025` so you don't have to migrate later.
 
 ## When to Choose Post-Quantum
 
@@ -40,7 +42,7 @@ The tradeoff is size: ML-DSA-87 public keys are 2,592 bytes and signatures are 4
 
 ## Cross-Algorithm Verification
 
-JACS verification works across algorithms. An agreement can contain signatures from RSA, Ed25519, and ML-DSA agents and all verify correctly. This heterogeneous verification is important for cross-organization scenarios where different parties chose different algorithms.
+JACS verification works across algorithms. An agreement can contain signatures from legacy RSA, Ed25519, and ML-DSA agents and all verify correctly. This heterogeneous verification is important for cross-organization scenarios where different parties chose different algorithms over time.
 
 Each agent uses one algorithm (chosen at creation time), but can **verify** signatures from all supported algorithms.
 
@@ -60,7 +62,9 @@ Or via environment variable:
 export JACS_AGENT_KEY_ALGORITHM=pq2025
 ```
 
-Valid values: `ring-Ed25519`, `RSA-PSS`, `pq2025`
+Valid values for new keys: `ring-Ed25519`, `pq2025`
+
+Legacy compatibility note: `RSA-PSS` may still appear in stored configs and signed documents so older material can be verified, but it is not supported for creating or rotating new signing keys.
 
 In Python and Node.js, pass the algorithm to `quickstart(...)`:
 

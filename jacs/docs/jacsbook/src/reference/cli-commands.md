@@ -31,7 +31,7 @@ jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-E
 **Options:**
 - `--name <name>` - Agent name used for first-time quickstart creation (required)
 - `--domain <domain>` - Agent domain used for DNS/public-key verification workflows (required)
-- `--algorithm <algo>` - Signing algorithm (default: `pq2025`). Also: `ring-Ed25519`, `RSA-PSS`
+- `--algorithm <algo>` - Signing algorithm (default: `pq2025`). Also: `ring-Ed25519`
 - `--sign` - Sign input (from stdin or `--file`) instead of printing info
 - `--file <path>` - Read JSON input from file instead of stdin (requires `--sign`)
 

@@ -215,7 +215,7 @@ JACS uses industry-standard cryptographic primitives for security.
 
 **Current Standards**
 - **ring-Ed25519**: Fast elliptic curve signatures using the ring library (recommended)
-- **RSA-PSS**: Traditional RSA with probabilistic signature scheme
+- **RSA-PSS**: Legacy RSA verification for older artifacts; not used for new key generation
 
 **Post-Quantum**
 - **pq-dilithium**: NIST-standardized post-quantum signatures

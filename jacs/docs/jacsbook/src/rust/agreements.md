@@ -232,7 +232,7 @@ agreement = client.create_agreement(
 )
 ```
 
-An agent using RSA-PSS or Ed25519 will be rejected when trying to sign this agreement.
+An agent using Ed25519, or a legacy RSA-PSS agent, will be rejected when trying to sign this agreement.
 
 ### Combined Options
 

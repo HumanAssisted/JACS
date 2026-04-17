@@ -326,13 +326,8 @@ export JACS_DEFAULT_STORAGE="fs"
 </code></pre>
 <p><strong>Pros</strong>: Fast, secure, small signatures
 <strong>Cons</strong>: Requires elliptic curve support</p>
-<h3 id="rsa-pss"><a class="header" href="#rsa-pss">RSA-PSS</a></h3>
-<pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "RSA-PSS"
-}
-</code></pre>
-<p><strong>Pros</strong>: Widely supported, proven security
-<strong>Cons</strong>: Larger signatures, slower</p>
+<h3 id="legacy-rsa-pss-verification"><a class="header" href="#legacy-rsa-pss-verification">Legacy RSA-PSS Verification</a></h3>
+<p>JACS can still verify older artifacts whose metadata says <code>RSA-PSS</code>, but new Node-managed agents should use <code>ring-Ed25519</code> or <code>pq2025</code>.</p>
 <h3 id="pq-dilithium-post-quantum"><a class="header" href="#pq-dilithium-post-quantum">pq-dilithium (Post-Quantum)</a></h3>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq-dilithium"

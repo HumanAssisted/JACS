@@ -173,9 +173,11 @@ JACS supports multiple cryptographic algorithms:
 | Algorithm | Description | Recommended For |
 |-----------|-------------|-----------------|
 | `ring-Ed25519` | Fast elliptic curve signatures | General use (default) |
-| `RSA-PSS` | Traditional RSA signatures | Legacy compatibility |
+| `RSA-PSS` | Traditional RSA signatures | Legacy verification only |
 | `pq2025` | Post-quantum ML-DSA-87 signatures | Future-proof security |
 | `pq-dilithium` | Legacy post-quantum signatures | Backward compatibility only (deprecated) |
+
+Create new agents with `ring-Ed25519` or `pq2025`. `RSA-PSS` is accepted only so older agents and documents can still be verified.
 
 ### Configure Key Algorithm
 

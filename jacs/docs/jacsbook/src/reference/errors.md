@@ -99,7 +99,7 @@ jacs document create -f doc.json
 
 ### Algorithm Mismatch
 
-**Error:** `Key algorithm 'ring-Ed25519' does not match configured algorithm 'RSA-PSS'`
+**Error:** `Key algorithm 'ring-Ed25519' does not match configured algorithm 'pq2025'`
 
 **Cause:** The key file was created with a different algorithm than configured.
 
@@ -148,7 +148,8 @@ jacs document create -f unsigned-doc.json
 **Cause:** Document was signed with an unsupported algorithm.
 
 **Solution:**
-- Use a supported algorithm: `ring-Ed25519`, `RSA-PSS`, `pq-dilithium`, `pq2025`
+- Use a supported algorithm for new keys: `ring-Ed25519`, `pq2025`
+- Legacy note: JACS can still verify older `RSA-PSS` and `pq-dilithium` artifacts
 
 ## DNS Verification Errors
 

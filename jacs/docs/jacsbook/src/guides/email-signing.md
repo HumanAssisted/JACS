@@ -49,7 +49,7 @@ pub trait EmailSigner {
 }
 ```
 
-The algorithm value (e.g. `"ed25519"`, `"rsa-pss"`, `"pq2025"`) is read from
+The algorithm value (e.g. `"ed25519"`, `"pq2025"`, or legacy `"rsa-pss"` when verifying older mail signatures) is read from
 your JACS agent's key metadata at runtime. `sign_email` records it in the
 `jacs-signature.json` document so the verifier knows which algorithm to use.
 

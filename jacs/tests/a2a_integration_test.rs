@@ -1,7 +1,7 @@
 #![cfg(feature = "a2a")]
 //! Integration tests for A2A protocol support in JACS (v0.4.0)
 
-use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*, *};
+use jacs::a2a::{agent_card::*, extension::*, keys::*, provenance::*};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::agent::loaders::FileLoader;
@@ -62,18 +62,17 @@ fn test_export_agent_to_a2a_agent_card() {
 }
 
 #[test]
-fn test_dual_key_generation() {
-    // No environment setup needed - keys are ephemeral
-    let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa")).expect("Failed to create dual keys");
+fn test_dual_key_generation_prefers_safe_algorithms() {
+    let dual_keys = create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519"))
+        .expect("Failed to create dual keys");
 
-    // Verify both keys were generated
     assert!(!dual_keys.jacs_private_key.is_empty());
     assert!(!dual_keys.jacs_public_key.is_empty());
-    assert_eq!(dual_keys.jacs_algorithm, "rsa");
+    assert_eq!(dual_keys.jacs_algorithm, "ring-Ed25519");
 
     assert!(!dual_keys.a2a_private_key.is_empty());
     assert!(!dual_keys.a2a_public_key.is_empty());
-    assert_eq!(dual_keys.a2a_algorithm, "rsa");
+    assert_eq!(dual_keys.a2a_algorithm, "ring-Ed25519");
 }
 
 #[test]
@@ -84,7 +83,8 @@ fn test_agent_card_jws_signing() {
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
 
     // Generate A2A-compatible keys (ephemeral - no env vars needed)
-    let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa")).expect("Failed to create keys");
+    let dual_keys =
+        create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519")).expect("Failed to create keys");
 
     // Sign the agent card with JWS
     let jws_signature = sign_agent_card_jws(
@@ -104,7 +104,8 @@ fn test_agent_card_jws_signing() {
 fn test_embed_signature_in_agent_card() {
     let agent = create_test_agent();
     let agent_card = export_agent_card(&agent).expect("Failed to export agent card");
-    let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa")).expect("Failed to create keys");
+    let dual_keys =
+        create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519")).expect("Failed to create keys");
 
     let jws_signature = sign_agent_card_jws(
         &agent_card,
@@ -289,7 +290,7 @@ fn test_well_known_endpoints_generation() {
 
     // Generate dual keys (ephemeral - no env vars needed)
     let dual_keys =
-        create_jwk_keys(Some("ring-Ed25519"), Some("rsa")).expect("Failed to create keys");
+        create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519")).expect("Failed to create keys");
 
     // Sign agent card
     let jws_signature = sign_agent_card_jws(
@@ -324,6 +325,18 @@ fn test_well_known_endpoints_generation() {
         .unwrap();
     assert!(card_doc.1.get("signatures").is_some());
     assert!(card_doc.1.get("protocolVersions").is_some());
+}
+
+#[test]
+fn test_rsa_a2a_key_generation_is_disabled() {
+    let err = create_jwk_keys(Some("rsa"), Some("rsa"))
+        .err()
+        .expect("RSA dual-key generation should be blocked");
+    assert!(
+        err.to_string().contains("RUSTSEC-2023-0071"),
+        "error should explain the RSA security block, got: {}",
+        err
+    );
 }
 
 #[test]

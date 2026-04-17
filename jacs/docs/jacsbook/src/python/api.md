@@ -523,7 +523,7 @@ Create a `jacs.config.json` file:
 | Field | Type | Description |
 |-------|------|-------------|
 | `jacs_agent_id_and_version` | string | Agent ID and version in format `"id:version"` |
-| `jacs_agent_key_algorithm` | string | Signing algorithm: `"ring-Ed25519"`, `"RSA-PSS"`, `"pq-dilithium"`, `"pq2025"` |
+| `jacs_agent_key_algorithm` | string | Signing algorithm for new agents: `"ring-Ed25519"` or `"pq2025"`. Legacy values like `"RSA-PSS"` and `"pq-dilithium"` may appear when verifying older material. |
 | `jacs_agent_private_key_filename` | string | Private key filename |
 | `jacs_agent_public_key_filename` | string | Public key filename |
 | `jacs_data_directory` | string | Directory for data storage |

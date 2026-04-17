@@ -252,7 +252,7 @@ const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 <p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset, Node quickstart auto-generates a secure password in-process (<code>JACS_SAVE_PASSWORD_FILE=true</code> persists it to <code>./jacs_keys/.jacs_password</code>). Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
-<li><code>options</code> (object, required fields): <code>{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }</code>. Default algorithm: <code>"pq2025"</code>. Also: <code>"ring-Ed25519"</code>, <code>"RSA-PSS"</code>.</li>
+<li><code>options</code> (object, required fields): <code>{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }</code>. Default algorithm: <code>"pq2025"</code>. Supported choices for new agents: <code>"ring-Ed25519"</code>, <code>"pq2025"</code>. <code>RSA-PSS</code> is legacy verification-only.</li>
 </ul>
 <p><strong>Returns:</strong> <code>Promise&lt;AgentInfo&gt;</code> (async) or <code>AgentInfo</code> (sync)</p>
 <pre><code class="language-javascript">const info = await jacs.quickstart({
