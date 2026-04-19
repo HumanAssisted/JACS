@@ -8,6 +8,25 @@ jacs/ is the directory with the core library.
 Look for examples in tests for how to use the library.
 README.md and CHANGELOG.md may be useful to understand some future goals and what has been done.
 
+## Where Binding Methods Belong
+
+`binding-core/src/simple_wrapper.rs::SimpleAgentWrapper` is the **public binding API**. All language bindings (PyO3, napi-rs, CGo) call into it. New methods that need to be exposed to Python/Node/Go go here, and you must update `binding-core/tests/fixtures/method_parity.json` (see Feature Parity Enforcement below) or four snapshot tests fail.
+
+`binding-core/src/lib.rs::AgentWrapper` is an **internal** `Arc<Mutex<Agent>>` wrapper used by `SimpleAgentWrapper` and the optional `a2a` / `attestation` feature impls. Do not add new public binding methods directly to `AgentWrapper`.
+
+## Sibling Repos
+
+- **haisdk** at `~/personal/haisdk` — wraps JACS, pins exact JACS versions in `rust/Cargo.toml`, `python/pyproject.toml`, and `node/package.json`. Local dev: haisdk's `rust/Cargo.toml` patches to `../../JACS/jacs`, `../../JACS/binding-core`, `../../JACS/jacs-mcp`. After a JACS bump, run `make check-versions` in haisdk before publishing JACS.
+- **hai (API)** at `~/personal/hai/api` — verifies JACS signatures via middleware. Will fail at startup if the JACS auth contract changes.
+
+## Standard Test Recipe
+
+```bash
+cargo test -p <pkg> --test <file> -- --nocapture <pattern> 2>&1 | tail -80
+```
+
+The `--` separator is required; without it cargo reports `unexpected argument`. Don't reformat the recipe on each run.
+
 ## Feature Parity Enforcement
 
 Cross-language feature parity is enforced through canonical JSON fixtures that serve as the single source of truth. When you add or remove a method, error kind, CLI command, MCP tool, or adapter, you must update the relevant fixture — snapshot tests in all languages will fail otherwise.
