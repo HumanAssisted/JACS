@@ -1380,7 +1380,7 @@ wheels = [
 
 [[package]]
 name = "jacs"
-version = "0.9.13"
+version = "0.9.14"
 source = { editable = "." }
 
 [package.optional-dependencies]
