@@ -16,8 +16,10 @@
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
 use crate::storage::StorageDocumentTraits;
+use crate::storage::common::{
+    document_from_raw_json, extract_signature_agent_id, parse_document_key,
+};
 use crate::storage::database_traits::DatabaseDocumentTraits;
-use serde_json::Value;
 use sqlx::Row;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
 use std::time::Duration;
@@ -160,29 +162,14 @@ impl SqliteStorage {
 
     /// Parse a document key in format "id:version" into (id, version).
     fn parse_key(key: &str) -> Result<(&str, &str), JacsError> {
-        let parts: Vec<&str> = key.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());
-        }
-        Ok((parts[0], parts[1]))
+        parse_document_key(key)
     }
 
     /// Build a JACSDocument from a database row.
     /// Uses raw_contents (TEXT) to preserve exact signed JSON bytes.
     fn row_to_document(row: &SqliteRow) -> Result<JACSDocument, JacsError> {
         let raw: String = row.try_get("raw_contents")?;
-        let value: Value = serde_json::from_str(&raw)?;
-
-        let id: String = row.try_get("jacs_id")?;
-        let version: String = row.try_get("jacs_version")?;
-        let jacs_type: String = row.try_get("jacs_type")?;
-
-        Ok(JACSDocument {
-            id,
-            version,
-            value,
-            jacs_type,
-        })
+        document_from_raw_json(&raw)
     }
 
     /// SQL for the jacs_document table creation (SQLite-compatible).
@@ -211,12 +198,7 @@ impl StorageDocumentTraits for SqliteStorage {
     fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let file_contents_json = serde_json::to_string(&doc.value)?;
-        let agent_id = doc
-            .value
-            .get("jacsSignature")
-            .and_then(|s| s.get("jacsSignatureAgentId"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let agent_id = extract_signature_agent_id(&doc.value);
 
         self.block_on(async {
             sqlx::query(
@@ -412,38 +394,6 @@ impl StorageDocumentTraits for SqliteStorage {
             operation: "merge_documents".to_string(),
             reason: "Not implemented for SQLite backend".to_string(),
         })
-    }
-
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
-        let mut errors = Vec::new();
-        let mut keys = Vec::new();
-        for doc in &docs {
-            match self.store_document(doc) {
-                Ok(_) => keys.push(doc.getkey()),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(keys)
-        } else {
-            Err(errors)
-        }
-    }
-
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
-        let mut docs = Vec::new();
-        let mut errors = Vec::new();
-        for key in &keys {
-            match self.get_document(key) {
-                Ok(doc) => docs.push(doc),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(docs)
-        } else {
-            Err(errors)
-        }
     }
 }
 

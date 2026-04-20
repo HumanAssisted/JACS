@@ -744,6 +744,121 @@ pub struct SimpleAgent {
     inner: SimpleAgentWrapper,
 }
 
+const SIMPLE_AGENT_CREATE_INFO_KEYS: &[&str] =
+    &["agent_id", "name", "public_key_path", "config_path"];
+const SIMPLE_AGENT_EPHEMERAL_INFO_KEYS: &[&str] = &["agent_id", "name", "algorithm", "version"];
+const SIMPLE_AGENT_EXTENDED_INFO_KEYS: &[&str] = &[
+    "agent_id",
+    "name",
+    "public_key_path",
+    "config_path",
+    "version",
+    "algorithm",
+    "private_key_path",
+    "data_directory",
+    "key_directory",
+    "domain",
+    "dns_record",
+];
+
+fn parse_json_value(json_str: &str, label: &str) -> PyResult<serde_json::Value> {
+    serde_json::from_str(json_str).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to parse {}: {}",
+            label, e
+        ))
+    })
+}
+
+fn agent_info_json_to_pydict(py: Python, info_json: &str, keys: &[&str]) -> PyResult<PyObject> {
+    let info = parse_json_value(info_json, "agent info")?;
+    let dict = pyo3::types::PyDict::new(py);
+
+    for key in keys {
+        dict.set_item(*key, info.get(*key).and_then(|v| v.as_str()).unwrap_or(""))?;
+    }
+
+    Ok(dict.into())
+}
+
+fn signed_document_json_to_pydict(py: Python, signed_raw: &str) -> PyResult<PyObject> {
+    let signed_doc = parse_json_value(signed_raw, "signed document")?;
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("raw", signed_raw)?;
+    dict.set_item(
+        "document_id",
+        signed_doc
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    )?;
+    dict.set_item(
+        "agent_id",
+        signed_doc
+            .get("jacsSignature")
+            .and_then(|v| v.get("agentID"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    )?;
+    dict.set_item(
+        "timestamp",
+        signed_doc
+            .get("jacsSignature")
+            .and_then(|v| v.get("date"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    )?;
+    Ok(dict.into())
+}
+
+fn verification_result_json_to_pydict(
+    py: Python,
+    result_json: &str,
+    include_data: bool,
+    include_attachments: bool,
+) -> PyResult<PyObject> {
+    let result = parse_json_value(result_json, "verification result")?;
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("valid", result["valid"].as_bool().unwrap_or(false))?;
+    dict.set_item("signer_id", result["signer_id"].as_str().unwrap_or(""))?;
+    dict.set_item("timestamp", result["timestamp"].as_str().unwrap_or(""))?;
+    let errors: Vec<String> = result["errors"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    dict.set_item("errors", errors)?;
+
+    if include_data {
+        let data_value = result
+            .get("data")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let py_data = conversion_utils::value_to_pyobject(py, &data_value)?;
+        dict.set_item("data", py_data)?;
+    }
+
+    if include_attachments {
+        let attachments_list = pyo3::types::PyList::empty(py);
+        if let Some(atts) = result["attachments"].as_array() {
+            for att in atts {
+                let att_dict = pyo3::types::PyDict::new(py);
+                att_dict.set_item("filename", att["filename"].as_str().unwrap_or(""))?;
+                att_dict.set_item("mime_type", att["mime_type"].as_str().unwrap_or(""))?;
+                att_dict.set_item("hash", att["hash"].as_str().unwrap_or(""))?;
+                att_dict.set_item("embedded", att["embedded"].as_bool().unwrap_or(false))?;
+                attachments_list.append(att_dict)?;
+            }
+        }
+        dict.set_item("attachments", attachments_list)?;
+    }
+
+    Ok(dict.into())
+}
+
 #[pymethods]
 impl SimpleAgent {
     /// Create a new JACS agent with cryptographic keys.
@@ -770,23 +885,8 @@ impl SimpleAgent {
                 ))
             })?;
 
-        let info: serde_json::Value = serde_json::from_str(&info_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse agent info: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("agent_id", info["agent_id"].as_str().unwrap_or(""))?;
-        dict.set_item("name", info["name"].as_str().unwrap_or(""))?;
-        dict.set_item(
-            "public_key_path",
-            info["public_key_path"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item("config_path", info["config_path"].as_str().unwrap_or(""))?;
-
-        Ok((SimpleAgent { inner: wrapper }, dict.into()))
+        let dict = agent_info_json_to_pydict(py, &info_json, SIMPLE_AGENT_CREATE_INFO_KEYS)?;
+        Ok((SimpleAgent { inner: wrapper }, dict))
     }
 
     /// Load an existing agent from configuration.
@@ -825,20 +925,8 @@ impl SimpleAgent {
             ))
         })?;
 
-        let info: serde_json::Value = serde_json::from_str(&info_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse agent info: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("agent_id", info["agent_id"].as_str().unwrap_or(""))?;
-        dict.set_item("name", info["name"].as_str().unwrap_or(""))?;
-        dict.set_item("algorithm", info["algorithm"].as_str().unwrap_or(""))?;
-        dict.set_item("version", info["version"].as_str().unwrap_or(""))?;
-
-        Ok((SimpleAgent { inner: wrapper }, dict.into()))
+        let dict = agent_info_json_to_pydict(py, &info_json, SIMPLE_AGENT_EPHEMERAL_INFO_KEYS)?;
+        Ok((SimpleAgent { inner: wrapper }, dict))
     }
 
     /// Returns whether this agent is in strict mode.
@@ -866,27 +954,7 @@ impl SimpleAgent {
             ))
         })?;
 
-        let result: serde_json::Value = serde_json::from_str(&result_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse verification result: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("valid", result["valid"].as_bool().unwrap_or(false))?;
-        dict.set_item("signer_id", result["signer_id"].as_str().unwrap_or(""))?;
-        dict.set_item("timestamp", result["timestamp"].as_str().unwrap_or(""))?;
-        let errors: Vec<String> = result["errors"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-        dict.set_item("errors", errors)?;
-        Ok(dict.into())
+        verification_result_json_to_pydict(py, &result_json, false, false)
     }
 
     /// Sign a message and return a signed JACS document.
@@ -913,28 +981,7 @@ impl SimpleAgent {
             ))
         })?;
 
-        // Parse the signed document to extract fields
-        let signed_doc: serde_json::Value = serde_json::from_str(&signed_raw).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse signed document: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("raw", &signed_raw)?;
-        dict.set_item("document_id", signed_doc["jacsId"].as_str().unwrap_or(""))?;
-        dict.set_item(
-            "agent_id",
-            signed_doc["jacsSignature"]["agentID"]
-                .as_str()
-                .unwrap_or(""),
-        )?;
-        dict.set_item(
-            "timestamp",
-            signed_doc["jacsSignature"]["date"].as_str().unwrap_or(""),
-        )?;
-        Ok(dict.into())
+        signed_document_json_to_pydict(py, &signed_raw)
     }
 
     /// Sign a file with optional embedding.
@@ -950,27 +997,7 @@ impl SimpleAgent {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to sign file: {}", e))
         })?;
 
-        let signed_doc: serde_json::Value = serde_json::from_str(&signed_raw).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse signed document: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("raw", &signed_raw)?;
-        dict.set_item("document_id", signed_doc["jacsId"].as_str().unwrap_or(""))?;
-        dict.set_item(
-            "agent_id",
-            signed_doc["jacsSignature"]["agentID"]
-                .as_str()
-                .unwrap_or(""),
-        )?;
-        dict.set_item(
-            "timestamp",
-            signed_doc["jacsSignature"]["date"].as_str().unwrap_or(""),
-        )?;
-        Ok(dict.into())
+        signed_document_json_to_pydict(py, &signed_raw)
     }
 
     /// Verify a signed JACS document.
@@ -985,50 +1012,7 @@ impl SimpleAgent {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to verify: {}", e))
         })?;
 
-        let result: serde_json::Value = serde_json::from_str(&result_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse verification result: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("valid", result["valid"].as_bool().unwrap_or(false))?;
-        dict.set_item("signer_id", result["signer_id"].as_str().unwrap_or(""))?;
-        dict.set_item("timestamp", result["timestamp"].as_str().unwrap_or(""))?;
-        let errors: Vec<String> = result["errors"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-        dict.set_item("errors", errors)?;
-
-        // Convert data to Python object
-        let data_value = result
-            .get("data")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        let py_data = conversion_utils::value_to_pyobject(py, &data_value)?;
-        dict.set_item("data", py_data)?;
-
-        // Convert attachments to list of dicts
-        let attachments_list = pyo3::types::PyList::empty(py);
-        if let Some(atts) = result["attachments"].as_array() {
-            for att in atts {
-                let att_dict = pyo3::types::PyDict::new(py);
-                att_dict.set_item("filename", att["filename"].as_str().unwrap_or(""))?;
-                att_dict.set_item("mime_type", att["mime_type"].as_str().unwrap_or(""))?;
-                att_dict.set_item("hash", att["hash"].as_str().unwrap_or(""))?;
-                att_dict.set_item("embedded", att["embedded"].as_bool().unwrap_or(false))?;
-                attachments_list.append(att_dict)?;
-            }
-        }
-        dict.set_item("attachments", attachments_list)?;
-
-        Ok(dict.into())
+        verification_result_json_to_pydict(py, &result_json, true, true)
     }
 
     /// Sign a raw string and return the base64-encoded signature.
@@ -1167,39 +1151,8 @@ impl SimpleAgent {
                 ))
             })?;
 
-        let info: serde_json::Value = serde_json::from_str(&info_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse agent info: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("agent_id", info["agent_id"].as_str().unwrap_or(""))?;
-        dict.set_item("name", info["name"].as_str().unwrap_or(""))?;
-        dict.set_item(
-            "public_key_path",
-            info["public_key_path"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item("config_path", info["config_path"].as_str().unwrap_or(""))?;
-        dict.set_item("version", info["version"].as_str().unwrap_or(""))?;
-        dict.set_item("algorithm", info["algorithm"].as_str().unwrap_or(""))?;
-        dict.set_item(
-            "private_key_path",
-            info["private_key_path"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item(
-            "data_directory",
-            info["data_directory"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item(
-            "key_directory",
-            info["key_directory"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item("domain", info["domain"].as_str().unwrap_or(""))?;
-        dict.set_item("dns_record", info["dns_record"].as_str().unwrap_or(""))?;
-
-        Ok((SimpleAgent { inner: wrapper }, dict.into()))
+        let dict = agent_info_json_to_pydict(py, &info_json, SIMPLE_AGENT_EXTENDED_INFO_KEYS)?;
+        Ok((SimpleAgent { inner: wrapper }, dict))
     }
 
     /// Create a new JACS agent from a JSON parameters string.
@@ -1223,39 +1176,8 @@ impl SimpleAgent {
                 ))
             })?;
 
-        let info: serde_json::Value = serde_json::from_str(&info_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse agent info: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("agent_id", info["agent_id"].as_str().unwrap_or(""))?;
-        dict.set_item("name", info["name"].as_str().unwrap_or(""))?;
-        dict.set_item(
-            "public_key_path",
-            info["public_key_path"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item("config_path", info["config_path"].as_str().unwrap_or(""))?;
-        dict.set_item("version", info["version"].as_str().unwrap_or(""))?;
-        dict.set_item("algorithm", info["algorithm"].as_str().unwrap_or(""))?;
-        dict.set_item(
-            "private_key_path",
-            info["private_key_path"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item(
-            "data_directory",
-            info["data_directory"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item(
-            "key_directory",
-            info["key_directory"].as_str().unwrap_or(""),
-        )?;
-        dict.set_item("domain", info["domain"].as_str().unwrap_or(""))?;
-        dict.set_item("dns_record", info["dns_record"].as_str().unwrap_or(""))?;
-
-        Ok((SimpleAgent { inner: wrapper }, dict.into()))
+        let dict = agent_info_json_to_pydict(py, &info_json, SIMPLE_AGENT_EXTENDED_INFO_KEYS)?;
+        Ok((SimpleAgent { inner: wrapper }, dict))
     }
 
     /// Verify a document by its ID from storage.
@@ -1273,33 +1195,7 @@ impl SimpleAgent {
             ))
         })?;
 
-        let result: serde_json::Value = serde_json::from_str(&result_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse verification result: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("valid", result["valid"].as_bool().unwrap_or(false))?;
-        dict.set_item("signer_id", result["signer_id"].as_str().unwrap_or(""))?;
-        dict.set_item("timestamp", result["timestamp"].as_str().unwrap_or(""))?;
-        let errors: Vec<String> = result["errors"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-        dict.set_item("errors", errors)?;
-        let data_value = result
-            .get("data")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        let py_data = conversion_utils::value_to_pyobject(py, &data_value)?;
-        dict.set_item("data", py_data)?;
-        Ok(dict.into())
+        verification_result_json_to_pydict(py, &result_json, true, false)
     }
 
     /// Verify a signed document with an explicit public key (base64-encoded).
@@ -1326,33 +1222,7 @@ impl SimpleAgent {
                 ))
             })?;
 
-        let result: serde_json::Value = serde_json::from_str(&result_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to parse verification result: {}",
-                e
-            ))
-        })?;
-
-        let dict = pyo3::types::PyDict::new(py);
-        dict.set_item("valid", result["valid"].as_bool().unwrap_or(false))?;
-        dict.set_item("signer_id", result["signer_id"].as_str().unwrap_or(""))?;
-        dict.set_item("timestamp", result["timestamp"].as_str().unwrap_or(""))?;
-        let errors: Vec<String> = result["errors"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-        dict.set_item("errors", errors)?;
-        let data_value = result
-            .get("data")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        let py_data = conversion_utils::value_to_pyobject(py, &data_value)?;
-        dict.set_item("data", py_data)?;
-        Ok(dict.into())
+        verification_result_json_to_pydict(py, &result_json, true, false)
     }
 
     /// Rotate the agent's cryptographic keys.

@@ -37,10 +37,11 @@ use jacs::agent::document::JACSDocument;
 use jacs::error::JacsError;
 use jacs::search::{SearchCapabilities, SearchProvider, SearchQuery, SearchResults};
 use jacs::storage::StorageDocumentTraits;
+use jacs::storage::common::{
+    document_from_raw_bytes, extract_signature_agent_id, field_matches_exact, parse_document_key,
+};
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
-use serde_json::Value;
-use std::error::Error;
 
 /// Primary table: `"id:version"` -> serialized JACSDocument JSON bytes.
 const DOCUMENTS: TableDefinition<&str, &[u8]> = TableDefinition::new("documents");
@@ -86,48 +87,17 @@ impl RedbStorage {
 
     /// Parse a document key in format `"id:version"` into `(id, version)`.
     fn parse_key(key: &str) -> Result<(&str, &str), JacsError> {
-        let parts: Vec<&str> = key.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());
-        }
-        Ok((parts[0], parts[1]))
+        parse_document_key(key)
     }
 
     /// Deserialize JSON bytes into a JACSDocument.
     fn bytes_to_document(bytes: &[u8]) -> Result<JACSDocument, JacsError> {
-        let value: Value = serde_json::from_slice(bytes)?;
-
-        let id = value
-            .get("jacsId")
-            .and_then(|v| v.as_str())
-            .ok_or("Document missing required field: jacsId")?
-            .to_string();
-        let version = value
-            .get("jacsVersion")
-            .and_then(|v| v.as_str())
-            .ok_or("Document missing required field: jacsVersion")?
-            .to_string();
-        let jacs_type = value
-            .get("jacsType")
-            .and_then(|v| v.as_str())
-            .ok_or("Document missing required field: jacsType")?
-            .to_string();
-
-        Ok(JACSDocument {
-            id,
-            version,
-            value,
-            jacs_type,
-        })
+        document_from_raw_bytes(bytes)
     }
 
     /// Extract agent_id from a document's JSON value, if present.
-    fn extract_agent_id(value: &Value) -> Option<String> {
-        value
-            .get("jacsSignature")
-            .and_then(|s| s.get("jacsSignatureAgentId"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
+    fn extract_agent_id(value: &serde_json::Value) -> Option<String> {
+        extract_signature_agent_id(value)
     }
 
     /// Collect all document keys matching a prefix in an index table.
@@ -385,39 +355,6 @@ impl StorageDocumentTraits for RedbStorage {
             "Not implemented for Redb backend",
         ))
     }
-
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
-        let mut errors = Vec::new();
-        let mut keys = Vec::new();
-        for doc in &docs {
-            let key = doc.getkey();
-            match self.store_document(doc) {
-                Ok(_) => keys.push(key),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(keys)
-        } else {
-            Err(errors)
-        }
-    }
-
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
-        let mut docs = Vec::new();
-        let mut errors = Vec::new();
-        for key in &keys {
-            match self.get_document(key) {
-                Ok(doc) => docs.push(doc),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(docs)
-        } else {
-            Err(errors)
-        }
-    }
 }
 
 impl DatabaseDocumentTraits for RedbStorage {
@@ -471,20 +408,14 @@ impl DatabaseDocumentTraits for RedbStorage {
                 }
             }
 
-            if let Some(fv) = get_nested_field(&doc.value, field_path) {
-                let matches = match fv {
-                    Value::String(s) => s == value,
-                    other => other.to_string().trim_matches('"') == value,
-                };
-                if matches {
-                    if skipped < offset {
-                        skipped += 1;
-                        continue;
-                    }
-                    results.push(doc);
-                    if results.len() >= limit {
-                        break;
-                    }
+            if field_matches_exact(&doc.value, field_path, value) {
+                if skipped < offset {
+                    skipped += 1;
+                    continue;
+                }
+                results.push(doc);
+                if results.len() >= limit {
+                    break;
                 }
             }
         }
@@ -594,15 +525,6 @@ impl SearchProvider for RedbStorage {
 // =============================================================================
 // Helper functions
 // =============================================================================
-
-/// Traverse a JSON value by a dot-separated field path.
-fn get_nested_field<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
-    let mut current = value;
-    for part in path.split('.') {
-        current = current.get(part)?;
-    }
-    Some(current)
-}
 
 /// Helper to create a closure that maps any Display error to a DatabaseError.
 fn db_err<E: std::fmt::Display>(operation: &'static str) -> impl FnOnce(E) -> JacsError {
