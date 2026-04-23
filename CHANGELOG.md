@@ -1,6 +1,25 @@
 ## 0.9.15
 
-(unreleased)
+### Refactoring
+
+- `binding-core::SimpleAgentWrapper`: extracted `serialize_json`, `encode_base64`, `decode_base64`, `conversion_error`, `Self::from_agent` helpers; removes repeated constructor/error boilerplate
+- `jacspy::SimpleAgent` (PyO3): extracted `py_runtime_err`, `map_py_runtime_result`, `simple_agent_with_info`, `signed_document_result`, `verification_result` helpers
+- `jacs-cli/src/main.rs` split: new `agent_loader.rs` (config load + DNS policy overrides) and `password_bootstrap.rs` (env/file/legacy password resolution), each with unit tests; `main.rs` -342 lines
+- Storage backends: shared helpers in `jacs/src/storage/common.rs` (key parsing, document reconstruction, signature extraction, field-filter shaping) consumed by DuckDB / PostgreSQL / Redb / SurrealDB / SQLite / Rusqlite
+
+### Tests
+
+- New `jacs/tests/fixtures/keys/agent-ed25519.{private.pem.enc,public.pem}` and matching committed agent JSON; RSA-PSS fixtures retained for legacy read-compat
+- `jacs-mcp/tests/support/mod.rs`: added `prepare_temp_workspace_ed25519()` + `AGENT_ID_ED25519` alongside the existing RSA-PSS helper; signing-path tests (`audit`, `memory`, `search`, `integration`) use the Ed25519 variant
+- `jacs/tests/agent_tests.rs`: split into `test_rsa_fixture_load_exposes_algorithm` (RSA load-only) and `test_update_ed25519_agent_and_verify_versions` (Ed25519 update round-trip); both `#[serial]` to prevent env-var races
+- `jacs/tests/lifecycle_tests.rs`: lifecycle env now forces `JACS_AGENT_KEY_ALGORITHM=ring-Ed25519`; low-level creation test switched to Ed25519
+- `jacsgo/simple_test.go`, `jacsnpm/test/simple.test.js`: hardcoded `RSA-PSS` flipped to `ring-Ed25519`
+- `jacspy/tests/test_simple_agent_binding_shapes.py`: 9 new tests locking PyO3 return shapes
+- `jacspy/tests/test_simple.py`: `TestAllAlgorithms.test_full_flow` parametrize drops `RSA-PSS` (still covered in `test_a2a*.py`)
+
+### Makefile
+
+- Deleted `release-all`; `release-everything` now directly tags crates / PyPI / npm / CLI / storage backends
 
 ## 0.9.14
 
