@@ -1,4 +1,5 @@
 use jacs::agent::boilerplate::BoilerPlate;
+use serial_test::serial;
 use std::fs;
 use std::path::Path;
 
@@ -50,7 +51,13 @@ fn setup() {
 /// RUSTSEC-2023-0071 hardening. The `update_self` + re-sign leg of the
 /// original test moved to `test_update_ed25519_agent_and_verify_versions`
 /// because RSA private-key signing is now disabled.
+///
+/// `#[serial]` because `test_update_ed25519_agent_and_verify_versions`
+/// mutates `JACS_DATA_DIRECTORY` et al. via `create_ring_test_agent()`;
+/// running in parallel would cause this test to look for the RSA
+/// fixture under the Ed25519 scratch directory.
 #[test]
+#[serial]
 fn test_rsa_fixture_load_exposes_algorithm() {
     setup();
     set_min_test_env_vars();
@@ -84,7 +91,12 @@ fn test_rsa_fixture_load_exposes_algorithm() {
 /// update, the agent gains a new `jacsVersion` and the new signature
 /// verifies. Uses an Ed25519 agent because RSA-PSS private-key signing
 /// is blocked by RUSTSEC-2023-0071.
+///
+/// `#[serial]` because `create_ring_test_agent()` mutates process-wide
+/// env vars (`JACS_DATA_DIRECTORY`, etc.) that would otherwise race
+/// with `test_rsa_fixture_load_exposes_algorithm`.
 #[test]
+#[serial]
 fn test_update_ed25519_agent_and_verify_versions() {
     let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
