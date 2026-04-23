@@ -6,7 +6,7 @@
         audit-jacs \
         publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
         publish-jacs-storage publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
-        release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-all release-everything release-delete-tags \
+        release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-everything release-delete-tags \
         retry-jacs retry-jacspy retry-jacsnpm retry-cli retry-everything \
         bump-patch bump-minor bump-major \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
@@ -438,12 +438,9 @@ release-jacs-storage:
 		fi; \
 	done
 
-# Release all packages via GitHub CI (verifies all versions match first)
-release-all: check-versions release-jacs release-jacspy release-jacsnpm
-	@echo "All release tags pushed for v$(JACS_VERSION). GitHub CI will handle publishing."
-
-# Release all packages plus CLI binaries and storage crates via GitHub CI
-release-everything: release-all release-cli release-jacs-storage
+# Release everything via GitHub CI: main packages (crates.io / PyPI / npm),
+# CLI binaries, and storage backend crates. Verifies all versions match first.
+release-everything: check-versions release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage
 	@echo "All release tags, including CLI binaries and storage crates, pushed for v$(JACS_VERSION)."
 
 # Delete release tags for current versions (use with caution - for fixing failed releases)
@@ -635,8 +632,7 @@ help:
 	@echo "  make release-jacspy  Tag pypi/v<version> -> triggers PyPI release"
 	@echo "  make release-jacsnpm Tag npm/v<version> -> triggers npm release"
 	@echo "  make release-cli     Tag cli/v<version> -> triggers CLI binary release"
-	@echo "  make release-all     Verify versions match, then release crates/PyPI/npm"
-	@echo "  make release-everything  Verify versions match, then release crates/PyPI/npm/CLI"
+	@echo "  make release-everything  Verify versions match, then release crates/PyPI/npm + CLI + storage crates"
 	@echo "  make release-delete-tags  Delete release tags (for fixing failed releases)"
 	@echo "  make retry-jacs      Retry failed crates.io release (delete tags, retag, push)"
 	@echo "  make retry-jacspy    Retry failed PyPI release (delete tags, retag, push)"
