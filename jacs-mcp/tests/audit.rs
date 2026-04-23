@@ -17,7 +17,9 @@ use rmcp::{
 };
 
 mod support;
-use support::{TEST_PASSWORD, prepare_temp_workspace};
+// Audit log/export sign new JACS documents — use the Ed25519 fixture
+// because RSA private-key signing is disabled (RUSTSEC-2023-0071).
+use support::{TEST_PASSWORD, prepare_temp_workspace_ed25519 as prepare_temp_workspace};
 
 static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 const TIMEOUT: Duration = Duration::from_secs(30);

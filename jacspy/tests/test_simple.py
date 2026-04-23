@@ -922,14 +922,14 @@ class TestAgreementWorkflow:
 
 
 class TestAllAlgorithms:
-    """Verify core sign/verify/trust/agreement flows work with every algorithm.
+    """Verify core sign/verify/trust/agreement flows work with each new-agent algorithm.
 
     Each parametrized test creates two agents and exercises sign, verify,
     trust, and two-party agreement in a single test to minimize agent
     creation overhead (pq2025 keygen is ~30-60s per agent).
     """
 
-    @pytest.mark.parametrize("algo", ["ring-Ed25519", "RSA-PSS", "pq2025"])
+    @pytest.mark.parametrize("algo", ["ring-Ed25519", "pq2025"])
     def test_full_flow(self, tmp_path, algo):
         """Sign/verify + two-party trust/agreement for one algorithm."""
         password = "TestP@ss123!#"
@@ -1009,5 +1009,4 @@ class TestAudit:
 
         first_health = result["health_checks"][0]
         assert f"{first_health['name']}:" in result["summary"]
-
 

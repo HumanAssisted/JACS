@@ -1,0 +1,45 @@
+{
+  "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
+  "description": "JACS agent",
+  "jacsAgentType": "ai",
+  "jacsId": "22dbef6c-b85e-40e5-b82e-f95a4259339a",
+  "jacsLevel": "config",
+  "jacsOriginalDate": "2026-04-23T03:52:24.934745+00:00",
+  "jacsOriginalVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+  "jacsServices": [
+    {
+      "failureDescription": "Describe what failure is of the service the agent provides",
+      "serviceDescription": "Describe a service the agent provides",
+      "successDescription": "Describe a success of the service the agent provides"
+    }
+  ],
+  "jacsSha256": "230943b88940b76206b22a944377b27e502c18e77efbfc4977d1c39a6ef48ef8",
+  "jacsSignature": {
+    "agentID": "22dbef6c-b85e-40e5-b82e-f95a4259339a",
+    "agentVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+    "date": "2026-04-23T03:52:38.548604+00:00",
+    "fields": [
+      "$schema",
+      "description",
+      "jacsAgentType",
+      "jacsId",
+      "jacsLevel",
+      "jacsOriginalDate",
+      "jacsOriginalVersion",
+      "jacsServices",
+      "jacsType",
+      "jacsVersion",
+      "jacsVersionDate",
+      "name"
+    ],
+    "iat": 1776916358,
+    "jti": "019db877-e594-7d90-b1e4-e77c2c29d29b",
+    "publicKeyHash": "7872a5e1df5011294953517e04a9f2d068e3ddba0204ec33ad241d7fe378989b",
+    "signature": "t35OxnVgCTxayR1gohmUZjY9mg+mg0JGbyfcO1YQhkb01jA4rF4MSvGEWLFtsQODtkxh8YPLjg6BKvyxpUTICA==",
+    "signingAlgorithm": "ring-Ed25519"
+  },
+  "jacsType": "agent",
+  "jacsVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+  "jacsVersionDate": "2026-04-23T03:52:24.934745+00:00",
+  "name": "agent-ed25519"
+}

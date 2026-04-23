@@ -638,7 +638,7 @@ describe('JACS Simple API', function() {
         simpleA.createSync({
           name: 'mocha-agent-a',
           password,
-          algorithm: 'RSA-PSS',
+          algorithm: 'ring-Ed25519',
           dataDirectory: 'jacs_data',
           keyDirectory: 'keys',
           configPath: 'jacs.config.json',
@@ -648,7 +648,7 @@ describe('JACS Simple API', function() {
         simpleB.createSync({
           name: 'mocha-agent-b',
           password,
-          algorithm: 'RSA-PSS',
+          algorithm: 'ring-Ed25519',
           dataDirectory: 'jacs_data',
           keyDirectory: 'keys',
           configPath: 'jacs.config.json',
