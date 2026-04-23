@@ -103,7 +103,7 @@ The `jacsSignature` field contains the creator's cryptographic signature:
 | `date` | string (date-time) | Yes | Signing timestamp |
 | `signature` | string | Yes | Base64-encoded signature |
 | `publicKeyHash` | string | Yes | Hash of public key used |
-| `signingAlgorithm` | string | Yes | Algorithm used (`ring-Ed25519`, `RSA-PSS`, `pq2025`; `pq-dilithium` is legacy/deprecated) |
+| `signingAlgorithm` | string | Yes | Algorithm used (`ring-Ed25519`, `pq2025`; legacy documents may also carry `RSA-PSS` or deprecated `pq-dilithium`) |
 | `fields` | array | Yes | Fields included in signature |
 | `response` | string | No | Text response with signature |
 | `responseType` | string | No | agree, disagree, or reject |

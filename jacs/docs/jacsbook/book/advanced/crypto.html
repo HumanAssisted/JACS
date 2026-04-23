@@ -179,11 +179,12 @@
 <h2 id="supported-algorithms"><a class="header" href="#supported-algorithms">Supported Algorithms</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Type</th><th>Key Size</th><th>Signature Size</th><th>Recommended Use</th></tr></thead><tbody>
 <tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>32 bytes</td><td>64 bytes</td><td>General purpose (default)</td></tr>
-<tr><td>RSA-PSS</td><td><code>RSA-PSS</code></td><td>RSA</td><td>2048-4096 bits</td><td>256-512 bytes</td><td>Legacy systems</td></tr>
+<tr><td>RSA-PSS</td><td><code>RSA-PSS</code></td><td>RSA</td><td>2048-4096 bits</td><td>256-512 bytes</td><td>Legacy verification only</td></tr>
 <tr><td>Dilithium</td><td><code>pq-dilithium</code></td><td>Lattice-based</td><td>~1.3 KB</td><td>~2.4 KB</td><td>Post-quantum</td></tr>
 <tr><td>PQ2025</td><td><code>pq2025</code></td><td>Hybrid</td><td>~1.3 KB</td><td>~2.5 KB</td><td>Transitional</td></tr>
 </tbody></table>
 </div>
+<p><code>RSA-PSS</code> remains documented because JACS still verifies historical RSA-signed artifacts. New RSA key generation, signing, and rotation are intentionally unsupported.</p>
 <h2 id="ed25519-ring-ed25519"><a class="header" href="#ed25519-ring-ed25519">Ed25519 (ring-Ed25519)</a></h2>
 <p>The recommended algorithm for most use cases.</p>
 <h3 id="overview"><a class="header" href="#overview">Overview</a></h3>
@@ -218,10 +219,10 @@ agent.load('./jacs.config.json')  # Using ring-Ed25519
 signature = agent.sign_string("Hello, World!")
 print(f"Signature (64 bytes): {len(signature)} characters base64")
 </code></pre>
-<h2 id="rsa-pss"><a class="header" href="#rsa-pss">RSA-PSS</a></h2>
+<h2 id="rsa-pss-legacy-verification-only"><a class="header" href="#rsa-pss-legacy-verification-only">RSA-PSS (Legacy Verification Only)</a></h2>
 <p>Industry-standard RSA with Probabilistic Signature Scheme padding.</p>
 <h3 id="overview-1"><a class="header" href="#overview-1">Overview</a></h3>
-<p>RSA-PSS provides compatibility with systems that require RSA signatures. JACS uses 2048-bit or larger keys.</p>
+<p>RSA-PSS support exists so JACS can verify older artifacts that were already signed with RSA. JACS no longer supports creating new RSA signing keys or rotating agents into RSA.</p>
 <h3 id="characteristics-1"><a class="header" href="#characteristics-1">Characteristics</a></h3>
 <ul>
 <li><strong>Speed</strong>: Slower than Ed25519</li>
@@ -229,22 +230,18 @@ print(f"Signature (64 bytes): {len(signature)} characters base64")
 <li><strong>Signature Size</strong>: Same as key size (256-512 bytes)</li>
 <li><strong>Security Level</strong>: ~112-128 bits (2048-bit key)</li>
 </ul>
-<h3 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h3>
-<pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "RSA-PSS"
-}
-</code></pre>
 <h3 id="use-cases-1"><a class="header" href="#use-cases-1">Use Cases</a></h3>
 <ul>
-<li>Integration with legacy systems</li>
-<li>Compliance requirements mandating RSA</li>
-<li>Interoperability with enterprise PKI</li>
+<li>Verifying historical RSA-signed documents</li>
+<li>Interoperating with legacy systems while migrating them to Ed25519 or pq2025</li>
+<li>Reading old configs or agent records that still declare <code>RSA-PSS</code></li>
 </ul>
 <h3 id="considerations"><a class="header" href="#considerations">Considerations</a></h3>
 <ul>
 <li>Larger signatures increase document size</li>
 <li>Slower than Ed25519</li>
 <li>Larger keys needed for equivalent security</li>
+<li>New RSA signing operations are disabled due to <code>RUSTSEC-2023-0071</code></li>
 </ul>
 <h2 id="dilithium-pq-dilithium"><a class="header" href="#dilithium-pq-dilithium">Dilithium (pq-dilithium)</a></h2>
 <p>NIST-standardized post-quantum digital signature algorithm.</p>
@@ -257,7 +254,7 @@ print(f"Signature (64 bytes): {len(signature)} characters base64")
 <li><strong>Signature Size</strong>: ~2.4 KB</li>
 <li><strong>Security Level</strong>: NIST Level 3 (quantum-resistant)</li>
 </ul>
-<h3 id="configuration-2"><a class="header" href="#configuration-2">Configuration</a></h3>
+<h3 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h3>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq-dilithium"
 }
@@ -286,7 +283,7 @@ print(f"Signature (64 bytes): {len(signature)} characters base64")
 <li><strong>Signature Size</strong>: ~2.5 KB (combined)</li>
 <li><strong>Security Level</strong>: Max of both algorithms</li>
 </ul>
-<h3 id="configuration-3"><a class="header" href="#configuration-3">Configuration</a></h3>
+<h3 id="configuration-2"><a class="header" href="#configuration-2">Configuration</a></h3>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq2025"
 }
@@ -309,7 +306,7 @@ print(f"Signature (64 bytes): {len(signature)} characters base64")
 <div class="table-wrapper"><table><thead><tr><th>Requirement</th><th>Recommended Algorithm</th></tr></thead><tbody>
 <tr><td>Best performance</td><td><code>ring-Ed25519</code></td></tr>
 <tr><td>Smallest signatures</td><td><code>ring-Ed25519</code></td></tr>
-<tr><td>Legacy compatibility</td><td><code>RSA-PSS</code></td></tr>
+<tr><td>Legacy compatibility</td><td>Verify historical <code>RSA-PSS</code> artifacts, but create new keys with <code>ring-Ed25519</code></td></tr>
 <tr><td>Quantum resistance</td><td><code>pq-dilithium</code></td></tr>
 <tr><td>Maximum security</td><td><code>pq2025</code></td></tr>
 <tr><td>General purpose</td><td><code>ring-Ed25519</code></td></tr>
@@ -330,10 +327,10 @@ print(f"Signature (64 bytes): {len(signature)} characters base64")
 <p>Long-term validity requires quantum resistance.</p>
 <p><strong>Enterprise Integration</strong>:</p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "RSA-PSS"
+  "jacs_agent_key_algorithm": "ring-Ed25519"
 }
 </code></pre>
-<p>Compatibility with existing PKI infrastructure.</p>
+<p>Use Ed25519 for new agents and keep RSA-PSS only for verifying older infrastructure outputs.</p>
 <p><strong>High-Security</strong>:</p>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq2025"

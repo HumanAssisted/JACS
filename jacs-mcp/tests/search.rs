@@ -23,7 +23,9 @@ use rmcp::{
 };
 
 mod support;
-use support::{TEST_PASSWORD, prepare_temp_workspace};
+// Search calls jacs_sign_state which signs new JACS documents — use
+// Ed25519 fixture (RSA signing is disabled by RUSTSEC-2023-0071).
+use support::{TEST_PASSWORD, prepare_temp_workspace_ed25519 as prepare_temp_workspace};
 
 static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 const TIMEOUT: Duration = Duration::from_secs(30);

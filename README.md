@@ -96,7 +96,7 @@ JACS adds value when data crosses trust boundaries — between organizations, be
 
 ## Features
 
-- **Post-quantum ready** — ML-DSA-87 (FIPS-204) default, with Ed25519 and RSA-PSS.
+- **Post-quantum ready** — ML-DSA-87 (FIPS-204) default, with Ed25519 for new classical keys and RSA-PSS verification for legacy artifacts.
 - **Cross-language** — Sign in Rust, verify in Python or Node.js. Tested on every commit.
 - **Pluggable storage** — Filesystem, SQLite, PostgreSQL, DuckDB, SurrealDB, Redb.
 - **Document visibility** — `public`, `private`, or `restricted` access control.

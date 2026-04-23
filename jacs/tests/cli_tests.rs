@@ -192,7 +192,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let input_agent_filename = "";
     let input_priv_key = "jacs.private.pem.enc";
     let input_pub_key = "jacs.public.pem";
-    let input_algo = "RSA-PSS";
+    let input_algo = "ring-Ed25519";
     let input_storage = "fs";
     let input_use_sec = "false";
     // IMPORTANT: Use relative paths for directories
@@ -329,7 +329,7 @@ fn test_cli_script_flow() -> Result<(), Box<dyn Error>> {
     let base_cmd = || -> Command {
         let mut cmd = Command::cargo_bin("jacs").unwrap();
         cmd.env(PASSWORD_ENV_VAR, dummy_password);
-        cmd.env("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+        cmd.env("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
         cmd.current_dir(&scratch_dir); // Use scratch dir as CWD
         cmd
     };

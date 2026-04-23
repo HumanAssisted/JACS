@@ -15,6 +15,11 @@ use tracing::{debug, trace, warn};
 /// returns public, public_filepath, private, private_filepath
 #[must_use = "generated keys must be stored securely"]
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
+    super::ensure_private_key_operation_allowed("RSA-PSS", "key generation")?;
+    generate_keys_unchecked()
+}
+
+fn generate_keys_unchecked() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
     let mut rng = OsRng;
     let private_key = RsaPrivateKey::new(&mut rng, RSA_KEY_BITS)
         .map_err(|e| format!("Failed to generate RSA key: {}", e))?;
@@ -35,6 +40,11 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
 
 #[must_use = "signature must be stored or transmitted"]
 pub fn sign_string(private_key_content: Vec<u8>, data: &str) -> Result<String, JacsError> {
+    super::ensure_private_key_operation_allowed("RSA-PSS", "signing")?;
+    sign_string_unchecked(private_key_content, data)
+}
+
+fn sign_string_unchecked(private_key_content: Vec<u8>, data: &str) -> Result<String, JacsError> {
     let private_key_content_converted = std::str::from_utf8(&private_key_content)
         .map_err(|e| format!("Private key is not valid UTF-8: {}", e))?;
     let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_content_converted)
@@ -168,7 +178,8 @@ mod tests {
         let tampered_data = "tampered data";
 
         // Sign the original data
-        let signature = sign_string(private_key, original_data).expect("signing should succeed");
+        let signature =
+            sign_string_unchecked(private_key, original_data).expect("signing should succeed");
 
         // Verify with tampered data should fail
         let result = verify_string(public_key, tampered_data, &signature);
@@ -186,7 +197,7 @@ mod tests {
         let data = "test data";
 
         // Sign with key 1
-        let signature = sign_string(private_key_1, data).expect("signing should succeed");
+        let signature = sign_string_unchecked(private_key_1, data).expect("signing should succeed");
 
         // Verify with key 2 should fail
         let result = verify_string(public_key_2, data, &signature);
@@ -203,7 +214,7 @@ mod tests {
         let data = "test data";
 
         // Sign the data
-        let signature = sign_string(private_key, data).expect("signing should succeed");
+        let signature = sign_string_unchecked(private_key, data).expect("signing should succeed");
 
         // Truncate the signature (take only half)
         let truncated = &signature[..signature.len() / 2];
@@ -218,7 +229,7 @@ mod tests {
         let data = "test data";
 
         // Sign the data
-        let signature = sign_string(private_key, data).expect("signing should succeed");
+        let signature = sign_string_unchecked(private_key, data).expect("signing should succeed");
 
         // Corrupt the signature by flipping some bytes
         let mut sig_bytes = B64.decode(&signature).expect("decode should succeed");
@@ -239,7 +250,7 @@ mod tests {
         let data = "test data";
 
         // Sign the data
-        let signature = sign_string(private_key, data).expect("signing should succeed");
+        let signature = sign_string_unchecked(private_key, data).expect("signing should succeed");
 
         // Use invalid public keys
         let invalid_public_keys: Vec<Vec<u8>> = vec![
@@ -260,7 +271,7 @@ mod tests {
         let data = "test data";
 
         // Sign the data
-        let signature = sign_string(private_key, data).expect("signing should succeed");
+        let signature = sign_string_unchecked(private_key, data).expect("signing should succeed");
 
         // Non-UTF8 bytes
         let invalid_key = vec![0xFF, 0xFE, 0x00, 0x01];
@@ -306,7 +317,7 @@ mod tests {
             generate_test_keys().expect("key generation should succeed");
         let data = "test data for signing";
 
-        let signature = sign_string(private_key, data).expect("signing should succeed");
+        let signature = sign_string_unchecked(private_key, data).expect("signing should succeed");
         let result = verify_string(public_key, data, &signature);
         assert!(
             result.is_ok(),
@@ -321,8 +332,31 @@ mod tests {
             generate_test_keys().expect("key generation should succeed");
         let data = "";
 
-        let signature = sign_string(private_key, data).expect("signing empty data should succeed");
+        let signature =
+            sign_string_unchecked(private_key, data).expect("signing empty data should succeed");
         let result = verify_string(public_key, data, &signature);
         assert!(result.is_ok(), "Signature of empty data should verify");
+    }
+
+    #[test]
+    fn test_public_rsa_signing_is_disabled() {
+        let (private_key, _public_key) =
+            generate_test_keys().expect("key generation should succeed");
+        let err = sign_string(private_key, "test data").expect_err("RSA signing should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_public_rsa_key_generation_is_disabled() {
+        let err = generate_keys().expect_err("RSA key generation should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
     }
 }

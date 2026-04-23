@@ -74,14 +74,6 @@ fn create_ephemeral_wrapper() -> AgentWrapper {
     wrapper
 }
 
-fn create_ephemeral_wrapper_rsa() -> AgentWrapper {
-    let wrapper = AgentWrapper::new();
-    wrapper
-        .ephemeral(Some("rsa-pss"))
-        .expect("ephemeral(rsa-pss) should succeed");
-    wrapper
-}
-
 #[test]
 #[serial]
 fn test_load_with_info_returns_canonical_metadata() {
@@ -225,18 +217,15 @@ fn test_create_agent_pq2025() {
 }
 
 #[test]
-fn test_create_agent_rsa() {
+fn test_create_agent_rsa_is_disabled() {
     let wrapper = AgentWrapper::new();
-    let info_json = wrapper
+    let err = wrapper
         .ephemeral(Some("rsa-pss"))
-        .expect("ephemeral(rsa-pss) should succeed");
-
-    let info: Value = serde_json::from_str(&info_json).unwrap();
-    let algo = info["algorithm"].as_str().unwrap_or("");
+        .expect_err("ephemeral(rsa-pss) should be blocked");
     assert!(
-        algo.contains("RSA") || algo.contains("rsa"),
-        "algorithm should be RSA variant, got: {}",
-        algo
+        err.to_string().contains("RUSTSEC-2023-0071"),
+        "error should explain the RSA security block, got: {}",
+        err
     );
 }
 
@@ -464,23 +453,16 @@ fn test_full_roundtrip_create_sign_verify_ed25519() {
 }
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_rsa() {
-    let wrapper = create_ephemeral_wrapper_rsa();
-
-    let content = json!({
-        "jacsType": "message",
-        "jacsLevel": "raw",
-        "content": {"roundtrip": "rsa", "step": 1}
-    });
-
-    let signed = wrapper
-        .create_document(&content.to_string(), None, None, true, None, None)
-        .expect("create_document should succeed");
-
-    let valid = wrapper
-        .verify_signature(&signed, None)
-        .expect("verify_signature should succeed");
-    assert!(valid, "RSA roundtrip should verify successfully");
+fn test_full_roundtrip_create_sign_verify_rsa_is_disabled() {
+    let wrapper = AgentWrapper::new();
+    let err = wrapper
+        .ephemeral(Some("rsa-pss"))
+        .expect_err("ephemeral(rsa-pss) should be blocked");
+    assert!(
+        err.to_string().contains("RUSTSEC-2023-0071"),
+        "error should explain the RSA security block, got: {}",
+        err
+    );
 }
 
 #[cfg(feature = "pq-tests")]

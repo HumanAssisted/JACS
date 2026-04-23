@@ -30,10 +30,13 @@ use jacs::search::{
     SearchResults,
 };
 use jacs::storage::StorageDocumentTraits;
+use jacs::storage::common::{
+    build_field_filter_search_results, document_from_raw_json, extract_signature_agent_id,
+    parse_document_key,
+};
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::error::Error;
 use surrealdb::Surreal;
 use surrealdb::engine::local::Mem;
 use surrealdb::types::SurrealValue;
@@ -121,23 +124,14 @@ impl SurrealDbStorage {
     }
 
     /// Parse a document key in format "id:version" into (id, version).
-    fn parse_key(key: &str) -> Result<(String, String), Box<dyn Error>> {
-        let parts: Vec<&str> = key.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());
-        }
-        Ok((parts[0].to_string(), parts[1].to_string()))
+    fn parse_key(key: &str) -> Result<(String, String), JacsError> {
+        let (id, version) = parse_document_key(key)?;
+        Ok((id.to_string(), version.to_string()))
     }
 
     /// Convert a JacsRecord to a JACSDocument.
     fn record_to_document(record: &JacsRecord) -> Result<JACSDocument, JacsError> {
-        let value: Value = serde_json::from_str(&record.raw_contents)?;
-        Ok(JACSDocument {
-            id: record.jacs_id.clone(),
-            version: record.jacs_version.clone(),
-            value,
-            jacs_type: record.jacs_type.clone(),
-        })
+        document_from_raw_json(&record.raw_contents)
     }
 
     /// SurrealQL schema definition for the jacs_document table.
@@ -161,12 +155,7 @@ impl StorageDocumentTraits for SurrealDbStorage {
     fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let file_contents_json = doc.value.clone();
-        let agent_id = doc
-            .value
-            .get("jacsSignature")
-            .and_then(|s| s.get("jacsSignatureAgentId"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let agent_id = extract_signature_agent_id(&doc.value);
 
         let created_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let jacs_id = doc.id.clone();
@@ -401,38 +390,6 @@ impl StorageDocumentTraits for SurrealDbStorage {
             reason: "Not implemented for SurrealDB backend".to_string(),
         })
     }
-
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
-        let mut errors = Vec::new();
-        let mut keys = Vec::new();
-        for doc in &docs {
-            match self.store_document(doc) {
-                Ok(_) => keys.push(doc.getkey()),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(keys)
-        } else {
-            Err(errors)
-        }
-    }
-
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
-        let mut docs = Vec::new();
-        let mut errors = Vec::new();
-        for key in &keys {
-            match self.get_document(key) {
-                Ok(doc) => docs.push(doc),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(docs)
-        } else {
-            Err(errors)
-        }
-    }
 }
 
 impl DatabaseDocumentTraits for SurrealDbStorage {
@@ -661,21 +618,7 @@ impl SearchProvider for SurrealDbStorage {
                     JacsError::StorageError(format!("field_filter search failed: {}", e))
                 })?;
 
-            let total_count = docs.len();
-            let results = docs
-                .into_iter()
-                .map(|doc| SearchHit {
-                    document: doc,
-                    score: 1.0,
-                    matched_fields: vec![field_path.clone()],
-                })
-                .collect();
-
-            return Ok(SearchResults {
-                results,
-                total_count,
-                method: SearchMethod::FieldMatch,
-            });
+            return Ok(build_field_filter_search_results(docs, field_path));
         }
 
         if query.query.is_empty() {

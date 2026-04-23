@@ -8,6 +8,8 @@ First, create a json document that follows the schema for an agent, and use it i
 
 
 ```
+
+This historical sample output shows `RSA-PSS` because it was generated before RSA signing support was disabled. New agents should use `ring-Ed25519` or `pq2025`.
 {
   "$schema": "https://hai.ai/schemas/agent/v1/agent-schema.json",
   "name": "Agent Smith",
@@ -109,5 +111,4 @@ delv TXT _v1.agent.jacs.<domain>.
 kdig +dnssec TXT _v1.agent.jacs.<domain>.
 drill -DNSSEC TXT _v1.agent.jacs.<domain>.
 ```
-
 

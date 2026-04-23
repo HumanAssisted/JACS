@@ -16,7 +16,7 @@ fn test_two_simple_agents_different_configs() {
     let (agent_a, info_a) =
         SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create agent A (ed25519)");
     let (agent_b, info_b) =
-        SimpleAgent::ephemeral(Some("rsa-pss")).expect("Failed to create agent B (rsa-pss)");
+        SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create agent B (pq2025)");
 
     // Different agent identities
     assert_ne!(
@@ -184,11 +184,11 @@ fn test_cross_verification_strict_returns_error() {
 fn test_concurrent_different_algorithms() {
     let (agent_ed, _) =
         SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create ed25519 agent");
-    let (agent_rsa, _) =
-        SimpleAgent::ephemeral(Some("rsa-pss")).expect("Failed to create RSA agent");
+    let (agent_pq, _) =
+        SimpleAgent::ephemeral(Some("pq2025")).expect("Failed to create pq2025 agent");
 
     let agent_ed = Arc::new(agent_ed);
-    let agent_rsa = Arc::new(agent_rsa);
+    let agent_pq = Arc::new(agent_pq);
 
     let ed = Arc::clone(&agent_ed);
     let handle_ed = thread::spawn(move || {
@@ -196,14 +196,14 @@ fn test_concurrent_different_algorithms() {
             .expect("ed25519 signing failed")
     });
 
-    let rsa = Arc::clone(&agent_rsa);
-    let handle_rsa = thread::spawn(move || {
-        rsa.sign_message(&json!({"algo": "rsa-pss", "data": {"nested": true}}))
-            .expect("RSA signing failed")
+    let pq = Arc::clone(&agent_pq);
+    let handle_pq = thread::spawn(move || {
+        pq.sign_message(&json!({"algo": "pq2025", "data": {"nested": true}}))
+            .expect("pq2025 signing failed")
     });
 
     let signed_ed = handle_ed.join().expect("ed25519 thread panicked");
-    let signed_rsa = handle_rsa.join().expect("RSA thread panicked");
+    let signed_pq = handle_pq.join().expect("pq2025 thread panicked");
 
     // Each verifies its own
     let v_ed = agent_ed
@@ -211,10 +211,10 @@ fn test_concurrent_different_algorithms() {
         .expect("ed25519 verify failed");
     assert!(v_ed.valid);
 
-    let v_rsa = agent_rsa
-        .verify(&signed_rsa.raw)
-        .expect("RSA verify failed");
-    assert!(v_rsa.valid);
+    let v_pq = agent_pq
+        .verify(&signed_pq.raw)
+        .expect("pq2025 verify failed");
+    assert!(v_pq.valid);
 }
 
 /// 5 persistent agents created concurrently with different passwords and directories.

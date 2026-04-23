@@ -91,6 +91,12 @@ fn set_lifecycle_test_env_vars() {
         env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", private_key_filename);
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", public_key_filename);
         env::set_var("JACS_DATA_DIRECTORY", &fixtures_dir);
+        // RSA-PSS private-key generation/signing is disabled
+        // (RUSTSEC-2023-0071). Lifecycle tests generate fresh keys and
+        // sign new documents, so they must use a supported algorithm.
+        // Explicitly override any RSA-PSS default leaked by other tests
+        // in the same process via `set_min_test_env_vars()`.
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
     }
 }
 
@@ -115,14 +121,21 @@ fn create_fresh_agent() -> jacs::agent::Agent {
 #[test]
 #[serial]
 fn test_agent_creation_with_low_level_api() {
-    set_min_test_env_vars();
+    // Use the lifecycle Ed25519 test env instead of the RSA-PSS fixture
+    // defaults: `create_agent_and_load` signs the new agent document,
+    // and RSA-PSS private-key signing is disabled (RUSTSEC-2023-0071).
+    // This test still exercises the low-level `create_agent_v1` +
+    // `create_agent_and_load` path — only the signing algorithm changes.
+    set_lifecycle_test_env_vars();
 
     let mut agent = create_agent_v1().expect("Failed to create agent schema");
     let json_data =
         fs::read_to_string(raw_fixture("myagent.new.json")).expect("Failed to read agent fixture");
 
-    // Create agent without keys (just validates schema)
-    let result = agent.create_agent_and_load(&json_data, false, None);
+    // Create agent with keys=true so Ed25519 keys are generated in the
+    // lifecycle test scratch directory (no pre-existing RSA key to sign
+    // the new agent with).
+    let result = agent.create_agent_and_load(&json_data, true, Some("ed25519"));
     assert!(result.is_ok(), "Failed to create agent: {:?}", result.err());
 
     let agent_id = agent.get_id();

@@ -55,8 +55,10 @@ func withLoadedAgent(t *testing.T, fn func(t *testing.T, info *AgentInfo)) {
 	}
 
 	info, err := Create("go-test-agent", &CreateAgentOptions{
-		Password:      testPrivateKeyPassword,
-		Algorithm:     "RSA-PSS",
+		Password: testPrivateKeyPassword,
+		// RSA-PSS private-key signing is disabled (RUSTSEC-2023-0071);
+		// use Ed25519 for all test-generated agents.
+		Algorithm:     "ring-Ed25519",
 		DataDirectory: "jacs_data",
 		KeyDirectory:  "jacs_keys",
 		ConfigPath:    "jacs.config.json",

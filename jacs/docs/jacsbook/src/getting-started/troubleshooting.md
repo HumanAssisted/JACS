@@ -37,7 +37,7 @@ Wrong or missing password. Check `JACS_PRIVATE_KEY_PASSWORD`. For CLI, you may a
 
 ### Algorithm detection failed
 
-Set the `signingAlgorithm` field in your config, or pass it explicitly to `quickstart(...)` / `create(...)`. Valid values: `pq2025`, `ring-Ed25519`, `RSA-PSS`.
+Set the `signingAlgorithm` field in your config, or pass it explicitly to `quickstart(...)` / `create(...)`. Valid values for new keys: `pq2025`, `ring-Ed25519`. `RSA-PSS` is legacy verification-only.
 
 ## Runtime Issues
 

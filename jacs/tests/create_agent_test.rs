@@ -1,12 +1,10 @@
-use jacs::agent::loaders::FileLoader;
 mod utils;
-use utils::{create_agent_v1, read_new_agent_fixture, read_raw_fixture, set_min_test_env_vars};
+use utils::{create_ring_test_agent, read_new_agent_fixture, read_raw_fixture};
 
 #[test]
 fn test_validate_agent_creation() {
-    set_min_test_env_vars();
     // RUST_BACKTRACE=1 cargo test create_agent_tests -- --test test_validate_agent_creation
-    let mut agent = create_agent_v1().expect("Failed to create agent");
+    let mut agent = create_ring_test_agent().expect("Failed to create agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
@@ -20,12 +18,7 @@ fn test_validate_agent_creation() {
     // agent.save();
 
     println!("New Agent Created\n\n\n {} ", agent);
-    // switch keys
-    let _ = agent.fs_preload_keys(
-        &"agent-two.private.pem".to_string(),
-        &"agent-two.public.pem".to_string(),
-        Some("RSA-PSS".to_string()),
-    );
+
     let json_data =
         read_raw_fixture("mysecondagent.new.json").expect("Failed to read second agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
@@ -44,8 +37,7 @@ fn test_validate_agent_creation() {
 
 #[test]
 fn test_validate_single_agent_creation() {
-    set_min_test_env_vars();
-    let mut agent = create_agent_v1().expect("Failed to create agent");
+    let mut agent = create_ring_test_agent().expect("Failed to create agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
@@ -62,8 +54,7 @@ fn test_validate_single_agent_creation() {
 
 #[test]
 fn test_validate_agent_creation_save_and_load() {
-    set_min_test_env_vars();
-    let mut agent = create_agent_v1().expect("Failed to create agent");
+    let mut agent = create_ring_test_agent().expect("Failed to create agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 

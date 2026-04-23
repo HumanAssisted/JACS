@@ -1,5 +1,9 @@
 use clap::{Arg, ArgAction, Command, crate_name, value_parser};
 
+mod agent_loader;
+mod password_bootstrap;
+
+use agent_loader::{load_agent, load_agent_with_cli_dns_policy};
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
@@ -14,234 +18,15 @@ use jacs::cli_utils::document::{
 use jacs::create_task; // re-enabled: may be used by a2a later
 use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::shutdown::{ShutdownGuard, install_signal_handler};
+use password_bootstrap::{
+    ensure_cli_private_key_password, quickstart_password_bootstrap_help,
+    wrap_quickstart_error_with_password_help,
+};
 
 use rpassword::read_password;
 use std::env;
 use std::error::Error;
-use std::path::Path;
 use std::process;
-
-const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
-const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
-
-fn quickstart_password_bootstrap_help() -> &'static str {
-    "Password bootstrap options (prefer exactly one explicit source):
-  1) Direct env (recommended):
-     export JACS_PRIVATE_KEY_PASSWORD='your-strong-password'
-  2) Export from a secret file:
-     export JACS_PRIVATE_KEY_PASSWORD=\"$(cat /path/to/password)\"
-  3) CLI convenience (file path):
-     export JACS_PASSWORD_FILE=/path/to/password
-If both JACS_PRIVATE_KEY_PASSWORD and JACS_PASSWORD_FILE are set, CLI warns and uses JACS_PRIVATE_KEY_PASSWORD.
-If neither is set, CLI will try legacy ./jacs_keys/.jacs_password when present."
-}
-
-fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, String> {
-    // SECURITY: Check file permissions before reading (Unix only)
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        let metadata = std::fs::metadata(path)
-            .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
-        let mode = metadata.permissions().mode() & 0o777;
-        if mode & 0o077 != 0 {
-            return Err(format!(
-                "{} '{}' has insecure permissions (mode {:04o}). \
-                File must not be group-readable or world-readable. \
-                Fix with: chmod 600 '{}'\n\n{}",
-                source_name,
-                path.display(),
-                mode,
-                path.display(),
-                quickstart_password_bootstrap_help()
-            ));
-        }
-    }
-
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
-    // Preserve intentional leading/trailing spaces in passphrases; strip only line endings.
-    let password = raw.trim_end_matches(|c| c == '\n' || c == '\r');
-    if password.is_empty() {
-        return Err(format!(
-            "{} '{}' is empty. {}",
-            source_name,
-            path.display(),
-            quickstart_password_bootstrap_help()
-        ));
-    }
-    Ok(password.to_string())
-}
-
-fn get_non_empty_env_var(key: &str) -> Result<Option<String>, String> {
-    match env::var(key) {
-        Ok(value) => {
-            if value.trim().is_empty() {
-                Err(format!(
-                    "{} is set but empty. {}",
-                    key,
-                    quickstart_password_bootstrap_help()
-                ))
-            } else {
-                Ok(Some(value))
-            }
-        }
-        Err(std::env::VarError::NotPresent) => Ok(None),
-        Err(std::env::VarError::NotUnicode(_)) => Err(format!(
-            "{} contains non-UTF-8 data. {}",
-            key,
-            quickstart_password_bootstrap_help()
-        )),
-    }
-}
-
-/// Resolve the private key password from CLI sources and return it.
-///
-/// Returns `Ok(Some(password))` when a password is found from env var,
-/// password file, or legacy file. Returns `Ok(None)` when no CLI-level
-/// password is available (the core layer will try the OS keychain).
-///
-/// Also sets the `JACS_PRIVATE_KEY_PASSWORD` env var as a side-effect
-/// for backward compatibility with code paths that still read it.
-fn ensure_cli_private_key_password() -> Result<Option<String>, String> {
-    let env_password = get_non_empty_env_var("JACS_PRIVATE_KEY_PASSWORD")?;
-    let password_file = get_non_empty_env_var(CLI_PASSWORD_FILE_ENV)?;
-
-    // 1. Env var wins (highest priority). If both env var and password file are
-    //    set, use the env var with a warning instead of erroring. This fixes
-    //    integrations (e.g. OpenClaw) that set JACS_PRIVATE_KEY_PASSWORD in
-    //    the process env while JACS_PASSWORD_FILE is also present.
-    if let Some(password) = env_password {
-        if password_file.is_some() {
-            eprintln!(
-                "Warning: both JACS_PRIVATE_KEY_PASSWORD and {} are set. \
-                 Using JACS_PRIVATE_KEY_PASSWORD (highest priority).",
-                CLI_PASSWORD_FILE_ENV
-            );
-        }
-        // SAFETY: CLI process is single-threaded for command handling at this point.
-        unsafe {
-            env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
-        }
-        return Ok(Some(password));
-    }
-
-    // 2. Password file (explicit)
-    if let Some(path) = password_file {
-        let password = read_password_from_file(Path::new(path.trim()), CLI_PASSWORD_FILE_ENV)?;
-        // SAFETY: CLI process is single-threaded for command handling at this point.
-        unsafe {
-            env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
-        }
-        return Ok(Some(password));
-    }
-
-    // 3. Legacy password file
-    let legacy_path = Path::new(DEFAULT_LEGACY_PASSWORD_FILE);
-    if legacy_path.exists() {
-        let password = read_password_from_file(legacy_path, "legacy password file")?;
-        // SAFETY: CLI process is single-threaded for command handling at this point.
-        unsafe {
-            env::set_var("JACS_PRIVATE_KEY_PASSWORD", &password);
-        }
-        eprintln!(
-            "Using legacy password source '{}'. Prefer JACS_PRIVATE_KEY_PASSWORD or {}.",
-            legacy_path.display(),
-            CLI_PASSWORD_FILE_ENV
-        );
-        // Warn about keychain migration opportunity
-        #[cfg(feature = "keychain")]
-        {
-            if jacs::keystore::keychain::is_available() {
-                eprintln!(
-                    "Warning: A plaintext password file '{}' was found. \
-                     Consider migrating to the OS keychain with `jacs keychain set` \
-                     and then deleting the password file.",
-                    legacy_path.display()
-                );
-            }
-        }
-        return Ok(Some(password));
-    }
-
-    // 4. No CLI-level password found. The core layer's resolve_private_key_password()
-    //    will check the OS keychain automatically when encryption/decryption is needed.
-    Ok(None)
-}
-
-fn resolve_dns_policy_overrides(
-    ignore_dns: bool,
-    require_strict: bool,
-    require_dns: bool,
-    non_strict: bool,
-) -> (Option<bool>, Option<bool>, Option<bool>) {
-    if ignore_dns {
-        (Some(false), Some(false), Some(false))
-    } else if require_strict {
-        (Some(true), Some(true), Some(true))
-    } else if require_dns {
-        (Some(true), Some(true), Some(false))
-    } else if non_strict {
-        (Some(true), Some(false), Some(false))
-    } else {
-        (None, None, None)
-    }
-}
-
-fn load_agent_with_cli_dns_policy(
-    ignore_dns: bool,
-    require_strict: bool,
-    require_dns: bool,
-    non_strict: bool,
-) -> Result<Agent, Box<dyn Error>> {
-    let (dns_validate, dns_required, dns_strict) =
-        resolve_dns_policy_overrides(ignore_dns, require_strict, require_dns, non_strict);
-    let mut agent = load_agent()?;
-    if let Some(v) = dns_validate {
-        agent.set_dns_validate(v);
-    }
-    if let Some(v) = dns_required {
-        agent.set_dns_required(v);
-    }
-    if let Some(v) = dns_strict {
-        agent.set_dns_strict(v);
-    }
-    Ok(agent)
-}
-
-/// Load an agent using the new Config + Agent::from_config pattern.
-///
-/// Replaces the deprecated `load_agent` / `load_agent_with_dns_policy` calls.
-/// Resolve the JACS config path from JACS_CONFIG env var or default.
-fn resolve_config_path() -> String {
-    std::env::var("JACS_CONFIG")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or_else(|| "./jacs.config.json".to_string())
-}
-
-/// Load a JACS agent from the default config path with password from the
-/// CLI resolution chain (env var, password file, keychain, prompt).
-fn load_agent() -> Result<Agent, jacs::error::JacsError> {
-    let mut config = jacs::config::Config::from_file(&resolve_config_path())?;
-    config.apply_env_overrides();
-    let password = ensure_cli_private_key_password()
-        .map_err(|e| jacs::error::JacsError::Internal { message: e })?;
-    Agent::from_config(config, password.as_deref())
-}
-
-fn wrap_quickstart_error_with_password_help(
-    context: &str,
-    err: impl std::fmt::Display,
-) -> Box<dyn Error> {
-    Box::new(std::io::Error::other(format!(
-        "{}: {}\n\n{}",
-        context,
-        err,
-        quickstart_password_bootstrap_help()
-    )))
-}
 
 // install/download functions removed — MCP is now built into the CLI
 
@@ -390,7 +175,7 @@ pub fn build_cli() -> Command {
                         .arg(
                             Arg::new("algorithm")
                                 .long("algorithm")
-                                .value_parser(["ring-Ed25519", "RSA-PSS", "pq2025"])
+                                .value_parser(["ring-Ed25519", "pq2025"])
                                 .help("Signing algorithm for the new keys (defaults to current)"),
                         )
                         .arg(
@@ -958,7 +743,7 @@ pub fn build_cli() -> Command {
                             Arg::new("algorithm")
                                 .long("algorithm")
                                 .short('a')
-                                .value_parser(["pq2025", "ring-Ed25519", "RSA-PSS"])
+                                .value_parser(["pq2025", "ring-Ed25519"])
                                 .help("Signing algorithm (default: pq2025)"),
                         ),
                 ),
@@ -991,7 +776,7 @@ pub fn build_cli() -> Command {
                     Arg::new("algorithm")
                         .long("algorithm")
                         .short('a')
-                        .value_parser(["ed25519", "rsa-pss", "pq2025"])
+                        .value_parser(["ed25519", "pq2025"])
                         .default_value("pq2025")
                         .help("Signing algorithm (default: pq2025)"),
                 )
@@ -2994,123 +2779,4 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serial_test::serial;
-    use std::ffi::OsString;
-    use tempfile::tempdir;
-
-    struct EnvGuard {
-        saved: Vec<(&'static str, Option<OsString>)>,
-    }
-
-    impl EnvGuard {
-        fn capture(keys: &[&'static str]) -> Self {
-            Self {
-                saved: keys
-                    .iter()
-                    .map(|key| (*key, std::env::var_os(key)))
-                    .collect(),
-            }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            for (key, value) in self.saved.drain(..) {
-                match value {
-                    Some(value) => {
-                        // SAFETY: These unit tests are marked serial and restore prior process env.
-                        unsafe {
-                            std::env::set_var(key, value);
-                        }
-                    }
-                    None => {
-                        // SAFETY: These unit tests are marked serial and restore prior process env.
-                        unsafe {
-                            std::env::remove_var(key);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn quickstart_help_mentions_env_precedence_warning() {
-        let help = quickstart_password_bootstrap_help();
-        assert!(help.contains("prefer exactly one explicit source"));
-        assert!(help.contains("CLI warns and uses JACS_PRIVATE_KEY_PASSWORD"));
-    }
-
-    #[test]
-    #[serial]
-    fn ensure_cli_private_key_password_reads_password_file_when_env_absent() {
-        let _guard = EnvGuard::capture(&["JACS_PRIVATE_KEY_PASSWORD", CLI_PASSWORD_FILE_ENV]);
-        let temp = tempdir().expect("tempdir");
-        let password_file = temp.path().join("password.txt");
-        std::fs::write(&password_file, "TestP@ss123!#\n").expect("write password file");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&password_file, std::fs::Permissions::from_mode(0o600))
-                .expect("chmod password file");
-        }
-
-        // SAFETY: These unit tests are marked serial and restore prior process env.
-        unsafe {
-            std::env::remove_var("JACS_PRIVATE_KEY_PASSWORD");
-            std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
-        }
-
-        let resolved =
-            ensure_cli_private_key_password().expect("password bootstrap should succeed");
-
-        assert_eq!(
-            resolved.as_deref(),
-            Some("TestP@ss123!#"),
-            "resolved password should match password file content"
-        );
-        assert_eq!(
-            std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
-            "TestP@ss123!#"
-        );
-    }
-
-    #[test]
-    #[serial]
-    fn ensure_cli_private_key_password_prefers_env_when_sources_are_ambiguous() {
-        let _guard = EnvGuard::capture(&["JACS_PRIVATE_KEY_PASSWORD", CLI_PASSWORD_FILE_ENV]);
-        let temp = tempdir().expect("tempdir");
-        let password_file = temp.path().join("password.txt");
-        std::fs::write(&password_file, "DifferentP@ss456$\n").expect("write password file");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&password_file, std::fs::Permissions::from_mode(0o600))
-                .expect("chmod password file");
-        }
-
-        // SAFETY: These unit tests are marked serial and restore prior process env.
-        unsafe {
-            std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
-            std::env::set_var(CLI_PASSWORD_FILE_ENV, &password_file);
-        }
-
-        let resolved =
-            ensure_cli_private_key_password().expect("password bootstrap should succeed");
-
-        assert_eq!(
-            resolved.as_deref(),
-            Some("TestP@ss123!#"),
-            "env var should win over password file"
-        );
-        assert_eq!(
-            std::env::var("JACS_PRIVATE_KEY_PASSWORD").expect("env password"),
-            "TestP@ss123!#"
-        );
-    }
 }

@@ -242,7 +242,7 @@ jacs agent create --create-keys true
 jacs document create -f doc.json
 </code></pre>
 <h3 id="algorithm-mismatch"><a class="header" href="#algorithm-mismatch">Algorithm Mismatch</a></h3>
-<p><strong>Error:</strong> <code>Key algorithm 'ring-Ed25519' does not match configured algorithm 'RSA-PSS'</code></p>
+<p><strong>Error:</strong> <code>Key algorithm 'ring-Ed25519' does not match configured algorithm 'pq2025'</code></p>
 <p><strong>Cause:</strong> The key file was created with a different algorithm than configured.</p>
 <p><strong>Solution:</strong></p>
 <ul>
@@ -278,7 +278,8 @@ jacs document create -f unsigned-doc.json
 <p><strong>Cause:</strong> Document was signed with an unsupported algorithm.</p>
 <p><strong>Solution:</strong></p>
 <ul>
-<li>Use a supported algorithm: <code>ring-Ed25519</code>, <code>RSA-PSS</code>, <code>pq-dilithium</code>, <code>pq2025</code></li>
+<li>Use a supported algorithm for new keys: <code>ring-Ed25519</code>, <code>pq2025</code></li>
+<li>Legacy note: JACS can still verify older <code>RSA-PSS</code> and <code>pq-dilithium</code> artifacts</li>
 </ul>
 <h2 id="dns-verification-errors"><a class="header" href="#dns-verification-errors">DNS Verification Errors</a></h2>
 <h3 id="dnssec-validation-failed"><a class="header" href="#dnssec-validation-failed">DNSSEC Validation Failed</a></h3>

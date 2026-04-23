@@ -123,25 +123,6 @@ console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 const result = await jacs.verifyById('550e8400-e29b-41d4:1');
 ```
 
-## Verification Links
-
-Generate a URL that lets anyone verify a signed document through a web verifier (e.g., hai.ai):
-
-**Python:**
-
-```python
-url = jacs.generate_verify_link(signed_doc.raw_json)
-# https://hai.ai/jacs/verify?s=<base64url-encoded-document>
-```
-
-**Node.js:**
-
-```typescript
-const url = jacs.generateVerifyLink(signed.raw);
-```
-
-The document is base64url-encoded into the URL query parameter. Documents must be under ~1.5 KB to fit within the 2048-character URL limit. For larger documents, share the file directly and verify with the CLI or SDK.
-
 ## DNS Verification
 
 DNS verification checks that an agent's public key hash matches a DNS TXT record published at `_v1.agent.jacs.<domain>`. This provides a decentralized trust anchor: anyone can look up the agent's expected key fingerprint via DNS without contacting a central server.

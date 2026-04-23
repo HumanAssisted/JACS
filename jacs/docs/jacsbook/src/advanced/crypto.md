@@ -7,9 +7,11 @@ JACS supports multiple cryptographic algorithms for digital signatures, providin
 | Algorithm | Config Value | Type | Key Size | Signature Size | Recommended Use |
 |-----------|--------------|------|----------|----------------|-----------------|
 | Ed25519 | `ring-Ed25519` | Elliptic Curve | 32 bytes | 64 bytes | General purpose (default) |
-| RSA-PSS | `RSA-PSS` | RSA | 2048-4096 bits | 256-512 bytes | Legacy systems |
+| RSA-PSS | `RSA-PSS` | RSA | 2048-4096 bits | 256-512 bytes | Legacy verification only |
 | Dilithium | `pq-dilithium` | Lattice-based | ~1.3 KB | ~2.4 KB | Post-quantum |
 | PQ2025 | `pq2025` | Hybrid | ~1.3 KB | ~2.5 KB | Transitional |
+
+`RSA-PSS` remains documented because JACS still verifies historical RSA-signed artifacts. New RSA key generation, signing, and rotation are intentionally unsupported.
 
 ## Ed25519 (ring-Ed25519)
 
@@ -55,13 +57,13 @@ signature = agent.sign_string("Hello, World!")
 print(f"Signature (64 bytes): {len(signature)} characters base64")
 ```
 
-## RSA-PSS
+## RSA-PSS (Legacy Verification Only)
 
 Industry-standard RSA with Probabilistic Signature Scheme padding.
 
 ### Overview
 
-RSA-PSS provides compatibility with systems that require RSA signatures. JACS uses 2048-bit or larger keys.
+RSA-PSS support exists so JACS can verify older artifacts that were already signed with RSA. JACS no longer supports creating new RSA signing keys or rotating agents into RSA.
 
 ### Characteristics
 
@@ -70,25 +72,18 @@ RSA-PSS provides compatibility with systems that require RSA signatures. JACS us
 - **Signature Size**: Same as key size (256-512 bytes)
 - **Security Level**: ~112-128 bits (2048-bit key)
 
-### Configuration
-
-```json
-{
-  "jacs_agent_key_algorithm": "RSA-PSS"
-}
-```
-
 ### Use Cases
 
-- Integration with legacy systems
-- Compliance requirements mandating RSA
-- Interoperability with enterprise PKI
+- Verifying historical RSA-signed documents
+- Interoperating with legacy systems while migrating them to Ed25519 or pq2025
+- Reading old configs or agent records that still declare `RSA-PSS`
 
 ### Considerations
 
 - Larger signatures increase document size
 - Slower than Ed25519
 - Larger keys needed for equivalent security
+- New RSA signing operations are disabled due to `RUSTSEC-2023-0071`
 
 ## Dilithium (pq-dilithium)
 
@@ -170,7 +165,7 @@ PQ2025 combines Ed25519 with Dilithium, providing security even if one algorithm
 |-------------|----------------------|
 | Best performance | `ring-Ed25519` |
 | Smallest signatures | `ring-Ed25519` |
-| Legacy compatibility | `RSA-PSS` |
+| Legacy compatibility | Verify historical `RSA-PSS` artifacts, but create new keys with `ring-Ed25519` |
 | Quantum resistance | `pq-dilithium` |
 | Maximum security | `pq2025` |
 | General purpose | `ring-Ed25519` |
@@ -196,10 +191,10 @@ Long-term validity requires quantum resistance.
 **Enterprise Integration**:
 ```json
 {
-  "jacs_agent_key_algorithm": "RSA-PSS"
+  "jacs_agent_key_algorithm": "ring-Ed25519"
 }
 ```
-Compatibility with existing PKI infrastructure.
+Use Ed25519 for new agents and keep RSA-PSS only for verifying older infrastructure outputs.
 
 **High-Security**:
 ```json

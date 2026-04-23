@@ -73,6 +73,7 @@ use std::sync::{Arc, Mutex};
 use strum_macros::{AsRefStr, Display, EnumString};
 use tracing::debug;
 
+pub mod common;
 pub mod jenv;
 
 // Database trait definitions are always available (no feature gate) so external
@@ -626,7 +627,6 @@ impl MultiStorage {
 
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
-use serde_json::Value;
 use std::collections::HashMap;
 /// Base trait for document storage operations (Level 1 in the trait hierarchy).
 ///
@@ -660,8 +660,42 @@ pub trait StorageDocumentTraits: Send + Sync {
     fn merge_documents(&self, doc_id: &str, v1: &str, v2: &str) -> Result<JACSDocument, JacsError>;
 
     // Bulk operations
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>>;
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>>;
+    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
+        let mut stored_keys = Vec::new();
+        let mut errors = Vec::new();
+
+        for doc in docs {
+            let key = doc.getkey();
+            match self.store_document(&doc) {
+                Ok(_) => stored_keys.push(key),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(stored_keys)
+        } else {
+            Err(errors)
+        }
+    }
+
+    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
+        let mut documents = Vec::new();
+        let mut errors = Vec::new();
+
+        for key in keys {
+            match self.get_document(&key) {
+                Ok(doc) => documents.push(doc),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(documents)
+        } else {
+            Err(errors)
+        }
+    }
 }
 
 /// Caching wrapper over [`MultiStorage`] that keeps recently-accessed documents in an
@@ -709,31 +743,7 @@ impl StorageDocumentTraits for MultiStorage {
             .map_err(|e| JacsError::StorageError(e.to_string()))?;
         let json_string = String::from_utf8(contents)
             .map_err(|e| JacsError::StorageError(format!("Invalid UTF-8 in document: {}", e)))?;
-        let value: Value = serde_json::from_str(&json_string)?;
-
-        // Extract required fields from the JSON value
-        let id = value
-            .get("jacsId")
-            .and_then(|v| v.as_str())
-            .ok_or("Document missing required field: jacsId")?
-            .to_string();
-        let version = value
-            .get("jacsVersion")
-            .and_then(|v| v.as_str())
-            .ok_or("Document missing required field: jacsVersion")?
-            .to_string();
-        let jacs_type = value
-            .get("jacsType")
-            .and_then(|v| v.as_str())
-            .ok_or("Document missing required field: jacsType")?
-            .to_string();
-
-        Ok(JACSDocument {
-            id,
-            version,
-            value,
-            jacs_type,
-        })
+        common::document_from_raw_json(&json_string)
     }
 
     fn remove_document(&self, key: &str) -> Result<JACSDocument, JacsError> {
@@ -865,47 +875,9 @@ impl StorageDocumentTraits for MultiStorage {
         _v1: &str,
         _v2: &str,
     ) -> Result<JACSDocument, JacsError> {
-        // TODO: Document merging not yet implemented.
-        // See docs/0403INCONCISTANCIES.md item L12.
-        // This is a known gap -- merging is not needed for launch.
+        // Document merging is intentionally unimplemented — it is not needed for
+        // the shipped product. Implement when a concrete merge use case arises.
         Err("Document merging not yet implemented: feature pending".into())
-    }
-
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
-        let mut stored_keys = Vec::new();
-        let mut errors = Vec::new();
-
-        for doc in docs {
-            let key = doc.getkey();
-            match self.store_document(&doc) {
-                Ok(_) => stored_keys.push(key),
-                Err(e) => errors.push(e),
-            }
-        }
-
-        if errors.is_empty() {
-            Ok(stored_keys)
-        } else {
-            Err(errors)
-        }
-    }
-
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
-        let mut documents = Vec::new();
-        let mut errors = Vec::new();
-
-        for key in keys {
-            match self.get_document(&key) {
-                Ok(doc) => documents.push(doc),
-                Err(e) => errors.push(e),
-            }
-        }
-
-        if errors.is_empty() {
-            Ok(documents)
-        } else {
-            Err(errors)
-        }
     }
 }
 
@@ -989,25 +961,6 @@ impl StorageDocumentTraits for CachedMultiStorage {
 
     fn merge_documents(&self, doc_id: &str, v1: &str, v2: &str) -> Result<JACSDocument, JacsError> {
         self.storage.merge_documents(doc_id, v1, v2)
-    }
-
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
-        let result = self.storage.store_documents(docs.clone())?;
-
-        // Update cache if enabled
-        if self.cache_enabled
-            && let Ok(mut cache) = self.cache.lock()
-        {
-            for doc in docs {
-                cache.insert(doc.getkey(), doc);
-            }
-        }
-
-        Ok(result)
-    }
-
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
-        self.storage.get_documents(keys)
     }
 }
 

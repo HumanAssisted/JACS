@@ -704,7 +704,7 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
 /// * `name` - Agent name to use when creating a new config/identity
 /// * `domain` - Agent domain to use for DNS/public-key verification workflows
 /// * `description` - Optional human-readable description for a newly created agent
-/// * `algorithm` - Signing algorithm (default: "pq2025"). Also: "ed25519", "rsa-pss"
+/// * `algorithm` - Signing algorithm (default: "pq2025"). Also: "ed25519"
 /// * `config_path` - Config file path (default: "./jacs.config.json")
 ///
 /// # Returns
@@ -781,6 +781,7 @@ pub fn quickstart(
         "pq2025" => "pq2025",
         other => other,
     };
+    crate::crypt::ensure_private_key_operation_allowed(algo, "key generation")?;
 
     let params = CreateAgentParams {
         name: name.to_string(),

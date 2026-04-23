@@ -6,8 +6,17 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Once};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The known agent ID that exists in jacs/tests/fixtures/agent/
+/// The known RSA-PSS agent fixture in jacs/tests/fixtures/agent/.
+/// RSA private-key *signing* is disabled (RUSTSEC-2023-0071) but RSA
+/// *verification* still works, so read-only tests (library_exports,
+/// config_loading, etc.) can keep using this fixture.
 const AGENT_ID: &str = "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
+
+/// Ed25519 agent fixture in jacs/tests/fixtures/agent/. Use this variant
+/// for any test that needs to *sign* new documents (audit log/export,
+/// search/memory state signing) — RSA signing is disabled by the jacs core.
+const AGENT_ID_ED25519: &str =
+    "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a";
 
 /// Password used to encrypt test fixture keys in jacs/tests/fixtures/keys/
 /// Note: intentional typo "secretpassord" matches TEST_PASSWORD_LEGACY in jacs/tests/utils.rs
@@ -64,7 +73,37 @@ fn jacs_root() -> PathBuf {
 /// Create a temp workspace with agent JSON, keys, and config.
 /// Returns (config_path, base_dir). Config uses relative paths so tests can
 /// verify the loader resolves them from the config path rather than the CWD.
+///
+/// Uses the RSA-PSS fixture (`AGENT_ID` / `agent-one.*.pem`). Suitable for
+/// tests that only load/verify — any test that needs to sign new documents
+/// must use [`prepare_temp_workspace_ed25519`] instead.
 pub fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
+    prepare_temp_workspace_with_fixture(
+        AGENT_ID,
+        "RSA-PSS",
+        "agent-one.private.pem.enc",
+        "agent-one.public.pem",
+    )
+}
+
+/// Create a temp workspace backed by the Ed25519 agent fixture. Use this
+/// variant for any test that needs to *sign* new JACS documents — RSA
+/// private-key signing is disabled by the jacs core (RUSTSEC-2023-0071).
+pub fn prepare_temp_workspace_ed25519() -> (PathBuf, PathBuf) {
+    prepare_temp_workspace_with_fixture(
+        AGENT_ID_ED25519,
+        "ring-Ed25519",
+        "agent-ed25519.private.pem.enc",
+        "agent-ed25519.public.pem",
+    )
+}
+
+fn prepare_temp_workspace_with_fixture(
+    agent_id: &str,
+    algorithm: &str,
+    private_key_filename: &str,
+    public_key_filename: &str,
+) -> (PathBuf, PathBuf) {
     configure_fixture_iat_policy();
 
     let ts = SystemTime::now()
@@ -79,8 +118,8 @@ pub fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
 
     let root = jacs_root();
 
-    let agent_src = root.join(format!("jacs/tests/fixtures/agent/{}.json", AGENT_ID));
-    let agent_dst = data_dir.join(format!("agent/{}.json", AGENT_ID));
+    let agent_src = root.join(format!("jacs/tests/fixtures/agent/{}.json", agent_id));
+    let agent_dst = data_dir.join(format!("agent/{}.json", agent_id));
     fs::copy(&agent_src, &agent_dst).unwrap_or_else(|e| {
         panic!(
             "copy agent fixture from {:?} to {:?}: {}",
@@ -90,21 +129,21 @@ pub fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
 
     let keys_fixture = root.join("jacs/tests/fixtures/keys");
     fs::copy(
-        keys_fixture.join("agent-one.private.pem.enc"),
-        keys_dir.join("agent-one.private.pem.enc"),
+        keys_fixture.join(private_key_filename),
+        keys_dir.join(private_key_filename),
     )
     .expect("copy private key");
     fs::copy(
-        keys_fixture.join("agent-one.public.pem"),
-        keys_dir.join("agent-one.public.pem"),
+        keys_fixture.join(public_key_filename),
+        keys_dir.join(public_key_filename),
     )
     .expect("copy public key");
 
     let config_json = serde_json::json!({
-        "jacs_agent_id_and_version": AGENT_ID,
-        "jacs_agent_key_algorithm": "RSA-PSS",
-        "jacs_agent_private_key_filename": "agent-one.private.pem.enc",
-        "jacs_agent_public_key_filename": "agent-one.public.pem",
+        "jacs_agent_id_and_version": agent_id,
+        "jacs_agent_key_algorithm": algorithm,
+        "jacs_agent_private_key_filename": private_key_filename,
+        "jacs_agent_public_key_filename": public_key_filename,
         "jacs_data_directory": "jacs_data",
         "jacs_default_storage": "fs",
         "jacs_key_directory": "jacs_keys",

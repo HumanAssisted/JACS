@@ -376,21 +376,26 @@ mod tests {
     }
 
     #[test]
-    fn test_sign_and_verify_agent_card_roundtrip_rsa() {
+    fn test_sign_agent_card_rsa_is_disabled() {
         let card = make_test_card();
+        let err = crate::a2a::keys::create_jwk_keys(Some("ring-Ed25519"), Some("rsa"))
+            .err()
+            .expect("RSA A2A key generation should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
 
-        // Generate RSA keys
-        let (private_key, public_key) = crate::crypt::rsawrapper::generate_keys().expect("key gen");
-
-        // Sign the card
-        let jws = sign_agent_card_jws(&card, &private_key, "rsa", "rsa-key-1").expect("sign");
-
-        // Embed signature
-        let signed_card = embed_signature_in_agent_card(&card, &jws, Some("rsa-key-1"));
-
-        // Verify
-        let result = verify_agent_card_jws(&signed_card, &public_key, "rsa").expect("verify");
-        assert!(result);
+        let ring_keys =
+            crate::crypt::ringwrapper::generate_keys().expect("ed25519 key generation should work");
+        let err = sign_agent_card_jws(&card, &ring_keys.0, "rsa", "rsa-key-1")
+            .expect_err("RSA A2A signing should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
     }
 
     #[test]

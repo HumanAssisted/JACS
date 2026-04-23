@@ -773,13 +773,6 @@ class JacsClient {
         return this.exportAgent();
     }
     // ---------------------------------------------------------------------------
-    // Verification Link
-    // ---------------------------------------------------------------------------
-    generateVerifyLink(doc, baseUrl) {
-        const encoded = Buffer.from(doc).toString('base64url');
-        return `${baseUrl || 'https://hai.ai/jacs/verify'}?s=${encoded}`;
-    }
-    // ---------------------------------------------------------------------------
     // Audit
     // ---------------------------------------------------------------------------
     async audit(options) {

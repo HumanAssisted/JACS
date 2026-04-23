@@ -355,7 +355,7 @@ agreement = client.create_agreement(
     minimum_strength="post-quantum"
 )
 </code></pre>
-<p>An agent using RSA-PSS or Ed25519 will be rejected when trying to sign this agreement.</p>
+<p>An agent using Ed25519, or a legacy RSA-PSS agent, will be rejected when trying to sign this agreement.</p>
 <h3 id="combined-options"><a class="header" href="#combined-options">Combined Options</a></h3>
 <pre><code class="language-python">agreement = client.create_agreement(
     document={"proposal": "Deploy model v2"},

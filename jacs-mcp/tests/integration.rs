@@ -13,9 +13,12 @@ use rmcp::{
 
 mod support;
 
+// Integration tests exercise sign/verify/attestation round-trips that
+// create new JACS documents, so they need an algorithm with working
+// private-key signing. RSA-PSS signing is disabled (RUSTSEC-2023-0071).
 use support::{
-    TEST_PASSWORD, assert_server_reaches_initialized_request, prepare_temp_workspace,
-    run_server_with_fixture,
+    TEST_PASSWORD, assert_server_reaches_initialized_request,
+    prepare_temp_workspace_ed25519 as prepare_temp_workspace, run_server_with_fixture,
 };
 
 static STDIO_TEST_LOCK: LazyLock<tokio::sync::Mutex<()>> =

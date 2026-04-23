@@ -1,5 +1,5 @@
-//! Key management for A2A integration
-//! Handles dual key generation (PQC for JACS, RSA/ECDSA for A2A)
+//! Key management for A2A integration.
+//! Handles dual key generation for JACS plus interoperable A2A keys.
 
 use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose};
@@ -44,7 +44,7 @@ pub fn create_jwk_keys(
 ) -> Result<DualKeyPair, JacsError> {
     // Default algorithms
     let jacs_alg = jacs_algorithm.unwrap_or("pq2025");
-    let a2a_alg = a2a_algorithm.unwrap_or("rsa");
+    let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
 
     info!(
         "Generating ephemeral dual keys: JACS={}, A2A={}",
@@ -54,7 +54,10 @@ pub fn create_jwk_keys(
     // Generate keys directly in memory without file persistence
     let (jacs_private, jacs_public) = match jacs_alg {
         "pq2025" => crate::crypt::pq2025::generate_keys()?,
-        "rsa" => crate::crypt::rsawrapper::generate_keys()?,
+        "rsa" => {
+            crate::crypt::ensure_private_key_operation_allowed("rsa", "A2A key generation")?;
+            crate::crypt::rsawrapper::generate_keys()?
+        }
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
         "ecdsa" | "es256" => {
             return Err(JacsError::CryptoError(
@@ -72,7 +75,10 @@ pub fn create_jwk_keys(
     };
 
     let (a2a_private, a2a_public) = match a2a_alg {
-        "rsa" => crate::crypt::rsawrapper::generate_keys()?,
+        "rsa" => {
+            crate::crypt::ensure_private_key_operation_allowed("rsa", "A2A key generation")?;
+            crate::crypt::rsawrapper::generate_keys()?
+        }
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
         "ecdsa" | "es256" => {
             return Err(JacsError::CryptoError(
@@ -190,6 +196,8 @@ pub fn sign_jws(
     algorithm: &str,
     key_id: &str,
 ) -> Result<String, JacsError> {
+    crate::crypt::ensure_private_key_operation_allowed(algorithm, "A2A JWS signing")?;
+
     // Create JWS header
     let header = json!({
         "alg": match algorithm {

@@ -46,6 +46,10 @@ use jacs::search::{
     SearchResults,
 };
 use jacs::storage::StorageDocumentTraits;
+use jacs::storage::common::{
+    build_field_filter_search_results, document_from_raw_json, extract_signature_agent_id,
+    parse_document_key,
+};
 use jacs::storage::database_traits::DatabaseDocumentTraits;
 
 use duckdb::{Connection, params};
@@ -92,11 +96,7 @@ impl DuckDbStorage {
 
     /// Parse a document key in format "id:version" into (id, version).
     fn parse_key(key: &str) -> Result<(&str, &str), Box<dyn Error>> {
-        let parts: Vec<&str> = key.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(format!("Invalid document key '{}': expected 'id:version'", key).into());
-        }
-        Ok((parts[0], parts[1]))
+        parse_document_key(key).map_err(Into::into)
     }
 
     /// SQL for the jacs_document table creation (DuckDB-compatible).
@@ -165,12 +165,7 @@ impl StorageDocumentTraits for DuckDbStorage {
     fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
         let raw_json = serde_json::to_string_pretty(&doc.value)?;
         let file_contents_json = serde_json::to_string(&doc.value)?;
-        let agent_id = doc
-            .value
-            .get("jacsSignature")
-            .and_then(|s| s.get("jacsSignatureAgentId"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+        let agent_id = extract_signature_agent_id(&doc.value);
 
         let conn = self.conn.lock().map_err(|e| JacsError::DatabaseError {
             operation: "store_document".to_string(),
@@ -225,15 +220,7 @@ impl StorageDocumentTraits for DuckDbStorage {
             })?;
 
         match rows.next() {
-            Some(Ok((jacs_id, jacs_version, jacs_type, raw))) => {
-                let value: Value = serde_json::from_str(&raw)?;
-                Ok(JACSDocument {
-                    id: jacs_id,
-                    version: jacs_version,
-                    value,
-                    jacs_type,
-                })
-            }
+            Some(Ok((_jacs_id, _jacs_version, _jacs_type, raw))) => document_from_raw_json(&raw),
             Some(Err(e)) => Err(JacsError::DatabaseError {
                 operation: "get_document".to_string(),
                 reason: e.to_string(),
@@ -465,38 +452,6 @@ impl StorageDocumentTraits for DuckDbStorage {
             operation: "merge_documents".to_string(),
             reason: "Not implemented for DuckDB backend".to_string(),
         })
-    }
-
-    fn store_documents(&self, docs: Vec<JACSDocument>) -> Result<Vec<String>, Vec<JacsError>> {
-        let mut errors = Vec::new();
-        let mut keys = Vec::new();
-        for doc in &docs {
-            match self.store_document(doc) {
-                Ok(_) => keys.push(doc.getkey()),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(keys)
-        } else {
-            Err(errors)
-        }
-    }
-
-    fn get_documents(&self, keys: Vec<String>) -> Result<Vec<JACSDocument>, Vec<JacsError>> {
-        let mut docs = Vec::new();
-        let mut errors = Vec::new();
-        for key in &keys {
-            match self.get_document(key) {
-                Ok(doc) => docs.push(doc),
-                Err(e) => errors.push(e),
-            }
-        }
-        if errors.is_empty() {
-            Ok(docs)
-        } else {
-            Err(errors)
-        }
     }
 }
 
@@ -878,21 +833,7 @@ impl SearchProvider for DuckDbStorage {
                     reason: e.to_string(),
                 })?;
 
-            let total_count = docs.len();
-            let results = docs
-                .into_iter()
-                .map(|doc| SearchHit {
-                    document: doc,
-                    score: 1.0,
-                    matched_fields: vec![field_path.clone()],
-                })
-                .collect();
-
-            return Ok(SearchResults {
-                results,
-                total_count,
-                method: SearchMethod::FieldMatch,
-            });
+            return Ok(build_field_filter_search_results(docs, field_path));
         }
 
         // For keyword queries, use LIKE on file_contents

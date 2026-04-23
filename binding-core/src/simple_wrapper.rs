@@ -4,8 +4,10 @@
 //! `jacs::simple::SimpleAgent` and marshals the result to FFI-safe types
 //! (String in/out, base64 for bytes, JSON for structured data).
 
-use crate::{BindingCoreError, BindingResult};
+use crate::{BindingCoreError, BindingResult, ErrorKind};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jacs::simple::SimpleAgent;
+use serde::Serialize;
 use std::sync::Arc;
 
 /// Thread-safe, Clone-able FFI wrapper around the narrow [`SimpleAgent`] contract.
@@ -22,6 +24,29 @@ const _: () = {
     fn _assert<T: Send + Sync>() {}
     let _ = _assert::<SimpleAgentWrapper>;
 };
+
+fn serialize_json<T: Serialize>(value: &T, context: &str) -> BindingResult<String> {
+    serde_json::to_string(value).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("Failed to serialize {}: {}", context, e))
+    })
+}
+
+fn encode_base64(bytes: &[u8]) -> String {
+    STANDARD.encode(bytes)
+}
+
+fn decode_base64(input: &str, label: &str) -> BindingResult<Vec<u8>> {
+    STANDARD
+        .decode(input)
+        .map_err(|e| BindingCoreError::invalid_argument(format!("Invalid base64 {}: {}", label, e)))
+}
+
+fn conversion_error(operation: &str, err: impl std::fmt::Display) -> BindingCoreError {
+    BindingCoreError::new(
+        ErrorKind::SerializationFailed,
+        format!("{} failed: {}", operation, err),
+    )
+}
 
 impl SimpleAgentWrapper {
     // WARNING: If you add or remove a public method here, update BOTH:
@@ -46,12 +71,7 @@ impl SimpleAgentWrapper {
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to create agent: {}", e)))?;
         let info_json = crate::serialize_agent_info(&info)?;
 
-        Ok((
-            Self {
-                inner: Arc::new(agent),
-            },
-            info_json,
-        ))
+        Ok((Self::from_agent(agent), info_json))
     }
 
     /// Load an existing agent from a config file.
@@ -74,12 +94,7 @@ impl SimpleAgentWrapper {
             .map_err(|e| BindingCoreError::agent_load(format!("Failed to load agent: {}", e)))?;
         let info_json = crate::serialize_agent_info(&info)?;
 
-        Ok((
-            Self {
-                inner: Arc::new(agent),
-            },
-            info_json,
-        ))
+        Ok((Self::from_agent(agent), info_json))
     }
 
     /// Create an ephemeral (in-memory, throwaway) agent.
@@ -91,12 +106,7 @@ impl SimpleAgentWrapper {
         })?;
         let info_json = crate::serialize_agent_info(&info)?;
 
-        Ok((
-            Self {
-                inner: Arc::new(agent),
-            },
-            info_json,
-        ))
+        Ok((Self::from_agent(agent), info_json))
     }
 
     /// Create an agent with full programmatic control via JSON parameters.
@@ -116,12 +126,7 @@ impl SimpleAgentWrapper {
         })?;
         let info_json = crate::serialize_agent_info(&info)?;
 
-        Ok((
-            Self {
-                inner: Arc::new(agent),
-            },
-            info_json,
-        ))
+        Ok((Self::from_agent(agent), info_json))
     }
 
     /// Wrap an existing `SimpleAgent` in a `SimpleAgentWrapper`.
@@ -184,11 +189,10 @@ impl SimpleAgentWrapper {
 
     /// Get the public key as base64-encoded raw bytes (FFI-safe).
     pub fn get_public_key_base64(&self) -> BindingResult<String> {
-        use base64::Engine;
         let bytes = self.inner.get_public_key().map_err(|e| {
             BindingCoreError::key_not_found(format!("Failed to get public key: {}", e))
         })?;
-        Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+        Ok(encode_base64(&bytes))
     }
 
     /// Runtime diagnostic info as a JSON string.
@@ -205,12 +209,7 @@ impl SimpleAgentWrapper {
         let result = self.inner.verify_self().map_err(|e| {
             BindingCoreError::verification_failed(format!("Verify self failed: {}", e))
         })?;
-        serde_json::to_string(&result).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize VerificationResult: {}",
-                e
-            ))
-        })
+        serialize_json(&result, "VerificationResult")
     }
 
     /// Verify a signed document JSON string. Returns JSON `VerificationResult`.
@@ -218,12 +217,7 @@ impl SimpleAgentWrapper {
         let result = self.inner.verify(signed_document).map_err(|e| {
             BindingCoreError::verification_failed(format!("Verification failed: {}", e))
         })?;
-        serde_json::to_string(&result).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize VerificationResult: {}",
-                e
-            ))
-        })
+        serialize_json(&result, "VerificationResult")
     }
 
     /// Verify a signed document with an explicit public key (base64-encoded).
@@ -233,12 +227,7 @@ impl SimpleAgentWrapper {
         signed_document: &str,
         public_key_base64: &str,
     ) -> BindingResult<String> {
-        use base64::Engine;
-        let key_bytes = base64::engine::general_purpose::STANDARD
-            .decode(public_key_base64)
-            .map_err(|e| {
-                BindingCoreError::invalid_argument(format!("Invalid base64 public key: {}", e))
-            })?;
+        let key_bytes = decode_base64(public_key_base64, "public key")?;
 
         let result = self
             .inner
@@ -249,12 +238,7 @@ impl SimpleAgentWrapper {
                     e
                 ))
             })?;
-        serde_json::to_string(&result).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize VerificationResult: {}",
-                e
-            ))
-        })
+        serialize_json(&result, "VerificationResult")
     }
 
     /// Verify a stored document by its ID (e.g., "uuid:version").
@@ -263,12 +247,7 @@ impl SimpleAgentWrapper {
         let result = self.inner.verify_by_id(document_id).map_err(|e| {
             BindingCoreError::verification_failed(format!("Verify by ID failed: {}", e))
         })?;
-        serde_json::to_string(&result).map_err(|e| {
-            BindingCoreError::serialization_failed(format!(
-                "Failed to serialize VerificationResult: {}",
-                e
-            ))
-        })
+        serialize_json(&result, "VerificationResult")
     }
 
     // =========================================================================
@@ -291,11 +270,10 @@ impl SimpleAgentWrapper {
 
     /// Sign raw bytes and return the signature as base64 (FFI-safe).
     pub fn sign_raw_bytes_base64(&self, data: &[u8]) -> BindingResult<String> {
-        use base64::Engine;
         let sig_bytes = self.inner.sign_raw_bytes(data).map_err(|e| {
             BindingCoreError::signing_failed(format!("Sign raw bytes failed: {}", e))
         })?;
-        Ok(base64::engine::general_purpose::STANDARD.encode(&sig_bytes))
+        Ok(encode_base64(&sig_bytes))
     }
 
     /// Sign a file with optional content embedding.
@@ -314,42 +292,22 @@ impl SimpleAgentWrapper {
 
     /// Convert a JSON string to YAML.
     pub fn to_yaml(&self, json_str: &str) -> BindingResult<String> {
-        jacs::convert::jacs_to_yaml(json_str).map_err(|e| {
-            BindingCoreError::new(
-                crate::ErrorKind::SerializationFailed,
-                format!("to_yaml failed: {}", e),
-            )
-        })
+        jacs::convert::jacs_to_yaml(json_str).map_err(|e| conversion_error("to_yaml", e))
     }
 
     /// Convert a YAML string to pretty-printed JSON.
     pub fn from_yaml(&self, yaml_str: &str) -> BindingResult<String> {
-        jacs::convert::yaml_to_jacs(yaml_str).map_err(|e| {
-            BindingCoreError::new(
-                crate::ErrorKind::SerializationFailed,
-                format!("from_yaml failed: {}", e),
-            )
-        })
+        jacs::convert::yaml_to_jacs(yaml_str).map_err(|e| conversion_error("from_yaml", e))
     }
 
     /// Convert a JSON string to a self-contained HTML document.
     pub fn to_html(&self, json_str: &str) -> BindingResult<String> {
-        jacs::convert::jacs_to_html(json_str).map_err(|e| {
-            BindingCoreError::new(
-                crate::ErrorKind::SerializationFailed,
-                format!("to_html failed: {}", e),
-            )
-        })
+        jacs::convert::jacs_to_html(json_str).map_err(|e| conversion_error("to_html", e))
     }
 
     /// Extract JSON from an HTML document produced by `to_html`.
     pub fn from_html(&self, html_str: &str) -> BindingResult<String> {
-        jacs::convert::html_to_jacs(html_str).map_err(|e| {
-            BindingCoreError::new(
-                crate::ErrorKind::SerializationFailed,
-                format!("from_html failed: {}", e),
-            )
-        })
+        jacs::convert::html_to_jacs(html_str).map_err(|e| conversion_error("from_html", e))
     }
 
     // =========================================================================
@@ -362,17 +320,9 @@ impl SimpleAgentWrapper {
     /// `RotationResult` (jacs_id, old_version, new_version, key hash, proof).
     pub fn rotate_keys(&self, algorithm: Option<&str>) -> BindingResult<String> {
         let result = jacs::simple::advanced::rotate(&self.inner, algorithm).map_err(|e| {
-            BindingCoreError::new(
-                crate::ErrorKind::Generic,
-                format!("Key rotation failed: {}", e),
-            )
+            BindingCoreError::new(ErrorKind::Generic, format!("Key rotation failed: {}", e))
         })?;
-        serde_json::to_string(&result).map_err(|e| {
-            BindingCoreError::new(
-                crate::ErrorKind::SerializationFailed,
-                format!("Failed to serialize rotation result: {}", e),
-            )
-        })
+        serialize_json(&result, "rotation result")
     }
 }
 

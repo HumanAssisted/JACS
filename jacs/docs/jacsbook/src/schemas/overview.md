@@ -289,6 +289,8 @@ Many fields have enumerated valid values:
 }
 ```
 
+`RSA-PSS` remains in the schema for backward compatibility with stored configs and legacy documents, but new signing key creation uses `ring-Ed25519` or `pq2025`.
+
 ## Schema Reference
 
 For detailed documentation on specific schemas:

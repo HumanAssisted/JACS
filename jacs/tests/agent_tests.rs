@@ -1,11 +1,12 @@
 use jacs::agent::boilerplate::BoilerPlate;
+use serial_test::serial;
 use std::fs;
 use std::path::Path;
 
 mod utils;
 use utils::{
-    create_agent_v1, fixtures_dir_string, fixtures_keys_dir_string, load_local_document,
-    raw_fixture, set_min_test_env_vars,
+    create_agent_v1, create_ring_test_agent, fixtures_dir_string, fixtures_keys_dir_string,
+    read_new_agent_fixture, set_min_test_env_vars,
 };
 
 // Note: The password in this config is deprecated and should be ignored.
@@ -43,15 +44,27 @@ fn setup() {
     }
 }
 
+/// Verify that the committed RSA-PSS agent fixture still loads and
+/// exposes `RSA-PSS` as its key algorithm.
+///
+/// This covers the "legacy RSA artifacts remain readable" side of the
+/// RUSTSEC-2023-0071 hardening. The `update_self` + re-sign leg of the
+/// original test moved to `test_update_ed25519_agent_and_verify_versions`
+/// because RSA private-key signing is now disabled.
+///
+/// `#[serial]` because `test_update_ed25519_agent_and_verify_versions`
+/// mutates `JACS_DATA_DIRECTORY` et al. via `create_ring_test_agent()`;
+/// running in parallel would cause this test to look for the RSA
+/// fixture under the Ed25519 scratch directory.
 #[test]
-fn test_update_agent_and_verify_versions() {
+#[serial]
+fn test_rsa_fixture_load_exposes_algorithm() {
     setup();
     set_min_test_env_vars();
-    log::debug!("Starting test_update_agent_and_verify_versions");
+    log::debug!("Starting test_rsa_fixture_load_exposes_algorithm");
 
-    // cargo test   --test agent_tests -- --nocapture
+    // cargo test --test agent_tests -- --nocapture test_rsa_fixture_load_exposes_algorithm
 
-    // Parse config to get agent ID
     let config: serde_json::Value =
         serde_json::from_str(&get_config_content()).expect("Failed to parse config");
     let agent_id = config["jacs_agent_id_and_version"]
@@ -60,44 +73,71 @@ fn test_update_agent_and_verify_versions() {
         .to_string();
 
     let mut agent = create_agent_v1().expect("Agent schema should have instantiated");
-    let result = agent.load_by_id(agent_id);
+    agent.load_by_id(agent_id).expect("Agent loading failed");
 
-    match result {
-        Ok(_) => {
-            println!(
-                "AGENT LOADED {} {} ",
-                agent.get_id().unwrap(),
-                agent.get_version().unwrap()
-            );
-            assert_eq!(
-                agent.get_key_algorithm().map(|s| s.as_str()),
-                Some("RSA-PSS"),
-                "Fixture-backed load_by_id must use RSA-PSS for agent-one keys"
-            );
-        }
-        Err(e) => {
-            eprintln!("Error loading agent: {}", e);
-            panic!("Agent loading failed");
-        }
-    }
+    println!(
+        "AGENT LOADED {} {} ",
+        agent.get_id().unwrap(),
+        agent.get_version().unwrap()
+    );
+    assert_eq!(
+        agent.get_key_algorithm().map(|s| s.as_str()),
+        Some("RSA-PSS"),
+        "Fixture-backed load_by_id must use RSA-PSS for agent-one keys"
+    );
+}
 
-    let modified_agent_string = load_local_document(
-        &raw_fixture("modified-agent-for-updating.json")
-            .to_string_lossy()
-            .to_string(),
-    )
-    .unwrap();
+/// Exercise the `update_self` + `verify_self_signature` flow: after an
+/// update, the agent gains a new `jacsVersion` and the new signature
+/// verifies. Uses an Ed25519 agent because RSA-PSS private-key signing
+/// is blocked by RUSTSEC-2023-0071.
+///
+/// `#[serial]` because `create_ring_test_agent()` mutates process-wide
+/// env vars (`JACS_DATA_DIRECTORY`, etc.) that would otherwise race
+/// with `test_rsa_fixture_load_exposes_algorithm`.
+#[test]
+#[serial]
+fn test_update_ed25519_agent_and_verify_versions() {
+    let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
+    // create_keys=true so the scratch key files are generated; the existing
+    // `test-ring-Ed25519-*.pem` fixtures are not copied into the per-test
+    // scratch directory.
+    agent
+        .create_agent_and_load(&json_data, true, None)
+        .expect("Failed to create and load Ed25519 agent");
 
-    match agent.update_self(&modified_agent_string) {
-        Ok(_) => assert!(true),
-        Err(error) => {
-            println!("{}", error);
-            assert!(false);
-            println!("NEW AGENT VERSION prevented");
-        }
-    };
+    let original_version = agent
+        .get_version()
+        .expect("newly-created agent should have a version");
 
-    agent.verify_self_signature().unwrap();
+    // Build a modified copy of the current agent JSON by tweaking a
+    // non-identity field. `update_self` requires matching id/version
+    // between the stored and proposed documents.
+    let mut modified_value = agent
+        .get_value()
+        .cloned()
+        .expect("agent value should be loaded after create_agent_and_load");
+    modified_value["description"] =
+        serde_json::json!("Updated by test_update_ed25519_agent_and_verify_versions");
+    let modified_agent_string =
+        serde_json::to_string(&modified_value).expect("serialize modified agent");
+
+    agent
+        .update_self(&modified_agent_string)
+        .expect("update_self should succeed with Ed25519 signing");
+
+    let new_version = agent
+        .get_version()
+        .expect("updated agent should still report a version");
+    assert_ne!(
+        original_version, new_version,
+        "update_self must produce a new jacsVersion"
+    );
+
+    agent
+        .verify_self_signature()
+        .expect("updated agent signature must verify");
 }
 
 #[test]

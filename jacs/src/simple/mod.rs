@@ -341,8 +341,15 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_agent_get_public_key_pem_for_rsa_pss() {
-        assert_public_key_pem_for_algorithm("rsa-pss", "RSA-PSS");
+    fn test_simple_agent_rsa_ephemeral_is_disabled() {
+        let err = SimpleAgent::ephemeral(Some("rsa-pss"))
+            .err()
+            .expect("RSA ephemeral should be blocked");
+        assert!(
+            err.to_string().contains("RUSTSEC-2023-0071"),
+            "error should explain the RSA security block, got: {}",
+            err
+        );
     }
 
     #[test]

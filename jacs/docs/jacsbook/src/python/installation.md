@@ -212,15 +212,9 @@ AWS credentials are read from standard AWS environment variables.
 **Pros**: Fast, secure, small signatures
 **Cons**: Requires elliptic curve support
 
-### RSA-PSS
-```json
-{
-  "jacs_agent_key_algorithm": "RSA-PSS"
-}
-```
+### Legacy RSA-PSS Verification
 
-**Pros**: Widely supported, proven security
-**Cons**: Larger signatures, slower
+JACS can still verify older artifacts whose metadata says `RSA-PSS`, but new Python-managed agents should use `ring-Ed25519` or `pq2025`.
 
 ### pq-dilithium (Post-Quantum)
 ```json

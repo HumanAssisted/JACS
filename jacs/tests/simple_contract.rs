@@ -345,17 +345,15 @@ fn test_ephemeral_ed25519() {
 }
 
 #[test]
-fn test_ephemeral_rsa() {
-    let (agent, info) =
-        SimpleAgent::ephemeral(Some("rsa-pss")).expect("ephemeral rsa-pss should succeed");
-    assert!(!info.agent_id.is_empty());
+fn test_ephemeral_rsa_is_disabled() {
+    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
+        .err()
+        .expect("ephemeral rsa-pss should be blocked");
     assert!(
-        info.algorithm.contains("RSA") || info.algorithm.contains("rsa"),
-        "rsa-pss ephemeral should use RSA variant, got: {}",
-        info.algorithm
+        err.to_string().contains("RUSTSEC-2023-0071"),
+        "error should explain the RSA security block, got: {}",
+        err
     );
-    let signed = agent.sign_message(&json!({"rsa": true}));
-    assert!(signed.is_ok());
 }
 
 // =============================================================================
@@ -659,15 +657,14 @@ fn test_get_public_key_pem_returns_pem_format() {
 }
 
 #[test]
-fn test_get_public_key_pem_rsa() {
-    let (agent, _info) =
-        SimpleAgent::ephemeral(Some("rsa-pss")).expect("ephemeral rsa-pss should succeed");
-    let pem = agent
-        .get_public_key_pem()
-        .expect("get_public_key_pem should succeed");
+fn test_get_public_key_pem_rsa_creation_is_disabled() {
+    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
+        .err()
+        .expect("ephemeral rsa-pss should be blocked");
     assert!(
-        pem.contains("-----BEGIN") || pem.contains("PUBLIC KEY"),
-        "RSA PEM should have standard markers"
+        err.to_string().contains("RUSTSEC-2023-0071"),
+        "error should explain the RSA security block, got: {}",
+        err
     );
 }
 
@@ -821,15 +818,15 @@ fn test_sign_verify_roundtrip_ed25519() {
 // =============================================================================
 
 #[test]
-fn test_sign_verify_roundtrip_rsa() {
-    let (agent, _info) =
-        SimpleAgent::ephemeral(Some("rsa-pss")).expect("ephemeral rsa-pss should succeed");
-    let data = json!({"roundtrip": "rsa", "value": true});
-
-    let signed = agent.sign_message(&data).expect("sign should succeed");
-    let result = agent.verify(&signed.raw).expect("verify should succeed");
-
-    assert!(result.valid, "RSA roundtrip verification should be valid");
+fn test_sign_verify_roundtrip_rsa_is_disabled() {
+    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
+        .err()
+        .expect("ephemeral rsa-pss should be blocked");
+    assert!(
+        err.to_string().contains("RUSTSEC-2023-0071"),
+        "error should explain the RSA security block, got: {}",
+        err
+    );
 }
 
 // =============================================================================
