@@ -86,15 +86,38 @@ sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW_VERSION\"/" jacs-mcp/
 echo "  jacs-mcp/contract/jacs-mcp-contract.json"
 
 # --- Documentation footers ---
+# Use regex anchors matching the footer format (not $CURRENT) so a drifted
+# README still gets fixed on the next bump.
 
-sed -i '' "s/v$CURRENT/v$NEW_VERSION/g" README.md
+# README.md footer: "v0.9.7 | [Apache-2.0](./LICENSE-APACHE) | ..."
+sed -i '' -E "s#^v[0-9]+\.[0-9]+\.[0-9]+ \| \[Apache-2\.0\]#v${NEW_VERSION} | [Apache-2.0]#" README.md
 echo "  README.md"
 
-sed -i '' "s/$CURRENT/$NEW_VERSION/" jacs/README.md
+# jacs/README.md footer: "**Version**: 0.9.7 | [HAI.AI](https://hai.ai)"
+sed -i '' -E "s#^\*\*Version\*\*: [0-9]+\.[0-9]+\.[0-9]+#**Version**: ${NEW_VERSION}#" jacs/README.md
 echo "  jacs/README.md"
 
-sed -i '' "s/v$CURRENT/v$NEW_VERSION/" jacs-cli/README.md
+# jacs-cli/README.md footer: "v0.9.7 | [Apache 2.0 with Common Clause](../LICENSE)"
+sed -i '' -E "s#^v[0-9]+\.[0-9]+\.[0-9]+ \| \[Apache 2\.0#v${NEW_VERSION} | [Apache 2.0#" jacs-cli/README.md
 echo "  jacs-cli/README.md"
+
+# Fail loudly if any README footer did not update to $NEW_VERSION.
+README_DRIFT=0
+if ! grep -q "^v${NEW_VERSION} | \[Apache-2\.0\]" README.md; then
+  echo "  ERROR: README.md footer did not update to v${NEW_VERSION}"
+  README_DRIFT=1
+fi
+if ! grep -q "^\*\*Version\*\*: ${NEW_VERSION} " jacs/README.md; then
+  echo "  ERROR: jacs/README.md footer did not update to ${NEW_VERSION}"
+  README_DRIFT=1
+fi
+if ! grep -q "^v${NEW_VERSION} | \[Apache 2\.0" jacs-cli/README.md; then
+  echo "  ERROR: jacs-cli/README.md footer did not update to v${NEW_VERSION}"
+  README_DRIFT=1
+fi
+if [ "$README_DRIFT" -ne 0 ]; then
+  exit 1
+fi
 
 # --- CHANGELOG: add new section ---
 
