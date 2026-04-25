@@ -450,7 +450,7 @@ Most commands support these common options:
 
 - `0` - Success
 - `1` - General error (invalid arguments, file not found, etc.)
-- `2` - Missing signature OR verification failure — exact meaning per-command in its section. For `verify-text` / `verify-image` (v0.11.0): `2` = permissive missing-signature; `--strict` collapses it into `1`. For other verify surfaces: `2` = verification failure (hash mismatch, invalid signature).
+- `2` - Missing signature OR verification failure — exact meaning per-command in its section. For `verify-text` / `verify-image` (v0.10.0): `2` = permissive missing-signature; `--strict` collapses it into `1`. For other verify surfaces: `2` = verification failure (hash mismatch, invalid signature).
 - `3` - Schema validation failure
 
 ## Environment Variables

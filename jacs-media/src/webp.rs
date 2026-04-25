@@ -45,22 +45,38 @@ fn parse_chunks(bytes: &[u8]) -> Result<(Vec<(&[u8], &[u8], &[u8])>, u32), Media
     // File ends at byte 8 + riff_size.
     let file_end = 8usize + riff_size as usize;
     if file_end > bytes.len() {
-        return Err(MediaError::Parse("WebP RIFF size exceeds file bytes".to_string()));
+        return Err(MediaError::Parse(
+            "WebP RIFF size exceeds file bytes".to_string(),
+        ));
     }
     let mut pos = 12usize;
     let mut out = Vec::new();
     while pos + 8 <= file_end {
         let fourcc = &bytes[pos..pos + 4];
-        let chunk_size =
-            u32::from_le_bytes([bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]]) as usize;
+        let chunk_size = u32::from_le_bytes([
+            bytes[pos + 4],
+            bytes[pos + 5],
+            bytes[pos + 6],
+            bytes[pos + 7],
+        ]) as usize;
         let body_start = pos + 8;
         let body_end = body_start + chunk_size;
         // Padding byte for odd-length chunks.
-        let padded_end = if chunk_size % 2 == 1 { body_end + 1 } else { body_end };
+        let padded_end = if chunk_size % 2 == 1 {
+            body_end + 1
+        } else {
+            body_end
+        };
         if padded_end > file_end {
-            return Err(MediaError::Parse("WebP chunk exceeds RIFF bounds".to_string()));
+            return Err(MediaError::Parse(
+                "WebP chunk exceeds RIFF bounds".to_string(),
+            ));
         }
-        out.push((fourcc, &bytes[body_start..body_end], &bytes[pos..padded_end]));
+        out.push((
+            fourcc,
+            &bytes[body_start..body_end],
+            &bytes[pos..padded_end],
+        ));
         pos = padded_end;
     }
     Ok((out, riff_size))
@@ -86,11 +102,7 @@ fn is_jacs_xmp(body: &[u8]) -> bool {
     }
 }
 
-pub fn embed(
-    bytes: &[u8],
-    payload: &str,
-    refuse_overwrite: bool,
-) -> Result<Vec<u8>, MediaError> {
+pub fn embed(bytes: &[u8], payload: &str, refuse_overwrite: bool) -> Result<Vec<u8>, MediaError> {
     if payload.len() > MAX_PAYLOAD_BYTES_WEBP {
         return Err(MediaError::PayloadTooLarge {
             limit: MAX_PAYLOAD_BYTES_WEBP,
@@ -106,7 +118,9 @@ pub fn embed(
         }
     }
     if jacs_count > 1 {
-        return Err(MediaError::Parse("duplicate JACS-Signature chunk".to_string()));
+        return Err(MediaError::Parse(
+            "duplicate JACS-Signature chunk".to_string(),
+        ));
     }
     if refuse_overwrite && jacs_count > 0 {
         return Err(MediaError::Parse(
@@ -143,16 +157,16 @@ pub fn extract(bytes: &[u8]) -> Result<Option<String>, MediaError> {
     let (chunks, _) = parse_chunks(bytes)?;
     let mut found = Vec::new();
     for (fourcc, body, _full) in &chunks {
-        if fourcc == XMP_FOURCC {
-            if let Ok(s) = std::str::from_utf8(body) {
-                if let Some(sig) = extract_signature_from_xmp_packet(s) {
+        if fourcc == XMP_FOURCC
+            && let Ok(s) = std::str::from_utf8(body)
+                && let Some(sig) = extract_signature_from_xmp_packet(s) {
                     found.push(sig);
                 }
-            }
-        }
     }
     if found.len() > 1 {
-        return Err(MediaError::Parse("duplicate JACS-Signature chunk".to_string()));
+        return Err(MediaError::Parse(
+            "duplicate JACS-Signature chunk".to_string(),
+        ));
     }
     Ok(found.into_iter().next())
 }
@@ -233,5 +247,71 @@ mod tests {
         let signed = embed(&input, "payload", false).expect("embed");
         let h_after = crate::canonical_hash(&signed).unwrap();
         assert_eq!(h_before, h_after);
+    }
+
+    /// Issue 006 / PRD §4.2.2: boundary triplet for WebP (max-1, max, max+1).
+    /// WebP previously had no boundary tests at all.
+    #[test]
+    fn webp_payload_at_max_minus_one_embeds_cleanly() {
+        let input = minimal_webp();
+        let payload = "C".repeat(MAX_PAYLOAD_BYTES_WEBP - 1);
+        let signed = embed(&input, &payload, false).expect("embed at max-1");
+        let extracted = extract(&signed).expect("ok").expect("present");
+        assert_eq!(extracted.len(), MAX_PAYLOAD_BYTES_WEBP - 1);
+    }
+
+    #[test]
+    fn webp_payload_at_max_embeds_cleanly() {
+        let input = minimal_webp();
+        let payload = "C".repeat(MAX_PAYLOAD_BYTES_WEBP);
+        let signed = embed(&input, &payload, false).expect("embed at max");
+        let extracted = extract(&signed).expect("ok").expect("present");
+        assert_eq!(extracted.len(), MAX_PAYLOAD_BYTES_WEBP);
+    }
+
+    #[test]
+    fn webp_payload_at_max_plus_one_returns_too_large() {
+        let input = minimal_webp();
+        let payload = "C".repeat(MAX_PAYLOAD_BYTES_WEBP + 1);
+        let err = embed(&input, &payload, false).unwrap_err();
+        match err {
+            MediaError::PayloadTooLarge { limit, actual } => {
+                assert_eq!(limit, MAX_PAYLOAD_BYTES_WEBP);
+                assert_eq!(actual, MAX_PAYLOAD_BYTES_WEBP + 1);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Issue 006: duplicate JACS XMP chunks must surface as `MediaError::Parse`.
+    #[test]
+    fn duplicate_jacs_chunk_webp_returns_malformed() {
+        let signed = embed(&minimal_webp(), "first-payload", false).expect("embed");
+        // Append a second JACS XMP chunk at the end of the chunk list inside
+        // the RIFF body. We rebuild the file: keep RIFF header, original chunks,
+        // then add an extra XMP chunk + recompute RIFF size.
+        let extra_xmp_packet = build_xmp_packet("second-payload");
+        let extra_chunk = build_chunk(XMP_FOURCC, extra_xmp_packet.as_bytes());
+
+        // Splice the extra chunk in immediately before EOF.
+        let mut bad = signed.clone();
+        bad.extend_from_slice(&extra_chunk);
+        // Recompute RIFF size: original RIFF size + extra_chunk.len(). RIFF size
+        // is at bytes 4..8 in little-endian.
+        let new_riff_size = (bad.len() - 8) as u32;
+        bad[4..8].copy_from_slice(&new_riff_size.to_le_bytes());
+
+        let embed_err = embed(&bad, "third", false).unwrap_err();
+        assert!(
+            matches!(embed_err, MediaError::Parse(ref msg) if msg.contains("duplicate")),
+            "expected Parse(duplicate) on embed; got {:?}",
+            embed_err
+        );
+        let extract_err = extract(&bad).unwrap_err();
+        assert!(
+            matches!(extract_err, MediaError::Parse(ref msg) if msg.contains("duplicate")),
+            "expected Parse(duplicate) on extract; got {:?}",
+            extract_err
+        );
     }
 }

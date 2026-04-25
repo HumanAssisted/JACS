@@ -168,6 +168,7 @@ pub fn regenerate_all() -> std::io::Result<()> {
         SignTextOptions {
             backup: false,
             allow_duplicate: false,
+            unsafe_bak_mode: None,
         },
     )
     .expect("sign rust_signed_ed25519.md");
@@ -181,6 +182,7 @@ pub fn regenerate_all() -> std::io::Result<()> {
         SignTextOptions {
             backup: false,
             allow_duplicate: false,
+            unsafe_bak_mode: None,
         },
     )
     .expect("sign rust_signed_pq2025.md");
@@ -194,6 +196,7 @@ pub fn regenerate_all() -> std::io::Result<()> {
         SignTextOptions {
             backup: false,
             allow_duplicate: false,
+            unsafe_bak_mode: None,
         },
     )
     .expect("sign rust_signed_multi_algo.md (ed25519)");
@@ -203,6 +206,7 @@ pub fn regenerate_all() -> std::io::Result<()> {
         SignTextOptions {
             backup: false,
             allow_duplicate: false,
+            unsafe_bak_mode: None,
         },
     )
     .expect("sign rust_signed_multi_algo.md (pq2025)");

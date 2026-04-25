@@ -115,7 +115,9 @@ def register_jacs_tools(
             ``verify_document``, ``sign_file``, ``verify_self``,
             ``create_agreement``, ``sign_agreement``,
             ``check_agreement``, ``audit``, ``agent_info``,
-            ``share_public_key``, ``share_agent``.
+            ``share_public_key``, ``share_agent``, ``sign_text``,
+            ``verify_text``, ``sign_image``, ``verify_image``,
+            ``extract_media_signature``.
 
     Returns:
         The mcp_server instance (for chaining).
@@ -144,6 +146,12 @@ def register_jacs_tools(
         "agent_info": _make_agent_info,
         "share_public_key": _make_share_public_key,
         "share_agent": _make_share_agent,
+        # Issue 005 / PRD §3 Q6 day-one parity contract for inline-text + media tools.
+        "sign_text": _make_sign_text,
+        "verify_text": _make_verify_text,
+        "sign_image": _make_sign_image,
+        "verify_image": _make_verify_image,
+        "extract_media_signature": _make_extract_media_signature,
     }
 
     names_to_register = list(factories.keys()) if tools is None else tools
@@ -410,6 +418,157 @@ def _make_share_agent(mcp, cl):
             return _err(str(e))
 
     return jacs_export_agent
+
+
+# ---------------------------------------------------------------------------
+# Issue 005 / PRD §3 — Inline text + media MCP tools (day-one parity).
+#
+# Mirrors the 5 Rust MCP tools registered in `jacs-mcp/src/jacs_tools.rs`.
+# Path-validation reuses the local `_validate_mcp_file_path` until the
+# Issue 001 PathPolicy delegate lands; tools surface the same JSON shape as
+# their Rust counterparts so the `jacs-mcp-contract.json` snapshot covers all
+# three runtimes.
+# ---------------------------------------------------------------------------
+
+
+def _make_sign_text(mcp, cl):
+    @mcp.tool(
+        name="jacs_sign_text",
+        description="Sign a text/markdown file in place with an inline JACS signature block.",
+    )
+    def jacs_sign_text(file_path: str, no_backup: bool = False) -> str:
+        try:
+            _validate_mcp_file_path(file_path)
+            outcome = cl.sign_text(file_path, backup=not no_backup)
+            return json.dumps({
+                "success": True,
+                "file_path": getattr(outcome, "path", file_path),
+                "signers_added": getattr(outcome, "signers_added", 1),
+                "backup_path": getattr(outcome, "backup_path", None),
+            })
+        except Exception as e:
+            logger.warning("jacs_sign_text failed: %s", e)
+            return json.dumps({"success": False, "file_path": file_path, "error": str(e)})
+
+    return jacs_sign_text
+
+
+def _make_verify_text(mcp, cl):
+    @mcp.tool(
+        name="jacs_verify_text",
+        description=(
+            "Verify inline JACS signatures in a text/markdown file. "
+            "Permissive by default; strict=True turns missing-signature into an error."
+        ),
+    )
+    def jacs_verify_text(
+        file_path: str,
+        strict: bool = False,
+        key_dir: Optional[str] = None,
+    ) -> str:
+        try:
+            _validate_mcp_file_path(file_path)
+            result = cl.verify_text(file_path, strict=strict, key_dir=key_dir)
+            return json.dumps({
+                "success": True,
+                "file_path": file_path,
+                "result": getattr(result, "status", str(result)),
+                "signatures": getattr(result, "signatures", []),
+            }, default=str)
+        except Exception as e:
+            logger.warning("jacs_verify_text failed: %s", e)
+            return json.dumps({"success": False, "file_path": file_path, "error": str(e)})
+
+    return jacs_verify_text
+
+
+def _make_sign_image(mcp, cl):
+    @mcp.tool(
+        name="jacs_sign_image",
+        description=(
+            "Sign a PNG/JPEG/WebP image by embedding a JACS signature in metadata. "
+            "Optional robust=True adds LSB fallback (PNG/JPEG only)."
+        ),
+    )
+    def jacs_sign_image(
+        input_path: str,
+        output_path: str,
+        robust: bool = False,
+        refuse_overwrite: bool = False,
+    ) -> str:
+        try:
+            _validate_mcp_file_path(input_path)
+            _validate_mcp_file_path(output_path)
+            outcome = cl.sign_image(
+                input_path,
+                output_path,
+                robust=robust,
+                refuse_overwrite=refuse_overwrite,
+            )
+            return json.dumps({
+                "success": True,
+                "out_path": getattr(outcome, "out_path", output_path),
+                "signer_id": getattr(outcome, "signer_id", ""),
+                "format": getattr(outcome, "format", ""),
+                "robust": getattr(outcome, "robust", robust),
+            })
+        except Exception as e:
+            logger.warning("jacs_sign_image failed: %s", e)
+            return json.dumps({"success": False, "input_path": input_path, "error": str(e)})
+
+    return jacs_sign_image
+
+
+def _make_verify_image(mcp, cl):
+    @mcp.tool(
+        name="jacs_verify_image",
+        description="Verify the JACS signature embedded in a PNG/JPEG/WebP image.",
+    )
+    def jacs_verify_image(
+        file_path: str,
+        strict: bool = False,
+        key_dir: Optional[str] = None,
+    ) -> str:
+        try:
+            _validate_mcp_file_path(file_path)
+            result = cl.verify_image(file_path, strict=strict, key_dir=key_dir)
+            return json.dumps({
+                "success": True,
+                "file_path": file_path,
+                "status": getattr(result, "status", str(result)),
+                "signer_id": getattr(result, "signer_id", None),
+                "format": getattr(result, "format", None),
+            }, default=str)
+        except Exception as e:
+            logger.warning("jacs_verify_image failed: %s", e)
+            return json.dumps({"success": False, "file_path": file_path, "error": str(e)})
+
+    return jacs_verify_image
+
+
+def _make_extract_media_signature(mcp, cl):
+    @mcp.tool(
+        name="jacs_extract_media_signature",
+        description=(
+            "Extract the JACS signed-document JSON embedded in a PNG/JPEG/WebP image. "
+            "Default returns decoded JSON; raw_payload=True returns the base64url wire form."
+        ),
+    )
+    def jacs_extract_media_signature(file_path: str, raw_payload: bool = False) -> str:
+        try:
+            _validate_mcp_file_path(file_path)
+            payload = cl.extract_media_signature(file_path, raw_payload=raw_payload)
+            return json.dumps({
+                "success": True,
+                "file_path": file_path,
+                "payload": payload,
+                "raw_payload": raw_payload,
+            })
+        except Exception as e:
+            logger.warning("jacs_extract_media_signature failed: %s", e)
+            return json.dumps({"success": False, "file_path": file_path, "error": str(e)})
+
+    return jacs_extract_media_signature
 
 
 # ---------------------------------------------------------------------------

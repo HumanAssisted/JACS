@@ -4162,6 +4162,7 @@ impl JacsMcpServer {
         let opts = jacs::simple::SignTextOptions {
             backup: !params.no_backup.unwrap_or(false),
             allow_duplicate: false,
+            unsafe_bak_mode: None,
         };
 
         let file_path = params.file_path.clone();

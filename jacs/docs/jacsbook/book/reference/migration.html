@@ -183,7 +183,7 @@
 <li>Older JACS versions cannot verify documents using newer cryptographic algorithms</li>
 </ul>
 <h2 id="010--011"><a class="header" href="#010--011">0.10 → 0.11</a></h2>
-<p>v0.11.0 adds inline text signatures, image / media embedding, and the new <code>MissingSignature</code> error variant. <strong>No existing API changes behaviour.</strong></p>
+<p>v0.10.0 adds inline text signatures, image / media embedding, and the new <code>MissingSignature</code> error variant. <strong>No existing API changes behaviour.</strong></p>
 <h3 id="additive-surface--no-opt-in-required"><a class="header" href="#additive-surface--no-opt-in-required">Additive surface — no opt-in required</a></h3>
 <p>Five new methods per binding, five new CLI verbs, five new MCP tools. Pre-existing call sites are unaffected.</p>
 <div class="table-wrapper"><table><thead><tr><th>Domain</th><th>New surface</th></tr></thead><tbody>
@@ -198,7 +198,7 @@
 <p>The new <code>MissingSignature</code> variant on <code>jacs::error::ErrorKind</code> will trigger an unreachable-pattern warning (or a compile error in <code>-D warnings</code>) on Rust call sites that exhaustively match without a catch-all.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// before — does not compile under -D warnings in v0.11.0
+</span>// before — does not compile under -D warnings in v0.10.0
 match err.kind() {
     ErrorKind::InvalidSignature =&gt; ...,
     ErrorKind::DocumentNotFound =&gt; ...,
@@ -220,10 +220,10 @@ match err.kind() {
 <span class="boring">}</span></code></pre></pre>
 <p>Python / Node / Go bindings are unaffected — their error types are not exhaustive enums.</p>
 <h3 id="verify-semantics-change-is-opt-in-via-strict"><a class="header" href="#verify-semantics-change-is-opt-in-via-strict">Verify semantics change is opt-in via <code>strict</code></a></h3>
-<p><code>verify-text</code> and <code>verify-image</code> are <strong>new commands</strong> in v0.11.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); <code>--strict</code> opts in to error-on-missing.</p>
+<p><code>verify-text</code> and <code>verify-image</code> are <strong>new commands</strong> in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); <code>--strict</code> opts in to error-on-missing.</p>
 <p>No existing command (<code>jacs verify</code>, <code>jacs document verify</code>, etc.) changes its exit codes or its return shape.</p>
 <h3 id="after-publish-task-for-sibling-repos"><a class="header" href="#after-publish-task-for-sibling-repos">After-publish task for sibling repos</a></h3>
-<p>After v0.11.0 lands on crates.io, bump <code>=0.11.0</code> pins in <code>~/personal/haisdk</code> (<code>rust/Cargo.toml</code>, <code>python/pyproject.toml</code>, <code>node/package.json</code>). The <code>hai/api</code> middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.</p>
+<p>After v0.10.0 lands on crates.io, bump <code>=0.10.0</code> pins in <code>~/personal/haisdk</code> (<code>rust/Cargo.toml</code>, <code>python/pyproject.toml</code>, <code>node/package.json</code>). The <code>hai/api</code> middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.</p>
 <h2 id="migrating-nodejs-from-06x-to-070"><a class="header" href="#migrating-nodejs-from-06x-to-070">Migrating Node.js from 0.6.x to 0.7.0</a></h2>
 <h3 id="breaking-change-async-first-api"><a class="header" href="#breaking-change-async-first-api">Breaking Change: Async-First API</a></h3>
 <p>In v0.7.0, all NAPI operations return Promises by default. Sync variants are available with a <code>Sync</code> suffix, following the Node.js convention (like <code>fs.readFile</code> vs <code>fs.readFileSync</code>).</p>

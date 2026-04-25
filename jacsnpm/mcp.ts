@@ -653,6 +653,71 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
         required: ['old_password', 'new_password'],
       },
     },
+    // Issue 005 / PRD §3 Q6 day-one parity contract for inline-text + media tools.
+    {
+      name: 'jacs_sign_text',
+      description: 'Sign a text/markdown file in place with an inline JACS signature block.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the file to sign' },
+          no_backup: { type: 'boolean', description: 'Skip writing the .bak backup file' },
+        },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'jacs_verify_text',
+      description: 'Verify inline JACS signatures in a text/markdown file.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the file to verify' },
+          strict: { type: 'boolean', description: 'Treat missing-signature as a hard failure' },
+          key_dir: { type: 'string', description: 'Directory of <signer>.public.pem files' },
+        },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'jacs_sign_image',
+      description: 'Sign a PNG/JPEG/WebP image by embedding a JACS signature in metadata.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          input_path: { type: 'string', description: 'Source image path' },
+          output_path: { type: 'string', description: 'Destination image path' },
+          robust: { type: 'boolean', description: 'Add LSB fallback (PNG/JPEG only)' },
+          refuse_overwrite: { type: 'boolean', description: 'Refuse to re-sign already-signed input' },
+        },
+        required: ['input_path', 'output_path'],
+      },
+    },
+    {
+      name: 'jacs_verify_image',
+      description: 'Verify the JACS signature embedded in a PNG/JPEG/WebP image.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the image to verify' },
+          strict: { type: 'boolean', description: 'Treat missing-signature as a hard failure' },
+          key_dir: { type: 'string', description: 'Directory of <signer>.public.pem files' },
+        },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'jacs_extract_media_signature',
+      description: 'Extract the JACS signed-document JSON embedded in a PNG/JPEG/WebP image.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the image' },
+          raw_payload: { type: 'boolean', description: 'Return base64url wire form instead of decoded JSON' },
+        },
+        required: ['file_path'],
+      },
+    },
   ];
 }
 
@@ -905,6 +970,77 @@ export async function handleJacsMcpToolCall(
         const nativeAgent = extractNativeAgent(client);
         await nativeAgent.reencryptKey(args.old_password, args.new_password);
         return text(JSON.stringify({ success: true, message: 'Key re-encrypted' }));
+      }
+
+      // Issue 005 / PRD §3 Q6 day-one parity for inline-text + media tools.
+      case 'jacs_sign_text': {
+        const nativeAgent = extractNativeAgent(client);
+        const outcome = await nativeAgent.signText(args.file_path, {
+          backup: args.no_backup ? false : true,
+        });
+        return text(JSON.stringify({
+          success: true,
+          file_path: outcome?.path ?? args.file_path,
+          signers_added: outcome?.signersAdded ?? 1,
+          backup_path: outcome?.backupPath ?? null,
+        }));
+      }
+
+      case 'jacs_verify_text': {
+        const nativeAgent = extractNativeAgent(client);
+        const opts: any = {};
+        if (typeof args.strict === 'boolean') opts.strict = args.strict;
+        if (typeof args.key_dir === 'string') opts.keyDir = args.key_dir;
+        const result = await nativeAgent.verifyText(args.file_path, opts);
+        return text(JSON.stringify({
+          success: true,
+          file_path: args.file_path,
+          result: result?.status ?? result,
+          signatures: result?.signatures ?? [],
+        }));
+      }
+
+      case 'jacs_sign_image': {
+        const nativeAgent = extractNativeAgent(client);
+        const opts: any = {};
+        if (typeof args.robust === 'boolean') opts.robust = args.robust;
+        if (typeof args.refuse_overwrite === 'boolean') opts.refuseOverwrite = args.refuse_overwrite;
+        const outcome = await nativeAgent.signImage(args.input_path, args.output_path, opts);
+        return text(JSON.stringify({
+          success: true,
+          out_path: outcome?.outPath ?? args.output_path,
+          signer_id: outcome?.signerId ?? '',
+          format: outcome?.format ?? '',
+          robust: outcome?.robust ?? Boolean(args.robust),
+        }));
+      }
+
+      case 'jacs_verify_image': {
+        const nativeAgent = extractNativeAgent(client);
+        const opts: any = {};
+        if (typeof args.strict === 'boolean') opts.strict = args.strict;
+        if (typeof args.key_dir === 'string') opts.keyDir = args.key_dir;
+        const result = await nativeAgent.verifyImage(args.file_path, opts);
+        return text(JSON.stringify({
+          success: true,
+          file_path: args.file_path,
+          status: result?.status ?? null,
+          signer_id: result?.signerId ?? null,
+          format: result?.format ?? null,
+        }));
+      }
+
+      case 'jacs_extract_media_signature': {
+        const nativeAgent = extractNativeAgent(client);
+        const opts: any = {};
+        if (typeof args.raw_payload === 'boolean') opts.rawPayload = args.raw_payload;
+        const payload = await nativeAgent.extractMediaSignature(args.file_path, opts);
+        return text(JSON.stringify({
+          success: true,
+          file_path: args.file_path,
+          payload: payload,
+          raw_payload: Boolean(args.raw_payload),
+        }));
       }
 
       default:

@@ -102,7 +102,7 @@ Pass `algorithm="ring-Ed25519"` (or `{ algorithm: 'ring-Ed25519' }` in JS, `--al
 
 > **That's it -- you're signing.** For most use cases, the quick start above is all you need. Jump to [Which integration should I use?](../getting-started/decision-tree.md) to find the right framework adapter, or read on for manual agent setup.
 
-### Try signing a markdown file (v0.11.0)
+### Try signing a markdown file (v0.10.0)
 
 ```bash
 jacs sign-text README.md          # appends a YAML-bodied signature block at end of file

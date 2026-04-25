@@ -391,7 +391,7 @@ if (result.valid) {
 console.log(result.valid, result.signerId);
 </code></pre>
 <hr />
-<h3 id="signtextpath--v0110"><a class="header" href="#signtextpath--v0110">signText(path) — v0.11.0</a></h3>
+<h3 id="signtextpath--v0100"><a class="header" href="#signtextpath--v0100">signText(path) — v0.10.0</a></h3>
 <p>Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered. Async-first since v0.7.0 — returns <code>Promise</code>.</p>
 <p><strong>Parameters:</strong> <code>path</code> (string): file to sign in place</p>
 <p><strong>Returns:</strong> <code>Promise&lt;void&gt;</code></p>
@@ -399,7 +399,7 @@ console.log(result.valid, result.signerId);
 <pre><code class="language-typescript">await jacs.signText('README.md');
 </code></pre>
 <hr />
-<h3 id="verifytextpath-options--v0110"><a class="header" href="#verifytextpath-options--v0110">verifyText(path, options?) — v0.11.0</a></h3>
+<h3 id="verifytextpath-options--v0100"><a class="header" href="#verifytextpath-options--v0100">verifyText(path, options?) — v0.10.0</a></h3>
 <p>Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -423,7 +423,7 @@ try {
 </code></pre>
 <p>See the <a href="../guides/inline-text-signing.html">inline text signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="signimagepath-out-options--v0110"><a class="header" href="#signimagepath-out-options--v0110">signImage(path, out, options?) — v0.11.0</a></h3>
+<h3 id="signimagepath-out-options--v0100"><a class="header" href="#signimagepath-out-options--v0100">signImage(path, out, options?) — v0.10.0</a></h3>
 <p>Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -435,7 +435,7 @@ try {
 <pre><code class="language-typescript">await jacs.signImage('photo.png', 'signed.png');
 </code></pre>
 <hr />
-<h3 id="verifyimagepath-options--v0110"><a class="header" href="#verifyimagepath-options--v0110">verifyImage(path, options?) — v0.11.0</a></h3>
+<h3 id="verifyimagepath-options--v0100"><a class="header" href="#verifyimagepath-options--v0100">verifyImage(path, options?) — v0.10.0</a></h3>
 <p>Verify the embedded signature on an image. Same permissive / strict model as <code>verifyText</code>.</p>
 <p><strong>Parameters:</strong> as for <code>verifyText</code>.</p>
 <p><strong>Returns:</strong> <code>Promise&lt;VerifyImageResult&gt;</code> — <code>.status</code> is <code>'valid' | 'invalid' | 'missing_signature'</code>; <code>.signerId</code>, <code>.signedAt</code>, <code>.algorithm</code> populated when valid.</p>
@@ -444,7 +444,7 @@ console.log(v.status);  // 'valid'
 </code></pre>
 <p>See the <a href="../guides/media-signing.html">media signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="extractmediasignaturepath-options--v0110"><a class="header" href="#extractmediasignaturepath-options--v0110">extractMediaSignature(path, options?) — v0.11.0</a></h3>
+<h3 id="extractmediasignaturepath-options--v0100"><a class="header" href="#extractmediasignaturepath-options--v0100">extractMediaSignature(path, options?) — v0.10.0</a></h3>
 <p>Extract the embedded signature payload <strong>without verifying</strong> it.</p>
 <p><strong>Parameters:</strong></p>
 <ul>

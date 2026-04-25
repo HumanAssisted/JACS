@@ -51,7 +51,7 @@ func main() {
 
 Uses CGo to call the JACS Rust library via FFI. Requires a Rust toolchain to build from source.
 
-## What's new in 0.11.0
+## What's new in 0.10.0
 
 *Why this matters:* shared markdown reviewed by multiple Go agents and signed images for AI-era provenance are now first-class — the signature is embedded in the artifact, no sidecar JSON required.
 

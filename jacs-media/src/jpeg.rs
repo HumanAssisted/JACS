@@ -22,10 +22,13 @@ struct Segment {
 /// Walk segments up to the SOS (start-of-scan) marker. Everything after SOS
 /// is raw compressed data that we copy verbatim.
 fn parse_segments_until_sos(bytes: &[u8]) -> Result<(Vec<Segment>, usize), MediaError> {
-    if bytes.len() < 2 || &bytes[..2] != SOI {
+    if bytes.len() < 2 || bytes[..2] != SOI {
         return Err(MediaError::Parse("not a JPEG (missing SOI)".to_string()));
     }
-    let mut out = vec![Segment { bytes: SOI.to_vec(), marker: 0xd8 }];
+    let mut out = vec![Segment {
+        bytes: SOI.to_vec(),
+        marker: 0xd8,
+    }];
     let mut pos = 2usize;
     while pos < bytes.len() {
         // Skip fill bytes.
@@ -33,7 +36,9 @@ fn parse_segments_until_sos(bytes: &[u8]) -> Result<(Vec<Segment>, usize), Media
             pos += 1;
         }
         if pos >= bytes.len() {
-            return Err(MediaError::Parse("unexpected EOF in JPEG segments".to_string()));
+            return Err(MediaError::Parse(
+                "unexpected EOF in JPEG segments".to_string(),
+            ));
         }
         let marker = bytes[pos];
         pos += 1;
@@ -41,7 +46,10 @@ fn parse_segments_until_sos(bytes: &[u8]) -> Result<(Vec<Segment>, usize), Media
         if matches!(marker, 0xd0..=0xd7) || marker == 0x01 || marker == 0xd8 || marker == 0xd9 {
             let seg_bytes = vec![0xff, marker];
             let m = marker;
-            out.push(Segment { bytes: seg_bytes, marker: m });
+            out.push(Segment {
+                bytes: seg_bytes,
+                marker: m,
+            });
             if marker == 0xd9 {
                 return Ok((out, pos));
             }
@@ -49,11 +57,15 @@ fn parse_segments_until_sos(bytes: &[u8]) -> Result<(Vec<Segment>, usize), Media
         }
         // Length-prefixed segment.
         if pos + 2 > bytes.len() {
-            return Err(MediaError::Parse("JPEG segment length truncated".to_string()));
+            return Err(MediaError::Parse(
+                "JPEG segment length truncated".to_string(),
+            ));
         }
         let len = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]) as usize;
         if len < 2 {
-            return Err(MediaError::Parse("JPEG segment length too small".to_string()));
+            return Err(MediaError::Parse(
+                "JPEG segment length too small".to_string(),
+            ));
         }
         let body_end = pos + len;
         if body_end > bytes.len() {
@@ -64,7 +76,10 @@ fn parse_segments_until_sos(bytes: &[u8]) -> Result<(Vec<Segment>, usize), Media
         seg_bytes.push(0xff);
         seg_bytes.push(marker);
         seg_bytes.extend_from_slice(&bytes[pos..body_end]);
-        out.push(Segment { bytes: seg_bytes, marker });
+        out.push(Segment {
+            bytes: seg_bytes,
+            marker,
+        });
         pos = body_end;
         if marker == SOS {
             return Ok((out, pos));
@@ -89,7 +104,10 @@ fn parse_jacs_app11(seg_body: &[u8]) -> Option<&[u8]> {
 fn build_jacs_app11(payload: &str) -> Vec<u8> {
     // Segment: ff eb len(2) JACS\0 payload
     let body_len = JPEG_IDENTIFIER.len() + payload.len() + 2; // +2 for length-field itself
-    assert!(body_len <= 0xffff, "body_len computed > u16::MAX — caller must have caught PayloadTooLarge");
+    assert!(
+        body_len <= 0xffff,
+        "body_len computed > u16::MAX — caller must have caught PayloadTooLarge"
+    );
     let mut out = Vec::with_capacity(body_len + 2);
     out.push(0xff);
     out.push(APP11);
@@ -123,7 +141,9 @@ pub fn embed(
         }
     }
     if jacs_count > 1 {
-        return Err(MediaError::Parse("duplicate JACS-Signature segment".to_string()));
+        return Err(MediaError::Parse(
+            "duplicate JACS-Signature segment".to_string(),
+        ));
     }
     if refuse_overwrite && jacs_count > 0 {
         return Err(MediaError::Parse(
@@ -161,15 +181,16 @@ pub fn extract(bytes: &[u8], scan_robust: bool) -> Result<Option<String>, MediaE
     for seg in &segments {
         if seg.marker == APP11 && seg.bytes.len() > 4 {
             // body starts at offset 4 (skip ff eb ll ll).
-            if let Some(payload_bytes) = parse_jacs_app11(&seg.bytes[4..]) {
-                if let Ok(s) = std::str::from_utf8(payload_bytes) {
+            if let Some(payload_bytes) = parse_jacs_app11(&seg.bytes[4..])
+                && let Ok(s) = std::str::from_utf8(payload_bytes) {
                     found.push(s.to_string());
                 }
-            }
         }
     }
     if found.len() > 1 {
-        return Err(MediaError::Parse("duplicate JACS-Signature segment".to_string()));
+        return Err(MediaError::Parse(
+            "duplicate JACS-Signature segment".to_string(),
+        ));
     }
     if let Some(t) = found.into_iter().next() {
         return Ok(Some(t));
@@ -266,5 +287,66 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// Issue 006 / PRD §4.2.2: third leg of the boundary triplet.
+    #[test]
+    fn jpeg_payload_at_max_minus_one_embeds_cleanly() {
+        let input = minimal_jpeg();
+        let payload = "B".repeat(MAX_PAYLOAD_BYTES_JPEG - 1);
+        let signed = embed(&input, &payload, false, false).expect("embed at max-1");
+        let extracted = extract(&signed, false).expect("ok").expect("present");
+        assert_eq!(extracted.len(), MAX_PAYLOAD_BYTES_JPEG - 1);
+    }
+
+    /// Issue 006: duplicate APP11 JACS segments must surface as `MediaError::Parse`.
+    #[test]
+    fn duplicate_jacs_chunk_jpeg_returns_malformed() {
+        let signed = embed(&minimal_jpeg(), "first-payload", false, false).expect("embed");
+        // Splice in a second JACS APP11 segment immediately after the first.
+        let extra_segment = build_jacs_app11("second-payload");
+        // Find the start of the first APP11/JACS segment marker (0xFF 0xEB) so we
+        // can append our extra segment right after the existing one — both end
+        // up before SOS so embed/extract will see two JACS APP11s.
+        let mut bad = Vec::with_capacity(signed.len() + extra_segment.len());
+        let mut spliced = false;
+        let mut i = 0;
+        while i + 1 < signed.len() {
+            // FFEB marker: APP11 segment.
+            if signed[i] == 0xff && signed[i + 1] == APP11 && !spliced {
+                // Read segment length (big-endian u16) at i+2..i+4.
+                if i + 4 <= signed.len() {
+                    let seg_len = u16::from_be_bytes([signed[i + 2], signed[i + 3]]) as usize;
+                    let seg_end = i + 2 + seg_len; // marker (2 bytes not included in length field)
+                    if seg_end <= signed.len() {
+                        // Copy original segment, then append extra one.
+                        bad.extend_from_slice(&signed[i..seg_end]);
+                        bad.extend_from_slice(&extra_segment);
+                        i = seg_end;
+                        spliced = true;
+                        continue;
+                    }
+                }
+            }
+            bad.push(signed[i]);
+            i += 1;
+        }
+        if i < signed.len() {
+            bad.push(signed[i]);
+        }
+        assert!(spliced, "test setup failed: did not splice extra APP11");
+
+        let embed_err = embed(&bad, "third", false, false).unwrap_err();
+        assert!(
+            matches!(embed_err, MediaError::Parse(ref msg) if msg.contains("duplicate")),
+            "expected Parse(duplicate) on embed; got {:?}",
+            embed_err
+        );
+        let extract_err = extract(&bad, false).unwrap_err();
+        assert!(
+            matches!(extract_err, MediaError::Parse(ref msg) if msg.contains("duplicate")),
+            "expected Parse(duplicate) on extract; got {:?}",
+            extract_err
+        );
     }
 }

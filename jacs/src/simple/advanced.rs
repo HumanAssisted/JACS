@@ -13,6 +13,7 @@ use crate::protocol::canonicalize_json;
 use crate::schema::utils::ValueExt;
 use crate::simple::SimpleAgent;
 use crate::simple::types::*;
+use base64::Engine as _;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
@@ -880,7 +881,7 @@ pub fn encode_signer_id_for_filename(signer_id: &str) -> String {
 
 /// Whitelist check for `signer_id`. Returns false for any input containing
 /// characters outside `[A-Za-z0-9:_.-]`, longer than 256 bytes, or empty.
-pub(crate) fn is_signer_id_safe(signer_id: &str) -> bool {
+pub fn is_signer_id_safe(signer_id: &str) -> bool {
     if signer_id.is_empty() || signer_id.len() > 256 {
         return false;
     }
@@ -970,8 +971,171 @@ impl<'a> crate::inline::KeyResolver for DefaultKeyResolver<'a> {
             }
         }
 
-        // 4. DNS — TODO in v0.11.0; resolver returns None producing KeyNotFound.
+        // 4. DNS-published key resolution (soft-fail).
+        //
+        // Lets verifiers pick up signatures from strangers who publish their
+        // agent + public key under a domain they control. Two channels:
+        //   • DNS TXT  at `_v1.agent.jacs.<domain>` provides the agent_id +
+        //     `jac_public_key_hash` fingerprint (the integrity binding).
+        //   • HTTPS at `https://<domain>/.well-known/jacs/agents/<id>.public.pem`
+        //     provides the public-key bytes.
+        //
+        // Discovery domains come from the `JACS_DNS_KEY_DOMAINS` env var (CSV).
+        // Operators can leave it unset for an opt-in network model. Each lookup
+        // is best-effort: any DNS / HTTPS / hash-mismatch failure surfaces as
+        // `None` (caller emits `SignatureStatus::KeyNotFound`) — same soft-fail
+        // semantics as verification itself.
+        if let Some(resolved) = resolve_via_dns_and_https(signer_id) {
+            return Some(resolved);
+        }
+
         None
+    }
+}
+
+/// DNS + HTTPS .well-known key resolution.
+///
+/// Returns `None` on any failure (DNS lookup error, no matching TXT record,
+/// HTTPS fetch failure, hash mismatch, malformed key bytes). Hard errors
+/// surface as `KeyNotFound` from the inline verifier — never raised.
+///
+/// `JACS_DNS_KEY_DOMAINS` is a CSV of trusted publisher domains (e.g.
+/// `"agents.example.com,agents.acme.com"`). For each entry the resolver:
+///   1. Fetches `_v1.agent.jacs.<domain>` TXT (insecure resolver — DNSSEC
+///      validation is the operator's choice, gated upstream by the
+///      `dns-lookup` capability bit).
+///   2. Confirms `jacs_agent_id` matches the requested signer.
+///   3. Fetches `https://<domain>/.well-known/jacs/agents/<signer>.public.pem`.
+///   4. Hashes the fetched PEM (LF-normalised) and compares to the TXT-published
+///      `jac_public_key_hash` so the DNS record binds the HTTPS bytes.
+///   5. Returns the parsed key on the first successful match.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_via_dns_and_https(signer_id: &str) -> Option<crate::inline::ResolvedKey> {
+    use crate::dns::bootstrap::{
+        find_jacs_txt_record, parse_agent_txt, record_owner, resolve_txt_insecure,
+    };
+
+    // Reject malicious signer IDs before we mint any URLs.
+    if !is_signer_id_safe(signer_id) {
+        return None;
+    }
+
+    let domains = std::env::var("JACS_DNS_KEY_DOMAINS").ok()?;
+    let domains: Vec<String> = domains
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    if domains.is_empty() {
+        return None;
+    }
+
+    for domain in &domains {
+        let owner = record_owner(domain);
+        let txt = match resolve_txt_insecure(&owner) {
+            Ok(t) => t,
+            Err(_) => {
+                // DNS lookup failed (network / NXDOMAIN / network capability
+                // disabled). Soft-fail: try the next domain.
+                continue;
+            }
+        };
+        // Defence-in-depth: even though resolve_txt_insecure already filters
+        // to v=jacs, re-confirm here.
+        let txt = match find_jacs_txt_record(vec![txt], &owner) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let fields = match parse_agent_txt(&txt) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if fields.jacs_agent_id != signer_id {
+            // This domain publishes a different agent; not our signer.
+            continue;
+        }
+
+        // Fetch key bytes via .well-known/.
+        let pem_bytes = match fetch_well_known_pem(domain, signer_id) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        // Confirm the fetched key matches the DNS-published fingerprint.
+        // This binds the HTTPS bytes to the DNS record so a compromised HTTPS
+        // origin cannot serve an attacker-controlled key without also
+        // compromising DNS.
+        if !pem_matches_dns_digest(&pem_bytes, &fields.digest, &fields.enc) {
+            continue;
+        }
+
+        if let Some(resolved) = resolved_from_pem_or_raw(&pem_bytes) {
+            return Some(resolved);
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_well_known_pem(domain: &str, signer_id: &str) -> Option<Vec<u8>> {
+    use crate::config::{NetworkCapability, ensure_network_access};
+
+    if ensure_network_access(NetworkCapability::RemoteKeyFetch).is_err() {
+        return None;
+    }
+
+    let domain_trimmed = domain.trim().trim_end_matches('/');
+    if domain_trimmed.is_empty() {
+        return None;
+    }
+    // .well-known schema: `https://<domain>/.well-known/jacs/agents/<signer>.public.pem`.
+    let url = format!(
+        "https://{}/.well-known/jacs/agents/{}.public.pem",
+        domain_trimmed, signer_id
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?;
+
+    let response = client
+        .get(&url)
+        .header(
+            reqwest::header::ACCEPT,
+            "application/x-pem-file, text/plain",
+        )
+        .send()
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let bytes = response.bytes().ok()?;
+    // Cap at 16 KiB — public keys are tiny; anything bigger is suspicious.
+    if bytes.len() > 16 * 1024 {
+        return None;
+    }
+    Some(bytes.to_vec())
+}
+
+/// Whether `pem_bytes` (the bytes fetched from `.well-known`) hashes to the
+/// digest published in the JACS TXT record. Accepts both base64 and hex
+/// encodings of the SHA-256 of the LF-normalised PEM.
+fn pem_matches_dns_digest(
+    pem_bytes: &[u8],
+    dns_digest: &str,
+    enc: &crate::dns::bootstrap::DigestEncoding,
+) -> bool {
+    use crate::dns::bootstrap::DigestEncoding;
+    let normalised = crate::crypt::normalize_public_key_pem(pem_bytes);
+    let raw = crate::crypt::hash::hash_bytes_raw(normalised.as_bytes());
+    match enc {
+        DigestEncoding::Base64 => {
+            base64::engine::general_purpose::STANDARD.encode(raw) == dns_digest
+        }
+        DigestEncoding::Hex => hex::encode(raw).eq_ignore_ascii_case(dns_digest),
     }
 }
 
@@ -1018,6 +1182,61 @@ fn inline_algorithm_tag<T: std::fmt::Display>(algo: T) -> String {
     }
 }
 
+/// Shared `<path>.bak` writer for the inline-text and image sign paths
+/// (PRD §4.2.4b).
+///
+/// Six rules:
+///   1. **Location:** `<path>.bak` in the same directory only — caller passes
+///      both `src_bytes` (or `None` to copy from disk) and `backup_path` so
+///      this is just a plain `fs::write` after the safety guards.
+///   2. **Overwrite existing `.bak` is permitted** — operators may invoke sign
+///      repeatedly during iterative authoring.
+///   3. **Permissions:** `mode` defaults to `0o600`; callers may pass an
+///      `unsafe_bak_mode` override. Unix only — Windows skips the chmod.
+///   4. **Symlinks at `<path>.bak`:** rejected — refuse to follow. A malicious
+///      `.bak` symlink is the canonical "backup-as-write-primitive" attack.
+///   5. **Content:** caller-provided byte-for-byte (the original file bytes).
+///   6. **Documented warning:** the resulting `.bak` is **unsigned plaintext**;
+///      callers that handle sensitive data must keep it out of shared
+///      directories or set `backup: false`.
+pub(crate) fn write_backup_or_err(
+    src_bytes: &[u8],
+    backup_path: &str,
+    mode: Option<u32>,
+) -> Result<(), JacsError> {
+    // Rule 4: symlink reject (defence-in-depth — don't follow attacker-placed
+    // symlink at the .bak path).
+    if let Ok(meta) = std::fs::symlink_metadata(backup_path)
+        && meta.file_type().is_symlink()
+    {
+        return Err(JacsError::ValidationError(format!(
+            "refusing to follow symlink at backup path '{}'",
+            backup_path
+        )));
+    }
+
+    // Rule 2 + 5: write the bytes. Standard fs::write overwrites if needed.
+    std::fs::write(backup_path, src_bytes).map_err(|e| JacsError::FileWriteFailed {
+        path: backup_path.to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Rule 3: 0o600 default; explicit override gates the unsafe path.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let effective_mode = mode.unwrap_or(0o600);
+        let _ =
+            std::fs::set_permissions(backup_path, std::fs::Permissions::from_mode(effective_mode));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+    }
+
+    Ok(())
+}
+
 /// Sign the contents of a text file in-place. PRD §4.1.
 ///
 /// Atomic-write semantics: a sibling temp file is written and atomically renamed
@@ -1055,13 +1274,12 @@ pub fn sign_text_file(
         });
     }
 
-    // Write backup BEFORE we touch the file. If backup fails, abort.
+    // Write backup BEFORE we touch the file (PRD §4.2.4b). If backup fails,
+    // abort — same shared helper as sign_image so the symlink-reject and
+    // 0o600-default guards apply uniformly.
     let backup_path = if opts.backup {
         let bak = format!("{}.bak", path);
-        std::fs::copy(path, &bak).map_err(|e| JacsError::FileWriteFailed {
-            path: bak.clone(),
-            reason: e.to_string(),
-        })?;
+        write_backup_or_err(original.as_bytes(), &bak, opts.unsafe_bak_mode)?;
         Some(bak)
     } else {
         None
@@ -1206,10 +1424,23 @@ pub fn sign_image(
     let pkh_raw = sha256_bytes_local(normalised_pem.as_bytes());
     let public_key_hash = format!("sha256-b64url:{}", base64url_nopad_local(&pkh_raw));
 
-    // Pixel-hash for robust mode. Reuse canonical_hash_robust as the pixel
-    // hash — both are sha256 over the canonicalised, LSB-zeroed pixel bytes,
-    // so they are necessarily equal. Document as such; future versions could
-    // diverge if we add a separate pre-LSB pixel commitment.
+    // Pixel-hash for robust mode.
+    //
+    // KNOWN LIMITATION (Issue 013 / PRD §4.2.2): in v0.10.0 `pixelHash`
+    // **equals** `contentHash` because both are SHA-256 over the canonicalised,
+    // LSB-zeroed pixel bytes. The field is populated for forward compatibility
+    // (so the wire shape is stable) but provides no extra anti-pixel-recompress
+    // signal beyond the existing `contentHash`.
+    //
+    // The PRD's stated purpose for `pixelHash` is to commit to the *pre-LSB*
+    // pixel bytes so a verifier can detect "metadata strip + pixel re-encode"
+    // attacks. That divergence is deferred — it requires hashing the decoded
+    // RGB(A) bytes BEFORE LSB-zeroing at both sign and verify time, which is a
+    // separate decode pass. A future release will deliver the divergent
+    // semantic and bump `mediaSignatureVersion` to 2.
+    //
+    // Until then, callers should treat `pixelHash` as advisory and rely on
+    // `contentHash` for integrity.
     let pixel_hash = if opts.robust {
         Some(format!(
             "sha256-b64url:{}",
@@ -1219,6 +1450,15 @@ pub fn sign_image(
         None
     };
 
+    // `embeddingChannels` is **signer intent**, NOT verifier-checked ground
+    // truth (Issue 015 / PRD §4.2.2). The verifier currently does not
+    // cross-check the claim's declared channels against what is actually
+    // present in the file: a robust signature whose LSB chunk has been stripped
+    // post-sign would still surface as `Valid` if the metadata channel still
+    // round-trips. A future release will return the observed channel set from
+    // `extract_signature` and reject claim/observed mismatches; until then
+    // callers should treat this field as advisory and rely on `contentHash`
+    // for integrity.
     let claim = json!({
         "mediaSignatureVersion": 1,
         "format": format_str,
@@ -1256,15 +1496,6 @@ pub fn sign_image(
 
     let backup_path = if opts.backup && (in_place || std::path::Path::new(out_path).exists()) {
         let bak = format!("{}.bak", out_path);
-        // Symlink reject: refuse to follow an existing .bak that is a symlink.
-        if let Ok(meta) = std::fs::symlink_metadata(&bak)
-            && meta.file_type().is_symlink()
-        {
-            return Err(JacsError::ValidationError(format!(
-                "refusing to follow symlink at backup path '{}'",
-                bak
-            )));
-        }
         // Backup source: when in_place, the source bytes ARE the input bytes
         // we already read. Otherwise, only back up if out_path exists.
         let src_bytes: Vec<u8> = if in_place {
@@ -1272,17 +1503,8 @@ pub fn sign_image(
         } else {
             std::fs::read(out_path).unwrap_or_else(|_| Vec::new())
         };
-        std::fs::write(&bak, &src_bytes).map_err(|e| JacsError::FileWriteFailed {
-            path: bak.clone(),
-            reason: e.to_string(),
-        })?;
-        // Apply backup mode bits (Unix only).
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = opts.unsafe_bak_mode.unwrap_or(0o600);
-            let _ = std::fs::set_permissions(&bak, std::fs::Permissions::from_mode(mode));
-        }
+        // Shared helper applies symlink-reject + 0o600 default (PRD §4.2.4b).
+        write_backup_or_err(&src_bytes, &bak, opts.unsafe_bak_mode)?;
         Some(bak)
     } else {
         None
@@ -1573,12 +1795,10 @@ pub fn verify_image(
     let resolved = match crate::inline::KeyResolver::resolve(&resolver, signer_id_str) {
         Some(r) => r,
         None => {
-            if opts.base.strict {
-                return Err(JacsError::TrustError(format!(
-                    "key not found for signer '{}'",
-                    signer_id_str
-                )));
-            }
+            // Per-block KeyNotFound never escalates to Err — see PRD §4.1.2
+            // tenth-pass clarification. Only file-level failures
+            // (MissingSignature, file-level Malformed) escalate in strict mode.
+            // verify_text and verify_image must use the same mental model.
             return Ok(MediaVerificationResult {
                 status: MediaVerifyStatus::KeyNotFound,
                 signer_id,
@@ -1594,12 +1814,9 @@ pub fn verify_image(
     let resolved_pkh_raw = sha256_bytes_local(resolved_pem_normalised.as_bytes());
     let expected_pkh = format!("sha256-b64url:{}", base64url_nopad_local(&resolved_pkh_raw));
     if expected_pkh != claim_pkh {
-        if opts.base.strict {
-            return Err(JacsError::TrustError(format!(
-                "publicKeyHash mismatch for signer '{}': resolved key does not match claim",
-                signer_id_str
-            )));
-        }
+        // Per-block KeyNotFound: resolved key fingerprint disagrees with the
+        // embedded claim. Same contract as the resolver-None branch above —
+        // strict mode does NOT escalate per-block outcomes.
         return Ok(MediaVerificationResult {
             status: MediaVerifyStatus::KeyNotFound,
             signer_id,

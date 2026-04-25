@@ -76,7 +76,7 @@ The MCP server uses **stdio transport only** — no HTTP endpoints. This is a de
 | **Verify** | Prove a signed document is authentic and unmodified |
 | **Export** | Share your agent's public key or signed documents with others |
 
-## What's new in 0.11.0
+## What's new in 0.10.0
 
 **Inline text signatures** — append a YAML-bodied JACS signature block to any markdown or text file. The file on disk is preserved byte-for-byte; the signature sits at the end and the file still renders as markdown on GitHub.
 
@@ -170,4 +170,4 @@ Report vulnerabilities to security@hai.ai. Do not open public issues for securit
 
 ---
 
-v0.11.0 | [Apache-2.0](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
+v0.10.0 | [Apache-2.0](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)

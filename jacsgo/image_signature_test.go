@@ -351,6 +351,31 @@ func TestRobustModeOffByDefault(t *testing.T) {
 	}
 }
 
+// Issue 010 / PRD §10 eighth-pass item 10: robust LSB on WebP is deferred
+// until libwebp-sys lands. SignImage with Robust:true on a WebP input MUST
+// surface a deterministic "deferred" error from every binding.
+func TestSignImageRobustWebpDeferred(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "in.webp")
+	dst := filepath.Join(dir, "out.webp")
+	writeUnsignedWebP(t, src)
+
+	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+
+	_, err = agent.SignImage(src, dst, &SignImageOpts{Robust: true})
+	if err == nil {
+		t.Fatal("expected error when signing WebP with robust=true")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "webp robust mode deferred") {
+		t.Fatalf("expected 'webp robust mode deferred' error, got: %v", err)
+	}
+}
+
 // PRD §4.2.2: refuseOverwrite is a single-signer guard. Re-signing an already
 // signed image should error.
 func TestSignImageRefuseOverwriteRejectsAlreadySigned(t *testing.T) {

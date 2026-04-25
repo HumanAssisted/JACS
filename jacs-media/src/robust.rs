@@ -1,4 +1,4 @@
-//! Robust LSB embedding (PNG + JPEG only in v0.11.0; WebP deferred).
+//! Robust LSB embedding (PNG + JPEG only in v0.10.0; WebP deferred).
 //!
 //! Strategy: write the base64url JACS payload bit-by-bit into the LSB of a
 //! target channel (alpha if present on PNG; blue channel otherwise). Prepend a
@@ -60,7 +60,11 @@ fn encode_jpeg(img: &image::RgbImage) -> Result<Vec<u8>, MediaError> {
 /// does, we prefer alpha (keeps RGB bit-exact). Otherwise fall back to blue.
 fn rgba_target(img: &image::RgbaImage) -> LsbTarget {
     let any_non_opaque = img.pixels().any(|p| p[3] != 255);
-    if any_non_opaque { LsbTarget::Alpha } else { LsbTarget::Blue }
+    if any_non_opaque {
+        LsbTarget::Alpha
+    } else {
+        LsbTarget::Blue
+    }
 }
 
 /// Build the preamble + payload bit stream to embed.
@@ -92,7 +96,11 @@ fn capacity_exceeded(payload_bytes: usize, capacity_bits: usize) -> MediaError {
     }
 }
 
-fn embed_bits_rgba(img: &mut image::RgbaImage, target: LsbTarget, bits: &[u8]) -> Result<(), MediaError> {
+fn embed_bits_rgba(
+    img: &mut image::RgbaImage,
+    target: LsbTarget,
+    bits: &[u8],
+) -> Result<(), MediaError> {
     let total_bits = bits.len() * 8;
     let cap_bits = pixel_bit_count_png(img, target);
     if total_bits > cap_bits {
@@ -207,7 +215,11 @@ pub fn embed_lsb_jpeg(bytes: &[u8], payload: &str) -> Result<Vec<u8>, MediaError
 pub fn extract_lsb_png(bytes: &[u8]) -> Result<Option<String>, MediaError> {
     let img = decode_png(bytes)?;
     let any_non_opaque = img.pixels().any(|p| p[3] != 255);
-    let target = if any_non_opaque { LsbTarget::Alpha } else { LsbTarget::Blue };
+    let target = if any_non_opaque {
+        LsbTarget::Alpha
+    } else {
+        LsbTarget::Blue
+    };
     let bits = extract_bits_rgba(&img, target);
     let (len, _ver) = match parse_preamble(&bits) {
         Some(p) => p,
@@ -324,7 +336,10 @@ mod tests {
         let h_before = canonical_hash_robust_png(&input).unwrap();
         let signed = embed_lsb_png(&input, "some-robust-payload").expect("embed");
         let h_after = canonical_hash_robust_png(&signed).unwrap();
-        assert_eq!(h_before, h_after, "robust canonical hash must be LSB-invariant");
+        assert_eq!(
+            h_before, h_after,
+            "robust canonical hash must be LSB-invariant"
+        );
     }
 
     #[test]
@@ -335,6 +350,9 @@ mod tests {
         // Depending on pixel LSB noise the magic may accidentally match; but on
         // our flat fixture the LSBs are all zero so the magic is `\x00\x00...`
         // → no match.
-        assert!(res.is_none() || res.is_some(), "must not panic; None on no-preamble fixture");
+        assert!(
+            res.is_none() || res.is_some(),
+            "must not panic; None on no-preamble fixture"
+        );
     }
 }

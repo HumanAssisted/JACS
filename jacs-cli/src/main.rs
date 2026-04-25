@@ -3038,7 +3038,10 @@ fn handle_sign_text(sub: &clap::ArgMatches) {
                     println!("Backup: {}", bak);
                 }
             } else {
-                println!("No new signature: {} already signed by this agent", outcome.path);
+                println!(
+                    "No new signature: {} already signed by this agent",
+                    outcome.path
+                );
             }
         }
         Err(e) => {
@@ -3075,8 +3078,8 @@ fn column_zero_marker_collision(content: &str) -> Option<usize> {
             Some(rel) => search_from + rel,
             None => return None,
         };
-        let at_column_zero = begin_idx == 0
-            || content.as_bytes().get(begin_idx.wrapping_sub(1)) == Some(&b'\n');
+        let at_column_zero =
+            begin_idx == 0 || content.as_bytes().get(begin_idx.wrapping_sub(1)) == Some(&b'\n');
         if !at_column_zero {
             search_from = begin_idx + BEGIN.len();
             continue;
@@ -3133,7 +3136,9 @@ fn handle_verify_text(sub: &clap::ArgMatches) {
 
     match verify_text_file(&agent, file_path, opts) {
         Ok(VerifyTextResult::Signed { signatures }) => {
-            let any_failed = signatures.iter().any(|s| s.status != SignatureStatus::Valid);
+            let any_failed = signatures
+                .iter()
+                .any(|s| s.status != SignatureStatus::Valid);
             if json_output {
                 emit_verify_text_signed_json(&signatures);
             } else {
@@ -3143,7 +3148,9 @@ fn handle_verify_text(sub: &clap::ArgMatches) {
                         SignatureStatus::InvalidSignature => "INVALID".to_string(),
                         SignatureStatus::HashMismatch => "HASH MISMATCH".to_string(),
                         SignatureStatus::KeyNotFound => "KEY NOT FOUND".to_string(),
-                        SignatureStatus::UnsupportedAlgorithm => "UNSUPPORTED ALGORITHM".to_string(),
+                        SignatureStatus::UnsupportedAlgorithm => {
+                            "UNSUPPORTED ALGORITHM".to_string()
+                        }
                         SignatureStatus::Malformed(s) => format!("MALFORMED ({})", s),
                     };
                     println!("Signer:    {}", entry.signer_id);
@@ -3189,7 +3196,10 @@ fn handle_verify_text(sub: &clap::ArgMatches) {
         }
         Err(e) => {
             if json_output {
-                eprintln!("{}", json!({"error": e.to_string(), "error_kind": "Generic"}));
+                eprintln!(
+                    "{}",
+                    json!({"error": e.to_string(), "error_kind": "Generic"})
+                );
             } else {
                 eprintln!("verify-text error: {}", e);
             }
@@ -3376,7 +3386,10 @@ fn handle_verify_image(sub: &clap::ArgMatches) {
         }
         Err(e) => {
             if json_output {
-                eprintln!("{}", json!({"error": e.to_string(), "error_kind": "Generic"}));
+                eprintln!(
+                    "{}",
+                    json!({"error": e.to_string(), "error_kind": "Generic"})
+                );
             } else {
                 eprintln!("verify-image error: {}", e);
             }

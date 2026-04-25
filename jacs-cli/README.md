@@ -25,7 +25,7 @@ jacs document create -f mydata.json
 jacs verify signed-document.json
 ```
 
-## What's new in 0.11.0 — provenance commands
+## What's new in 0.10.0 — provenance commands
 
 *Why this matters:* shared markdown reviewed by multiple agents and signed images for AI-era provenance now have first-class CLI support — the signature lives inside the artifact, no sidecar JSON required.
 
@@ -116,4 +116,4 @@ jacs mcp
 - [MCP Integration](https://humanassisted.github.io/JACS/integrations/mcp.html)
 - [JACS on crates.io](https://crates.io/crates/jacs)
 
-v0.11.0 | [Apache 2.0 with Common Clause](../LICENSE)
+v0.10.0 | [Apache 2.0 with Common Clause](../LICENSE)

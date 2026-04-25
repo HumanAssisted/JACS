@@ -924,7 +924,7 @@ jacs quickstart --name my-agent --domain my-agent.example.com --sign --file myda
 <blockquote>
 <p><strong>That's it -- you're signing.</strong> For most use cases, the quick start above is all you need. Jump to <a href="getting-started/../getting-started/decision-tree.html">Which integration should I use?</a> to find the right framework adapter, or read on for manual agent setup.</p>
 </blockquote>
-<h3 id="try-signing-a-markdown-file-v0110"><a class="header" href="#try-signing-a-markdown-file-v0110">Try signing a markdown file (v0.11.0)</a></h3>
+<h3 id="try-signing-a-markdown-file-v0100"><a class="header" href="#try-signing-a-markdown-file-v0100">Try signing a markdown file (v0.10.0)</a></h3>
 <pre><code class="language-bash">jacs sign-text README.md          # appends a YAML-bodied signature block at end of file
 jacs verify-text README.md        # permissive verify — exit 0 valid, exit 2 missing-sig, exit 1 invalid
 </code></pre>
@@ -1400,8 +1400,8 @@ main().catch(console.error);
 <div style="break-before: page; page-break-before: always;"></div><h1 id="verifying-signed-documents"><a class="header" href="#verifying-signed-documents">Verifying Signed Documents</a></h1>
 <p>Verify a JACS-signed document in under 2 minutes. Verification confirms two things: the document was signed by the claimed agent, and the content has not been modified since signing.</p>
 <p><strong>Verification does NOT require creating an agent.</strong> You only need the signed document (and optionally access to the signer's public key).</p>
-<h2 id="strict-vs-permissive-verification-v0110"><a class="header" href="#strict-vs-permissive-verification-v0110">Strict vs permissive verification (v0.11.0)</a></h2>
-<p><code>verify-text</code> and <code>verify-image</code> (added in v0.11.0) introduce a <strong>permissive default</strong>: a missing signature is a <em>typed status</em>, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.</p>
+<h2 id="strict-vs-permissive-verification-v0100"><a class="header" href="#strict-vs-permissive-verification-v0100">Strict vs permissive verification (v0.10.0)</a></h2>
+<p><code>verify-text</code> and <code>verify-image</code> (added in v0.10.0) introduce a <strong>permissive default</strong>: a missing signature is a <em>typed status</em>, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.</p>
 <div class="table-wrapper"><table><thead><tr><th>Surface</th><th>Permissive (default)</th><th>Strict (<code>--strict</code> / <code>strict=True</code> / <code>{ strict: true }</code> / <code>Strict: true</code>)</th></tr></thead><tbody>
 <tr><td><code>jacs verify-text</code> (CLI)</td><td>Exit <code>0</code> valid · <code>2</code> missing-sig · <code>1</code> invalid</td><td>Exit <code>0</code> valid · <code>1</code> missing OR invalid (stderr: <code>no JACS signature found</code>)</td></tr>
 <tr><td><code>jacs verify-image</code> (CLI)</td><td>Same as above</td><td>Same as above</td></tr>
@@ -4616,7 +4616,7 @@ if (result.valid) {
 console.log(result.valid, result.signerId);
 </code></pre>
 <hr />
-<h3 id="signtextpath--v0110"><a class="header" href="#signtextpath--v0110">signText(path) — v0.11.0</a></h3>
+<h3 id="signtextpath--v0100"><a class="header" href="#signtextpath--v0100">signText(path) — v0.10.0</a></h3>
 <p>Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered. Async-first since v0.7.0 — returns <code>Promise</code>.</p>
 <p><strong>Parameters:</strong> <code>path</code> (string): file to sign in place</p>
 <p><strong>Returns:</strong> <code>Promise&lt;void&gt;</code></p>
@@ -4624,7 +4624,7 @@ console.log(result.valid, result.signerId);
 <pre><code class="language-typescript">await jacs.signText('README.md');
 </code></pre>
 <hr />
-<h3 id="verifytextpath-options--v0110"><a class="header" href="#verifytextpath-options--v0110">verifyText(path, options?) — v0.11.0</a></h3>
+<h3 id="verifytextpath-options--v0100"><a class="header" href="#verifytextpath-options--v0100">verifyText(path, options?) — v0.10.0</a></h3>
 <p>Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -4648,7 +4648,7 @@ try {
 </code></pre>
 <p>See the <a href="nodejs/../guides/inline-text-signing.html">inline text signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="signimagepath-out-options--v0110"><a class="header" href="#signimagepath-out-options--v0110">signImage(path, out, options?) — v0.11.0</a></h3>
+<h3 id="signimagepath-out-options--v0100"><a class="header" href="#signimagepath-out-options--v0100">signImage(path, out, options?) — v0.10.0</a></h3>
 <p>Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -4660,7 +4660,7 @@ try {
 <pre><code class="language-typescript">await jacs.signImage('photo.png', 'signed.png');
 </code></pre>
 <hr />
-<h3 id="verifyimagepath-options--v0110"><a class="header" href="#verifyimagepath-options--v0110">verifyImage(path, options?) — v0.11.0</a></h3>
+<h3 id="verifyimagepath-options--v0100"><a class="header" href="#verifyimagepath-options--v0100">verifyImage(path, options?) — v0.10.0</a></h3>
 <p>Verify the embedded signature on an image. Same permissive / strict model as <code>verifyText</code>.</p>
 <p><strong>Parameters:</strong> as for <code>verifyText</code>.</p>
 <p><strong>Returns:</strong> <code>Promise&lt;VerifyImageResult&gt;</code> — <code>.status</code> is <code>'valid' | 'invalid' | 'missing_signature'</code>; <code>.signerId</code>, <code>.signedAt</code>, <code>.algorithm</code> populated when valid.</p>
@@ -4669,7 +4669,7 @@ console.log(v.status);  // 'valid'
 </code></pre>
 <p>See the <a href="nodejs/../guides/media-signing.html">media signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="extractmediasignaturepath-options--v0110"><a class="header" href="#extractmediasignaturepath-options--v0110">extractMediaSignature(path, options?) — v0.11.0</a></h3>
+<h3 id="extractmediasignaturepath-options--v0100"><a class="header" href="#extractmediasignaturepath-options--v0100">extractMediaSignature(path, options?) — v0.10.0</a></h3>
 <p>Extract the embedded signature payload <strong>without verifying</strong> it.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -7153,7 +7153,7 @@ else:
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
 <hr />
-<h3 id="sign_textpath--v0110"><a class="header" href="#sign_textpath--v0110">sign_text(path) — v0.11.0</a></h3>
+<h3 id="sign_textpath--v0100"><a class="header" href="#sign_textpath--v0100">sign_text(path) — v0.10.0</a></h3>
 <p>Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered.</p>
 <p><strong>Parameters:</strong> <code>path</code> (str): file to sign in place</p>
 <p><strong>Returns:</strong> <code>None</code></p>
@@ -7161,7 +7161,7 @@ else:
 <pre><code class="language-python">jacs.sign_text("README.md")
 </code></pre>
 <hr />
-<h3 id="verify_textpath--strictfalse-key_dirnone--v0110"><a class="header" href="#verify_textpath--strictfalse-key_dirnone--v0110">verify_text(path, *, strict=False, key_dir=None) — v0.11.0</a></h3>
+<h3 id="verify_textpath--strictfalse-key_dirnone--v0100"><a class="header" href="#verify_textpath--strictfalse-key_dirnone--v0100">verify_text(path, *, strict=False, key_dir=None) — v0.10.0</a></h3>
 <p>Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -7181,7 +7181,7 @@ except MissingSignatureError:
 </code></pre>
 <p>See the <a href="python/../guides/inline-text-signing.html">inline text signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0110"><a class="header" href="#sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0110">sign_image(path, *, out=None, robust=False, refuse_overwrite=False) — v0.11.0</a></h3>
+<h3 id="sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0100"><a class="header" href="#sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0100">sign_image(path, *, out=None, robust=False, refuse_overwrite=False) — v0.10.0</a></h3>
 <p>Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -7194,7 +7194,7 @@ except MissingSignatureError:
 <pre><code class="language-python">jacs.sign_image("photo.png", out="signed.png")
 </code></pre>
 <hr />
-<h3 id="verify_imagepath--strictfalse-key_dirnone--v0110"><a class="header" href="#verify_imagepath--strictfalse-key_dirnone--v0110">verify_image(path, *, strict=False, key_dir=None) — v0.11.0</a></h3>
+<h3 id="verify_imagepath--strictfalse-key_dirnone--v0100"><a class="header" href="#verify_imagepath--strictfalse-key_dirnone--v0100">verify_image(path, *, strict=False, key_dir=None) — v0.10.0</a></h3>
 <p>Verify the embedded signature on an image. Same permissive / strict model as <code>verify_text</code>.</p>
 <p><strong>Parameters:</strong> as for <code>verify_text</code>.</p>
 <p><strong>Returns:</strong> <code>VerifyImageResult</code> — <code>.status</code> is <code>'valid' | 'invalid' | 'missing_signature'</code>; <code>.signer_id</code>, <code>.signed_at</code>, <code>.algorithm</code> populated when valid.</p>
@@ -7203,7 +7203,7 @@ print(v.status)  # 'valid'
 </code></pre>
 <p>See the <a href="python/../guides/media-signing.html">media signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="extract_media_signaturepath--raw_payloadfalse--v0110"><a class="header" href="#extract_media_signaturepath--raw_payloadfalse--v0110">extract_media_signature(path, *, raw_payload=False) — v0.11.0</a></h3>
+<h3 id="extract_media_signaturepath--raw_payloadfalse--v0100"><a class="header" href="#extract_media_signaturepath--raw_payloadfalse--v0100">extract_media_signature(path, *, raw_payload=False) — v0.10.0</a></h3>
 <p>Extract the embedded signature payload <strong>without verifying</strong> it.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -13528,7 +13528,7 @@ const client = await JacsClient.quickstart({
 registerJacsTools(server, client);
 </code></pre>
 <p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
-<h3 id="provenance-mcp-tools-v0110"><a class="header" href="#provenance-mcp-tools-v0110">Provenance MCP tools (v0.11.0)</a></h3>
+<h3 id="provenance-mcp-tools-v0100"><a class="header" href="#provenance-mcp-tools-v0100">Provenance MCP tools (v0.10.0)</a></h3>
 <p>The MCP server exposes 5 new tools for inline text and image provenance — covering the same surface as the <a href="integrations/../guides/inline-text-signing.html"><code>sign-text</code></a> and <a href="integrations/../guides/media-signing.html"><code>sign-image</code></a> CLI verbs.</p>
 <ul>
 <li><code>jacs_sign_text</code> — append a YAML-bodied signature block to a markdown / text file.</li>
@@ -15323,7 +15323,7 @@ signature: 9XsrVQ8...base64url...
 <p>Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes <em>before</em> the first block) is preserved byte-for-byte.</p>
 <h3 id="field-reference"><a class="header" href="#field-reference">Field reference</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>What it is</th></tr></thead><tbody>
-<tr><td><code>signatureBlockVersion</code></td><td>Always <code>1</code> for v0.11.0. Versioning the block lets the format evolve without breaking older verifiers.</td></tr>
+<tr><td><code>signatureBlockVersion</code></td><td>Always <code>1</code> for v0.10.0. Versioning the block lets the format evolve without breaking older verifiers.</td></tr>
 <tr><td><code>algorithm</code></td><td>Signing algorithm in use (<code>ed25519</code>, <code>pq2025</code>, etc.) — read from the agent's key metadata.</td></tr>
 <tr><td><code>hashAlgorithm</code></td><td>Hash used for the canonical pre-image (currently <code>sha256</code>).</td></tr>
 <tr><td><code>canonicalization</code></td><td>Tag identifying how the bytes are normalised before hashing (currently <code>jacs-text-v1</code>).</td></tr>
@@ -15394,7 +15394,7 @@ signature: ...
 <li><strong>Use a zero-width space prefix</strong> — the literal string differs by one byte.</li>
 <li><strong>Use inline emphasis</strong> — wrap the marker in backticks or asterisks.</li>
 </ol>
-<p>There is intentionally <strong>no</strong> <code>--force-overwrite-markers</code> escape hatch in v0.11.0. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.</p>
+<p>There is intentionally <strong>no</strong> <code>--force-overwrite-markers</code> escape hatch in v0.10.0. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.</p>
 <h2 id="caps-and-rejected-inputs"><a class="header" href="#caps-and-rejected-inputs">Caps and rejected inputs</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Limit</th><th>Cause failure</th></tr></thead><tbody>
 <tr><td>Block body &gt; 16 KiB</td><td><code>Err(ErrorKind::PayloadTooLarge)</code> (Rust) / equivalents in bindings</td></tr>
@@ -15487,7 +15487,7 @@ jacs sign-image photo.png --out signed.png --refuse-overwrite
 <tr><td>Embedded payload &gt; 64 KiB</td><td><code>Err(ErrorKind::PayloadTooLarge)</code></td></tr>
 <tr><td>Unknown format (extension or magic)</td><td><code>Err(ErrorKind::UnsupportedFormat)</code></td></tr>
 <tr><td><code>--refuse-overwrite</code> + already-signed input</td><td><code>Err(ErrorKind::AlreadySigned)</code></td></tr>
-<tr><td>Robust mode requested for WebP</td><td><code>Err(ErrorKind::RobustNotSupported)</code> (v0.11.0)</td></tr>
+<tr><td>Robust mode requested for WebP</td><td><code>Err(ErrorKind::RobustNotSupported)</code> (v0.10.0)</td></tr>
 </tbody></table>
 </div>
 <h2 id="clean-room-provenance"><a class="header" href="#clean-room-provenance">Clean-room provenance</a></h2>
@@ -17963,7 +17963,7 @@ jacs document verify -f document.json -s schema.json
 <ul>
 <li><code>0</code> - Success</li>
 <li><code>1</code> - General error (invalid arguments, file not found, etc.)</li>
-<li><code>2</code> - Missing signature OR verification failure — exact meaning per-command in its section. For <code>verify-text</code> / <code>verify-image</code> (v0.11.0): <code>2</code> = permissive missing-signature; <code>--strict</code> collapses it into <code>1</code>. For other verify surfaces: <code>2</code> = verification failure (hash mismatch, invalid signature).</li>
+<li><code>2</code> - Missing signature OR verification failure — exact meaning per-command in its section. For <code>verify-text</code> / <code>verify-image</code> (v0.10.0): <code>2</code> = permissive missing-signature; <code>--strict</code> collapses it into <code>1</code>. For other verify surfaces: <code>2</code> = verification failure (hash mismatch, invalid signature).</li>
 <li><code>3</code> - Schema validation failure</li>
 </ul>
 <h2 id="environment-variables-6"><a class="header" href="#environment-variables-6">Environment Variables</a></h2>
@@ -18420,7 +18420,7 @@ export AWS_REGION="us-west-2"
 <div class="table-wrapper"><table><thead><tr><th>Code</th><th>Name</th><th>Description</th></tr></thead><tbody>
 <tr><td>0</td><td>Success</td><td>Operation completed successfully</td></tr>
 <tr><td>1</td><td>General Error</td><td>Unspecified error occurred (in <code>verify-text</code> / <code>verify-image --strict</code>, this also covers the missing-signature case; stderr: <code>no JACS signature found</code>)</td></tr>
-<tr><td>2</td><td>Invalid Arguments OR Missing Signature (v0.11.0)</td><td>Command-line arguments invalid; OR for permissive <code>verify-text</code> / <code>verify-image</code>, the file is unsigned (typed status, not an error)</td></tr>
+<tr><td>2</td><td>Invalid Arguments OR Missing Signature (v0.10.0)</td><td>Command-line arguments invalid; OR for permissive <code>verify-text</code> / <code>verify-image</code>, the file is unsigned (typed status, not an error)</td></tr>
 <tr><td>3</td><td>File Not Found</td><td>Specified file does not exist</td></tr>
 <tr><td>4</td><td>Verification Failed</td><td>Document or signature verification failed</td></tr>
 <tr><td>5</td><td>Signature Invalid</td><td>Cryptographic signature is invalid</td></tr>
@@ -18505,7 +18505,7 @@ jacs document create -f doc.json
 <pre><code class="language-bash"># Create a signed document
 jacs document create -f unsigned-doc.json
 </code></pre>
-<h3 id="missing-signature-v0110"><a class="header" href="#missing-signature-v0110">Missing Signature (v0.11.0)</a></h3>
+<h3 id="missing-signature-v0100"><a class="header" href="#missing-signature-v0100">Missing Signature (v0.10.0)</a></h3>
 <p><strong>Error / Status:</strong> <code>MissingSignature</code> — surfaced by <code>verify-text</code> / <code>verify-image</code> (and the corresponding binding methods) when the input file does not carry an embedded JACS signature.</p>
 <p><strong>Default behaviour is permissive — missing signature is a typed status, not a thrown error.</strong> Strict mode opts in to treating it as an error.</p>
 <div class="table-wrapper"><table><thead><tr><th>Surface</th><th>Permissive (default)</th><th>Strict (<code>--strict</code> / <code>strict=True</code> / <code>{ strict: true }</code> / <code>Strict: true</code>)</th></tr></thead><tbody>
@@ -19019,7 +19019,7 @@ done
 <li>Older JACS versions cannot verify documents using newer cryptographic algorithms</li>
 </ul>
 <h2 id="010--011"><a class="header" href="#010--011">0.10 → 0.11</a></h2>
-<p>v0.11.0 adds inline text signatures, image / media embedding, and the new <code>MissingSignature</code> error variant. <strong>No existing API changes behaviour.</strong></p>
+<p>v0.10.0 adds inline text signatures, image / media embedding, and the new <code>MissingSignature</code> error variant. <strong>No existing API changes behaviour.</strong></p>
 <h3 id="additive-surface--no-opt-in-required"><a class="header" href="#additive-surface--no-opt-in-required">Additive surface — no opt-in required</a></h3>
 <p>Five new methods per binding, five new CLI verbs, five new MCP tools. Pre-existing call sites are unaffected.</p>
 <div class="table-wrapper"><table><thead><tr><th>Domain</th><th>New surface</th></tr></thead><tbody>
@@ -19034,7 +19034,7 @@ done
 <p>The new <code>MissingSignature</code> variant on <code>jacs::error::ErrorKind</code> will trigger an unreachable-pattern warning (or a compile error in <code>-D warnings</code>) on Rust call sites that exhaustively match without a catch-all.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// before — does not compile under -D warnings in v0.11.0
+</span>// before — does not compile under -D warnings in v0.10.0
 match err.kind() {
     ErrorKind::InvalidSignature =&gt; ...,
     ErrorKind::DocumentNotFound =&gt; ...,
@@ -19056,10 +19056,10 @@ match err.kind() {
 <span class="boring">}</span></code></pre></pre>
 <p>Python / Node / Go bindings are unaffected — their error types are not exhaustive enums.</p>
 <h3 id="verify-semantics-change-is-opt-in-via-strict"><a class="header" href="#verify-semantics-change-is-opt-in-via-strict">Verify semantics change is opt-in via <code>strict</code></a></h3>
-<p><code>verify-text</code> and <code>verify-image</code> are <strong>new commands</strong> in v0.11.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); <code>--strict</code> opts in to error-on-missing.</p>
+<p><code>verify-text</code> and <code>verify-image</code> are <strong>new commands</strong> in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); <code>--strict</code> opts in to error-on-missing.</p>
 <p>No existing command (<code>jacs verify</code>, <code>jacs document verify</code>, etc.) changes its exit codes or its return shape.</p>
 <h3 id="after-publish-task-for-sibling-repos"><a class="header" href="#after-publish-task-for-sibling-repos">After-publish task for sibling repos</a></h3>
-<p>After v0.11.0 lands on crates.io, bump <code>=0.11.0</code> pins in <code>~/personal/haisdk</code> (<code>rust/Cargo.toml</code>, <code>python/pyproject.toml</code>, <code>node/package.json</code>). The <code>hai/api</code> middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.</p>
+<p>After v0.10.0 lands on crates.io, bump <code>=0.10.0</code> pins in <code>~/personal/haisdk</code> (<code>rust/Cargo.toml</code>, <code>python/pyproject.toml</code>, <code>node/package.json</code>). The <code>hai/api</code> middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.</p>
 <h2 id="migrating-nodejs-from-06x-to-070"><a class="header" href="#migrating-nodejs-from-06x-to-070">Migrating Node.js from 0.6.x to 0.7.0</a></h2>
 <h3 id="breaking-change-async-first-api"><a class="header" href="#breaking-change-async-first-api">Breaking Change: Async-First API</a></h3>
 <p>In v0.7.0, all NAPI operations return Promises by default. Sync variants are available with a <code>Sync</code> suffix, following the Node.js convention (like <code>fs.readFile</code> vs <code>fs.readFileSync</code>).</p>

@@ -36,7 +36,7 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
 
-## What's new in 0.11.0
+## What's new in 0.10.0
 
 *Why this matters:* shared markdown that multiple Python agents review and counter-sign, plus signed images for AI-era provenance, are now first-class — the signature is embedded in the artifact, no sidecar JSON required.
 

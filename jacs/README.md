@@ -38,7 +38,7 @@ jacs verify signed-document.json
 jacs mcp                # start MCP server (stdio only)
 ```
 
-## What's new in 0.11.0
+## What's new in 0.10.0
 
 *Why this matters:* shared markdown reviewed by multiple agents and signed images for AI-era provenance now have first-class support — the signature lives inside the artifact, the file renders normally, and downstream consumers verify identity + claimed timestamp via the same JACS trust model they already use for JSON documents.
 
@@ -79,4 +79,4 @@ Report vulnerabilities to security@hai.ai.
 - [Crates.io](https://crates.io/crates/jacs)
 - [Development Guide](../DEVELOPMENT.md)
 
-**Version**: 0.11.0 | [HAI.AI](https://hai.ai)
+**Version**: 0.10.0 | [HAI.AI](https://hai.ai)

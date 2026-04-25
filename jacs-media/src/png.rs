@@ -6,7 +6,6 @@
 use crate::{MAX_PAYLOAD_BYTES_PNG, MediaError, PNG_KEYWORD};
 
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
-const IHDR_TYPE: &[u8; 4] = b"IHDR";
 const IEND_TYPE: &[u8; 4] = b"IEND";
 const ITXT_TYPE: &[u8; 4] = b"iTXt";
 
@@ -15,12 +14,15 @@ const ITXT_TYPE: &[u8; 4] = b"iTXt";
 fn parse_chunks(bytes: &[u8]) -> Result<Vec<(&[u8], &[u8], &[u8])>, MediaError> {
     // Each entry: (type_bytes, body_bytes, full_chunk_range for rebuild).
     if !bytes.starts_with(PNG_SIGNATURE) {
-        return Err(MediaError::Parse("not a PNG (missing signature)".to_string()));
+        return Err(MediaError::Parse(
+            "not a PNG (missing signature)".to_string(),
+        ));
     }
     let mut pos = PNG_SIGNATURE.len();
     let mut out = Vec::new();
     while pos + 12 <= bytes.len() {
-        let len = u32::from_be_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]) as usize;
+        let len = u32::from_be_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
+            as usize;
         let type_start = pos + 4;
         let type_end = type_start + 4;
         if type_end + len + 4 > bytes.len() {
@@ -148,7 +150,9 @@ pub fn embed(
         }
     }
     if jacs_count > 1 {
-        return Err(MediaError::Parse("duplicate JACS-Signature chunk".to_string()));
+        return Err(MediaError::Parse(
+            "duplicate JACS-Signature chunk".to_string(),
+        ));
     }
     if refuse_overwrite && jacs_count > 0 {
         return Err(MediaError::Parse(
@@ -187,14 +191,15 @@ pub fn extract(bytes: &[u8], scan_robust: bool) -> Result<Option<String>, MediaE
     let chunks = parse_chunks(bytes)?;
     let mut found = Vec::new();
     for (ty, body, _) in &chunks {
-        if ty == ITXT_TYPE {
-            if let Some(text) = parse_itxt_body(body) {
+        if ty == ITXT_TYPE
+            && let Some(text) = parse_itxt_body(body) {
                 found.push(text);
             }
-        }
     }
     if found.len() > 1 {
-        return Err(MediaError::Parse("duplicate JACS-Signature chunk".to_string()));
+        return Err(MediaError::Parse(
+            "duplicate JACS-Signature chunk".to_string(),
+        ));
     }
     if let Some(t) = found.into_iter().next() {
         return Ok(Some(t));
@@ -238,7 +243,9 @@ mod tests {
         let input = minimal_png();
         let payload = "hello-json-signature";
         let signed = embed(&input, payload, false, false).expect("embed");
-        let extracted = extract(&signed, false).expect("extract").expect("payload present");
+        let extracted = extract(&signed, false)
+            .expect("extract")
+            .expect("payload present");
         assert_eq!(extracted, payload);
     }
 
@@ -274,7 +281,10 @@ mod tests {
         let h_before = crate::canonical_hash(&input).unwrap();
         let signed = embed(&input, "some-payload", false, false).expect("embed");
         let h_after = crate::canonical_hash(&signed).unwrap();
-        assert_eq!(h_before, h_after, "canonical_hash must ignore the JACS chunk");
+        assert_eq!(
+            h_before, h_after,
+            "canonical_hash must ignore the JACS chunk"
+        );
     }
 
     #[test]
@@ -296,5 +306,69 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// Issue 006 / PRD §4.2.2: boundary triplet (max-1, max, max+1).
+    /// `max+1` is the existing `png_payload_too_large` test.
+    #[test]
+    fn png_payload_at_max_minus_one_embeds_cleanly() {
+        let input = minimal_png();
+        let payload = "B".repeat(MAX_PAYLOAD_BYTES_PNG - 1);
+        let signed = embed(&input, &payload, false, false).expect("embed");
+        let extracted = extract(&signed, false)
+            .expect("extract ok")
+            .expect("payload present");
+        assert_eq!(extracted, payload);
+    }
+
+    #[test]
+    fn png_payload_at_max_embeds_cleanly() {
+        let input = minimal_png();
+        let payload = "B".repeat(MAX_PAYLOAD_BYTES_PNG);
+        let signed = embed(&input, &payload, false, false).expect("embed");
+        let extracted = extract(&signed, false)
+            .expect("extract ok")
+            .expect("payload present");
+        assert_eq!(extracted, payload);
+    }
+
+    /// Issue 006: duplicate-chunk rejection MUST surface as `MediaError::Parse`.
+    /// Constructs a PNG with two iTXt JACS-Signature chunks by hand.
+    #[test]
+    fn duplicate_jacs_chunk_png_returns_malformed() {
+        let signed = embed(&minimal_png(), "first-payload", false, false).expect("embed");
+        // Inject a second iTXt JACS-Signature chunk before IEND. We splice in
+        // a fresh chunk built via build_itxt_body / build_chunk.
+        let extra_chunk = build_chunk(ITXT_TYPE, &build_itxt_body("second-payload"));
+        let iend_pos = signed
+            .windows(8)
+            .rposition(|w| {
+                // `IEND` chunk header is 4 bytes length + b"IEND" — length is 0
+                // for IEND, so we look for `\x00\x00\x00\x00IEND`.
+                w == [0, 0, 0, 0, b'I', b'E', b'N', b'D']
+            })
+            .expect("IEND present");
+        let mut bad = Vec::with_capacity(signed.len() + extra_chunk.len());
+        bad.extend_from_slice(&signed[..iend_pos]);
+        bad.extend_from_slice(&extra_chunk);
+        bad.extend_from_slice(&signed[iend_pos..]);
+
+        // embed must refuse to overwrite when two existing chunks are present
+        // (the duplicate-chunk guard runs before any other check).
+        let embed_err = embed(&bad, "third", false, false).unwrap_err();
+        assert!(
+            matches!(embed_err, MediaError::Parse(ref msg) if msg.contains("duplicate")),
+            "expected Parse(duplicate ...) on embed; got {:?}",
+            embed_err
+        );
+
+        // extract must also refuse on duplicate chunks (downstream verifier
+        // guard).
+        let extract_err = extract(&bad, false).unwrap_err();
+        assert!(
+            matches!(extract_err, MediaError::Parse(ref msg) if msg.contains("duplicate")),
+            "expected Parse(duplicate ...) on extract; got {:?}",
+            extract_err
+        );
     }
 }

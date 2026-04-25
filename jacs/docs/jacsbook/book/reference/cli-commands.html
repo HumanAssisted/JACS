@@ -529,7 +529,7 @@ jacs document verify -f document.json -s schema.json
 <ul>
 <li><code>0</code> - Success</li>
 <li><code>1</code> - General error (invalid arguments, file not found, etc.)</li>
-<li><code>2</code> - Missing signature OR verification failure — exact meaning per-command in its section. For <code>verify-text</code> / <code>verify-image</code> (v0.11.0): <code>2</code> = permissive missing-signature; <code>--strict</code> collapses it into <code>1</code>. For other verify surfaces: <code>2</code> = verification failure (hash mismatch, invalid signature).</li>
+<li><code>2</code> - Missing signature OR verification failure — exact meaning per-command in its section. For <code>verify-text</code> / <code>verify-image</code> (v0.10.0): <code>2</code> = permissive missing-signature; <code>--strict</code> collapses it into <code>1</code>. For other verify surfaces: <code>2</code> = verification failure (hash mismatch, invalid signature).</li>
 <li><code>3</code> - Schema validation failure</li>
 </ul>
 <h2 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h2>

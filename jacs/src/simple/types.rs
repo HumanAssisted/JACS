@@ -497,6 +497,10 @@ pub struct SignTextOptions {
     /// Default false: duplicate-signer is a no-op (file unchanged, no second
     /// block written, no error).
     pub allow_duplicate: bool,
+    /// PRD §4.2.4b: override the default 0o600 backup permission. None = 0o600.
+    /// Mirrors [`SignImageOptions::unsafe_bak_mode`] so both surfaces share
+    /// the [`super::advanced::write_backup_or_err`] helper.
+    pub unsafe_bak_mode: Option<u32>,
 }
 
 impl Default for SignTextOptions {
@@ -504,6 +508,7 @@ impl Default for SignTextOptions {
         Self {
             backup: true,
             allow_duplicate: false,
+            unsafe_bak_mode: None,
         }
     }
 }

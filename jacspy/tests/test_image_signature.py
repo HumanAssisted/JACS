@@ -78,6 +78,43 @@ def test_sign_image_webp(tmp_path, jacs_agent):
 
 
 # ---------------------------------------------------------------------------
+# Issue 010 / PRD §10 eighth-pass — robust mode contract.
+# ---------------------------------------------------------------------------
+
+
+def test_sign_image_robust_webp_deferred(tmp_path, jacs_agent):
+    """WebP + robust=True must fail with a 'webp robust mode deferred' error.
+
+    Robust LSB embedding for WebP is gated until libwebp-sys lands; every
+    binding is required to surface the deferral as a clean error rather than
+    silently fall back to metadata-only.
+    """
+    src = tmp_path / "in.webp"
+    out = tmp_path / "out.webp"
+    _write_unsigned_webp(src)
+
+    with pytest.raises(Exception) as excinfo:
+        jacs_agent.sign_image(str(src), str(out), robust=True)
+    msg = str(excinfo.value)
+    assert "webp robust mode deferred" in msg, (
+        f"expected 'webp robust mode deferred' in error, got: {msg}"
+    )
+
+
+def test_robust_mode_off_by_default(tmp_path, jacs_agent):
+    """Default sign_image must NOT enable robust mode (PRD Q4)."""
+    src = tmp_path / "in.png"
+    out = tmp_path / "out.png"
+    _write_unsigned_png(src)
+
+    result = jacs_agent.sign_image(str(src), str(out))
+    # SignImageResult exposes `robust` as a bool.
+    assert result.robust is False, (
+        f"default sign_image must not enable robust mode (got {result.robust!r})"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Permissive vs strict (C1).
 # ---------------------------------------------------------------------------
 

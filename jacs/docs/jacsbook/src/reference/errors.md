@@ -8,7 +8,7 @@ This reference documents error codes and messages you may encounter when using J
 |------|------|-------------|
 | 0 | Success | Operation completed successfully |
 | 1 | General Error | Unspecified error occurred (in `verify-text` / `verify-image --strict`, this also covers the missing-signature case; stderr: `no JACS signature found`) |
-| 2 | Invalid Arguments OR Missing Signature (v0.11.0) | Command-line arguments invalid; OR for permissive `verify-text` / `verify-image`, the file is unsigned (typed status, not an error) |
+| 2 | Invalid Arguments OR Missing Signature (v0.10.0) | Command-line arguments invalid; OR for permissive `verify-text` / `verify-image`, the file is unsigned (typed status, not an error) |
 | 3 | File Not Found | Specified file does not exist |
 | 4 | Verification Failed | Document or signature verification failed |
 | 5 | Signature Invalid | Cryptographic signature is invalid |
@@ -131,7 +131,7 @@ jacs document create -f doc.json
 jacs document create -f unsigned-doc.json
 ```
 
-### Missing Signature (v0.11.0)
+### Missing Signature (v0.10.0)
 
 **Error / Status:** `MissingSignature` — surfaced by `verify-text` / `verify-image` (and the corresponding binding methods) when the input file does not carry an embedded JACS signature.
 

@@ -15,7 +15,9 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use rmcp::{
-    RoleClient, ServiceExt, model::CallToolRequestParam, service::RunningService,
+    RoleClient, ServiceExt,
+    model::CallToolRequestParam,
+    service::RunningService,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
 

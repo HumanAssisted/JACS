@@ -296,6 +296,48 @@ fn verify_image_strict_valid_signature_ok() {
     assert_eq!(result.status, MediaVerifyStatus::Valid);
 }
 
+/// Regression for Issue 002: per-block `KeyNotFound` MUST stay as a status,
+/// not escalate to `Err(JacsError::TrustError)`, in strict mode. This matches
+/// the `verify_text` contract — only file-level failures (MissingSignature,
+/// file-level Malformed) escalate per PRD §4.1.2 tenth-pass clarification.
+#[test]
+fn verify_image_strict_keynotfound_does_not_escalate() {
+    // Agent A signs the image.
+    let agent_a = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(16, 16));
+    let out_path = dir.path().join("out.png");
+    sign_image(
+        &agent_a,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions::default(),
+    )
+    .unwrap();
+
+    // Agent B (different ephemeral, no key_dir, no trust store entry for A,
+    // no DNS) tries to verify in strict mode.
+    let (agent_b, _info_b) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+    let result = verify_image(
+        &agent_b,
+        out_path.to_str().unwrap(),
+        VerifyImageOptions {
+            base: VerifyOptions {
+                strict: true,
+                key_dir: None,
+            },
+            scan_robust: false,
+        },
+    )
+    .expect("strict mode must NOT Err on per-block KeyNotFound");
+    assert_eq!(
+        result.status,
+        MediaVerifyStatus::KeyNotFound,
+        "expected MediaVerifyStatus::KeyNotFound status, got {:?}",
+        result.status
+    );
+}
+
 #[test]
 fn verify_image_tampered_content_fails_png() {
     let agent = ephemeral_ed25519();
@@ -860,4 +902,153 @@ fn unsupported_format_clean_error() {
         "expected unsupported error; got: {}",
         msg
     );
+}
+
+/// Issue 014 / PRD §10 eighth-pass item 5: cross-agent verify path. Agent A
+/// signs a PNG, agent B verifies it via `verify_with_key` using A's PEM.
+/// Locks the bug fix from Task 13's review notes (resolved key was being
+/// PEM-armored before passing to `agent.verify_with_key`, which broke the
+/// publicKeyHash re-hash for ed25519/pq2025).
+///
+/// Variants: ed25519 + pq2025. (RSA-PSS cross-agent: ephemeral RSA signing is
+/// blocked at runtime — an RSA-PSS variant of this test would require checked-in
+/// signed PNG fixtures and is deferred per Issue 014's "RSA-PSS via fixture if
+/// practical" note.)
+#[test]
+fn verify_image_cross_agent_path_ed25519() {
+    let agent_a = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(16, 16));
+    let out_path = dir.path().join("out.png");
+    sign_image(
+        &agent_a,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions::default(),
+    )
+    .unwrap();
+
+    // Agent B is a different ephemeral. We populate B's key_dir with A's
+    // public PEM so the resolver can find A's key.
+    let (agent_b, _info_b) = SimpleAgent::ephemeral(Some("ed25519")).unwrap();
+    let key_dir = TempDir::new().unwrap();
+    let signer_id_a = agent_a.get_agent_id().unwrap();
+    let encoded = jacs::simple::advanced::encode_signer_id_for_filename(&signer_id_a);
+    let pem_path = key_dir.path().join(format!("{}.public.pem", encoded));
+    std::fs::write(&pem_path, agent_a.get_public_key_pem().unwrap()).unwrap();
+
+    let result = verify_image(
+        &agent_b,
+        out_path.to_str().unwrap(),
+        VerifyImageOptions {
+            base: VerifyOptions {
+                strict: false,
+                key_dir: Some(key_dir.path().to_path_buf()),
+            },
+            scan_robust: false,
+        },
+    )
+    .expect("permissive verify ok");
+    assert_eq!(
+        result.status,
+        MediaVerifyStatus::Valid,
+        "cross-agent verify (ed25519) must reach Valid via verify_with_key, got {:?}",
+        result.status
+    );
+}
+
+#[test]
+fn verify_image_cross_agent_path_pq2025() {
+    let (agent_a, _info_a) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(16, 16));
+    let out_path = dir.path().join("out.png");
+    sign_image(
+        &agent_a,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions::default(),
+    )
+    .unwrap();
+
+    let (agent_b, _info_b) = SimpleAgent::ephemeral(Some("pq2025")).unwrap();
+    let key_dir = TempDir::new().unwrap();
+    let signer_id_a = agent_a.get_agent_id().unwrap();
+    let encoded = jacs::simple::advanced::encode_signer_id_for_filename(&signer_id_a);
+    let pem_path = key_dir.path().join(format!("{}.public.pem", encoded));
+    std::fs::write(&pem_path, agent_a.get_public_key_pem().unwrap()).unwrap();
+
+    let result = verify_image(
+        &agent_b,
+        out_path.to_str().unwrap(),
+        VerifyImageOptions {
+            base: VerifyOptions {
+                strict: false,
+                key_dir: Some(key_dir.path().to_path_buf()),
+            },
+            scan_robust: false,
+        },
+    )
+    .expect("permissive verify ok");
+    assert_eq!(
+        result.status,
+        MediaVerifyStatus::Valid,
+        "cross-agent verify (pq2025) must reach Valid via verify_with_key, got {:?}",
+        result.status
+    );
+}
+
+/// Issue 009 / PRD §4.2.4a: simulate a `persist` failure during in-place sign
+/// and assert the original `out_path` bytes are unchanged AND no `.jacs-sign-*`
+/// or other tempfile residue is left behind.
+///
+/// Engineering: lock the parent directory read-only before the call. The
+/// `NamedTempFile::new_in` call inside `sign_image` fails immediately, before
+/// any persist is attempted — exercises the same "atomic-write must clean up
+/// on failure" contract.
+#[test]
+#[cfg(unix)]
+fn sign_image_atomic_crash_simulation() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(16, 16));
+    let original_bytes = fs::read(&in_path).unwrap();
+
+    // Lock the directory read-only so tempfile creation fails. Use the same
+    // path for in/out so the in-place sign path runs.
+    let dir_perm = fs::metadata(dir.path()).unwrap().permissions();
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o500)).unwrap();
+
+    let res = sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        in_path.to_str().unwrap(),
+        SignImageOptions {
+            backup: false, // bypass backup-write so the failure happens at persist
+            ..SignImageOptions::default()
+        },
+    );
+
+    // Restore perms before assertions for cleanup.
+    fs::set_permissions(dir.path(), dir_perm).unwrap();
+
+    assert!(
+        res.is_err(),
+        "sign_image must Err when persist cannot complete"
+    );
+
+    // Original file bytes unchanged.
+    let after_bytes = fs::read(&in_path).unwrap();
+    assert_eq!(
+        after_bytes, original_bytes,
+        "in-place sign must leave original bytes intact on failure"
+    );
+
+    // No leftover .jacs-sign-* / .tmp files in the directory.
+    for entry in fs::read_dir(dir.path()).unwrap() {
+        let name = entry.unwrap().file_name().to_string_lossy().to_string();
+        assert!(name == "in.png", "tempfile residue left in dir: {:?}", name);
+    }
 }

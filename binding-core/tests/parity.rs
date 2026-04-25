@@ -707,9 +707,8 @@ fn test_error_kind_missing_signature_in_fixture() {
 
 #[test]
 fn test_binding_core_error_missing_signature_constructor() {
-    let err = jacs_binding_core::BindingCoreError::missing_signature(
-        "no JACS signature found in foo.md",
-    );
+    let err =
+        jacs_binding_core::BindingCoreError::missing_signature("no JACS signature found in foo.md");
     assert_eq!(err.kind, jacs_binding_core::ErrorKind::MissingSignature);
     assert!(err.message.contains("foo.md"));
     assert!(err.message.contains("no JACS signature found"));

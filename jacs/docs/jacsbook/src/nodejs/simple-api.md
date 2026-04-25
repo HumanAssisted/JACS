@@ -285,7 +285,7 @@ console.log(result.valid, result.signerId);
 
 ---
 
-### signText(path) — v0.11.0
+### signText(path) — v0.10.0
 
 Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered. Async-first since v0.7.0 — returns `Promise`.
 
@@ -301,7 +301,7 @@ await jacs.signText('README.md');
 
 ---
 
-### verifyText(path, options?) — v0.11.0
+### verifyText(path, options?) — v0.10.0
 
 Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.
 
@@ -331,7 +331,7 @@ See the [inline text signing guide](../guides/inline-text-signing.md) for the fu
 
 ---
 
-### signImage(path, out, options?) — v0.11.0
+### signImage(path, out, options?) — v0.10.0
 
 Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).
 
@@ -348,7 +348,7 @@ await jacs.signImage('photo.png', 'signed.png');
 
 ---
 
-### verifyImage(path, options?) — v0.11.0
+### verifyImage(path, options?) — v0.10.0
 
 Verify the embedded signature on an image. Same permissive / strict model as `verifyText`.
 
@@ -365,7 +365,7 @@ See the [media signing guide](../guides/media-signing.md) for the full feature s
 
 ---
 
-### extractMediaSignature(path, options?) — v0.11.0
+### extractMediaSignature(path, options?) — v0.10.0
 
 Extract the embedded signature payload **without verifying** it.
 

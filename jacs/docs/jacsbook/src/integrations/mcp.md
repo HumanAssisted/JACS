@@ -140,7 +140,7 @@ registerJacsTools(server, client);
 
 The Node tool set is intentionally smaller than the Rust MCP server. Use `jacs mcp` when you need the largest supported MCP surface.
 
-### Provenance MCP tools (v0.11.0)
+### Provenance MCP tools (v0.10.0)
 
 The MCP server exposes 5 new tools for inline text and image provenance — covering the same surface as the [`sign-text`](../guides/inline-text-signing.md) and [`sign-image`](../guides/media-signing.md) CLI verbs.
 

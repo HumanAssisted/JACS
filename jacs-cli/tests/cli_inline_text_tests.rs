@@ -364,8 +364,7 @@ fn verify_text_pq2025_fixture_exit_zero() {
         .stdout
         .clone();
 
-    let value: serde_json::Value =
-        serde_json::from_slice(&output).expect("parse JSON");
+    let value: serde_json::Value = serde_json::from_slice(&output).expect("parse JSON");
     let signatures = value
         .get("signatures")
         .and_then(|v| v.as_array())

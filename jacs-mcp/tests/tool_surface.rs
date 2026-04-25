@@ -66,11 +66,7 @@ fn per_category_core_tool_counts() {
                 "jacs_create_agent",
             ],
         ),
-        (
-            "inline-text",
-            2,
-            &["jacs_sign_text", "jacs_verify_text"],
-        ),
+        ("inline-text", 2, &["jacs_sign_text", "jacs_verify_text"]),
         (
             "media",
             3,

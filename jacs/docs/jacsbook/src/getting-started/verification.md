@@ -4,9 +4,9 @@ Verify a JACS-signed document in under 2 minutes. Verification confirms two thin
 
 **Verification does NOT require creating an agent.** You only need the signed document (and optionally access to the signer's public key).
 
-## Strict vs permissive verification (v0.11.0)
+## Strict vs permissive verification (v0.10.0)
 
-`verify-text` and `verify-image` (added in v0.11.0) introduce a **permissive default**: a missing signature is a *typed status*, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.
+`verify-text` and `verify-image` (added in v0.10.0) introduce a **permissive default**: a missing signature is a *typed status*, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.
 
 | Surface | Permissive (default) | Strict (`--strict` / `strict=True` / `{ strict: true }` / `Strict: true`) |
 |---------|---------------------|---------------------------------------------------------------------------|

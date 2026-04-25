@@ -47,6 +47,7 @@ pub mod config;
 #[cfg(feature = "mcp")]
 pub mod contract;
 pub mod jacs_tools;
+pub mod path_policy;
 pub mod profile;
 #[cfg(feature = "mcp")]
 pub mod server;

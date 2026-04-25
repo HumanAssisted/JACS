@@ -183,4 +183,28 @@ describe('image signatures (JacsSimpleAgent)', function () {
     }
     expect(caught, 'expected refuseOverwrite to reject on already-signed input').to.exist;
   });
+
+  // ---------------------------------------------------------------------
+  // Issue 010 / PRD §10 eighth-pass — robust mode contract.
+  // ---------------------------------------------------------------------
+
+  it('signImage with { robust: true } on WebP rejects with "deferred" message', async function () {
+    const src = copyFixture('webp', 'in.webp');
+    const dst = path.join(tmp, 'out.webp');
+    let caught;
+    try {
+      await agent.signImage(src, dst, { robust: true });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught, 'expected robust:true on WebP to reject').to.exist;
+    expect(caught.message).to.match(/webp robust mode deferred/);
+  });
+
+  it('robust mode is off by default (PRD Q4)', async function () {
+    const src = copyFixture('png', 'default-robust.png');
+    const dst = path.join(tmp, 'out-default.png');
+    const result = await agent.signImage(src, dst);
+    expect(result.robust).to.equal(false, 'default signImage must not enable robust');
+  });
 });

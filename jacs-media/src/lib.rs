@@ -1,13 +1,3 @@
-#![allow(
-    dead_code, // Some helpers kept for future use (e.g., IHDR type discrimination).
-    clippy::type_complexity,
-    clippy::explicit_counter_loop,
-    clippy::collapsible_if,
-    clippy::needless_borrow,
-    clippy::needless_range_loop,
-    clippy::op_ref,
-)]
-
 //! `jacs-media` — embed base64url-encoded JACS signed-document JSON in
 //! PNG (iTXt), JPEG (APP11), or WebP (XMP) images.
 //!
@@ -35,10 +25,10 @@
 //! stack already speaks.
 
 pub mod format;
-pub mod png;
 pub mod jpeg;
-pub mod webp;
+pub mod png;
 pub mod robust;
+pub mod webp;
 
 pub use format::{MediaFormat, detect_format};
 
@@ -120,10 +110,7 @@ pub fn embed_signature(
 /// Returns `Err(MediaError::Parse("duplicate JACS-Signature chunk"))` if the
 /// file contains more than one JACS chunk of the relevant type — we never
 /// silently pick one.
-pub fn extract_signature(
-    bytes: &[u8],
-    scan_robust: bool,
-) -> Result<Option<String>, MediaError> {
+pub fn extract_signature(bytes: &[u8], scan_robust: bool) -> Result<Option<String>, MediaError> {
     let fmt = detect_format(bytes)?;
     match fmt {
         MediaFormat::Png => png::extract(bytes, scan_robust),

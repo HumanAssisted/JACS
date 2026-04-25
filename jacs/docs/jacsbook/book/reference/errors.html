@@ -180,7 +180,7 @@
 <div class="table-wrapper"><table><thead><tr><th>Code</th><th>Name</th><th>Description</th></tr></thead><tbody>
 <tr><td>0</td><td>Success</td><td>Operation completed successfully</td></tr>
 <tr><td>1</td><td>General Error</td><td>Unspecified error occurred (in <code>verify-text</code> / <code>verify-image --strict</code>, this also covers the missing-signature case; stderr: <code>no JACS signature found</code>)</td></tr>
-<tr><td>2</td><td>Invalid Arguments OR Missing Signature (v0.11.0)</td><td>Command-line arguments invalid; OR for permissive <code>verify-text</code> / <code>verify-image</code>, the file is unsigned (typed status, not an error)</td></tr>
+<tr><td>2</td><td>Invalid Arguments OR Missing Signature (v0.10.0)</td><td>Command-line arguments invalid; OR for permissive <code>verify-text</code> / <code>verify-image</code>, the file is unsigned (typed status, not an error)</td></tr>
 <tr><td>3</td><td>File Not Found</td><td>Specified file does not exist</td></tr>
 <tr><td>4</td><td>Verification Failed</td><td>Document or signature verification failed</td></tr>
 <tr><td>5</td><td>Signature Invalid</td><td>Cryptographic signature is invalid</td></tr>
@@ -265,7 +265,7 @@ jacs document create -f doc.json
 <pre><code class="language-bash"># Create a signed document
 jacs document create -f unsigned-doc.json
 </code></pre>
-<h3 id="missing-signature-v0110"><a class="header" href="#missing-signature-v0110">Missing Signature (v0.11.0)</a></h3>
+<h3 id="missing-signature-v0100"><a class="header" href="#missing-signature-v0100">Missing Signature (v0.10.0)</a></h3>
 <p><strong>Error / Status:</strong> <code>MissingSignature</code> — surfaced by <code>verify-text</code> / <code>verify-image</code> (and the corresponding binding methods) when the input file does not carry an embedded JACS signature.</p>
 <p><strong>Default behaviour is permissive — missing signature is a typed status, not a thrown error.</strong> Strict mode opts in to treating it as an error.</p>
 <div class="table-wrapper"><table><thead><tr><th>Surface</th><th>Permissive (default)</th><th>Strict (<code>--strict</code> / <code>strict=True</code> / <code>{ strict: true }</code> / <code>Strict: true</code>)</th></tr></thead><tbody>

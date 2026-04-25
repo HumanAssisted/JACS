@@ -319,7 +319,11 @@ fn extract_media_signature_prints_decoded_json_by_default() {
             stdout_str
         );
         // Sanity: it's an object/structure (not just a number).
-        assert!(value.is_object() || value.is_array(), "JSON must be a structure for {}", fmt);
+        assert!(
+            value.is_object() || value.is_array(),
+            "JSON must be a structure for {}",
+            fmt
+        );
     }
 }
 

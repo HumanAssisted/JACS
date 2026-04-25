@@ -1,4 +1,4 @@
-//! Structural lint for v0.11.0 doc surface.
+//! Structural lint for v0.10.0 doc surface.
 //!
 //! These tests pin every major doc surface that the provenance-expansion feature
 //! requires an edit in. A future edit that accidentally removes a CLI reference
@@ -19,8 +19,8 @@ fn changelog_mentions_provenance_expansion_in_v011() {
     let path = repo_root().join("CHANGELOG.md");
     let text = fs::read_to_string(&path).unwrap();
     let section_start = text
-        .find("## 0.11.0")
-        .expect("CHANGELOG missing 0.11.0 section");
+        .find("## 0.10.0")
+        .expect("CHANGELOG missing 0.10.0 section");
     let section = &text[section_start..];
     // Covers: the five verbs + error kind + crate + owner clarifications (strict, YAML, end-of-file)
     // + schema hardening (signatureBlockVersion, canonicalization) + security knobs (marker-collision, refuse-overwrite).
@@ -38,7 +38,7 @@ fn changelog_mentions_provenance_expansion_in_v011() {
     ] {
         assert!(
             section.contains(keyword),
-            "CHANGELOG 0.11.0 section missing '{keyword}'"
+            "CHANGELOG 0.10.0 section missing '{keyword}'"
         );
     }
 }

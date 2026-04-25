@@ -37,7 +37,7 @@ use crate::simple::SimpleAgent;
 // Constants — PRD §4.1.1 security & schema hardening
 // =============================================================================
 
-/// v0.11.0 schema version for the YAML block body. Verifiers MUST reject any
+/// v0.10.0 schema version for the YAML block body. Verifiers MUST reject any
 /// other value (Malformed).
 pub const CURRENT_BLOCK_VERSION: u32 = 1;
 
@@ -131,8 +131,31 @@ pub trait KeyResolver {
 
 #[derive(Debug, Clone)]
 pub struct ResolvedKey {
-    /// Raw bytes of the public key in the canonical form for its algorithm
-    /// (Ed25519 raw 32-byte key; ML-DSA-87 raw bytes; RSA PEM bytes).
+    /// Algorithm-appropriate key material. **Dual-shape contract**: the byte
+    /// shape DEPENDS on `algorithm`, and consumers MUST NOT re-armor or
+    /// normalise this field before passing it to the verify primitive.
+    ///
+    /// | algorithm  | shape of `public_key_pem`                                  |
+    /// |------------|------------------------------------------------------------|
+    /// | `ed25519`  | RAW 32-byte Ed25519 public key (PEM body decoded)          |
+    /// | `pq2025`   | RAW ML-DSA-87 public key bytes (PEM body decoded)          |
+    /// | `rsa-pss`  | Full PEM bytes (`-----BEGIN PUBLIC KEY-----` ... `-----`)  |
+    ///
+    /// The crypt primitives (`ringwrapper::verify_string`,
+    /// `pq2025::verify_string`, `rsawrapper::verify_string`) accept exactly
+    /// these shapes and no others. The `publicKeyHash` integrity check inside
+    /// `verify_single_block` re-hashes the same bytes used at sign time, so
+    /// re-armoring this field would silently break verification for ed25519
+    /// and pq2025 — the bug fixed by Task 13's review notes.
+    ///
+    /// Locked behaviour:
+    /// * `verify_rsa_pss_fixture_roundtrip` (RSA dispatch arm).
+    /// * `verify_*_self_signer_signs_and_self_verifies` (ed25519, pq2025).
+    /// * `verify_image_cross_agent_path` (cross-agent verify path).
+    ///
+    /// The field name `public_key_pem` is preserved for API compatibility;
+    /// future major releases may rename it to `key_material` to match the
+    /// dual-shape semantics, ideally as an enum.
     pub public_key_pem: Vec<u8>,
     /// Lower-case algorithm tag: `"ed25519"`, `"pq2025"`, `"rsa-pss"`.
     pub algorithm: String,
@@ -173,7 +196,7 @@ pub struct SignatureBlockYaml {
 ///
 /// Refuses (Err) if the input content contains a `-----BEGIN JACS SIGNATURE-----`
 /// line at column zero that is NOT part of a well-formed block — see PRD §4.1.1
-/// marker-collision hard refusal. No escape-hatch flag in v0.11.0.
+/// marker-collision hard refusal. No escape-hatch flag in v0.10.0.
 ///
 /// Idempotent per signer: if an existing valid block with the same `signer`
 /// and `signed_content_hash` is already present, the input is returned unchanged.
@@ -212,6 +235,23 @@ pub fn sign_inline(content: &str, agent: &SimpleAgent) -> Result<String, JacsErr
                 blocks.len(),
                 MAX_SIGNATURE_BLOCKS
             )));
+        }
+        // Issue 004 / PRD §4.1.1 marker-collision hard refusal: any column-zero
+        // BEGIN/END pair found in the input MUST have a YAML body that parses as
+        // a valid SignatureBlockYaml (deny_unknown_fields, schema-version-tagged).
+        // `collect_blocks` reports per-block parse failures as `(raw, None)` so it
+        // can be reused by `verify_inline` for a per-block `Malformed` status —
+        // here we promote that signal to a hard refusal because the caller is
+        // about to *append* to the file. Refuse to build on top of corrupt blocks.
+        for (raw_body, maybe_yaml) in &blocks {
+            if maybe_yaml.is_none() {
+                return Err(JacsError::ValidationError(format!(
+                    "input contains malformed existing signature block \
+                    (yaml body of {} bytes failed to parse as SignatureBlockYaml; \
+                    refuse to sign on top of corrupt input)",
+                    raw_body.len()
+                )));
+            }
         }
     }
 
@@ -265,6 +305,14 @@ pub fn sign_inline(content: &str, agent: &SimpleAgent) -> Result<String, JacsErr
 
     let yaml_body = serde_yaml_ng::to_string(&block)
         .map_err(|e| JacsError::ValidationError(format!("failed to serialise YAML block: {e}")))?;
+
+    // Issue 011 / PRD §4.1.1: rewrite the `signature: <base64>` line as a
+    // YAML literal-block scalar (`signature: |\n  <wrapped>`) with the base64
+    // wrapped at 64 columns so the on-disk block stays human-skimmable even
+    // for large pq2025 signatures (~5.3 KiB single-line otherwise). YAML 1.2
+    // round-trips both forms, so existing verifiers continue to accept the
+    // emitted block unchanged.
+    let yaml_body = wrap_signature_field_to_literal_block(&yaml_body, &block.signature, 64);
 
     let framed_block = format!("{BEGIN_MARKER}\n{yaml_body}{END_MARKER}\n");
 
@@ -380,6 +428,58 @@ fn sha256_bytes(data: &[u8]) -> Vec<u8> {
 
 fn base64url_nopad(data: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(data)
+}
+
+/// Issue 011 / PRD §4.1.1: rewrite the `signature: <base64>` line in `yaml_body`
+/// as a YAML literal-block scalar (`signature: |\n  <line>\n  <line>...`) with
+/// the base64 payload wrapped at `width` columns and 2-space indent.
+///
+/// `serde_yaml_ng` does not expose a flow-style hint per-field, so we
+/// post-process the serialised string. Rules:
+/// * Find the unique line that starts with `signature: ` at the start of the
+///   line. (Field names are camel-cased and unique within `SignatureBlockYaml`.)
+/// * Replace it with `signature: |\n` + each chunk of the base64 prefixed by
+///   two spaces and terminated by `\n`.
+/// * Other fields are left untouched so the round-trip-by-yaml-parser remains
+///   stable.
+///
+/// Round-trip safety: `serde_yaml_ng::from_str::<SignatureBlockYaml>` accepts
+/// both single-line and literal-block-scalar forms (YAML 1.2 §8.1.1).
+fn wrap_signature_field_to_literal_block(
+    yaml_body: &str,
+    signature_b64: &str,
+    width: usize,
+) -> String {
+    debug_assert!(width > 0, "literal-block wrap width must be positive");
+    let target_prefix = "signature: ";
+    let mut out = String::with_capacity(yaml_body.len() + signature_b64.len() / width * 3);
+    let mut replaced = false;
+    for line in yaml_body.split_inclusive('\n') {
+        if !replaced && line.starts_with(target_prefix) {
+            // Replace this line entirely.
+            out.push_str("signature: |\n");
+            // Split signature into width-column chunks. Use byte slicing — the
+            // base64 alphabet is ASCII-only, so byte offsets == char offsets.
+            let bytes = signature_b64.as_bytes();
+            let mut i = 0;
+            while i < bytes.len() {
+                let end = std::cmp::min(i + width, bytes.len());
+                out.push_str("  ");
+                out.push_str(std::str::from_utf8(&bytes[i..end]).unwrap_or(""));
+                out.push('\n');
+                i = end;
+            }
+            replaced = true;
+        } else {
+            out.push_str(line);
+        }
+    }
+    if !replaced {
+        // Fallback: emit the original body. This path is unreachable in
+        // production because every SignatureBlockYaml has a `signature` field.
+        return yaml_body.to_string();
+    }
+    out
 }
 
 /// Map the JACS-configured algorithm name (`"ring-Ed25519"`, `"pq2025"`,
@@ -556,22 +656,34 @@ fn verify_single_block(
         yaml.hash_algorithm, yaml.signed_content_hash
     );
 
+    // Issue 011: the on-disk YAML uses a literal-block scalar (`signature: |`)
+    // with the base64 wrapped at 64 columns for human readability. The YAML
+    // parser preserves the embedded newlines, but the crypt primitives expect
+    // a contiguous base64 string — strip ASCII whitespace before decode.
+    // This is also forward-compatible with single-line signatures emitted by
+    // earlier versions and other languages.
+    let signature_compact: String = yaml
+        .signature
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+
     // Pick the crypt primitive by algorithm tag.
     let verify_result = match yaml.algorithm.as_str() {
         "ed25519" => crate::crypt::ringwrapper::verify_string(
             resolved.public_key_pem.clone(),
             &preimage,
-            &yaml.signature,
+            &signature_compact,
         ),
         "pq2025" => crate::crypt::pq2025::verify_string(
             resolved.public_key_pem.clone(),
             &preimage,
-            &yaml.signature,
+            &signature_compact,
         ),
         "rsa-pss" => crate::crypt::rsawrapper::verify_string(
             resolved.public_key_pem.clone(),
             &preimage,
-            &yaml.signature,
+            &signature_compact,
         ),
         other => {
             return SignatureEntry {
@@ -1127,6 +1239,50 @@ mod tests {
         }
     }
 
+    /// Issue 004 regression: a structurally-paired BEGIN/END at column zero
+    /// with garbage YAML between them must be a hard refusal at the *lib*
+    /// layer. Previously the lib only refused on file-level structural failure
+    /// (no matching END); per-block YAML parse failure was returned as
+    /// `(raw, None)` and `sign_inline` happily appended a new block. The CLI
+    /// had a heuristic guard that bindings (Python/Node/Go) bypassed.
+    #[test]
+    fn sign_refuses_input_with_marker_pair_garbage_body() {
+        let content = "real prose body\n\n\
+            -----BEGIN JACS SIGNATURE-----\n\
+            random: garbage: not real\n\
+            -----END JACS SIGNATURE-----\n";
+        let agent = make_ed25519_agent();
+        let err = sign_inline(content, &agent).unwrap_err();
+        match err {
+            JacsError::ValidationError(msg) => {
+                let lower = msg.to_lowercase();
+                assert!(
+                    lower.contains("malformed") || lower.contains("refuse"),
+                    "expected refusal mentioning malformed/refuse, got: {}",
+                    msg
+                );
+            }
+            other => panic!("expected ValidationError, got {:?}", other),
+        }
+    }
+
+    /// Issue 004 follow-up: inputs that include the *required* SignatureBlockYaml
+    /// fields by name but with the wrong shape (e.g. wrong types, extra keys
+    /// rejected by `deny_unknown_fields`, or wrong schema version) likewise
+    /// fail the per-block YAML parse and must be refused at lib layer.
+    #[test]
+    fn sign_refuses_input_with_marker_pair_invalid_schema() {
+        let content = "doc\n\n\
+            -----BEGIN JACS SIGNATURE-----\n\
+            signatureBlockVersion: 1\n\
+            signer: \"x\"\n\
+            unknownField: \"trips deny_unknown_fields\"\n\
+            -----END JACS SIGNATURE-----\n";
+        let agent = make_ed25519_agent();
+        let err = sign_inline(content, &agent).unwrap_err();
+        assert!(matches!(err, JacsError::ValidationError(_)));
+    }
+
     // -------------------------------------------------------------------------
     // Security — schema hardening
     // -------------------------------------------------------------------------
@@ -1183,19 +1339,23 @@ mod tests {
         let body = signed[begin..end].trim_end_matches('\n');
         let parsed: SignatureBlockYaml = serde_yaml_ng::from_str(body).unwrap();
 
-        // Compute what the signer committed to with vs without the prefix.
-        let sig_bytes_b64 = &parsed.signature;
+        // Issue 011: signature is emitted as a literal-block scalar (`signature: |`)
+        // wrapped at 64 columns; YAML parses it back with embedded newlines.
+        // Strip whitespace before passing to the crypt primitive — same step
+        // verify_inline does internally.
+        let sig_compact: String = parsed
+            .signature
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
         // Verify against preimage with prefix — must succeed.
         let preimage_prefixed = format!(
             "{DOMAIN_SEPARATION_PREFIX}\n{}:{}",
             parsed.hash_algorithm, parsed.signed_content_hash
         );
         let pem = agent.get_public_key().unwrap();
-        let verify_prefixed = crate::crypt::ringwrapper::verify_string(
-            pem.clone(),
-            &preimage_prefixed,
-            sig_bytes_b64,
-        );
+        let verify_prefixed =
+            crate::crypt::ringwrapper::verify_string(pem.clone(), &preimage_prefixed, &sig_compact);
         assert!(
             verify_prefixed.is_ok(),
             "verify with domain prefix must succeed"
@@ -1204,7 +1364,7 @@ mod tests {
         let verify_naked = crate::crypt::ringwrapper::verify_string(
             pem,
             &parsed.signed_content_hash,
-            sig_bytes_b64,
+            &sig_compact,
         );
         assert!(
             verify_naked.is_err(),

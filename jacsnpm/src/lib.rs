@@ -15,8 +15,8 @@
 use std::sync::Arc;
 
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult, SimpleAgentWrapper};
-use napi::{JsObject, JsUnknown};
 use napi::bindgen_prelude::*;
+use napi::{JsObject, JsUnknown};
 use napi_derive::napi;
 use serde_json::Value;
 
@@ -1688,7 +1688,10 @@ impl JacsSimpleAgent {
         no_backup: Option<bool>,
     ) -> Result<JsUnknown> {
         let opts = build_sign_text_opts(no_backup.unwrap_or(false));
-        let json = self.inner.sign_text_file_json(&file_path, &opts).to_napi()?;
+        let json = self
+            .inner
+            .sign_text_file_json(&file_path, &opts)
+            .to_napi()?;
         let value = parse_json_value(&json, "sign_text_file outcome").map_err(to_napi_err)?;
         value_to_js_value(env, &value)
     }
@@ -1707,7 +1710,10 @@ impl JacsSimpleAgent {
     /// Verify an inline JACS signature in a text/markdown file. Returns the
     /// parsed `VerifyTextResult` object. With `{ strict: true }`, missing-
     /// signature rejects the Promise with /no JACS signature found/.
-    #[napi(js_name = "verifyTextFile", ts_return_type = "Promise<VerifyTextResult>")]
+    #[napi(
+        js_name = "verifyTextFile",
+        ts_return_type = "Promise<VerifyTextResult>"
+    )]
     pub fn verify_text_file_async(
         &self,
         file_path: String,
@@ -1841,7 +1847,10 @@ impl JacsSimpleAgent {
     /// Returns the decoded JACS signed-document JSON string by default, or the
     /// base64url wire form when `{ rawPayload: true }`. Returns `null` when
     /// the input has no JACS signature.
-    #[napi(js_name = "extractMediaSignature", ts_return_type = "Promise<string | null>")]
+    #[napi(
+        js_name = "extractMediaSignature",
+        ts_return_type = "Promise<string | null>"
+    )]
     pub fn extract_media_signature_async(
         &self,
         file_path: String,
@@ -1992,8 +2001,7 @@ fn parse_extract_media_envelope(envelope_json: &str) -> BindingResult<Option<Str
         ))
     })?;
     if v.get("present").and_then(|x| x.as_bool()) == Some(true) {
-        Ok(v.get("payload")
-            .and_then(|p| p.as_str().map(String::from)))
+        Ok(v.get("payload").and_then(|p| p.as_str().map(String::from)))
     } else {
         Ok(None)
     }

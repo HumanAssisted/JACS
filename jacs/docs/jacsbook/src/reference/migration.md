@@ -10,7 +10,7 @@ JACS maintains backward compatibility for document verification:
 
 ## 0.10 → 0.11
 
-v0.11.0 adds inline text signatures, image / media embedding, and the new `MissingSignature` error variant. **No existing API changes behaviour.**
+v0.10.0 adds inline text signatures, image / media embedding, and the new `MissingSignature` error variant. **No existing API changes behaviour.**
 
 ### Additive surface — no opt-in required
 
@@ -29,7 +29,7 @@ Five new methods per binding, five new CLI verbs, five new MCP tools. Pre-existi
 The new `MissingSignature` variant on `jacs::error::ErrorKind` will trigger an unreachable-pattern warning (or a compile error in `-D warnings`) on Rust call sites that exhaustively match without a catch-all.
 
 ```rust
-// before — does not compile under -D warnings in v0.11.0
+// before — does not compile under -D warnings in v0.10.0
 match err.kind() {
     ErrorKind::InvalidSignature => ...,
     ErrorKind::DocumentNotFound => ...,
@@ -54,13 +54,13 @@ Python / Node / Go bindings are unaffected — their error types are not exhaust
 
 ### Verify semantics change is opt-in via `strict`
 
-`verify-text` and `verify-image` are **new commands** in v0.11.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); `--strict` opts in to error-on-missing.
+`verify-text` and `verify-image` are **new commands** in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); `--strict` opts in to error-on-missing.
 
 No existing command (`jacs verify`, `jacs document verify`, etc.) changes its exit codes or its return shape.
 
 ### After-publish task for sibling repos
 
-After v0.11.0 lands on crates.io, bump `=0.11.0` pins in `~/personal/haisdk` (`rust/Cargo.toml`, `python/pyproject.toml`, `node/package.json`). The `hai/api` middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.
+After v0.10.0 lands on crates.io, bump `=0.10.0` pins in `~/personal/haisdk` (`rust/Cargo.toml`, `python/pyproject.toml`, `node/package.json`). The `hai/api` middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.
 
 ## Migrating Node.js from 0.6.x to 0.7.0
 

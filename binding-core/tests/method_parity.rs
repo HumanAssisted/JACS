@@ -187,35 +187,51 @@ fn test_method_parity_fixture_count() {
 
 #[test]
 fn wrapper_exposes_sign_text_file_json() {
-    let _: fn(&jacs_binding_core::SimpleAgentWrapper, &str, &str)
-        -> jacs_binding_core::BindingResult<String> =
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
         jacs_binding_core::SimpleAgentWrapper::sign_text_file_json;
 }
 
 #[test]
 fn wrapper_exposes_verify_text_file_json() {
-    let _: fn(&jacs_binding_core::SimpleAgentWrapper, &str, &str)
-        -> jacs_binding_core::BindingResult<String> =
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
         jacs_binding_core::SimpleAgentWrapper::verify_text_file_json;
 }
 
 #[test]
 fn wrapper_exposes_sign_image_json() {
-    let _: fn(&jacs_binding_core::SimpleAgentWrapper, &str, &str, &str)
-        -> jacs_binding_core::BindingResult<String> =
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
         jacs_binding_core::SimpleAgentWrapper::sign_image_json;
 }
 
 #[test]
 fn wrapper_exposes_verify_image_json() {
-    let _: fn(&jacs_binding_core::SimpleAgentWrapper, &str, &str)
-        -> jacs_binding_core::BindingResult<String> =
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
         jacs_binding_core::SimpleAgentWrapper::verify_image_json;
 }
 
 #[test]
 fn wrapper_exposes_extract_media_signature_json() {
-    let _: fn(&jacs_binding_core::SimpleAgentWrapper, &str, &str)
-        -> jacs_binding_core::BindingResult<String> =
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
         jacs_binding_core::SimpleAgentWrapper::extract_media_signature_json;
 }

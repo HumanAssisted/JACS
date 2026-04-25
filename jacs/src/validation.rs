@@ -320,7 +320,32 @@ pub fn require_relative_path_safe(path: &str) -> Result<(), JacsError> {
             )));
         }
     }
+
+    // Issue 001 / PRD §4.2.6 layer 4: symlink rejection. When the file
+    // already exists in the current working directory, refuse to follow a
+    // symlink. This closes the MCP-symlink-escape attack: an attacker-planted
+    // `link.png` symlinked to `/etc/passwd` no longer silently exfiltrates.
+    //
+    // Tests / scripts that legitimately need symlink traversal can opt out by
+    // setting `JACS_FOLLOW_SYMLINKS=1`.
+    if !follow_symlinks_allowed()
+        && let Ok(meta) = std::fs::symlink_metadata(path)
+        && meta.file_type().is_symlink()
+    {
+        return Err(JacsError::ValidationError(format!(
+            "Path '{}' is a symlink; refusing to follow",
+            path
+        )));
+    }
+
     Ok(())
+}
+
+fn follow_symlinks_allowed() -> bool {
+    matches!(
+        std::env::var("JACS_FOLLOW_SYMLINKS").as_deref(),
+        Ok("1") | Ok("true")
+    )
 }
 
 #[cfg(test)]

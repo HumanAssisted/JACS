@@ -359,12 +359,9 @@ impl SimpleAgentWrapper {
         let strict = opts.strict;
         match jacs::simple::advanced::verify_text_file(&self.inner, path, opts) {
             Ok(result) => serialize_verify_text_result(&result),
-            Err(jacs::error::JacsError::MissingSignature(p)) if strict => {
-                Err(BindingCoreError::missing_signature(format!(
-                    "no JACS signature found in {}",
-                    p
-                )))
-            }
+            Err(jacs::error::JacsError::MissingSignature(p)) if strict => Err(
+                BindingCoreError::missing_signature(format!("no JACS signature found in {}", p)),
+            ),
             Err(e) => Err(BindingCoreError::verification_failed(format!(
                 "verify_text_file: {}",
                 e
@@ -402,12 +399,9 @@ impl SimpleAgentWrapper {
         let strict = opts.base.strict;
         match jacs::simple::advanced::verify_image(&self.inner, path, opts) {
             Ok(result) => serialize_json(&result, "verify_image result"),
-            Err(jacs::error::JacsError::MissingSignature(p)) if strict => {
-                Err(BindingCoreError::missing_signature(format!(
-                    "no JACS signature found in {}",
-                    p
-                )))
-            }
+            Err(jacs::error::JacsError::MissingSignature(p)) if strict => Err(
+                BindingCoreError::missing_signature(format!("no JACS signature found in {}", p)),
+            ),
             Err(e) => Err(BindingCoreError::verification_failed(format!(
                 "verify_image: {}",
                 e
@@ -471,9 +465,8 @@ fn parse_sign_text_options(opts_json: &str) -> BindingResult<jacs::simple::types
     if opts_is_default(opts_json) {
         return Ok(jacs::simple::types::SignTextOptions::default());
     }
-    let v: serde_json::Value = serde_json::from_str(opts_json).map_err(|e| {
-        BindingCoreError::invalid_argument(format!("sign_text_file opts: {}", e))
-    })?;
+    let v: serde_json::Value = serde_json::from_str(opts_json)
+        .map_err(|e| BindingCoreError::invalid_argument(format!("sign_text_file opts: {}", e)))?;
     let mut o = jacs::simple::types::SignTextOptions::default();
     if let Some(b) = v.get("backup").and_then(|x| x.as_bool()) {
         o.backup = b;
@@ -502,7 +495,9 @@ fn parse_verify_options(opts_json: &str) -> BindingResult<jacs::inline::VerifyOp
     Ok(jacs::inline::VerifyOptions { strict, key_dir })
 }
 
-fn parse_sign_image_options(opts_json: &str) -> BindingResult<jacs::simple::types::SignImageOptions> {
+fn parse_sign_image_options(
+    opts_json: &str,
+) -> BindingResult<jacs::simple::types::SignImageOptions> {
     if opts_is_default(opts_json) {
         return Ok(jacs::simple::types::SignImageOptions::default());
     }
@@ -577,9 +572,7 @@ fn parse_extract_options(opts_json: &str) -> BindingResult<bool> {
         .unwrap_or(false))
 }
 
-fn serialize_verify_text_result(
-    result: &jacs::inline::VerifyTextResult,
-) -> BindingResult<String> {
+fn serialize_verify_text_result(result: &jacs::inline::VerifyTextResult) -> BindingResult<String> {
     use jacs::inline::{SignatureStatus, VerifyTextResult};
     let v = match result {
         VerifyTextResult::MissingSignature => {
@@ -597,9 +590,7 @@ fn serialize_verify_text_result(
                         SignatureStatus::InvalidSignature => ("invalid_signature", None),
                         SignatureStatus::HashMismatch => ("hash_mismatch", None),
                         SignatureStatus::KeyNotFound => ("key_not_found", None),
-                        SignatureStatus::UnsupportedAlgorithm => {
-                            ("unsupported_algorithm", None)
-                        }
+                        SignatureStatus::UnsupportedAlgorithm => ("unsupported_algorithm", None),
                         SignatureStatus::Malformed(s) => ("malformed", Some(s.clone())),
                     };
                     let mut o = serde_json::json!({
