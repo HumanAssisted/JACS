@@ -103,6 +103,36 @@
       "mcp_tool": "jacs_verify_document",
       "status": "aligned",
       "notes": "Standalone verify command (no agent required) maps to same MCP tool"
+    },
+    {
+      "cli_command": "sign-text",
+      "mcp_tool": "jacs_sign_text",
+      "status": "aligned",
+      "notes": "Both append an inline JACS signature block to a text/markdown file (PRD §4.1)"
+    },
+    {
+      "cli_command": "verify-text",
+      "mcp_tool": "jacs_verify_text",
+      "status": "aligned",
+      "notes": "Both verify inline JACS signatures; both expose a strict mode (PRD §4.1, C1)"
+    },
+    {
+      "cli_command": "sign-image",
+      "mcp_tool": "jacs_sign_image",
+      "status": "aligned",
+      "notes": "Both embed JACS signatures into PNG/JPEG/WebP metadata (PRD §4.2)"
+    },
+    {
+      "cli_command": "verify-image",
+      "mcp_tool": "jacs_verify_image",
+      "status": "aligned",
+      "notes": "Both verify embedded image signatures with optional --key-dir / --robust LSB scan (PRD §4.2)"
+    },
+    {
+      "cli_command": "extract-media-signature",
+      "mcp_tool": "jacs_extract_media_signature",
+      "status": "aligned",
+      "notes": "Both dump the JACS signed-document payload from a signed image (PRD §3.2)"
     }
   ],
   "cli_only": [
@@ -366,10 +396,10 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 33,
+    "total_cli_commands": 38,
     "total_cli_feature_gated": 4,
-    "total_mcp_tools": 43,
-    "aligned_pairs": 17,
+    "total_mcp_tools": 48,
+    "aligned_pairs": 22,
     "cli_only_count": 18,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 27,

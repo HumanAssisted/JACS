@@ -6,6 +6,7 @@ members = [
     "jacs-postgresql",
     "jacs-surrealdb",
     "jacs-redb",
+    "jacs-media",
     "binding-core",
     "jacsnpm",
     "jacspy",

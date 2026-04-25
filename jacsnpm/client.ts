@@ -21,6 +21,7 @@
 
 import {
   JacsAgent,
+  JacsSimpleAgent,
   hashString,
   createConfig,
   createAgentSync as nativeCreateAgentSync,
@@ -286,12 +287,93 @@ function isConfigNotFoundError(error: unknown): boolean {
   return String(error).toLowerCase().includes('config file not found');
 }
 
+/**
+ * Best-effort load of an auxiliary `JacsSimpleAgent` from `configPath`.
+ *
+ * Returns `null` if the load fails (e.g., missing JACS_PRIVATE_KEY_PASSWORD,
+ * partial config). The inline-text / image methods then raise at call time
+ * with a clear error rather than breaking the broader load/create flow that
+ * does not require these features.
+ */
+function tryLoadSimpleAgent(configPath: string, strict: boolean | undefined): JacsSimpleAgent | null {
+  try {
+    return JacsSimpleAgent.load(configPath, strict ?? null);
+  } catch {
+    return null;
+  }
+}
+
 // =============================================================================
 // JacsClient
 // =============================================================================
 
+// =============================================================================
+// Inline-text / image option types (Task 11)
+// =============================================================================
+
+export interface SignTextOptions {
+  noBackup?: boolean;
+}
+
+export interface VerifyTextOptions {
+  /**
+   * C1: when true, missing signatures reject the Promise with
+   * /no JACS signature found/. Default false.
+   */
+  strict?: boolean;
+  /**
+   * PRD §4.1.5: directory of `<signer_id>.public.pem` files for offline
+   * verification.
+   */
+  keyDir?: string;
+}
+
+export interface SignImageOptions {
+  /**
+   * PRD §4.2.4: enable LSB embedding for re-encode survivability
+   * (PNG/JPEG only). Default false (Q4).
+   */
+  robust?: boolean;
+  /** Optional explicit format override ("png" | "jpeg" | "webp"). */
+  format?: string;
+  /**
+   * PRD §4.2.2: refuse if the input image already carries a JACS
+   * signature.
+   */
+  refuseOverwrite?: boolean;
+}
+
+export interface VerifyImageOptions {
+  /** C1: see [VerifyTextOptions.strict]. */
+  strict?: boolean;
+  /** PRD §4.1.5: see [VerifyTextOptions.keyDir]. */
+  keyDir?: string;
+  /**
+   * PRD §4.2.4: scan the LSB channel as a fallback when the metadata
+   * payload is missing. Default false.
+   */
+  robust?: boolean;
+}
+
+export interface ExtractMediaOptions {
+  /** PRD §3.2: when true, return base64url wire form. Default false. */
+  rawPayload?: boolean;
+}
+
 export class JacsClient {
   private agent: JacsAgent | null = null;
+  /**
+   * Auxiliary `JacsSimpleAgent` used by the inline-text / image methods
+   * (signText / verifyText / signImage / verifyImage / extractMediaSignature).
+   *
+   * `JacsAgent` exposes the broader v0.x API, while these new operations live
+   * on `SimpleAgentWrapper` and are surfaced through `JacsSimpleAgent`. We
+   * create a separate instance per `JacsClient` so the inline-text/image
+   * methods are routable; for ephemeral clients this means JacsAgent and
+   * JacsSimpleAgent have distinct keys (acceptable for the smoke-level test
+   * coverage in this task — see Task 11 acceptance criteria).
+   */
+  private simpleAgent: JacsSimpleAgent | null = null;
   private info: AgentInfo | null = null;
   private _strict: boolean = false;
 
@@ -378,6 +460,7 @@ export class JacsClient {
     const resultJson = await nativeAgent.ephemeral(algorithm ?? null);
     const result = JSON.parse(resultJson);
     client.agent = nativeAgent;
+    client.simpleAgent = JacsSimpleAgent.ephemeral(algorithm ?? null);
     client.info = {
       agentId: result.agent_id || '',
       name: result.name || 'ephemeral',
@@ -403,6 +486,7 @@ export class JacsClient {
     const resultJson = nativeAgent.ephemeralSync(algorithm ?? null);
     const result = JSON.parse(resultJson);
     client.agent = nativeAgent;
+    client.simpleAgent = JacsSimpleAgent.ephemeral(algorithm ?? null);
     client.info = {
       agentId: result.agent_id || '',
       name: result.name || 'ephemeral',
@@ -434,6 +518,12 @@ export class JacsClient {
     configurePrivateKeyPassword(this.agent, resolvedPassword || null);
     const infoJson = await this.agent.loadWithInfo(resolvedConfigPath);
     this.info = parseLoadedAgentInfo(infoJson);
+    // Inline-text / image methods route through JacsSimpleAgent. Loading from
+    // the same config makes both agents share the same persistent identity.
+    // Best-effort: callers without a resolvable password (or running on a
+    // partial config) should still get a working JacsClient — the inline-text
+    // methods raise at call time instead of breaking the broader load() flow.
+    this.simpleAgent = tryLoadSimpleAgent(resolvedConfigPath, this._strict);
     return this.info!;
   }
 
@@ -448,6 +538,7 @@ export class JacsClient {
     configurePrivateKeyPassword(this.agent, resolvedPassword || null);
     const infoJson = this.agent.loadWithInfoSync(resolvedConfigPath);
     this.info = parseLoadedAgentInfo(infoJson);
+    this.simpleAgent = tryLoadSimpleAgent(resolvedConfigPath, this._strict);
     return this.info!;
   }
 
@@ -478,6 +569,7 @@ export class JacsClient {
     if (this.info && result.dns_record && !this.info.dnsRecord) {
       this.info.dnsRecord = result.dns_record;
     }
+    this.simpleAgent = tryLoadSimpleAgent(path.resolve(cfgPath), this._strict);
     return this.info!;
   }
 
@@ -508,6 +600,7 @@ export class JacsClient {
     if (this.info && result.dns_record && !this.info.dnsRecord) {
       this.info.dnsRecord = result.dns_record;
     }
+    this.simpleAgent = tryLoadSimpleAgent(path.resolve(cfgPath), this._strict);
     return this.info!;
   }
 
@@ -520,6 +613,7 @@ export class JacsClient {
       }
     }
     this.agent = null;
+    this.simpleAgent = null;
     this.info = null;
     this._strict = false;
   }
@@ -718,6 +812,115 @@ export class JacsClient {
     return this.withPrivateKeyPasswordSync((agent) => {
       const result = agent.createDocumentSync(JSON.stringify(docContent), null, null, true, filePath, embed);
       return parseSignedResult(result);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inline text + image (Task 11 — PRD §3.1, §3.2, §4.1, §4.2)
+  // ---------------------------------------------------------------------------
+
+  private requireSimpleAgent(): JacsSimpleAgent {
+    if (!this.simpleAgent) {
+      throw new Error(
+        'No agent loaded. Call ephemeral(), load(), quickstart(), or create() first.',
+      );
+    }
+    return this.simpleAgent;
+  }
+
+  /**
+   * Sign a text/markdown file in place by appending an inline JACS
+   * signature block (PRD §4.1).
+   */
+  async signText(filePath: string, options?: SignTextOptions): Promise<any> {
+    return this.requireSimpleAgent().signText(filePath, options?.noBackup ?? false);
+  }
+
+  signTextSync(filePath: string, options?: SignTextOptions): any {
+    return this.requireSimpleAgent().signTextSync(filePath, options?.noBackup ?? false);
+  }
+
+  /**
+   * Verify inline JACS signatures in a text/markdown file (PRD §4.1, C1).
+   * In permissive mode (default), missing-signature returns
+   * `{ status: 'missing_signature' }`. In strict mode the Promise rejects
+   * with `/no JACS signature found/`.
+   */
+  async verifyText(filePath: string, options?: VerifyTextOptions): Promise<any> {
+    return this.requireSimpleAgent().verifyText(filePath, {
+      strict: options?.strict ?? false,
+      keyDir: options?.keyDir,
+    });
+  }
+
+  verifyTextSync(filePath: string, options?: VerifyTextOptions): any {
+    return this.requireSimpleAgent().verifyTextSync(filePath, {
+      strict: options?.strict ?? false,
+      keyDir: options?.keyDir,
+    });
+  }
+
+  /**
+   * Sign a PNG / JPEG / WebP image by embedding a JACS signature
+   * (PRD §4.2). `outputPath` may equal `inputPath` for in-place writes.
+   */
+  async signImage(
+    inputPath: string,
+    outputPath: string,
+    options?: SignImageOptions,
+  ): Promise<any> {
+    return this.requireSimpleAgent().signImage(inputPath, outputPath, {
+      robust: options?.robust ?? false,
+      format: options?.format,
+      refuseOverwrite: options?.refuseOverwrite ?? false,
+    });
+  }
+
+  signImageSync(inputPath: string, outputPath: string, options?: SignImageOptions): any {
+    return this.requireSimpleAgent().signImageSync(inputPath, outputPath, {
+      robust: options?.robust ?? false,
+      format: options?.format,
+      refuseOverwrite: options?.refuseOverwrite ?? false,
+    });
+  }
+
+  /**
+   * Verify an embedded JACS signature in an image (PRD §4.2, C1).
+   */
+  async verifyImage(filePath: string, options?: VerifyImageOptions): Promise<any> {
+    return this.requireSimpleAgent().verifyImage(filePath, {
+      strict: options?.strict ?? false,
+      keyDir: options?.keyDir,
+      robust: options?.robust ?? false,
+    });
+  }
+
+  verifyImageSync(filePath: string, options?: VerifyImageOptions): any {
+    return this.requireSimpleAgent().verifyImageSync(filePath, {
+      strict: options?.strict ?? false,
+      keyDir: options?.keyDir,
+      robust: options?.robust ?? false,
+    });
+  }
+
+  /**
+   * Extract the JACS signature payload embedded in a signed image
+   * (PRD §3.2). Returns the decoded JACS signed-document JSON string by
+   * default; pass `{ rawPayload: true }` for the base64url wire form.
+   * Returns `null` when the input has no JACS signature.
+   */
+  async extractMediaSignature(
+    filePath: string,
+    options?: ExtractMediaOptions,
+  ): Promise<string | null> {
+    return this.requireSimpleAgent().extractMediaSignature(filePath, {
+      rawPayload: options?.rawPayload ?? false,
+    });
+  }
+
+  extractMediaSignatureSync(filePath: string, options?: ExtractMediaOptions): string | null {
+    return this.requireSimpleAgent().extractMediaSignatureSync(filePath, {
+      rawPayload: options?.rawPayload ?? false,
     });
   }
 

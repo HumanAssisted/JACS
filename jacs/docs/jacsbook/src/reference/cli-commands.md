@@ -334,6 +334,69 @@ Sign the agreement section of a document with the current agent's cryptographic 
 jacs document sign-agreement [OPTIONS]
 ```
 
+## Provenance Commands
+
+The provenance commands sign and verify content **in place** — text files keep a YAML-bodied signature block at the end of the file, images carry the signature in a metadata chunk. See the [Inline Text Signatures](../guides/inline-text-signing.md) and [Image and Media Signatures](../guides/media-signing.md) guides for the full feature set.
+
+### `jacs sign-text`
+
+Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte.
+
+**Usage:**
+```bash
+jacs sign-text <file>
+```
+
+The command refuses (hard error) to sign input that contains a column-zero `-----BEGIN JACS SIGNATURE-----` line outside a valid block — see the inline-text-signing guide for documented workarounds.
+
+### `jacs verify-text`
+
+Verify all signature blocks in a text file. Permissive by default — missing signatures are exit code `2`, not a thrown error. Per-signer status is printed to stdout.
+
+**Usage:**
+```bash
+jacs verify-text <file> [--strict] [--key-dir <dir>]
+```
+
+Options:
+- `--strict` — treat missing signature as exit `1` (instead of `2`); stderr: `no JACS signature found`.
+- `--key-dir <dir>` — directory of `<signer_id>.public.pem` files used in addition to the local trust store.
+
+### `jacs sign-image`
+
+Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).
+
+**Usage:**
+```bash
+jacs sign-image <input> --out <output> [--robust] [--refuse-overwrite]
+```
+
+Options:
+- `--out <path>` — output file (required).
+- `--robust` — opt-in LSB embedding fallback for PNG/JPEG (off by default; WebP deferred).
+- `--refuse-overwrite` — exit non-zero if the input already carries a JACS signature (default is overwrite).
+
+### `jacs verify-image`
+
+Verify the embedded signature on an image. Same permissive / strict model as `verify-text`.
+
+**Usage:**
+```bash
+jacs verify-image <file> [--strict] [--key-dir <dir>]
+```
+
+### `jacs extract-media-signature`
+
+Extract the embedded signature payload without verifying it.
+
+**Usage:**
+```bash
+jacs extract-media-signature <file> [--raw-payload]
+```
+
+Options:
+- `--raw-payload` — emit the base64url wire form instead of decoded JSON.
+
 ## Common Patterns
 
 ### Basic Document Lifecycle
@@ -387,7 +450,7 @@ Most commands support these common options:
 
 - `0` - Success
 - `1` - General error (invalid arguments, file not found, etc.)
-- `2` - Verification failure (hash mismatch, invalid signature, etc.)
+- `2` - Missing signature OR verification failure — exact meaning per-command in its section. For `verify-text` / `verify-image` (v0.11.0): `2` = permissive missing-signature; `--strict` collapses it into `1`. For other verify surfaces: `2` = verification failure (hash mismatch, invalid signature).
 - `3` - Schema validation failure
 
 ## Environment Variables

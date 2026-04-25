@@ -2,4 +2,4 @@ module github.com/HumanAssisted/JACS/jacsgo
 
 go 1.21
 
-require ()
+require gopkg.in/yaml.v3 v3.0.1 // indirect

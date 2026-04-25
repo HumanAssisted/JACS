@@ -54,6 +54,14 @@ const NODE_NAME_MAP = {
   'to_html': 'toHtml',
   'from_html': 'fromHtml',
   'rotate_keys': 'rotateKeys',
+  // Inline text + media (Task 11): NAPI methods on JacsSimpleAgent strip the
+  // _json suffix. Short aliases (signText/verifyText) also exist on the class
+  // but the parity name is the suffix-stripped name shown here.
+  'sign_text_file_json': 'signTextFile',
+  'verify_text_file_json': 'verifyTextFile',
+  'sign_image_json': 'signImage',
+  'verify_image_json': 'verifyImage',
+  'extract_media_signature_json': 'extractMediaSignature',
 };
 
 // Static methods (on the class itself, not on instances)

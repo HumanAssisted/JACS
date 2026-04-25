@@ -47,7 +47,63 @@ This chapter stays close to current product use, not roadmap integrations.
 - Signed A2A artifacts
 - Trust policies for admission control
 
-## 4. Sign HTTP Or API Boundaries Without MCP
+## 4. Sign Markdown In Place For Cross-Team Review
+
+**Use this when:** a shared README or design doc moves through a multi-agent review and you want each reviewer's identity and claimed timestamp attached to the exact bytes they signed off on — without a sidecar JSON.
+
+**Recommended JACS path:**
+
+- [Inline Text Signatures](guides/inline-text-signing.md)
+
+```bash
+JACS_CONFIG=./reviewer-a.config.json jacs sign-text DESIGN.md
+JACS_CONFIG=./reviewer-b.config.json jacs sign-text DESIGN.md
+jacs verify-text DESIGN.md
+```
+
+```python
+import jacs.simple as jacs
+jacs.load("./jacs.config.json")
+jacs.sign_text("DESIGN.md")
+result = jacs.verify_text("DESIGN.md")
+print(result.status)  # 'signed'
+```
+
+**What JACS adds:**
+
+- Signature appended at the end in a YAML-bodied block; file still renders as markdown on GitHub
+- Unordered multi-signer; each block carries signer ID, claimed time, and content hash
+- Permissive verify by default (missing-signature is exit 2, not an error); `--strict` opts in to error-on-missing
+
+## 5. Embed Image Provenance For AI-Era Authorship Claims
+
+**Use this when:** a photo, AI render, or chart needs a verifiable signed-at-claimed-time provenance signature embedded *inside* the image so downstream consumers can verify identity without a sidecar.
+
+**Recommended JACS path:**
+
+- [Image and Media Signatures](guides/media-signing.md)
+
+```bash
+jacs sign-image photo.png --out signed.png
+jacs verify-image signed.png
+jacs extract-media-signature signed.png | jq .signedAt
+```
+
+```typescript
+import * as jacs from '@hai.ai/jacs/simple';
+await jacs.load('./jacs.config.json');
+await jacs.signImage('photo.png', 'signed.png');
+const v = await jacs.verifyImage('signed.png');
+console.log(v.status);  // 'valid'
+```
+
+**What JACS adds:**
+
+- Signature embedded in PNG iTXt / JPEG APP11 / WebP XMP — no sidecar file
+- 100% Rust, Apache-2.0 / MIT, zero AGPL dependencies
+- Optional `--robust` LSB fallback for PNG/JPEG when metadata-strip is a concern
+
+## 6. Sign HTTP Or API Boundaries Without MCP
 
 **Use this when:** the boundary is an API route, not an MCP transport.
 
@@ -63,7 +119,7 @@ This chapter stays close to current product use, not roadmap integrations.
 - Verified inbound requests
 - A clean upgrade path to A2A discovery on the same app boundary
 
-## 5. Run Multi-Agent Approval Workflows
+## 7. Run Multi-Agent Approval Workflows
 
 **Use this when:** multiple agents must sign off on the same document, deployment, or decision.
 
@@ -78,7 +134,7 @@ This chapter stays close to current product use, not roadmap integrations.
 - Timeout and algorithm constraints
 - Verifiable signature chain across signers
 
-## 6. Keep Signed Files Or JSON As Durable Artifacts
+## 8. Keep Signed Files Or JSON As Durable Artifacts
 
 **Use this when:** you need an artifact to stay verifiable after it leaves the process that created it.
 
@@ -95,7 +151,7 @@ This chapter stays close to current product use, not roadmap integrations.
 - Re-verification at read time
 - Cross-language interoperability
 
-## 7. Publish Public Identity Without A Central Auth Service
+## 9. Publish Public Identity Without A Central Auth Service
 
 **Use this when:** external systems need to verify your agent identity but you do not want a shared auth server in the middle.
 

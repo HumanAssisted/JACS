@@ -199,6 +199,42 @@ export declare function signFile(filePath: string, embed?: boolean): Promise<Sig
  * Signs a file (sync, blocks event loop).
  */
 export declare function signFileSync(filePath: string, embed?: boolean): SignedDocument;
+export interface SignTextOpts {
+    noBackup?: boolean;
+}
+export interface VerifyTextOpts {
+    /** C1: missing-signature throws when true. Default false. */
+    strict?: boolean;
+    /** PRD §4.1.5. */
+    keyDir?: string;
+}
+export interface SignImageOpts {
+    /** PRD §4.2.4 LSB embedding. Default false (Q4). */
+    robust?: boolean;
+    format?: string;
+    /** PRD §4.2.2 single-signer guard. */
+    refuseOverwrite?: boolean;
+}
+export interface VerifyImageOpts {
+    strict?: boolean;
+    keyDir?: string;
+    /** PRD §4.2.4 LSB scan fallback. */
+    robust?: boolean;
+}
+export interface ExtractMediaOpts {
+    /** PRD §3.2 wire form. */
+    rawPayload?: boolean;
+}
+export declare function signText(filePath: string, opts?: SignTextOpts): Promise<any>;
+export declare function signTextSync(filePath: string, opts?: SignTextOpts): any;
+export declare function verifyText(filePath: string, opts?: VerifyTextOpts): Promise<any>;
+export declare function verifyTextSync(filePath: string, opts?: VerifyTextOpts): any;
+export declare function signImage(inputPath: string, outputPath: string, opts?: SignImageOpts): Promise<any>;
+export declare function signImageSync(inputPath: string, outputPath: string, opts?: SignImageOpts): any;
+export declare function verifyImage(filePath: string, opts?: VerifyImageOpts): Promise<any>;
+export declare function verifyImageSync(filePath: string, opts?: VerifyImageOpts): any;
+export declare function extractMediaSignature(filePath: string, opts?: ExtractMediaOpts): Promise<string | null>;
+export declare function extractMediaSignatureSync(filePath: string, opts?: ExtractMediaOpts): string | null;
 /**
  * Verifies a signed document and extracts its content.
  */

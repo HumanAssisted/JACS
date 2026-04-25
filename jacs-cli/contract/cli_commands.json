@@ -35,7 +35,12 @@
     {"path": "attest verify", "about": "Verify an attestation document", "mcp_tool": "jacs_attest_verify", "mcp_excluded_reason": null},
     {"path": "attest export-dsse", "about": "Export an attestation as a DSSE envelope", "mcp_tool": "jacs_attest_export_dsse", "mcp_excluded_reason": null},
     {"path": "verify", "about": "Verify a signed JACS document (no agent required)", "mcp_tool": "jacs_verify_document", "mcp_excluded_reason": null},
-    {"path": "convert", "about": "Convert JACS documents between JSON, YAML, and HTML formats", "mcp_tool": null, "mcp_excluded_reason": "Format conversion could be an MCP tool in the future"}
+    {"path": "convert", "about": "Convert JACS documents between JSON, YAML, and HTML formats", "mcp_tool": null, "mcp_excluded_reason": "Format conversion could be an MCP tool in the future"},
+    {"path": "sign-text", "about": "Sign a text/markdown file in place with an inline JACS signature", "mcp_tool": "jacs_sign_text", "mcp_excluded_reason": null},
+    {"path": "verify-text", "about": "Verify inline JACS signatures in a text/markdown file", "mcp_tool": "jacs_verify_text", "mcp_excluded_reason": null},
+    {"path": "sign-image", "about": "Sign an image (PNG, JPEG, WebP) by embedding a JACS signature", "mcp_tool": "jacs_sign_image", "mcp_excluded_reason": null},
+    {"path": "verify-image", "about": "Verify an embedded JACS signature in an image", "mcp_tool": "jacs_verify_image", "mcp_excluded_reason": null},
+    {"path": "extract-media-signature", "about": "Extract the embedded JACS signature payload from an image", "mcp_tool": "jacs_extract_media_signature", "mcp_excluded_reason": null}
   ],
   "feature_gated_commands": [
     {"path": "keychain set", "feature": "keychain", "about": "Store a password in the OS keychain for an agent", "mcp_tool": null, "mcp_excluded_reason": "OS keychain integration; requires local system access, not applicable to MCP"},

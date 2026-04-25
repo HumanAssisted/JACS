@@ -136,6 +136,13 @@ var errorKindMap = map[string]errorKindInfo{
 		messagePattern: "",
 		triggerable:    false,
 	},
+	"MissingSignature": {
+		// C1: strict-mode VerifyText / VerifyImage return this sentinel; permissive
+		// mode returns a typed status, not the sentinel.
+		goSentinel:     "ErrMissingSignature",
+		messagePattern: "no JACS signature found",
+		triggerable:    true,
+	},
 }
 
 // TestErrorKindParityFromFixture validates all error kinds from the fixture
@@ -178,15 +185,34 @@ func TestErrorKindMapHasNoStaleEntries(t *testing.T) {
 	}
 }
 
-// TestErrorKindCount validates there are exactly 13 error kinds.
+// TestErrorKindCount validates there are exactly 14 error kinds.
 func TestErrorKindCount(t *testing.T) {
 	errorKinds := loadErrorKindsFromFixture(t)
 
-	if len(errorKinds) != 13 {
-		t.Errorf("expected 13 error kinds in fixture, got %d", len(errorKinds))
+	if len(errorKinds) != 14 {
+		t.Errorf("expected 14 error kinds in fixture, got %d", len(errorKinds))
 	}
-	if len(errorKindMap) != 13 {
-		t.Errorf("expected 13 entries in errorKindMap, got %d", len(errorKindMap))
+	if len(errorKindMap) != 14 {
+		t.Errorf("expected 14 entries in errorKindMap, got %d", len(errorKindMap))
+	}
+}
+
+// TestMissingSignatureKindInFixture validates the new C1/Q2 MissingSignature
+// kind lands in the parity fixture and in errorKindMap.
+func TestMissingSignatureKindInFixture(t *testing.T) {
+	errorKinds := loadErrorKindsFromFixture(t)
+	var found bool
+	for _, k := range errorKinds {
+		if k == "MissingSignature" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("MissingSignature missing from parity_inputs.json (PRD §4.1.2)")
+	}
+	if _, ok := errorKindMap["MissingSignature"]; !ok {
+		t.Fatal("MissingSignature missing from errorKindMap")
 	}
 }
 
@@ -202,6 +228,7 @@ func TestGoSentinelErrorsExist(t *testing.T) {
 		"ErrInvalidDocument":   ErrInvalidDocument,
 		"ErrAgentNotTrusted":   ErrAgentNotTrusted,
 		"ErrKeyNotFound":       ErrKeyNotFound,
+		"ErrMissingSignature":  ErrMissingSignature,
 	}
 
 	for name, sentinel := range sentinels {

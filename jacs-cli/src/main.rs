@@ -1032,6 +1032,156 @@ pub fn build_cli() -> Command {
             ),
     );
 
+    // Inline text + media verbs (Task 08, PRD §3.1 / §3.2 / §4.1 / §4.2).
+    let cmd = cmd
+        .subcommand(
+            Command::new("sign-text")
+                .about("Sign a text/markdown file in place with an inline JACS signature")
+                .arg(
+                    Arg::new("file")
+                        .help("Path to the text file to sign in place")
+                        .required(true)
+                        .value_parser(value_parser!(String)),
+                )
+                .arg(
+                    Arg::new("no-backup")
+                        .long("no-backup")
+                        .action(ArgAction::SetTrue)
+                        .help("Skip the automatic <path>.bak backup"),
+                )
+                .arg(
+                    Arg::new("json")
+                        .long("json")
+                        .action(ArgAction::SetTrue)
+                        .help("Output result as JSON"),
+                ),
+        )
+        .subcommand(
+            Command::new("verify-text")
+                .about("Verify inline JACS signatures in a text/markdown file")
+                .arg(
+                    Arg::new("file")
+                        .help("Path to the signed text file")
+                        .required(true)
+                        .value_parser(value_parser!(String)),
+                )
+                .arg(
+                    Arg::new("key-dir")
+                        .long("key-dir")
+                        .value_parser(value_parser!(String))
+                        .help("Directory containing signer public keys (.public.pem)"),
+                )
+                .arg(
+                    Arg::new("json")
+                        .long("json")
+                        .action(ArgAction::SetTrue)
+                        .help("Output result as JSON"),
+                )
+                .arg(
+                    Arg::new("strict")
+                        .long("strict")
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Treat 'no JACS signature found' as a hard failure (exits 1 instead of 2)",
+                        ),
+                ),
+        )
+        .subcommand(
+            Command::new("sign-image")
+                .about("Sign an image (PNG, JPEG, WebP) by embedding a JACS signature")
+                .arg(
+                    Arg::new("input")
+                        .help("Path to the input image")
+                        .required(true)
+                        .value_parser(value_parser!(String)),
+                )
+                .arg(
+                    Arg::new("out")
+                        .long("out")
+                        .required(true)
+                        .value_parser(value_parser!(String))
+                        .help("Output image path"),
+                )
+                .arg(
+                    Arg::new("robust")
+                        .long("robust")
+                        .action(ArgAction::SetTrue)
+                        .help("Enable LSB fallback encoding (modifies pixel data; PNG/JPEG only)"),
+                )
+                .arg(
+                    Arg::new("format")
+                        .long("format")
+                        .value_parser(["png", "jpeg", "webp"])
+                        .help("Force a specific format (auto-detected by default)"),
+                )
+                .arg(
+                    Arg::new("refuse-overwrite")
+                        .long("refuse-overwrite")
+                        .action(ArgAction::SetTrue)
+                        .help("Refuse to overwrite an existing JACS signature on the input"),
+                )
+                .arg(
+                    Arg::new("json")
+                        .long("json")
+                        .action(ArgAction::SetTrue)
+                        .help("Output result as JSON"),
+                ),
+        )
+        .subcommand(
+            Command::new("verify-image")
+                .about("Verify an embedded JACS signature in an image")
+                .arg(
+                    Arg::new("file")
+                        .help("Path to the signed image")
+                        .required(true)
+                        .value_parser(value_parser!(String)),
+                )
+                .arg(
+                    Arg::new("key-dir")
+                        .long("key-dir")
+                        .value_parser(value_parser!(String))
+                        .help("Directory containing signer public keys (.public.pem)"),
+                )
+                .arg(
+                    Arg::new("json")
+                        .long("json")
+                        .action(ArgAction::SetTrue)
+                        .help("Output result as JSON"),
+                )
+                .arg(
+                    Arg::new("strict")
+                        .long("strict")
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Treat 'no JACS signature found' as a hard failure (exits 1 instead of 2)",
+                        ),
+                )
+                .arg(
+                    Arg::new("robust")
+                        .long("robust")
+                        .action(ArgAction::SetTrue)
+                        .help("Scan LSB channel for the robust-mode payload (default off)"),
+                ),
+        )
+        .subcommand(
+            Command::new("extract-media-signature")
+                .about("Extract the embedded JACS signature payload from an image")
+                .arg(
+                    Arg::new("file")
+                        .help("Path to the image to extract from")
+                        .required(true)
+                        .value_parser(value_parser!(String)),
+                )
+                .arg(
+                    Arg::new("raw-payload")
+                        .long("raw-payload")
+                        .action(ArgAction::SetTrue)
+                        .help(
+                            "Print the raw base64url wire form instead of the decoded JSON",
+                        ),
+                ),
+        );
+
     cmd
 }
 
@@ -2615,6 +2765,21 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
+        Some(("sign-text", sub)) => {
+            handle_sign_text(sub);
+        }
+        Some(("verify-text", sub)) => {
+            handle_verify_text(sub);
+        }
+        Some(("sign-image", sub)) => {
+            handle_sign_image(sub);
+        }
+        Some(("verify-image", sub)) => {
+            handle_verify_image(sub);
+        }
+        Some(("extract-media-signature", sub)) => {
+            handle_extract_media_signature(sub);
+        }
         Some(("convert", convert_matches)) => {
             use jacs::convert::{html_to_jacs, jacs_to_html, jacs_to_yaml, yaml_to_jacs};
 
@@ -2779,4 +2944,476 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+// =============================================================================
+// Inline-text + media verb handlers (Task 08).
+// =============================================================================
+
+/// Load an agent for sign operations: prefer the local config; fall back to a
+/// fresh ephemeral agent if none exists. Mirrors the resolution logic of the
+/// top-level `verify` handler so behaviour is consistent.
+fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
+    use jacs::simple::SimpleAgent;
+    if std::path::Path::new("./jacs.config.json").exists() {
+        if let Err(e) = ensure_cli_private_key_password() {
+            eprintln!("Warning: Password bootstrap failed: {}", e);
+            eprintln!("{}", quickstart_password_bootstrap_help());
+        }
+        match SimpleAgent::load(None, None) {
+            Ok(a) => a,
+            Err(e) => {
+                let lower = e.to_string().to_lowercase();
+                if lower.contains("password")
+                    || lower.contains("decrypt")
+                    || lower.contains("private key")
+                {
+                    eprintln!(
+                        "Warning: Could not load local agent from ./jacs.config.json: {}",
+                        wrap_quickstart_error_with_password_help("loading agent", &e)
+                    );
+                }
+                let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+                    eprintln!("Failed to create ephemeral agent: {}", err);
+                    process::exit(1);
+                });
+                a
+            }
+        }
+    } else {
+        let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+            eprintln!("Failed to create ephemeral agent: {}", err);
+            process::exit(1);
+        });
+        a
+    }
+}
+
+fn handle_sign_text(sub: &clap::ArgMatches) {
+    use jacs::simple::advanced::sign_text_file;
+    use jacs::simple::types::SignTextOptions;
+    use serde_json::json;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let no_backup = *sub.get_one::<bool>("no-backup").unwrap_or(&false);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+
+    // PRD §4.1.1: refuse to sign content that already contains a column-zero
+    // signature marker pair whose YAML body does not deserialize as a
+    // well-formed `SignatureBlockYaml`. This catches pre-poisoned inputs
+    // (bogus YAML, partial blocks). Documented workaround: indent the marker
+    // (it stays in code blocks) so the column-zero scan misses it.
+    if let Ok(content) = std::fs::read_to_string(file_path)
+        && let Some(offset) = column_zero_marker_collision(&content)
+    {
+        eprintln!(
+            "refusing to sign {}: input contains a column-zero JACS signature marker with a bogus body at byte offset {} (PRD §4.1.1). \
+             If you are writing about JACS, indent the marker by at least one space so it stops matching column-zero.",
+            file_path, offset
+        );
+        process::exit(1);
+    }
+
+    let agent = load_or_ephemeral_signer();
+    let opts = SignTextOptions {
+        backup: !no_backup,
+        ..Default::default()
+    };
+
+    match sign_text_file(&agent, file_path, opts) {
+        Ok(outcome) => {
+            if json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "path": outcome.path,
+                        "signers_added": outcome.signers_added,
+                        "backup_path": outcome.backup_path,
+                    }))
+                    .unwrap()
+                );
+            } else if outcome.signers_added > 0 {
+                println!("Signed: {}", outcome.path);
+                if let Some(bak) = &outcome.backup_path {
+                    println!("Backup: {}", bak);
+                }
+            } else {
+                println!("No new signature: {} already signed by this agent", outcome.path);
+            }
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("refusing to sign") || msg.contains("marker") {
+                eprintln!("refusing to sign {}: {}", file_path, msg);
+            } else {
+                eprintln!("sign-text error: {}", msg);
+            }
+            process::exit(1);
+        }
+    }
+}
+
+/// PRD §4.1.1: scan a text body for column-zero `-----BEGIN JACS SIGNATURE-----`
+/// markers paired with `-----END JACS SIGNATURE-----` markers whose body
+/// does not look like a `jacs::inline::SignatureBlockYaml`. Returns the
+/// byte offset of the first such offending block, or None if none found.
+///
+/// We check for required field presence (`signer:` and either
+/// `signature_block_version:` or `signatureBlockVersion:`) without doing
+/// a full YAML deserialize — we don't want to pull serde_yaml_ng into
+/// jacs-cli just for this check. A block that's missing these required
+/// markers is treated as bogus.
+fn column_zero_marker_collision(content: &str) -> Option<usize> {
+    const BEGIN: &str = "-----BEGIN JACS SIGNATURE-----";
+    const END: &str = "-----END JACS SIGNATURE-----";
+
+    let mut search_from = 0usize;
+    while search_from < content.len() {
+        // Find the next BEGIN occurrence at column zero (i.e. either at
+        // index 0 or immediately after an LF).
+        let begin_idx = match content[search_from..].find(BEGIN) {
+            Some(rel) => search_from + rel,
+            None => return None,
+        };
+        let at_column_zero = begin_idx == 0
+            || content.as_bytes().get(begin_idx.wrapping_sub(1)) == Some(&b'\n');
+        if !at_column_zero {
+            search_from = begin_idx + BEGIN.len();
+            continue;
+        }
+        let after_begin = begin_idx + BEGIN.len();
+        // Expect a trailing newline.
+        let body_start = match content[after_begin..].find('\n') {
+            Some(n) => after_begin + n + 1,
+            None => return None, // Missing newline — the lib will reject this on its own.
+        };
+        // Find the matching END marker.
+        let end_offset = match content[body_start..].find(END) {
+            Some(n) => body_start + n,
+            None => return None, // No END — the lib will reject.
+        };
+        let body = content[body_start..end_offset].trim();
+        // Required-field heuristic. A real SignatureBlockYaml always has
+        // both `signer` and `signature_block_version` (or its camelCase
+        // alias). Reject anything missing both anchors.
+        let has_signer = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("signer:") || t.starts_with("\"signer\":")
+        });
+        let has_version = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("signature_block_version:")
+                || t.starts_with("signatureBlockVersion:")
+                || t.starts_with("\"signature_block_version\":")
+                || t.starts_with("\"signatureBlockVersion\":")
+        });
+        if !has_signer || !has_version {
+            return Some(begin_idx);
+        }
+        // Block looks structurally plausible; the lib will catch deeper
+        // crypt/signer issues. Continue scanning past END.
+        search_from = end_offset + END.len();
+    }
+    None
+}
+
+fn handle_verify_text(sub: &clap::ArgMatches) {
+    use jacs::inline::{SignatureStatus, VerifyOptions, VerifyTextResult};
+    use jacs::simple::advanced::verify_text_file;
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let key_dir = sub.get_one::<String>("key-dir").map(PathBuf::from);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+    let strict = *sub.get_one::<bool>("strict").unwrap_or(&false);
+
+    let agent = load_or_ephemeral_signer();
+    let opts = VerifyOptions { strict, key_dir };
+
+    match verify_text_file(&agent, file_path, opts) {
+        Ok(VerifyTextResult::Signed { signatures }) => {
+            let any_failed = signatures.iter().any(|s| s.status != SignatureStatus::Valid);
+            if json_output {
+                emit_verify_text_signed_json(&signatures);
+            } else {
+                for entry in &signatures {
+                    let status = match &entry.status {
+                        SignatureStatus::Valid => "VALID".to_string(),
+                        SignatureStatus::InvalidSignature => "INVALID".to_string(),
+                        SignatureStatus::HashMismatch => "HASH MISMATCH".to_string(),
+                        SignatureStatus::KeyNotFound => "KEY NOT FOUND".to_string(),
+                        SignatureStatus::UnsupportedAlgorithm => "UNSUPPORTED ALGORITHM".to_string(),
+                        SignatureStatus::Malformed(s) => format!("MALFORMED ({})", s),
+                    };
+                    println!("Signer:    {}", entry.signer_id);
+                    println!("Algorithm: {}", entry.algorithm);
+                    println!("Status:    {}", status);
+                    if !entry.timestamp.is_empty() {
+                        println!("Signed at: {}", entry.timestamp);
+                    }
+                }
+            }
+            if any_failed {
+                process::exit(1);
+            }
+        }
+        Ok(VerifyTextResult::MissingSignature) => {
+            // Permissive only: strict path returns Err.
+            eprintln!("no JACS signature found in {}", file_path);
+            if json_output {
+                println!("{}", json!({"status": "missing_signature"}));
+            }
+            process::exit(2);
+        }
+        Ok(VerifyTextResult::Malformed(detail)) => {
+            if json_output {
+                println!("{}", json!({"status": "malformed", "error": detail}));
+            } else {
+                eprintln!("malformed signature block in {}: {}", file_path, detail);
+            }
+            process::exit(1);
+        }
+        Err(jacs::error::JacsError::MissingSignature(p)) => {
+            // Strict mode: missing-signature is a hard failure (exit 1).
+            let msg = format!("no JACS signature found in {}", p);
+            if json_output {
+                eprintln!(
+                    "{}",
+                    json!({"error": msg, "error_kind": "MissingSignature"})
+                );
+            } else {
+                eprintln!("{}", msg);
+            }
+            process::exit(1);
+        }
+        Err(e) => {
+            if json_output {
+                eprintln!("{}", json!({"error": e.to_string(), "error_kind": "Generic"}));
+            } else {
+                eprintln!("verify-text error: {}", e);
+            }
+            process::exit(1);
+        }
+    }
+}
+
+fn emit_verify_text_signed_json(signatures: &[jacs::inline::SignatureEntry]) {
+    use jacs::inline::SignatureStatus;
+    use serde_json::json;
+    let entries: Vec<serde_json::Value> = signatures
+        .iter()
+        .map(|e| {
+            let (status_str, error) = match &e.status {
+                SignatureStatus::Valid => ("valid", None),
+                SignatureStatus::InvalidSignature => ("invalid_signature", None),
+                SignatureStatus::HashMismatch => ("hash_mismatch", None),
+                SignatureStatus::KeyNotFound => ("key_not_found", None),
+                SignatureStatus::UnsupportedAlgorithm => ("unsupported_algorithm", None),
+                SignatureStatus::Malformed(s) => ("malformed", Some(s.clone())),
+            };
+            let mut o = json!({
+                "signer_id": e.signer_id,
+                "algorithm": e.algorithm,
+                "timestamp": e.timestamp,
+                "status": status_str,
+            });
+            if let Some(err) = error {
+                o["error"] = serde_json::Value::String(err);
+            }
+            o
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({"status": "signed", "signatures": entries})).unwrap()
+    );
+}
+
+fn handle_sign_image(sub: &clap::ArgMatches) {
+    use jacs::simple::advanced::sign_image;
+    use jacs::simple::types::SignImageOptions;
+    use serde_json::json;
+
+    let in_path = sub.get_one::<String>("input").expect("input required");
+    let out_path = sub.get_one::<String>("out").expect("out required");
+    let robust = *sub.get_one::<bool>("robust").unwrap_or(&false);
+    let format_hint = sub.get_one::<String>("format").cloned();
+    let refuse_overwrite = *sub.get_one::<bool>("refuse-overwrite").unwrap_or(&false);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+
+    let agent = load_or_ephemeral_signer();
+    let opts = SignImageOptions {
+        robust,
+        format_hint,
+        refuse_overwrite,
+        ..Default::default()
+    };
+
+    match sign_image(&agent, in_path, out_path, opts) {
+        Ok(signed) => {
+            if json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "out_path": signed.out_path,
+                        "signer_id": signed.signer_id,
+                        "format": signed.format,
+                        "robust": signed.robust,
+                        "backup_path": signed.backup_path,
+                    }))
+                    .unwrap()
+                );
+            } else {
+                println!("Signed: {}", signed.out_path);
+                println!("Signer: {}", signed.signer_id);
+                println!("Format: {}", signed.format);
+                if let Some(bak) = &signed.backup_path {
+                    println!("Backup: {}", bak);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("sign-image error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+fn handle_verify_image(sub: &clap::ArgMatches) {
+    use jacs::inline::VerifyOptions;
+    use jacs::simple::advanced::verify_image;
+    use jacs::simple::types::{MediaVerifyStatus, VerifyImageOptions};
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let key_dir = sub.get_one::<String>("key-dir").map(PathBuf::from);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+    let strict = *sub.get_one::<bool>("strict").unwrap_or(&false);
+    let scan_robust = *sub.get_one::<bool>("robust").unwrap_or(&false);
+
+    let agent = load_or_ephemeral_signer();
+    let opts = VerifyImageOptions {
+        base: VerifyOptions { strict, key_dir },
+        scan_robust,
+    };
+
+    match verify_image(&agent, file_path, opts) {
+        Ok(result) => match result.status {
+            MediaVerifyStatus::Valid => {
+                if json_output {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json!({
+                            "status": "valid",
+                            "signer_id": result.signer_id,
+                            "algorithm": result.algorithm,
+                            "format": result.format,
+                            "embedding_channels": result.embedding_channels,
+                        }))
+                        .unwrap()
+                    );
+                } else {
+                    println!("Status:    VALID");
+                    if let Some(s) = result.signer_id {
+                        println!("Signer:    {}", s);
+                    }
+                    if let Some(a) = result.algorithm {
+                        println!("Algorithm: {}", a);
+                    }
+                }
+            }
+            MediaVerifyStatus::MissingSignature => {
+                eprintln!("no JACS signature found in {}", file_path);
+                if json_output {
+                    println!("{}", json!({"status": "missing_signature"}));
+                }
+                process::exit(2);
+            }
+            MediaVerifyStatus::Malformed(detail) => {
+                if json_output {
+                    println!("{}", json!({"status": "malformed", "error": detail}));
+                } else {
+                    eprintln!("malformed image signature in {}: {}", file_path, detail);
+                }
+                process::exit(1);
+            }
+            other => {
+                let status_str = match &other {
+                    MediaVerifyStatus::InvalidSignature => "invalid_signature",
+                    MediaVerifyStatus::HashMismatch => "hash_mismatch",
+                    MediaVerifyStatus::KeyNotFound => "key_not_found",
+                    MediaVerifyStatus::UnsupportedFormat => "unsupported_format",
+                    _ => "invalid_signature",
+                };
+                if json_output {
+                    println!(
+                        "{}",
+                        json!({
+                            "status": status_str,
+                            "signer_id": result.signer_id,
+                            "format": result.format,
+                        })
+                    );
+                } else {
+                    eprintln!("Status: {}", status_str.replace('_', " ").to_uppercase());
+                }
+                process::exit(1);
+            }
+        },
+        Err(jacs::error::JacsError::MissingSignature(p)) => {
+            let msg = format!("no JACS signature found in {}", p);
+            if json_output {
+                eprintln!(
+                    "{}",
+                    json!({"error": msg, "error_kind": "MissingSignature"})
+                );
+            } else {
+                eprintln!("{}", msg);
+            }
+            process::exit(1);
+        }
+        Err(e) => {
+            if json_output {
+                eprintln!("{}", json!({"error": e.to_string(), "error_kind": "Generic"}));
+            } else {
+                eprintln!("verify-image error: {}", e);
+            }
+            process::exit(1);
+        }
+    }
+}
+
+fn handle_extract_media_signature(sub: &clap::ArgMatches) {
+    use jacs::simple::advanced::{extract_media_signature, extract_media_signature_raw};
+    use std::io::Write;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let raw_payload = *sub.get_one::<bool>("raw-payload").unwrap_or(&false);
+
+    let result = if raw_payload {
+        extract_media_signature_raw(file_path)
+    } else {
+        extract_media_signature(file_path)
+    };
+    match result {
+        Ok(Some(payload)) => {
+            // Write directly to stdout without a trailing newline so that
+            // base64url output round-trips byte-for-byte; tests for decoded
+            // JSON tolerate either with or without trailing newline.
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            let _ = handle.write_all(payload.as_bytes());
+        }
+        Ok(None) => {
+            // No signature present — exit 2, empty stdout, message on stderr.
+            eprintln!("no JACS signature found in {}", file_path);
+            process::exit(2);
+        }
+        Err(e) => {
+            eprintln!("extract-media-signature error: {}", e);
+            process::exit(1);
+        }
+    }
 }

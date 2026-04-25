@@ -78,6 +78,10 @@ pub enum ErrorKind {
     NetworkFailed,
     /// Key not found
     KeyNotFound,
+    /// No JACS signature found in the target (e.g. inline text / image). Permissive
+    /// verify bindings return this as a typed status; strict verify bindings raise / reject.
+    /// See PRD docs/prds/PROVENANCE_EXPANSION_PRD.md §4.1.2 (Q2 + C1 resolutions).
+    MissingSignature,
     /// Generic failure
     Generic,
 }
@@ -136,6 +140,14 @@ impl BindingCoreError {
 
     pub fn key_not_found(message: impl Into<String>) -> Self {
         Self::new(ErrorKind::KeyNotFound, message)
+    }
+
+    /// Construct a `MissingSignature` error. Used by strict-mode verify
+    /// bindings to signal "file has no JACS signature block" (PRD §4.1.2 / C1).
+    /// In permissive mode bindings do NOT construct this — they return a typed
+    /// `MissingSignature` status inside a successful result.
+    pub fn missing_signature(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::MissingSignature, message)
     }
 
     pub fn generic(message: impl Into<String>) -> Self {

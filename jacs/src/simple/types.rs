@@ -481,3 +481,130 @@ pub struct MigrateResult {
     /// Fields that were patched in the raw JSON before loading (e.g. `["iat", "jti"]`).
     pub patched_fields: Vec<String>,
 }
+
+// =============================================================================
+// Inline text signature options (Task 05, PRD §4.1)
+// =============================================================================
+
+/// Options for [`super::advanced::sign_text_file`].
+#[derive(Debug, Clone)]
+pub struct SignTextOptions {
+    /// When true (default), copy the original file to `<path>.bak` before
+    /// overwriting. Disable for a non-backed-up sign (footgun — original is
+    /// gone if the write fails mid-flight).
+    pub backup: bool,
+    /// When true, allow re-signing with the same agent over unchanged content.
+    /// Default false: duplicate-signer is a no-op (file unchanged, no second
+    /// block written, no error).
+    pub allow_duplicate: bool,
+}
+
+impl Default for SignTextOptions {
+    fn default() -> Self {
+        Self {
+            backup: true,
+            allow_duplicate: false,
+        }
+    }
+}
+
+/// Outcome of [`super::advanced::sign_text_file`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignTextOutcome {
+    /// The path that was signed (echoed back).
+    pub path: String,
+    /// 1 if a new signature block was written; 0 if the call was a duplicate-
+    /// signer no-op.
+    pub signers_added: u32,
+    /// Path to the backup file, if one was created (`<path>.bak`). `None` if
+    /// `SignTextOptions { backup: false }`.
+    pub backup_path: Option<String>,
+}
+
+// =============================================================================
+// Image / media signature types (Task 06, PRD §4.2)
+// =============================================================================
+
+/// Options for [`super::advanced::sign_image`].
+#[derive(Debug, Clone)]
+pub struct SignImageOptions {
+    /// When true, additionally embed the signature payload into the visual
+    /// channel via LSB steganography (PNG + JPEG only; WebP returns
+    /// `Unsupported` per PRD §9). Default false (Q4 resolution).
+    pub robust: bool,
+    /// Optional format hint (forces a specific decode path). None = auto-detect
+    /// from the input bytes.
+    pub format_hint: Option<String>,
+    /// When true, refuse to overwrite an existing JACS signature in the input.
+    /// Default false: re-signing overwrites the prior payload.
+    pub refuse_overwrite: bool,
+    /// PRD §4.2.4a: automatic `.bak` backup. Default true when in_path == out_path
+    /// (caller is overwriting their only copy); false otherwise.
+    pub backup: bool,
+    /// PRD §4.2.4b: override the default 0o600 backup permission. None = 0o600.
+    pub unsafe_bak_mode: Option<u32>,
+}
+
+impl Default for SignImageOptions {
+    fn default() -> Self {
+        Self {
+            robust: false,
+            format_hint: None,
+            refuse_overwrite: false,
+            backup: true,
+            unsafe_bak_mode: None,
+        }
+    }
+}
+
+/// Outcome of [`super::advanced::sign_image`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignedMedia {
+    /// The output path that was written.
+    pub out_path: String,
+    /// Agent ID that signed.
+    pub signer_id: String,
+    /// Detected format: `"png"` | `"jpeg"` | `"webp"`.
+    pub format: String,
+    /// Whether robust LSB embedding was applied.
+    pub robust: bool,
+    /// Path to the backup file, if one was created. None if no backup taken.
+    pub backup_path: Option<String>,
+}
+
+/// Per-image verification status. Maps roughly to
+/// [`crate::inline::SignatureStatus`] but with image-specific additions
+/// (`UnsupportedFormat`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaVerifyStatus {
+    Valid,
+    InvalidSignature,
+    HashMismatch,
+    MissingSignature,
+    KeyNotFound,
+    UnsupportedFormat,
+    Malformed(String),
+}
+
+/// Result of [`super::advanced::verify_image`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaVerificationResult {
+    pub status: MediaVerifyStatus,
+    pub signer_id: Option<String>,
+    pub algorithm: Option<String>,
+    pub format: Option<String>,
+    /// `"metadata"` | `"metadata+lsb"` — populated when the verifier knows
+    /// which channel(s) carried the payload (Valid only).
+    pub embedding_channels: Option<String>,
+}
+
+/// Options for [`super::advanced::verify_image`].
+#[derive(Debug, Clone, Default)]
+pub struct VerifyImageOptions {
+    /// Strict and key_dir, reused from inline text path.
+    pub base: crate::inline::VerifyOptions,
+    /// When true, scan the LSB channel if the metadata channel is absent.
+    /// Default false (cost: full pixel decode).
+    pub scan_robust: bool,
+}

@@ -82,6 +82,12 @@ const ERROR_KIND_MAP = {
     messagePattern: null, // Catch-all, no specific pattern
     triggerable: false,
   },
+  'MissingSignature': {
+    // C1: strict-mode verifyText / verifyImage reject the Promise with this pattern.
+    // Permissive mode (default) still returns a typed status, not thrown.
+    messagePattern: 'no JACS signature found',
+    triggerable: true,
+  },
 };
 
 describe('Node.js error kind parity', function () {
@@ -113,9 +119,13 @@ describe('Node.js error kind parity', function () {
     expect(stale, `Stale ERROR_KIND_MAP entries: ${stale.join(', ')}`).to.be.empty;
   });
 
-  it('there are exactly 13 error kinds', function () {
-    expect(errorKinds).to.have.length(13);
-    expect(Object.keys(ERROR_KIND_MAP)).to.have.length(13);
+  it('there are exactly 14 error kinds', function () {
+    expect(errorKinds).to.have.length(14);
+    expect(Object.keys(ERROR_KIND_MAP)).to.have.length(14);
+  });
+
+  it('MissingSignature error kind is present in fixture', function () {
+    expect(errorKinds).to.include('MissingSignature');
   });
 
   it('triggerable error kinds can be triggered via the binding', function () {

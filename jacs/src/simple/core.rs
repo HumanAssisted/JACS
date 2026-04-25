@@ -1530,6 +1530,23 @@ impl SimpleAgent {
         })
     }
 
+    /// Returns the agent's configured key algorithm, e.g. `"ring-Ed25519"`,
+    /// `"pq2025"`, `"RSA-PSS"`. This is the same value that was passed to
+    /// `SimpleAgent::ephemeral` or set on the loaded agent's config. Useful
+    /// for deriving the algorithm tag on inline-text signature blocks
+    /// without the heuristic-based `detect_algorithm_from_public_key` path.
+    pub fn get_key_algorithm(&self) -> Result<String, JacsError> {
+        let agent = self.agent.lock().map_err(|e| JacsError::Internal {
+            message: format!("Failed to acquire agent lock: {}", e),
+        })?;
+        agent
+            .get_key_algorithm()
+            .cloned()
+            .ok_or_else(|| JacsError::Internal {
+                message: "Agent key algorithm is not set".to_string(),
+            })
+    }
+
     /// Returns the agent's public key in PEM format.
     #[must_use = "public key data must be used"]
     pub fn get_public_key_pem(&self) -> Result<String, JacsError> {

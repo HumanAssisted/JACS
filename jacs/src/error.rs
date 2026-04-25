@@ -265,6 +265,16 @@ pub enum JacsError {
     /// No agent is currently loaded. Call quickstart(), create(), or load() first.
     AgentNotLoaded,
 
+    // === Inline / Media Signature Errors (PRD §4.1, §4.2) ===
+    /// File / image carries no JACS signature.
+    ///
+    /// Returned only by strict-mode verify (`VerifyOptions { strict: true }`).
+    /// Permissive mode returns `Ok(VerifyTextResult::MissingSignature)` /
+    /// `Ok(MediaVerificationResult { status: MissingSignature })` instead.
+    /// The wrapped string is the offending file path (best-effort; may be
+    /// abbreviated by callers).
+    MissingSignature(String),
+
     // === Wrapped Errors ===
     /// Wrapper for underlying errors from the existing API.
     ///
@@ -505,6 +515,15 @@ impl fmt::Display for JacsError {
                 write!(
                     f,
                     "No agent loaded. Call jacs.quickstart(name, domain, ...) to create or load an agent automatically, or jacs.create() / jacs.load() for explicit control."
+                )
+            }
+
+            // Inline / media missing signature (strict mode)
+            JacsError::MissingSignature(path) => {
+                write!(
+                    f,
+                    "No JACS signature found in '{}'. Pass strict=false to allow unsigned files, or sign the file first.",
+                    path
                 )
             }
 

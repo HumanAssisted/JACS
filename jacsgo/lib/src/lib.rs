@@ -2536,3 +2536,185 @@ pub extern "C" fn jacs_simple_sign_file(
         }
     }
 }
+
+// ============================================================================
+// Inline text + media FFI exports (Task 12 — PRD §3.1, §3.2, §4.1, §4.2)
+// ============================================================================
+// The five new exports below match the binding-core SimpleAgentWrapper methods
+// `sign_text_file_json`, `verify_text_file_json`, `sign_image_json`,
+// `verify_image_json`, and `extract_media_signature_json`. Each takes an
+// optional `opts_json` C string (may be null for defaults) and returns a JSON
+// envelope on the heap (caller frees with `jacs_free_string`). Errors are
+// reported via `set_last_simple_error`.
+//
+// **Error envelope contract (PRD §C1).**
+// On failure the wrapper distinguishes typed errors (e.g., MissingSignature
+// in strict mode) from generic failures by emitting a structured JSON
+// envelope: `{"error":"<message>","error_kind":"<ErrorKind>"}`. The Go
+// binding parses this envelope and, when `error_kind == "MissingSignature"`,
+// returns the `ErrMissingSignature` sentinel so callers can match via
+// `errors.Is(err, ErrMissingSignature)`.
+
+/// Convert an `Option<&CStr>` reference into an owned `&str` defaulting to "".
+fn opts_str(opts_json: *const c_char) -> &'static str {
+    if opts_json.is_null() {
+        ""
+    } else {
+        // SAFETY: caller guarantees opts_json is null-terminated UTF-8.
+        unsafe { CStr::from_ptr(opts_json) }.to_str().unwrap_or("")
+    }
+}
+
+/// Build the structured error envelope used by the inline-text / media exports.
+/// PRD §C1: callers (Go binding) match on `error_kind == "MissingSignature"`
+/// to surface the typed sentinel `ErrMissingSignature`.
+fn simple_error_envelope(err: &jacs_binding_core::BindingCoreError) -> *mut c_char {
+    let envelope = serde_json::json!({
+        "error": err.message,
+        "error_kind": format!("{:?}", err.kind),
+    });
+    let s = envelope.to_string();
+    set_last_simple_error(s.clone());
+    CString::new(s)
+        .map(|c| c.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
+/// Sign a text/markdown file in place by appending an inline JACS signature
+/// block. `opts_json` may be null or `"{}"` for defaults; otherwise it accepts
+/// the same JSON shape as the binding-core wrapper (e.g., `{"backup": false}`).
+/// Returns either the success outcome JSON or the structured error envelope.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_sign_text(
+    handle: *const SimpleAgentHandle,
+    file_path: *const c_char,
+    opts_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || file_path.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let opts = opts_str(opts_json);
+    clear_last_simple_error();
+    match h.wrapper.sign_text_file_json(path_str, opts) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => simple_error_envelope(&e),
+    }
+}
+
+/// Verify an inline JACS signature in a text/markdown file. `opts_json` may
+/// carry `{"strict": true|false, "keyDir": "/path"}`. In strict mode missing
+/// signatures return the structured error envelope with
+/// `error_kind == "MissingSignature"`.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_text(
+    handle: *const SimpleAgentHandle,
+    file_path: *const c_char,
+    opts_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || file_path.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let opts = opts_str(opts_json);
+    clear_last_simple_error();
+    match h.wrapper.verify_text_file_json(path_str, opts) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => simple_error_envelope(&e),
+    }
+}
+
+/// Sign a PNG / JPEG / WebP image, embedding a JACS signature.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_sign_image(
+    handle: *const SimpleAgentHandle,
+    input_path: *const c_char,
+    output_path: *const c_char,
+    opts_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || input_path.is_null() || output_path.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let in_path = match unsafe { CStr::from_ptr(input_path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let out_path = match unsafe { CStr::from_ptr(output_path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let opts = opts_str(opts_json);
+    clear_last_simple_error();
+    match h.wrapper.sign_image_json(in_path, out_path, opts) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => simple_error_envelope(&e),
+    }
+}
+
+/// Verify a JACS signature embedded in an image. Strict missing-signature
+/// returns the structured error envelope (see `jacs_agent_verify_text`).
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_verify_image(
+    handle: *const SimpleAgentHandle,
+    file_path: *const c_char,
+    opts_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || file_path.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let opts = opts_str(opts_json);
+    clear_last_simple_error();
+    match h.wrapper.verify_image_json(path_str, opts) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => simple_error_envelope(&e),
+    }
+}
+
+/// Extract the JACS signature payload embedded in a signed image. `opts_json`
+/// may carry `{"rawPayload": true}` to return the base64url wire form.
+/// Always returns a JSON envelope (`{"present": bool, "payload": string|null}`).
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_agent_extract_media_signature(
+    handle: *const SimpleAgentHandle,
+    file_path: *const c_char,
+    opts_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || file_path.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let opts = opts_str(opts_json);
+    clear_last_simple_error();
+    match h.wrapper.extract_media_signature_json(path_str, opts) {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => simple_error_envelope(&e),
+    }
+}

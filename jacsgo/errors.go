@@ -33,6 +33,13 @@ var (
 
 	// ErrInvalidDocument is returned when a document is malformed.
 	ErrInvalidDocument = errors.New("invalid document format")
+
+	// ErrMissingSignature is returned only in strict-mode verify operations
+	// when the target (inline text / image) has no JACS signature block.
+	// In permissive mode (default), the same condition is reported as a
+	// typed "missing_signature" status, not this sentinel.
+	// See PRD docs/prds/PROVENANCE_EXPANSION_PRD.md §4.1.2 (Q2 + C1).
+	ErrMissingSignature = errors.New("no JACS signature found")
 )
 
 // SimpleError wraps an error with additional context.

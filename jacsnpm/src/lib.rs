@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use jacs_binding_core::{AgentWrapper, BindingCoreError, BindingResult, SimpleAgentWrapper};
-use napi::JsObject;
+use napi::{JsObject, JsUnknown};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value;
@@ -127,6 +127,67 @@ impl Task for StandaloneStringTask {
     fn resolve(&mut self, _env: Env, output: String) -> Result<String> {
         Ok(output)
     }
+}
+
+// =============================================================================
+// SimpleAgent Async Task Types (Task 11)
+// =============================================================================
+// `SimpleAgentWrapper` is `Clone` (Arc-backed inside), so we just clone it into
+// each task. The closure does the real work on the libuv thread pool. The
+// task's `Output` is a `serde_json::Value` produced off-thread; `resolve()`
+// then converts it into a JS value on the V8 thread.
+
+type SimpleAgentFn<T> = Box<dyn FnOnce(&SimpleAgentWrapper) -> BindingResult<T> + Send>;
+
+/// Async task whose result is a `serde_json::Value` parsed from a JSON string
+/// returned by SimpleAgentWrapper. Resolves to a JS object (parsed) on the
+/// main thread.
+pub struct SimpleAgentJsonTask {
+    agent: SimpleAgentWrapper,
+    func: Option<SimpleAgentFn<Value>>,
+}
+
+impl Task for SimpleAgentJsonTask {
+    type Output = Value;
+    type JsValue = JsUnknown;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let f = self.func.take().expect("task already executed");
+        f(&self.agent).map_err(to_napi_err)
+    }
+
+    fn resolve(&mut self, env: Env, output: Value) -> Result<JsUnknown> {
+        value_to_js_value(env, &output)
+    }
+}
+
+/// Async task whose result is `Option<String>` (used by extractMediaSignature).
+pub struct SimpleAgentOptionStringTask {
+    agent: SimpleAgentWrapper,
+    func: Option<SimpleAgentFn<Option<String>>>,
+}
+
+impl Task for SimpleAgentOptionStringTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let f = self.func.take().expect("task already executed");
+        f(&self.agent).map_err(to_napi_err)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Option<String>) -> Result<Option<String>> {
+        Ok(output)
+    }
+}
+
+/// Parse a JSON string returned by `SimpleAgentWrapper::*_json` into a
+/// `serde_json::Value`. Maps parse failures to a binding-core error so they
+/// propagate through `to_napi_err` consistently.
+fn parse_json_value(json_str: &str, context: &str) -> BindingResult<Value> {
+    serde_json::from_str(json_str).map_err(|e| {
+        BindingCoreError::serialization_failed(format!("{}: failed to parse JSON: {}", context, e))
+    })
 }
 
 // =============================================================================
@@ -1575,6 +1636,366 @@ impl JacsSimpleAgent {
     #[napi(js_name = "rotateKeys")]
     pub fn rotate_keys(&self, algorithm: Option<String>) -> Result<String> {
         self.inner.rotate_keys(algorithm.as_deref()).to_napi()
+    }
+
+    // =========================================================================
+    // Inline text + media signing (Task 11 — PRD §3.1, §3.2, §4.1, §4.2).
+    // =========================================================================
+    //
+    // Each public verb on JacsSimpleAgent has THREE NAPI bindings:
+    //   1. The async parity name (e.g., signTextFile) — matches binding-core
+    //      `sign_text_file_json` after _json suffix stripping.
+    //   2. The short alias (e.g., signText) — matches CLI verb / README usage.
+    //   3. A *Sync variant for both names that blocks the V8 thread.
+    //
+    // Both names go through the same SimpleAgentWrapper method.
+
+    /// Sign a text/markdown file in place by appending an inline JACS
+    /// signature block. Returns the parsed `SignTextOutcome` object.
+    #[napi(js_name = "signTextFile", ts_return_type = "Promise<SignTextOutcome>")]
+    pub fn sign_text_file_async(
+        &self,
+        file_path: String,
+        no_backup: Option<bool>,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        let agent = self.inner.clone();
+        let opts = build_sign_text_opts(no_backup.unwrap_or(false));
+        AsyncTask::new(SimpleAgentJsonTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json = a.sign_text_file_json(&file_path, &opts)?;
+                parse_json_value(&json, "sign_text_file outcome")
+            })),
+        })
+    }
+
+    /// Short alias for [`signTextFile`]. Both wrap `sign_text_file_json`.
+    #[napi(js_name = "signText", ts_return_type = "Promise<SignTextOutcome>")]
+    pub fn sign_text_async(
+        &self,
+        file_path: String,
+        no_backup: Option<bool>,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        self.sign_text_file_async(file_path, no_backup)
+    }
+
+    /// Sync variant of [`signTextFile`]. Returns parsed JSON via `serde_json::Value`.
+    #[napi(js_name = "signTextFileSync")]
+    pub fn sign_text_file_sync(
+        &self,
+        env: Env,
+        file_path: String,
+        no_backup: Option<bool>,
+    ) -> Result<JsUnknown> {
+        let opts = build_sign_text_opts(no_backup.unwrap_or(false));
+        let json = self.inner.sign_text_file_json(&file_path, &opts).to_napi()?;
+        let value = parse_json_value(&json, "sign_text_file outcome").map_err(to_napi_err)?;
+        value_to_js_value(env, &value)
+    }
+
+    /// Sync variant of the [`signText`] alias.
+    #[napi(js_name = "signTextSync")]
+    pub fn sign_text_sync(
+        &self,
+        env: Env,
+        file_path: String,
+        no_backup: Option<bool>,
+    ) -> Result<JsUnknown> {
+        self.sign_text_file_sync(env, file_path, no_backup)
+    }
+
+    /// Verify an inline JACS signature in a text/markdown file. Returns the
+    /// parsed `VerifyTextResult` object. With `{ strict: true }`, missing-
+    /// signature rejects the Promise with /no JACS signature found/.
+    #[napi(js_name = "verifyTextFile", ts_return_type = "Promise<VerifyTextResult>")]
+    pub fn verify_text_file_async(
+        &self,
+        file_path: String,
+        opts: Option<VerifyTextOptsNapi>,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        let agent = self.inner.clone();
+        let opts_json = build_verify_text_opts_json(opts);
+        AsyncTask::new(SimpleAgentJsonTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json = a.verify_text_file_json(&file_path, &opts_json)?;
+                parse_json_value(&json, "verify_text_file result")
+            })),
+        })
+    }
+
+    /// Short alias for [`verifyTextFile`].
+    #[napi(js_name = "verifyText", ts_return_type = "Promise<VerifyTextResult>")]
+    pub fn verify_text_async(
+        &self,
+        file_path: String,
+        opts: Option<VerifyTextOptsNapi>,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        self.verify_text_file_async(file_path, opts)
+    }
+
+    /// Sync variant of [`verifyTextFile`].
+    #[napi(js_name = "verifyTextFileSync")]
+    pub fn verify_text_file_sync(
+        &self,
+        env: Env,
+        file_path: String,
+        opts: Option<VerifyTextOptsNapi>,
+    ) -> Result<JsUnknown> {
+        let opts_json = build_verify_text_opts_json(opts);
+        let json = self
+            .inner
+            .verify_text_file_json(&file_path, &opts_json)
+            .to_napi()?;
+        let value = parse_json_value(&json, "verify_text_file result").map_err(to_napi_err)?;
+        value_to_js_value(env, &value)
+    }
+
+    /// Sync variant of the [`verifyText`] alias.
+    #[napi(js_name = "verifyTextSync")]
+    pub fn verify_text_sync(
+        &self,
+        env: Env,
+        file_path: String,
+        opts: Option<VerifyTextOptsNapi>,
+    ) -> Result<JsUnknown> {
+        self.verify_text_file_sync(env, file_path, opts)
+    }
+
+    /// Sign a PNG / JPEG / WebP image, embedding a JACS signature. Returns
+    /// the parsed `SignImageOutcome` object (out_path, signer_id, format).
+    #[napi(js_name = "signImage", ts_return_type = "Promise<SignImageOutcome>")]
+    pub fn sign_image_async(
+        &self,
+        input_path: String,
+        output_path: String,
+        opts: Option<SignImageOptsNapi>,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        let agent = self.inner.clone();
+        let opts_json = build_sign_image_opts_json(opts);
+        AsyncTask::new(SimpleAgentJsonTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json = a.sign_image_json(&input_path, &output_path, &opts_json)?;
+                parse_json_value(&json, "sign_image outcome")
+            })),
+        })
+    }
+
+    /// Sync variant of [`signImage`].
+    #[napi(js_name = "signImageSync")]
+    pub fn sign_image_sync(
+        &self,
+        env: Env,
+        input_path: String,
+        output_path: String,
+        opts: Option<SignImageOptsNapi>,
+    ) -> Result<JsUnknown> {
+        let opts_json = build_sign_image_opts_json(opts);
+        let json = self
+            .inner
+            .sign_image_json(&input_path, &output_path, &opts_json)
+            .to_napi()?;
+        let value = parse_json_value(&json, "sign_image outcome").map_err(to_napi_err)?;
+        value_to_js_value(env, &value)
+    }
+
+    /// Verify an embedded JACS signature in a PNG / JPEG / WebP image.
+    /// Returns the parsed `VerifyImageResult` object. With `{ strict: true }`,
+    /// missing-signature rejects the Promise with /no JACS signature found/.
+    #[napi(js_name = "verifyImage", ts_return_type = "Promise<VerifyImageResult>")]
+    pub fn verify_image_async(
+        &self,
+        file_path: String,
+        opts: Option<VerifyImageOptsNapi>,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        let agent = self.inner.clone();
+        let opts_json = build_verify_image_opts_json(opts);
+        AsyncTask::new(SimpleAgentJsonTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json = a.verify_image_json(&file_path, &opts_json)?;
+                parse_json_value(&json, "verify_image result")
+            })),
+        })
+    }
+
+    /// Sync variant of [`verifyImage`].
+    #[napi(js_name = "verifyImageSync")]
+    pub fn verify_image_sync(
+        &self,
+        env: Env,
+        file_path: String,
+        opts: Option<VerifyImageOptsNapi>,
+    ) -> Result<JsUnknown> {
+        let opts_json = build_verify_image_opts_json(opts);
+        let json = self
+            .inner
+            .verify_image_json(&file_path, &opts_json)
+            .to_napi()?;
+        let value = parse_json_value(&json, "verify_image result").map_err(to_napi_err)?;
+        value_to_js_value(env, &value)
+    }
+
+    /// Extract the JACS signature payload embedded in a signed image.
+    /// Returns the decoded JACS signed-document JSON string by default, or the
+    /// base64url wire form when `{ rawPayload: true }`. Returns `null` when
+    /// the input has no JACS signature.
+    #[napi(js_name = "extractMediaSignature", ts_return_type = "Promise<string | null>")]
+    pub fn extract_media_signature_async(
+        &self,
+        file_path: String,
+        opts: Option<ExtractMediaOptsNapi>,
+    ) -> AsyncTask<SimpleAgentOptionStringTask> {
+        let agent = self.inner.clone();
+        let raw = opts.and_then(|o| o.raw_payload).unwrap_or(false);
+        let opts_json = build_extract_media_opts_json(raw);
+        AsyncTask::new(SimpleAgentOptionStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let envelope = a.extract_media_signature_json(&file_path, &opts_json)?;
+                parse_extract_media_envelope(&envelope)
+            })),
+        })
+    }
+
+    /// Sync variant of [`extractMediaSignature`].
+    #[napi(js_name = "extractMediaSignatureSync")]
+    pub fn extract_media_signature_sync(
+        &self,
+        file_path: String,
+        opts: Option<ExtractMediaOptsNapi>,
+    ) -> Result<Option<String>> {
+        let raw = opts.and_then(|o| o.raw_payload).unwrap_or(false);
+        let opts_json = build_extract_media_opts_json(raw);
+        let envelope = self
+            .inner
+            .extract_media_signature_json(&file_path, &opts_json)
+            .to_napi()?;
+        parse_extract_media_envelope(&envelope).map_err(to_napi_err)
+    }
+}
+
+// ============================================================================
+// Inline-text / media option types and helpers (Task 11)
+// ============================================================================
+
+/// Options for `verifyText` / `verifyTextFile`.
+#[napi(object)]
+#[derive(Default)]
+pub struct VerifyTextOptsNapi {
+    /// PRD §C1: when true, missing signatures reject the Promise with
+    /// /no JACS signature found/. Default false (permissive — typed status).
+    pub strict: Option<bool>,
+    /// PRD §4.1.5: directory of `<signer_id>.public.pem` files for offline
+    /// verification.
+    pub key_dir: Option<String>,
+}
+
+/// Options for `signImage` / `signImageSync`.
+#[napi(object)]
+#[derive(Default)]
+pub struct SignImageOptsNapi {
+    /// PRD §4.2.4: enable LSB embedding for re-encode survivability (PNG/JPEG only).
+    pub robust: Option<bool>,
+    /// Optional explicit format override ("png" | "jpeg" | "webp").
+    pub format: Option<String>,
+    /// PRD §4.2.2: refuse if the input image already carries a JACS signature.
+    pub refuse_overwrite: Option<bool>,
+}
+
+/// Options for `verifyImage` / `verifyImageSync`.
+#[napi(object)]
+#[derive(Default)]
+pub struct VerifyImageOptsNapi {
+    /// C1: see `VerifyTextOptsNapi.strict`.
+    pub strict: Option<bool>,
+    /// PRD §4.1.5: see `VerifyTextOptsNapi.key_dir`.
+    pub key_dir: Option<String>,
+    /// PRD §4.2.4: scan the LSB channel as a fallback when the metadata
+    /// payload is missing. Default false.
+    pub robust: Option<bool>,
+}
+
+/// Options for `extractMediaSignature` / `extractMediaSignatureSync`.
+#[napi(object)]
+#[derive(Default)]
+pub struct ExtractMediaOptsNapi {
+    /// PRD §3.2: when true, return the raw base64url wire form instead of the
+    /// decoded JACS signed-document JSON. Default false (decoded JSON).
+    pub raw_payload: Option<bool>,
+}
+
+fn build_sign_text_opts(no_backup: bool) -> String {
+    serde_json::json!({ "backup": !no_backup }).to_string()
+}
+
+fn build_verify_text_opts_json(opts: Option<VerifyTextOptsNapi>) -> String {
+    let opts = opts.unwrap_or_default();
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "strict".to_string(),
+        serde_json::Value::Bool(opts.strict.unwrap_or(false)),
+    );
+    if let Some(p) = opts.key_dir {
+        obj.insert("keyDir".to_string(), serde_json::Value::String(p));
+    }
+    serde_json::Value::Object(obj).to_string()
+}
+
+fn build_sign_image_opts_json(opts: Option<SignImageOptsNapi>) -> String {
+    let opts = opts.unwrap_or_default();
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "robust".to_string(),
+        serde_json::Value::Bool(opts.robust.unwrap_or(false)),
+    );
+    if let Some(f) = opts.format {
+        obj.insert("formatHint".to_string(), serde_json::Value::String(f));
+    }
+    obj.insert(
+        "refuseOverwrite".to_string(),
+        serde_json::Value::Bool(opts.refuse_overwrite.unwrap_or(false)),
+    );
+    serde_json::Value::Object(obj).to_string()
+}
+
+fn build_verify_image_opts_json(opts: Option<VerifyImageOptsNapi>) -> String {
+    let opts = opts.unwrap_or_default();
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "strict".to_string(),
+        serde_json::Value::Bool(opts.strict.unwrap_or(false)),
+    );
+    if let Some(p) = opts.key_dir {
+        obj.insert("keyDir".to_string(), serde_json::Value::String(p));
+    }
+    obj.insert(
+        "robust".to_string(),
+        serde_json::Value::Bool(opts.robust.unwrap_or(false)),
+    );
+    serde_json::Value::Object(obj).to_string()
+}
+
+fn build_extract_media_opts_json(raw_payload: bool) -> String {
+    serde_json::json!({ "rawPayload": raw_payload }).to_string()
+}
+
+/// Convert the `{ "present": bool, "payload": string|null }` envelope from
+/// `SimpleAgentWrapper::extract_media_signature_json` into Option<String>.
+/// Returns `Ok(None)` when present=false; `Ok(Some(payload))` otherwise.
+fn parse_extract_media_envelope(envelope_json: &str) -> BindingResult<Option<String>> {
+    let v: Value = serde_json::from_str(envelope_json).map_err(|e| {
+        BindingCoreError::serialization_failed(format!(
+            "extract_media_signature envelope parse failed: {}",
+            e
+        ))
+    })?;
+    if v.get("present").and_then(|x| x.as_bool()) == Some(true) {
+        Ok(v.get("payload")
+            .and_then(|p| p.as_str().map(String::from)))
+    } else {
+        Ok(None)
     }
 }
 

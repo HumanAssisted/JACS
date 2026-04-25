@@ -324,6 +324,300 @@ impl SimpleAgentWrapper {
         })?;
         serialize_json(&result, "rotation result")
     }
+
+    // =========================================================================
+    // Inline text + media signature methods (Task 05 + Task 06, PRD §4.1, §4.2)
+    // =========================================================================
+
+    /// Sign a text / markdown file in-place. PRD §4.1.
+    ///
+    /// `opts_json` accepts:
+    /// - `""` | `"null"` | `"{}"` — defaults (`backup: true`, `allow_duplicate: false`).
+    /// - `{"backup": false}` — disable .bak.
+    /// - `{"allow_duplicate": true}` — allow duplicate-signer no-op to still write.
+    ///
+    /// Returns a JSON string of [`jacs::simple::types::SignTextOutcome`].
+    pub fn sign_text_file_json(&self, path: &str, opts_json: &str) -> BindingResult<String> {
+        let opts = parse_sign_text_options(opts_json)?;
+        let outcome = jacs::simple::advanced::sign_text_file(&self.inner, path, opts)
+            .map_err(|e| map_jacs_err(e, "sign_text_file"))?;
+        serialize_json(&outcome, "sign_text_file outcome")
+    }
+
+    /// Verify a signed text file. PRD §4.1, §4.1.5.
+    ///
+    /// `opts_json` accepts:
+    /// - `""` | `"null"` | `"{}"` — strict=false, key_dir=None (permissive).
+    /// - `{"strict": true}` — strict mode (missing-signature returns Err).
+    /// - `{"keyDir": "/abs/path"}` — `--key-dir` override.
+    /// - `{"strict": true, "keyDir": "..."}` — both.
+    ///
+    /// Permissive returns JSON with a `status` discriminator. Strict mode on
+    /// an unsigned file returns `Err(BindingCoreError::missing_signature(path))`.
+    pub fn verify_text_file_json(&self, path: &str, opts_json: &str) -> BindingResult<String> {
+        let opts = parse_verify_options(opts_json)?;
+        let strict = opts.strict;
+        match jacs::simple::advanced::verify_text_file(&self.inner, path, opts) {
+            Ok(result) => serialize_verify_text_result(&result),
+            Err(jacs::error::JacsError::MissingSignature(p)) if strict => {
+                Err(BindingCoreError::missing_signature(format!(
+                    "no JACS signature found in {}",
+                    p
+                )))
+            }
+            Err(e) => Err(BindingCoreError::verification_failed(format!(
+                "verify_text_file: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Sign an image (PNG/JPEG/WebP). PRD §4.2.
+    ///
+    /// `opts_json` accepts (all keys optional):
+    /// - `{"robust": bool}` — enable LSB embedding (PNG/JPEG only).
+    /// - `{"refuseOverwrite": bool}` — refuse if input already signed.
+    /// - `{"backup": bool}` — auto-backup before in-place writes (default true).
+    /// - `{"unsafeBakMode": 0o644}` — override the default 0o600 backup mode.
+    pub fn sign_image_json(
+        &self,
+        in_path: &str,
+        out_path: &str,
+        opts_json: &str,
+    ) -> BindingResult<String> {
+        let opts = parse_sign_image_options(opts_json)?;
+        let outcome = jacs::simple::advanced::sign_image(&self.inner, in_path, out_path, opts)
+            .map_err(|e| map_jacs_err(e, "sign_image"))?;
+        serialize_json(&outcome, "sign_image outcome")
+    }
+
+    /// Verify an image signature. PRD §4.2.
+    ///
+    /// `opts_json` accepts:
+    /// - `{"strict": bool}` — strict-mode missing-signature is an error.
+    /// - `{"keyDir": "/abs/path"}` — `--key-dir` override.
+    /// - `{"robust": bool}` — scan LSB channel as a fallback (default false).
+    pub fn verify_image_json(&self, path: &str, opts_json: &str) -> BindingResult<String> {
+        let opts = parse_verify_image_options(opts_json)?;
+        let strict = opts.base.strict;
+        match jacs::simple::advanced::verify_image(&self.inner, path, opts) {
+            Ok(result) => serialize_json(&result, "verify_image result"),
+            Err(jacs::error::JacsError::MissingSignature(p)) if strict => {
+                Err(BindingCoreError::missing_signature(format!(
+                    "no JACS signature found in {}",
+                    p
+                )))
+            }
+            Err(e) => Err(BindingCoreError::verification_failed(format!(
+                "verify_image: {}",
+                e
+            ))),
+        }
+    }
+
+    /// Extract the JACS signature payload from an image. PRD §3.2.
+    ///
+    /// `opts_json` accepts `{"rawPayload": bool}` (default false = decoded JSON).
+    /// Returns a JSON envelope `{ "present": bool, "payload": string | null }`.
+    pub fn extract_media_signature_json(
+        &self,
+        path: &str,
+        opts_json: &str,
+    ) -> BindingResult<String> {
+        let raw = parse_extract_options(opts_json)?;
+        let result = if raw {
+            jacs::simple::advanced::extract_media_signature_raw(path)
+        } else {
+            jacs::simple::advanced::extract_media_signature(path)
+        };
+        let payload = result.map_err(|e| map_jacs_err(e, "extract_media_signature"))?;
+        let envelope = serde_json::json!({
+            "present": payload.is_some(),
+            "payload": payload,
+        });
+        Ok(envelope.to_string())
+    }
+}
+
+// =============================================================================
+// Option parsing helpers
+// =============================================================================
+
+fn map_jacs_err(e: jacs::error::JacsError, op: &str) -> BindingCoreError {
+    use jacs::error::JacsError;
+    match e {
+        JacsError::MissingSignature(p) => BindingCoreError::missing_signature(p),
+        JacsError::ValidationError(msg) => BindingCoreError::invalid_argument(msg),
+        JacsError::FileNotFound { path } => {
+            BindingCoreError::invalid_argument(format!("file not found: {}", path))
+        }
+        JacsError::FileReadFailed { path, reason } => {
+            BindingCoreError::invalid_argument(format!("read {} failed: {}", path, reason))
+        }
+        JacsError::FileWriteFailed { path, reason } => BindingCoreError::new(
+            ErrorKind::Generic,
+            format!("write {} failed: {}", path, reason),
+        ),
+        other => BindingCoreError::new(ErrorKind::Generic, format!("{}: {}", op, other)),
+    }
+}
+
+fn opts_is_default(s: &str) -> bool {
+    let t = s.trim();
+    t.is_empty() || t == "null" || t == "{}"
+}
+
+fn parse_sign_text_options(opts_json: &str) -> BindingResult<jacs::simple::types::SignTextOptions> {
+    if opts_is_default(opts_json) {
+        return Ok(jacs::simple::types::SignTextOptions::default());
+    }
+    let v: serde_json::Value = serde_json::from_str(opts_json).map_err(|e| {
+        BindingCoreError::invalid_argument(format!("sign_text_file opts: {}", e))
+    })?;
+    let mut o = jacs::simple::types::SignTextOptions::default();
+    if let Some(b) = v.get("backup").and_then(|x| x.as_bool()) {
+        o.backup = b;
+    }
+    if let Some(b) = v.get("allow_duplicate").and_then(|x| x.as_bool()) {
+        o.allow_duplicate = b;
+    }
+    if let Some(b) = v.get("allowDuplicate").and_then(|x| x.as_bool()) {
+        o.allow_duplicate = b;
+    }
+    Ok(o)
+}
+
+fn parse_verify_options(opts_json: &str) -> BindingResult<jacs::inline::VerifyOptions> {
+    if opts_is_default(opts_json) {
+        return Ok(jacs::inline::VerifyOptions::default());
+    }
+    let v: serde_json::Value = serde_json::from_str(opts_json)
+        .map_err(|e| BindingCoreError::invalid_argument(format!("verify opts: {}", e)))?;
+    let strict = v.get("strict").and_then(|x| x.as_bool()).unwrap_or(false);
+    let key_dir = v
+        .get("keyDir")
+        .or_else(|| v.get("key_dir"))
+        .and_then(|x| x.as_str())
+        .map(std::path::PathBuf::from);
+    Ok(jacs::inline::VerifyOptions { strict, key_dir })
+}
+
+fn parse_sign_image_options(opts_json: &str) -> BindingResult<jacs::simple::types::SignImageOptions> {
+    if opts_is_default(opts_json) {
+        return Ok(jacs::simple::types::SignImageOptions::default());
+    }
+    let v: serde_json::Value = serde_json::from_str(opts_json)
+        .map_err(|e| BindingCoreError::invalid_argument(format!("sign_image opts: {}", e)))?;
+    let mut o = jacs::simple::types::SignImageOptions::default();
+    if let Some(b) = v.get("robust").and_then(|x| x.as_bool()) {
+        o.robust = b;
+    }
+    if let Some(b) = v
+        .get("refuseOverwrite")
+        .or_else(|| v.get("refuse_overwrite"))
+        .and_then(|x| x.as_bool())
+    {
+        o.refuse_overwrite = b;
+    }
+    if let Some(b) = v.get("backup").and_then(|x| x.as_bool()) {
+        o.backup = b;
+    }
+    if let Some(n) = v
+        .get("unsafeBakMode")
+        .or_else(|| v.get("unsafe_bak_mode"))
+        .and_then(|x| x.as_u64())
+    {
+        o.unsafe_bak_mode = Some(n as u32);
+    }
+    if let Some(s) = v
+        .get("formatHint")
+        .or_else(|| v.get("format_hint"))
+        .and_then(|x| x.as_str())
+    {
+        o.format_hint = Some(s.to_string());
+    }
+    Ok(o)
+}
+
+fn parse_verify_image_options(
+    opts_json: &str,
+) -> BindingResult<jacs::simple::types::VerifyImageOptions> {
+    if opts_is_default(opts_json) {
+        return Ok(jacs::simple::types::VerifyImageOptions::default());
+    }
+    let v: serde_json::Value = serde_json::from_str(opts_json)
+        .map_err(|e| BindingCoreError::invalid_argument(format!("verify_image opts: {}", e)))?;
+    let strict = v.get("strict").and_then(|x| x.as_bool()).unwrap_or(false);
+    let key_dir = v
+        .get("keyDir")
+        .or_else(|| v.get("key_dir"))
+        .and_then(|x| x.as_str())
+        .map(std::path::PathBuf::from);
+    let scan_robust = v
+        .get("robust")
+        .or_else(|| v.get("scan_robust"))
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false);
+    Ok(jacs::simple::types::VerifyImageOptions {
+        base: jacs::inline::VerifyOptions { strict, key_dir },
+        scan_robust,
+    })
+}
+
+fn parse_extract_options(opts_json: &str) -> BindingResult<bool> {
+    if opts_is_default(opts_json) {
+        return Ok(false);
+    }
+    let v: serde_json::Value = serde_json::from_str(opts_json).map_err(|e| {
+        BindingCoreError::invalid_argument(format!("extract_media_signature opts: {}", e))
+    })?;
+    Ok(v.get("rawPayload")
+        .or_else(|| v.get("raw_payload"))
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false))
+}
+
+fn serialize_verify_text_result(
+    result: &jacs::inline::VerifyTextResult,
+) -> BindingResult<String> {
+    use jacs::inline::{SignatureStatus, VerifyTextResult};
+    let v = match result {
+        VerifyTextResult::MissingSignature => {
+            serde_json::json!({"status": "missing_signature"})
+        }
+        VerifyTextResult::Malformed(detail) => {
+            serde_json::json!({"status": "malformed", "error": detail})
+        }
+        VerifyTextResult::Signed { signatures } => {
+            let entries: Vec<serde_json::Value> = signatures
+                .iter()
+                .map(|e| {
+                    let (status_str, error) = match &e.status {
+                        SignatureStatus::Valid => ("valid", None),
+                        SignatureStatus::InvalidSignature => ("invalid_signature", None),
+                        SignatureStatus::HashMismatch => ("hash_mismatch", None),
+                        SignatureStatus::KeyNotFound => ("key_not_found", None),
+                        SignatureStatus::UnsupportedAlgorithm => {
+                            ("unsupported_algorithm", None)
+                        }
+                        SignatureStatus::Malformed(s) => ("malformed", Some(s.clone())),
+                    };
+                    let mut o = serde_json::json!({
+                        "signer_id": e.signer_id,
+                        "algorithm": e.algorithm,
+                        "timestamp": e.timestamp,
+                        "status": status_str,
+                    });
+                    if let Some(err) = error {
+                        o["error"] = serde_json::Value::String(err);
+                    }
+                    o
+                })
+                .collect();
+            serde_json::json!({"status": "signed", "signatures": entries})
+        }
+    };
+    Ok(v.to_string())
 }
 
 // =============================================================================

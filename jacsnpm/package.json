@@ -1,6 +1,6 @@
 {
   "name": "@hai.ai/jacs",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "JACS (JSON Agent Communication Standard) - Data provenance and cryptographic signing for AI agents",
   "main": "index.js",
   "types": "index.d.ts",
@@ -105,37 +105,55 @@
     "test:vercel-ai-a2a": "mocha --timeout 15000 'test/vercel-ai-a2a.test.js'",
     "test:langchain": "mocha --timeout 15000 'test/langchain.test.js'",
     "test:adapters": "mocha --timeout 15000 'test/express.test.js' 'test/koa.test.js' 'test/mcp.test.js' 'test/vercel-ai.test.js' 'test/langchain.test.js'",
-    "test:cross-language": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 30000 'test/cross-language.test.js'"
+    "test:cross-language": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 30000 'test/cross-language.test.js'",
+    "test:cross-language-provenance": "JACS_PRIVATE_KEY_PASSWORD='TestP@ss123!#' JACS_MAX_IAT_SKEW_SECONDS='0' mocha --timeout 60000 'test/cross-language-provenance.test.js'"
   },
   "dependencies": {
     "@napi-rs/cli": "^2.16.3",
     "uuid": "^13.0.0"
   },
   "peerDependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "ai": ">=4.0.0",
     "@ai-sdk/provider": ">=1.0.0",
-    "express": "^4.17.0 || ^5.0.0",
-    "koa": "^2.0.0",
     "@langchain/core": ">=0.3.0",
     "@langchain/langgraph": ">=0.2.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "ai": ">=4.0.0",
+    "express": "^4.17.0 || ^5.0.0",
+    "koa": "^2.0.0",
     "ws": ">=8.0.0"
   },
   "peerDependenciesMeta": {
-    "@modelcontextprotocol/sdk": { "optional": true },
-    "ai": { "optional": true },
-    "@ai-sdk/provider": { "optional": true },
-    "express": { "optional": true },
-    "koa": { "optional": true },
-    "@langchain/core": { "optional": true },
-    "@langchain/langgraph": { "optional": true },
-    "ws": { "optional": true }
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    },
+    "@ai-sdk/provider": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
+    "koa": {
+      "optional": true
+    },
+    "@langchain/core": {
+      "optional": true
+    },
+    "@langchain/langgraph": {
+      "optional": true
+    },
+    "ws": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@types/node": "^22.15",
     "ajv": "^8.17.1",
     "chai": "^6.2.2",
+    "js-yaml": "^4.1.1",
     "mocha": "^11.7.5",
     "sinon": "^21.0.1",
     "typescript": "^5.7.0"

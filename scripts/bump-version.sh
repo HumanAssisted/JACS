@@ -46,6 +46,7 @@ MAIN_CARGO_FILES=(
   binding-core/Cargo.toml
   jacs-cli/Cargo.toml
   jacs-mcp/Cargo.toml
+  jacs-media/Cargo.toml
   jacsnpm/Cargo.toml
   jacspy/Cargo.toml
   jacsgo/lib/Cargo.toml
@@ -62,6 +63,7 @@ done
 # We use replace-all since the old version is unique enough.
 
 DEP_FILES=(
+  jacs/Cargo.toml
   binding-core/Cargo.toml
   jacs-cli/Cargo.toml
   jacs-mcp/Cargo.toml

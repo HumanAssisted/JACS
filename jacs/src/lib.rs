@@ -72,6 +72,7 @@ pub mod document;
 pub mod email;
 pub mod error;
 pub mod health;
+pub mod inline;
 pub mod keystore;
 pub mod mime;
 pub mod observability;

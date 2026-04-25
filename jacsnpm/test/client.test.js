@@ -658,4 +658,78 @@ describe('JacsClient', function () {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Inline text + image bindings (Task 11 — PRD §3.1, §3.2, §4.1, §4.2).
+  // ---------------------------------------------------------------------------
+
+  describe('inline text + image (ephemeral)', () => {
+    (available ? it : it.skip)('signText / verifyText round trip', async () => {
+      const client = await clientModule.JacsClient.ephemeral();
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-text-'));
+      try {
+        const target = path.join(tmp, 'r.md');
+        fs.writeFileSync(target, 'hello\n');
+        await client.signText(target);
+        const result = await client.verifyText(target);
+        expect(result.status).to.equal('signed');
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    (available ? it : it.skip)('verifyText permissive on unsigned file returns missing_signature', async () => {
+      const client = await clientModule.JacsClient.ephemeral();
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-text-'));
+      try {
+        const target = path.join(tmp, 'plain.md');
+        fs.writeFileSync(target, 'hi\n');
+        const result = await client.verifyText(target);
+        expect(result.status).to.equal('missing_signature');
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    (available ? it : it.skip)('verifyText strict on unsigned file rejects /no JACS signature found/', async () => {
+      const client = await clientModule.JacsClient.ephemeral();
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-text-'));
+      try {
+        const target = path.join(tmp, 'strict.md');
+        fs.writeFileSync(target, 'hi\n');
+        let caught;
+        try {
+          await client.verifyText(target, { strict: true });
+        } catch (e) {
+          caught = e;
+        }
+        expect(caught, 'expected strict verifyText to reject').to.exist;
+        expect(caught.message).to.match(/no JACS signature found/);
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    (available ? it : it.skip)('signImage + verifyImage round trip on a tiny PNG fixture', async () => {
+      const fixture = path.resolve(__dirname, 'fixtures/images/unsigned_16x16.png');
+      if (!fs.existsSync(fixture)) {
+        this.skip();
+        return;
+      }
+      const client = await clientModule.JacsClient.ephemeral();
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-img-'));
+      try {
+        const src = path.join(tmp, 'in.png');
+        const dst = path.join(tmp, 'out.png');
+        fs.copyFileSync(fixture, src);
+        await client.signImage(src, dst);
+        const r = await client.verifyImage(dst);
+        expect(r.status).to.equal('valid');
+        const payload = await client.extractMediaSignature(dst);
+        expect(payload).to.be.a('string');
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
 });

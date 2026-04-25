@@ -121,3 +121,107 @@ type TrustedAgent struct {
 	// TrustedAt is when this agent was trusted.
 	TrustedAt string `json:"trusted_at"`
 }
+
+// =============================================================================
+// Inline text + media signing types (Task 12 — PRD §3.1, §3.2, §4.1, §4.2)
+// =============================================================================
+
+// SignTextOpts controls the behaviour of [JacsSimpleAgent.SignText] /
+// [JacsSimpleAgent.SignTextFile]. Pass nil for defaults.
+type SignTextOpts struct {
+	// NoBackup skips the automatic <path>.bak backup. Default false.
+	NoBackup bool
+}
+
+// SignTextResult is returned by SignText / SignTextFile.
+type SignTextResult struct {
+	// Path is the file that was signed (always equal to the input path).
+	Path string `json:"path"`
+	// SignersAdded counts new signature blocks. 0 on a duplicate-signer no-op.
+	SignersAdded int `json:"signers_added"`
+	// BackupPath is the path of the .bak written prior to signing, when not
+	// suppressed via SignTextOpts.NoBackup.
+	BackupPath string `json:"backup_path,omitempty"`
+}
+
+// VerifyTextOpts controls the behaviour of [JacsSimpleAgent.VerifyText] /
+// [JacsSimpleAgent.VerifyTextFile]. Pass nil for defaults.
+type VerifyTextOpts struct {
+	// Strict (PRD §C1): when true, missing-signature returns an error wrapping
+	// ErrMissingSignature; permissive (default) returns a typed status.
+	Strict bool
+	// KeyDir (PRD §4.1.5) is an optional directory of <signer_id>.public.pem
+	// files for offline verification.
+	KeyDir string
+}
+
+// SignatureEntry is one entry in the VerifyTextResult / VerifyImageResult
+// signatures slice.
+type SignatureEntry struct {
+	SignerID  string `json:"signer_id"`
+	Algorithm string `json:"algorithm"`
+	Timestamp string `json:"timestamp"`
+	Status    string `json:"status"`
+}
+
+// VerifyTextResult is returned by VerifyText / VerifyTextFile in permissive
+// mode. In strict mode missing-signature returns an error instead.
+type VerifyTextResult struct {
+	// Status is one of "signed" | "missing_signature" | "malformed".
+	Status     string           `json:"status"`
+	Signatures []SignatureEntry `json:"signatures"`
+}
+
+// SignImageOpts controls the behaviour of [JacsSimpleAgent.SignImage].
+// Pass nil for defaults.
+type SignImageOpts struct {
+	// Robust (PRD §4.2.4): enable LSB embedding for re-encode survivability.
+	// PNG/JPEG only. Default false (Q4).
+	Robust bool
+	// Format is an optional explicit format override ("png" | "jpeg" | "webp").
+	Format string
+	// RefuseOverwrite (PRD §4.2.2): refuse if the input image already carries a
+	// JACS signature.
+	RefuseOverwrite bool
+}
+
+// SignImageResult is returned by SignImage.
+type SignImageResult struct {
+	OutPath    string `json:"out_path"`
+	SignerID   string `json:"signer_id"`
+	Format     string `json:"format"`
+	Robust     bool   `json:"robust"`
+	BackupPath string `json:"backup_path,omitempty"`
+}
+
+// VerifyImageOpts controls the behaviour of [JacsSimpleAgent.VerifyImage].
+// Pass nil for defaults.
+type VerifyImageOpts struct {
+	Strict bool
+	KeyDir string
+	// Robust (PRD §4.2.4): when true, scan the LSB channel as a fallback when
+	// the metadata payload is missing. Default false.
+	Robust bool
+}
+
+// VerifyImageResult is returned by VerifyImage.
+type VerifyImageResult struct {
+	// Status is one of "valid" | "missing_signature" | "malformed" |
+	// "invalid_signature" | "hash_mismatch" | "key_not_found" | "unsupported_algorithm".
+	Status            string `json:"status"`
+	SignerID          string `json:"signer_id,omitempty"`
+	Algorithm         string `json:"algorithm,omitempty"`
+	Format            string `json:"format,omitempty"`
+	// EmbeddingChannels is a free-form description of where in the image the
+	// signature was found (e.g. "metadata"). Optional; serialized as a string
+	// to match the Rust core's `Option<String>`.
+	EmbeddingChannels string `json:"embedding_channels,omitempty"`
+}
+
+// ExtractMediaOpts controls the behaviour of [JacsSimpleAgent.ExtractMediaSignature].
+// Pass nil for defaults.
+type ExtractMediaOpts struct {
+	// RawPayload (PRD §3.2): when true, return the raw base64url wire form
+	// instead of the decoded JACS signed-document JSON. Default false.
+	RawPayload bool
+}

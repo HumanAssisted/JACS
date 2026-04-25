@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -95,6 +95,8 @@ hkdf = "0.12"
 zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 serde_yaml_ng = "0.10"
+jacs-media = { version = "0.11.0", path = "../jacs-media" }
+tempfile = "3"
 
 
 tracing = "0.1"
@@ -132,6 +134,7 @@ testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["minio"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls"] }
 proptest = "1.6"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

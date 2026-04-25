@@ -43,6 +43,10 @@ EXCLUDED_FROM_PYTHON = {
 
 # Rust method name -> Python attribute name mapping.
 # When the Python binding uses a different name than Rust, document it here.
+#
+# Suffix-stripping convention (matches sign_file_json -> sign_file etc.):
+# the `_json` / `_base64` suffixes on SimpleAgentWrapper are FFI-internal
+# and dropped on the language-side surface.
 PYTHON_NAME_MAP = {
     "create": "create",
     "load": "load",
@@ -68,6 +72,12 @@ PYTHON_NAME_MAP = {
     "to_html": "to_html",
     "from_html": "from_html",
     "rotate_keys": "rotate_keys",
+    # Inline text + media (Task 05 + 06; Task 10 ships PyO3 surface).
+    "sign_text_file_json": "sign_text_file",
+    "verify_text_file_json": "verify_text_file",
+    "sign_image_json": "sign_image",
+    "verify_image_json": "verify_image",
+    "extract_media_signature_json": "extract_media_signature",
 }
 
 

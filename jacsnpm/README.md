@@ -35,6 +35,47 @@ All operations are async by default. Sync variants available with a `Sync` suffi
 | `verifyStandalone(doc, opts)` | Verify without loading an agent |
 | `audit()` | Run a security audit |
 
+## What's new in 0.11.0
+
+*Why this matters:* shared markdown that multiple agents review and counter-sign, plus signed images for AI-era provenance, are now first-class — the signature is embedded in the artifact, no sidecar JSON required.
+
+```typescript
+import * as jacs from '@hai.ai/jacs/simple';
+
+await jacs.load('./jacs.config.json');
+
+// Text — permissive verify (default)
+await jacs.signText('README.md');
+const result = await jacs.verifyText('README.md');
+console.log(result.status);  // 'signed' | 'missing_signature' | 'malformed'
+
+// Hard-fail if the file isn't signed — Promise rejects with MissingSignature error
+try {
+  await jacs.verifyText('README.md', { strict: true });
+} catch (err) {
+  if (/MissingSignature/.test(err.message)) {
+    console.log('not signed');
+  } else {
+    throw err;
+  }
+}
+
+// Override trust store with a directory of <signer_id>.public.pem files
+await jacs.verifyText('README.md', { keyDir: './trusted-keys/' });
+
+// Images
+await jacs.signImage('photo.png', 'signed.png');
+const v = await jacs.verifyImage('signed.png');
+console.log(v.status);  // 'valid'
+
+// Extract the embedded provenance payload (decoded JSON by default)
+const payload = await jacs.extractMediaSignature('signed.png');
+```
+
+The same five methods are available on the instance-based `JacsClient` for multi-agent processes. All operations return Promises (async-first since v0.7.0).
+
+A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
+
 ## Verify without an agent
 
 ```typescript

@@ -272,6 +272,105 @@ class NetworkError(JacsError):
     pass
 
 
+# ``MissingSignatureError`` — the native Rust module exposes a PyO3-created
+# exception at ``jacs.MissingSignatureError`` (raised by strict-mode
+# verify_text / verify_image bindings — PRD §4.1.2, C1). We want:
+#   1. ``isinstance(e, MissingSignatureError)`` to work for native-raised errors.
+#   2. ``issubclass(MissingSignatureError, JacsError)`` to pass (ergonomic:
+#      user code can catch all JACS errors with a single ``except JacsError``).
+#
+# Both constraints are satisfied by subclassing the native class and mixing in
+# ``JacsError``. The resulting class is what every import path returns.
+try:
+    from jacs.jacs import MissingSignatureError as _NativeMissingSignatureError  # type: ignore[attr-defined]
+
+    class MissingSignatureError(_NativeMissingSignatureError, JacsError):  # type: ignore[misc,valid-type]
+        """No JACS signature found in the target (e.g. inline text, image).
+
+        Raised only by **strict-mode** verify bindings
+        (``verify_text(..., strict=True)``, ``verify_image(..., strict=True)``).
+        In **permissive mode** (default) bindings return a typed
+        ``missing_signature`` status instead of raising.
+
+        Inherits from both the native PyO3 exception (so native strict-mode
+        raises can be caught by this Python class via ``isinstance``) and from
+        :class:`JacsError` (so a single ``except JacsError`` catches all JACS
+        errors). PRD docs/prds/PROVENANCE_EXPANSION_PRD.md §4.1.2 (C1).
+        """
+
+        pass
+except ImportError:  # pragma: no cover — fallback when native module unavailable
+    class MissingSignatureError(JacsError):  # type: ignore[no-redef]
+        """Fallback used only during docs generation / static analysis."""
+
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Inline text + media result types (Task 10 — PRD §3.1 / §3.2).
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SignatureEntry:
+    """One entry from :class:`VerifyTextResult.signatures`.
+
+    ``status`` is one of ``valid`` | ``invalid_signature`` | ``hash_mismatch``
+    | ``key_not_found`` | ``unsupported_algorithm`` | ``malformed``.
+    """
+
+    signer_id: str
+    algorithm: str
+    timestamp: str
+    status: str
+
+
+@dataclass
+class SignTextResult:
+    """Result of :meth:`jacs.client.JacsClient.sign_text`."""
+
+    file_path: str
+    signer_id: str
+    backup_path: Optional[str] = None
+
+
+@dataclass
+class VerifyTextResult:
+    """Result of :meth:`jacs.client.JacsClient.verify_text`.
+
+    ``status`` is one of ``signed`` | ``missing_signature`` | ``malformed``.
+    Permissive-mode callers inspect ``status`` to branch on outcomes without
+    try/except. Strict-mode callers instead catch :class:`MissingSignatureError`.
+    """
+
+    status: str
+    signatures: List[SignatureEntry] = field(default_factory=list)
+
+
+@dataclass
+class SignImageResult:
+    """Result of :meth:`jacs.client.JacsClient.sign_image`."""
+
+    out_path: str
+    signer_id: str
+    format: str
+    robust: bool = False
+
+
+@dataclass
+class VerifyImageResult:
+    """Result of :meth:`jacs.client.JacsClient.verify_image`.
+
+    ``status`` is one of ``valid`` | ``invalid_signature`` | ``hash_mismatch``
+    | ``missing_signature`` | ``key_not_found`` | ``unsupported_format``
+    | ``malformed``.
+    """
+
+    status: str
+    signer_id: Optional[str] = None
+    format: Optional[str] = None
+
+
 @dataclass
 class PublicKeyInfo:
     """Information about a fetched public key.

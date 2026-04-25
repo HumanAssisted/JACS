@@ -14,6 +14,8 @@ Choose the smallest supported integration that matches your deployment.
 | Signed HTTP APIs without adopting MCP | [Python Framework Adapters](../python/adapters.md), [Express](../nodejs/express.md), [Koa](../nodejs/koa.md) | Sign requests or responses at the web layer |
 | Multi-party approval or quorum workflows | [Multi-Agent Agreements](multi-agent-agreement.md) | Agreements are the right primitive, not just one-off signatures |
 | Direct signing from scripts, jobs, or services | [Quick Start](quick-start.md), [Python Basic Usage](../python/basic-usage.md), [Node Basic Usage](../nodejs/basic-usage.md), [Go Installation](../go/installation.md) | Start from sign/verify before adding framework layers |
+| Sign a markdown file in place so a reader sees the content and signature together | [Inline Text Signatures](../guides/inline-text-signing.md) | Signature appended in a YAML-bodied block at the end of the file; renders as markdown on GitHub |
+| Attach a tamper-evident provenance signature to a photo or AI-generated image | [Image and Media Signatures](../guides/media-signing.md) | Signature embedded in PNG iTXt / JPEG APP11 / WebP XMP; no sidecar JSON |
 
 ## When You Probably Do Not Need JACS
 
