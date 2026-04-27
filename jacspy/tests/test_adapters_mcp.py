@@ -677,7 +677,7 @@ class TestUntrustPermissionGate:
 # ---------------------------------------------------------------------------
 
 
-class TestSignFilePathTraversal:
+class TestSignFilePathTraversalSecond:
     """Vuln 1: Ensure jacs_sign_file rejects path traversal attempts."""
 
     def test_rejects_absolute_unix_path(self, client):
@@ -686,7 +686,8 @@ class TestSignFilePathTraversal:
         fn = mcp.tools["jacs_sign_file"]["fn"]
         result = json.loads(fn("/etc/passwd", embed=True))
         assert result["success"] is False
-        assert "Absolute paths are not allowed" in result["error"]
+        # New path-policy wording: leading "/" splits into an empty first segment.
+        assert "empty segment" in result["error"]
 
     def test_rejects_parent_directory_traversal(self, client):
         mcp = FakeMCP()
@@ -694,7 +695,7 @@ class TestSignFilePathTraversal:
         fn = mcp.tools["jacs_sign_file"]["fn"]
         result = json.loads(fn("data/../../../etc/shadow", embed=True))
         assert result["success"] is False
-        assert "Path traversal" in result["error"]
+        assert "path traversal" in result["error"].lower()
 
     def test_rejects_windows_drive_path(self, client):
         mcp = FakeMCP()
@@ -702,7 +703,7 @@ class TestSignFilePathTraversal:
         fn = mcp.tools["jacs_sign_file"]["fn"]
         result = json.loads(fn("C:\\Windows\\System32\\drivers\\etc\\hosts"))
         assert result["success"] is False
-        assert "Windows drive-prefixed" in result["error"]
+        assert "Windows drive prefix" in result["error"]
 
     def test_rejects_null_byte(self, client):
         mcp = FakeMCP()

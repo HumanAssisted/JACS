@@ -68,6 +68,9 @@ jobs:
         working-directory: jacsnpm
         run: npm run build
 
+      - name: Pre-build jacs-cli (cross-language tests shell out to cargo)
+        run: cargo build -p jacs-cli --quiet
+
       - name: Run cross-language tests (hermetic env)
         working-directory: jacsnpm
         env:
