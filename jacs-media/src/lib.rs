@@ -151,10 +151,7 @@ pub fn canonical_hash(bytes: &[u8]) -> Result<[u8; 32], MediaError> {
 
 /// Variant of [`canonical_hash`] that takes an explicit [`MediaFormat`]
 /// rather than detecting from magic bytes. See [`embed_signature_with_format`].
-pub fn canonical_hash_with_format(
-    fmt: MediaFormat,
-    bytes: &[u8],
-) -> Result<[u8; 32], MediaError> {
+pub fn canonical_hash_with_format(fmt: MediaFormat, bytes: &[u8]) -> Result<[u8; 32], MediaError> {
     let stripped = match fmt {
         MediaFormat::Png => png::bytes_without_jacs_chunk(bytes)?,
         MediaFormat::Jpeg => jpeg::bytes_without_jacs_segment(bytes)?,

@@ -195,8 +195,9 @@ pub fn tools() -> Vec<Tool> {
             "Extract the JACS signature payload embedded in a PNG, JPEG, or WebP image. \
              By default returns the decoded JACS signed-document JSON string. Pass \
              `raw_payload: true` to return the base64url wire form instead (useful for \
-             byte-for-byte relay or fuzz fixtures). Returns `present: false` if no payload \
-             is found.",
+             byte-for-byte relay or fuzz fixtures). Pass `robust: true` to fall back to \
+             LSB scan when the metadata channel has no payload (R-011; mirrors \
+             verify_image --robust). Returns `present: false` if no payload is found.",
             schema_map::<ExtractMediaSignatureParams>(),
         ),
     ]

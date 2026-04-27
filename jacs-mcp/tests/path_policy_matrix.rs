@@ -71,9 +71,7 @@ fn decode_unicode_escapes(s: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '\\' && chars.peek() == Some(&'u') {
             chars.next(); // consume 'u'
-            let hex: String = (0..4)
-                .filter_map(|_| chars.next())
-                .collect();
+            let hex: String = (0..4).filter_map(|_| chars.next()).collect();
             let code = u32::from_str_radix(&hex, 16).expect("valid hex in \\uXXXX");
             out.push(char::from_u32(code).expect("valid unicode code point"));
         } else {
@@ -216,8 +214,8 @@ fn fixture_drives_path_policy_matrix() {
                     );
                 }
                 "reject" => {
-                    let err = result
-                        .expect_err(&format!("[case {}] expected reject, got Ok", case.id));
+                    let err =
+                        result.expect_err(&format!("[case {}] expected reject, got Ok", case.id));
                     let msg = format!("{}", err).to_lowercase();
                     if let Some(needle) = &case.reason_substring_lowercase {
                         assert!(

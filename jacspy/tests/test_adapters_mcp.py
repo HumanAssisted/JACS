@@ -67,6 +67,12 @@ class TestRegisterJacsTools:
             "jacs_share_public_key",
             "jacs_export_agent",
             "jacs_share_agent",
+            # v0.10.0 inline-text + media tools
+            "jacs_sign_text",
+            "jacs_verify_text",
+            "jacs_sign_image",
+            "jacs_verify_image",
+            "jacs_extract_media_signature",
         }
         assert set(mcp.tools.keys()) == expected
 
@@ -485,7 +491,8 @@ class TestSignFilePathTraversal:
 
         result = json.loads(fn("/etc/passwd"))
         assert result["success"] is False
-        assert "Absolute paths are not allowed" in result["error"]
+        # New path-policy wording: leading "/" splits into an empty first segment.
+        assert "empty segment" in result["error"]
 
     def test_rejects_parent_directory_traversal(self, client):
         mcp = FakeMCP()
@@ -494,7 +501,7 @@ class TestSignFilePathTraversal:
 
         result = json.loads(fn("data/../../../etc/shadow", embed=True))
         assert result["success"] is False
-        assert "Path traversal" in result["error"]
+        assert "path traversal" in result["error"].lower()
 
     def test_rejects_windows_drive_path(self, client):
         mcp = FakeMCP()
@@ -503,7 +510,7 @@ class TestSignFilePathTraversal:
 
         result = json.loads(fn("C:\\Windows\\System32\\drivers\\etc\\hosts"))
         assert result["success"] is False
-        assert "Windows drive-prefixed paths" in result["error"]
+        assert "Windows drive prefix" in result["error"]
 
     def test_rejects_null_byte(self, client):
         mcp = FakeMCP()

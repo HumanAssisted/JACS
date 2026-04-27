@@ -1167,4 +1167,3 @@ pub fn build_cli() -> Command {
 
     cmd
 }
-

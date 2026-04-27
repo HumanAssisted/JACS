@@ -30,7 +30,6 @@ use std::env;
 use std::error::Error;
 use std::process;
 
-
 // install/download functions removed — MCP is now built into the CLI
 // build_cli moved to src/cli_builder.rs (re-exported by lib.rs)
 

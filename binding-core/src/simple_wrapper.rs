@@ -793,8 +793,8 @@ mod tests {
 
     #[test]
     fn parse_sign_text_options_honours_unsafe_bak_mode_snake_case() {
-        let opts = parse_sign_text_options(r#"{"unsafe_bak_mode": 420}"#)
-            .expect("parse should succeed");
+        let opts =
+            parse_sign_text_options(r#"{"unsafe_bak_mode": 420}"#).expect("parse should succeed");
         assert_eq!(
             opts.unsafe_bak_mode,
             Some(420),
@@ -804,8 +804,8 @@ mod tests {
 
     #[test]
     fn parse_sign_text_options_honours_unsafe_bak_mode_camel_case() {
-        let opts = parse_sign_text_options(r#"{"unsafeBakMode": 420}"#)
-            .expect("parse should succeed");
+        let opts =
+            parse_sign_text_options(r#"{"unsafeBakMode": 420}"#).expect("parse should succeed");
         assert_eq!(
             opts.unsafe_bak_mode,
             Some(420),
@@ -815,8 +815,7 @@ mod tests {
 
     #[test]
     fn parse_sign_text_options_default_unsafe_bak_mode_is_none() {
-        let opts = parse_sign_text_options(r#"{"backup": true}"#)
-            .expect("parse should succeed");
+        let opts = parse_sign_text_options(r#"{"backup": true}"#).expect("parse should succeed");
         assert_eq!(
             opts.unsafe_bak_mode, None,
             "absent unsafe_bak_mode must remain None (uses 0o600 default at write time)"
@@ -843,10 +842,8 @@ mod tests {
     #[test]
     fn verify_text_file_json_non_existent_path_returns_invalid_argument() {
         let wrapper = test_wrapper();
-        let result = wrapper.verify_text_file_json(
-            "/tmp/jacs-binding-core-r008-does-not-exist.md",
-            "{}",
-        );
+        let result =
+            wrapper.verify_text_file_json("/tmp/jacs-binding-core-r008-does-not-exist.md", "{}");
         assert!(result.is_err(), "verify on non-existent path should fail");
         let err = result.unwrap_err();
         // map_jacs_err routes file-not-found to InvalidArgument (PRD §4.1.2
@@ -863,10 +860,8 @@ mod tests {
     #[test]
     fn verify_image_json_non_existent_path_returns_invalid_argument() {
         let wrapper = test_wrapper();
-        let result = wrapper.verify_image_json(
-            "/tmp/jacs-binding-core-r008-does-not-exist.png",
-            "{}",
-        );
+        let result =
+            wrapper.verify_image_json("/tmp/jacs-binding-core-r008-does-not-exist.png", "{}");
         assert!(result.is_err(), "verify on non-existent path should fail");
         let err = result.unwrap_err();
         assert_eq!(
@@ -1030,7 +1025,8 @@ mod tests {
             err.kind,
             crate::ErrorKind::InvalidArgument,
             "expected InvalidArgument for malformed-block, got: {:?} (msg: {})",
-            err.kind, err.message
+            err.kind,
+            err.message
         );
     }
 
@@ -1073,8 +1069,7 @@ mod tests {
         let result = wrapper
             .verify_text_file_json(path.to_str().unwrap(), "{}")
             .expect("permissive verify of unsigned file must NOT error");
-        let v: serde_json::Value =
-            serde_json::from_str(&result).expect("result is JSON");
+        let v: serde_json::Value = serde_json::from_str(&result).expect("result is JSON");
         let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
         assert_eq!(
             status, "missing_signature",

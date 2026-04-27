@@ -442,7 +442,9 @@ async fn jacs_sign_image_rejects_symlink_escape() -> anyhow::Result<()> {
     );
     let err = result["error"].as_str().unwrap_or_default();
     assert!(
-        err.contains("PATH") || err.to_lowercase().contains("symlink") || err.to_lowercase().contains("rejected"),
+        err.contains("PATH")
+            || err.to_lowercase().contains("symlink")
+            || err.to_lowercase().contains("rejected"),
         "expected path-policy error in envelope, got: {}",
         err
     );
@@ -520,16 +522,18 @@ async fn spawn_with_sandbox_and_outside_file(
 /// against the CWD-relative target.
 fn assert_path_policy_reject(envelope: &serde_json::Value, ctx: &str) {
     let success = envelope["success"].as_bool().unwrap_or(true);
-    let err = envelope["error"].as_str().unwrap_or_default().to_lowercase();
+    let err = envelope["error"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase();
     assert!(
-        !success && (
-            err.contains("path")
+        !success
+            && (err.contains("path")
                 || err.contains("rejected")
                 || err.contains("outside")
                 || err.contains("base")
                 || err.contains("traversal")
-                || err.contains("blocked")
-        ),
+                || err.contains("blocked")),
         "[{}] expected R-003 path_policy rejection; got envelope: {}",
         ctx,
         envelope
@@ -539,8 +543,7 @@ fn assert_path_policy_reject(envelope: &serde_json::Value, ctx: &str) {
 #[tokio::test]
 async fn jacs_verify_text_honours_base_dir_confinement() -> anyhow::Result<()> {
     let _g = STDIO_LOCK.lock().await;
-    let s =
-        spawn_with_sandbox_and_outside_file("outside.md", b"Outside any sandbox.\n").await?;
+    let s = spawn_with_sandbox_and_outside_file("outside.md", b"Outside any sandbox.\n").await?;
 
     // file_path="outside.md" — CWD-relative => <base>/outside.md (exists).
     // After R-003 fix, path_policy treats it as base_dir-relative
@@ -560,8 +563,7 @@ async fn jacs_verify_text_honours_base_dir_confinement() -> anyhow::Result<()> {
 #[tokio::test]
 async fn jacs_sign_text_honours_base_dir_confinement() -> anyhow::Result<()> {
     let _g = STDIO_LOCK.lock().await;
-    let s =
-        spawn_with_sandbox_and_outside_file("outside.md", b"Outside any sandbox.\n").await?;
+    let s = spawn_with_sandbox_and_outside_file("outside.md", b"Outside any sandbox.\n").await?;
 
     let result = s
         .call(
