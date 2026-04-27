@@ -27,6 +27,9 @@ JACS_MCP_VERSION := $(shell grep '^version' jacs-mcp/Cargo.toml | head -1 | sed 
 # Shared Rust binding core version (from binding-core/Cargo.toml)
 BINDING_CORE_VERSION := $(shell grep '^version' binding-core/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
+# Media signing helper crate version (from jacs-media/Cargo.toml)
+JACS_MEDIA_VERSION := $(shell grep '^version' jacs-media/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
 # Python bindings version (from jacspy/pyproject.toml)
 JACSPY_VERSION := $(shell grep '^version' jacspy/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
@@ -205,6 +208,7 @@ versions:
 	@echo "  jacs (Cargo.toml):        $(JACS_VERSION)"
 	@echo "  jacs-mcp (Cargo.toml):    $(JACS_MCP_VERSION)"
 	@echo "  binding-core (Cargo.toml):$(BINDING_CORE_VERSION)"
+	@echo "  jacs-media (Cargo.toml):  $(JACS_MEDIA_VERSION)"
 	@echo "  jacspy (pyproject.toml):  $(JACSPY_VERSION)"
 	@echo "  jacspy (Cargo.toml):      $(JACSPY_RUST_VERSION)"
 	@echo "  jacsnpm (package.json):   $(JACSNPM_VERSION)"
@@ -217,6 +221,7 @@ versions:
 	@echo ""
 	@if [ "$(JACS_VERSION)" = "$(JACS_MCP_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(BINDING_CORE_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACS_MEDIA_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSPY_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSPY_RUST_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSNPM_VERSION)" ] && \
@@ -237,6 +242,10 @@ check-versions:
 	fi
 	@if [ "$(JACS_VERSION)" != "$(BINDING_CORE_VERSION)" ]; then \
 		echo "ERROR: jacs ($(JACS_VERSION)) != binding-core ($(BINDING_CORE_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(JACS_MEDIA_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-media ($(JACS_MEDIA_VERSION))"; \
 		exit 1; \
 	fi
 	@if [ "$(JACS_VERSION)" != "$(JACSPY_VERSION)" ]; then \

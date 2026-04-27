@@ -116,4 +116,4 @@ jacs mcp
 - [MCP Integration](https://humanassisted.github.io/JACS/integrations/mcp.html)
 - [JACS on crates.io](https://crates.io/crates/jacs)
 
-v0.10.0 | [Apache 2.0 with Common Clause](../LICENSE)
+v0.10.1 | [Apache 2.0 with Common Clause](../LICENSE)

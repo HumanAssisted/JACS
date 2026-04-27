@@ -113,6 +113,7 @@ The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order 
 |------|-------|
 | `jacs/Cargo.toml` | `version` |
 | `binding-core/Cargo.toml` | `version` |
+| `jacs-media/Cargo.toml` | `version` |
 | `jacs-mcp/Cargo.toml` | `version` |
 | `jacs-cli/Cargo.toml` | `version` |
 | `jacspy/Cargo.toml` | `version` |
@@ -124,6 +125,7 @@ The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order 
 | File | Dependency |
 |------|------------|
 | `binding-core/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
+| `jacs/Cargo.toml` | `jacs-media = { version = "X.Y.Z", path = ... }` |
 | `jacs-mcp/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
 | `jacs-mcp/Cargo.toml` | `jacs-binding-core = { version = "X.Y.Z", path = ... }` |
 | `jacs-cli/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |

@@ -79,4 +79,4 @@ Report vulnerabilities to security@hai.ai.
 - [Crates.io](https://crates.io/crates/jacs)
 - [Development Guide](../DEVELOPMENT.md)
 
-**Version**: 0.10.0 | [HAI.AI](https://hai.ai)
+**Version**: 0.10.1 | [HAI.AI](https://hai.ai)
