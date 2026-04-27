@@ -51,8 +51,39 @@ jobs:
       - name: Pre-publish compile check (all crates)
         run: |
           echo "Checking all publishable crates compile cleanly with -D warnings..."
-          cargo check -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
+          cargo check -p jacs-media -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
           echo "All crates compile cleanly"
+
+      - name: Publish jacs-media to crates.io
+        run: |
+          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-media | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          if [ "$LATEST" = "$VERSION" ]; then
+            echo "jacs-media $VERSION already published, skipping"
+          else
+            cd jacs-media && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 101 ]; then
+                echo "::warning::jacs-media $VERSION already exists on crates.io (exit 101), continuing"
+              else
+                exit $EXIT_CODE
+              fi
+            }
+          fi
+
+      - name: Wait for jacs-media to appear on crates.io
+        run: |
+          echo "Waiting for jacs-media $VERSION on crates.io..."
+          for i in $(seq 1 60); do
+            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-media | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            if [ "$LATEST" = "$VERSION" ]; then
+              echo "jacs-media $VERSION is available on crates.io"
+              exit 0
+            fi
+            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
+            sleep 15
+          done
+          echo "::error::Timed out waiting for jacs-media $VERSION on crates.io"
+          exit 1
 
       - name: Publish jacs to crates.io
         run: |
