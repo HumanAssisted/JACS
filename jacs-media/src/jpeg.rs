@@ -182,9 +182,10 @@ pub fn extract(bytes: &[u8], scan_robust: bool) -> Result<Option<String>, MediaE
         if seg.marker == APP11 && seg.bytes.len() > 4 {
             // body starts at offset 4 (skip ff eb ll ll).
             if let Some(payload_bytes) = parse_jacs_app11(&seg.bytes[4..])
-                && let Ok(s) = std::str::from_utf8(payload_bytes) {
-                    found.push(s.to_string());
-                }
+                && let Ok(s) = std::str::from_utf8(payload_bytes)
+            {
+                found.push(s.to_string());
+            }
         }
     }
     if found.len() > 1 {

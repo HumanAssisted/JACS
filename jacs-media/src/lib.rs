@@ -1,7 +1,6 @@
 //! `jacs-media` — embed base64url-encoded JACS signed-document JSON in
 //! PNG (iTXt), JPEG (APP11), or WebP (XMP) images.
 //!
-//! Design: `docs/prds/PROVENANCE_EXPANSION_PRD.md` §4.2.
 //! Clean-room guardrails: `LICENSE-NOTICE` in this crate root. No ST3GG code.
 //!
 //! Public API:
@@ -88,6 +87,19 @@ pub fn embed_signature(
     refuse_overwrite: bool,
 ) -> Result<Vec<u8>, MediaError> {
     let fmt = detect_format(bytes)?;
+    embed_signature_with_format(fmt, bytes, signature_json, robust, refuse_overwrite)
+}
+
+/// Variant of [`embed_signature`] that takes an explicit [`MediaFormat`]
+/// rather than detecting from magic bytes. Used by callers that pass an
+/// `--format` / `format_hint` override (PRD §3.2 / §4.2.5 / Issue 002).
+pub fn embed_signature_with_format(
+    fmt: MediaFormat,
+    bytes: &[u8],
+    signature_json: &str,
+    robust: bool,
+    refuse_overwrite: bool,
+) -> Result<Vec<u8>, MediaError> {
     match fmt {
         MediaFormat::Png => png::embed(bytes, signature_json, robust, refuse_overwrite),
         MediaFormat::Jpeg => jpeg::embed(bytes, signature_json, robust, refuse_overwrite),
@@ -112,6 +124,16 @@ pub fn embed_signature(
 /// silently pick one.
 pub fn extract_signature(bytes: &[u8], scan_robust: bool) -> Result<Option<String>, MediaError> {
     let fmt = detect_format(bytes)?;
+    extract_signature_with_format(fmt, bytes, scan_robust)
+}
+
+/// Variant of [`extract_signature`] that takes an explicit [`MediaFormat`]
+/// rather than detecting from magic bytes. See [`embed_signature_with_format`].
+pub fn extract_signature_with_format(
+    fmt: MediaFormat,
+    bytes: &[u8],
+    scan_robust: bool,
+) -> Result<Option<String>, MediaError> {
     match fmt {
         MediaFormat::Png => png::extract(bytes, scan_robust),
         MediaFormat::Jpeg => jpeg::extract(bytes, scan_robust),
@@ -124,6 +146,15 @@ pub fn extract_signature(bytes: &[u8], scan_robust: bool) -> Result<Option<Strin
 /// [`canonical_hash_robust`] by reading the claim's `canonicalization` tag.
 pub fn canonical_hash(bytes: &[u8]) -> Result<[u8; 32], MediaError> {
     let fmt = detect_format(bytes)?;
+    canonical_hash_with_format(fmt, bytes)
+}
+
+/// Variant of [`canonical_hash`] that takes an explicit [`MediaFormat`]
+/// rather than detecting from magic bytes. See [`embed_signature_with_format`].
+pub fn canonical_hash_with_format(
+    fmt: MediaFormat,
+    bytes: &[u8],
+) -> Result<[u8; 32], MediaError> {
     let stripped = match fmt {
         MediaFormat::Png => png::bytes_without_jacs_chunk(bytes)?,
         MediaFormat::Jpeg => jpeg::bytes_without_jacs_segment(bytes)?,
@@ -142,6 +173,15 @@ pub fn canonical_hash(bytes: &[u8]) -> Result<[u8; 32], MediaError> {
 /// `MediaError::Unsupported("webp robust mode deferred")`.
 pub fn canonical_hash_robust(bytes: &[u8]) -> Result<[u8; 32], MediaError> {
     let fmt = detect_format(bytes)?;
+    canonical_hash_robust_with_format(fmt, bytes)
+}
+
+/// Variant of [`canonical_hash_robust`] that takes an explicit [`MediaFormat`]
+/// rather than detecting from magic bytes. See [`embed_signature_with_format`].
+pub fn canonical_hash_robust_with_format(
+    fmt: MediaFormat,
+    bytes: &[u8],
+) -> Result<[u8; 32], MediaError> {
     match fmt {
         MediaFormat::Png => robust::canonical_hash_robust_png(bytes),
         MediaFormat::Jpeg => robust::canonical_hash_robust_jpeg(bytes),
@@ -149,6 +189,57 @@ pub fn canonical_hash_robust(bytes: &[u8]) -> Result<[u8; 32], MediaError> {
             "webp robust mode deferred".to_string(),
         )),
     }
+}
+
+/// REVIEW_005 (1): hash the decoded pixel buffer **before** LSB modification.
+/// This is the divergent `pixelHash` value the PRD §4.2.2 calls for — the
+/// pre-LSB pixel commitment that lets a verifier detect "metadata strip +
+/// pixel re-encode" tampering. WebP returns `Unsupported`. PNG/JPEG return a
+/// SHA-256 over the decoded raw pixel bytes (RGBA for PNG, RGB for JPEG).
+pub fn pixel_hash_pre_lsb(fmt: MediaFormat, bytes: &[u8]) -> Result<[u8; 32], MediaError> {
+    match fmt {
+        MediaFormat::Png => robust::pixel_hash_pre_lsb_png(bytes),
+        MediaFormat::Jpeg => robust::pixel_hash_pre_lsb_jpeg(bytes),
+        MediaFormat::WebP => Err(MediaError::Unsupported(
+            "webp robust mode deferred".to_string(),
+        )),
+    }
+}
+
+/// REVIEW_005 (2): the channels actually present in `bytes`. The verifier
+/// uses this to cross-check the claim's `embeddingChannels` against ground
+/// truth — a robust signature whose LSB payload was stripped post-sign now
+/// surfaces as `Malformed("observed channels mismatch claim")` instead of
+/// silently `Valid`.
+///
+/// Returns a tuple `(metadata, lsb)` of bools. The PNG/JPEG checks are cheap
+/// (chunk / segment scan); the LSB scan is the expensive full-decode path,
+/// so callers should pass `check_lsb = false` unless `claim.embeddingChannels`
+/// names "lsb" — there is no point checking LSB if the claim doesn't claim it.
+pub fn observed_channels(
+    fmt: MediaFormat,
+    bytes: &[u8],
+    check_lsb: bool,
+) -> Result<(bool, bool), MediaError> {
+    let metadata = match extract_signature_with_format(fmt, bytes, false) {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(_) => false,
+    };
+    let lsb = if check_lsb {
+        match fmt {
+            MediaFormat::Png => robust::extract_lsb_png(bytes)
+                .map(|o| o.is_some())
+                .unwrap_or(false),
+            MediaFormat::Jpeg => robust::extract_lsb_jpeg(bytes)
+                .map(|o| o.is_some())
+                .unwrap_or(false),
+            MediaFormat::WebP => false,
+        }
+    } else {
+        false
+    };
+    Ok((metadata, lsb))
 }
 
 /// Convenience: sha256 a buffer.

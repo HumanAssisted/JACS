@@ -1,4 +1,4 @@
-use crate::password_bootstrap::ensure_cli_private_key_password;
+use jacs_cli::password_bootstrap::ensure_cli_private_key_password;
 use jacs::agent::Agent;
 use std::error::Error;
 

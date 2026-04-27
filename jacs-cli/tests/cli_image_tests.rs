@@ -363,6 +363,57 @@ fn extract_media_signature_raw_payload_prints_base64url() {
     );
 }
 
+/// REVIEW_005 (3) / R-011: `extract-media-signature --robust` must recover
+/// the LSB-embedded payload on a robust-signed image, mirroring the verify
+/// surface. Without this the CLI extract verb is silently inconsistent with
+/// `verify-image --robust`.
+#[test]
+fn extract_media_signature_robust_recovers_lsb_payload() {
+    let dir = fresh_tmpdir();
+    bootstrap_agent(&dir, "ed25519");
+    // Robust mode needs a sufficiently large image — 256x256 RGBA is enough
+    // for the ~2 KiB JACS signed-document payload.
+    let in_path = write_fixture(&dir, "in.png", &make_png(256, 256));
+    let signed_path = dir.path().join("signed.png");
+
+    cmd()
+        .current_dir(dir.path())
+        .args(["sign-image", "--robust"])
+        .arg(in_path.to_str().unwrap())
+        .args(["--out"])
+        .arg(signed_path.to_str().unwrap())
+        .assert()
+        .success();
+
+    // Without --robust, extract should NOT find the LSB-only payload.
+    let no_robust = cmd()
+        .current_dir(dir.path())
+        .args(["extract-media-signature"])
+        .arg(signed_path.to_str().unwrap())
+        .assert()
+        .code(2);
+    let stdout_no_robust = no_robust.get_output().stdout.clone();
+    assert!(
+        stdout_no_robust.is_empty(),
+        "without --robust, extract must not surface the LSB payload (exit 2). got: {:?}",
+        String::from_utf8_lossy(&stdout_no_robust)
+    );
+
+    // With --robust, extract MUST recover the LSB-embedded payload.
+    let with_robust = cmd()
+        .current_dir(dir.path())
+        .args(["extract-media-signature", "--robust"])
+        .arg(signed_path.to_str().unwrap())
+        .assert()
+        .success();
+    let stdout_with_robust = with_robust.get_output().stdout.clone();
+    let s = String::from_utf8_lossy(&stdout_with_robust);
+    assert!(
+        s.contains("mediaSignatureVersion"),
+        "extract --robust must surface a decoded JACS signed-document JSON; got: {s}"
+    );
+}
+
 #[test]
 fn extract_media_signature_no_signature_exit_two_all_formats() {
     for fmt in ["png", "jpg", "webp"] {

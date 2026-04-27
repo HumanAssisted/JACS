@@ -2288,6 +2288,36 @@ fn audit_simple(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<St
     audit(config_path, recent_n)
 }
 
+// =============================================================================
+// MCP path policy delegate (PRD §4.2.6, Issue 022)
+// =============================================================================
+//
+// Single source of truth for MCP file-path validation. Python's
+// `_validate_mcp_file_path` (in `jacspy/python/jacs/adapters/mcp.py`)
+// delegates to this function so Python enforcement matches Rust
+// byte-for-byte. Removing the local heuristic eliminates a drift surface
+// that the PRD §4.2.6 review previously called out.
+//
+// Returns the resolved canonical path string on accept; raises
+// `ValueError` with the rejection reason on policy failure.
+#[pyfunction]
+#[pyo3(signature = (raw, kind="input"))]
+fn jacs_mcp_resolve_input_path(raw: &str, kind: &str) -> PyResult<String> {
+    let kind_enum = match kind {
+        "input" => jacs_mcp::path_policy::PathKind::Input,
+        "output" => jacs_mcp::path_policy::PathKind::Output,
+        other => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "invalid kind: {}, expected 'input' or 'output'",
+                other
+            )));
+        }
+    };
+    jacs_mcp::path_policy::resolve(raw, kind_enum)
+        .map(|p| p.display().to_string())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))
+}
+
 #[pymodule]
 fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
@@ -2385,6 +2415,9 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_trusted_simple, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent_simple, m)?)?;
     m.add_function(wrap_pyfunction!(audit_simple, m)?)?;
+
+    // MCP path policy delegate (PRD §4.2.6, Issue 022).
+    m.add_function(wrap_pyfunction!(jacs_mcp_resolve_input_path, m)?)?;
 
     Ok(())
 }

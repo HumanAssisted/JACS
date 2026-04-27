@@ -2563,3 +2563,34 @@ pub fn quickstart_private_key_password_js(
     )
     .to_napi()
 }
+
+// =============================================================================
+// MCP path policy delegate (PRD §4.2.6, Issue 022)
+// =============================================================================
+//
+// Single source of truth for MCP file-path validation across Rust + Python +
+// Node. `jacsnpm/mcp.ts` calls this from each MCP tool case arm so Node's
+// path validation matches Rust byte-for-byte. The Rust helper enforces the
+// full six-layer policy (base-dir + canonicalisation, absolute-path
+// rejection, traversal rejection, NUL byte rejection, symlink rejection,
+// output-overwrite gate).
+//
+// Throws if `kind` is not `"input"` or `"output"`, or if the policy rejects.
+// On accept, returns the resolved canonical path string.
+#[napi(js_name = "jacsMcpResolveInputPath")]
+pub fn jacs_mcp_resolve_input_path(raw: String, kind: Option<String>) -> Result<String> {
+    let kind_str = kind.unwrap_or_else(|| "input".to_string());
+    let kind_enum = match kind_str.as_str() {
+        "input" => jacs_mcp::path_policy::PathKind::Input,
+        "output" => jacs_mcp::path_policy::PathKind::Output,
+        other => {
+            return Err(napi::Error::from_reason(format!(
+                "invalid kind: {}, expected 'input' or 'output'",
+                other
+            )));
+        }
+    };
+    jacs_mcp::path_policy::resolve(&raw, kind_enum)
+        .map(|p| p.display().to_string())
+        .map_err(|e| napi::Error::from_reason(format!("{}", e)))
+}

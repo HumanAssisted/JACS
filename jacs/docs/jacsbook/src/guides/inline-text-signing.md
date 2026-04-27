@@ -142,5 +142,3 @@ There is intentionally **no** `--force-overwrite-markers` escape hatch in v0.10.
 ## Next step
 
 If you need the same provenance for image bytes (PNG / JPEG / WebP), see [Image and Media Signatures](./media-signing.md).
-
-**Source of design:** PRD `~/personal/hai/docs/jacs/PROVENANCE_EXPANSION_PRD.md` §4.1 — inline text signatures, schema hardening, and marker-collision protection.

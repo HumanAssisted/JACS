@@ -6,7 +6,7 @@ const PRIVATE_KEY_PASSWORD_ENV: &str = "JACS_PRIVATE_KEY_PASSWORD";
 const CLI_PASSWORD_FILE_ENV: &str = "JACS_PASSWORD_FILE";
 const DEFAULT_LEGACY_PASSWORD_FILE: &str = "./jacs_keys/.jacs_password";
 
-pub(crate) fn quickstart_password_bootstrap_help() -> &'static str {
+pub fn quickstart_password_bootstrap_help() -> &'static str {
     "Password bootstrap options (prefer exactly one explicit source):
   1) Direct env (recommended):
      export JACS_PRIVATE_KEY_PASSWORD='your-strong-password'
@@ -91,7 +91,7 @@ fn get_non_empty_env_var(key: &str) -> Result<Option<String>, String> {
 ///
 /// Also sets the `JACS_PRIVATE_KEY_PASSWORD` env var as a side-effect
 /// for backward compatibility with code paths that still read it.
-pub(crate) fn ensure_cli_private_key_password() -> Result<Option<String>, String> {
+pub fn ensure_cli_private_key_password() -> Result<Option<String>, String> {
     let env_password = get_non_empty_env_var(PRIVATE_KEY_PASSWORD_ENV)?;
     let password_file = get_non_empty_env_var(CLI_PASSWORD_FILE_ENV)?;
 
@@ -139,7 +139,7 @@ pub(crate) fn ensure_cli_private_key_password() -> Result<Option<String>, String
     Ok(None)
 }
 
-pub(crate) fn wrap_quickstart_error_with_password_help(
+pub fn wrap_quickstart_error_with_password_help(
     context: &str,
     err: impl std::fmt::Display,
 ) -> Box<dyn Error> {

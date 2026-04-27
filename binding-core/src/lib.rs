@@ -80,7 +80,6 @@ pub enum ErrorKind {
     KeyNotFound,
     /// No JACS signature found in the target (e.g. inline text / image). Permissive
     /// verify bindings return this as a typed status; strict verify bindings raise / reject.
-    /// See PRD docs/prds/PROVENANCE_EXPANSION_PRD.md §4.1.2 (Q2 + C1 resolutions).
     MissingSignature,
     /// Generic failure
     Generic,

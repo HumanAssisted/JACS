@@ -288,6 +288,27 @@ pub fn canonical_hash_robust_jpeg(bytes: &[u8]) -> Result<[u8; 32], MediaError> 
     Ok(sha256_bytes(cleared.as_raw()))
 }
 
+/// REVIEW_005 (1) / Issue 013: hash the decoded pixel buffer **before** LSB
+/// modification — the pre-LSB pixel hash that `pixelHash` is supposed to
+/// commit to per PRD §4.2.2. This is divergent from `canonical_hash_robust_*`
+/// which zeroes the target-channel LSB so the hash stays invariant under
+/// robust embedding. Both hashes coexist in the claim: `contentHash` covers
+/// the canonicalised + LSB-zeroed pixels (so verifiers can re-derive it
+/// after embed), and `pixelHash` covers the original pixels (so verifiers
+/// can detect "metadata strip + pixel re-encode" tampering).
+pub fn pixel_hash_pre_lsb_png(bytes: &[u8]) -> Result<[u8; 32], MediaError> {
+    let stripped = crate::png::bytes_without_jacs_chunk(bytes)?;
+    let img = decode_png(&stripped)?;
+    Ok(sha256_bytes(img.as_raw()))
+}
+
+/// JPEG variant of [`pixel_hash_pre_lsb_png`].
+pub fn pixel_hash_pre_lsb_jpeg(bytes: &[u8]) -> Result<[u8; 32], MediaError> {
+    let stripped = crate::jpeg::bytes_without_jacs_segment(bytes)?;
+    let img = decode_jpeg(&stripped)?;
+    Ok(sha256_bytes(img.as_raw()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,15 +365,17 @@ mod tests {
 
     #[test]
     fn robust_extract_self_describing_preamble() {
-        // A plain fixture with no preamble in LSB → extract returns None cleanly.
+        // R-005: previous assertion was `res.is_none() || res.is_some()` —
+        // a tautology that cannot detect regressions. Tighten to assert the
+        // negative case: a flat fixture with no embedded payload returns None.
+        // The flat fixture's alpha LSBs are deterministically 0 (alpha=200 →
+        // 0b1100_1000), so the magic bytes (b"JACS") cannot match.
         let input = fixture_png_256();
         let res = extract_lsb_png(&input).unwrap();
-        // Depending on pixel LSB noise the magic may accidentally match; but on
-        // our flat fixture the LSBs are all zero so the magic is `\x00\x00...`
-        // → no match.
         assert!(
-            res.is_none() || res.is_some(),
-            "must not panic; None on no-preamble fixture"
+            res.is_none(),
+            "expected no robust LSB payload in unsigned fixture; got Some({:?})",
+            res
         );
     }
 }

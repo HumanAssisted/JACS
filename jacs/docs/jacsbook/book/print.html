@@ -15406,7 +15406,6 @@ signature: ...
 </div>
 <h2 id="next-step"><a class="header" href="#next-step">Next step</a></h2>
 <p>If you need the same provenance for image bytes (PNG / JPEG / WebP), see <a href="guides/./media-signing.html">Image and Media Signatures</a>.</p>
-<p><strong>Source of design:</strong> PRD <code>~/personal/hai/docs/jacs/PROVENANCE_EXPANSION_PRD.md</code> §4.1 — inline text signatures, schema hardening, and marker-collision protection.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="image-and-media-signatures"><a class="header" href="#image-and-media-signatures">Image and Media Signatures</a></h1>
 <h2 id="why-this-matters-2"><a class="header" href="#why-this-matters-2">Why this matters</a></h2>
 <p>You have an image — a photo, an AI-generated render, a chart — and you want a downstream consumer to verify <em>who</em> produced it and <em>when</em> (claimed time) before trusting the asset. With <code>jacs sign-image</code> the signed-document JSON sits inside the image itself in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP); no sidecar file, no AGPL dependency, no external service. The signature proves <em>who</em> signed <em>which canonical bytes</em> at the agent's <em>claimed</em> time — it does not prove first creation or legal ownership.</p>
@@ -15492,7 +15491,6 @@ jacs sign-image photo.png --out signed.png --refuse-overwrite
 </div>
 <h2 id="clean-room-provenance"><a class="header" href="#clean-room-provenance">Clean-room provenance</a></h2>
 <p>The <code>jacs-media</code> crate is 100% Rust, dual-licensed Apache-2.0 / MIT. Zero AGPL dependencies — we cite the prior art (PNG iTXt RFC, Adobe XMP spec) without copying any source. A <code>cargo deny</code> license gate prevents future regressions.</p>
-<p><strong>Source of design:</strong> PRD <code>~/personal/hai/docs/jacs/PROVENANCE_EXPANSION_PRD.md</code> §4.2 — image / media embedding, robust mode, and clean-room guardrails.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="cli-examples"><a class="header" href="#cli-examples">CLI Examples</a></h1>
 <p>This chapter provides practical examples of using the JACS CLI for common workflows.</p>
 <h2 id="quick-reference-1"><a class="header" href="#quick-reference-1">Quick Reference</a></h2>
@@ -19018,7 +19016,7 @@ done
 <li>Documents signed with older versions can be verified with newer versions</li>
 <li>Older JACS versions cannot verify documents using newer cryptographic algorithms</li>
 </ul>
-<h2 id="010--011"><a class="header" href="#010--011">0.10 → 0.11</a></h2>
+<h2 id="09--010"><a class="header" href="#09--010">0.9 → 0.10</a></h2>
 <p>v0.10.0 adds inline text signatures, image / media embedding, and the new <code>MissingSignature</code> error variant. <strong>No existing API changes behaviour.</strong></p>
 <h3 id="additive-surface--no-opt-in-required"><a class="header" href="#additive-surface--no-opt-in-required">Additive surface — no opt-in required</a></h3>
 <p>Five new methods per binding, five new CLI verbs, five new MCP tools. Pre-existing call sites are unaffected.</p>
@@ -19058,8 +19056,6 @@ match err.kind() {
 <h3 id="verify-semantics-change-is-opt-in-via-strict"><a class="header" href="#verify-semantics-change-is-opt-in-via-strict">Verify semantics change is opt-in via <code>strict</code></a></h3>
 <p><code>verify-text</code> and <code>verify-image</code> are <strong>new commands</strong> in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); <code>--strict</code> opts in to error-on-missing.</p>
 <p>No existing command (<code>jacs verify</code>, <code>jacs document verify</code>, etc.) changes its exit codes or its return shape.</p>
-<h3 id="after-publish-task-for-sibling-repos"><a class="header" href="#after-publish-task-for-sibling-repos">After-publish task for sibling repos</a></h3>
-<p>After v0.10.0 lands on crates.io, bump <code>=0.10.0</code> pins in <code>~/personal/haisdk</code> (<code>rust/Cargo.toml</code>, <code>python/pyproject.toml</code>, <code>node/package.json</code>). The <code>hai/api</code> middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.</p>
 <h2 id="migrating-nodejs-from-06x-to-070"><a class="header" href="#migrating-nodejs-from-06x-to-070">Migrating Node.js from 0.6.x to 0.7.0</a></h2>
 <h3 id="breaking-change-async-first-api"><a class="header" href="#breaking-change-async-first-api">Breaking Change: Async-First API</a></h3>
 <p>In v0.7.0, all NAPI operations return Promises by default. Sync variants are available with a <code>Sync</code> suffix, following the Node.js convention (like <code>fs.readFile</code> vs <code>fs.readFileSync</code>).</p>

@@ -15,7 +15,9 @@ pub enum MediaFormat {
 
 /// Detect the media format from magic bytes. Returns `UnsupportedFormat` for
 /// unknown inputs (including empty and truncated buffers — never panics on
-/// short inputs).
+/// short inputs). Issue 004: ZIP / archive containers receive a hint
+/// directing the caller to `sign_file --embed`, which is the documented
+/// PRD §4.2.2 fallback for non-image binaries.
 pub fn detect_format(bytes: &[u8]) -> Result<MediaFormat, MediaError> {
     if bytes.len() >= 8 && &bytes[..8] == b"\x89PNG\r\n\x1a\n" {
         return Ok(MediaFormat::Png);
@@ -25,6 +27,17 @@ pub fn detect_format(bytes: &[u8]) -> Result<MediaFormat, MediaError> {
     }
     if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
         return Ok(MediaFormat::WebP);
+    }
+    // ZIP local-file-header magic ("PK\x03\x04"). Surface a friendly hint —
+    // archives are not in scope for `jacs-media` (PRD §4.2.2 says non-image
+    // binaries use the existing detached-signature path).
+    if bytes.len() >= 4 && &bytes[..4] == b"PK\x03\x04" {
+        return Err(MediaError::Unsupported(
+            "ZIP archives are not supported by jacs-media; use \
+             `jacs sign-file <archive>.zip --embed` to produce a detached \
+             signature instead"
+                .to_string(),
+        ));
     }
     Err(MediaError::UnsupportedFormat)
 }
@@ -69,5 +82,25 @@ mod tests {
         assert!(detect_format(&[0xff, 0xd8]).is_err());
         // Truncated WebP (RIFF but no WEBP).
         assert!(detect_format(b"RIFF\x00\x00\x00\x00XXXX").is_err());
+    }
+
+    /// Issue 004: ZIP archives receive a friendly directive to the existing
+    /// `sign_file --embed` path, not the generic `UnsupportedFormat` enum.
+    #[test]
+    fn detect_zip_returns_friendly_directive() {
+        let bytes = b"PK\x03\x04rest_of_zip";
+        match detect_format(bytes) {
+            Err(MediaError::Unsupported(msg)) => {
+                assert!(
+                    msg.contains("sign-file"),
+                    "ZIP error must direct to sign-file --embed; got: {msg}"
+                );
+                assert!(
+                    msg.contains("--embed"),
+                    "ZIP error must mention --embed; got: {msg}"
+                );
+            }
+            other => panic!("expected MediaError::Unsupported for ZIP, got: {other:?}"),
+        }
     }
 }

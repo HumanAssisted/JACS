@@ -192,9 +192,10 @@ pub fn extract(bytes: &[u8], scan_robust: bool) -> Result<Option<String>, MediaE
     let mut found = Vec::new();
     for (ty, body, _) in &chunks {
         if ty == ITXT_TYPE
-            && let Some(text) = parse_itxt_body(body) {
-                found.push(text);
-            }
+            && let Some(text) = parse_itxt_body(body)
+        {
+            found.push(text);
+        }
     }
     if found.len() > 1 {
         return Err(MediaError::Parse(

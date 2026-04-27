@@ -1,7 +1,7 @@
 //! Inline text signatures — append YAML-bodied JACS signature blocks to the end
 //! of a text / markdown file without wrapping the content.
 //!
-//! Design choices are documented in `docs/prds/PROVENANCE_EXPANSION_PRD.md` §4.1:
+//! Design choices:
 //!
 //! - **C2 — signature at end, content preserved.** Content is not wrapped. The
 //!   signature block is appended after the content between

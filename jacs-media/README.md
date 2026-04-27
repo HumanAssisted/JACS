@@ -4,8 +4,6 @@ Embed JACS signed-document JSON in PNG / JPEG / WebP images via metadata
 channels (iTXt / APP11 / XMP). 100% Rust, Apache-2.0 licensed, zero AGPL,
 zero C dependencies.
 
-See `docs/prds/PROVENANCE_EXPANSION_PRD.md` §4.2 for the full design.
-
 ## Scope
 
 - **Metadata-channel embedding.** PNG iTXt chunk (`JACS-Signature` keyword),

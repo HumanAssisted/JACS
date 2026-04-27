@@ -1387,9 +1387,28 @@ pub fn sign_image(
     })?;
 
     // Format detection — clean error on unsupported.
-    let fmt = jacs_media::detect_format(&bytes).map_err(|_| {
-        JacsError::ValidationError(format!("unsupported format for image at '{}'", in_path))
-    })?;
+    //
+    // PRD §3.2 / §4.2.5 / Issue 002: `format_hint` is an optional override
+    // for callers (CLI `--format`, NAPI `format`, PyO3 `format=`, MCP
+    // `format` field). When present, it wins over magic-byte detection — that
+    // is the documented contract. Unknown values return a clean
+    // ValidationError. When absent, we fall back to magic-byte detection.
+    let fmt = match opts.format_hint.as_deref() {
+        Some(hint) => match hint.to_ascii_lowercase().as_str() {
+            "png" => jacs_media::MediaFormat::Png,
+            "jpeg" | "jpg" => jacs_media::MediaFormat::Jpeg,
+            "webp" => jacs_media::MediaFormat::WebP,
+            other => {
+                return Err(JacsError::ValidationError(format!(
+                    "unknown format hint '{}' for image at '{}' (expected png|jpeg|webp)",
+                    other, in_path
+                )));
+            }
+        },
+        None => jacs_media::detect_format(&bytes).map_err(|_| {
+            JacsError::ValidationError(format!("unsupported format for image at '{}'", in_path))
+        })?,
+    };
     let format_str = match fmt {
         jacs_media::MediaFormat::Png => "png",
         jacs_media::MediaFormat::Jpeg => "jpeg",
@@ -1397,8 +1416,11 @@ pub fn sign_image(
     };
 
     // Refuse-overwrite guard (PRD §4.2.2).
+    // Issue 002: pass the resolved format (which honours the user's hint) so
+    // a damaged-magic file with explicit `--format` still gets the right
+    // existing-signature check.
     if opts.refuse_overwrite
-        && let Ok(Some(_)) = jacs_media::extract_signature(&bytes, false)
+        && let Ok(Some(_)) = jacs_media::extract_signature_with_format(fmt, &bytes, false)
     {
         return Err(JacsError::ValidationError(
             "input already carries a JACS signature — pass refuse_overwrite=false to replace"
@@ -1407,10 +1429,13 @@ pub fn sign_image(
     }
 
     // Canonical hash — robust selector per PRD §4.2.3.
+    // Issue 002: pass the resolved format (which honours the user's
+    // `format_hint` override) so canonicalisation stays consistent with the
+    // chosen embed channel.
     let canonical_hash = if opts.robust {
-        jacs_media::canonical_hash_robust(&bytes).map_err(media_to_jacs_err)?
+        jacs_media::canonical_hash_robust_with_format(fmt, &bytes).map_err(media_to_jacs_err)?
     } else {
-        jacs_media::canonical_hash(&bytes).map_err(media_to_jacs_err)?
+        jacs_media::canonical_hash_with_format(fmt, &bytes).map_err(media_to_jacs_err)?
     };
     let canonicalization = if opts.robust {
         "jacs-media-v1-robust"
@@ -1426,39 +1451,33 @@ pub fn sign_image(
 
     // Pixel-hash for robust mode.
     //
-    // KNOWN LIMITATION (Issue 013 / PRD §4.2.2): in v0.10.0 `pixelHash`
-    // **equals** `contentHash` because both are SHA-256 over the canonicalised,
-    // LSB-zeroed pixel bytes. The field is populated for forward compatibility
-    // (so the wire shape is stable) but provides no extra anti-pixel-recompress
-    // signal beyond the existing `contentHash`.
-    //
-    // The PRD's stated purpose for `pixelHash` is to commit to the *pre-LSB*
-    // pixel bytes so a verifier can detect "metadata strip + pixel re-encode"
-    // attacks. That divergence is deferred — it requires hashing the decoded
-    // RGB(A) bytes BEFORE LSB-zeroing at both sign and verify time, which is a
-    // separate decode pass. A future release will deliver the divergent
-    // semantic and bump `mediaSignatureVersion` to 2.
-    //
-    // Until then, callers should treat `pixelHash` as advisory and rely on
-    // `contentHash` for integrity.
+    // REVIEW_005 (1) / PRD §4.2.2: `pixelHash` commits to the **pre-LSB**
+    // decoded pixel buffer so a verifier can detect "metadata strip + pixel
+    // re-encode" tampering. This is divergent from `contentHash`, which
+    // hashes the canonicalised + LSB-zeroed pixels so the value stays
+    // invariant after robust embedding. Both fields coexist in the claim
+    // (under `mediaSignatureVersion: 1`); a v0.10.0 verifier that ignores
+    // `pixelHash` still validates correctly via `contentHash`, and a
+    // pixel-aware verifier (issued by callers who care about anti-recompress
+    // detection) re-derives `pixel_hash_pre_lsb(fmt, bytes_pre_embed)` and
+    // compares to the claim's `pixelHash`. WebP returns `Unsupported` for
+    // robust mode, so `pixelHash` stays None there.
     let pixel_hash = if opts.robust {
-        Some(format!(
-            "sha256-b64url:{}",
-            base64url_nopad_local(&canonical_hash)
-        ))
+        let raw = jacs_media::pixel_hash_pre_lsb(fmt, &bytes).map_err(media_to_jacs_err)?;
+        Some(format!("sha256-b64url:{}", base64url_nopad_local(&raw)))
     } else {
         None
     };
 
-    // `embeddingChannels` is **signer intent**, NOT verifier-checked ground
-    // truth (Issue 015 / PRD §4.2.2). The verifier currently does not
-    // cross-check the claim's declared channels against what is actually
-    // present in the file: a robust signature whose LSB chunk has been stripped
-    // post-sign would still surface as `Valid` if the metadata channel still
-    // round-trips. A future release will return the observed channel set from
-    // `extract_signature` and reject claim/observed mismatches; until then
-    // callers should treat this field as advisory and rely on `contentHash`
-    // for integrity.
+    // REVIEW_005 (2) / Issue 015: `embeddingChannels` is **verifier-checked
+    // ground truth**. The signer must declare only the channels that actually
+    // carry the payload after embed; the verifier cross-checks declared
+    // against observed and surfaces `Malformed` on mismatch.
+    //
+    // In v0.10+, robust mode re-encodes the pixel buffer to write the LSB
+    // payload and the iTXt metadata chunk does NOT survive that re-encode
+    // (verified by `sign_image_robust_modifies_pixels`). So robust = lsb-only
+    // on the wire. Non-robust = metadata-only.
     let claim = json!({
         "mediaSignatureVersion": 1,
         "format": format_str,
@@ -1467,7 +1486,7 @@ pub fn sign_image(
         "contentHash": base64url_nopad_local(&canonical_hash),
         "publicKeyHash": public_key_hash,
         "embeddingChannels": if opts.robust {
-            json!(["metadata", "lsb"])
+            json!(["lsb"])
         } else {
             json!(["metadata"])
         },
@@ -1481,10 +1500,18 @@ pub fn sign_image(
     // Embed via jacs-media. The wire format is base64url-encoded JSON
     // (PRD §4.2.2 C3) so the WebP XMP attribute does not break on JSON
     // quote characters.
+    //
+    // Issue 002: pass the resolved format (which honours the user's hint) so
+    // the override actually reaches the embed path.
     let payload_b64url = base64url_nopad_local(signed_doc.raw.as_bytes());
-    let new_bytes =
-        jacs_media::embed_signature(&bytes, &payload_b64url, opts.robust, opts.refuse_overwrite)
-            .map_err(media_to_jacs_err)?;
+    let new_bytes = jacs_media::embed_signature_with_format(
+        fmt,
+        &bytes,
+        &payload_b64url,
+        opts.robust,
+        opts.refuse_overwrite,
+    )
+    .map_err(media_to_jacs_err)?;
 
     // Determine backup behavior and write.
     let in_canon = std::fs::canonicalize(in_path).ok();
@@ -1843,7 +1870,7 @@ pub fn verify_image(
         agent.verify_with_key(&payload, resolved.public_key_pem.clone())
     };
 
-    let status = match verify_result {
+    let mut status = match verify_result {
         Ok(v) => {
             if v.valid {
                 MediaVerifyStatus::Valid
@@ -1854,6 +1881,43 @@ pub fn verify_image(
         Err(JacsError::HashMismatch { .. }) => MediaVerifyStatus::HashMismatch,
         Err(_) => MediaVerifyStatus::InvalidSignature,
     };
+
+    // REVIEW_005 (2) / Issue 015: cross-check the claim's `embeddingChannels`
+    // against the bytes actually on disk. A robust signature whose LSB chunk
+    // has been stripped post-sign must surface as Malformed, not Valid.
+    if matches!(status, MediaVerifyStatus::Valid) {
+        let claim_channels: Vec<String> = claim
+            .get("embeddingChannels")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let claims_metadata = claim_channels.iter().any(|s| s == "metadata");
+        let claims_lsb = claim_channels.iter().any(|s| s == "lsb");
+
+        // Only spend the LSB-scan cost if the claim mentions LSB; cheap
+        // metadata check always runs.
+        let observed =
+            jacs_media::observed_channels(fmt, &bytes, claims_lsb).unwrap_or((false, false));
+        let (obs_metadata, obs_lsb) = observed;
+
+        let mut mismatches: Vec<String> = Vec::new();
+        if claims_metadata && !obs_metadata {
+            mismatches.push("claim says metadata channel present but file has none".to_string());
+        }
+        if claims_lsb && !obs_lsb {
+            mismatches.push("claim says lsb channel present but file has none".to_string());
+        }
+        if !mismatches.is_empty() {
+            status = MediaVerifyStatus::Malformed(format!(
+                "embeddingChannels mismatch: {}",
+                mismatches.join("; ")
+            ));
+        }
+    }
 
     let embedding_channels = match status {
         MediaVerifyStatus::Valid => Some(
@@ -1882,13 +1946,39 @@ pub fn verify_image(
 /// Extract the embedded JACS signed-document JSON. Returns the **decoded**
 /// JSON string by default — for the base64url wire form (as written to the
 /// metadata chunk) use [`extract_media_signature_raw`].
+///
+/// This convenience wrapper does NOT scan the robust LSB channel. To recover
+/// a payload from a metadata-stripped image whose LSB carries the robust
+/// signature, use [`extract_media_signature_with_options`] with
+/// `scan_robust: true` (R-011 / PRD §3.2 + §4.2.4).
 pub fn extract_media_signature(path: &str) -> Result<Option<String>, JacsError> {
+    extract_media_signature_with_options(path, crate::simple::types::ExtractMediaOptions::default())
+}
+
+/// Like [`extract_media_signature`] but returns the **raw** base64url-encoded
+/// payload as written to the metadata chunk. Useful for byte-for-byte relay,
+/// fuzzing, and protocol debugging.
+pub fn extract_media_signature_raw(path: &str) -> Result<Option<String>, JacsError> {
+    extract_media_signature_raw_with_options(
+        path,
+        crate::simple::types::ExtractMediaOptions::default(),
+    )
+}
+
+/// R-011: extract decoded payload, optionally scanning the robust LSB
+/// channel as a fallback when the metadata channel has no payload. Mirrors
+/// the cost-control opt-in already exposed via `verify_image --robust`
+/// (PRD §4.2.4).
+pub fn extract_media_signature_with_options(
+    path: &str,
+    opts: crate::simple::types::ExtractMediaOptions,
+) -> Result<Option<String>, JacsError> {
     use base64::Engine;
     let bytes = std::fs::read(path).map_err(|e| JacsError::FileReadFailed {
         path: path.to_string(),
         reason: e.to_string(),
     })?;
-    match jacs_media::extract_signature(&bytes, false).map_err(media_to_jacs_err)? {
+    match jacs_media::extract_signature(&bytes, opts.scan_robust).map_err(media_to_jacs_err)? {
         Some(raw_b64) => {
             let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(raw_b64.as_bytes())
@@ -1904,15 +1994,16 @@ pub fn extract_media_signature(path: &str) -> Result<Option<String>, JacsError> 
     }
 }
 
-/// Like [`extract_media_signature`] but returns the **raw** base64url-encoded
-/// payload as written to the metadata chunk. Useful for byte-for-byte relay,
-/// fuzzing, and protocol debugging.
-pub fn extract_media_signature_raw(path: &str) -> Result<Option<String>, JacsError> {
+/// R-011: raw-payload variant of [`extract_media_signature_with_options`].
+pub fn extract_media_signature_raw_with_options(
+    path: &str,
+    opts: crate::simple::types::ExtractMediaOptions,
+) -> Result<Option<String>, JacsError> {
     let bytes = std::fs::read(path).map_err(|e| JacsError::FileReadFailed {
         path: path.to_string(),
         reason: e.to_string(),
     })?;
-    jacs_media::extract_signature(&bytes, false).map_err(media_to_jacs_err)
+    jacs_media::extract_signature(&bytes, opts.scan_robust).map_err(media_to_jacs_err)
 }
 
 // =============================================================================

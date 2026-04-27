@@ -1,0 +1,171 @@
+{
+  "$comment": "PRD §4.2.6 / Issue 020 / R-002 / R-003 — single source of truth for MCP path-policy parameterised tests. Consumed by Rust (jacs-mcp/tests/path_policy_matrix.rs), Python (jacspy/tests/test_mcp_path_policy.py), and Node (jacsnpm/test/mcp-path-policy.test.js). Layers covered: absolute-path, traversal, NUL byte, symlink-escape, base-dir confinement, output-overwrite policy. Each case names a representative attack or expected acceptance and which policy layer it exercises. Per-tool×path-arg coverage at the MCP-server-façade level lives in jacs-mcp/tests/inline_media_envelope.rs (the `*_honours_base_dir_confinement` tests added under R-003 cover sign_text, verify_text, sign_image input_path, sign_image output_path, verify_image, extract_media_signature). Functional matrix coverage is achieved because every wave-3 tool handler delegates to path_policy::resolve_input_path / resolve_output_path; a layer break would surface in this parameterised matrix and a tool-side wiring break would surface in the inline_media_envelope.rs façade tests.",
+  "schema_version": 1,
+  "tools": [
+    "jacs_sign_text",
+    "jacs_verify_text",
+    "jacs_sign_image",
+    "jacs_verify_image",
+    "jacs_extract_media_signature"
+  ],
+  "path_kinds": ["input", "output"],
+  "policy_layers": [
+    "base_dir_confinement",
+    "absolute_path_rejection",
+    "traversal_rejection",
+    "symlink_rejection",
+    "output_overwrite_policy",
+    "backup_placement"
+  ],
+  "cases": [
+    {
+      "id": "absolute_unix",
+      "layer": "absolute_path_rejection",
+      "kind": "input",
+      "raw_path": "/etc/passwd",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "absolute_windows_drive",
+      "layer": "absolute_path_rejection",
+      "kind": "input",
+      "raw_path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "traversal_dotdot_etc",
+      "layer": "traversal_rejection",
+      "kind": "input",
+      "raw_path": "../etc/passwd",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "traversal_deep",
+      "layer": "traversal_rejection",
+      "kind": "input",
+      "raw_path": "../../../../tmp/pwned",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "traversal_dotdot_segment_in_middle",
+      "layer": "traversal_rejection",
+      "kind": "input",
+      "raw_path": "subdir/../../etc/passwd",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "single_dot_segment",
+      "layer": "traversal_rejection",
+      "kind": "input",
+      "raw_path": "./innocent.png",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "nul_byte",
+      "layer": "traversal_rejection",
+      "kind": "input",
+      "raw_path_escaped": "foo\u0000bar",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "empty_string",
+      "layer": "base_dir_confinement",
+      "kind": "input",
+      "raw_path": "",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "leading_slash_double",
+      "layer": "absolute_path_rejection",
+      "kind": "input",
+      "raw_path": "//etc/passwd",
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "symlink_to_outside_base",
+      "layer": "symlink_rejection",
+      "kind": "input",
+      "raw_path": "link_to_outside.png",
+      "setup": {
+        "kind": "symlink",
+        "target_outside_base": true,
+        "name": "link_to_outside.png"
+      },
+      "expect": "reject",
+      "reason_substring_lowercase": "symlink"
+    },
+    {
+      "id": "safe_relative_existing_file",
+      "layer": "base_dir_confinement",
+      "kind": "input",
+      "raw_path": "safe.md",
+      "setup": { "kind": "file", "name": "safe.md", "contents": "hello\n" },
+      "expect": "accept"
+    },
+    {
+      "id": "safe_relative_subdir",
+      "layer": "base_dir_confinement",
+      "kind": "input",
+      "raw_path": "subdir/inner.png",
+      "setup": { "kind": "file", "name": "subdir/inner.png", "contents": "" },
+      "expect": "accept"
+    },
+    {
+      "id": "output_existing_file_blocked",
+      "layer": "output_overwrite_policy",
+      "kind": "output",
+      "raw_path": "exists.png",
+      "setup": { "kind": "file", "name": "exists.png", "contents": "preexisting" },
+      "env": { "JACS_MCP_OVERWRITE_OK": "" },
+      "expect": "reject",
+      "reason_substring_lowercase": "already exists"
+    },
+    {
+      "id": "output_existing_file_allowed_with_env",
+      "layer": "output_overwrite_policy",
+      "kind": "output",
+      "raw_path": "exists2.png",
+      "setup": { "kind": "file", "name": "exists2.png", "contents": "preexisting" },
+      "env": { "JACS_MCP_OVERWRITE_OK": "1" },
+      "expect": "accept"
+    },
+    {
+      "id": "output_new_file_accept",
+      "layer": "output_overwrite_policy",
+      "kind": "output",
+      "raw_path": "new_signed.png",
+      "expect": "accept"
+    },
+    {
+      "id": "intermediate_symlink_outside_base",
+      "$comment": "Issue 020 — even when the candidate's leaf is fine, an intermediate symlink that points outside base_dir must be rejected. Caught by canonicalisation + base-dir confinement.",
+      "layer": "symlink_rejection",
+      "kind": "input",
+      "raw_path": "esc_link/inner.png",
+      "setup": {
+        "kind": "symlink",
+        "target_outside_base": true,
+        "name": "esc_link"
+      },
+      "expect": "reject",
+      "reason_substring_lowercase": "rejected"
+    },
+    {
+      "id": "missing_input_inside_base_passes_policy",
+      "$comment": "REVIEW_006 / Issue 006 — Path policy is *containment-only*; absent leaf files inside base_dir resolve to a canonical path and the calling tool surfaces FileReadFailed when it tries to open them. This case is the explicit fixture entry making that contract observable for readers searching the matrix for 'missing input'.",
+      "layer": "base_dir_confinement",
+      "kind": "input",
+      "raw_path": "does_not_exist.png",
+      "expect": "accept"
+    }
+  ]
+}

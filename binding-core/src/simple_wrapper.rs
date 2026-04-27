@@ -362,10 +362,10 @@ impl SimpleAgentWrapper {
             Err(jacs::error::JacsError::MissingSignature(p)) if strict => Err(
                 BindingCoreError::missing_signature(format!("no JACS signature found in {}", p)),
             ),
-            Err(e) => Err(BindingCoreError::verification_failed(format!(
-                "verify_text_file: {}",
-                e
-            ))),
+            // R-008: route to map_jacs_err so callers get precise error kinds
+            // (FileNotFound -> InvalidArgument, validation -> InvalidArgument,
+            // etc.) instead of every error collapsing to VerificationFailed.
+            Err(e) => Err(map_jacs_err(e, "verify_text_file")),
         }
     }
 
@@ -402,27 +402,33 @@ impl SimpleAgentWrapper {
             Err(jacs::error::JacsError::MissingSignature(p)) if strict => Err(
                 BindingCoreError::missing_signature(format!("no JACS signature found in {}", p)),
             ),
-            Err(e) => Err(BindingCoreError::verification_failed(format!(
-                "verify_image: {}",
-                e
-            ))),
+            // R-008: precise error kinds (see verify_text_file_json comment).
+            Err(e) => Err(map_jacs_err(e, "verify_image")),
         }
     }
 
     /// Extract the JACS signature payload from an image. PRD §3.2.
     ///
-    /// `opts_json` accepts `{"rawPayload": bool}` (default false = decoded JSON).
+    /// `opts_json` accepts:
+    /// - `{"rawPayload": bool}` (default false = decoded JSON)
+    /// - `{"scanRobust": bool}` / `{"scan_robust": bool}` (R-011, default
+    ///   false). When true, fall back to LSB scan if the metadata channel
+    ///   has no payload — mirrors `verify_image --robust` (PRD §4.2.4).
+    ///
     /// Returns a JSON envelope `{ "present": bool, "payload": string | null }`.
     pub fn extract_media_signature_json(
         &self,
         path: &str,
         opts_json: &str,
     ) -> BindingResult<String> {
-        let raw = parse_extract_options(opts_json)?;
-        let result = if raw {
-            jacs::simple::advanced::extract_media_signature_raw(path)
+        let parsed = parse_extract_options(opts_json)?;
+        let opts = jacs::simple::types::ExtractMediaOptions {
+            scan_robust: parsed.scan_robust,
+        };
+        let result = if parsed.raw_payload {
+            jacs::simple::advanced::extract_media_signature_raw_with_options(path, opts)
         } else {
-            jacs::simple::advanced::extract_media_signature(path)
+            jacs::simple::advanced::extract_media_signature_with_options(path, opts)
         };
         let payload = result.map_err(|e| map_jacs_err(e, "extract_media_signature"))?;
         let envelope = serde_json::json!({
@@ -476,6 +482,16 @@ fn parse_sign_text_options(opts_json: &str) -> BindingResult<jacs::simple::types
     }
     if let Some(b) = v.get("allowDuplicate").and_then(|x| x.as_bool()) {
         o.allow_duplicate = b;
+    }
+    // R-007: PRD §4.2.4b applies the unsafe_bak_mode override to text and
+    // image .bak files alike. Mirror parse_sign_image_options so language
+    // bindings can override the 0o600 default consistently.
+    if let Some(n) = v
+        .get("unsafeBakMode")
+        .or_else(|| v.get("unsafe_bak_mode"))
+        .and_then(|x| x.as_u64())
+    {
+        o.unsafe_bak_mode = Some(n as u32);
     }
     Ok(o)
 }
@@ -559,17 +575,37 @@ fn parse_verify_image_options(
     })
 }
 
-fn parse_extract_options(opts_json: &str) -> BindingResult<bool> {
+/// Parsed `extract_media_signature` options. Fields default to false so
+/// `parse_extract_options("{}")` matches `Default::default()`.
+#[derive(Debug, Clone, Copy, Default)]
+struct ParsedExtractOptions {
+    raw_payload: bool,
+    /// R-011: opt-in LSB scan fallback (mirrors verify_image --robust).
+    scan_robust: bool,
+}
+
+fn parse_extract_options(opts_json: &str) -> BindingResult<ParsedExtractOptions> {
     if opts_is_default(opts_json) {
-        return Ok(false);
+        return Ok(ParsedExtractOptions::default());
     }
     let v: serde_json::Value = serde_json::from_str(opts_json).map_err(|e| {
         BindingCoreError::invalid_argument(format!("extract_media_signature opts: {}", e))
     })?;
-    Ok(v.get("rawPayload")
+    let raw_payload = v
+        .get("rawPayload")
         .or_else(|| v.get("raw_payload"))
         .and_then(|x| x.as_bool())
-        .unwrap_or(false))
+        .unwrap_or(false);
+    let scan_robust = v
+        .get("scanRobust")
+        .or_else(|| v.get("scan_robust"))
+        .or_else(|| v.get("robust"))
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false);
+    Ok(ParsedExtractOptions {
+        raw_payload,
+        scan_robust,
+    })
 }
 
 fn serialize_verify_text_result(result: &jacs::inline::VerifyTextResult) -> BindingResult<String> {
@@ -745,6 +781,305 @@ mod tests {
             crate::ErrorKind::SerializationFailed,
             "Error should be SerializationFailed, got: {:?}",
             err.kind
+        );
+    }
+
+    // ========================================================================
+    // R-007: parse_sign_text_options must honour `unsafe_bak_mode` /
+    // `unsafeBakMode` parity with parse_sign_image_options. Before the fix
+    // the parser silently dropped the field — language bindings could not
+    // override the default 0o600 backup mode for text files.
+    // ========================================================================
+
+    #[test]
+    fn parse_sign_text_options_honours_unsafe_bak_mode_snake_case() {
+        let opts = parse_sign_text_options(r#"{"unsafe_bak_mode": 420}"#)
+            .expect("parse should succeed");
+        assert_eq!(
+            opts.unsafe_bak_mode,
+            Some(420),
+            "snake_case unsafe_bak_mode must round-trip"
+        );
+    }
+
+    #[test]
+    fn parse_sign_text_options_honours_unsafe_bak_mode_camel_case() {
+        let opts = parse_sign_text_options(r#"{"unsafeBakMode": 420}"#)
+            .expect("parse should succeed");
+        assert_eq!(
+            opts.unsafe_bak_mode,
+            Some(420),
+            "camelCase unsafeBakMode must round-trip"
+        );
+    }
+
+    #[test]
+    fn parse_sign_text_options_default_unsafe_bak_mode_is_none() {
+        let opts = parse_sign_text_options(r#"{"backup": true}"#)
+            .expect("parse should succeed");
+        assert_eq!(
+            opts.unsafe_bak_mode, None,
+            "absent unsafe_bak_mode must remain None (uses 0o600 default at write time)"
+        );
+    }
+
+    #[test]
+    fn parse_sign_text_options_combines_with_other_fields() {
+        let opts = parse_sign_text_options(
+            r#"{"backup": false, "allowDuplicate": true, "unsafeBakMode": 384}"#,
+        )
+        .expect("parse should succeed");
+        assert_eq!(opts.backup, false);
+        assert_eq!(opts.allow_duplicate, true);
+        assert_eq!(opts.unsafe_bak_mode, Some(384));
+    }
+
+    // ========================================================================
+    // R-008: verify_text_file_json and verify_image_json must use map_jacs_err
+    // for non-MissingSignature errors instead of collapsing every JacsError to
+    // ErrorKind::VerificationFailed. Test by feeding a non-existent path.
+    // ========================================================================
+
+    #[test]
+    fn verify_text_file_json_non_existent_path_returns_invalid_argument() {
+        let wrapper = test_wrapper();
+        let result = wrapper.verify_text_file_json(
+            "/tmp/jacs-binding-core-r008-does-not-exist.md",
+            "{}",
+        );
+        assert!(result.is_err(), "verify on non-existent path should fail");
+        let err = result.unwrap_err();
+        // map_jacs_err routes file-not-found to InvalidArgument (PRD §4.1.2
+        // "validation taxonomy"). Before R-008 fix the wrapper collapsed
+        // every error to VerificationFailed.
+        assert_eq!(
+            err.kind,
+            crate::ErrorKind::InvalidArgument,
+            "expected InvalidArgument for non-existent path, got: {:?}",
+            err.kind
+        );
+    }
+
+    #[test]
+    fn verify_image_json_non_existent_path_returns_invalid_argument() {
+        let wrapper = test_wrapper();
+        let result = wrapper.verify_image_json(
+            "/tmp/jacs-binding-core-r008-does-not-exist.png",
+            "{}",
+        );
+        assert!(result.is_err(), "verify on non-existent path should fail");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.kind,
+            crate::ErrorKind::InvalidArgument,
+            "expected InvalidArgument for non-existent path, got: {:?}",
+            err.kind
+        );
+    }
+
+    // ========================================================================
+    // R-011: parse_extract_options must surface scan_robust under either
+    // camelCase or snake_case (and the shorter alias `robust` for parity with
+    // the verify-image options shape).
+    // ========================================================================
+
+    #[test]
+    fn parse_extract_options_default_has_no_robust_scan_or_raw() {
+        let parsed = parse_extract_options("{}").expect("ok");
+        assert_eq!(parsed.raw_payload, false);
+        assert_eq!(parsed.scan_robust, false);
+    }
+
+    #[test]
+    fn parse_extract_options_honours_scan_robust_camel() {
+        let parsed = parse_extract_options(r#"{"scanRobust": true}"#).expect("ok");
+        assert!(parsed.scan_robust);
+        assert!(!parsed.raw_payload);
+    }
+
+    #[test]
+    fn parse_extract_options_honours_scan_robust_snake() {
+        let parsed = parse_extract_options(r#"{"scan_robust": true}"#).expect("ok");
+        assert!(parsed.scan_robust);
+    }
+
+    #[test]
+    fn parse_extract_options_honours_short_robust_alias() {
+        let parsed = parse_extract_options(r#"{"robust": true}"#).expect("ok");
+        assert!(parsed.scan_robust);
+    }
+
+    #[test]
+    fn parse_extract_options_combines_raw_payload_and_scan_robust() {
+        let parsed =
+            parse_extract_options(r#"{"rawPayload": true, "scanRobust": true}"#).expect("ok");
+        assert!(parsed.raw_payload);
+        assert!(parsed.scan_robust);
+    }
+
+    // ========================================================================
+    // R-007 follow-up (verify thinness): the parser tests above prove that
+    // `unsafe_bak_mode` populates `SignTextOptions`; the jacs-side test
+    // `text_backup_unsafe_mode_override` proves the field, when populated by
+    // a Rust caller, results in the right on-disk mode. What was NOT covered
+    // is the END-TO-END contract through the binding-core JSON envelope:
+    // `sign_text_file_json` with `{"unsafeBakMode": 0o644}` must produce a
+    // `.bak` whose Unix mode is 0o644. This proves parser → wrapper → core →
+    // disk in one shot, the way every PyO3 / NAPI / CGo binding actually
+    // exercises it.
+    // ========================================================================
+
+    #[test]
+    #[cfg(unix)]
+    fn sign_text_file_json_routes_unsafe_bak_mode_camel_to_disk() {
+        use std::os::unix::fs::PermissionsExt;
+        let wrapper = test_wrapper();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("doc.md");
+        std::fs::write(&path, b"# Hello\n\nbody\n").expect("write fixture");
+
+        let outcome_json = wrapper
+            .sign_text_file_json(
+                path.to_str().unwrap(),
+                r#"{"backup": true, "unsafeBakMode": 420}"#,
+            )
+            .expect("sign_text_file_json should succeed");
+
+        // 420 == 0o644
+        let outcome: serde_json::Value =
+            serde_json::from_str(&outcome_json).expect("outcome is JSON");
+        let bak_path = outcome
+            .get("backup_path")
+            .and_then(|v| v.as_str())
+            .expect("backup_path present");
+        let mode = std::fs::metadata(bak_path)
+            .expect("bak exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o644,
+            "JSON envelope unsafeBakMode=420 must reach the on-disk .bak; got {:o}",
+            mode
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn sign_text_file_json_default_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let wrapper = test_wrapper();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("doc.md");
+        std::fs::write(&path, b"# Hello\n\nbody\n").expect("write fixture");
+
+        let outcome_json = wrapper
+            .sign_text_file_json(path.to_str().unwrap(), "{}")
+            .expect("sign_text_file_json default opts should succeed");
+        let outcome: serde_json::Value =
+            serde_json::from_str(&outcome_json).expect("outcome is JSON");
+        let bak_path = outcome
+            .get("backup_path")
+            .and_then(|v| v.as_str())
+            .expect("backup_path present");
+        let mode = std::fs::metadata(bak_path)
+            .expect("bak exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "default .bak mode through JSON envelope must be 0o600; got {:o}",
+            mode
+        );
+    }
+
+    // ========================================================================
+    // R-008 follow-up: the existing tests prove file-not-found maps to
+    // InvalidArgument. Add the symmetric case — a file-level malformed
+    // signature block (BEGIN with no matching END) returns
+    // ValidationError from `verify_text_file`, which `map_jacs_err` must
+    // also route to InvalidArgument (NOT VerificationFailed and NOT
+    // Generic). This locks in the per-block-vs-file-level error
+    // taxonomy from PRD §4.1.2.
+    // ========================================================================
+
+    #[test]
+    fn verify_text_file_json_malformed_block_strict_returns_invalid_argument() {
+        let wrapper = test_wrapper();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("malformed.md");
+        // BEGIN sentinel with no END sentinel: file-level malformed per PRD §4.1.2.
+        // In strict mode this escalates to Err(JacsError::ValidationError(...))
+        // which map_jacs_err must route to InvalidArgument.
+        std::fs::write(
+            &path,
+            b"# Doc\n\n-----BEGIN JACS SIGNATURE-----\nsigner: x\n",
+        )
+        .expect("write fixture");
+
+        let result = wrapper.verify_text_file_json(path.to_str().unwrap(), r#"{"strict": true}"#);
+        assert!(
+            result.is_err(),
+            "strict verify on malformed block should fail with Err"
+        );
+        let err = result.unwrap_err();
+        // map_jacs_err routes ValidationError -> InvalidArgument. Before R-008
+        // fix this collapsed to VerificationFailed.
+        assert_eq!(
+            err.kind,
+            crate::ErrorKind::InvalidArgument,
+            "expected InvalidArgument for malformed-block, got: {:?} (msg: {})",
+            err.kind, err.message
+        );
+    }
+
+    #[test]
+    fn verify_text_file_json_malformed_block_permissive_returns_status() {
+        let wrapper = test_wrapper();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("malformed_permissive.md");
+        // Same fixture as above. Permissive returns Ok with status discriminator,
+        // never escalating to Err — this proves the binding's permissive contract
+        // is honoured for malformed files (per PRD §4.1.5).
+        std::fs::write(
+            &path,
+            b"# Doc\n\n-----BEGIN JACS SIGNATURE-----\nsigner: x\n",
+        )
+        .expect("write fixture");
+
+        let result = wrapper
+            .verify_text_file_json(path.to_str().unwrap(), "{}")
+            .expect("permissive verify of malformed file must NOT error");
+        let v: serde_json::Value = serde_json::from_str(&result).expect("result is JSON");
+        let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
+        assert_eq!(
+            status, "malformed",
+            "permissive verify must report status=malformed; got JSON: {}",
+            v
+        );
+    }
+
+    #[test]
+    fn verify_text_file_json_unsigned_permissive_returns_ok_status() {
+        let wrapper = test_wrapper();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("unsigned.md");
+        std::fs::write(&path, b"# Plain\n\nno signatures here\n").expect("write fixture");
+
+        // Permissive mode: missing signature is NOT an error. Returns Ok with
+        // a status discriminator that downstream callers can branch on. This
+        // negative test pins the documented contract from §4.1.5.
+        let result = wrapper
+            .verify_text_file_json(path.to_str().unwrap(), "{}")
+            .expect("permissive verify of unsigned file must NOT error");
+        let v: serde_json::Value =
+            serde_json::from_str(&result).expect("result is JSON");
+        let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
+        assert_eq!(
+            status, "missing_signature",
+            "permissive verify of unsigned file must report status=missing_signature; got JSON: {}",
+            v
         );
     }
 }

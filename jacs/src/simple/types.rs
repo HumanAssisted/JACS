@@ -613,3 +613,18 @@ pub struct VerifyImageOptions {
     /// Default false (cost: full pixel decode).
     pub scan_robust: bool,
 }
+
+/// Options for [`super::advanced::extract_media_signature_with_options`] and
+/// [`super::advanced::extract_media_signature_raw_with_options`] (R-011).
+///
+/// PRD §3.2 documents `extract` as the user-facing inspection verb, and PRD
+/// §4.2.4 documents the `--robust` LSB scan as a verify-time fallback. R-011
+/// makes both verbs honour the same opt-in: callers can ask `extract` to fall
+/// back to LSB recovery when the metadata channel is empty (e.g. an image
+/// passed through a metadata-stripping pipeline).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractMediaOptions {
+    /// When true, fall back to LSB scan if the metadata channel has no
+    /// payload. Default false (cost: full pixel decode).
+    pub scan_robust: bool,
+}

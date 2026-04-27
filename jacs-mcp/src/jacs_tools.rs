@@ -4135,17 +4135,23 @@ impl JacsMcpServer {
         description = "Sign a text/markdown file in place with an inline JACS signature block."
     )]
     pub async fn jacs_sign_text(&self, Parameters(params): Parameters<SignTextParams>) -> String {
-        // SAFETY: Validate file_path the same way other state-file tools do.
-        // The inline-text path is just as attacker-influenced as state files
-        // (LLMs construct file paths from user content), so the same defence
-        // applies — see PRD §4.2.6 path policy.
-        if let Err(e) = require_relative_path_safe(&params.file_path) {
-            return inline_text_error_envelope(
-                &params.file_path,
-                "Path validation failed",
-                format!("PATH_TRAVERSAL_BLOCKED: {}", e),
-            );
-        }
+        // PRD §4.2.6: every wave-3 file-path handler MUST run through the
+        // six-layer path policy (base-dir confinement, absolute/traversal
+        // rejection, leaf-symlink rejection, output-overwrite policy, backup
+        // placement). `require_relative_path_safe` alone covers only
+        // structural checks — it lets a bare relative name escape the
+        // configured `JACS_MCP_BASE_DIR` because resolution then falls back
+        // to the server CWD. See R-003.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return inline_text_error_envelope(
+                    &params.file_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -4165,7 +4171,7 @@ impl JacsMcpServer {
             unsafe_bak_mode: None,
         };
 
-        let file_path = params.file_path.clone();
+        let file_path = resolved_input;
         let result = tokio::task::spawn_blocking(move || {
             jacs::simple::advanced::sign_text_file(&simple_agent, &file_path, opts)
         })
@@ -4225,13 +4231,17 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<VerifyTextParams>,
     ) -> String {
-        if let Err(e) = require_relative_path_safe(&params.file_path) {
-            return verify_text_error_envelope(
-                &params.file_path,
-                "Path validation failed",
-                format!("PATH_TRAVERSAL_BLOCKED: {}", e),
-            );
-        }
+        // PRD §4.2.6 / R-003: full six-layer path policy.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return verify_text_error_envelope(
+                    &params.file_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -4250,7 +4260,7 @@ impl JacsMcpServer {
             key_dir: params.key_dir.as_deref().map(std::path::PathBuf::from),
         };
 
-        let file_path = params.file_path.clone();
+        let file_path = resolved_input;
         let result = tokio::task::spawn_blocking(move || {
             jacs::simple::advanced::verify_text_file(&simple_agent, &file_path, opts)
         })
@@ -4325,20 +4335,36 @@ impl JacsMcpServer {
         description = "Sign a PNG/JPEG/WebP image by embedding a JACS signature in format-native metadata. Robust mode (PNG/JPEG only) additionally embeds into the LSB channel."
     )]
     pub async fn jacs_sign_image(&self, Parameters(params): Parameters<SignImageParams>) -> String {
-        if let Err(e) = require_relative_path_safe(&params.input_path) {
-            return sign_image_error_envelope(
-                &params.output_path,
-                "Path validation failed",
-                format!("PATH_TRAVERSAL_BLOCKED: {}", e),
-            );
-        }
-        if let Err(e) = require_relative_path_safe(&params.output_path) {
-            return sign_image_error_envelope(
-                &params.output_path,
-                "Path validation failed",
-                format!("PATH_TRAVERSAL_BLOCKED: {}", e),
-            );
-        }
+        // PRD §4.2.6 / R-003: input must exist inside base_dir; output must
+        // either be inside base_dir and not already exist, OR be allowed via
+        // JACS_MCP_OVERWRITE_OK=1 / refuse_overwrite=false (in-place sign).
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.input_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return sign_image_error_envelope(
+                    &params.output_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
+        // For output, use resolve_output_path when it differs from input (a
+        // distinct write target is governed by overwrite policy). When equal,
+        // the operation is in-place and resolve_input_path applies.
+        let resolved_output = if params.input_path == params.output_path {
+            resolved_input.clone()
+        } else {
+            match crate::path_policy::resolve_output_path(&params.output_path) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return sign_image_error_envelope(
+                        &params.output_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            }
+        };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -4361,8 +4387,8 @@ impl JacsMcpServer {
             unsafe_bak_mode: None,
         };
 
-        let in_path = params.input_path.clone();
-        let out_path = params.output_path.clone();
+        let in_path = resolved_input;
+        let out_path = resolved_output;
         let result = tokio::task::spawn_blocking(move || {
             jacs::simple::advanced::sign_image(&simple_agent, &in_path, &out_path, opts)
         })
@@ -4403,13 +4429,17 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<VerifyImageParams>,
     ) -> String {
-        if let Err(e) = require_relative_path_safe(&params.file_path) {
-            return verify_image_error_envelope(
-                &params.file_path,
-                "Path validation failed",
-                format!("PATH_TRAVERSAL_BLOCKED: {}", e),
-            );
-        }
+        // PRD §4.2.6 / R-003.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return verify_image_error_envelope(
+                    &params.file_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
 
         let simple_agent = match self.simple_agent.as_ref() {
             Some(sa) => Arc::clone(sa),
@@ -4431,7 +4461,7 @@ impl JacsMcpServer {
             scan_robust: params.robust.unwrap_or(false),
         };
 
-        let file_path = params.file_path.clone();
+        let file_path = resolved_input;
         let result = tokio::task::spawn_blocking(move || {
             jacs::simple::advanced::verify_image(&simple_agent, &file_path, opts)
         })
@@ -4515,20 +4545,34 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<ExtractMediaSignatureParams>,
     ) -> String {
-        if let Err(e) = require_relative_path_safe(&params.file_path) {
-            return extract_media_error_envelope(
-                "Path validation failed",
-                format!("PATH_TRAVERSAL_BLOCKED: {}", e),
-            );
-        }
+        // PRD §4.2.6 / R-003.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return extract_media_error_envelope(
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
 
         let raw = params.raw_payload.unwrap_or(false);
-        let file_path = params.file_path.clone();
+        // R-011: scan_robust opt-in for the extract verb (parity with verify).
+        let extract_opts = jacs::simple::types::ExtractMediaOptions {
+            scan_robust: params.robust.unwrap_or(false),
+        };
+        let file_path = resolved_input;
         let result = tokio::task::spawn_blocking(move || {
             if raw {
-                jacs::simple::advanced::extract_media_signature_raw(&file_path)
+                jacs::simple::advanced::extract_media_signature_raw_with_options(
+                    &file_path,
+                    extract_opts,
+                )
             } else {
-                jacs::simple::advanced::extract_media_signature(&file_path)
+                jacs::simple::advanced::extract_media_signature_with_options(
+                    &file_path,
+                    extract_opts,
+                )
             }
         })
         .await;

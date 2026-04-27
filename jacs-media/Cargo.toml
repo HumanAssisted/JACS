@@ -1,6 +1,6 @@
 [package]
 name = "jacs-media"
-version = "0.11.0"
+version = "0.10.0"
 edition = "2024"
 description = "Embed JACS signed-document JSON in PNG/JPEG/WebP via metadata chunks. 100% Rust, Apache-2.0 / MIT only; no AGPL, no ST3GG code."
 license = "Apache-2.0"
@@ -19,3 +19,6 @@ thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"
+# Required by tests/oxipng_survival_test.rs (Issue 016 / PRD §5.1) — verifies
+# PNG iTXt JACS signatures survive oxipng default optimisation.
+oxipng = { version = "9", default-features = false, features = ["parallel"] }

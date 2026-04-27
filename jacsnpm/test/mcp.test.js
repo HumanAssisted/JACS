@@ -100,6 +100,29 @@ function createMockJacsClient(agent) {
     }),
     sharePublicKey: sinon.stub().returns('-----BEGIN PUBLIC KEY-----\nMIIB...\n-----END PUBLIC KEY-----'),
     shareAgent: sinon.stub().returns('{"jacsId":"client-agent-123","jacsVersion":"v1"}'),
+    // Inline-text + media verbs (REVIEW_001 — MCP arms must call these on
+    // the JacsClient, NOT on the native JacsAgent which does not have them).
+    signText: sinon.stub().resolves({
+      path: '/base/file.md',
+      signersAdded: 1,
+      backupPath: '/base/file.md.bak',
+    }),
+    verifyText: sinon.stub().resolves({
+      status: 'signed',
+      signatures: [{ signerId: 'agent-b', status: 'Valid' }],
+    }),
+    signImage: sinon.stub().resolves({
+      outPath: '/base/out.png',
+      signerId: 'client-agent-123',
+      format: 'png',
+      robust: false,
+    }),
+    verifyImage: sinon.stub().resolves({
+      status: 'signed',
+      signerId: 'agent-b',
+      format: 'png',
+    }),
+    extractMediaSignature: sinon.stub().resolves('{"jacsId":"img-1:1"}'),
   };
 }
 
@@ -575,10 +598,13 @@ describe('JACSTransportProxy', function () {
   // -------------------------------------------------------------------------
 
   describe('getJacsMcpToolDefinitions()', () => {
-    (available ? it : it.skip)('should return an array of 28 tool definitions', () => {
+    (available ? it : it.skip)('should return an array of 33 tool definitions', () => {
+      // 28 v0.10 tools + 5 inline-text/media verbs added in v0.11
+      // (jacs_sign_text, jacs_verify_text, jacs_sign_image, jacs_verify_image,
+      //  jacs_extract_media_signature).
       const tools = mcpModule.getJacsMcpToolDefinitions();
       expect(tools).to.be.an('array');
-      expect(tools).to.have.length(28);
+      expect(tools).to.have.length(33);
     });
 
     (available ? it : it.skip)('should include core JACS tools', () => {
@@ -908,6 +934,92 @@ describe('JACSTransportProxy', function () {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed).to.have.property('success', false);
       expect(parsed.error).to.include('boom');
+    });
+
+    // -------------------------------------------------------------------------
+    // REVIEW_001 regression — inline-text + media MCP arms must call the
+    // JacsClient (not the native JacsAgent which lacks these methods).
+    // -------------------------------------------------------------------------
+
+    describe('inline-text + media tool routing (REVIEW_001)', () => {
+      let baseDir;
+      let prevBaseDir;
+
+      beforeEach(function () {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-mcp-arm-'));
+        // Seed a real file so resolveMcpPath('input') accepts it.
+        fs.writeFileSync(path.join(baseDir, 'in.md'), '# hello\n');
+        fs.writeFileSync(path.join(baseDir, 'in.png'), Buffer.alloc(8));
+        prevBaseDir = process.env.JACS_MCP_BASE_DIR;
+        process.env.JACS_MCP_BASE_DIR = baseDir;
+      });
+
+      afterEach(function () {
+        const fs = require('fs');
+        if (prevBaseDir === undefined) {
+          delete process.env.JACS_MCP_BASE_DIR;
+        } else {
+          process.env.JACS_MCP_BASE_DIR = prevBaseDir;
+        }
+        try { fs.rmSync(baseDir, { recursive: true, force: true }); } catch (_) {}
+      });
+
+      (available ? it : it.skip)('jacs_sign_text routes through client.signText', async () => {
+        const client = createMockJacsClient();
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_sign_text', { file_path: 'in.md', no_backup: false },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).to.have.property('success', true);
+        expect(client.signText.calledOnce).to.be.true;
+        // Verify we're NOT reaching for the native JacsAgent.
+        expect(client.agent.signText).to.be.undefined;
+      });
+
+      (available ? it : it.skip)('jacs_verify_text routes through client.verifyText', async () => {
+        const client = createMockJacsClient();
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_verify_text', { file_path: 'in.md', strict: false },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).to.have.property('success', true);
+        expect(client.verifyText.calledOnce).to.be.true;
+      });
+
+      (available ? it : it.skip)('jacs_sign_image routes through client.signImage', async () => {
+        const client = createMockJacsClient();
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_sign_image',
+          { input_path: 'in.png', output_path: 'out.png', robust: false },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).to.have.property('success', true);
+        expect(client.signImage.calledOnce).to.be.true;
+      });
+
+      (available ? it : it.skip)('jacs_verify_image routes through client.verifyImage', async () => {
+        const client = createMockJacsClient();
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_verify_image', { file_path: 'in.png', strict: false },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).to.have.property('success', true);
+        expect(client.verifyImage.calledOnce).to.be.true;
+      });
+
+      (available ? it : it.skip)('jacs_extract_media_signature routes through client.extractMediaSignature', async () => {
+        const client = createMockJacsClient();
+        const result = await mcpModule.handleJacsMcpToolCall(
+          client, 'jacs_extract_media_signature',
+          { file_path: 'in.png', raw_payload: false },
+        );
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed).to.have.property('success', true);
+        expect(client.extractMediaSignature.calledOnce).to.be.true;
+      });
     });
   });
 });

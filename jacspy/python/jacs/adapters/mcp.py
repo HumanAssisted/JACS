@@ -44,49 +44,40 @@ def _is_untrust_allowed() -> bool:
     return os.environ.get("JACS_MCP_ALLOW_UNTRUST", "").lower() in ("true", "1")
 
 
-def _validate_mcp_file_path(file_path: str) -> None:
+def _validate_mcp_file_path(file_path: str, kind: str = "input") -> None:
     """Validate that a file path is safe for MCP tool use.
 
-    Rejects absolute paths, parent-directory traversal, null bytes,
-    and Windows drive-prefixed paths to prevent path traversal attacks
-    via prompt injection.
+    Delegates to the Rust ``jacs_mcp_resolve_input_path`` PyO3 export so that
+    Python enforcement matches Rust byte-for-byte (PRD §4.2.6, Issue 022).
+    The Rust helper enforces the full six-layer policy: base-directory
+    confinement, absolute-path rejection, traversal rejection, NUL byte
+    rejection, symlink rejection, and (for ``kind='output'``) the
+    overwrite-policy gate via ``JACS_MCP_OVERWRITE_OK``.
+
+    Args:
+        file_path: caller-supplied path.
+        kind: ``"input"`` (default) or ``"output"``. ``"output"`` triggers
+            the overwrite-policy gate.
 
     Raises:
-        ValueError: If the path is unsafe.
+        ValueError: If the path is unsafe per the Rust path policy.
     """
     if not file_path:
         raise ValueError("file_path cannot be empty")
 
-    # Reject null bytes
-    if "\0" in file_path:
-        raise ValueError(f"file_path contains null byte: {file_path!r}")
-
-    # Reject absolute paths (Unix and Windows)
-    if file_path.startswith("/") or file_path.startswith("\\"):
+    # Lazy import so adapters that never touch MCP don't pay the import cost.
+    try:
+        from jacs.jacs import jacs_mcp_resolve_input_path
+    except ImportError as e:  # pragma: no cover — should never happen at runtime
         raise ValueError(
-            f"Absolute paths are not allowed in MCP tools: {file_path!r}"
-        )
+            "Rust path policy delegate unavailable; rebuild jacspy: "
+            f"{e}"
+        ) from e
 
-    # Reject Windows drive-prefixed paths (e.g., C:\foo, D:/bar)
-    if (
-        len(file_path) >= 2
-        and file_path[0].isalpha()
-        and file_path[1] == ":"
-    ):
-        raise ValueError(
-            f"Windows drive-prefixed paths are not allowed in MCP tools: {file_path!r}"
-        )
-
-    # Check each path segment for traversal
-    for segment in file_path.replace("\\", "/").split("/"):
-        if segment == "..":
-            raise ValueError(
-                f"Path traversal ('..') is not allowed in MCP tools: {file_path!r}"
-            )
-        if segment == ".":
-            raise ValueError(
-                f"Current-directory segment ('.') is not allowed in MCP tools: {file_path!r}"
-            )
+    try:
+        jacs_mcp_resolve_input_path(file_path, kind)
+    except ValueError:
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -497,8 +488,8 @@ def _make_sign_image(mcp, cl):
         refuse_overwrite: bool = False,
     ) -> str:
         try:
-            _validate_mcp_file_path(input_path)
-            _validate_mcp_file_path(output_path)
+            _validate_mcp_file_path(input_path, "input")
+            _validate_mcp_file_path(output_path, "output")
             outcome = cl.sign_image(
                 input_path,
                 output_path,

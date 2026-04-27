@@ -119,5 +119,3 @@ jacs verify-image signed.png --key-dir ./trusted-keys/
 ## Clean-room provenance
 
 The `jacs-media` crate is 100% Rust, dual-licensed Apache-2.0 / MIT. Zero AGPL dependencies — we cite the prior art (PNG iTXt RFC, Adobe XMP spec) without copying any source. A `cargo deny` license gate prevents future regressions.
-
-**Source of design:** PRD `~/personal/hai/docs/jacs/PROVENANCE_EXPANSION_PRD.md` §4.2 — image / media embedding, robust mode, and clean-room guardrails.

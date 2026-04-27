@@ -8,7 +8,7 @@ JACS maintains backward compatibility for document verification:
 - Documents signed with older versions can be verified with newer versions
 - Older JACS versions cannot verify documents using newer cryptographic algorithms
 
-## 0.10 → 0.11
+## 0.9 → 0.10
 
 v0.10.0 adds inline text signatures, image / media embedding, and the new `MissingSignature` error variant. **No existing API changes behaviour.**
 
@@ -57,10 +57,6 @@ Python / Node / Go bindings are unaffected — their error types are not exhaust
 `verify-text` and `verify-image` are **new commands** in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); `--strict` opts in to error-on-missing.
 
 No existing command (`jacs verify`, `jacs document verify`, etc.) changes its exit codes or its return shape.
-
-### After-publish task for sibling repos
-
-After v0.10.0 lands on crates.io, bump `=0.10.0` pins in `~/personal/haisdk` (`rust/Cargo.toml`, `python/pyproject.toml`, `node/package.json`). The `hai/api` middleware re-uses the JACS verify entry points and is unaffected by the new opt-in surfaces.
 
 ## Migrating Node.js from 0.6.x to 0.7.0
 

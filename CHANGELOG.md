@@ -8,7 +8,6 @@
 - **Key-dir override.** `--key-dir <dir>` on `verify-text` / `verify-image` lets callers supply a directory of `<signer_id>.public.pem` files without importing them into the local trust store. Resolution order: self → `--key-dir` (when provided) → local trust store → DNS. When `--key-dir` is provided, a matching `<signer_id>.public.pem` wins over the trust store for that specific signer; signers not present in the directory fall through to the trust store.
 - **DNS-published key resolution.** The `DefaultKeyResolver` now plugs `jacs/src/dns/` into its inline resolver: when a signer's key is not in `--key-dir` or the local trust store, JACS performs a TXT lookup at `_v1.agent.jacs.<signer_domain>` for any embedded `jacsAgentDomain` and verifies the published `jac_public_key_hash`. Soft-fails to `KeyNotFound` if DNS is unreachable, the record is missing, or the digest does not match — same semantics as the rest of the resolver chain. Gated by the `dns-lookup` capability bit.
 - **`ErrorKind::MissingSignature`.** New typed error kind. Permissive mode returns it as a status; strict mode raises it. Exposed as `MissingSignatureError` (Python), message-pattern (Node), and `ErrMissingSignature` sentinel (Go).
-- **First-creation research doc.** `docs/prds/FIRST_CREATION_RESEARCH.md` compares RFC 3161, Rekor, and Trillian-witness approaches. Document-only in this release — no runtime integration.
 - **MCP path policy.** `jacs-mcp/src/path_policy.rs` ships a centralised six-layer file-path policy (base-dir + canonicalisation, absolute-path rejection, traversal-sequence rejection, symlink rejection by default, output-overwrite gate, backup-file placement). All Wave-3 MCP tools route through it; Python and Node MCP adapters delegate to the Rust helper via PyO3 / NAPI bindings.
 - **Shared `write_backup_or_err` helper.** Single `<path>.bak` writer used by both inline-text and image sign paths. Refuses symlink targets, defaults to mode `0o600`, and honours `unsafe_bak_mode` opt-out on both `SignTextOptions` and `SignImageOptions`.
 
@@ -18,7 +17,6 @@
 - CLI grows from 33 to 38 commands.
 - MCP server exposes 5 new tools; total 48 (was 43). Python and Node MCP adapters register the same 5 tools day-one (Q6 parity).
 - `ResolvedKey.public_key_pem` doc comment now states the dual-shape contract explicitly: Ed25519 / pq2025 hold raw key bytes, RSA-PSS holds full PEM bytes.
-- PRD title: "Anti-Backdating" → "Anti-Backdating Research" (the deliverable is a research doc in v0.10.0; no runtime proof).
 
 ### Migration
 

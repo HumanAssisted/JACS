@@ -295,7 +295,7 @@ try:
         Inherits from both the native PyO3 exception (so native strict-mode
         raises can be caught by this Python class via ``isinstance``) and from
         :class:`JacsError` (so a single ``except JacsError`` catches all JACS
-        errors). PRD docs/prds/PROVENANCE_EXPANSION_PRD.md §4.1.2 (C1).
+        errors).
         """
 
         pass

@@ -123,6 +123,7 @@ export declare function hashPublicKeyBase64(publicKeyBase64: string): string
 export declare function buildJwkSetFromPublicKey(publicKeyBase64: string, keyAlgorithm: string, keyId: string): string
 export declare function resolvePrivateKeyPassword(configPath?: string | undefined | null, keyDirectory?: string | undefined | null, explicitPassword?: string | undefined | null): string
 export declare function quickstartPrivateKeyPassword(configPath?: string | undefined | null, keyDirectory?: string | undefined | null): string
+export declare function jacsMcpResolveInputPath(raw: string, kind?: string | undefined | null): string
 /**
  * JacsAgent is a handle to a JACS agent instance.
  * Each instance maintains its own loaded state and can be used independently.

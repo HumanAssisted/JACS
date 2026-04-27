@@ -31,6 +31,11 @@
 //! pass the operation kind continue to use [`resolve_input_path`]. A future
 //! release will plumb the kind through every MCP tool.
 //!
+//! REVIEW_006 / Issue 006: the policy is *containment-only*; absent leaf
+//! files inside `base_dir` pass the policy (the calling tool surfaces a clean
+//! `FileReadFailed` if it cannot open the file). This is intentional —
+//! "input must exist" is not one of the six layers above.
+//!
 //! See `tests/path_policy_test.rs` for the full case matrix.
 
 use jacs::error::JacsError;

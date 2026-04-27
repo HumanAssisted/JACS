@@ -6,7 +6,7 @@
 //!
 //! References: WebP Container Specification (Google, 2010; RIFF-based).
 
-use crate::{MAX_PAYLOAD_BYTES_WEBP, MediaError, WEBP_XMP_KEY};
+use crate::{MAX_PAYLOAD_BYTES_WEBP, MediaError};
 
 const RIFF: &[u8; 4] = b"RIFF";
 const WEBP: &[u8; 4] = b"WEBP";
@@ -94,9 +94,14 @@ fn build_chunk(fourcc: &[u8; 4], body: &[u8]) -> Vec<u8> {
 }
 
 fn is_jacs_xmp(body: &[u8]) -> bool {
-    // Treat body as UTF-8; only react if it's an XMP packet and contains our key.
+    // R-006: match the EXACT attribute syntax our embedder writes
+    // (`JACS:Signature="`) — not the bare namespace prefix string, which can
+    // legitimately appear as prose inside any XMP packet (e.g. an
+    // `<rdf:Description>` block describing this attribute). The extractor
+    // (`extract_signature_from_xmp_packet`) uses the same precise key, so
+    // duplicate-detection now agrees with extraction.
     if let Ok(s) = std::str::from_utf8(body) {
-        s.contains(WEBP_XMP_KEY)
+        s.contains(concat!("JACS:Signature", "=\""))
     } else {
         false
     }
@@ -159,9 +164,10 @@ pub fn extract(bytes: &[u8]) -> Result<Option<String>, MediaError> {
     for (fourcc, body, _full) in &chunks {
         if fourcc == XMP_FOURCC
             && let Ok(s) = std::str::from_utf8(body)
-                && let Some(sig) = extract_signature_from_xmp_packet(s) {
-                    found.push(sig);
-                }
+            && let Some(sig) = extract_signature_from_xmp_packet(s)
+        {
+            found.push(sig);
+        }
     }
     if found.len() > 1 {
         return Err(MediaError::Parse(
@@ -281,6 +287,99 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    /// R-006: `is_jacs_xmp` must NOT treat an arbitrary XMP packet that
+    /// merely *mentions* the substring "JACS:Signature" (e.g. as prose inside
+    /// an `<rdf:Description>` block) as a JACS-Signature chunk. The chunk is
+    /// only ours if it carries the literal attribute syntax
+    /// `JACS:Signature="..."`.
+    ///
+    /// Before the R-006 fix, a third-party XMP packet that documented the
+    /// JACS namespace prefix would:
+    ///   - Falsely count as a JACS XMP chunk during embed/extract
+    ///   - Trigger "duplicate JACS-Signature chunk" if a real JACS chunk
+    ///     was also present
+    ///   - Trigger "input already carries JACS signature" under refuse_overwrite
+    #[test]
+    fn webp_innocent_xmp_mentioning_jacs_signature_is_not_duplicate() {
+        // Build an XMP packet that mentions `JACS:Signature` only as prose
+        // (no `="..."` value form). With the loose match this would be
+        // mis-classified as a JACS chunk.
+        let innocent_xmp = "\
+            <?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\
+            <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
+            <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+            <rdf:Description rdf:about=\"\">\
+            <dc:description>This file documents the JACS:Signature attribute used by jacs.</dc:description>\
+            </rdf:Description>\
+            </rdf:RDF></x:xmpmeta>\
+            <?xpacket end=\"w\"?>";
+        let innocent_chunk = build_chunk(XMP_FOURCC, innocent_xmp.as_bytes());
+
+        // Splice the innocent XMP into a base WebP. Then sign it. With the
+        // loose `contains("JACS:Signature")` match, embed sees jacs_count=1
+        // BEFORE we add the real JACS chunk; if we run a second embed, it
+        // sees jacs_count=2 (innocent + first JACS) and rejects as duplicate.
+        let base = minimal_webp();
+        let mut input_with_innocent = base.clone();
+        input_with_innocent.extend_from_slice(&innocent_chunk);
+        let new_riff_size = (input_with_innocent.len() - 8) as u32;
+        input_with_innocent[4..8].copy_from_slice(&new_riff_size.to_le_bytes());
+
+        // Step 1: embed our real signature. With the LOOSE match the innocent
+        // chunk would be counted as a duplicate and the second embed would
+        // fail. With the TIGHT match it succeeds.
+        let signed = embed(&input_with_innocent, "real-payload", false)
+            .expect("embed should succeed when innocent XMP only mentions JACS:Signature as prose");
+
+        // Step 2: extract returns ONLY the real payload — not the innocent
+        // mention.
+        let extracted = extract(&signed).expect("extract ok");
+        assert_eq!(
+            extracted.as_deref(),
+            Some("real-payload"),
+            "extract must return the real payload, not the innocent mention"
+        );
+
+        // Step 3: refuse_overwrite=true on the freshly signed bytes must
+        // report "input already carries JACS signature" — but only because
+        // of the REAL chunk we added, not because of the innocent mention.
+        // To prove the latter, run refuse_overwrite=true on the
+        // input-with-innocent (no real chunk yet) — it should succeed.
+        let _resigned = embed(&input_with_innocent, "another-payload", true)
+            .expect("refuse_overwrite=true on input with only innocent XMP must succeed");
+    }
+
+    /// R-006 follow-up: an UNSIGNED WebP whose XMP packet only mentions
+    /// `JACS:Signature` as prose (no real JACS chunk anywhere) must extract
+    /// to `Ok(None)`. Before the R-006 fix this would have surfaced the
+    /// XMP body as a "JACS chunk" and either returned the prose as the
+    /// alleged payload or raised a parse error.
+    #[test]
+    fn webp_unsigned_with_innocent_jacs_mention_extracts_to_none() {
+        let innocent_xmp = "\
+            <?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\
+            <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\
+            <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\
+            <rdf:Description rdf:about=\"\">\
+            <dc:description>Documents the JACS:Signature attribute</dc:description>\
+            </rdf:Description>\
+            </rdf:RDF></x:xmpmeta>\
+            <?xpacket end=\"w\"?>";
+        let innocent_chunk = build_chunk(XMP_FOURCC, innocent_xmp.as_bytes());
+
+        let mut bytes = minimal_webp();
+        bytes.extend_from_slice(&innocent_chunk);
+        let new_riff_size = (bytes.len() - 8) as u32;
+        bytes[4..8].copy_from_slice(&new_riff_size.to_le_bytes());
+
+        let res = extract(&bytes).expect("extract on unsigned webp must not error");
+        assert_eq!(
+            res, None,
+            "unsigned webp with prose-only JACS mention must extract to None; got {:?}",
+            res
+        );
     }
 
     /// Issue 006: duplicate JACS XMP chunks must surface as `MediaError::Parse`.

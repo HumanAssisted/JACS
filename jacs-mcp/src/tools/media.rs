@@ -136,6 +136,13 @@ pub struct ExtractMediaSignatureParams {
         description = "Return the raw base64url wire form instead of the decoded JACS signed-document JSON (default: false)"
     )]
     pub raw_payload: Option<bool>,
+
+    /// R-011 / PRD §4.2.4: when true, fall back to LSB scan if the metadata
+    /// channel has no payload. Mirrors `verify_image --robust`.
+    #[schemars(
+        description = "Scan the LSB channel as a fallback if the metadata channel has no payload (default: false; cost: full pixel decode)"
+    )]
+    pub robust: Option<bool>,
 }
 
 /// Result of `jacs_extract_media_signature`.

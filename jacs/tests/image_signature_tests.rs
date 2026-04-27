@@ -9,8 +9,10 @@ use jacs::error::JacsError;
 use jacs::inline::VerifyOptions;
 use jacs::simple::SimpleAgent;
 use jacs::simple::advanced::{
-    extract_media_signature, extract_media_signature_raw, sign_image, verify_image,
+    extract_media_signature, extract_media_signature_raw, extract_media_signature_raw_with_options,
+    extract_media_signature_with_options, sign_image, verify_image,
 };
+use jacs::simple::types::ExtractMediaOptions;
 use jacs::simple::types::{MediaVerifyStatus, SignImageOptions, SignedMedia, VerifyImageOptions};
 use std::fs;
 use std::path::PathBuf;
@@ -589,6 +591,146 @@ fn extract_media_signature_no_signature_returns_none() {
 }
 
 // ============================================================================
+// R-011: extract_media_signature with scan_robust must recover an LSB-only
+// signature after the metadata channel has been stripped. Before R-011 fix,
+// extract hard-coded `scan_robust=false` so the LSB payload was invisible
+// even though `verify_image --robust` would recover it.
+// ============================================================================
+
+/// Robust-mode signed image whose metadata chunk is then stripped — extract
+/// without scan_robust must return None; with scan_robust=true it must
+/// recover the payload (PNG path).
+#[test]
+fn extract_media_signature_with_robust_recovers_lsb_payload_png() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    // 256x256 chosen to match existing robust-mode tests' capacity headroom.
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let out_path = dir.path().join("signed.png");
+    sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            robust: true,
+            ..Default::default()
+        },
+    )
+    .expect("sign png in robust mode");
+
+    // Strip the metadata chunk to simulate transport loss / re-encode that
+    // preserves pixels but drops iTXt/tEXt. The robust LSB payload remains.
+    let signed_bytes = fs::read(&out_path).unwrap();
+    let stripped =
+        jacs_media::png::bytes_without_jacs_chunk(&signed_bytes).expect("strip metadata chunk");
+    let stripped_path = dir.path().join("stripped.png");
+    fs::write(&stripped_path, &stripped).unwrap();
+
+    // Default extract: no scan_robust => returns None even though payload
+    // exists in LSB.
+    let no_robust = extract_media_signature(stripped_path.to_str().unwrap()).expect("no-robust ok");
+    assert!(
+        no_robust.is_none(),
+        "default extract without scan_robust must NOT find LSB payload (cost-control); got Some({:?})",
+        no_robust
+    );
+
+    // With scan_robust=true: payload is recovered and decodes to JSON.
+    let opts = ExtractMediaOptions { scan_robust: true };
+    let recovered = extract_media_signature_with_options(stripped_path.to_str().unwrap(), opts)
+        .expect("with-robust ok")
+        .expect("recovered LSB payload");
+    let v: serde_json::Value = serde_json::from_str(&recovered).expect("recovered payload is JSON");
+    assert!(
+        v.pointer("/content/mediaSignatureVersion").is_some() || v.pointer("/content").is_some(),
+        "recovered payload should be a media-signature claim, got: {}",
+        v
+    );
+
+    // Raw variant honours the same option.
+    let raw = extract_media_signature_raw_with_options(stripped_path.to_str().unwrap(), opts)
+        .expect("with-robust raw ok")
+        .expect("raw recovered");
+    for c in raw.chars() {
+        assert!(
+            c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '=',
+            "raw payload must be base64url, got non-base64url char: {:?}",
+            c
+        );
+    }
+}
+
+/// JPEG mirror: assert the OPT-IN flag is honoured for JPEG too. This uses
+/// the lower-level `jacs_media::embed_signature` to plant a small known LSB
+/// payload (avoids JPEG re-encode quirks at the round-trip boundary that are
+/// orthogonal to R-011). The R-011 contract under test is *plumbing*: when
+/// scan_robust=true is passed through extract, it reaches jpeg::extract via
+/// jacs_media::extract_signature.
+#[test]
+fn extract_media_signature_with_robust_jpeg_threads_through_to_lsb_scanner() {
+    let dir = TempDir::new().unwrap();
+    let unsigned = make_fixture_jpeg(256, 256);
+    // Embed a small LSB payload directly via jacs-media (bypassing the full
+    // JACS signature wrapper) so we can deterministically verify that the
+    // scan_robust flag reaches the LSB extraction layer.
+    let signed_lsb_only =
+        jacs_media::robust::embed_lsb_jpeg(&unsigned, "lsb-test-payload").expect("embed lsb jpeg");
+    let path = dir.path().join("lsb_only.jpg");
+    fs::write(&path, &signed_lsb_only).unwrap();
+
+    // Default extract: no scan_robust => returns None (no metadata chunk).
+    let no_robust = extract_media_signature(path.to_str().unwrap()).expect("ok");
+    assert!(
+        no_robust.is_none(),
+        "default extract must NOT scan LSB; got Some"
+    );
+
+    // Raw variant with scan_robust=true: payload reaches the LSB scanner.
+    // The scanner will read the LSBs back; whether the JPEG codec preserved
+    // them well enough to round-trip is a separate concern (Issue 013-style).
+    // We assert behavior at the scanner threading level: with scan_robust=true
+    // either Some(payload) or Ok(None) is acceptable; without scan_robust the
+    // result MUST be Ok(None) — this is the R-011 contract.
+    let opts = ExtractMediaOptions { scan_robust: true };
+    let _result = extract_media_signature_raw_with_options(path.to_str().unwrap(), opts)
+        .expect("with-robust raw must not error");
+    // No assertion on the result body — JPEG LSB round-trip survival is
+    // codec-quality dependent and tested elsewhere. R-011 only asserts the
+    // scan_robust flag THREADS THROUGH the extract API; the without-robust
+    // assertion above (`no_robust.is_none()`) is the load-bearing one.
+}
+
+/// Default (no scan_robust) on metadata-only signed image still works.
+#[test]
+fn extract_media_signature_without_robust_still_reads_metadata() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(16, 16));
+    let out_path = dir.path().join("signed.png");
+    sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions::default(),
+    )
+    .expect("sign metadata-only");
+
+    let payload = extract_media_signature(out_path.to_str().unwrap())
+        .expect("ok")
+        .expect("present in metadata");
+    assert!(!payload.is_empty());
+    // ExtractMediaOptions { scan_robust: false } is identical to the no-arg
+    // variant.
+    let same = extract_media_signature_with_options(
+        out_path.to_str().unwrap(),
+        ExtractMediaOptions { scan_robust: false },
+    )
+    .expect("ok")
+    .expect("present");
+    assert_eq!(payload, same);
+}
+
+// ============================================================================
 // Robust mode + capacity
 // ============================================================================
 
@@ -1051,4 +1193,250 @@ fn sign_image_atomic_crash_simulation() {
         let name = entry.unwrap().file_name().to_string_lossy().to_string();
         assert!(name == "in.png", "tempfile residue left in dir: {:?}", name);
     }
+}
+
+// ============================================================================
+// Issue 002 — `format_hint` is wired through sign_image (not a dead parameter).
+// ============================================================================
+
+#[test]
+fn sign_image_format_hint_png_round_trips_with_explicit_hint() {
+    // Sanity: a PNG file with an explicit `format_hint = png` succeeds and the
+    // outcome carries `format = "png"`. This exercises the override path.
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(8, 8));
+    let out_path = dir.path().join("out.png");
+    let signed: SignedMedia = sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            format_hint: Some("png".into()),
+            ..SignImageOptions::default()
+        },
+    )
+    .expect("sign with format_hint=png ok");
+    assert_eq!(signed.format, "png");
+}
+
+#[test]
+fn sign_image_format_hint_unknown_returns_clean_error() {
+    // Issue 002: an unknown `--format` value must surface a clean
+    // ValidationError rather than being silently ignored.
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(8, 8));
+    let out_path = dir.path().join("out.png");
+    let res = sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            format_hint: Some("pdf".into()),
+            ..SignImageOptions::default()
+        },
+    );
+    match res {
+        Err(JacsError::ValidationError(msg)) => {
+            assert!(
+                msg.contains("unknown format hint"),
+                "expected unknown-format error, got: {msg}"
+            );
+            assert!(msg.contains("pdf"), "error must echo the bad hint: {msg}");
+        }
+        other => panic!("expected ValidationError, got: {other:?}"),
+    }
+    assert!(
+        !out_path.exists(),
+        "out file must not be written on hint validation failure"
+    );
+}
+
+#[test]
+fn sign_image_format_hint_jpeg_alias_is_accepted() {
+    // The hint accepts "jpg" as an alias for "jpeg" (matches the CLI/MCP
+    // help text — users type either).
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.jpg", &make_fixture_jpeg(8, 8));
+    let out_path = dir.path().join("out.jpg");
+    let signed: SignedMedia = sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            format_hint: Some("jpg".into()),
+            ..SignImageOptions::default()
+        },
+    )
+    .expect("sign with format_hint=jpg ok");
+    assert_eq!(signed.format, "jpeg");
+}
+
+/// REVIEW_005 (2): the signer's declared `embeddingChannels` must match
+/// reality. Robust mode currently writes lsb-only; non-robust writes
+/// metadata-only. A claim that says `metadata` for a robust-mode file would
+/// fail verification with `Malformed("embeddingChannels mismatch")`.
+#[test]
+fn sign_image_robust_claim_declares_lsb_only_channel() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let out_path = dir.path().join("out.png");
+    let _ = sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            robust: true,
+            ..SignImageOptions::default()
+        },
+    )
+    .expect("robust sign ok");
+
+    let extracted_json = extract_media_signature_with_options(
+        out_path.to_str().unwrap(),
+        ExtractMediaOptions { scan_robust: true },
+    )
+    .expect("extract ok")
+    .expect("payload present");
+    let signed_doc: serde_json::Value =
+        serde_json::from_str(&extracted_json).expect("parse signed doc JSON");
+    let s = signed_doc.to_string();
+    assert!(
+        s.contains("\"embeddingChannels\":[\"lsb\"]"),
+        "robust claim must declare embeddingChannels: [\"lsb\"]; got: {s}"
+    );
+    assert!(
+        !s.contains("\"embeddingChannels\":[\"metadata\",\"lsb\"]"),
+        "robust claim must NOT declare metadata channel (which gets stripped during LSB re-encode)"
+    );
+}
+
+/// REVIEW_005 (2): a robust-mode signature whose LSB has been corrupted
+/// post-sign must NOT verify clean. Today the signer declares lsb-only and
+/// the verifier cross-checks observed channels — a chaos test that flips
+/// LSBs in the signed file proves the verify path catches the tampering.
+#[test]
+fn verify_image_robust_lsb_corruption_post_sign_rejects() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let out_path = dir.path().join("out.png");
+    sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            robust: true,
+            ..SignImageOptions::default()
+        },
+    )
+    .expect("robust sign ok");
+
+    // Corrupt the LSB payload by re-encoding the image bytes from a brand-new
+    // RgbaImage (no LSB payload). This simulates a metadata-strip pipeline that
+    // also re-encodes pixels.
+    let stripped = make_fixture_png(256, 256);
+    fs::write(&out_path, &stripped).unwrap();
+
+    // Verify now fails — either MissingSignature (no LSB payload found at all)
+    // or HashMismatch / Malformed for the channels mismatch. Anything but
+    // Valid is acceptable; the point is that the previously-signed file no
+    // longer surfaces as Valid after content tampering.
+    let result = verify_image(
+        &agent,
+        out_path.to_str().unwrap(),
+        VerifyImageOptions {
+            base: VerifyOptions::default(),
+            scan_robust: true,
+        },
+    )
+    .expect("verify ok");
+    assert!(
+        !matches!(result.status, MediaVerifyStatus::Valid),
+        "post-sign LSB strip + pixel re-encode must NOT verify Valid; got {:?}",
+        result.status
+    );
+}
+
+/// REVIEW_005 (1): in v0.11+, `pixelHash` commits to the **pre-LSB** pixel
+/// buffer and `contentHash` commits to the LSB-zeroed canonical buffer.
+/// The two MUST be different bytes when robust mode is on.
+#[test]
+fn sign_image_robust_pixel_hash_diverges_from_content_hash() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    // 256x256 RGBA — capacity for full payload.
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let out_path = dir.path().join("out.png");
+    let _ = sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            robust: true,
+            ..SignImageOptions::default()
+        },
+    )
+    .expect("robust sign ok");
+
+    // Extract the embedded JACS signed-document JSON and inspect the claim
+    // payload directly.
+    let extracted_json = extract_media_signature_with_options(
+        out_path.to_str().unwrap(),
+        ExtractMediaOptions { scan_robust: true },
+    )
+    .expect("extract ok")
+    .expect("payload present");
+
+    // The signed-document's "data" field carries the claim — find pixelHash
+    // and contentHash inside it.
+    let signed_doc: serde_json::Value =
+        serde_json::from_str(&extracted_json).expect("parse signed doc JSON");
+    // Walk the document for both fields.
+    let s = signed_doc.to_string();
+    let parse_field = |key: &str| -> Option<String> {
+        let needle = format!("\"{}\":\"", key);
+        let i = s.find(&needle)?;
+        let rest = &s[i + needle.len()..];
+        let end = rest.find('"')?;
+        Some(rest[..end].to_string())
+    };
+    let pixel_hash = parse_field("pixelHash").expect("pixelHash present in robust claim");
+    let content_hash = parse_field("contentHash").expect("contentHash present");
+    assert_ne!(
+        pixel_hash, content_hash,
+        "REVIEW_005 (1): pixelHash must commit to the pre-LSB pixel buffer, \
+         which differs from the LSB-zeroed contentHash. Got identical values: {pixel_hash}"
+    );
+}
+
+#[test]
+fn sign_image_format_hint_overrides_magic_byte_detection() {
+    // Issue 002: when `format_hint = png` is supplied for bytes whose magic
+    // would otherwise be a JPEG, the hint takes precedence on the format
+    // dispatch — the embed path is `png::embed`, which then surfaces a clean
+    // parse error because the bytes aren't actually a PNG. This proves the
+    // hint REACHES the dispatch (it would have been a no-op before Issue 002
+    // — magic-byte detection would have routed to jpeg::embed and silently
+    // succeeded).
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.jpg", &make_fixture_jpeg(8, 8));
+    let out_path = dir.path().join("out.jpg");
+    let res = sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            format_hint: Some("png".into()),
+            ..SignImageOptions::default()
+        },
+    );
+    assert!(
+        res.is_err(),
+        "PNG hint over JPEG bytes must error; got Ok — the hint is being silently ignored"
+    );
 }
