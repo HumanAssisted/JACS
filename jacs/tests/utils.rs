@@ -606,6 +606,24 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
     Ok(agent)
 }
 
+/// Drop-in replacement for `load_test_agent_one()` for tests that need to
+/// **sign** documents. RSA private-key signing is disabled (RUSTSEC-2023-0071),
+/// so any test that previously relied on the RSA-PSS `agent-one.private.pem.enc`
+/// fixture for signing now needs an Ed25519 agent. This helper creates a
+/// fresh isolated Ed25519 agent with keys generated and loaded.
+///
+/// Read-only / verify-only tests can keep using `load_test_agent_one()` because
+/// RSA verification is still supported.
+#[cfg(test)]
+pub fn load_test_agent_one_ed25519() -> Agent {
+    let mut agent = create_ring_test_agent().expect("Failed to create Ed25519 test agent");
+    let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
+    agent
+        .create_agent_and_load(&json_data, true, None)
+        .expect("Failed to load Ed25519 test agent with keys");
+    agent
+}
+
 /// Creates and configures an Agent for pq-dilithium tests.
 ///
 /// This helper:
