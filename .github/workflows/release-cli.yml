@@ -118,6 +118,9 @@ jobs:
             $_ -like "$prefix/jacs-surrealdb/src/*" -or
             $_ -eq "$prefix/jacs-postgresql/Cargo.toml" -or
             $_ -like "$prefix/jacs-postgresql/src/*" -or
+            $_ -eq "$prefix/jacs-media/Cargo.toml" -or
+            $_ -eq "$prefix/jacs-media/README.md" -or
+            $_ -like "$prefix/jacs-media/src/*" -or
             $_ -like "$prefix/binding-core/src/*" -or
             $_ -like "$prefix/jacs/src/*" -or
             $_ -like "$prefix/jacs/schemas/*" -or
