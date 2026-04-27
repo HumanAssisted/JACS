@@ -140,6 +140,16 @@ registerJacsTools(server, client);
 
 The Node tool set is intentionally smaller than the Rust MCP server. Use `jacs mcp` when you need the largest supported MCP surface.
 
+### Provenance MCP tools (v0.10.0)
+
+The MCP server exposes 5 new tools for inline text and image provenance — covering the same surface as the [`sign-text`](../guides/inline-text-signing.md) and [`sign-image`](../guides/media-signing.md) CLI verbs.
+
+- `jacs_sign_text` — append a YAML-bodied signature block to a markdown / text file.
+- `jacs_verify_text` — verify all signature blocks in a file (permissive default; `strict` opt-in).
+- `jacs_sign_image` — embed a signature in PNG iTXt / JPEG APP11 / WebP XMP.
+- `jacs_verify_image` — verify the embedded image signature (permissive default; `strict` opt-in).
+- `jacs_extract_media_signature` — read out the embedded signature payload (decoded JSON by default; `raw_payload` opt-in for the base64url wire form).
+
 ## Example Paths In This Repo
 
 - `jacs-mcp/README.md`

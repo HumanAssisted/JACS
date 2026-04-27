@@ -4,6 +4,23 @@ Verify a JACS-signed document in under 2 minutes. Verification confirms two thin
 
 **Verification does NOT require creating an agent.** You only need the signed document (and optionally access to the signer's public key).
 
+## Strict vs permissive verification (v0.10.0)
+
+`verify-text` and `verify-image` (added in v0.10.0) introduce a **permissive default**: a missing signature is a *typed status*, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.
+
+| Surface | Permissive (default) | Strict (`--strict` / `strict=True` / `{ strict: true }` / `Strict: true`) |
+|---------|---------------------|---------------------------------------------------------------------------|
+| `jacs verify-text` (CLI) | Exit `0` valid · `2` missing-sig · `1` invalid | Exit `0` valid · `1` missing OR invalid (stderr: `no JACS signature found`) |
+| `jacs verify-image` (CLI) | Same as above | Same as above |
+| Python (`jacs.verify_text`, `jacs.verify_image`) | Returns result with `status == "missing_signature"` | Raises `MissingSignatureError` |
+| Node (`jacs.verifyText`, `jacs.verifyImage`) | Returns result with `status === "missing_signature"` | Promise rejects with `MissingSignature`-bearing message |
+| Go (`jacs.VerifyText`, `jacs.VerifyImage`) | Returns `Status == "missing_signature"` | Returns error matching `errors.Is(err, jacs.ErrMissingSignature)` |
+| Rust (`jacs::text`, `jacs::media`) | `Ok(Status::MissingSignature)` | `Err(ErrorKind::MissingSignature)` |
+
+Pre-existing verify surfaces (`jacs verify`, `jacs document verify`, `jacs.verify`) are unaffected — they keep their existing exit codes and return shapes.
+
+For hands-on examples see [Inline Text Signatures](../guides/inline-text-signing.md) and [Image and Media Signatures](../guides/media-signing.md).
+
 ## CLI: `jacs verify`
 
 The fastest way to verify a document from the command line. No config file, no agent setup.

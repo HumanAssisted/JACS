@@ -43,6 +43,9 @@ jobs:
         with:
           toolchain: "1.93"
 
+      - name: Install libdbus (required by keyring crate on Linux)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -64,6 +67,9 @@ jobs:
       - name: Build native module
         working-directory: jacsnpm
         run: npm run build
+
+      - name: Pre-build jacs-cli (cross-language tests shell out to cargo)
+        run: cargo build -p jacs-cli --quiet
 
       - name: Run cross-language tests (hermetic env)
         working-directory: jacsnpm

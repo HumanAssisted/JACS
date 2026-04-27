@@ -16,9 +16,33 @@ pub mod conversion_utils;
 // Error Conversion: BindingCoreError -> PyErr
 // =============================================================================
 
+// =============================================================================
+// Custom Python exception classes (Task 03 + Task 10).
+// =============================================================================
+//
+// `MissingSignatureError` is raised by strict-mode verify bindings (PRD §4.1.2,
+// C1) so callers can `except jacs.MissingSignatureError:` without parsing
+// error strings. The Python-side class lives at `jacs.types.MissingSignatureError`
+// (defined in jacspy/python/jacs/types.py) and is also re-exported as
+// `jacs.MissingSignatureError`. The Rust binding raises via the registered
+// PyType from this module (see `register_missing_signature_error` in the
+// `#[pymodule]` init below).
+
+use pyo3::exceptions::PyException;
+
+pyo3::create_exception!(jacs, MissingSignatureError, PyException);
+
 /// Convert a BindingCoreError to a PyErr.
+///
+/// Maps `ErrorKind::MissingSignature` to the Python `MissingSignatureError`
+/// exception so callers can branch on type instead of message text. Other
+/// kinds map to `PyRuntimeError` to preserve the existing behaviour.
 fn to_py_err(e: BindingCoreError) -> PyErr {
-    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.message)
+    if matches!(e.kind, jacs_binding_core::ErrorKind::MissingSignature) {
+        PyErr::new::<MissingSignatureError, _>(e.message)
+    } else {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.message)
+    }
 }
 
 fn py_runtime_err(context: &str, err: impl std::fmt::Display) -> PyErr {
@@ -1419,6 +1443,222 @@ impl SimpleAgent {
         let json_str = self.inner.from_yaml(yaml_str).to_py()?;
         self.inner.verify_json(&json_str).to_py()
     }
+
+    // =========================================================================
+    // Inline text and media signing (PRD §3.1, §3.2, §4.1, §4.2; Task 10)
+    // =========================================================================
+
+    /// Sign a text/markdown file in place by appending an inline JACS
+    /// signature block (PRD §4.1).
+    ///
+    /// Args:
+    ///     file_path: Path to the file to sign
+    ///     no_backup: Skip the automatic ``<path>.bak`` backup. Default False.
+    ///
+    /// Returns:
+    ///     dict with `path`, `signers_added`, `backup_path`.
+    #[pyo3(signature = (file_path, *, no_backup=false))]
+    fn sign_text_file(&self, py: Python, file_path: &str, no_backup: bool) -> PyResult<PyObject> {
+        let opts = serde_json::json!({"backup": !no_backup}).to_string();
+        let json_str = self.inner.sign_text_file_json(file_path, &opts).to_py()?;
+        let value = parse_json_value(&json_str, "sign_text_file outcome")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Short alias for [`sign_text_file`] (matches the CLI verb).
+    #[pyo3(signature = (file_path, *, no_backup=false))]
+    fn sign_text(&self, py: Python, file_path: &str, no_backup: bool) -> PyResult<PyObject> {
+        self.sign_text_file(py, file_path, no_backup)
+    }
+
+    /// Verify inline JACS signatures embedded in a text/markdown file
+    /// (PRD §4.1, §4.1.5, C1).
+    ///
+    /// Args:
+    ///     file_path: Path to the file
+    ///     strict: When True, missing signature raises ``MissingSignatureError``.
+    ///         Default False (permissive: returns ``status: "missing_signature"``).
+    ///     key_dir: Optional directory of ``<signer_id>.public.pem`` files for
+    ///         offline verification.
+    ///
+    /// Returns:
+    ///     dict with `status` (`"signed"` | `"missing_signature"` | `"malformed"`)
+    ///     and `signatures` list.
+    #[pyo3(signature = (file_path, *, strict=false, key_dir=None))]
+    fn verify_text_file(
+        &self,
+        py: Python,
+        file_path: &str,
+        strict: bool,
+        key_dir: Option<&str>,
+    ) -> PyResult<PyObject> {
+        let opts = build_verify_text_opts(strict, key_dir);
+        let json_str = self.inner.verify_text_file_json(file_path, &opts).to_py()?;
+        let value = parse_json_value(&json_str, "verify_text_file result")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Short alias for [`verify_text_file`] (matches the CLI verb).
+    #[pyo3(signature = (file_path, *, strict=false, key_dir=None))]
+    fn verify_text(
+        &self,
+        py: Python,
+        file_path: &str,
+        strict: bool,
+        key_dir: Option<&str>,
+    ) -> PyResult<PyObject> {
+        self.verify_text_file(py, file_path, strict, key_dir)
+    }
+
+    /// Sign a PNG / JPEG / WebP image by embedding a JACS signature
+    /// (PRD §4.2).
+    ///
+    /// Args:
+    ///     input_path: Source image path
+    ///     output_path: Path to write the signed image to (may equal input_path)
+    ///     robust: PRD §4.2.3 LSB embedding for re-encode survivability
+    ///         (PNG/JPEG only). Default False.
+    ///     format: Optional explicit format override ("png" | "jpeg" | "webp")
+    ///     refuse_overwrite: If True, refuse if input already carries a JACS
+    ///         signature (PRD §4.2.2 single-signer guard). Default False.
+    ///
+    /// Returns:
+    ///     dict with `out_path`, `signer_id`, `format`, `robust`, `backup_path`.
+    #[pyo3(signature = (input_path, output_path, *, robust=false, format=None, refuse_overwrite=false))]
+    fn sign_image(
+        &self,
+        py: Python,
+        input_path: &str,
+        output_path: &str,
+        robust: bool,
+        format: Option<&str>,
+        refuse_overwrite: bool,
+    ) -> PyResult<PyObject> {
+        let mut obj = serde_json::Map::new();
+        obj.insert("robust".to_string(), serde_json::Value::Bool(robust));
+        if let Some(f) = format {
+            obj.insert(
+                "formatHint".to_string(),
+                serde_json::Value::String(f.to_string()),
+            );
+        }
+        obj.insert(
+            "refuseOverwrite".to_string(),
+            serde_json::Value::Bool(refuse_overwrite),
+        );
+        let opts = serde_json::Value::Object(obj).to_string();
+        let json_str = self
+            .inner
+            .sign_image_json(input_path, output_path, &opts)
+            .to_py()?;
+        let value = parse_json_value(&json_str, "sign_image outcome")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Verify an embedded JACS signature in a PNG / JPEG / WebP image
+    /// (PRD §4.2, §4.1.5, C1).
+    ///
+    /// Args:
+    ///     file_path: Path to the signed image
+    ///     strict: When True, missing signature raises ``MissingSignatureError``.
+    ///     key_dir: Optional directory of ``<signer_id>.public.pem`` files.
+    ///     robust: When True, scan the LSB channel for a robust-mode payload
+    ///         when no metadata payload is found (PRD §4.2.4). Default False.
+    ///
+    /// Returns:
+    ///     dict with `status`, `signer_id`, `algorithm`, `format`,
+    ///     `embedding_channels`.
+    #[pyo3(signature = (file_path, *, strict=false, key_dir=None, robust=false))]
+    fn verify_image(
+        &self,
+        py: Python,
+        file_path: &str,
+        strict: bool,
+        key_dir: Option<&str>,
+        robust: bool,
+    ) -> PyResult<PyObject> {
+        let opts = build_verify_image_opts(strict, key_dir, robust);
+        let json_str = self.inner.verify_image_json(file_path, &opts).to_py()?;
+        let value = parse_json_value(&json_str, "verify_image result")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Extract the JACS signature payload embedded in a signed image
+    /// (PRD §3.2).
+    ///
+    /// Args:
+    ///     file_path: Path to a signed image
+    ///     raw_payload: When True, return the raw base64url wire form instead
+    ///         of the decoded JACS signed-document JSON. Default False.
+    ///
+    /// Returns:
+    ///     The payload string when present, or None if the image carries no
+    ///     JACS signature.
+    #[pyo3(signature = (file_path, *, raw_payload=false))]
+    fn extract_media_signature(
+        &self,
+        file_path: &str,
+        raw_payload: bool,
+    ) -> PyResult<Option<String>> {
+        let opts = serde_json::json!({"rawPayload": raw_payload}).to_string();
+        let envelope_json = self
+            .inner
+            .extract_media_signature_json(file_path, &opts)
+            .to_py()?;
+        let value = parse_json_value(&envelope_json, "extract_media_signature envelope")?;
+        if value.get("present").and_then(|v| v.as_bool()) == Some(true) {
+            Ok(value
+                .get("payload")
+                .and_then(|v| v.as_str().map(String::from)))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+// =============================================================================
+// Inline / media helper functions (Task 10).
+// =============================================================================
+
+fn build_verify_text_opts(strict: bool, key_dir: Option<&str>) -> String {
+    let mut obj = serde_json::Map::new();
+    obj.insert("strict".to_string(), serde_json::Value::Bool(strict));
+    if let Some(p) = key_dir {
+        obj.insert(
+            "keyDir".to_string(),
+            serde_json::Value::String(p.to_string()),
+        );
+    }
+    serde_json::Value::Object(obj).to_string()
+}
+
+fn build_verify_image_opts(strict: bool, key_dir: Option<&str>, robust: bool) -> String {
+    let mut obj = serde_json::Map::new();
+    obj.insert("strict".to_string(), serde_json::Value::Bool(strict));
+    if let Some(p) = key_dir {
+        obj.insert(
+            "keyDir".to_string(),
+            serde_json::Value::String(p.to_string()),
+        );
+    }
+    obj.insert("robust".to_string(), serde_json::Value::Bool(robust));
+    serde_json::Value::Object(obj).to_string()
+}
+
+/// Convert a `serde_json::Value` into a `PyObject` by going through `json.loads`.
+/// We already have helpers in `conversion_utils` for the other direction; for
+/// JSON returned by the wrapper layer, the simplest faithful conversion is to
+/// hand it to Python's stdlib `json.loads`.
+fn json_value_to_py(py: Python, value: &serde_json::Value) -> PyResult<PyObject> {
+    let json_string = serde_json::to_string(value).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to re-serialize JSON for Python conversion: {}",
+            e
+        ))
+    })?;
+    let json_module = py.import("json")?;
+    let py_obj = json_module.call_method1("loads", (json_string,))?;
+    Ok(py_obj.unbind())
 }
 
 // =============================================================================
@@ -2048,6 +2288,36 @@ fn audit_simple(config_path: Option<&str>, recent_n: Option<u32>) -> PyResult<St
     audit(config_path, recent_n)
 }
 
+// =============================================================================
+// MCP path policy delegate (PRD §4.2.6, Issue 022)
+// =============================================================================
+//
+// Single source of truth for MCP file-path validation. Python's
+// `_validate_mcp_file_path` (in `jacspy/python/jacs/adapters/mcp.py`)
+// delegates to this function so Python enforcement matches Rust
+// byte-for-byte. Removing the local heuristic eliminates a drift surface
+// that the PRD §4.2.6 review previously called out.
+//
+// Returns the resolved canonical path string on accept; raises
+// `ValueError` with the rejection reason on policy failure.
+#[pyfunction]
+#[pyo3(signature = (raw, kind="input"))]
+fn jacs_mcp_resolve_input_path(raw: &str, kind: &str) -> PyResult<String> {
+    let kind_enum = match kind {
+        "input" => jacs_mcp::path_policy::PathKind::Input,
+        "output" => jacs_mcp::path_policy::PathKind::Output,
+        other => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "invalid kind: {}, expected 'input' or 'output'",
+                other
+            )));
+        }
+    };
+    jacs_mcp::path_policy::resolve(raw, kind_enum)
+        .map(|p| p.display().to_string())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))
+}
+
 #[pymodule]
 fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3::prepare_freethreaded_python();
@@ -2057,6 +2327,20 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // =============================================================================
     m.add_class::<JacsAgent>()?;
     m.add_class::<SimpleAgent>()?;
+
+    // =============================================================================
+    // Custom exception classes (Task 03 + Task 10).
+    // =============================================================================
+    // `MissingSignatureError` is raised in strict-mode verify_text / verify_image
+    // (PRD §4.1.2, C1). Pure-Python `jacs.MissingSignatureError` in
+    // jacspy/python/jacs/types.py is the user-facing alias; the Rust binding
+    // raises *this* PyType so callers can `except jacs.MissingSignatureError:`.
+    // The Python `__init__.py` re-exports the native class as
+    // `MissingSignatureError` so the canonical Python class IS this one.
+    m.add(
+        "MissingSignatureError",
+        _py.get_type::<MissingSignatureError>(),
+    )?;
 
     // =============================================================================
     // Stateless Utility Functions
@@ -2131,6 +2415,9 @@ fn jacs(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_trusted_simple, m)?)?;
     m.add_function(wrap_pyfunction!(get_trusted_agent_simple, m)?)?;
     m.add_function(wrap_pyfunction!(audit_simple, m)?)?;
+
+    // MCP path policy delegate (PRD §4.2.6, Issue 022).
+    m.add_function(wrap_pyfunction!(jacs_mcp_resolve_input_path, m)?)?;
 
     Ok(())
 }

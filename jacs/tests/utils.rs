@@ -558,13 +558,23 @@ pub fn get_pq_config() -> String {
 /// ```
 #[cfg(test)]
 pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
+    // SystemTime nanos are not unique across parallel test threads on fast
+    // machines — two threads can read the same value in the same syscall
+    // window. Combine with a monotonic atomic counter to guarantee a unique
+    // scratch path per call (avoids `os error 17 File exists` races).
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time should be after UNIX_EPOCH")
         .as_nanos();
+    let counter = SCRATCH_COUNTER.fetch_add(1, Ordering::SeqCst);
     let base = std::path::PathBuf::from("tests")
         .join("scratch")
-        .join(format!("jacs-ring-{}-{nonce}", std::process::id()));
+        .join(format!(
+            "jacs-ring-{}-{nonce}-{counter}",
+            std::process::id()
+        ));
     let data_dir = base.join("data");
     let key_dir = base.join("keys");
     std::fs::create_dir_all(&data_dir).expect("failed to create ring data directory");
@@ -604,6 +614,56 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
     );
     agent.config = Some(config);
     Ok(agent)
+}
+
+/// Drop-in replacement for `load_test_agent_one()` for tests that need to
+/// **sign** documents. RSA private-key signing is disabled (RUSTSEC-2023-0071),
+/// so any test that previously relied on the RSA-PSS `agent-one.private.pem.enc`
+/// fixture for signing now needs an Ed25519 agent.
+///
+/// Points at the static `agent-ed25519.{private.pem.enc,public.pem}` fixture in
+/// `jacs/tests/fixtures/keys/` and loads the matching agent JSON via
+/// `load_by_id()`. No per-call temp directories are created — the fixture is
+/// shared across parallel test threads safely because every caller writes the
+/// same env-var values (`set_min_test_env_vars()` plus the three Ed25519
+/// overrides below).
+///
+/// `verify_payload` resolves public keys by hash from
+/// `tests/fixtures/public_keys/<hash>.{pem,enc_type}`; the Ed25519
+/// fixture's hash file (`7872a5e1…`) is committed alongside the RSA ones so
+/// the Local resolver chain finds it.
+///
+/// Read-only / verify-only tests can keep using `load_test_agent_one()` because
+/// RSA verification is still supported.
+#[cfg(test)]
+pub fn load_test_agent_one_ed25519() -> Agent {
+    set_min_test_env_vars();
+    // Override the algorithm + key filenames to point at the Ed25519 fixture.
+    // PASSWORD stays at TEST_PASSWORD_LEGACY ("secretpassord") — the Ed25519
+    // private-key fixture was encrypted with that password (see jacs-mcp's
+    // prepare_temp_workspace_ed25519 / TEST_PASSWORD constant in
+    // jacs-mcp/tests/support/mod.rs).
+    unsafe {
+        env::set_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "agent-ed25519.private.pem.enc",
+        );
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-ed25519.public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
+    }
+
+    let agent_version = "v1".to_string();
+    let header_version = "v1".to_string();
+    let signature_version = "v1".to_string();
+
+    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
+        .expect("Agent schema should have instantiated");
+    let agentid =
+        "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a".to_string();
+    agent
+        .load_by_id(agentid)
+        .expect("Ed25519 fixture agent should load");
+    agent
 }
 
 /// Creates and configures an Agent for pq-dilithium tests.

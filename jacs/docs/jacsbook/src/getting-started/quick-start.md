@@ -102,6 +102,15 @@ Pass `algorithm="ring-Ed25519"` (or `{ algorithm: 'ring-Ed25519' }` in JS, `--al
 
 > **That's it -- you're signing.** For most use cases, the quick start above is all you need. Jump to [Which integration should I use?](../getting-started/decision-tree.md) to find the right framework adapter, or read on for manual agent setup.
 
+### Try signing a markdown file (v0.10.0)
+
+```bash
+jacs sign-text README.md          # appends a YAML-bodied signature block at end of file
+jacs verify-text README.md        # permissive verify — exit 0 valid, exit 2 missing-sig, exit 1 invalid
+```
+
+The file content is preserved byte-for-byte; the signature lives in a `-----BEGIN JACS SIGNATURE-----` block at the end. See the [Inline Text Signatures](../guides/inline-text-signing.md) guide for multi-signer flows, strict mode, and `--key-dir` overrides.
+
 ### macOS Homebrew install (Rust CLI)
 
 ```bash

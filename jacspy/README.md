@@ -36,6 +36,44 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
 
+## What's new in 0.10.0
+
+*Why this matters:* shared markdown that multiple Python agents review and counter-sign, plus signed images for AI-era provenance, are now first-class — the signature is embedded in the artifact, no sidecar JSON required.
+
+```python
+import jacs.simple as jacs
+from jacs import MissingSignatureError
+
+jacs.load("./jacs.config.json")
+
+# Text — permissive verify (default)
+jacs.sign_text("README.md")
+result = jacs.verify_text("README.md")
+print(result.status)  # 'signed' | 'missing_signature' | 'malformed'
+
+# Hard-fail if the file isn't signed
+try:
+    jacs.verify_text("README.md", strict=True)
+except MissingSignatureError as e:
+    print("not signed:", e)
+
+# Override the trust store with a directory of <signer_id>.public.pem files
+jacs.verify_text("README.md", key_dir="./trusted-keys/")
+
+# Images
+jacs.sign_image("photo.png", out="signed.png")
+v = jacs.verify_image("signed.png")
+print(v.status)  # 'valid'
+v_strict = jacs.verify_image("signed.png", strict=True)  # raises if not signed
+
+# Extract the embedded provenance payload (decoded JSON by default)
+payload = jacs.extract_media_signature("signed.png")
+```
+
+The same five methods are available on the instance-based `JacsClient` for multi-agent processes.
+
+A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
+
 ## Verify without an agent
 
 ```python

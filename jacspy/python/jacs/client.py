@@ -403,6 +403,147 @@ class JacsClient:
             raise SigningError(f"Failed to sign file: {e}")
 
     # ------------------------------------------------------------------
+    # Inline text + media (Task 10 — PRD §3.1 / §3.2)
+    # ------------------------------------------------------------------
+
+    def sign_text(self, file_path: str, *, no_backup: bool = False):
+        """Sign a text/markdown file in place with an inline JACS signature block.
+
+        Returns a :class:`SignTextResult` with ``file_path``, ``signer_id`` and
+        ``backup_path`` populated.
+        """
+        from .types import SignTextResult
+
+        agent = self._require_agent()
+        try:
+            outcome = agent.sign_text(file_path, no_backup=no_backup)
+        except Exception as e:
+            raise SigningError(f"Failed to sign text file {file_path}: {e}")
+        path = outcome.get("path", file_path)
+        signer_id = outcome.get("signer_id") or self.agent_id
+        return SignTextResult(
+            file_path=path,
+            signer_id=signer_id,
+            backup_path=outcome.get("backup_path"),
+        )
+
+    def sign_text_file(self, file_path: str, *, no_backup: bool = False):
+        """Parity alias for :meth:`sign_text` (matches ``sign_text_file_json``)."""
+        return self.sign_text(file_path, no_backup=no_backup)
+
+    def verify_text(
+        self,
+        file_path: str,
+        *,
+        strict: bool = False,
+        key_dir: Optional[str] = None,
+    ):
+        """Verify inline JACS signatures in a text/markdown file (PRD §4.1, C1).
+
+        In permissive mode (default), files without a signature return a
+        :class:`VerifyTextResult` with ``status='missing_signature'`` rather than
+        raising. In strict mode (``strict=True``), the same case raises
+        :class:`MissingSignatureError`.
+        """
+        from .types import VerifyTextResult, SignatureEntry
+
+        agent = self._require_agent()
+        # Strict-mode MissingSignatureError propagates out unmodified from the
+        # native PyO3 layer — catch it in a dedicated except-branch so we can
+        # re-raise without wrapping it into JacsError.
+        result = agent.verify_text(file_path, strict=strict, key_dir=key_dir)
+        signatures = [
+            SignatureEntry(
+                signer_id=s.get("signer_id", ""),
+                algorithm=s.get("algorithm", ""),
+                timestamp=s.get("timestamp", ""),
+                status=s.get("status", ""),
+            )
+            for s in result.get("signatures", [])
+        ]
+        return VerifyTextResult(
+            status=result.get("status", "malformed"),
+            signatures=signatures,
+        )
+
+    def verify_text_file(
+        self,
+        file_path: str,
+        *,
+        strict: bool = False,
+        key_dir: Optional[str] = None,
+    ):
+        """Parity alias for :meth:`verify_text`."""
+        return self.verify_text(file_path, strict=strict, key_dir=key_dir)
+
+    def sign_image(
+        self,
+        input_path: str,
+        output_path: str,
+        *,
+        robust: bool = False,
+        format: Optional[str] = None,
+        refuse_overwrite: bool = False,
+    ):
+        """Sign a PNG / JPEG / WebP image by embedding a JACS signature."""
+        from .types import SignImageResult
+
+        agent = self._require_agent()
+        try:
+            outcome = agent.sign_image(
+                input_path,
+                output_path,
+                robust=robust,
+                format=format,
+                refuse_overwrite=refuse_overwrite,
+            )
+        except Exception as e:
+            raise SigningError(f"Failed to sign image {input_path}: {e}")
+        return SignImageResult(
+            out_path=outcome.get("out_path", output_path),
+            signer_id=outcome.get("signer_id", self.agent_id),
+            format=outcome.get("format", ""),
+            robust=outcome.get("robust", robust),
+        )
+
+    def verify_image(
+        self,
+        file_path: str,
+        *,
+        strict: bool = False,
+        key_dir: Optional[str] = None,
+        robust: bool = False,
+    ):
+        """Verify an embedded JACS signature in an image (PRD §4.2, C1)."""
+        from .types import VerifyImageResult
+
+        agent = self._require_agent()
+        # Strict-mode MissingSignatureError propagates out unmodified.
+        result = agent.verify_image(
+            file_path, strict=strict, key_dir=key_dir, robust=robust
+        )
+        return VerifyImageResult(
+            status=result.get("status", "malformed"),
+            signer_id=result.get("signer_id"),
+            format=result.get("format"),
+        )
+
+    def extract_media_signature(
+        self, file_path: str, *, raw_payload: bool = False
+    ) -> Optional[str]:
+        """Extract the JACS signature payload embedded in a signed image.
+
+        Returns the decoded JACS signed-document JSON string by default, or
+        the base64url wire form when ``raw_payload=True``. Returns ``None``
+        when the image carries no JACS signature.
+        """
+        agent = self._require_agent()
+        try:
+            return agent.extract_media_signature(file_path, raw_payload=raw_payload)
+        except Exception as e:
+            raise JacsError(f"Failed to extract media signature from {file_path}: {e}")
+
+    # ------------------------------------------------------------------
     # Verification
     # ------------------------------------------------------------------
 

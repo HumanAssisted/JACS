@@ -1,0 +1,27 @@
+{
+  "agent_ed25519": {
+    "agent_id": "c9372054-ea60-4338-a4d7-84703a2ce5d9",
+    "algorithm": "ed25519",
+    "public_key_filename": "c9372054-ea60-4338-a4d7-84703a2ce5d9.public.pem"
+  },
+  "agent_pq2025": {
+    "agent_id": "57e9ab2f-78ed-4d75-b601-fe692cc2d13e",
+    "algorithm": "pq2025",
+    "public_key_filename": "57e9ab2f-78ed-4d75-b601-fe692cc2d13e.public.pem"
+  },
+  "files": {
+    "rust_signed_ed25519_jpeg": "rust_signed_ed25519.jpg",
+    "rust_signed_ed25519_png": "rust_signed_ed25519.png",
+    "rust_signed_ed25519_text": "rust_signed_ed25519.md",
+    "rust_signed_ed25519_webp": "rust_signed_ed25519.webp",
+    "rust_signed_multi_algo_text": "rust_signed_multi_algo.md",
+    "rust_signed_pq2025_text": "rust_signed_pq2025.md",
+    "unsigned_jpeg": "unsigned.jpg",
+    "unsigned_png": "unsigned.png",
+    "unsigned_text": "unsigned.md",
+    "unsigned_webp": "unsigned.webp"
+  },
+  "generated_by": "rust",
+  "jacs_version": "0.10.0",
+  "schema": "jacs-provenance-fixture-v1"
+}

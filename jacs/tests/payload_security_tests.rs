@@ -4,7 +4,7 @@ use serial_test::serial;
 use std::time::Duration;
 
 mod utils;
-use utils::load_test_agent_one;
+use utils::load_test_agent_one_ed25519;
 
 struct EnvVarGuard {
     key: &'static str,
@@ -48,7 +48,7 @@ impl Drop for EnvVarGuard {
 #[serial]
 fn verify_payload_default_window_allows_recent_message() {
     let _guard = EnvVarGuard::unset("JACS_PAYLOAD_MAX_REPLAY_SECONDS");
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let signed = agent
         .sign_payload(json!({ "test": "default-window" }))
         .expect("payload signing should succeed");
@@ -65,7 +65,7 @@ fn verify_payload_default_window_allows_recent_message() {
 #[serial]
 fn verify_payload_env_override_can_be_strict() {
     let _guard = EnvVarGuard::set("JACS_PAYLOAD_MAX_REPLAY_SECONDS", "1");
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let signed = agent
         .sign_payload(json!({ "test": "strict-env-window" }))
         .expect("payload signing should succeed");
@@ -86,7 +86,7 @@ fn verify_payload_env_override_can_be_strict() {
 #[serial]
 fn verify_payload_explicit_argument_overrides_env_window() {
     let _guard = EnvVarGuard::set("JACS_PAYLOAD_MAX_REPLAY_SECONDS", "1");
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let signed = agent
         .sign_payload(json!({ "test": "explicit-override" }))
         .expect("payload signing should succeed");
@@ -104,7 +104,7 @@ fn verify_payload_explicit_argument_overrides_env_window() {
 fn verify_payload_replay_nonce_retention_tracks_payload_window() {
     let _guard_payload = EnvVarGuard::set("JACS_PAYLOAD_MAX_REPLAY_SECONDS", "5");
     let _guard_iat = EnvVarGuard::set("JACS_MAX_IAT_SKEW_SECONDS", "1");
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let signed = agent
         .sign_payload(json!({ "test": "replay-window-alignment" }))
         .expect("payload signing should succeed");

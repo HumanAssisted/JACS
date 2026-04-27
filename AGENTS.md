@@ -35,12 +35,12 @@ Cross-language feature parity is enforced through canonical JSON fixtures that s
 
 | Fixture | What it tracks | Consumed by |
 |---------|---------------|-------------|
-| `binding-core/tests/fixtures/method_parity.json` | 26 `SimpleAgentWrapper` public methods | Rust, Python, Node, Go |
-| `binding-core/tests/fixtures/parity_inputs.json` | 13 `ErrorKind` variants + behavioral notes | Rust, Python, Node, Go |
+| `binding-core/tests/fixtures/method_parity.json` | 32 `SimpleAgentWrapper` public methods | Rust, Python, Node, Go |
+| `binding-core/tests/fixtures/parity_inputs.json` | 14 `ErrorKind` variants + behavioral notes | Rust, Python, Node, Go |
 | `binding-core/tests/fixtures/adapter_inventory.json` | Framework adapter modules and public functions | Rust, Python, Node |
 | `binding-core/tests/fixtures/cli_mcp_alignment.json` | CLI-to-MCP tool mapping (aligned, CLI-only, MCP-only) | Rust |
-| `jacs-cli/contract/cli_commands.json` | 29 CLI commands + 4 feature-gated | Rust (extracted from Clap tree) |
-| `jacs-mcp/contract/jacs-mcp-contract.json` | 42 MCP tools with parameter schemas | Python, Node, Go |
+| `jacs-cli/contract/cli_commands.json` | 38 CLI commands + 4 feature-gated | Rust (extracted from Clap tree) |
+| `jacs-mcp/contract/jacs-mcp-contract.json` | 48 MCP tools with parameter schemas | Python, Node, Go |
 
 ### What to update when
 

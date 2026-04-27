@@ -67,6 +67,12 @@ class TestRegisterJacsTools:
             "jacs_share_public_key",
             "jacs_export_agent",
             "jacs_share_agent",
+            # v0.10.0 inline-text + media tools
+            "jacs_sign_text",
+            "jacs_verify_text",
+            "jacs_sign_image",
+            "jacs_verify_image",
+            "jacs_extract_media_signature",
         }
         assert set(mcp.tools.keys()) == expected
 
@@ -485,7 +491,8 @@ class TestSignFilePathTraversal:
 
         result = json.loads(fn("/etc/passwd"))
         assert result["success"] is False
-        assert "Absolute paths are not allowed" in result["error"]
+        # New path-policy wording: leading "/" splits into an empty first segment.
+        assert "empty segment" in result["error"]
 
     def test_rejects_parent_directory_traversal(self, client):
         mcp = FakeMCP()
@@ -494,7 +501,7 @@ class TestSignFilePathTraversal:
 
         result = json.loads(fn("data/../../../etc/shadow", embed=True))
         assert result["success"] is False
-        assert "Path traversal" in result["error"]
+        assert "path traversal" in result["error"].lower()
 
     def test_rejects_windows_drive_path(self, client):
         mcp = FakeMCP()
@@ -503,7 +510,7 @@ class TestSignFilePathTraversal:
 
         result = json.loads(fn("C:\\Windows\\System32\\drivers\\etc\\hosts"))
         assert result["success"] is False
-        assert "Windows drive-prefixed paths" in result["error"]
+        assert "Windows drive prefix" in result["error"]
 
     def test_rejects_null_byte(self, client):
         mcp = FakeMCP()
@@ -529,36 +536,77 @@ class TestSignFilePathTraversal:
 
 
 class TestValidateMcpFilePath:
-    """Unit tests for the _validate_mcp_file_path helper."""
+    """Unit tests for the _validate_mcp_file_path helper.
+
+    PRD §4.2.6 / Issue 022: the Python helper now delegates to the Rust
+    ``jacs_mcp_resolve_input_path`` PyO3 export. Test assertions match
+    the Rust rejection envelope (rejection messages contain "rejected"
+    or a layer-specific keyword like "symlink") rather than the previous
+    Python-local heuristic strings, so the two layers can never drift.
+
+    The accept tests pre-create the file in a tempdir and point
+    ``JACS_MCP_BASE_DIR`` there, because the Rust policy enforces
+    base-dir confinement (a layer the old Python heuristic skipped).
+    """
+
+    def _with_base_dir(self, body):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            prev = os.environ.get("JACS_MCP_BASE_DIR")
+            os.environ["JACS_MCP_BASE_DIR"] = td
+            try:
+                body(td)
+            finally:
+                if prev is None:
+                    os.environ.pop("JACS_MCP_BASE_DIR", None)
+                else:
+                    os.environ["JACS_MCP_BASE_DIR"] = prev
 
     def test_accepts_simple_filename(self):
-        _validate_mcp_file_path("state.json")  # should not raise
+        import os
+
+        def body(base):
+            with open(os.path.join(base, "state.json"), "w") as f:
+                f.write("{}")
+            _validate_mcp_file_path("state.json")  # should not raise
+
+        self._with_base_dir(body)
 
     def test_accepts_relative_path(self):
-        _validate_mcp_file_path("data/state.json")  # should not raise
+        import os
+
+        def body(base):
+            os.makedirs(os.path.join(base, "data"))
+            with open(os.path.join(base, "data", "state.json"), "w") as f:
+                f.write("{}")
+            _validate_mcp_file_path("data/state.json")  # should not raise
+
+        self._with_base_dir(body)
 
     def test_rejects_empty(self):
         with pytest.raises(ValueError, match="cannot be empty"):
             _validate_mcp_file_path("")
 
     def test_rejects_absolute_path(self):
-        with pytest.raises(ValueError, match="Absolute paths"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("/etc/passwd")
 
     def test_rejects_double_dot(self):
-        with pytest.raises(ValueError, match="Path traversal"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("a/../../etc/passwd")
 
     def test_rejects_dot_segment(self):
-        with pytest.raises(ValueError, match="Current-directory segment"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("a/./b")
 
     def test_rejects_windows_drive(self):
-        with pytest.raises(ValueError, match="Windows drive"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("C:\\Windows\\foo")
 
     def test_rejects_null_byte(self):
-        with pytest.raises(ValueError, match="null byte"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("foo\x00bar")
 
 
@@ -629,7 +677,7 @@ class TestUntrustPermissionGate:
 # ---------------------------------------------------------------------------
 
 
-class TestSignFilePathTraversal:
+class TestSignFilePathTraversalSecond:
     """Vuln 1: Ensure jacs_sign_file rejects path traversal attempts."""
 
     def test_rejects_absolute_unix_path(self, client):
@@ -638,7 +686,8 @@ class TestSignFilePathTraversal:
         fn = mcp.tools["jacs_sign_file"]["fn"]
         result = json.loads(fn("/etc/passwd", embed=True))
         assert result["success"] is False
-        assert "Absolute paths are not allowed" in result["error"]
+        # New path-policy wording: leading "/" splits into an empty first segment.
+        assert "empty segment" in result["error"]
 
     def test_rejects_parent_directory_traversal(self, client):
         mcp = FakeMCP()
@@ -646,7 +695,7 @@ class TestSignFilePathTraversal:
         fn = mcp.tools["jacs_sign_file"]["fn"]
         result = json.loads(fn("data/../../../etc/shadow", embed=True))
         assert result["success"] is False
-        assert "Path traversal" in result["error"]
+        assert "path traversal" in result["error"].lower()
 
     def test_rejects_windows_drive_path(self, client):
         mcp = FakeMCP()
@@ -654,7 +703,7 @@ class TestSignFilePathTraversal:
         fn = mcp.tools["jacs_sign_file"]["fn"]
         result = json.loads(fn("C:\\Windows\\System32\\drivers\\etc\\hosts"))
         assert result["success"] is False
-        assert "Windows drive-prefixed" in result["error"]
+        assert "Windows drive prefix" in result["error"]
 
     def test_rejects_null_byte(self, client):
         mcp = FakeMCP()
@@ -677,39 +726,67 @@ class TestSignFilePathTraversal:
         assert "Windows drive" not in result.get("error", "")
 
 
-class TestValidateMcpFilePath:
-    """Unit tests for the _validate_mcp_file_path helper."""
+class TestValidateMcpFilePathSecond:
+    """Second batch of unit tests for the _validate_mcp_file_path helper.
+
+    PRD §4.2.6 / Issue 022: assertions match the Rust delegate's rejection
+    envelope (case-insensitive "rejected") rather than the prior Python
+    heuristic strings, since the helper now delegates to Rust.
+    """
+
+    def _with_base_dir(self, body):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            prev = os.environ.get("JACS_MCP_BASE_DIR")
+            os.environ["JACS_MCP_BASE_DIR"] = td
+            try:
+                body(td)
+            finally:
+                if prev is None:
+                    os.environ.pop("JACS_MCP_BASE_DIR", None)
+                else:
+                    os.environ["JACS_MCP_BASE_DIR"] = prev
 
     def test_rejects_empty(self):
         with pytest.raises(ValueError, match="cannot be empty"):
             _validate_mcp_file_path("")
 
     def test_rejects_absolute_unix(self):
-        with pytest.raises(ValueError, match="Absolute paths"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("/etc/passwd")
 
     def test_rejects_absolute_backslash(self):
-        with pytest.raises(ValueError, match="Absolute paths"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("\\server\\share")
 
     def test_rejects_windows_drive(self):
-        with pytest.raises(ValueError, match="Windows drive"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("C:\\Users\\test")
 
     def test_rejects_parent_traversal(self):
-        with pytest.raises(ValueError, match="Path traversal"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("foo/../../bar")
 
     def test_rejects_dot_segment(self):
-        with pytest.raises(ValueError, match="Current-directory"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("./foo")
 
     def test_rejects_null_byte(self):
-        with pytest.raises(ValueError, match="null byte"):
+        with pytest.raises(ValueError, match="(?i)rejected"):
             _validate_mcp_file_path("foo\x00bar")
 
     def test_accepts_simple_relative(self):
-        _validate_mcp_file_path("data/state.json")  # no exception
+        import os
+
+        def body(base):
+            os.makedirs(os.path.join(base, "data"))
+            with open(os.path.join(base, "data", "state.json"), "w") as f:
+                f.write("{}")
+            _validate_mcp_file_path("data/state.json")  # no exception
+
+        self._with_base_dir(body)
 
     def test_accepts_filename_only(self):
         _validate_mcp_file_path("myfile.txt")  # no exception

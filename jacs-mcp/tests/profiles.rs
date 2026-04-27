@@ -15,25 +15,26 @@ use jacs_mcp::Profile;
 // Compile-time feature tests
 // =========================================================================
 
-/// With default features (`core-tools`), exactly 28 core tools are registered.
+/// With default features (`core-tools`), exactly 34 core tools are registered.
 #[test]
 fn compile_time_default_features_yield_core_tools() {
     let tools = jacs_mcp::JacsMcpServer::tools();
 
-    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5) = 29
+    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5)
+    //     + inline(2) + media(3) = 34
     #[cfg(not(feature = "full-tools"))]
     assert_eq!(
         tools.len(),
-        29,
-        "default features (core-tools) should register exactly 29 tools"
+        34,
+        "default features (core-tools) should register exactly 34 tools"
     );
 
-    // If full-tools is enabled, all 42 tools are registered
+    // If full-tools is enabled, all 48 tools are registered
     #[cfg(feature = "full-tools")]
     assert_eq!(
         tools.len(),
-        43,
-        "full-tools feature should register all 43 tools"
+        48,
+        "full-tools feature should register all 48 tools"
     );
 }
 

@@ -13,6 +13,7 @@ use crate::protocol::canonicalize_json;
 use crate::schema::utils::ValueExt;
 use crate::simple::SimpleAgent;
 use crate::simple::types::*;
+use base64::Engine as _;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
@@ -858,4 +859,1183 @@ pub fn update_document(
         })?;
 
     SignedDocument::from_jacs_document(jacs_doc, "document")
+}
+
+// =============================================================================
+// Inline text signature file operations (Task 05, PRD §4.1)
+// =============================================================================
+
+/// Encode a JACS agent ID into a filesystem-safe filename per PRD §4.1.5.
+///
+/// - Replaces `:` with `%3A` (colon is invalid in NTFS / problematic on Windows).
+/// - Replaces literal `..` sequences with `%2E%2E` (path traversal mitigation).
+/// - Other characters allowed by the safety whitelist pass through unchanged.
+///
+/// Pre-conditions: caller MUST validate `signer_id` against
+/// [`is_signer_id_safe`] first; this helper assumes the input is already safe.
+pub fn encode_signer_id_for_filename(signer_id: &str) -> String {
+    // Replace `..` first to avoid creating sequences when we percent-encode `:`.
+    let no_dotdot = signer_id.replace("..", "%2E%2E");
+    no_dotdot.replace(':', "%3A")
+}
+
+/// Whitelist check for `signer_id`. Returns false for any input containing
+/// characters outside `[A-Za-z0-9:_.-]`, longer than 256 bytes, or empty.
+pub fn is_signer_id_safe(signer_id: &str) -> bool {
+    if signer_id.is_empty() || signer_id.len() > 256 {
+        return false;
+    }
+    signer_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == ':' || c == '_' || c == '.' || c == '-')
+}
+
+/// Default key resolver composing self → key_dir → trust store → DNS (TODO).
+///
+/// Callers in this module wire one of these up around a `SimpleAgent` and an
+/// optional `--key-dir` path before calling `crate::inline::verify_inline`.
+pub(crate) struct DefaultKeyResolver<'a> {
+    agent: &'a SimpleAgent,
+    key_dir: Option<&'a std::path::Path>,
+}
+
+impl<'a> DefaultKeyResolver<'a> {
+    pub(crate) fn new(agent: &'a SimpleAgent, key_dir: Option<&'a std::path::Path>) -> Self {
+        Self { agent, key_dir }
+    }
+}
+
+impl<'a> crate::inline::KeyResolver for DefaultKeyResolver<'a> {
+    fn resolve(&self, signer_id: &str) -> Option<crate::inline::ResolvedKey> {
+        // 1. Self key — short-circuit if the signer is the loaded agent.
+        //
+        // Returns the RAW public-key bytes (32-byte for Ed25519, 2592-byte
+        // for ML-DSA-87, PEM string bytes for RSA-PSS). This matches the
+        // contract of the low-level crypt primitives:
+        // `ringwrapper::verify_string` / `pq2025::verify_string` /
+        // `rsawrapper::verify_string` all accept the bytes the algorithm
+        // natively expects, NOT a PEM-armored form. The publicKeyHash check
+        // in the verifier first calls `normalize_public_key_pem` which is
+        // tolerant of both raw and PEM input.
+        if let Ok(my_id) = self.agent.get_agent_id()
+            && my_id == signer_id
+        {
+            let raw = self.agent.get_public_key().ok()?;
+            let algorithm = crate::crypt::detect_algorithm_from_public_key(&raw)
+                .ok()
+                .map(inline_algorithm_tag)
+                .unwrap_or_else(|| "ed25519".to_string());
+            return Some(crate::inline::ResolvedKey {
+                public_key_pem: raw,
+                algorithm,
+            });
+        }
+
+        // 2. --key-dir override (when provided). Filename safety per PRD §4.1.5.
+        if let Some(dir) = self.key_dir {
+            if !is_signer_id_safe(signer_id) {
+                // Invalid signer_id — refuse the lookup. Verifier surfaces
+                // (downstream) as KeyNotFound when the resolver returns None.
+                return None;
+            }
+            let encoded = encode_signer_id_for_filename(signer_id);
+            let candidate = dir.join(format!("{}.public.pem", encoded));
+            if candidate.exists() {
+                // Defence-in-depth: canonical-path check rejects symlink escapes.
+                if let (Ok(c_can), Ok(d_can)) = (
+                    std::fs::canonicalize(&candidate),
+                    std::fs::canonicalize(dir),
+                ) && !c_can.starts_with(&d_can)
+                {
+                    return None;
+                }
+                if let Ok(pem_bytes) = std::fs::read(&candidate) {
+                    return resolved_from_pem_or_raw(&pem_bytes);
+                }
+                // File exists but unreadable — fall through to trust store.
+            }
+            // Not in key_dir — fall through (key_dir is additive per PRD §4.1.5).
+        }
+
+        // 3. Local trust store.
+        if let Ok(json) = crate::trust::get_trusted_agent(signer_id)
+            && let Ok(value) = serde_json::from_str::<serde_json::Value>(&json)
+        {
+            let pem_str = value
+                .get("jacsAgentPublicKey")
+                .and_then(|v| v.as_str())
+                .or_else(|| value.get("publicKey").and_then(|v| v.as_str()))
+                .map(|s| s.to_string());
+            if let Some(pem) = pem_str {
+                return resolved_from_pem_or_raw(pem.as_bytes());
+            }
+        }
+
+        // 4. DNS-published key resolution (soft-fail).
+        //
+        // Lets verifiers pick up signatures from strangers who publish their
+        // agent + public key under a domain they control. Two channels:
+        //   • DNS TXT  at `_v1.agent.jacs.<domain>` provides the agent_id +
+        //     `jac_public_key_hash` fingerprint (the integrity binding).
+        //   • HTTPS at `https://<domain>/.well-known/jacs/agents/<id>.public.pem`
+        //     provides the public-key bytes.
+        //
+        // Discovery domains come from the `JACS_DNS_KEY_DOMAINS` env var (CSV).
+        // Operators can leave it unset for an opt-in network model. Each lookup
+        // is best-effort: any DNS / HTTPS / hash-mismatch failure surfaces as
+        // `None` (caller emits `SignatureStatus::KeyNotFound`) — same soft-fail
+        // semantics as verification itself.
+        if let Some(resolved) = resolve_via_dns_and_https(signer_id) {
+            return Some(resolved);
+        }
+
+        None
+    }
+}
+
+/// DNS + HTTPS .well-known key resolution.
+///
+/// Returns `None` on any failure (DNS lookup error, no matching TXT record,
+/// HTTPS fetch failure, hash mismatch, malformed key bytes). Hard errors
+/// surface as `KeyNotFound` from the inline verifier — never raised.
+///
+/// `JACS_DNS_KEY_DOMAINS` is a CSV of trusted publisher domains (e.g.
+/// `"agents.example.com,agents.acme.com"`). For each entry the resolver:
+///   1. Fetches `_v1.agent.jacs.<domain>` TXT (insecure resolver — DNSSEC
+///      validation is the operator's choice, gated upstream by the
+///      `dns-lookup` capability bit).
+///   2. Confirms `jacs_agent_id` matches the requested signer.
+///   3. Fetches `https://<domain>/.well-known/jacs/agents/<signer>.public.pem`.
+///   4. Hashes the fetched PEM (LF-normalised) and compares to the TXT-published
+///      `jac_public_key_hash` so the DNS record binds the HTTPS bytes.
+///   5. Returns the parsed key on the first successful match.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_via_dns_and_https(signer_id: &str) -> Option<crate::inline::ResolvedKey> {
+    use crate::dns::bootstrap::{
+        find_jacs_txt_record, parse_agent_txt, record_owner, resolve_txt_insecure,
+    };
+
+    // Reject malicious signer IDs before we mint any URLs.
+    if !is_signer_id_safe(signer_id) {
+        return None;
+    }
+
+    let domains = std::env::var("JACS_DNS_KEY_DOMAINS").ok()?;
+    let domains: Vec<String> = domains
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    if domains.is_empty() {
+        return None;
+    }
+
+    for domain in &domains {
+        let owner = record_owner(domain);
+        let txt = match resolve_txt_insecure(&owner) {
+            Ok(t) => t,
+            Err(_) => {
+                // DNS lookup failed (network / NXDOMAIN / network capability
+                // disabled). Soft-fail: try the next domain.
+                continue;
+            }
+        };
+        // Defence-in-depth: even though resolve_txt_insecure already filters
+        // to v=jacs, re-confirm here.
+        let txt = match find_jacs_txt_record(vec![txt], &owner) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let fields = match parse_agent_txt(&txt) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if fields.jacs_agent_id != signer_id {
+            // This domain publishes a different agent; not our signer.
+            continue;
+        }
+
+        // Fetch key bytes via .well-known/.
+        let pem_bytes = match fetch_well_known_pem(domain, signer_id) {
+            Some(p) => p,
+            None => continue,
+        };
+
+        // Confirm the fetched key matches the DNS-published fingerprint.
+        // This binds the HTTPS bytes to the DNS record so a compromised HTTPS
+        // origin cannot serve an attacker-controlled key without also
+        // compromising DNS.
+        if !pem_matches_dns_digest(&pem_bytes, &fields.digest, &fields.enc) {
+            continue;
+        }
+
+        if let Some(resolved) = resolved_from_pem_or_raw(&pem_bytes) {
+            return Some(resolved);
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_well_known_pem(domain: &str, signer_id: &str) -> Option<Vec<u8>> {
+    use crate::config::{NetworkCapability, ensure_network_access};
+
+    if ensure_network_access(NetworkCapability::RemoteKeyFetch).is_err() {
+        return None;
+    }
+
+    let domain_trimmed = domain.trim().trim_end_matches('/');
+    if domain_trimmed.is_empty() {
+        return None;
+    }
+    // .well-known schema: `https://<domain>/.well-known/jacs/agents/<signer>.public.pem`.
+    let url = format!(
+        "https://{}/.well-known/jacs/agents/{}.public.pem",
+        domain_trimmed, signer_id
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?;
+
+    let response = client
+        .get(&url)
+        .header(
+            reqwest::header::ACCEPT,
+            "application/x-pem-file, text/plain",
+        )
+        .send()
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let bytes = response.bytes().ok()?;
+    // Cap at 16 KiB — public keys are tiny; anything bigger is suspicious.
+    if bytes.len() > 16 * 1024 {
+        return None;
+    }
+    Some(bytes.to_vec())
+}
+
+/// Whether `pem_bytes` (the bytes fetched from `.well-known`) hashes to the
+/// digest published in the JACS TXT record. Accepts both base64 and hex
+/// encodings of the SHA-256 of the LF-normalised PEM.
+fn pem_matches_dns_digest(
+    pem_bytes: &[u8],
+    dns_digest: &str,
+    enc: &crate::dns::bootstrap::DigestEncoding,
+) -> bool {
+    use crate::dns::bootstrap::DigestEncoding;
+    let normalised = crate::crypt::normalize_public_key_pem(pem_bytes);
+    let raw = crate::crypt::hash::hash_bytes_raw(normalised.as_bytes());
+    match enc {
+        DigestEncoding::Base64 => {
+            base64::engine::general_purpose::STANDARD.encode(raw) == dns_digest
+        }
+        DigestEncoding::Hex => hex::encode(raw).eq_ignore_ascii_case(dns_digest),
+    }
+}
+
+/// Build a `ResolvedKey` from key bytes that may be a PEM file (on-disk in
+/// `--key-dir` or in a trust-store agent doc) or a raw key blob. We try
+/// `pem::parse` first; if that yields valid PEM, the contents go to the
+/// downstream crypt primitive (which accepts PEM for RSA-PSS) and the raw
+/// bytes go to ed25519/pq2025 primitives. The publicKeyHash check uses
+/// `normalize_public_key_pem` which tolerates both.
+fn resolved_from_pem_or_raw(pem_bytes: &[u8]) -> Option<crate::inline::ResolvedKey> {
+    // Try to extract the inner key bytes from the PEM block. For Ed25519 and
+    // pq2025, the PEM body IS the raw bytes (after base64 decode); for
+    // RSA-PSS, the body is DER and the verify primitive needs the PEM bytes
+    // back — so we keep the original PEM bytes for RSA but raw bytes for
+    // others.
+    let inner = match pem::parse(pem_bytes) {
+        Ok(block) => block.into_contents(),
+        Err(_) => pem_bytes.to_vec(),
+    };
+    let algorithm = crate::crypt::detect_algorithm_from_public_key(&inner)
+        .ok()
+        .map(inline_algorithm_tag)
+        .unwrap_or_else(|| "ed25519".to_string());
+    let key_bytes = match algorithm.as_str() {
+        "rsa-pss" => pem_bytes.to_vec(),
+        _ => inner,
+    };
+    Some(crate::inline::ResolvedKey {
+        public_key_pem: key_bytes,
+        algorithm,
+    })
+}
+
+/// Map JACS-internal algorithm names (e.g. `Display` of
+/// [`crate::crypt::CryptoSigningAlgorithm`] or PEM-derived strings) to the
+/// lower-case tags used in inline signature blocks.
+fn inline_algorithm_tag<T: std::fmt::Display>(algo: T) -> String {
+    let s = algo.to_string();
+    match s.as_str() {
+        "ring-Ed25519" | "ed25519" | "Ed25519" => "ed25519".to_string(),
+        "pq2025" | "ML-DSA-87" | "ml-dsa-87" => "pq2025".to_string(),
+        "RSA-PSS" | "rsa-pss" => "rsa-pss".to_string(),
+        _ => s.to_lowercase(),
+    }
+}
+
+/// Shared `<path>.bak` writer for the inline-text and image sign paths
+/// (PRD §4.2.4b).
+///
+/// Six rules:
+///   1. **Location:** `<path>.bak` in the same directory only — caller passes
+///      both `src_bytes` (or `None` to copy from disk) and `backup_path` so
+///      this is just a plain `fs::write` after the safety guards.
+///   2. **Overwrite existing `.bak` is permitted** — operators may invoke sign
+///      repeatedly during iterative authoring.
+///   3. **Permissions:** `mode` defaults to `0o600`; callers may pass an
+///      `unsafe_bak_mode` override. Unix only — Windows skips the chmod.
+///   4. **Symlinks at `<path>.bak`:** rejected — refuse to follow. A malicious
+///      `.bak` symlink is the canonical "backup-as-write-primitive" attack.
+///   5. **Content:** caller-provided byte-for-byte (the original file bytes).
+///   6. **Documented warning:** the resulting `.bak` is **unsigned plaintext**;
+///      callers that handle sensitive data must keep it out of shared
+///      directories or set `backup: false`.
+pub(crate) fn write_backup_or_err(
+    src_bytes: &[u8],
+    backup_path: &str,
+    mode: Option<u32>,
+) -> Result<(), JacsError> {
+    // Rule 4: symlink reject (defence-in-depth — don't follow attacker-placed
+    // symlink at the .bak path).
+    if let Ok(meta) = std::fs::symlink_metadata(backup_path)
+        && meta.file_type().is_symlink()
+    {
+        return Err(JacsError::ValidationError(format!(
+            "refusing to follow symlink at backup path '{}'",
+            backup_path
+        )));
+    }
+
+    // Rule 2 + 5: write the bytes. Standard fs::write overwrites if needed.
+    std::fs::write(backup_path, src_bytes).map_err(|e| JacsError::FileWriteFailed {
+        path: backup_path.to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Rule 3: 0o600 default; explicit override gates the unsafe path.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let effective_mode = mode.unwrap_or(0o600);
+        let _ =
+            std::fs::set_permissions(backup_path, std::fs::Permissions::from_mode(effective_mode));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+    }
+
+    Ok(())
+}
+
+/// Sign the contents of a text file in-place. PRD §4.1.
+///
+/// Atomic-write semantics: a sibling temp file is written and atomically renamed
+/// over `path`. On any error, the temp file is auto-cleaned and the original
+/// file is unchanged. If `opts.backup` is true (the default), the original is
+/// copied to `<path>.bak` before the sign.
+///
+/// Duplicate-signer detection: if the file already contains a valid signature
+/// from this agent over the unchanged content, the call is a no-op (no second
+/// block written, no error, no .bak update). The returned `SignTextOutcome.signers_added`
+/// is 0 in that case.
+pub fn sign_text_file(
+    agent: &SimpleAgent,
+    path: &str,
+    opts: SignTextOptions,
+) -> Result<SignTextOutcome, JacsError> {
+    use std::io::Write;
+
+    let path_obj = std::path::Path::new(path);
+    let original = std::fs::read_to_string(path).map_err(|e| JacsError::FileReadFailed {
+        path: path.to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let new_content = crate::inline::sign_inline(&original, agent)?;
+
+    let signers_added = if new_content == original { 0 } else { 1 };
+
+    // Idempotent no-op: file unchanged, skip write/backup.
+    if signers_added == 0 && !opts.allow_duplicate {
+        return Ok(SignTextOutcome {
+            path: path.to_string(),
+            signers_added: 0,
+            backup_path: None,
+        });
+    }
+
+    // Write backup BEFORE we touch the file (PRD §4.2.4b). If backup fails,
+    // abort — same shared helper as sign_image so the symlink-reject and
+    // 0o600-default guards apply uniformly.
+    let backup_path = if opts.backup {
+        let bak = format!("{}.bak", path);
+        write_backup_or_err(original.as_bytes(), &bak, opts.unsafe_bak_mode)?;
+        Some(bak)
+    } else {
+        None
+    };
+
+    // Atomic write via tempfile in the same directory.
+    let parent = path_obj
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut tmp =
+        tempfile::NamedTempFile::new_in(parent).map_err(|e| JacsError::FileWriteFailed {
+            path: path.to_string(),
+            reason: format!("create tempfile: {}", e),
+        })?;
+    tmp.write_all(new_content.as_bytes())
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: path.to_string(),
+            reason: format!("write tempfile: {}", e),
+        })?;
+    tmp.as_file_mut()
+        .sync_all()
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: path.to_string(),
+            reason: format!("sync tempfile: {}", e),
+        })?;
+
+    // Preserve mode bits (Unix only).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mode = meta.permissions().mode();
+            let _ = std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(mode));
+        }
+    }
+
+    tmp.persist(path).map_err(|e| JacsError::FileWriteFailed {
+        path: path.to_string(),
+        reason: format!("persist tempfile: {}", e),
+    })?;
+
+    Ok(SignTextOutcome {
+        path: path.to_string(),
+        signers_added,
+        backup_path,
+    })
+}
+
+/// Verify every signature block in a text file. PRD §4.1, §4.1.5.
+///
+/// Permissive (`opts.strict == false`, default): missing-signature returns
+/// `Ok(VerifyTextResult::MissingSignature)`; never `Err`.
+///
+/// Strict (`opts.strict == true`): missing-signature returns
+/// `Err(JacsError::MissingSignature)`. File-level malformed (BEGIN with no
+/// matching END) returns `Err(JacsError::ValidationError(...))` with a
+/// `"malformed signature block"` prefix.
+///
+/// Per-block failures (bad YAML, invalid signature, unknown signer) NEVER
+/// escalate to `Err` — they appear as `SignatureStatus` entries inside the
+/// returned `Signed { signatures }` variant.
+pub fn verify_text_file(
+    agent: &SimpleAgent,
+    path: &str,
+    opts: crate::inline::VerifyOptions,
+) -> Result<crate::inline::VerifyTextResult, JacsError> {
+    let framed = std::fs::read_to_string(path).map_err(|e| JacsError::FileReadFailed {
+        path: path.to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let key_dir_owned = opts.key_dir.clone();
+    let resolver = DefaultKeyResolver::new(agent, key_dir_owned.as_deref());
+    match crate::inline::verify_inline(&framed, &resolver, opts) {
+        Ok(result) => Ok(result),
+        Err(crate::inline::InlineVerifyError::MissingSignature) => {
+            Err(JacsError::MissingSignature(path.to_string()))
+        }
+        Err(crate::inline::InlineVerifyError::Malformed(s)) => Err(JacsError::ValidationError(
+            format!("malformed signature block: {}", s),
+        )),
+    }
+}
+
+// =============================================================================
+// Image / media signature operations (Task 06, PRD §4.2)
+// =============================================================================
+
+/// Sign an image file. PRD §4.2.5.
+///
+/// Reads `in_path`, embeds a JACS signed-document JSON payload in the format-
+/// appropriate metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP), and writes
+/// to `out_path`. Atomic-write + optional `.bak` backup per PRD §4.2.4a.
+pub fn sign_image(
+    agent: &SimpleAgent,
+    in_path: &str,
+    out_path: &str,
+    opts: SignImageOptions,
+) -> Result<SignedMedia, JacsError> {
+    use std::io::Write;
+
+    let bytes = std::fs::read(in_path).map_err(|e| JacsError::FileReadFailed {
+        path: in_path.to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Format detection — clean error on unsupported.
+    //
+    // PRD §3.2 / §4.2.5 / Issue 002: `format_hint` is an optional override
+    // for callers (CLI `--format`, NAPI `format`, PyO3 `format=`, MCP
+    // `format` field). When present, it wins over magic-byte detection — that
+    // is the documented contract. Unknown values return a clean
+    // ValidationError. When absent, we fall back to magic-byte detection.
+    let fmt = match opts.format_hint.as_deref() {
+        Some(hint) => match hint.to_ascii_lowercase().as_str() {
+            "png" => jacs_media::MediaFormat::Png,
+            "jpeg" | "jpg" => jacs_media::MediaFormat::Jpeg,
+            "webp" => jacs_media::MediaFormat::WebP,
+            other => {
+                return Err(JacsError::ValidationError(format!(
+                    "unknown format hint '{}' for image at '{}' (expected png|jpeg|webp)",
+                    other, in_path
+                )));
+            }
+        },
+        None => jacs_media::detect_format(&bytes).map_err(|_| {
+            JacsError::ValidationError(format!("unsupported format for image at '{}'", in_path))
+        })?,
+    };
+    let format_str = match fmt {
+        jacs_media::MediaFormat::Png => "png",
+        jacs_media::MediaFormat::Jpeg => "jpeg",
+        jacs_media::MediaFormat::WebP => "webp",
+    };
+
+    // Refuse-overwrite guard (PRD §4.2.2).
+    // Issue 002: pass the resolved format (which honours the user's hint) so
+    // a damaged-magic file with explicit `--format` still gets the right
+    // existing-signature check.
+    if opts.refuse_overwrite
+        && let Ok(Some(_)) = jacs_media::extract_signature_with_format(fmt, &bytes, false)
+    {
+        return Err(JacsError::ValidationError(
+            "input already carries a JACS signature — pass refuse_overwrite=false to replace"
+                .to_string(),
+        ));
+    }
+
+    // Canonical hash — robust selector per PRD §4.2.3.
+    // Issue 002: pass the resolved format (which honours the user's
+    // `format_hint` override) so canonicalisation stays consistent with the
+    // chosen embed channel.
+    let canonical_hash = if opts.robust {
+        jacs_media::canonical_hash_robust_with_format(fmt, &bytes).map_err(media_to_jacs_err)?
+    } else {
+        jacs_media::canonical_hash_with_format(fmt, &bytes).map_err(media_to_jacs_err)?
+    };
+    let canonicalization = if opts.robust {
+        "jacs-media-v1-robust"
+    } else {
+        "jacs-media-v1"
+    };
+
+    // publicKeyHash field per PRD §4.2.2.
+    let signer_pem = agent.get_public_key_pem()?;
+    let normalised_pem = crate::crypt::normalize_public_key_pem(signer_pem.as_bytes());
+    let pkh_raw = sha256_bytes_local(normalised_pem.as_bytes());
+    let public_key_hash = format!("sha256-b64url:{}", base64url_nopad_local(&pkh_raw));
+
+    // Pixel-hash for robust mode.
+    //
+    // REVIEW_005 (1) / PRD §4.2.2: `pixelHash` commits to the **pre-LSB**
+    // decoded pixel buffer so a verifier can detect "metadata strip + pixel
+    // re-encode" tampering. This is divergent from `contentHash`, which
+    // hashes the canonicalised + LSB-zeroed pixels so the value stays
+    // invariant after robust embedding. Both fields coexist in the claim
+    // (under `mediaSignatureVersion: 1`); a v0.10.0 verifier that ignores
+    // `pixelHash` still validates correctly via `contentHash`, and a
+    // pixel-aware verifier (issued by callers who care about anti-recompress
+    // detection) re-derives `pixel_hash_pre_lsb(fmt, bytes_pre_embed)` and
+    // compares to the claim's `pixelHash`. WebP returns `Unsupported` for
+    // robust mode, so `pixelHash` stays None there.
+    let pixel_hash = if opts.robust {
+        let raw = jacs_media::pixel_hash_pre_lsb(fmt, &bytes).map_err(media_to_jacs_err)?;
+        Some(format!("sha256-b64url:{}", base64url_nopad_local(&raw)))
+    } else {
+        None
+    };
+
+    // REVIEW_005 (2) / Issue 015: `embeddingChannels` is **verifier-checked
+    // ground truth**. The signer must declare only the channels that actually
+    // carry the payload after embed; the verifier cross-checks declared
+    // against observed and surfaces `Malformed` on mismatch.
+    //
+    // In v0.10+, robust mode re-encodes the pixel buffer to write the LSB
+    // payload and the iTXt metadata chunk does NOT survive that re-encode
+    // (verified by `sign_image_robust_modifies_pixels`). So robust = lsb-only
+    // on the wire. Non-robust = metadata-only.
+    let claim = json!({
+        "mediaSignatureVersion": 1,
+        "format": format_str,
+        "canonicalization": canonicalization,
+        "hashAlgorithm": "sha256",
+        "contentHash": base64url_nopad_local(&canonical_hash),
+        "publicKeyHash": public_key_hash,
+        "embeddingChannels": if opts.robust {
+            json!(["lsb"])
+        } else {
+            json!(["metadata"])
+        },
+        "robust": opts.robust,
+        "pixelHash": pixel_hash,
+    });
+
+    // Sign the claim — sign_message wraps into a SignedDocument and persists.
+    let signed_doc = agent.sign_message(&claim)?;
+
+    // Embed via jacs-media. The wire format is base64url-encoded JSON
+    // (PRD §4.2.2 C3) so the WebP XMP attribute does not break on JSON
+    // quote characters.
+    //
+    // Issue 002: pass the resolved format (which honours the user's hint) so
+    // the override actually reaches the embed path.
+    let payload_b64url = base64url_nopad_local(signed_doc.raw.as_bytes());
+    let new_bytes = jacs_media::embed_signature_with_format(
+        fmt,
+        &bytes,
+        &payload_b64url,
+        opts.robust,
+        opts.refuse_overwrite,
+    )
+    .map_err(media_to_jacs_err)?;
+
+    // Determine backup behavior and write.
+    let in_canon = std::fs::canonicalize(in_path).ok();
+    let out_canon = std::fs::canonicalize(out_path).ok();
+    let in_place = match (in_canon.as_ref(), out_canon.as_ref()) {
+        (Some(a), Some(b)) => a == b,
+        _ => in_path == out_path,
+    };
+
+    let backup_path = if opts.backup && (in_place || std::path::Path::new(out_path).exists()) {
+        let bak = format!("{}.bak", out_path);
+        // Backup source: when in_place, the source bytes ARE the input bytes
+        // we already read. Otherwise, only back up if out_path exists.
+        let src_bytes: Vec<u8> = if in_place {
+            bytes.clone()
+        } else {
+            std::fs::read(out_path).unwrap_or_else(|_| Vec::new())
+        };
+        // Shared helper applies symlink-reject + 0o600 default (PRD §4.2.4b).
+        write_backup_or_err(&src_bytes, &bak, opts.unsafe_bak_mode)?;
+        Some(bak)
+    } else {
+        None
+    };
+
+    // Atomic write of new_bytes to out_path.
+    let out_path_obj = std::path::Path::new(out_path);
+    let parent = out_path_obj
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let mut tmp =
+        tempfile::NamedTempFile::new_in(parent).map_err(|e| JacsError::FileWriteFailed {
+            path: out_path.to_string(),
+            reason: format!("create tempfile: {}", e),
+        })?;
+    tmp.write_all(&new_bytes)
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: out_path.to_string(),
+            reason: format!("write tempfile: {}", e),
+        })?;
+    tmp.as_file_mut()
+        .sync_all()
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: out_path.to_string(),
+            reason: format!("sync tempfile: {}", e),
+        })?;
+
+    // Mode preservation: if out_path exists, mirror its mode; else mirror in_path.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode_src = if out_path_obj.exists() {
+            out_path
+        } else {
+            in_path
+        };
+        if let Ok(meta) = std::fs::metadata(mode_src) {
+            let mode = meta.permissions().mode();
+            let _ = std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(mode));
+        }
+    }
+
+    tmp.persist(out_path)
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: out_path.to_string(),
+            reason: format!("persist tempfile: {}", e),
+        })?;
+
+    let signer_id = agent.get_agent_id()?;
+    Ok(SignedMedia {
+        out_path: out_path.to_string(),
+        signer_id,
+        format: format_str.to_string(),
+        robust: opts.robust,
+        backup_path,
+    })
+}
+
+/// Verify the JACS signature embedded in an image. PRD §4.2.5.
+pub fn verify_image(
+    agent: &SimpleAgent,
+    path: &str,
+    opts: VerifyImageOptions,
+) -> Result<MediaVerificationResult, JacsError> {
+    let bytes = std::fs::read(path).map_err(|e| JacsError::FileReadFailed {
+        path: path.to_string(),
+        reason: e.to_string(),
+    })?;
+
+    // Format detection.
+    let fmt = match jacs_media::detect_format(&bytes) {
+        Ok(f) => f,
+        Err(_) => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::UnsupportedFormat,
+                signer_id: None,
+                algorithm: None,
+                format: None,
+                embedding_channels: None,
+            });
+        }
+    };
+    let format_str = match fmt {
+        jacs_media::MediaFormat::Png => "png",
+        jacs_media::MediaFormat::Jpeg => "jpeg",
+        jacs_media::MediaFormat::WebP => "webp",
+    };
+
+    // Extract payload. The wire form is base64url-encoded JSON (PRD §4.2.2 C3).
+    let raw_b64 = match jacs_media::extract_signature(&bytes, opts.scan_robust) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            if opts.base.strict {
+                return Err(JacsError::MissingSignature(path.to_string()));
+            }
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::MissingSignature,
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+        Err(e) => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::Malformed(format!("{}", e)),
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+
+    // Decode base64url → JSON string.
+    use base64::Engine;
+    let payload = match base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(raw_b64.as_bytes())
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+    {
+        Some(s) => s,
+        None => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::Malformed(
+                    "embedded payload is not valid base64url JSON".to_string(),
+                ),
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+
+    // Parse signed document.
+    let signed_doc_value: serde_json::Value = match serde_json::from_str(&payload) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::Malformed(format!("payload not JSON: {}", e)),
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+
+    // Schema validation: read inner content (the SignedMediaClaim).
+    let claim = match signed_doc_value.pointer("/content") {
+        Some(c) => c,
+        None => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::Malformed(
+                    "signed document missing /content".to_string(),
+                ),
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+
+    let media_sig_ver = claim.get("mediaSignatureVersion").and_then(|v| v.as_u64());
+    if media_sig_ver != Some(1) {
+        return Ok(MediaVerificationResult {
+            status: MediaVerifyStatus::Malformed(format!(
+                "unsupported mediaSignatureVersion: {:?}",
+                media_sig_ver
+            )),
+            signer_id: None,
+            algorithm: None,
+            format: Some(format_str.to_string()),
+            embedding_channels: None,
+        });
+    }
+    let claim_format = claim.get("format").and_then(|v| v.as_str()).unwrap_or("");
+    if claim_format != format_str {
+        return Ok(MediaVerificationResult {
+            status: MediaVerifyStatus::Malformed(format!(
+                "format mismatch: claim says {}, actual is {}",
+                claim_format, format_str
+            )),
+            signer_id: None,
+            algorithm: None,
+            format: Some(format_str.to_string()),
+            embedding_channels: None,
+        });
+    }
+    let claim_hash_algo = claim
+        .get("hashAlgorithm")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if claim_hash_algo != "sha256" {
+        return Ok(MediaVerificationResult {
+            status: MediaVerifyStatus::Malformed(format!(
+                "unsupported hashAlgorithm: {}",
+                claim_hash_algo
+            )),
+            signer_id: None,
+            algorithm: None,
+            format: Some(format_str.to_string()),
+            embedding_channels: None,
+        });
+    }
+    let canonicalization = claim
+        .get("canonicalization")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let claim_pkh = match claim.get("publicKeyHash").and_then(|v| v.as_str()) {
+        Some(s) if s.starts_with("sha256-b64url:") => s.to_string(),
+        _ => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::Malformed(
+                    "publicKeyHash missing or malformed".to_string(),
+                ),
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+
+    // Hash check using the canonicaliser the claim names.
+    let computed_hash = match canonicalization {
+        "jacs-media-v1" => jacs_media::canonical_hash(&bytes).map_err(media_to_jacs_err)?,
+        "jacs-media-v1-robust" => {
+            jacs_media::canonical_hash_robust(&bytes).map_err(media_to_jacs_err)?
+        }
+        other => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::Malformed(format!(
+                    "unsupported canonicalization: {}",
+                    other
+                )),
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+    let claim_hash = claim
+        .get("contentHash")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if claim_hash != base64url_nopad_local(&computed_hash) {
+        return Ok(MediaVerificationResult {
+            status: MediaVerifyStatus::HashMismatch,
+            signer_id: None,
+            algorithm: None,
+            format: Some(format_str.to_string()),
+            embedding_channels: None,
+        });
+    }
+
+    // Identify signer in the SignedDocument's outer jacsSignature.
+    let signer_id = signed_doc_value
+        .pointer("/jacsSignature/agentID")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let algorithm = signed_doc_value
+        .pointer("/jacsSignature/signing_algorithm")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Resolve key based on signer identity.
+    let resolver = DefaultKeyResolver::new(agent, opts.base.key_dir.as_deref());
+    let signer_id_str = match signer_id.as_ref() {
+        Some(s) => s,
+        None => {
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::Malformed(
+                    "signed document missing jacsSignature.agentID".to_string(),
+                ),
+                signer_id: None,
+                algorithm: None,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+
+    let resolved = match crate::inline::KeyResolver::resolve(&resolver, signer_id_str) {
+        Some(r) => r,
+        None => {
+            // Per-block KeyNotFound never escalates to Err — see PRD §4.1.2
+            // tenth-pass clarification. Only file-level failures
+            // (MissingSignature, file-level Malformed) escalate in strict mode.
+            // verify_text and verify_image must use the same mental model.
+            return Ok(MediaVerificationResult {
+                status: MediaVerifyStatus::KeyNotFound,
+                signer_id,
+                algorithm,
+                format: Some(format_str.to_string()),
+                embedding_channels: None,
+            });
+        }
+    };
+
+    // PublicKeyHash check (PRD §4.2.2 + §4.1.1 parity).
+    let resolved_pem_normalised = crate::crypt::normalize_public_key_pem(&resolved.public_key_pem);
+    let resolved_pkh_raw = sha256_bytes_local(resolved_pem_normalised.as_bytes());
+    let expected_pkh = format!("sha256-b64url:{}", base64url_nopad_local(&resolved_pkh_raw));
+    if expected_pkh != claim_pkh {
+        // Per-block KeyNotFound: resolved key fingerprint disagrees with the
+        // embedded claim. Same contract as the resolver-None branch above —
+        // strict mode does NOT escalate per-block outcomes.
+        return Ok(MediaVerificationResult {
+            status: MediaVerifyStatus::KeyNotFound,
+            signer_id,
+            algorithm,
+            format: Some(format_str.to_string()),
+            embedding_channels: None,
+        });
+    }
+
+    // Verify cryptographic signature. Same-agent path uses agent.verify;
+    // cross-agent path uses verify_with_key with the resolved key bytes.
+    //
+    // We pass `resolved.public_key_pem` directly (the resolver returns RAW
+    // bytes for ed25519/pq2025 and PEM bytes for RSA-PSS) because
+    // `verify_document_signature` re-hashes its `public_key` argument with
+    // `hash_public_key()` and compares to the embedded `jacsSignature.publicKeyHash`,
+    // which was computed at sign time over the same RAW (or PEM-for-RSA) form.
+    // Re-armoring through `normalize_public_key_pem` would silently break that
+    // comparison for ed25519/pq2025 cross-agent verification.
+    let my_id = agent.get_agent_id().ok();
+    let verify_result = if my_id.as_deref() == Some(signer_id_str) {
+        agent.verify(&payload)
+    } else {
+        agent.verify_with_key(&payload, resolved.public_key_pem.clone())
+    };
+
+    let mut status = match verify_result {
+        Ok(v) => {
+            if v.valid {
+                MediaVerifyStatus::Valid
+            } else {
+                MediaVerifyStatus::InvalidSignature
+            }
+        }
+        Err(JacsError::HashMismatch { .. }) => MediaVerifyStatus::HashMismatch,
+        Err(_) => MediaVerifyStatus::InvalidSignature,
+    };
+
+    // REVIEW_005 (2) / Issue 015: cross-check the claim's `embeddingChannels`
+    // against the bytes actually on disk. A robust signature whose LSB chunk
+    // has been stripped post-sign must surface as Malformed, not Valid.
+    if matches!(status, MediaVerifyStatus::Valid) {
+        let claim_channels: Vec<String> = claim
+            .get("embeddingChannels")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let claims_metadata = claim_channels.iter().any(|s| s == "metadata");
+        let claims_lsb = claim_channels.iter().any(|s| s == "lsb");
+
+        // Only spend the LSB-scan cost if the claim mentions LSB; cheap
+        // metadata check always runs.
+        let observed =
+            jacs_media::observed_channels(fmt, &bytes, claims_lsb).unwrap_or((false, false));
+        let (obs_metadata, obs_lsb) = observed;
+
+        let mut mismatches: Vec<String> = Vec::new();
+        if claims_metadata && !obs_metadata {
+            mismatches.push("claim says metadata channel present but file has none".to_string());
+        }
+        if claims_lsb && !obs_lsb {
+            mismatches.push("claim says lsb channel present but file has none".to_string());
+        }
+        if !mismatches.is_empty() {
+            status = MediaVerifyStatus::Malformed(format!(
+                "embeddingChannels mismatch: {}",
+                mismatches.join("; ")
+            ));
+        }
+    }
+
+    let embedding_channels = match status {
+        MediaVerifyStatus::Valid => Some(
+            if claim
+                .get("robust")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                "metadata+lsb".to_string()
+            } else {
+                "metadata".to_string()
+            },
+        ),
+        _ => None,
+    };
+
+    Ok(MediaVerificationResult {
+        status,
+        signer_id,
+        algorithm,
+        format: Some(format_str.to_string()),
+        embedding_channels,
+    })
+}
+
+/// Extract the embedded JACS signed-document JSON. Returns the **decoded**
+/// JSON string by default — for the base64url wire form (as written to the
+/// metadata chunk) use [`extract_media_signature_raw`].
+///
+/// This convenience wrapper does NOT scan the robust LSB channel. To recover
+/// a payload from a metadata-stripped image whose LSB carries the robust
+/// signature, use [`extract_media_signature_with_options`] with
+/// `scan_robust: true` (R-011 / PRD §3.2 + §4.2.4).
+pub fn extract_media_signature(path: &str) -> Result<Option<String>, JacsError> {
+    extract_media_signature_with_options(path, crate::simple::types::ExtractMediaOptions::default())
+}
+
+/// Like [`extract_media_signature`] but returns the **raw** base64url-encoded
+/// payload as written to the metadata chunk. Useful for byte-for-byte relay,
+/// fuzzing, and protocol debugging.
+pub fn extract_media_signature_raw(path: &str) -> Result<Option<String>, JacsError> {
+    extract_media_signature_raw_with_options(
+        path,
+        crate::simple::types::ExtractMediaOptions::default(),
+    )
+}
+
+/// R-011: extract decoded payload, optionally scanning the robust LSB
+/// channel as a fallback when the metadata channel has no payload. Mirrors
+/// the cost-control opt-in already exposed via `verify_image --robust`
+/// (PRD §4.2.4).
+pub fn extract_media_signature_with_options(
+    path: &str,
+    opts: crate::simple::types::ExtractMediaOptions,
+) -> Result<Option<String>, JacsError> {
+    use base64::Engine;
+    let bytes = std::fs::read(path).map_err(|e| JacsError::FileReadFailed {
+        path: path.to_string(),
+        reason: e.to_string(),
+    })?;
+    match jacs_media::extract_signature(&bytes, opts.scan_robust).map_err(media_to_jacs_err)? {
+        Some(raw_b64) => {
+            let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(raw_b64.as_bytes())
+                .map_err(|e| {
+                    JacsError::ValidationError(format!("media payload base64url decode: {}", e))
+                })?;
+            let json = String::from_utf8(decoded).map_err(|e| {
+                JacsError::ValidationError(format!("media payload not UTF-8: {}", e))
+            })?;
+            Ok(Some(json))
+        }
+        None => Ok(None),
+    }
+}
+
+/// R-011: raw-payload variant of [`extract_media_signature_with_options`].
+pub fn extract_media_signature_raw_with_options(
+    path: &str,
+    opts: crate::simple::types::ExtractMediaOptions,
+) -> Result<Option<String>, JacsError> {
+    let bytes = std::fs::read(path).map_err(|e| JacsError::FileReadFailed {
+        path: path.to_string(),
+        reason: e.to_string(),
+    })?;
+    jacs_media::extract_signature(&bytes, opts.scan_robust).map_err(media_to_jacs_err)
+}
+
+// =============================================================================
+// Local helpers
+// =============================================================================
+
+fn media_to_jacs_err(e: jacs_media::MediaError) -> JacsError {
+    use jacs_media::MediaError;
+    match e {
+        MediaError::PayloadTooLarge { limit, actual } => JacsError::ValidationError(format!(
+            "image signature payload exceeds format limit: actual {} > pixel capacity / chunk limit {}",
+            actual, limit
+        )),
+        MediaError::Unsupported(msg) => {
+            JacsError::ValidationError(format!("media unsupported: {}", msg))
+        }
+        MediaError::UnsupportedFormat => {
+            JacsError::ValidationError("unsupported media format".to_string())
+        }
+        MediaError::Parse(s) => JacsError::ValidationError(format!("media parse error: {}", s)),
+        MediaError::Encode(s) => JacsError::ValidationError(format!("media encode error: {}", s)),
+    }
+}
+
+fn sha256_bytes_local(data: &[u8]) -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize().to_vec()
+}
+
+fn base64url_nopad_local(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(data)
 }

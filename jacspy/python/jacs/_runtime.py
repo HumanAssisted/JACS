@@ -172,3 +172,47 @@ class EphemeralAgentAdapter:
 
     def verify_yaml(self, yaml_str):
         return self._native.verify_yaml(yaml_str)
+
+    # ------------------------------------------------------------------
+    # Inline text + media (Task 10 — PRD §3.1 / §3.2).
+    # Delegate directly to the native SimpleAgent which has the methods.
+    # ------------------------------------------------------------------
+
+    def sign_text_file(self, file_path, *, no_backup=False):
+        return self._native.sign_text_file(file_path, no_backup=no_backup)
+
+    def sign_text(self, file_path, *, no_backup=False):
+        return self._native.sign_text(file_path, no_backup=no_backup)
+
+    def verify_text_file(self, file_path, *, strict=False, key_dir=None):
+        return self._native.verify_text_file(
+            file_path, strict=strict, key_dir=key_dir
+        )
+
+    def verify_text(self, file_path, *, strict=False, key_dir=None):
+        return self._native.verify_text(file_path, strict=strict, key_dir=key_dir)
+
+    def sign_image(
+        self,
+        input_path,
+        output_path,
+        *,
+        robust=False,
+        format=None,
+        refuse_overwrite=False,
+    ):
+        return self._native.sign_image(
+            input_path,
+            output_path,
+            robust=robust,
+            format=format,
+            refuse_overwrite=refuse_overwrite,
+        )
+
+    def verify_image(self, file_path, *, strict=False, key_dir=None, robust=False):
+        return self._native.verify_image(
+            file_path, strict=strict, key_dir=key_dir, robust=robust
+        )
+
+    def extract_media_signature(self, file_path, *, raw_payload=False):
+        return self._native.extract_media_signature(file_path, raw_payload=raw_payload)

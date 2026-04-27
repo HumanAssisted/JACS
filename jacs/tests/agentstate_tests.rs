@@ -10,7 +10,7 @@ use std::fs;
 use std::io::Write;
 
 mod utils;
-use utils::load_test_agent_one;
+use utils::load_test_agent_one_ed25519;
 
 // =============================================================================
 // Phase 0A: Schema and CRUD Tests (Steps 0.1 - 0.15)
@@ -162,7 +162,7 @@ fn test_agentstate_with_tags() {
 /// Step 0.10: Test that missing required name is rejected by schema validation.
 #[test]
 fn test_agentstate_missing_required_name() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     // Create a doc without jacsAgentStateName
     let raw = serde_json::json!({
         "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
@@ -178,7 +178,7 @@ fn test_agentstate_missing_required_name() {
 /// Step 0.11: Test that missing required state type is rejected by schema validation.
 #[test]
 fn test_agentstate_missing_required_type() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     // Create a doc without jacsAgentStateType
     let raw = serde_json::json!({
         "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
@@ -230,7 +230,7 @@ fn test_agentstate_hook_always_embeds() {
 /// Test creating and loading an agentstate document through the full agent pipeline.
 #[test]
 fn test_agentstate_create_document_and_load() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_agentstate("memory", "Project Memory", Some("Test memory"))
         .expect("Should create valid agentstate");
@@ -252,7 +252,7 @@ fn test_agentstate_create_document_and_load() {
 /// Test agentstate schema validation through the Schema validator.
 #[test]
 fn test_agentstate_schema_validation_valid() {
-    let agent = load_test_agent_one();
+    let agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_agentstate("skill", "JACS Signing", Some("Crypto signing skill"))
         .expect("Should create valid agentstate");
@@ -276,7 +276,7 @@ fn test_agentstate_schema_validation_valid() {
 /// Test invalid agentstate type is rejected by schema validation.
 #[test]
 fn test_agentstate_schema_rejects_invalid_type() {
-    let agent = load_test_agent_one();
+    let agent = load_test_agent_one_ed25519();
 
     let raw = serde_json::json!({
         "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
@@ -321,7 +321,7 @@ fn test_agentstate_different_content_types() {
 /// a signed document with jacsSignature, jacsId, and jacsVersion.
 #[test]
 fn test_agentstate_signing_and_verification() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_agentstate("memory", "Signed Memory", Some("Testing signing"))
         .expect("Should create valid agentstate");
@@ -357,7 +357,7 @@ fn test_agentstate_signing_and_verification() {
 /// with a different jacsVersion and jacsPreviousVersion pointing to the original.
 #[test]
 fn test_agentstate_resign_on_content_change() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_agentstate("memory", "Versioned Memory", Some("version 1"))
         .expect("Should create valid agentstate");
@@ -407,7 +407,7 @@ fn test_agentstate_resign_on_content_change() {
 /// Version 3's jacsPreviousVersion must equal version 2's jacsVersion.
 #[test]
 fn test_agentstate_version_chain() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Version 1
     let doc = create_minimal_agentstate("skill", "Chained Skill", Some("v1"))
@@ -472,7 +472,7 @@ fn test_agentstate_version_chain() {
 /// set origin to "adopted" with a source URL, load via agent, and verify.
 #[test]
 fn test_agentstate_adoption_workflow() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Create a temp file representing an unsigned external skill
     let dir = tempfile::tempdir().expect("Failed to create temp dir");
@@ -536,7 +536,7 @@ fn test_agentstate_adoption_workflow() {
 /// document, even when embed=false is requested.
 #[test]
 fn test_agentstate_hook_always_embeds_signing() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Create a temp hook file
     let dir = tempfile::tempdir().expect("Failed to create temp dir");
@@ -585,7 +585,7 @@ fn test_agentstate_hook_always_embeds_signing() {
 /// Step 0.21: Test creating an agentstate with multiple file references.
 #[test]
 fn test_agentstate_multi_file_skill() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let dir = tempfile::tempdir().expect("Failed to create temp dir");
 
@@ -704,7 +704,7 @@ fn test_agentstate_detect_tampered_file() {
 /// Step 0.23: Test that all required JACS header fields are present after signing.
 #[test]
 fn test_agentstate_header_fields_present() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_agentstate("config", "Header Test Config", Some("Testing headers"))
         .expect("Should create agentstate");
@@ -753,7 +753,7 @@ fn test_agentstate_header_fields_present() {
 /// Step 0.24: Test that different content types all sign correctly through the agent.
 #[test]
 fn test_agentstate_different_content_types_signing() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let content_cases = [
         (

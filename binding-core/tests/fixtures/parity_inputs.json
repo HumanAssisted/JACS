@@ -71,6 +71,7 @@
     "InvalidArgument",
     "KeyNotFound",
     "LockFailed",
+    "MissingSignature",
     "NetworkFailed",
     "SerializationFailed",
     "SigningFailed",

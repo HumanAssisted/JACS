@@ -105,6 +105,13 @@ ERROR_KIND_MAP = {
         "message_pattern": None,  # Catch-all; no specific pattern
         "triggerable": False,
     },
+    "MissingSignature": {
+        "python_class": "MissingSignatureError",
+        "message_pattern": "no JACS signature found",
+        # C1: strict-mode verify_text / verify_image raise this.
+        # In permissive mode (default) it is still a typed return, not thrown.
+        "triggerable": True,
+    },
 }
 
 
@@ -147,12 +154,12 @@ def test_error_kind_map_has_no_stale_entries(error_kinds_from_fixture: list):
 
 
 def test_error_kinds_count(error_kinds_from_fixture: list):
-    """There should be exactly 13 error kinds."""
-    assert len(error_kinds_from_fixture) == 13, (
-        f"Expected 13 error kinds, got {len(error_kinds_from_fixture)}."
+    """There should be exactly 14 error kinds."""
+    assert len(error_kinds_from_fixture) == 14, (
+        f"Expected 14 error kinds, got {len(error_kinds_from_fixture)}."
     )
-    assert len(ERROR_KIND_MAP) == 13, (
-        f"ERROR_KIND_MAP has {len(ERROR_KIND_MAP)} entries, expected 13."
+    assert len(ERROR_KIND_MAP) == 14, (
+        f"ERROR_KIND_MAP has {len(ERROR_KIND_MAP)} entries, expected 14."
     )
 
 
@@ -167,6 +174,7 @@ def test_python_error_classes_exist():
         TrustError,
         KeyNotFoundError,
         NetworkError,
+        MissingSignatureError,
     )
 
     # Verify the class hierarchy
@@ -174,6 +182,7 @@ def test_python_error_classes_exist():
     assert issubclass(AgentNotLoadedError, JacsError)
     assert issubclass(SigningError, JacsError)
     assert issubclass(VerificationError, JacsError)
+    assert issubclass(MissingSignatureError, JacsError)
     assert issubclass(TrustError, JacsError)
     assert issubclass(KeyNotFoundError, JacsError)
     assert issubclass(NetworkError, JacsError)

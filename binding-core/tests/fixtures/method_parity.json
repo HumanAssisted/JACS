@@ -6,14 +6,17 @@
     "verification": ["verify_self", "verify_json", "verify_with_key_json", "verify_by_id_json"],
     "signing": ["sign_message_json", "sign_raw_bytes_base64", "sign_file_json"],
     "conversion": ["to_yaml", "from_yaml", "to_html", "from_html"],
-    "key_management": ["rotate_keys"]
+    "key_management": ["rotate_keys"],
+    "inline_and_media": ["sign_text_file_json", "verify_text_file_json", "sign_image_json", "verify_image_json", "extract_media_signature_json"]
   },
   "all_methods_flat": [
     "config_path", "create", "create_with_params", "diagnostics", "ephemeral",
-    "export_agent", "from_agent", "from_html", "from_yaml", "get_agent_id",
-    "get_public_key_base64", "get_public_key_pem", "inner_ref", "is_strict",
-    "key_id", "load", "load_with_info", "rotate_keys", "sign_file_json",
-    "sign_message_json", "sign_raw_bytes_base64", "to_html", "to_yaml",
-    "verify_by_id_json", "verify_json", "verify_self", "verify_with_key_json"
+    "export_agent", "extract_media_signature_json", "from_agent", "from_html",
+    "from_yaml", "get_agent_id", "get_public_key_base64", "get_public_key_pem",
+    "inner_ref", "is_strict", "key_id", "load", "load_with_info", "rotate_keys",
+    "sign_file_json", "sign_image_json", "sign_message_json",
+    "sign_raw_bytes_base64", "sign_text_file_json", "to_html", "to_yaml",
+    "verify_by_id_json", "verify_image_json", "verify_json", "verify_self",
+    "verify_text_file_json", "verify_with_key_json"
   ]
 }

@@ -3,14 +3,15 @@
 use jacs_binding_core::AgentWrapper;
 use rmcp::ServerHandler;
 
-/// With default features (core-tools), exactly 29 core tools are registered.
+/// With default features (core-tools), exactly 34 core tools are registered.
 #[test]
 fn default_features_register_core_tools() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
-    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5) = 29
-    let expected_core_count = 29;
+    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5)
+    //     + inline(2) + media(3) = 34
+    let expected_core_count = 34;
 
     // With default features only core tools are registered.
     // If full-tools is also enabled, advanced tools appear too.
@@ -63,6 +64,16 @@ fn per_category_core_tool_counts() {
                 "jacs_sign_document",
                 "jacs_verify_document",
                 "jacs_create_agent",
+            ],
+        ),
+        ("inline-text", 2, &["jacs_sign_text", "jacs_verify_text"]),
+        (
+            "media",
+            3,
+            &[
+                "jacs_sign_image",
+                "jacs_verify_image",
+                "jacs_extract_media_signature",
             ],
         ),
         (
@@ -127,12 +138,12 @@ fn per_category_core_tool_counts() {
 /// Advanced families: only present when their feature flags are enabled.
 #[cfg(feature = "full-tools")]
 #[test]
-fn full_tools_registers_all_42() {
+fn full_tools_registers_all_48() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
     names.sort();
 
-    assert_eq!(tools.len(), 43, "full-tools should expose all 43 tools");
+    assert_eq!(tools.len(), 48, "full-tools should expose all 48 tools");
 
     let expected: Vec<&str> = vec![
         "jacs_adopt_state",
@@ -150,6 +161,7 @@ fn full_tools_registers_all_42() {
         "jacs_create_agreement",
         "jacs_export_agent",
         "jacs_export_agent_card",
+        "jacs_extract_media_signature",
         "jacs_generate_well_known",
         "jacs_get_trusted_agent",
         "jacs_is_trusted",
@@ -170,13 +182,17 @@ fn full_tools_registers_all_42() {
         "jacs_search",
         "jacs_sign_agreement",
         "jacs_sign_document",
+        "jacs_sign_image",
         "jacs_sign_state",
+        "jacs_sign_text",
         "jacs_trust_agent",
         "jacs_untrust_agent",
         "jacs_update_state",
         "jacs_verify_a2a_artifact",
         "jacs_verify_document",
+        "jacs_verify_image",
         "jacs_verify_state",
+        "jacs_verify_text",
         "jacs_wrap_a2a_artifact",
     ];
 
@@ -203,6 +219,7 @@ fn tool_names_snapshot_core_sorted() {
         "jacs_create_agent",
         "jacs_export_agent",
         "jacs_export_agent_card",
+        "jacs_extract_media_signature",
         "jacs_generate_well_known",
         "jacs_get_trusted_agent",
         "jacs_is_trusted",
@@ -218,12 +235,16 @@ fn tool_names_snapshot_core_sorted() {
         "jacs_rotate_keys",
         "jacs_search",
         "jacs_sign_document",
+        "jacs_sign_image",
         "jacs_sign_state",
+        "jacs_sign_text",
         "jacs_trust_agent",
         "jacs_untrust_agent",
         "jacs_update_state",
         "jacs_verify_document",
+        "jacs_verify_image",
         "jacs_verify_state",
+        "jacs_verify_text",
     ];
 
     assert_eq!(

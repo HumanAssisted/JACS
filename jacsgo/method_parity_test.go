@@ -86,6 +86,14 @@ var goNameMap = map[string]string{
 	"sign_message_json":   "SignMessage",
 	"sign_raw_bytes_base64": "SignRawBytes",
 	"sign_file_json":      "SignFile",
+	// Inline text + media (Task 12): suffix-stripped names. Short aliases
+	// (SignText / VerifyText) also exist on *JacsSimpleAgent but the parity
+	// name is the suffix-stripped one shown here.
+	"sign_text_file_json":          "SignTextFile",
+	"verify_text_file_json":        "VerifyTextFile",
+	"sign_image_json":              "SignImage",
+	"verify_image_json":            "VerifyImage",
+	"extract_media_signature_json": "ExtractMediaSignature",
 }
 
 // Constructors are package-level functions, not methods on *JacsSimpleAgent.

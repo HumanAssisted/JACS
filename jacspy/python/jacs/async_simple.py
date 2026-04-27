@@ -761,6 +761,73 @@ def reset():
     simple.reset()
 
 
+# ---------------------------------------------------------------------------
+# Async wrappers for inline text + media (Task 10 — PRD §3.1 / §3.2).
+# ---------------------------------------------------------------------------
+
+
+async def sign_text(file_path: str, *, no_backup: bool = False):
+    """Sign a text/markdown file in place (async)."""
+    return await asyncio.to_thread(simple.sign_text, file_path, no_backup=no_backup)
+
+
+async def verify_text(
+    file_path: str,
+    *,
+    strict: bool = False,
+    key_dir: Optional[str] = None,
+):
+    """Verify inline JACS signatures in a text/markdown file (async)."""
+    return await asyncio.to_thread(
+        simple.verify_text, file_path, strict=strict, key_dir=key_dir
+    )
+
+
+async def sign_image(
+    input_path: str,
+    output_path: str,
+    *,
+    robust: bool = False,
+    format: Optional[str] = None,
+    refuse_overwrite: bool = False,
+):
+    """Sign a PNG/JPEG/WebP image (async)."""
+    return await asyncio.to_thread(
+        simple.sign_image,
+        input_path,
+        output_path,
+        robust=robust,
+        format=format,
+        refuse_overwrite=refuse_overwrite,
+    )
+
+
+async def verify_image(
+    file_path: str,
+    *,
+    strict: bool = False,
+    key_dir: Optional[str] = None,
+    robust: bool = False,
+):
+    """Verify an embedded JACS signature in an image (async)."""
+    return await asyncio.to_thread(
+        simple.verify_image,
+        file_path,
+        strict=strict,
+        key_dir=key_dir,
+        robust=robust,
+    )
+
+
+async def extract_media_signature(
+    file_path: str, *, raw_payload: bool = False
+):
+    """Extract the embedded JACS signature payload from an image (async)."""
+    return await asyncio.to_thread(
+        simple.extract_media_signature, file_path, raw_payload=raw_payload
+    )
+
+
 __all__ = [
     # Core operations
     "quickstart",
@@ -772,6 +839,11 @@ __all__ = [
     # Signing
     "sign_message",
     "sign_file",
+    "sign_text",
+    "verify_text",
+    "sign_image",
+    "verify_image",
+    "extract_media_signature",
     # Verification
     "verify",
     "verify_by_id",

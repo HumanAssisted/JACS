@@ -216,6 +216,100 @@ Verify a signed document **without** loading an agent. Use when you only need to
 
 ---
 
+### sign_text(path) — v0.10.0
+
+Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered.
+
+**Parameters:** `path` (str): file to sign in place
+
+**Returns:** `None`
+
+**Raises:** `MarkerCollisionError` if the file contains a column-zero `-----BEGIN JACS SIGNATURE-----` outside a valid block — see the [inline-text-signing guide](../guides/inline-text-signing.md) for documented workarounds.
+
+```python
+jacs.sign_text("README.md")
+```
+
+---
+
+### verify_text(path, *, strict=False, key_dir=None) — v0.10.0
+
+Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.
+
+**Parameters:**
+- `path` (str)
+- `strict` (bool, keyword-only): when `True`, raises `MissingSignatureError` if the file is unsigned. Default `False`.
+- `key_dir` (str, keyword-only): directory of `<signer_id>.public.pem` files used in addition to the local trust store.
+
+**Returns:** `VerifyTextResult` — `.status` is `'signed' | 'missing_signature' | 'malformed'`; `.signers` lists per-signer outcomes.
+
+```python
+result = jacs.verify_text("README.md")
+print(result.status)  # 'signed'
+
+# Strict — missing signature raises
+try:
+    jacs.verify_text("UNSIGNED.md", strict=True)
+except MissingSignatureError:
+    print("not signed")
+```
+
+See the [inline text signing guide](../guides/inline-text-signing.md) for the full feature set.
+
+---
+
+### sign_image(path, *, out=None, robust=False, refuse_overwrite=False) — v0.10.0
+
+Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).
+
+**Parameters:**
+- `path` (str): input image
+- `out` (str, keyword-only): output path. If omitted, signs in place.
+- `robust` (bool, keyword-only): opt-in LSB embedding fallback for PNG/JPEG (off by default; WebP deferred).
+- `refuse_overwrite` (bool, keyword-only): raise `AlreadySignedError` if the input already carries a signature.
+
+**Returns:** `None`
+
+```python
+jacs.sign_image("photo.png", out="signed.png")
+```
+
+---
+
+### verify_image(path, *, strict=False, key_dir=None) — v0.10.0
+
+Verify the embedded signature on an image. Same permissive / strict model as `verify_text`.
+
+**Parameters:** as for `verify_text`.
+
+**Returns:** `VerifyImageResult` — `.status` is `'valid' | 'invalid' | 'missing_signature'`; `.signer_id`, `.signed_at`, `.algorithm` populated when valid.
+
+```python
+v = jacs.verify_image("signed.png")
+print(v.status)  # 'valid'
+```
+
+See the [media signing guide](../guides/media-signing.md) for the full feature set.
+
+---
+
+### extract_media_signature(path, *, raw_payload=False) — v0.10.0
+
+Extract the embedded signature payload **without verifying** it.
+
+**Parameters:**
+- `path` (str)
+- `raw_payload` (bool, keyword-only): emit the base64url wire form instead of decoded JSON. Default `False`.
+
+**Returns:** `dict` (decoded JSON) or `str` (base64url wire form when `raw_payload=True`).
+
+```python
+payload = jacs.extract_media_signature("signed.png")
+print(payload["signedAt"])
+```
+
+---
+
 ### verify_by_id(document_id)
 
 Verify a document by its storage ID (`uuid:version`) without passing the full JSON. Requires the document to be stored locally (e.g. in the agent's data directory).

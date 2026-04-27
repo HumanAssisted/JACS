@@ -1,7 +1,9 @@
-use clap::{Arg, ArgAction, Command, crate_name, value_parser};
+// The clap `Command` tree lives in `src/cli_builder.rs` (re-exported by
+// `src/lib.rs` as `jacs_cli::build_cli`). main.rs is a thin entry point
+// that consumes the parsed `ArgMatches` — see Issue 017 / Issue 023.
+use jacs_cli::build_cli;
 
 mod agent_loader;
-mod password_bootstrap;
 
 use agent_loader::{load_agent, load_agent_with_cli_dns_policy};
 use jacs::agent::Agent;
@@ -18,7 +20,7 @@ use jacs::cli_utils::document::{
 use jacs::create_task; // re-enabled: may be used by a2a later
 use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::shutdown::{ShutdownGuard, install_signal_handler};
-use password_bootstrap::{
+use jacs_cli::password_bootstrap::{
     ensure_cli_private_key_password, quickstart_password_bootstrap_help,
     wrap_quickstart_error_with_password_help,
 };
@@ -29,1011 +31,7 @@ use std::error::Error;
 use std::process;
 
 // install/download functions removed — MCP is now built into the CLI
-
-/// Build the Clap `Command` tree for the JACS CLI.
-///
-/// Exposed as a public function so that snapshot tests can walk
-/// the command tree programmatically without hardcoded lists.
-pub fn build_cli() -> Command {
-    let cmd = Command::new(crate_name!())
-        .version(env!("CARGO_PKG_VERSION"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
-        .subcommand(
-            Command::new("version")
-                .about("Prints version and build information")
-        )
-        .subcommand(
-            Command::new("config")
-                .about(" work with JACS configuration")
-                .subcommand(
-                    Command::new("create")
-                        .about(" create a config file")
-                )
-                .subcommand(
-                    Command::new("read")
-                    .about("read configuration and display to screen. This includes both the config file and the env variables.")
-                ),
-        )
-        .subcommand(
-            Command::new("agent")
-                .about(" work with a JACS agent")
-                .subcommand(
-                    Command::new("dns")
-                        .about("emit DNS TXT commands for publishing agent fingerprint")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .long("agent-file")
-                                .value_parser(value_parser!(String))
-                                .help("Path to agent JSON (optional; defaults via config)"),
-                        )
-                        .arg(
-                            Arg::new("no-dns")
-                                .long("no-dns")
-                                .help("Disable DNS validation; rely on embedded fingerprint")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("require-dns")
-                                .long("require-dns")
-                                .help("Require DNS validation; if domain missing, fail. Not strict (no DNSSEC required).")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("require-strict-dns")
-                                .long("require-strict-dns")
-                                .help("Require strict DNSSEC validation; if domain missing, fail.")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("ignore-dns")
-                                .long("ignore-dns")
-                                .help("Ignore DNS validation entirely.")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(Arg::new("domain").long("domain").value_parser(value_parser!(String)))
-                        .arg(Arg::new("agent-id").long("agent-id").value_parser(value_parser!(String)))
-                        .arg(Arg::new("ttl").long("ttl").value_parser(value_parser!(u32)).default_value("3600"))
-                        .arg(Arg::new("encoding").long("encoding").value_parser(["base64","hex"]).default_value("base64"))
-                        .arg(Arg::new("provider").long("provider").value_parser(["plain","aws","azure","cloudflare"]).default_value("plain"))
-                )
-                .subcommand(
-                    Command::new("create")
-                        .about(" create an agent")
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .help("Name of the json file with agent schema and jacsAgentType")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("create-keys")
-                                .long("create-keys")
-                                .required(true)
-                                .help("Create keys or not if they already exist. Configure key type in jacs.config.json")
-                                .value_parser(value_parser!(bool)),
-                        ),
-                )
-                .subcommand(
-                    Command::new("verify")
-                    .about(" verify an agent")
-                    .arg(
-                        Arg::new("agent-file")
-                            .short('a')
-                            .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                            .value_parser(value_parser!(String)),
-                    )
-                    .arg(
-                        Arg::new("no-dns")
-                            .long("no-dns")
-                            .help("Disable DNS validation; rely on embedded fingerprint")
-                            .action(ArgAction::SetTrue),
-                    )
-                    .arg(
-                        Arg::new("require-dns")
-                            .long("require-dns")
-                            .help("Require DNS validation; if domain missing, fail. Not strict (no DNSSEC required).")
-                            .action(ArgAction::SetTrue),
-                    )
-                    .arg(
-                        Arg::new("require-strict-dns")
-                            .long("require-strict-dns")
-                            .help("Require strict DNSSEC validation; if domain missing, fail.")
-                            .action(ArgAction::SetTrue),
-                    )
-                    .arg(
-                        Arg::new("ignore-dns")
-                            .long("ignore-dns")
-                            .help("Ignore DNS validation entirely.")
-                            .action(ArgAction::SetTrue),
-                    ),
-                )
-                .subcommand(
-                    Command::new("lookup")
-                        .about("Look up another agent's public key and DNS info from their domain")
-                        .arg(
-                            Arg::new("domain")
-                                .required(true)
-                                .help("Domain to look up (e.g., agent.example.com)"),
-                        )
-                        .arg(
-                            Arg::new("no-dns")
-                                .long("no-dns")
-                                .help("Skip DNS TXT record lookup")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("strict")
-                                .long("strict")
-                                .help("Require DNSSEC validation for DNS lookup")
-                                .action(ArgAction::SetTrue),
-                        ),
-                )
-                .subcommand(
-                    Command::new("rotate-keys")
-                        .about("Rotate the agent's cryptographic keys")
-                        .arg(
-                            Arg::new("algorithm")
-                                .long("algorithm")
-                                .value_parser(["ring-Ed25519", "pq2025"])
-                                .help("Signing algorithm for the new keys (defaults to current)"),
-                        )
-                        .arg(
-                            Arg::new("config")
-                                .long("config")
-                                .value_parser(value_parser!(String))
-                                .help("Path to jacs.config.json (default: ./jacs.config.json)"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("keys-list")
-                        .about("List active and archived key files")
-                        .arg(
-                            Arg::new("config")
-                                .long("config")
-                                .value_parser(value_parser!(String))
-                                .help("Path to jacs.config.json (default: ./jacs.config.json)"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("repair")
-                        .about("Repair config after an interrupted key rotation")
-                        .arg(
-                            Arg::new("config")
-                                .long("config")
-                                .value_parser(value_parser!(String))
-                                .help("Path to jacs.config.json (default: ./jacs.config.json)"),
-                        ),
-                ),
-        )
-
-        .subcommand(
-            Command::new("task")
-            .about(" work with a JACS  Agent task")
-            .subcommand(
-                Command::new("create")
-                    .about(" create a new JACS Task file, either by embedding or parsing a document")
-                    .arg(
-                        Arg::new("agent-file")
-                            .short('a')
-                            .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                            .value_parser(value_parser!(String)),
-                    )
-                    .arg(
-                        Arg::new("filename")
-                            .short('f')
-                            .help("Path to input file. Must be JSON")
-                            .value_parser(value_parser!(String)),
-                    )
-                    .arg(
-                        Arg::new("name")
-                            .short('n')
-                            .required(true)
-                            .help("name of task")
-                            .value_parser(value_parser!(String)),
-                    )
-                    .arg(
-                        Arg::new("description")
-                            .short('d')
-                            .required(true)
-                            .help("description of task")
-                            .value_parser(value_parser!(String)),
-                    )
-                )
-                .subcommand(
-                    Command::new("update")
-                        .about("update an existing task document")
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .required(true)
-                                .help("Path to the updated task JSON file")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("task-key")
-                                .short('k')
-                                .required(true)
-                                .help("Task document key (id:version)")
-                                .value_parser(value_parser!(String)),
-                        )
-                )
-            )
-
-        .subcommand(
-            Command::new("document")
-                .about(" work with a general JACS document")
-                .subcommand(
-                    Command::new("create")
-                        .about(" create a new JACS file, either by embedding or parsing a document")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .help("Path to input file. Must be JSON")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .help("Output filename. ")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("directory")
-                                .short('d')
-                                .help("Path to directory of files. Files should end with .json")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("verbose")
-                                .short('v')
-                                .long("verbose")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("no-save")
-                                .long("no-save")
-                                .short('n')
-                                .help("Instead of saving files, print to stdout")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .short('s')
-                                .help("Path to JSON schema file to use to create")
-                                .long("schema")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("attach")
-                                .help("Path to file or directory for file attachments")
-                                .long("attach")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("embed")
-                                .short('e')
-                                .help("Embed documents or keep the documents external")
-                                .long("embed")
-                                .value_parser(value_parser!(bool)),
-                        ),
-                )
-                .subcommand(
-                    Command::new("update")
-                        .about("create a new version of document. requires both the original JACS file and the modified jacs metadata")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("new")
-                                .short('n')
-                                .required(true)
-                                .help("Path to new version of document.")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .required(true)
-                                .help("Path to original document.")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .help("Output filename. Filenames will always end with \"json\"")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("verbose")
-                                .short('v')
-                                .long("verbose")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("no-save")
-                                .long("no-save")
-                                .short('n')
-                                .help("Instead of saving files, print to stdout")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .short('s')
-                                .help("Path to JSON schema file to use to create")
-                                .long("schema")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("attach")
-                                .help("Path to file or directory for file attachments")
-                                .long("attach")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("embed")
-                                .short('e')
-                                .help("Embed documents or keep the documents external")
-                                .long("embed")
-                                .value_parser(value_parser!(bool)),
-                        )
-                        ,
-                )
-                .subcommand(
-                    Command::new("check-agreement")
-                        .about("given a document, provide alist of agents that should sign document")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .required(true)
-                                .help("Path to original document.")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("directory")
-                                .short('d')
-                                .help("Path to directory of files. Files should end with .json")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .short('s')
-                                .help("Path to JSON schema file to use to create")
-                                .long("schema")
-                                .value_parser(value_parser!(String)),
-                        )
-
-                )
-                .subcommand(
-                    Command::new("create-agreement")
-                        .about("given a document, provide alist of agents that should sign document")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .required(true)
-                                .help("Path to original document.")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("directory")
-                                .short('d')
-                                .help("Path to directory of files. Files should end with .json")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                                Arg::new("agentids")
-                                .short('i')
-                                .long("agentids")
-                                .value_name("VALUES")
-                                .help("Comma-separated list of agent ids")
-                                .value_delimiter(',')
-                                .required(true)
-                                .action(clap::ArgAction::Set),
-                            )
-                        .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .help("Output filename. Filenames will always end with \"json\"")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("verbose")
-                                .short('v')
-                                .long("verbose")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("no-save")
-                                .long("no-save")
-                                .short('n')
-                                .help("Instead of saving files, print to stdout")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .short('s')
-                                .help("Path to JSON schema file to use to create")
-                                .long("schema")
-                                .value_parser(value_parser!(String)),
-                        )
-
-                ).subcommand(
-                    Command::new("sign-agreement")
-                        .about("given a document, sign the agreement section")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .required(true)
-                                .help("Path to original document.")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("directory")
-                                .short('d')
-                                .help("Path to directory of files. Files should end with .json")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .help("Output filename. Filenames will always end with \"json\"")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("verbose")
-                                .short('v')
-                                .long("verbose")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("no-save")
-                                .long("no-save")
-                                .short('n')
-                                .help("Instead of saving files, print to stdout")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .short('s')
-                                .help("Path to JSON schema file to use to create")
-                                .long("schema")
-                                .value_parser(value_parser!(String)),
-                        )
-
-                )
-                .subcommand(
-                    Command::new("verify")
-                        .about(" verify a documents hash, siginatures, and schema")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .help("Path to input file. Must be JSON")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("directory")
-                                .short('d')
-                                .help("Path to directory of files. Files should end with .json")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("verbose")
-                                .short('v')
-                                .long("verbose")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .short('s')
-                                .help("Path to JSON schema file to use to validate")
-                                .long("schema")
-                                .value_parser(value_parser!(String)),
-                        ),
-                )
-                .subcommand(
-                    Command::new("extract")
-                        .about(" given  documents, extract embedded contents if any")
-                        .arg(
-                            Arg::new("agent-file")
-                                .short('a')
-                                .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .help("Path to input file. Must be JSON")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("directory")
-                                .short('d')
-                                .help("Path to directory of files. Files should end with .json")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("verbose")
-                                .short('v')
-                                .long("verbose")
-                                .action(ArgAction::SetTrue),
-                        )
-                        .arg(
-                            Arg::new("schema")
-                                .short('s')
-                                .help("Path to JSON schema file to use to validate")
-                                .long("schema")
-                                .value_parser(value_parser!(String)),
-                        ),
-                )
-        )
-        .subcommand(
-            Command::new("key")
-                .about("Work with JACS cryptographic keys")
-                .subcommand(
-                    Command::new("reencrypt")
-                        .about("Re-encrypt the private key with a new password")
-                )
-        )
-        .subcommand(
-            Command::new("mcp")
-                .about("Start the built-in JACS MCP server (stdio transport)")
-                .arg(
-                    Arg::new("profile")
-                        .long("profile")
-                        .default_value("core")
-                        .help("Tool profile: 'core' (default, core tools) or 'full' (all tools)"),
-                )
-                .subcommand(
-                    Command::new("install")
-                        .about("Deprecated: MCP is now built into the jacs binary")
-                        .hide(true)
-                )
-                .subcommand(
-                    Command::new("run")
-                        .about("Deprecated: use `jacs mcp` directly")
-                        .hide(true)
-                ),
-        )
-        .subcommand(
-            Command::new("a2a")
-                .about("A2A (Agent-to-Agent) trust and discovery commands")
-                .subcommand(
-                    Command::new("assess")
-                        .about("Assess trust level of a remote A2A Agent Card")
-                        .arg(
-                            Arg::new("source")
-                                .required(true)
-                                .help("Path to Agent Card JSON file or URL"),
-                        )
-                        .arg(
-                            Arg::new("policy")
-                                .long("policy")
-                                .short('p')
-                                .value_parser(["open", "verified", "strict"])
-                                .default_value("verified")
-                                .help("Trust policy to apply (default: verified)"),
-                        )
-                        .arg(
-                            Arg::new("json")
-                                .long("json")
-                                .action(ArgAction::SetTrue)
-                                .help("Output result as JSON"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("trust")
-                        .about("Add a remote A2A agent to the local trust store")
-                        .arg(
-                            Arg::new("source")
-                                .required(true)
-                                .help("Path to Agent Card JSON file or URL"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("discover")
-                        .about("Discover a remote A2A agent via its well-known Agent Card")
-                        .arg(
-                            Arg::new("url")
-                                .required(true)
-                                .help("Base URL of the agent (e.g. https://agent.example.com)"),
-                        )
-                        .arg(
-                            Arg::new("json")
-                                .long("json")
-                                .action(ArgAction::SetTrue)
-                                .help("Output the full Agent Card as JSON"),
-                        )
-                        .arg(
-                            Arg::new("policy")
-                                .long("policy")
-                                .short('p')
-                                .value_parser(["open", "verified", "strict"])
-                                .default_value("verified")
-                                .help("Trust policy to apply against the discovered card"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("serve")
-                        .about("Serve this agent's .well-known endpoints for A2A discovery")
-                        .arg(
-                            Arg::new("port")
-                                .long("port")
-                                .value_parser(value_parser!(u16))
-                                .default_value("8080")
-                                .help("Port to listen on (default: 8080)"),
-                        )
-                        .arg(
-                            Arg::new("host")
-                                .long("host")
-                                .default_value("127.0.0.1")
-                                .help("Host to bind to (default: 127.0.0.1)"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("quickstart")
-                        .about("Create/load an agent and start serving A2A endpoints (password required)")
-                        .after_help(quickstart_password_bootstrap_help())
-                        .arg(
-                            Arg::new("name")
-                                .long("name")
-                                .value_parser(value_parser!(String))
-                                .required(true)
-                                .help("Agent name used for first-time quickstart creation"),
-                        )
-                        .arg(
-                            Arg::new("domain")
-                                .long("domain")
-                                .value_parser(value_parser!(String))
-                                .required(true)
-                                .help("Agent domain used for DNS/public-key verification workflows"),
-                        )
-                        .arg(
-                            Arg::new("description")
-                                .long("description")
-                                .value_parser(value_parser!(String))
-                                .help("Optional human-readable agent description"),
-                        )
-                        .arg(
-                            Arg::new("port")
-                                .long("port")
-                                .value_parser(value_parser!(u16))
-                                .default_value("8080")
-                                .help("Port to listen on (default: 8080)"),
-                        )
-                        .arg(
-                            Arg::new("host")
-                                .long("host")
-                                .default_value("127.0.0.1")
-                                .help("Host to bind to (default: 127.0.0.1)"),
-                        )
-                        .arg(
-                            Arg::new("algorithm")
-                                .long("algorithm")
-                                .short('a')
-                                .value_parser(["pq2025", "ring-Ed25519"])
-                                .help("Signing algorithm (default: pq2025)"),
-                        ),
-                ),
-        )
-        .subcommand(
-            Command::new("quickstart")
-                .about("Create or load a persistent agent for instant sign/verify (password required)")
-                .after_help(quickstart_password_bootstrap_help())
-                .arg(
-                    Arg::new("name")
-                        .long("name")
-                        .value_parser(value_parser!(String))
-                        .required(true)
-                        .help("Agent name used for first-time quickstart creation"),
-                )
-                .arg(
-                    Arg::new("domain")
-                        .long("domain")
-                        .value_parser(value_parser!(String))
-                        .required(true)
-                        .help("Agent domain used for DNS/public-key verification workflows"),
-                )
-                .arg(
-                    Arg::new("description")
-                        .long("description")
-                        .value_parser(value_parser!(String))
-                        .help("Optional human-readable agent description"),
-                )
-                .arg(
-                    Arg::new("algorithm")
-                        .long("algorithm")
-                        .short('a')
-                        .value_parser(["ed25519", "pq2025"])
-                        .default_value("pq2025")
-                        .help("Signing algorithm (default: pq2025)"),
-                )
-                .arg(
-                    Arg::new("sign")
-                        .long("sign")
-                        .help("Sign JSON from stdin and print signed document to stdout")
-                        .action(ArgAction::SetTrue),
-                )
-                .arg(
-                    Arg::new("file")
-                        .short('f')
-                        .long("file")
-                        .value_parser(value_parser!(String))
-                        .help("Sign a JSON file instead of reading from stdin (used with --sign)"),
-                )
-        )
-        .subcommand(
-            Command::new("init")
-                .about("Initialize JACS by creating both config and agent (with keys)")
-                .arg(
-                    Arg::new("yes")
-                        .long("yes")
-                        .short('y')
-                        .action(ArgAction::SetTrue)
-                        .help("Automatically set the new agent ID in jacs.config.json without prompting"),
-                )
-        )
-        .subcommand(
-            Command::new("attest")
-                .about("Create and verify attestation documents")
-                .subcommand(
-                    Command::new("create")
-                        .about("Create a signed attestation")
-                        .arg(
-                            Arg::new("subject-type")
-                                .long("subject-type")
-                                .value_parser(["agent", "artifact", "workflow", "identity"])
-                                .help("Type of subject being attested"),
-                        )
-                        .arg(
-                            Arg::new("subject-id")
-                                .long("subject-id")
-                                .value_parser(value_parser!(String))
-                                .help("Identifier of the subject"),
-                        )
-                        .arg(
-                            Arg::new("subject-digest")
-                                .long("subject-digest")
-                                .value_parser(value_parser!(String))
-                                .help("SHA-256 digest of the subject"),
-                        )
-                        .arg(
-                            Arg::new("claims")
-                                .long("claims")
-                                .value_parser(value_parser!(String))
-                                .required(true)
-                                .help("JSON array of claims, e.g. '[{\"name\":\"reviewed\",\"value\":true}]'"),
-                        )
-                        .arg(
-                            Arg::new("evidence")
-                                .long("evidence")
-                                .value_parser(value_parser!(String))
-                                .help("JSON array of evidence references"),
-                        )
-                        .arg(
-                            Arg::new("from-document")
-                                .long("from-document")
-                                .value_parser(value_parser!(String))
-                                .help("Lift attestation from an existing signed document file"),
-                        )
-                        .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .long("output")
-                                .value_parser(value_parser!(String))
-                                .help("Write attestation to file instead of stdout"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("verify")
-                        .about("Verify an attestation document")
-                        .arg(
-                            Arg::new("file")
-                                .help("Path to the attestation JSON file")
-                                .required(true)
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("full")
-                                .long("full")
-                                .action(ArgAction::SetTrue)
-                                .help("Use full verification (evidence + derivation chain)"),
-                        )
-                        .arg(
-                            Arg::new("json")
-                                .long("json")
-                                .action(ArgAction::SetTrue)
-                                .help("Output result as JSON"),
-                        )
-                        .arg(
-                            Arg::new("key-dir")
-                                .long("key-dir")
-                                .value_parser(value_parser!(String))
-                                .help("Directory containing public keys for verification"),
-                        )
-                        .arg(
-                            Arg::new("max-depth")
-                                .long("max-depth")
-                                .value_parser(value_parser!(u32))
-                                .help("Maximum derivation chain depth"),
-                        ),
-                )
-                .subcommand(
-                    Command::new("export-dsse")
-                        .about("Export an attestation as a DSSE envelope for in-toto/SLSA")
-                        .arg(
-                            Arg::new("file")
-                                .help("Path to the signed attestation JSON file")
-                                .required(true)
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("output")
-                                .short('o')
-                                .long("output")
-                                .value_parser(value_parser!(String))
-                                .help("Write DSSE envelope to file instead of stdout"),
-                        ),
-                )
-                .subcommand_required(true)
-                .arg_required_else_help(true),
-        )
-        .subcommand(
-            Command::new("verify")
-                .about("Verify a signed JACS document (no agent required)")
-                .arg(
-                    Arg::new("file")
-                        .help("Path to the signed JACS JSON file")
-                        .required_unless_present("remote")
-                        .value_parser(value_parser!(String)),
-                )
-                .arg(
-                    Arg::new("remote")
-                        .long("remote")
-                        .value_parser(value_parser!(String))
-                        .help("Fetch document from URL before verifying"),
-                )
-                .arg(
-                    Arg::new("json")
-                        .long("json")
-                        .action(ArgAction::SetTrue)
-                        .help("Output result as JSON"),
-                )
-                .arg(
-                    Arg::new("key-dir")
-                        .long("key-dir")
-                        .value_parser(value_parser!(String))
-                        .help("Directory containing public keys for verification"),
-                )
-        );
-
-    // OS keychain subcommand (only when keychain feature is enabled)
-    #[cfg(feature = "keychain")]
-    let cmd = cmd.subcommand(
-        Command::new("keychain")
-            .about("Manage private key passwords in the OS keychain (per-agent)")
-            .subcommand(
-                Command::new("set")
-                    .about("Store a password in the OS keychain for an agent")
-                    .arg(
-                        Arg::new("agent-id")
-                            .long("agent-id")
-                            .help("Agent ID to associate the password with")
-                            .value_name("AGENT_ID")
-                            .required(true),
-                    )
-                    .arg(
-                        Arg::new("password")
-                            .long("password")
-                            .help("Password to store (if omitted, prompts interactively)")
-                            .value_name("PASSWORD"),
-                    ),
-            )
-            .subcommand(
-                Command::new("get")
-                    .about("Retrieve the stored password for an agent (prints to stdout)")
-                    .arg(
-                        Arg::new("agent-id")
-                            .long("agent-id")
-                            .help("Agent ID to look up")
-                            .value_name("AGENT_ID")
-                            .required(true),
-                    ),
-            )
-            .subcommand(
-                Command::new("delete")
-                    .about("Remove the stored password for an agent from the OS keychain")
-                    .arg(
-                        Arg::new("agent-id")
-                            .long("agent-id")
-                            .help("Agent ID whose password to delete")
-                            .value_name("AGENT_ID")
-                            .required(true),
-                    ),
-            )
-            .subcommand(
-                Command::new("status")
-                    .about("Check if a password is stored for an agent in the OS keychain")
-                    .arg(
-                        Arg::new("agent-id")
-                            .long("agent-id")
-                            .help("Agent ID to check")
-                            .value_name("AGENT_ID")
-                            .required(true),
-                    ),
-            )
-            .arg_required_else_help(true),
-    );
-
-    let cmd = cmd.subcommand(
-        Command::new("convert")
-            .about(
-                "Convert JACS documents between JSON, YAML, and HTML formats (no agent required)",
-            )
-            .arg(
-                Arg::new("to")
-                    .long("to")
-                    .required(true)
-                    .value_parser(["json", "yaml", "html"])
-                    .help("Target format: json, yaml, or html"),
-            )
-            .arg(
-                Arg::new("from")
-                    .long("from")
-                    .value_parser(["json", "yaml", "html"])
-                    .help("Source format (auto-detected from extension if omitted)"),
-            )
-            .arg(
-                Arg::new("file")
-                    .short('f')
-                    .long("file")
-                    .required(true)
-                    .value_parser(value_parser!(String))
-                    .help("Input file path (use '-' for stdin)"),
-            )
-            .arg(
-                Arg::new("output")
-                    .short('o')
-                    .long("output")
-                    .value_parser(value_parser!(String))
-                    .help("Output file path (defaults to stdout)"),
-            ),
-    );
-
-    cmd
-}
+// build_cli moved to src/cli_builder.rs (re-exported by lib.rs)
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Install signal handler for graceful shutdown (Ctrl+C, SIGTERM)
@@ -2615,6 +1613,21 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
+        Some(("sign-text", sub)) => {
+            handle_sign_text(sub);
+        }
+        Some(("verify-text", sub)) => {
+            handle_verify_text(sub);
+        }
+        Some(("sign-image", sub)) => {
+            handle_sign_image(sub);
+        }
+        Some(("verify-image", sub)) => {
+            handle_verify_image(sub);
+        }
+        Some(("extract-media-signature", sub)) => {
+            handle_extract_media_signature(sub);
+        }
         Some(("convert", convert_matches)) => {
             use jacs::convert::{html_to_jacs, jacs_to_html, jacs_to_yaml, yaml_to_jacs};
 
@@ -2779,4 +1792,495 @@ pub fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+// =============================================================================
+// Inline-text + media verb handlers (Task 08).
+// =============================================================================
+
+/// Load an agent for sign operations: prefer the local config; fall back to a
+/// fresh ephemeral agent if none exists. Mirrors the resolution logic of the
+/// top-level `verify` handler so behaviour is consistent.
+fn load_or_ephemeral_signer() -> jacs::simple::SimpleAgent {
+    use jacs::simple::SimpleAgent;
+    if std::path::Path::new("./jacs.config.json").exists() {
+        if let Err(e) = ensure_cli_private_key_password() {
+            eprintln!("Warning: Password bootstrap failed: {}", e);
+            eprintln!("{}", quickstart_password_bootstrap_help());
+        }
+        match SimpleAgent::load(None, None) {
+            Ok(a) => a,
+            Err(e) => {
+                let lower = e.to_string().to_lowercase();
+                if lower.contains("password")
+                    || lower.contains("decrypt")
+                    || lower.contains("private key")
+                {
+                    eprintln!(
+                        "Warning: Could not load local agent from ./jacs.config.json: {}",
+                        wrap_quickstart_error_with_password_help("loading agent", &e)
+                    );
+                }
+                let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+                    eprintln!("Failed to create ephemeral agent: {}", err);
+                    process::exit(1);
+                });
+                a
+            }
+        }
+    } else {
+        let (a, _) = SimpleAgent::ephemeral(Some("ed25519")).unwrap_or_else(|err| {
+            eprintln!("Failed to create ephemeral agent: {}", err);
+            process::exit(1);
+        });
+        a
+    }
+}
+
+fn handle_sign_text(sub: &clap::ArgMatches) {
+    use jacs::simple::advanced::sign_text_file;
+    use jacs::simple::types::SignTextOptions;
+    use serde_json::json;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let no_backup = *sub.get_one::<bool>("no-backup").unwrap_or(&false);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+
+    // PRD §4.1.1: refuse to sign content that already contains a column-zero
+    // signature marker pair whose YAML body does not deserialize as a
+    // well-formed `SignatureBlockYaml`. This catches pre-poisoned inputs
+    // (bogus YAML, partial blocks). Documented workaround: indent the marker
+    // (it stays in code blocks) so the column-zero scan misses it.
+    if let Ok(content) = std::fs::read_to_string(file_path)
+        && let Some(offset) = column_zero_marker_collision(&content)
+    {
+        eprintln!(
+            "refusing to sign {}: input contains a column-zero JACS signature marker with a bogus body at byte offset {} (PRD §4.1.1). \
+             If you are writing about JACS, indent the marker by at least one space so it stops matching column-zero.",
+            file_path, offset
+        );
+        process::exit(1);
+    }
+
+    let agent = load_or_ephemeral_signer();
+    let opts = SignTextOptions {
+        backup: !no_backup,
+        ..Default::default()
+    };
+
+    match sign_text_file(&agent, file_path, opts) {
+        Ok(outcome) => {
+            if json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "path": outcome.path,
+                        "signers_added": outcome.signers_added,
+                        "backup_path": outcome.backup_path,
+                    }))
+                    .unwrap()
+                );
+            } else if outcome.signers_added > 0 {
+                println!("Signed: {}", outcome.path);
+                if let Some(bak) = &outcome.backup_path {
+                    println!("Backup: {}", bak);
+                }
+            } else {
+                println!(
+                    "No new signature: {} already signed by this agent",
+                    outcome.path
+                );
+            }
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("refusing to sign") || msg.contains("marker") {
+                eprintln!("refusing to sign {}: {}", file_path, msg);
+            } else {
+                eprintln!("sign-text error: {}", msg);
+            }
+            process::exit(1);
+        }
+    }
+}
+
+/// PRD §4.1.1: scan a text body for column-zero `-----BEGIN JACS SIGNATURE-----`
+/// markers paired with `-----END JACS SIGNATURE-----` markers whose body
+/// does not look like a `jacs::inline::SignatureBlockYaml`. Returns the
+/// byte offset of the first such offending block, or None if none found.
+///
+/// We check for required field presence (`signer:` and either
+/// `signature_block_version:` or `signatureBlockVersion:`) without doing
+/// a full YAML deserialize — we don't want to pull serde_yaml_ng into
+/// jacs-cli just for this check. A block that's missing these required
+/// markers is treated as bogus.
+fn column_zero_marker_collision(content: &str) -> Option<usize> {
+    const BEGIN: &str = "-----BEGIN JACS SIGNATURE-----";
+    const END: &str = "-----END JACS SIGNATURE-----";
+
+    let mut search_from = 0usize;
+    while search_from < content.len() {
+        // Find the next BEGIN occurrence at column zero (i.e. either at
+        // index 0 or immediately after an LF).
+        let begin_idx = match content[search_from..].find(BEGIN) {
+            Some(rel) => search_from + rel,
+            None => return None,
+        };
+        let at_column_zero =
+            begin_idx == 0 || content.as_bytes().get(begin_idx.wrapping_sub(1)) == Some(&b'\n');
+        if !at_column_zero {
+            search_from = begin_idx + BEGIN.len();
+            continue;
+        }
+        let after_begin = begin_idx + BEGIN.len();
+        // Expect a trailing newline.
+        let body_start = match content[after_begin..].find('\n') {
+            Some(n) => after_begin + n + 1,
+            None => return None, // Missing newline — the lib will reject this on its own.
+        };
+        // Find the matching END marker.
+        let end_offset = match content[body_start..].find(END) {
+            Some(n) => body_start + n,
+            None => return None, // No END — the lib will reject.
+        };
+        let body = content[body_start..end_offset].trim();
+        // Required-field heuristic. A real SignatureBlockYaml always has
+        // both `signer` and `signature_block_version` (or its camelCase
+        // alias). Reject anything missing both anchors.
+        let has_signer = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("signer:") || t.starts_with("\"signer\":")
+        });
+        let has_version = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("signature_block_version:")
+                || t.starts_with("signatureBlockVersion:")
+                || t.starts_with("\"signature_block_version\":")
+                || t.starts_with("\"signatureBlockVersion\":")
+        });
+        if !has_signer || !has_version {
+            return Some(begin_idx);
+        }
+        // Block looks structurally plausible; the lib will catch deeper
+        // crypt/signer issues. Continue scanning past END.
+        search_from = end_offset + END.len();
+    }
+    None
+}
+
+fn handle_verify_text(sub: &clap::ArgMatches) {
+    use jacs::inline::{SignatureStatus, VerifyOptions, VerifyTextResult};
+    use jacs::simple::advanced::verify_text_file;
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let key_dir = sub.get_one::<String>("key-dir").map(PathBuf::from);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+    let strict = *sub.get_one::<bool>("strict").unwrap_or(&false);
+
+    let agent = load_or_ephemeral_signer();
+    let opts = VerifyOptions { strict, key_dir };
+
+    match verify_text_file(&agent, file_path, opts) {
+        Ok(VerifyTextResult::Signed { signatures }) => {
+            let any_failed = signatures
+                .iter()
+                .any(|s| s.status != SignatureStatus::Valid);
+            if json_output {
+                emit_verify_text_signed_json(&signatures);
+            } else {
+                for entry in &signatures {
+                    let status = match &entry.status {
+                        SignatureStatus::Valid => "VALID".to_string(),
+                        SignatureStatus::InvalidSignature => "INVALID".to_string(),
+                        SignatureStatus::HashMismatch => "HASH MISMATCH".to_string(),
+                        SignatureStatus::KeyNotFound => "KEY NOT FOUND".to_string(),
+                        SignatureStatus::UnsupportedAlgorithm => {
+                            "UNSUPPORTED ALGORITHM".to_string()
+                        }
+                        SignatureStatus::Malformed(s) => format!("MALFORMED ({})", s),
+                    };
+                    println!("Signer:    {}", entry.signer_id);
+                    println!("Algorithm: {}", entry.algorithm);
+                    println!("Status:    {}", status);
+                    if !entry.timestamp.is_empty() {
+                        println!("Signed at: {}", entry.timestamp);
+                    }
+                }
+            }
+            if any_failed {
+                process::exit(1);
+            }
+        }
+        Ok(VerifyTextResult::MissingSignature) => {
+            // Permissive only: strict path returns Err.
+            eprintln!("no JACS signature found in {}", file_path);
+            if json_output {
+                println!("{}", json!({"status": "missing_signature"}));
+            }
+            process::exit(2);
+        }
+        Ok(VerifyTextResult::Malformed(detail)) => {
+            if json_output {
+                println!("{}", json!({"status": "malformed", "error": detail}));
+            } else {
+                eprintln!("malformed signature block in {}: {}", file_path, detail);
+            }
+            process::exit(1);
+        }
+        Err(jacs::error::JacsError::MissingSignature(p)) => {
+            // Strict mode: missing-signature is a hard failure (exit 1).
+            let msg = format!("no JACS signature found in {}", p);
+            if json_output {
+                eprintln!(
+                    "{}",
+                    json!({"error": msg, "error_kind": "MissingSignature"})
+                );
+            } else {
+                eprintln!("{}", msg);
+            }
+            process::exit(1);
+        }
+        Err(e) => {
+            if json_output {
+                eprintln!(
+                    "{}",
+                    json!({"error": e.to_string(), "error_kind": "Generic"})
+                );
+            } else {
+                eprintln!("verify-text error: {}", e);
+            }
+            process::exit(1);
+        }
+    }
+}
+
+fn emit_verify_text_signed_json(signatures: &[jacs::inline::SignatureEntry]) {
+    use jacs::inline::SignatureStatus;
+    use serde_json::json;
+    let entries: Vec<serde_json::Value> = signatures
+        .iter()
+        .map(|e| {
+            let (status_str, error) = match &e.status {
+                SignatureStatus::Valid => ("valid", None),
+                SignatureStatus::InvalidSignature => ("invalid_signature", None),
+                SignatureStatus::HashMismatch => ("hash_mismatch", None),
+                SignatureStatus::KeyNotFound => ("key_not_found", None),
+                SignatureStatus::UnsupportedAlgorithm => ("unsupported_algorithm", None),
+                SignatureStatus::Malformed(s) => ("malformed", Some(s.clone())),
+            };
+            let mut o = json!({
+                "signer_id": e.signer_id,
+                "algorithm": e.algorithm,
+                "timestamp": e.timestamp,
+                "status": status_str,
+            });
+            if let Some(err) = error {
+                o["error"] = serde_json::Value::String(err);
+            }
+            o
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({"status": "signed", "signatures": entries})).unwrap()
+    );
+}
+
+fn handle_sign_image(sub: &clap::ArgMatches) {
+    use jacs::simple::advanced::sign_image;
+    use jacs::simple::types::SignImageOptions;
+    use serde_json::json;
+
+    let in_path = sub.get_one::<String>("input").expect("input required");
+    let out_path = sub.get_one::<String>("out").expect("out required");
+    let robust = *sub.get_one::<bool>("robust").unwrap_or(&false);
+    let format_hint = sub.get_one::<String>("format").cloned();
+    let refuse_overwrite = *sub.get_one::<bool>("refuse-overwrite").unwrap_or(&false);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+
+    let agent = load_or_ephemeral_signer();
+    let opts = SignImageOptions {
+        robust,
+        format_hint,
+        refuse_overwrite,
+        ..Default::default()
+    };
+
+    match sign_image(&agent, in_path, out_path, opts) {
+        Ok(signed) => {
+            if json_output {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "out_path": signed.out_path,
+                        "signer_id": signed.signer_id,
+                        "format": signed.format,
+                        "robust": signed.robust,
+                        "backup_path": signed.backup_path,
+                    }))
+                    .unwrap()
+                );
+            } else {
+                println!("Signed: {}", signed.out_path);
+                println!("Signer: {}", signed.signer_id);
+                println!("Format: {}", signed.format);
+                if let Some(bak) = &signed.backup_path {
+                    println!("Backup: {}", bak);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("sign-image error: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+fn handle_verify_image(sub: &clap::ArgMatches) {
+    use jacs::inline::VerifyOptions;
+    use jacs::simple::advanced::verify_image;
+    use jacs::simple::types::{MediaVerifyStatus, VerifyImageOptions};
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let key_dir = sub.get_one::<String>("key-dir").map(PathBuf::from);
+    let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
+    let strict = *sub.get_one::<bool>("strict").unwrap_or(&false);
+    let scan_robust = *sub.get_one::<bool>("robust").unwrap_or(&false);
+
+    let agent = load_or_ephemeral_signer();
+    let opts = VerifyImageOptions {
+        base: VerifyOptions { strict, key_dir },
+        scan_robust,
+    };
+
+    match verify_image(&agent, file_path, opts) {
+        Ok(result) => match result.status {
+            MediaVerifyStatus::Valid => {
+                if json_output {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&json!({
+                            "status": "valid",
+                            "signer_id": result.signer_id,
+                            "algorithm": result.algorithm,
+                            "format": result.format,
+                            "embedding_channels": result.embedding_channels,
+                        }))
+                        .unwrap()
+                    );
+                } else {
+                    println!("Status:    VALID");
+                    if let Some(s) = result.signer_id {
+                        println!("Signer:    {}", s);
+                    }
+                    if let Some(a) = result.algorithm {
+                        println!("Algorithm: {}", a);
+                    }
+                }
+            }
+            MediaVerifyStatus::MissingSignature => {
+                eprintln!("no JACS signature found in {}", file_path);
+                if json_output {
+                    println!("{}", json!({"status": "missing_signature"}));
+                }
+                process::exit(2);
+            }
+            MediaVerifyStatus::Malformed(detail) => {
+                if json_output {
+                    println!("{}", json!({"status": "malformed", "error": detail}));
+                } else {
+                    eprintln!("malformed image signature in {}: {}", file_path, detail);
+                }
+                process::exit(1);
+            }
+            other => {
+                let status_str = match &other {
+                    MediaVerifyStatus::InvalidSignature => "invalid_signature",
+                    MediaVerifyStatus::HashMismatch => "hash_mismatch",
+                    MediaVerifyStatus::KeyNotFound => "key_not_found",
+                    MediaVerifyStatus::UnsupportedFormat => "unsupported_format",
+                    _ => "invalid_signature",
+                };
+                if json_output {
+                    println!(
+                        "{}",
+                        json!({
+                            "status": status_str,
+                            "signer_id": result.signer_id,
+                            "format": result.format,
+                        })
+                    );
+                } else {
+                    eprintln!("Status: {}", status_str.replace('_', " ").to_uppercase());
+                }
+                process::exit(1);
+            }
+        },
+        Err(jacs::error::JacsError::MissingSignature(p)) => {
+            let msg = format!("no JACS signature found in {}", p);
+            if json_output {
+                eprintln!(
+                    "{}",
+                    json!({"error": msg, "error_kind": "MissingSignature"})
+                );
+            } else {
+                eprintln!("{}", msg);
+            }
+            process::exit(1);
+        }
+        Err(e) => {
+            if json_output {
+                eprintln!(
+                    "{}",
+                    json!({"error": e.to_string(), "error_kind": "Generic"})
+                );
+            } else {
+                eprintln!("verify-image error: {}", e);
+            }
+            process::exit(1);
+        }
+    }
+}
+
+fn handle_extract_media_signature(sub: &clap::ArgMatches) {
+    use jacs::simple::advanced::{
+        extract_media_signature_raw_with_options, extract_media_signature_with_options,
+    };
+    use jacs::simple::types::ExtractMediaOptions;
+    use std::io::Write;
+
+    let file_path = sub.get_one::<String>("file").expect("file required");
+    let raw_payload = *sub.get_one::<bool>("raw-payload").unwrap_or(&false);
+    // R-011: opt-in LSB scan fallback (mirrors verify-image --robust).
+    let scan_robust = *sub.get_one::<bool>("robust").unwrap_or(&false);
+    let opts = ExtractMediaOptions { scan_robust };
+
+    let result = if raw_payload {
+        extract_media_signature_raw_with_options(file_path, opts)
+    } else {
+        extract_media_signature_with_options(file_path, opts)
+    };
+    match result {
+        Ok(Some(payload)) => {
+            // Write directly to stdout without a trailing newline so that
+            // base64url output round-trips byte-for-byte; tests for decoded
+            // JSON tolerate either with or without trailing newline.
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            let _ = handle.write_all(payload.as_bytes());
+        }
+        Ok(None) => {
+            // No signature present — exit 2, empty stdout, message on stderr.
+            eprintln!("no JACS signature found in {}", file_path);
+            process::exit(2);
+        }
+        Err(e) => {
+            eprintln!("extract-media-signature error: {}", e);
+            process::exit(1);
+        }
+    }
 }

@@ -49,6 +49,12 @@ fn known_methods() -> Vec<&'static str> {
         "from_html",
         // Key management
         "rotate_keys",
+        // Inline text + media (Task 05 + 06)
+        "sign_text_file_json",
+        "verify_text_file_json",
+        "sign_image_json",
+        "verify_image_json",
+        "extract_media_signature_json",
     ];
     methods.sort();
     methods
@@ -162,9 +168,70 @@ fn test_method_parity_fixture_count() {
 
     assert_eq!(
         flat_methods.len(),
-        27,
-        "SimpleAgentWrapper should have exactly 27 public methods. \
+        32,
+        "SimpleAgentWrapper should have exactly 32 public methods. \
          Found {}. If you added or removed a method, update the fixture.",
         flat_methods.len()
     );
+}
+
+// =========================================================================
+// Reflection sanity checks for Task 05 + Task 06 wrapper methods.
+//
+// These are *compile-time anchors* that prove the new wrapper methods exist
+// with the expected signatures. The flat fixture above and the
+// `known_methods()` list MUST be updated by Task 07; until then those three
+// snapshot tests above will fail by design — these reflection tests are the
+// red-anchor for the implementation work in Task 05/06.
+// =========================================================================
+
+#[test]
+fn wrapper_exposes_sign_text_file_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::sign_text_file_json;
+}
+
+#[test]
+fn wrapper_exposes_verify_text_file_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::verify_text_file_json;
+}
+
+#[test]
+fn wrapper_exposes_sign_image_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::sign_image_json;
+}
+
+#[test]
+fn wrapper_exposes_verify_image_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::verify_image_json;
+}
+
+#[test]
+fn wrapper_exposes_extract_media_signature_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::extract_media_signature_json;
 }

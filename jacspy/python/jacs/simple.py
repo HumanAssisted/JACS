@@ -115,6 +115,11 @@ except ImportError:
 _global_agent: Optional[JacsAgent] = None
 _agent_info: Optional[AgentInfo] = None
 _strict: bool = False
+# Cached native SimpleAgent that backs sign_text / verify_text / sign_image /
+# verify_image / extract_media_signature (Task 10, PRD §3.1 / §3.2). These
+# methods are not available on ``JacsAgent``; simple.py instantiates a
+# ``SimpleAgent`` once at create/load/ephemeral time and forwards to it.
+_simple_agent = None
 
 
 def _resolve_strict(explicit: Optional[bool]) -> bool:
@@ -135,7 +140,7 @@ def reset():
     After calling reset(), you must call load() or create() again before
     using any signing or verification functions.
     """
-    global _global_agent, _agent_info, _strict
+    global _global_agent, _agent_info, _strict, _simple_agent
     if _global_agent is not None:
         try:
             _global_agent.set_private_key_password(None)
@@ -144,6 +149,7 @@ def reset():
     _global_agent = None
     _agent_info = None
     _strict = False
+    _simple_agent = None
 
 
 
@@ -159,13 +165,49 @@ def _get_agent() -> JacsAgent:
 
 def _adopt_client_state(client) -> AgentInfo:
     """Copy the loaded state from JacsClient into simple.py module globals."""
-    global _global_agent, _agent_info, _strict
+    global _global_agent, _agent_info, _strict, _simple_agent
     _global_agent = client._agent
     _agent_info = client._agent_info
     _strict = client._strict
+    # Cache the underlying SimpleAgent so sign_text/verify_text/etc can work.
+    # For ephemeral clients, the wrapped agent *is* a native SimpleAgent
+    # (via _EphemeralAgentAdapter._native). For persistent clients, we lazily
+    # load a SimpleAgent from the same config when a text/image method is
+    # called (see _get_simple_agent below).
+    inner_native = getattr(_global_agent, "_native", None)
+    if inner_native is not None and hasattr(inner_native, "sign_text_file"):
+        _simple_agent = inner_native
+    else:
+        _simple_agent = None
     if _agent_info is None:
         raise AgentNotLoadedError("No agent loaded on this JACS module instance.")
     return _agent_info
+
+
+def _get_simple_agent():
+    """Return a cached native SimpleAgent capable of sign_text / verify_text /
+    sign_image / verify_image / extract_media_signature (Task 10).
+
+    For ephemeral agents this is populated at adoption time. For persistent
+    agents this lazily loads a ``SimpleAgent`` from the configured config
+    path the first time an inline/media method is called.
+    """
+    global _simple_agent
+    if _simple_agent is not None:
+        return _simple_agent
+    if _agent_info is None:
+        raise AgentNotLoadedError(
+            "No agent loaded. Call jacs.create() / jacs.load() / jacs.quickstart() first."
+        )
+    cfg = _agent_info.config_path
+    if not cfg:
+        raise AgentNotLoadedError(
+            "Cannot access inline text / media methods: no config_path on loaded agent."
+        )
+    from . import SimpleAgent as _SimpleAgent  # local import to avoid cycles
+
+    _simple_agent = _SimpleAgent.load(cfg)
+    return _simple_agent
 
 
 def _resolve_create_directories(
@@ -306,7 +348,7 @@ def create(
         )
         print(f"Created agent: {agent.agent_id}")
     """
-    global _global_agent, _agent_info, _strict
+    global _global_agent, _agent_info, _strict, _simple_agent
 
     _strict = _resolve_strict(strict)
 
@@ -343,6 +385,9 @@ def create(
         _global_agent = JacsAgent()
         _global_agent.set_private_key_password(resolved_password)
         _global_agent.load(config_path)
+        # Also cache a SimpleAgent for sign_text / verify_text / sign_image etc.
+        # (Task 10). These methods live only on SimpleAgent, not JacsAgent.
+        _simple_agent = _SimpleAgent.load(config_path)
 
         _agent_info = AgentInfo(
             agent_id=info_dict.get("agent_id", ""),
@@ -1532,6 +1577,98 @@ def get_setup_instructions(domain: str, ttl: int = 3600) -> dict:
         raise JacsError(f"Failed to get setup instructions: {e}") from e
 
 
+# ---------------------------------------------------------------------------
+# Inline text + media helpers (Task 10 — PRD §3.1 / §3.2).
+# ---------------------------------------------------------------------------
+
+
+def sign_text(file_path: str, *, no_backup: bool = False):
+    """Sign a text/markdown file in place with an inline JACS signature block.
+
+    Wraps :meth:`jacs.client.JacsClient.sign_text` against the module-global
+    agent.
+    """
+    from .types import SignTextResult
+
+    sa = _get_simple_agent()
+    outcome = sa.sign_text(file_path, no_backup=no_backup)
+    return SignTextResult(
+        file_path=outcome.get("path", file_path),
+        signer_id=outcome.get("signer_id") or (_agent_info.agent_id if _agent_info else ""),
+        backup_path=outcome.get("backup_path"),
+    )
+
+
+def verify_text(file_path: str, *, strict: bool = False, key_dir: Optional[str] = None):
+    """Verify inline JACS signatures in a text/markdown file (PRD §4.1, C1)."""
+    from .types import VerifyTextResult, SignatureEntry
+
+    sa = _get_simple_agent()
+    result = sa.verify_text(file_path, strict=strict, key_dir=key_dir)
+    signatures = [
+        SignatureEntry(
+            signer_id=s.get("signer_id", ""),
+            algorithm=s.get("algorithm", ""),
+            timestamp=s.get("timestamp", ""),
+            status=s.get("status", ""),
+        )
+        for s in result.get("signatures", [])
+    ]
+    return VerifyTextResult(status=result.get("status", "malformed"), signatures=signatures)
+
+
+def sign_image(
+    input_path: str,
+    output_path: str,
+    *,
+    robust: bool = False,
+    format: Optional[str] = None,
+    refuse_overwrite: bool = False,
+):
+    """Sign a PNG / JPEG / WebP image by embedding a JACS signature (PRD §4.2)."""
+    from .types import SignImageResult
+
+    sa = _get_simple_agent()
+    outcome = sa.sign_image(
+        input_path,
+        output_path,
+        robust=robust,
+        format=format,
+        refuse_overwrite=refuse_overwrite,
+    )
+    return SignImageResult(
+        out_path=outcome.get("out_path", output_path),
+        signer_id=outcome.get("signer_id") or (_agent_info.agent_id if _agent_info else ""),
+        format=outcome.get("format", ""),
+        robust=outcome.get("robust", robust),
+    )
+
+
+def verify_image(
+    file_path: str,
+    *,
+    strict: bool = False,
+    key_dir: Optional[str] = None,
+    robust: bool = False,
+):
+    """Verify an embedded JACS signature in an image (PRD §4.2, C1)."""
+    from .types import VerifyImageResult
+
+    sa = _get_simple_agent()
+    result = sa.verify_image(file_path, strict=strict, key_dir=key_dir, robust=robust)
+    return VerifyImageResult(
+        status=result.get("status", "malformed"),
+        signer_id=result.get("signer_id"),
+        format=result.get("format"),
+    )
+
+
+def extract_media_signature(file_path: str, *, raw_payload: bool = False) -> Optional[str]:
+    """Extract the JACS signature payload embedded in a signed image (PRD §3.2)."""
+    sa = _get_simple_agent()
+    return sa.extract_media_signature(file_path, raw_payload=raw_payload)
+
+
 __all__ = [
     # Core operations
     "quickstart",
@@ -1542,6 +1679,11 @@ __all__ = [
     "update_document",
     "sign_message",
     "sign_file",
+    "sign_text",
+    "verify_text",
+    "sign_image",
+    "verify_image",
+    "extract_media_signature",
     "verify",
     "verify_by_id",
     "reencrypt_key",

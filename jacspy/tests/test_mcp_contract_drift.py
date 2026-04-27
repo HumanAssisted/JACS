@@ -33,6 +33,12 @@ EXPECTED_CANONICAL_TOOL_NAMES = {
     "jacs_list_trusted_agents",
     "jacs_get_trusted_agent",
     "jacs_is_trusted",
+    # v0.10.0 inline-text + media tools (canonical Rust contract entries).
+    "jacs_sign_text",
+    "jacs_verify_text",
+    "jacs_sign_image",
+    "jacs_verify_image",
+    "jacs_extract_media_signature",
 }
 
 EXPECTED_COMPATIBILITY_TOOL_NAMES = {
@@ -56,6 +62,12 @@ EXPECTED_SHAPE_MATCH_TOOL_NAMES = {
     "jacs_list_trusted_agents",
     "jacs_get_trusted_agent",
     "jacs_is_trusted",
+    # v0.10.0 inline-text tools that match the Rust canonical shape exactly.
+    # The 3 image/extract tools drift (Python doesn't yet expose `format` /
+    # `robust` kwargs through the adapter signature) and land in
+    # EXPECTED_SHAPE_DRIFT_TOOL_NAMES via the auto-derived complement below.
+    "jacs_sign_text",
+    "jacs_verify_text",
 }
 
 EXPECTED_SHAPE_DRIFT_TOOL_NAMES = EXPECTED_CANONICAL_TOOL_NAMES - EXPECTED_SHAPE_MATCH_TOOL_NAMES

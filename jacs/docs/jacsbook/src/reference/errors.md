@@ -7,8 +7,8 @@ This reference documents error codes and messages you may encounter when using J
 | Code | Name | Description |
 |------|------|-------------|
 | 0 | Success | Operation completed successfully |
-| 1 | General Error | Unspecified error occurred |
-| 2 | Invalid Arguments | Command line arguments invalid |
+| 1 | General Error | Unspecified error occurred (in `verify-text` / `verify-image --strict`, this also covers the missing-signature case; stderr: `no JACS signature found`) |
+| 2 | Invalid Arguments OR Missing Signature (v0.10.0) | Command-line arguments invalid; OR for permissive `verify-text` / `verify-image`, the file is unsigned (typed status, not an error) |
 | 3 | File Not Found | Specified file does not exist |
 | 4 | Verification Failed | Document or signature verification failed |
 | 5 | Signature Invalid | Cryptographic signature is invalid |
@@ -119,7 +119,7 @@ jacs document create -f doc.json
 - The document may have been tampered with
 - Re-sign the document if you have the original content
 
-### Missing Signature
+### Missing `jacsSignature` Field
 
 **Error:** `Document missing jacsSignature field`
 
@@ -130,6 +130,24 @@ jacs document create -f doc.json
 # Create a signed document
 jacs document create -f unsigned-doc.json
 ```
+
+### Missing Signature (v0.10.0)
+
+**Error / Status:** `MissingSignature` — surfaced by `verify-text` / `verify-image` (and the corresponding binding methods) when the input file does not carry an embedded JACS signature.
+
+**Default behaviour is permissive — missing signature is a typed status, not a thrown error.** Strict mode opts in to treating it as an error.
+
+| Surface | Permissive (default) | Strict (`--strict` / `strict=True` / `{ strict: true }` / `Strict: true`) |
+|---------|---------------------|---------------------------------------------------------------------------|
+| CLI | Exit code `2`; stdout reports `missing_signature` | Exit code `1`; stderr: `no JACS signature found` |
+| Python (`jacs.simple` / `JacsClient`) | Returns result with `status == "missing_signature"` | Raises `MissingSignatureError` |
+| Node (`@hai.ai/jacs/simple` / `JacsClient`) | Returns result with `status === "missing_signature"` | Promise rejects with error message containing `MissingSignature` |
+| Go (`jacsgo`) | Returns result with `Status == "missing_signature"` | Returns error matching `errors.Is(err, jacs.ErrMissingSignature)` |
+| Rust (`jacs::text` / `jacs::media`) | `Ok(VerifyResult { status: Status::MissingSignature, .. })` | `Err(JacsError::new(ErrorKind::MissingSignature, ..))` |
+
+**When to pick strict.** Pick strict when a missing signature is genuinely a failure (release-gate, post-merge audit, CI on a branch that should always be signed). Pick permissive when verification runs against files that may legitimately be unsigned (the first PR introducing a signature).
+
+**Solution:** sign the file, or — if missing signatures are expected — switch the call site to permissive mode and inspect `result.status`.
 
 ### Invalid Signature Format
 

@@ -8,6 +8,56 @@ JACS maintains backward compatibility for document verification:
 - Documents signed with older versions can be verified with newer versions
 - Older JACS versions cannot verify documents using newer cryptographic algorithms
 
+## 0.9 → 0.10
+
+v0.10.0 adds inline text signatures, image / media embedding, and the new `MissingSignature` error variant. **No existing API changes behaviour.**
+
+### Additive surface — no opt-in required
+
+Five new methods per binding, five new CLI verbs, five new MCP tools. Pre-existing call sites are unaffected.
+
+| Domain | New surface |
+|--------|------------|
+| CLI | `jacs sign-text`, `jacs verify-text`, `jacs sign-image`, `jacs verify-image`, `jacs extract-media-signature` |
+| Python (`jacs.simple` / `JacsClient`) | `sign_text`, `verify_text`, `sign_image`, `verify_image`, `extract_media_signature` |
+| Node (`@hai.ai/jacs/simple` / `JacsClient`) | `signText`, `verifyText`, `signImage`, `verifyImage`, `extractMediaSignature` |
+| Go (`jacsgo`) | `SignText`, `VerifyText`, `SignImage`, `VerifyImage`, `ExtractMediaSignature` |
+| MCP | `jacs_sign_text`, `jacs_verify_text`, `jacs_sign_image`, `jacs_verify_image`, `jacs_extract_media_signature` |
+
+### Breaking consideration: `ErrorKind` exhaustive matches
+
+The new `MissingSignature` variant on `jacs::error::ErrorKind` will trigger an unreachable-pattern warning (or a compile error in `-D warnings`) on Rust call sites that exhaustively match without a catch-all.
+
+```rust
+// before — does not compile under -D warnings in v0.10.0
+match err.kind() {
+    ErrorKind::InvalidSignature => ...,
+    ErrorKind::DocumentNotFound => ...,
+}
+
+// after — option 1: explicit arm
+match err.kind() {
+    ErrorKind::InvalidSignature => ...,
+    ErrorKind::DocumentNotFound => ...,
+    ErrorKind::MissingSignature => ...,
+}
+
+// after — option 2: catch-all
+match err.kind() {
+    ErrorKind::InvalidSignature => ...,
+    ErrorKind::DocumentNotFound => ...,
+    _ => ...,
+}
+```
+
+Python / Node / Go bindings are unaffected — their error types are not exhaustive enums.
+
+### Verify semantics change is opt-in via `strict`
+
+`verify-text` and `verify-image` are **new commands** in v0.10.0. There is no existing caller to break. The default mode is permissive (missing-signature is a typed status, not an error); `--strict` opts in to error-on-missing.
+
+No existing command (`jacs verify`, `jacs document verify`, etc.) changes its exit codes or its return shape.
+
 ## Migrating Node.js from 0.6.x to 0.7.0
 
 ### Breaking Change: Async-First API

@@ -30,7 +30,9 @@ pub mod attestation;
 pub mod audit;
 pub mod common;
 pub mod document;
+pub mod inline;
 pub mod key;
+pub mod media;
 pub mod memory;
 pub mod messaging;
 pub mod search;
@@ -49,7 +51,11 @@ pub use attestation::*;
 #[allow(ambiguous_glob_reexports)]
 pub use document::*;
 #[allow(ambiguous_glob_reexports)]
+pub use inline::*;
+#[allow(ambiguous_glob_reexports)]
 pub use key::*;
+#[allow(ambiguous_glob_reexports)]
+pub use media::*;
 #[allow(ambiguous_glob_reexports)]
 pub use messaging::*;
 #[allow(ambiguous_glob_reexports)]
@@ -162,6 +168,20 @@ pub fn all_classified_tools() -> Vec<ClassifiedTool> {
     }));
     #[cfg(feature = "document-tools")]
     tools.extend(document::tools().into_iter().map(|t| ClassifiedTool {
+        tool: t,
+        family: ToolFamily::Document,
+    }));
+    // Inline-text family (PRD §3.1, §4.1) ships under the document-tools feature
+    // because the new tools are document-flavoured (sign/verify content on disk).
+    // Avoids a new feature flag + ToolFamily variant for no semantic payoff.
+    #[cfg(feature = "document-tools")]
+    tools.extend(inline::tools().into_iter().map(|t| ClassifiedTool {
+        tool: t,
+        family: ToolFamily::Document,
+    }));
+    // Media family (PRD §3.2, §4.2) — same rationale as inline-text above.
+    #[cfg(feature = "document-tools")]
+    tools.extend(media::tools().into_iter().map(|t| ClassifiedTool {
         tool: t,
         family: ToolFamily::Document,
     }));

@@ -62,8 +62,64 @@ export interface ClientArtifactVerificationResult {
     originalArtifact: Record<string, unknown>;
     error?: string;
 }
+export interface SignTextOptions {
+    noBackup?: boolean;
+}
+export interface VerifyTextOptions {
+    /**
+     * C1: when true, missing signatures reject the Promise with
+     * /no JACS signature found/. Default false.
+     */
+    strict?: boolean;
+    /**
+     * PRD §4.1.5: directory of `<signer_id>.public.pem` files for offline
+     * verification.
+     */
+    keyDir?: string;
+}
+export interface SignImageOptions {
+    /**
+     * PRD §4.2.4: enable LSB embedding for re-encode survivability
+     * (PNG/JPEG only). Default false (Q4).
+     */
+    robust?: boolean;
+    /** Optional explicit format override ("png" | "jpeg" | "webp"). */
+    format?: string;
+    /**
+     * PRD §4.2.2: refuse if the input image already carries a JACS
+     * signature.
+     */
+    refuseOverwrite?: boolean;
+}
+export interface VerifyImageOptions {
+    /** C1: see [VerifyTextOptions.strict]. */
+    strict?: boolean;
+    /** PRD §4.1.5: see [VerifyTextOptions.keyDir]. */
+    keyDir?: string;
+    /**
+     * PRD §4.2.4: scan the LSB channel as a fallback when the metadata
+     * payload is missing. Default false.
+     */
+    robust?: boolean;
+}
+export interface ExtractMediaOptions {
+    /** PRD §3.2: when true, return base64url wire form. Default false. */
+    rawPayload?: boolean;
+}
 export declare class JacsClient {
     private agent;
+    /**
+     * Auxiliary `JacsSimpleAgent` used by the inline-text / image methods
+     * (signText / verifyText / signImage / verifyImage / extractMediaSignature).
+     *
+     * `JacsAgent` exposes the broader v0.x API, while these new operations live
+     * on `SimpleAgentWrapper` and are surfaced through `JacsSimpleAgent`. We
+     * create a separate instance per `JacsClient` so the inline-text/image
+     * methods are routable; for ephemeral clients this means JacsAgent and
+     * JacsSimpleAgent have distinct keys (acceptable for the smoke-level test
+     * coverage in this task — see Task 11 acceptance criteria).
+     */
+    private simpleAgent;
     private info;
     private _strict;
     constructor(options?: JacsClientOptions);
@@ -111,6 +167,40 @@ export declare class JacsClient {
     verifyByIdSync(documentId: string): VerificationResult;
     signFile(filePath: string, embed?: boolean): Promise<SignedDocument>;
     signFileSync(filePath: string, embed?: boolean): SignedDocument;
+    private requireSimpleAgent;
+    /**
+     * Sign a text/markdown file in place by appending an inline JACS
+     * signature block (PRD §4.1).
+     */
+    signText(filePath: string, options?: SignTextOptions): Promise<any>;
+    signTextSync(filePath: string, options?: SignTextOptions): any;
+    /**
+     * Verify inline JACS signatures in a text/markdown file (PRD §4.1, C1).
+     * In permissive mode (default), missing-signature returns
+     * `{ status: 'missing_signature' }`. In strict mode the Promise rejects
+     * with `/no JACS signature found/`.
+     */
+    verifyText(filePath: string, options?: VerifyTextOptions): Promise<any>;
+    verifyTextSync(filePath: string, options?: VerifyTextOptions): any;
+    /**
+     * Sign a PNG / JPEG / WebP image by embedding a JACS signature
+     * (PRD §4.2). `outputPath` may equal `inputPath` for in-place writes.
+     */
+    signImage(inputPath: string, outputPath: string, options?: SignImageOptions): Promise<any>;
+    signImageSync(inputPath: string, outputPath: string, options?: SignImageOptions): any;
+    /**
+     * Verify an embedded JACS signature in an image (PRD §4.2, C1).
+     */
+    verifyImage(filePath: string, options?: VerifyImageOptions): Promise<any>;
+    verifyImageSync(filePath: string, options?: VerifyImageOptions): any;
+    /**
+     * Extract the JACS signature payload embedded in a signed image
+     * (PRD §3.2). Returns the decoded JACS signed-document JSON string by
+     * default; pass `{ rawPayload: true }` for the base64url wire form.
+     * Returns `null` when the input has no JACS signature.
+     */
+    extractMediaSignature(filePath: string, options?: ExtractMediaOptions): Promise<string | null>;
+    extractMediaSignatureSync(filePath: string, options?: ExtractMediaOptions): string | null;
     /**
      * Convert a JSON string to YAML.
      */

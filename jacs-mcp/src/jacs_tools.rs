@@ -328,6 +328,11 @@ pub struct JacsMcpServer {
     agent: Arc<AgentWrapper>,
     /// Unified document service resolved from the loaded agent config.
     document_service: Option<Arc<dyn DocumentService>>,
+    /// Optional `SimpleAgent` used by the inline-text and media tools
+    /// (PRD §4.1, §4.2). Loaded at server construction from `JACS_CONFIG`
+    /// when available; absent for unit-test constructors that only exercise
+    /// tool registration/metadata.
+    simple_agent: Option<Arc<jacs::simple::SimpleAgent>>,
     /// Approved roots for MCP state-file operations.
     state_roots: Vec<PathBuf>,
     /// Tool router for MCP tool dispatch.
@@ -384,6 +389,25 @@ impl JacsMcpServer {
             }
         };
 
+        // PRD §4.1, §4.2: the inline-text and media tools call into `SimpleAgent`,
+        // a higher-level facade over the raw Agent. We materialise one here from
+        // the same config the AgentWrapper already loaded, so the new tools share
+        // the server's identity rather than spinning up an ephemeral throwaway.
+        let simple_agent = match Self::load_simple_agent_from_env() {
+            Ok(Some(sa)) => Some(Arc::new(sa)),
+            Ok(None) => None,
+            Err(err) => {
+                tracing::warn!(
+                    "SimpleAgent unavailable for inline-text / media tools: {}. \
+                     jacs_sign_text / jacs_verify_text / jacs_sign_image / \
+                     jacs_verify_image / jacs_extract_media_signature will return \
+                     a clear error envelope when called.",
+                    err
+                );
+                None
+            }
+        };
+
         if registration_allowed {
             tracing::info!("Agent creation is ENABLED (JACS_MCP_ALLOW_REGISTRATION=true)");
         } else {
@@ -397,12 +421,39 @@ impl JacsMcpServer {
         Self {
             agent: Arc::new(agent),
             document_service,
+            simple_agent,
             state_roots,
             tool_router: Self::tool_router(),
             registration_allowed,
             untrust_allowed,
             profile,
         }
+    }
+
+    /// Try to load a `SimpleAgent` from the `JACS_CONFIG` env var.
+    ///
+    /// Returns `Ok(None)` if `JACS_CONFIG` isn't set (tests that exercise
+    /// only tool metadata don't need an agent). Returns `Err(_)` when the
+    /// env var is set but loading fails — propagated to the caller for
+    /// logging.
+    fn load_simple_agent_from_env() -> anyhow::Result<Option<jacs::simple::SimpleAgent>> {
+        let cfg_path = match std::env::var("JACS_CONFIG") {
+            Ok(p) => p,
+            Err(_) => return Ok(None),
+        };
+        let resolved = if std::path::Path::new(&cfg_path).is_absolute() {
+            std::path::PathBuf::from(&cfg_path)
+        } else {
+            std::env::current_dir()?.join(&cfg_path)
+        };
+        if !resolved.exists() {
+            return Ok(None);
+        }
+        let agent = jacs::simple::SimpleAgent::load(Some(&resolved.to_string_lossy()), None)
+            .map_err(|e| {
+                anyhow::anyhow!("SimpleAgent::load({}) failed: {}", resolved.display(), e)
+            })?;
+        Ok(Some(agent))
     }
 
     fn validate_state_file_root(&self, file_path: &str) -> Result<(), String> {
@@ -4072,6 +4123,569 @@ impl JacsMcpServer {
             }
         }
     }
+
+    // =========================================================================
+    // Inline text + media tools (PRD §3.1, §3.2, §4.1, §4.2)
+    // =========================================================================
+
+    /// Sign a text/markdown file in place by appending an inline JACS signature
+    /// block (PRD §4.1).
+    #[tool(
+        name = "jacs_sign_text",
+        description = "Sign a text/markdown file in place with an inline JACS signature block."
+    )]
+    pub async fn jacs_sign_text(&self, Parameters(params): Parameters<SignTextParams>) -> String {
+        // PRD §4.2.6: every wave-3 file-path handler MUST run through the
+        // six-layer path policy (base-dir confinement, absolute/traversal
+        // rejection, leaf-symlink rejection, output-overwrite policy, backup
+        // placement). `require_relative_path_safe` alone covers only
+        // structural checks — it lets a bare relative name escape the
+        // configured `JACS_MCP_BASE_DIR` because resolution then falls back
+        // to the server CWD. See R-003.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return inline_text_error_envelope(
+                    &params.file_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
+
+        let simple_agent = match self.simple_agent.as_ref() {
+            Some(sa) => Arc::clone(sa),
+            None => {
+                return inline_text_error_envelope(
+                    &params.file_path,
+                    "MCP server has no SimpleAgent loaded",
+                    "MCP_SERVER_NOT_INITIALIZED: set JACS_CONFIG to a valid agent config"
+                        .to_string(),
+                );
+            }
+        };
+
+        let opts = jacs::simple::SignTextOptions {
+            backup: !params.no_backup.unwrap_or(false),
+            allow_duplicate: false,
+            unsafe_bak_mode: None,
+        };
+
+        let file_path = resolved_input;
+        let result = tokio::task::spawn_blocking(move || {
+            jacs::simple::advanced::sign_text_file(&simple_agent, &file_path, opts)
+        })
+        .await;
+
+        let outcome = match result {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => {
+                return inline_text_error_envelope(
+                    &params.file_path,
+                    "Failed to sign text file",
+                    e.to_string(),
+                );
+            }
+            Err(join_err) => {
+                return inline_text_error_envelope(
+                    &params.file_path,
+                    "Sign worker panicked",
+                    join_err.to_string(),
+                );
+            }
+        };
+
+        let signer_id = self
+            .simple_agent
+            .as_ref()
+            .and_then(|sa| sa.key_id().ok())
+            .filter(|s| !s.is_empty());
+        let result = SignTextResult {
+            success: true,
+            file_path: outcome.path,
+            signers_added: outcome.signers_added,
+            backup_path: outcome.backup_path,
+            message: if outcome.signers_added == 0 {
+                "File already signed by this agent (idempotent no-op)".to_string()
+            } else {
+                "Inline JACS signature appended".to_string()
+            },
+            error: None,
+        };
+        // Override signer_id from header (the wrapper outcome doesn't carry it).
+        let mut value = serde_json::to_value(&result).unwrap_or_else(|_| serde_json::json!({}));
+        if let Some(sid) = signer_id {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("signer_id".to_string(), serde_json::Value::String(sid));
+            }
+        }
+        serde_json::to_string_pretty(&value).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Verify inline JACS signatures in a text/markdown file (PRD §4.1, C1).
+    #[tool(
+        name = "jacs_verify_text",
+        description = "Verify inline JACS signatures in a text/markdown file. Permissive by default; pass strict:true for hard-fail on missing signature."
+    )]
+    pub async fn jacs_verify_text(
+        &self,
+        Parameters(params): Parameters<VerifyTextParams>,
+    ) -> String {
+        // PRD §4.2.6 / R-003: full six-layer path policy.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return verify_text_error_envelope(
+                    &params.file_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
+
+        let simple_agent = match self.simple_agent.as_ref() {
+            Some(sa) => Arc::clone(sa),
+            None => {
+                return verify_text_error_envelope(
+                    &params.file_path,
+                    "MCP server has no SimpleAgent loaded",
+                    "MCP_SERVER_NOT_INITIALIZED".to_string(),
+                );
+            }
+        };
+
+        let strict = params.strict.unwrap_or(false);
+        let opts = jacs::inline::VerifyOptions {
+            strict,
+            key_dir: params.key_dir.as_deref().map(std::path::PathBuf::from),
+        };
+
+        let file_path = resolved_input;
+        let result = tokio::task::spawn_blocking(move || {
+            jacs::simple::advanced::verify_text_file(&simple_agent, &file_path, opts)
+        })
+        .await;
+
+        match result {
+            Ok(Ok(jacs::inline::VerifyTextResult::Signed { signatures })) => {
+                let entries: Vec<SignatureEntry> = signatures
+                    .into_iter()
+                    .map(|s| SignatureEntry {
+                        signer_id: s.signer_id,
+                        algorithm: s.algorithm,
+                        timestamp: s.timestamp,
+                        status: signature_status_string(&s.status),
+                    })
+                    .collect();
+                let envelope = VerifyTextResult {
+                    success: true,
+                    status: "signed".to_string(),
+                    message: format!("Verified {} signature block(s)", entries.len()),
+                    signatures: entries,
+                    error: None,
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Ok(jacs::inline::VerifyTextResult::MissingSignature)) => {
+                // Permissive mode (strict=false) only — strict mode returns Err below.
+                let envelope = VerifyTextResult {
+                    success: true,
+                    status: "missing_signature".to_string(),
+                    signatures: vec![],
+                    message: "No JACS signature block found in file".to_string(),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Ok(jacs::inline::VerifyTextResult::Malformed(reason))) => {
+                let envelope = VerifyTextResult {
+                    success: false,
+                    status: "malformed".to_string(),
+                    signatures: vec![],
+                    message: "Signature block is malformed".to_string(),
+                    error: Some(reason),
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Err(jacs::error::JacsError::MissingSignature(p))) if strict => {
+                let envelope = VerifyTextResult {
+                    success: false,
+                    status: "missing_signature".to_string(),
+                    signatures: vec![],
+                    message: "Strict verification: no JACS signature block found".to_string(),
+                    error: Some(format!("no JACS signature found in {}", p)),
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Err(e)) => {
+                verify_text_error_envelope(&params.file_path, "Verification failed", e.to_string())
+            }
+            Err(join_err) => verify_text_error_envelope(
+                &params.file_path,
+                "Verify worker panicked",
+                join_err.to_string(),
+            ),
+        }
+    }
+
+    /// Sign an image (PNG/JPEG/WebP) by embedding a JACS signature
+    /// (PRD §4.2).
+    #[tool(
+        name = "jacs_sign_image",
+        description = "Sign a PNG/JPEG/WebP image by embedding a JACS signature in format-native metadata. Robust mode (PNG/JPEG only) additionally embeds into the LSB channel."
+    )]
+    pub async fn jacs_sign_image(&self, Parameters(params): Parameters<SignImageParams>) -> String {
+        // PRD §4.2.6 / R-003: input must exist inside base_dir; output must
+        // either be inside base_dir and not already exist, OR be allowed via
+        // JACS_MCP_OVERWRITE_OK=1 / refuse_overwrite=false (in-place sign).
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.input_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return sign_image_error_envelope(
+                    &params.output_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
+        // For output, use resolve_output_path when it differs from input (a
+        // distinct write target is governed by overwrite policy). When equal,
+        // the operation is in-place and resolve_input_path applies.
+        let resolved_output = if params.input_path == params.output_path {
+            resolved_input.clone()
+        } else {
+            match crate::path_policy::resolve_output_path(&params.output_path) {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(e) => {
+                    return sign_image_error_envelope(
+                        &params.output_path,
+                        "Path validation failed",
+                        format!("PATH_POLICY_BLOCKED: {}", e),
+                    );
+                }
+            }
+        };
+
+        let simple_agent = match self.simple_agent.as_ref() {
+            Some(sa) => Arc::clone(sa),
+            None => {
+                return sign_image_error_envelope(
+                    &params.output_path,
+                    "MCP server has no SimpleAgent loaded",
+                    "MCP_SERVER_NOT_INITIALIZED".to_string(),
+                );
+            }
+        };
+
+        let opts = jacs::simple::SignImageOptions {
+            robust: params.robust.unwrap_or(false),
+            format_hint: params.format.clone(),
+            refuse_overwrite: params.refuse_overwrite.unwrap_or(false),
+            // PRD §4.2.4a: leave automatic backup decision to the lower layer
+            // (default true on in-place, false on different out path).
+            backup: true,
+            unsafe_bak_mode: None,
+        };
+
+        let in_path = resolved_input;
+        let out_path = resolved_output;
+        let result = tokio::task::spawn_blocking(move || {
+            jacs::simple::advanced::sign_image(&simple_agent, &in_path, &out_path, opts)
+        })
+        .await;
+
+        match result {
+            Ok(Ok(signed)) => {
+                let envelope = SignImageResult {
+                    success: true,
+                    out_path: signed.out_path,
+                    signer_id: Some(signed.signer_id),
+                    format: Some(signed.format),
+                    robust: signed.robust,
+                    message: "Image signed".to_string(),
+                    error: None,
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Err(e)) => sign_image_error_envelope(
+                &params.output_path,
+                "Failed to sign image",
+                e.to_string(),
+            ),
+            Err(join_err) => sign_image_error_envelope(
+                &params.output_path,
+                "Sign-image worker panicked",
+                join_err.to_string(),
+            ),
+        }
+    }
+
+    /// Verify an embedded JACS signature in an image (PRD §4.2, C1).
+    #[tool(
+        name = "jacs_verify_image",
+        description = "Verify an embedded JACS signature in a PNG/JPEG/WebP image. Permissive by default; pass strict:true for hard-fail on missing signature."
+    )]
+    pub async fn jacs_verify_image(
+        &self,
+        Parameters(params): Parameters<VerifyImageParams>,
+    ) -> String {
+        // PRD §4.2.6 / R-003.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return verify_image_error_envelope(
+                    &params.file_path,
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
+
+        let simple_agent = match self.simple_agent.as_ref() {
+            Some(sa) => Arc::clone(sa),
+            None => {
+                return verify_image_error_envelope(
+                    &params.file_path,
+                    "MCP server has no SimpleAgent loaded",
+                    "MCP_SERVER_NOT_INITIALIZED".to_string(),
+                );
+            }
+        };
+
+        let strict = params.strict.unwrap_or(false);
+        let opts = jacs::simple::VerifyImageOptions {
+            base: jacs::inline::VerifyOptions {
+                strict,
+                key_dir: params.key_dir.as_deref().map(std::path::PathBuf::from),
+            },
+            scan_robust: params.robust.unwrap_or(false),
+        };
+
+        let file_path = resolved_input;
+        let result = tokio::task::spawn_blocking(move || {
+            jacs::simple::advanced::verify_image(&simple_agent, &file_path, opts)
+        })
+        .await;
+
+        match result {
+            Ok(Ok(media)) => {
+                let status = media_status_string(&media.status);
+                let success = matches!(
+                    media.status,
+                    jacs::simple::MediaVerifyStatus::Valid
+                        | jacs::simple::MediaVerifyStatus::MissingSignature
+                );
+                let message = match &media.status {
+                    jacs::simple::MediaVerifyStatus::Valid => "Image signature valid".to_string(),
+                    jacs::simple::MediaVerifyStatus::InvalidSignature => {
+                        "Image signature is invalid".to_string()
+                    }
+                    jacs::simple::MediaVerifyStatus::HashMismatch => {
+                        "Image hash mismatch (content was modified)".to_string()
+                    }
+                    jacs::simple::MediaVerifyStatus::MissingSignature => {
+                        "No JACS signature found in image".to_string()
+                    }
+                    jacs::simple::MediaVerifyStatus::KeyNotFound => {
+                        "Signer's public key could not be resolved".to_string()
+                    }
+                    jacs::simple::MediaVerifyStatus::UnsupportedFormat => {
+                        "Unsupported image format".to_string()
+                    }
+                    jacs::simple::MediaVerifyStatus::Malformed(s) => {
+                        format!("Malformed signature: {}", s)
+                    }
+                };
+                let error = match &media.status {
+                    jacs::simple::MediaVerifyStatus::Malformed(s) => Some(s.clone()),
+                    _ => None,
+                };
+                let envelope = VerifyImageResult {
+                    success,
+                    status,
+                    signer_id: media.signer_id,
+                    algorithm: media.algorithm,
+                    format: media.format,
+                    embedding_channels: media.embedding_channels,
+                    message,
+                    error,
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Err(jacs::error::JacsError::MissingSignature(p))) if strict => {
+                let envelope = VerifyImageResult {
+                    success: false,
+                    status: "missing_signature".to_string(),
+                    signer_id: None,
+                    algorithm: None,
+                    format: None,
+                    embedding_channels: None,
+                    message: "Strict verification: no JACS signature found in image".to_string(),
+                    error: Some(format!("no JACS signature found in {}", p)),
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Err(e)) => {
+                verify_image_error_envelope(&params.file_path, "Verification failed", e.to_string())
+            }
+            Err(join_err) => verify_image_error_envelope(
+                &params.file_path,
+                "Verify-image worker panicked",
+                join_err.to_string(),
+            ),
+        }
+    }
+
+    /// Extract the JACS signature payload from a signed image (PRD §3.2).
+    #[tool(
+        name = "jacs_extract_media_signature",
+        description = "Extract the JACS signature payload embedded in a PNG/JPEG/WebP image. Returns decoded JSON by default; pass raw_payload:true for the base64url wire form."
+    )]
+    pub async fn jacs_extract_media_signature(
+        &self,
+        Parameters(params): Parameters<ExtractMediaSignatureParams>,
+    ) -> String {
+        // PRD §4.2.6 / R-003.
+        let resolved_input = match crate::path_policy::resolve_input_path(&params.file_path) {
+            Ok(p) => p.to_string_lossy().into_owned(),
+            Err(e) => {
+                return extract_media_error_envelope(
+                    "Path validation failed",
+                    format!("PATH_POLICY_BLOCKED: {}", e),
+                );
+            }
+        };
+
+        let raw = params.raw_payload.unwrap_or(false);
+        // R-011: scan_robust opt-in for the extract verb (parity with verify).
+        let extract_opts = jacs::simple::types::ExtractMediaOptions {
+            scan_robust: params.robust.unwrap_or(false),
+        };
+        let file_path = resolved_input;
+        let result = tokio::task::spawn_blocking(move || {
+            if raw {
+                jacs::simple::advanced::extract_media_signature_raw_with_options(
+                    &file_path,
+                    extract_opts,
+                )
+            } else {
+                jacs::simple::advanced::extract_media_signature_with_options(
+                    &file_path,
+                    extract_opts,
+                )
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(payload)) => {
+                let envelope = ExtractMediaSignatureResult {
+                    success: true,
+                    present: payload.is_some(),
+                    payload: payload.clone(),
+                    message: if payload.is_some() {
+                        "Extracted JACS signature payload".to_string()
+                    } else {
+                        "No JACS signature payload found in image".to_string()
+                    },
+                    error: None,
+                };
+                serde_json::to_string_pretty(&envelope).unwrap_or_else(|e| format!("Error: {}", e))
+            }
+            Ok(Err(e)) => extract_media_error_envelope("Extraction failed", e.to_string()),
+            Err(join_err) => {
+                extract_media_error_envelope("Extract worker panicked", join_err.to_string())
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Helpers for the inline-text + media handlers (Task 09).
+// =============================================================================
+
+fn signature_status_string(s: &jacs::inline::SignatureStatus) -> String {
+    match s {
+        jacs::inline::SignatureStatus::Valid => "valid".to_string(),
+        jacs::inline::SignatureStatus::InvalidSignature => "invalid_signature".to_string(),
+        jacs::inline::SignatureStatus::HashMismatch => "hash_mismatch".to_string(),
+        jacs::inline::SignatureStatus::KeyNotFound => "key_not_found".to_string(),
+        jacs::inline::SignatureStatus::UnsupportedAlgorithm => "unsupported_algorithm".to_string(),
+        jacs::inline::SignatureStatus::Malformed(_) => "malformed".to_string(),
+    }
+}
+
+fn media_status_string(s: &jacs::simple::MediaVerifyStatus) -> String {
+    match s {
+        jacs::simple::MediaVerifyStatus::Valid => "valid".to_string(),
+        jacs::simple::MediaVerifyStatus::InvalidSignature => "invalid_signature".to_string(),
+        jacs::simple::MediaVerifyStatus::HashMismatch => "hash_mismatch".to_string(),
+        jacs::simple::MediaVerifyStatus::MissingSignature => "missing_signature".to_string(),
+        jacs::simple::MediaVerifyStatus::KeyNotFound => "key_not_found".to_string(),
+        jacs::simple::MediaVerifyStatus::UnsupportedFormat => "unsupported_format".to_string(),
+        jacs::simple::MediaVerifyStatus::Malformed(_) => "malformed".to_string(),
+    }
+}
+
+fn inline_text_error_envelope(file_path: &str, message: &str, error: String) -> String {
+    let result = SignTextResult {
+        success: false,
+        file_path: file_path.to_string(),
+        signers_added: 0,
+        backup_path: None,
+        message: message.to_string(),
+        error: Some(error),
+    };
+    serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+}
+
+fn verify_text_error_envelope(_file_path: &str, message: &str, error: String) -> String {
+    let result = VerifyTextResult {
+        success: false,
+        status: "error".to_string(),
+        signatures: vec![],
+        message: message.to_string(),
+        error: Some(error),
+    };
+    serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+}
+
+fn sign_image_error_envelope(out_path: &str, message: &str, error: String) -> String {
+    let result = SignImageResult {
+        success: false,
+        out_path: out_path.to_string(),
+        signer_id: None,
+        format: None,
+        robust: false,
+        message: message.to_string(),
+        error: Some(error),
+    };
+    serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+}
+
+fn verify_image_error_envelope(_file_path: &str, message: &str, error: String) -> String {
+    let result = VerifyImageResult {
+        success: false,
+        status: "error".to_string(),
+        signer_id: None,
+        algorithm: None,
+        format: None,
+        embedding_channels: None,
+        message: message.to_string(),
+        error: Some(error),
+    };
+    serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+}
+
+fn extract_media_error_envelope(message: &str, error: String) -> String {
+    let result = ExtractMediaSignatureResult {
+        success: false,
+        present: false,
+        payload: None,
+        message: message.to_string(),
+        error: Some(error),
+    };
+    serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
 }
 
 // Implement the tool handler for the server.
@@ -4145,7 +4759,12 @@ impl ServerHandler for JacsMcpServer {
                  jacs_audit_query (search audit trail by action, target, time range), \
                  jacs_audit_export (export audit trail as signed bundle). \
                  \
-                 Search: jacs_search (unified search across all signed documents)."
+                 Search: jacs_search (unified search across all signed documents). \
+                 \
+                 Inline text and media: jacs_sign_text (sign a markdown/text file in place), \
+                 jacs_verify_text (verify inline JACS signatures), jacs_sign_image \
+                 (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image \
+                 (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
                     .to_string(),
             ),
         }

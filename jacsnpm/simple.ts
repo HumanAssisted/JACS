@@ -26,6 +26,7 @@
 
 import {
   JacsAgent,
+  JacsSimpleAgent,
   hashString,
   createConfig,
   createAgentSync as nativeCreateAgentSync,
@@ -144,16 +145,24 @@ export interface DsseEnvelope {
 // =============================================================================
 
 let globalAgent: JacsAgent | null = null;
+/**
+ * Auxiliary global JacsSimpleAgent used by the inline-text / image
+ * module-level helpers (signText / verifyText / signImage / verifyImage /
+ * extractMediaSignature). See JacsClient for the same pattern.
+ */
+let globalSimpleAgent: JacsSimpleAgent | null = null;
 let agentInfo: AgentInfo | null = null;
 let strictMode: boolean = false;
 
 function adoptClientState(client: unknown): AgentInfo {
   const state = client as {
     agent: JacsAgent | null;
+    simpleAgent: JacsSimpleAgent | null;
     info: AgentInfo | null;
     _strict: boolean;
   };
   globalAgent = state.agent ?? null;
+  globalSimpleAgent = state.simpleAgent ?? null;
   agentInfo = state.info ? { ...state.info } : null;
   strictMode = state._strict ?? strictMode;
   if (!agentInfo) {
@@ -718,6 +727,134 @@ export function signFileSync(filePath: string, embed: boolean = false): SignedDo
   return withAgentPasswordSync((agent) => {
     const result = createDocumentImpl(agent, docContent, filePath, embed, true) as string;
     return parseSignedResult(result);
+  });
+}
+
+// =============================================================================
+// Inline text + image (Task 11 — PRD §3.1, §3.2, §4.1, §4.2)
+// =============================================================================
+//
+// These module-level helpers route through the auxiliary `globalSimpleAgent`
+// adopted by `adoptClientState`. They mirror the corresponding `JacsClient`
+// methods (see `client.ts`).
+
+export interface SignTextOpts {
+  noBackup?: boolean;
+}
+
+export interface VerifyTextOpts {
+  /** C1: missing-signature throws when true. Default false. */
+  strict?: boolean;
+  /** PRD §4.1.5. */
+  keyDir?: string;
+}
+
+export interface SignImageOpts {
+  /** PRD §4.2.4 LSB embedding. Default false (Q4). */
+  robust?: boolean;
+  format?: string;
+  /** PRD §4.2.2 single-signer guard. */
+  refuseOverwrite?: boolean;
+}
+
+export interface VerifyImageOpts {
+  strict?: boolean;
+  keyDir?: string;
+  /** PRD §4.2.4 LSB scan fallback. */
+  robust?: boolean;
+}
+
+export interface ExtractMediaOpts {
+  /** PRD §3.2 wire form. */
+  rawPayload?: boolean;
+}
+
+function requireSimpleAgent(): JacsSimpleAgent {
+  if (!globalSimpleAgent) {
+    throw new Error(
+      'No agent loaded. Call quickstart({ name, domain }), load(), or create() first.',
+    );
+  }
+  return globalSimpleAgent;
+}
+
+export async function signText(filePath: string, opts?: SignTextOpts): Promise<any> {
+  return requireSimpleAgent().signText(filePath, opts?.noBackup ?? false);
+}
+
+export function signTextSync(filePath: string, opts?: SignTextOpts): any {
+  return requireSimpleAgent().signTextSync(filePath, opts?.noBackup ?? false);
+}
+
+export async function verifyText(filePath: string, opts?: VerifyTextOpts): Promise<any> {
+  return requireSimpleAgent().verifyText(filePath, {
+    strict: opts?.strict ?? false,
+    keyDir: opts?.keyDir,
+  });
+}
+
+export function verifyTextSync(filePath: string, opts?: VerifyTextOpts): any {
+  return requireSimpleAgent().verifyTextSync(filePath, {
+    strict: opts?.strict ?? false,
+    keyDir: opts?.keyDir,
+  });
+}
+
+export async function signImage(
+  inputPath: string,
+  outputPath: string,
+  opts?: SignImageOpts,
+): Promise<any> {
+  return requireSimpleAgent().signImage(inputPath, outputPath, {
+    robust: opts?.robust ?? false,
+    format: opts?.format,
+    refuseOverwrite: opts?.refuseOverwrite ?? false,
+  });
+}
+
+export function signImageSync(
+  inputPath: string,
+  outputPath: string,
+  opts?: SignImageOpts,
+): any {
+  return requireSimpleAgent().signImageSync(inputPath, outputPath, {
+    robust: opts?.robust ?? false,
+    format: opts?.format,
+    refuseOverwrite: opts?.refuseOverwrite ?? false,
+  });
+}
+
+export async function verifyImage(filePath: string, opts?: VerifyImageOpts): Promise<any> {
+  return requireSimpleAgent().verifyImage(filePath, {
+    strict: opts?.strict ?? false,
+    keyDir: opts?.keyDir,
+    robust: opts?.robust ?? false,
+  });
+}
+
+export function verifyImageSync(filePath: string, opts?: VerifyImageOpts): any {
+  return requireSimpleAgent().verifyImageSync(filePath, {
+    strict: opts?.strict ?? false,
+    keyDir: opts?.keyDir,
+    robust: opts?.robust ?? false,
+  });
+}
+
+export async function extractMediaSignature(
+  filePath: string,
+  opts?: ExtractMediaOpts,
+): Promise<string | null> {
+  return requireSimpleAgent().extractMediaSignature(filePath, {
+    rawPayload: opts?.rawPayload ?? false,
+  });
+}
+
+export function extractMediaSignatureSync(
+  filePath: string,
+  opts?: ExtractMediaOpts,
+): string | null {
+  return requireSimpleAgent().extractMediaSignatureSync(filePath, {
+    rawPayload: opts?.rawPayload ?? false,
   });
 }
 

@@ -94,6 +94,10 @@
 - [Email Signing & Verification](guides/email-signing.md)
 - [Streaming Signing](guides/streaming.md)
 
+### Provenance & Media Signatures
+- [Inline Text Signatures](guides/inline-text-signing.md)
+- [Image and Media Signatures](guides/media-signing.md)
+
 ## Examples
 - [CLI Examples](examples/cli.md)
 - [Node.js Examples](examples/nodejs.md)

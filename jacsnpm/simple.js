@@ -76,6 +76,16 @@ exports.updateDocument = updateDocument;
 exports.updateDocumentSync = updateDocumentSync;
 exports.signFile = signFile;
 exports.signFileSync = signFileSync;
+exports.signText = signText;
+exports.signTextSync = signTextSync;
+exports.verifyText = verifyText;
+exports.verifyTextSync = verifyTextSync;
+exports.signImage = signImage;
+exports.signImageSync = signImageSync;
+exports.verifyImage = verifyImage;
+exports.verifyImageSync = verifyImageSync;
+exports.extractMediaSignature = extractMediaSignature;
+exports.extractMediaSignatureSync = extractMediaSignatureSync;
 exports.verify = verify;
 exports.verifySync = verifySync;
 exports.verifyStandalone = verifyStandalone;
@@ -138,11 +148,18 @@ const deprecation_1 = require("./deprecation");
 // Global State
 // =============================================================================
 let globalAgent = null;
+/**
+ * Auxiliary global JacsSimpleAgent used by the inline-text / image
+ * module-level helpers (signText / verifyText / signImage / verifyImage /
+ * extractMediaSignature). See JacsClient for the same pattern.
+ */
+let globalSimpleAgent = null;
 let agentInfo = null;
 let strictMode = false;
 function adoptClientState(client) {
     const state = client;
     globalAgent = state.agent ?? null;
+    globalSimpleAgent = state.simpleAgent ?? null;
     agentInfo = state.info ? { ...state.info } : null;
     strictMode = state._strict ?? strictMode;
     if (!agentInfo) {
@@ -573,6 +590,68 @@ function signFileSync(filePath, embed = false) {
     return withAgentPasswordSync((agent) => {
         const result = createDocumentImpl(agent, docContent, filePath, embed, true);
         return parseSignedResult(result);
+    });
+}
+function requireSimpleAgent() {
+    if (!globalSimpleAgent) {
+        throw new Error('No agent loaded. Call quickstart({ name, domain }), load(), or create() first.');
+    }
+    return globalSimpleAgent;
+}
+async function signText(filePath, opts) {
+    return requireSimpleAgent().signText(filePath, opts?.noBackup ?? false);
+}
+function signTextSync(filePath, opts) {
+    return requireSimpleAgent().signTextSync(filePath, opts?.noBackup ?? false);
+}
+async function verifyText(filePath, opts) {
+    return requireSimpleAgent().verifyText(filePath, {
+        strict: opts?.strict ?? false,
+        keyDir: opts?.keyDir,
+    });
+}
+function verifyTextSync(filePath, opts) {
+    return requireSimpleAgent().verifyTextSync(filePath, {
+        strict: opts?.strict ?? false,
+        keyDir: opts?.keyDir,
+    });
+}
+async function signImage(inputPath, outputPath, opts) {
+    return requireSimpleAgent().signImage(inputPath, outputPath, {
+        robust: opts?.robust ?? false,
+        format: opts?.format,
+        refuseOverwrite: opts?.refuseOverwrite ?? false,
+    });
+}
+function signImageSync(inputPath, outputPath, opts) {
+    return requireSimpleAgent().signImageSync(inputPath, outputPath, {
+        robust: opts?.robust ?? false,
+        format: opts?.format,
+        refuseOverwrite: opts?.refuseOverwrite ?? false,
+    });
+}
+async function verifyImage(filePath, opts) {
+    return requireSimpleAgent().verifyImage(filePath, {
+        strict: opts?.strict ?? false,
+        keyDir: opts?.keyDir,
+        robust: opts?.robust ?? false,
+    });
+}
+function verifyImageSync(filePath, opts) {
+    return requireSimpleAgent().verifyImageSync(filePath, {
+        strict: opts?.strict ?? false,
+        keyDir: opts?.keyDir,
+        robust: opts?.robust ?? false,
+    });
+}
+async function extractMediaSignature(filePath, opts) {
+    return requireSimpleAgent().extractMediaSignature(filePath, {
+        rawPayload: opts?.rawPayload ?? false,
+    });
+}
+function extractMediaSignatureSync(filePath, opts) {
+    return requireSimpleAgent().extractMediaSignatureSync(filePath, {
+        rawPayload: opts?.rawPayload ?? false,
     });
 }
 /**

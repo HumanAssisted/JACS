@@ -38,6 +38,29 @@ jacs verify signed-document.json
 jacs mcp                # start MCP server (stdio only)
 ```
 
+## What's new in 0.10.0
+
+*Why this matters:* shared markdown reviewed by multiple agents and signed images for AI-era provenance now have first-class support — the signature lives inside the artifact, the file renders normally, and downstream consumers verify identity + claimed timestamp via the same JACS trust model they already use for JSON documents.
+
+```rust
+use jacs::media::{sign_image, verify_image, SignImageOptions};
+use jacs::text::{sign_text_file, verify_text_file, VerifyOptions};
+
+// Inline text — signature appended in a YAML-bodied block at end of file
+sign_text_file(&agent, "README.md")?;
+let report = verify_text_file(&agent, "README.md", VerifyOptions { strict: false, key_dir: None })?;
+println!("status: {:?}", report.status);   // Signed { signers } | MissingSignature | Malformed
+
+// Strict mode rejects missing signatures with ErrorKind::MissingSignature
+let strict = verify_text_file(&agent, "README.md", VerifyOptions { strict: true, key_dir: None });
+
+// Images — signature embedded in PNG iTXt / JPEG APP11 / WebP XMP
+sign_image(&agent, "photo.png", "signed.png", SignImageOptions::default())?;
+let result = verify_image(&agent, "signed.png", VerifyOptions { strict: false, key_dir: None })?;
+```
+
+A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
+
 ## Security
 
 - Password entropy validation for key encryption
@@ -56,4 +79,4 @@ Report vulnerabilities to security@hai.ai.
 - [Crates.io](https://crates.io/crates/jacs)
 - [Development Guide](../DEVELOPMENT.md)
 
-**Version**: 0.9.7 | [HAI.AI](https://hai.ai)
+**Version**: 0.10.0 | [HAI.AI](https://hai.ai)

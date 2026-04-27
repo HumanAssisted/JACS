@@ -59,6 +59,12 @@ except ImportError:
         raise ImportError(f"Failed to import the jacs extension module: {str(e)}")
 
 # Import type definitions
+# NOTE: do NOT import ``MissingSignatureError`` from ``.types`` here — the
+# native Rust module has already injected the canonical PyO3-created class
+# (via ``pyo3::create_exception!``) into ``jacs.MissingSignatureError``.
+# Re-importing the pure-Python shim would silently shadow it with a different
+# class, breaking ``except jacs.MissingSignatureError:`` for errors actually
+# raised by strict-mode verify_text / verify_image.
 from .types import (
     AgentInfo,
     Attachment,
@@ -73,6 +79,11 @@ from .types import (
     TrustError,
     KeyNotFoundError,
     NetworkError,
+    SignatureEntry,
+    SignTextResult,
+    VerifyTextResult,
+    SignImageResult,
+    VerifyImageResult,
 )
 
 # Make instance-based client API available
@@ -131,6 +142,12 @@ __all__ = [
     "TrustError",
     "KeyNotFoundError",
     "NetworkError",
+    "MissingSignatureError",
+    "SignatureEntry",
+    "SignTextResult",
+    "VerifyTextResult",
+    "SignImageResult",
+    "VerifyImageResult",
     # Submodules
     "simple",
     "async_simple",

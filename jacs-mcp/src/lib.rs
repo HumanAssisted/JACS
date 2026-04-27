@@ -46,10 +46,17 @@
 pub mod config;
 #[cfg(feature = "mcp")]
 pub mod contract;
+// `jacs_tools` is the rmcp-tool-routed handler surface; it requires the
+// `mcp` feature (rmcp / tokio). Bindings that only need `path_policy`
+// (PRD §4.2.6) build with `default-features = false` — see jacspy/jacsnpm.
+#[cfg(feature = "mcp")]
 pub mod jacs_tools;
+pub mod path_policy;
+#[cfg(feature = "mcp")]
 pub mod profile;
 #[cfg(feature = "mcp")]
 pub mod server;
+#[cfg(feature = "mcp")]
 pub mod tools;
 
 pub use crate::config::{
@@ -61,7 +68,9 @@ pub use crate::contract::{
     JacsMcpContractSnapshot, JacsMcpServerMetadata, JacsMcpToolContract,
     canonical_contract_snapshot,
 };
+#[cfg(feature = "mcp")]
 pub use crate::jacs_tools::JacsMcpServer;
+#[cfg(feature = "mcp")]
 pub use crate::profile::Profile;
 #[cfg(feature = "mcp")]
 pub use crate::server::serve_stdio;

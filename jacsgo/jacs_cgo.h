@@ -70,4 +70,17 @@ char* jacs_simple_sign_message(SimpleAgentHandle handle, const char* data_json);
 char* jacs_simple_sign_raw_bytes(SimpleAgentHandle handle, const uint8_t* data, size_t data_len);
 char* jacs_simple_sign_file(SimpleAgentHandle handle, const char* file_path, int embed);
 
+// Inline text + media signing (Task 12 — PRD §3.1, §3.2, §4.1, §4.2)
+//
+// Each export takes an optional `opts_json` parameter (may be null). On
+// success the JSON payload is the binding-core wrapper's success envelope.
+// On failure the JSON payload is `{"error":"...","error_kind":"..."}`;
+// the Go layer matches `error_kind == "MissingSignature"` to return the
+// `ErrMissingSignature` sentinel (PRD §C1).
+char* jacs_agent_sign_text(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+char* jacs_agent_verify_text(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+char* jacs_agent_sign_image(SimpleAgentHandle handle, const char* input_path, const char* output_path, const char* opts_json);
+char* jacs_agent_verify_image(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+char* jacs_agent_extract_media_signature(SimpleAgentHandle handle, const char* file_path, const char* opts_json);
+
 #endif

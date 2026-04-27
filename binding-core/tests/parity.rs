@@ -640,6 +640,7 @@ fn test_error_kinds_fixture_matches_enum() {
         "InvalidArgument",
         "KeyNotFound",
         "LockFailed",
+        "MissingSignature",
         "NetworkFailed",
         "SerializationFailed",
         "SigningFailed",
@@ -682,9 +683,33 @@ fn test_error_kinds_fixture_count() {
 
     assert_eq!(
         error_kinds.len(),
-        13,
-        "ErrorKind should have exactly 13 variants. Found {}. \
+        14,
+        "ErrorKind should have exactly 14 variants. Found {}. \
          If you added or removed a variant, update parity_inputs.json.",
         error_kinds.len()
     );
+}
+
+#[test]
+fn test_error_kind_missing_signature_in_fixture() {
+    let fixtures = load_parity_inputs();
+    let kinds: Vec<&str> = fixtures["error_kinds"]
+        .as_array()
+        .expect("error_kinds should be an array")
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(
+        kinds.contains(&"MissingSignature"),
+        "MissingSignature must be listed in parity_inputs.json error_kinds (PRD §4.1.2 Q2/C1)"
+    );
+}
+
+#[test]
+fn test_binding_core_error_missing_signature_constructor() {
+    let err =
+        jacs_binding_core::BindingCoreError::missing_signature("no JACS signature found in foo.md");
+    assert_eq!(err.kind, jacs_binding_core::ErrorKind::MissingSignature);
+    assert!(err.message.contains("foo.md"));
+    assert!(err.message.contains("no JACS signature found"));
 }

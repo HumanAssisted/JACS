@@ -28,7 +28,11 @@ mod support;
 use support::{TEST_PASSWORD, prepare_temp_workspace_ed25519 as prepare_temp_workspace};
 
 static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
-const TIMEOUT: Duration = Duration::from_secs(30);
+// 90s gives the first jacs_search test a generous initialisation budget on
+// slow CI runners — the spawned `jacs mcp` child has to load schemas, build
+// the document service, and finish the rmcp handshake before the first call.
+// The same budget covers individual call timeouts on contended runners.
+const TIMEOUT: Duration = Duration::from_secs(90);
 
 type McpClient = RunningService<RoleClient, ()>;
 

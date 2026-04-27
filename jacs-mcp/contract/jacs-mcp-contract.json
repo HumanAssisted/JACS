@@ -3,9 +3,9 @@
   "server": {
     "name": "jacs-mcp",
     "title": "JACS MCP Server",
-    "version": "0.9.15",
+    "version": "0.10.0",
     "website_url": "https://humanassisted.github.io/JACS/",
-    "instructions": "This MCP server provides data provenance and cryptographic signing for agent state files and agent-to-agent messaging. Agent state tools: jacs_sign_state (sign files), jacs_verify_state (verify integrity), jacs_load_state (load with verification), jacs_update_state (update and re-sign), jacs_list_state (list signed docs), jacs_adopt_state (adopt external files). Memory tools: jacs_memory_save (save a memory), jacs_memory_recall (search memories by query), jacs_memory_list (list all memories), jacs_memory_forget (soft-delete a memory), jacs_memory_update (update an existing memory). Messaging tools: jacs_message_send (create and sign a message), jacs_message_update (update and re-sign a message), jacs_message_agree (co-sign/agree to a message), jacs_message_receive (verify and extract a received message). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Security: jacs_audit (read-only security audit and health checks). Audit trail: jacs_audit_log (record events as signed audit entries), jacs_audit_query (search audit trail by action, target, time range), jacs_audit_export (export audit trail as signed bundle). Search: jacs_search (unified search across all signed documents)."
+    "instructions": "This MCP server provides data provenance and cryptographic signing for agent state files and agent-to-agent messaging. Agent state tools: jacs_sign_state (sign files), jacs_verify_state (verify integrity), jacs_load_state (load with verification), jacs_update_state (update and re-sign), jacs_list_state (list signed docs), jacs_adopt_state (adopt external files). Memory tools: jacs_memory_save (save a memory), jacs_memory_recall (search memories by query), jacs_memory_list (list all memories), jacs_memory_forget (soft-delete a memory), jacs_memory_update (update an existing memory). Messaging tools: jacs_message_send (create and sign a message), jacs_message_update (update and re-sign a message), jacs_message_agree (co-sign/agree to a message), jacs_message_receive (verify and extract a received message). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Security: jacs_audit (read-only security audit and health checks). Audit trail: jacs_audit_log (record events as signed audit entries), jacs_audit_query (search audit trail by action, target, time range), jacs_audit_export (export audit trail as signed bundle). Search: jacs_search (unified search across all signed documents). Inline text and media: jacs_sign_text (sign a markdown/text file in place), jacs_verify_text (verify inline JACS signatures), jacs_sign_image (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
   },
   "tools": [
     {
@@ -503,6 +503,39 @@
       }
     },
     {
+      "name": "jacs_extract_media_signature",
+      "description": "Extract the JACS signature payload embedded in a PNG, JPEG, or WebP image. By default returns the decoded JACS signed-document JSON string. Pass `raw_payload: true` to return the base64url wire form instead (useful for byte-for-byte relay or fuzz fixtures). Pass `robust: true` to fall back to LSB scan when the metadata channel has no payload (R-011; mirrors verify_image --robust). Returns `present: false` if no payload is found.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for `jacs_extract_media_signature` (PRD §3.2).",
+        "properties": {
+          "file_path": {
+            "description": "Path to a signed image to extract the embedded JACS payload from",
+            "type": "string"
+          },
+          "raw_payload": {
+            "description": "Return the raw base64url wire form instead of the decoded JACS signed-document JSON (default: false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "robust": {
+            "description": "Scan the LSB channel as a fallback if the metadata channel has no payload (default: false; cost: full pixel decode)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "ExtractMediaSignatureParams",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_generate_well_known",
       "description": "Generate all .well-known documents for A2A discovery. Returns an array of {path, document} objects that can be served at each path for agent discovery.",
       "input_schema": {
@@ -966,7 +999,10 @@
         "properties": {
           "algorithm": {
             "description": "Signing algorithm for the new keys (ring-Ed25519, RSA-PSS, pq2025). If omitted, keeps the current algorithm.",
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "title": "RotateKeysParams",
@@ -1116,6 +1152,51 @@
       }
     },
     {
+      "name": "jacs_sign_image",
+      "description": "Sign a PNG, JPEG, or WebP image by embedding a JACS signature into format-native metadata (PNG iTXt, JPEG APP11, WebP XMP). Default mode is metadata-only and does NOT modify pixel data. Robust mode (PNG/JPEG only) additionally embeds into the LSB channel for re-encode survivability — pass `robust: true` to enable. Use `refuse_overwrite: true` to refuse an input that already carries a JACS signature (PRD §4.2.2 single-signer guard).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for `jacs_sign_image`.",
+        "properties": {
+          "format": {
+            "description": "Explicit format hint: 'png' | 'jpeg' | 'webp' (default: auto-detect)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input_path": {
+            "description": "Path to the input image (PNG, JPEG, or WebP)",
+            "type": "string"
+          },
+          "output_path": {
+            "description": "Path to write the signed output image",
+            "type": "string"
+          },
+          "refuse_overwrite": {
+            "description": "Refuse to overwrite an input that already carries a JACS signature (PRD §4.2.2 single-signer; default: false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "robust": {
+            "description": "Embed signature into the LSB channel as well as metadata for re-encode survivability (default: false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "input_path",
+          "output_path"
+        ],
+        "title": "SignImageParams",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_sign_state",
       "description": "Sign an agent state file (memory, skill, plan, config, or hook) to create a cryptographically signed JACS document. This establishes provenance and integrity for the file's contents.",
       "input_schema": {
@@ -1172,6 +1253,32 @@
           "name"
         ],
         "title": "SignStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_sign_text",
+      "description": "Sign a text/markdown file in place by appending an inline JACS signature block. Content bytes are preserved exactly; the signature block is appended at the end of the file (PRD §4.1, C2). A `<path>.bak` is created by default before signing. Use this for signing markdown documents, agent prompts, or any plaintext file where the signature should be embedded in the file itself.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for `jacs_sign_text` (PRD §4.1.1).",
+        "properties": {
+          "file_path": {
+            "description": "Path to the text/markdown file to sign in place",
+            "type": "string"
+          },
+          "no_backup": {
+            "description": "Skip the automatic .bak backup (default: false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "SignTextParams",
         "type": "object"
       }
     },
@@ -1285,6 +1392,46 @@
       }
     },
     {
+      "name": "jacs_verify_image",
+      "description": "Verify a JACS signature embedded in a PNG, JPEG, or WebP image. Permissive by default (C1): missing signature returns `status: \"missing_signature\"` with `success: true`. With `strict: true`, missing signatures cause `success: false`. Pass `key_dir` for offline verification (PRD §4.1.5). Pass `robust: true` to also scan the LSB channel for a robust-mode payload (PRD §4.2.4) when no metadata payload is found.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for `jacs_verify_image` (PRD §4.1.5, §4.2.4, C1).",
+        "properties": {
+          "file_path": {
+            "description": "Path to the signed image to verify",
+            "type": "string"
+          },
+          "key_dir": {
+            "description": "Optional path to a directory containing public-key PEM files (PRD §4.1.5)",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "robust": {
+            "description": "Scan LSB channel for robust-mode payload when metadata is absent (default: false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "strict": {
+            "description": "Treat 'no signature found' as a real error instead of a typed status (default: false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "VerifyImageParams",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_verify_state",
       "description": "Verify the integrity and authenticity of a signed agent state. Checks both the file hash and the cryptographic signature.",
       "input_schema": {
@@ -1307,6 +1454,39 @@
           }
         },
         "title": "VerifyStateParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_verify_text",
+      "description": "Verify inline JACS signatures embedded in a text/markdown file. By default (permissive mode, C1), a file with no signature returns `status: \"missing_signature\"` with `success: true`. With `strict: true`, missing signatures cause `success: false` with an explicit error. Pass `key_dir` (PRD §4.1.5) for offline verification using pre-shared `<signer_id>.public.pem` files.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Parameters for `jacs_verify_text` (PRD §4.1.5, C1).",
+        "properties": {
+          "file_path": {
+            "description": "Path to the signed text/markdown file to verify",
+            "type": "string"
+          },
+          "key_dir": {
+            "description": "Optional path to a directory containing public-key PEM files for offline verification",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strict": {
+            "description": "Treat 'no signature found' as a real error instead of a typed status (default: false)",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "VerifyTextParams",
         "type": "object"
       }
     },

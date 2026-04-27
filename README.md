@@ -76,6 +76,40 @@ The MCP server uses **stdio transport only** — no HTTP endpoints. This is a de
 | **Verify** | Prove a signed document is authentic and unmodified |
 | **Export** | Share your agent's public key or signed documents with others |
 
+## What's new in 0.10.0
+
+**Inline text signatures** — append a YAML-bodied JACS signature block to any markdown or text file. The file on disk is preserved byte-for-byte; the signature sits at the end and the file still renders as markdown on GitHub.
+
+```bash
+# Sign a markdown file in place — content is preserved byte-for-byte, signature
+# appended at the end in a YAML-bodied block.
+jacs sign-text README.md
+
+# Another agent appends their signature
+jacs sign-text README.md  # (run as a different agent)
+
+# Verify per-signer (permissive — missing-sig is exit 2, not an error)
+jacs verify-text README.md
+
+# Hard-fail if the file isn't signed (exit 1 instead of 2)
+jacs verify-text --strict README.md
+```
+
+*Why this matters:* shared READMEs and design docs that multiple agents review and counter-sign now carry their provenance directly in the file — no separate sidecar JSON. The signature proves who signed which canonical bytes at their claimed time (it does not prove first creation or legal ownership).
+
+**Image signatures** — embed a tamper-evident JACS signature inside a PNG, JPEG, or WebP. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP), pure-Rust, no AGPL dependencies.
+
+```bash
+# Sign an image (signature embedded as base64url JSON in PNG iTXt / JPEG APP11 / WebP XMP)
+jacs sign-image photo.png --out signed.png
+jacs verify-image signed.png
+jacs verify-image --strict signed.png  # hard-fail on missing signature
+```
+
+*Why this matters:* photographers and AI image generators can attach a verifiable signed-at-claimed-time provenance signature to image bytes; downstream consumers verify the signer's identity and timestamp before trusting the asset.
+
+See the [inline text signing guide](https://humanassisted.github.io/JACS/guides/inline-text-signing.html) and [image / media signing guide](https://humanassisted.github.io/JACS/guides/media-signing.html) for the full feature set.
+
 ## Use cases
 
 **Local provenance** — An agent creates, signs, verifies, and exports documents locally. No server required.
@@ -136,4 +170,4 @@ Report vulnerabilities to security@hai.ai. Do not open public issues for securit
 
 ---
 
-v0.9.7 | [Apache-2.0](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)
+v0.10.0 | [Apache-2.0](./LICENSE-APACHE) | [Third-Party Notices](./THIRD-PARTY-NOTICES)

@@ -10,8 +10,16 @@
 //
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { JacsAgent, fetchRemoteKeyLookup } from './index.js';
+import { JacsAgent, fetchRemoteKeyLookup, jacsMcpResolveInputPath } from './index.js';
 import { JacsClient } from './client.js';
+
+// PRD §4.2.6 / Issue 022 — single source of truth for MCP file-path
+// validation across Rust + Python + Node. Every Wave-3 MCP tool below
+// delegates to the Rust `jacs_mcp::path_policy::resolve` via this NAPI
+// helper so policy enforcement stays byte-identical across languages.
+function resolveMcpPath(raw: string, kind: 'input' | 'output' = 'input'): string {
+  return jacsMcpResolveInputPath(raw, kind);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -653,6 +661,74 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
         required: ['old_password', 'new_password'],
       },
     },
+    // Issue 005 / PRD §3 Q6 day-one parity contract for inline-text + media tools.
+    {
+      name: 'jacs_sign_text',
+      description: 'Sign a text/markdown file in place with an inline JACS signature block.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the file to sign' },
+          no_backup: { type: 'boolean', description: 'Skip writing the .bak backup file' },
+        },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'jacs_verify_text',
+      description: 'Verify inline JACS signatures in a text/markdown file.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the file to verify' },
+          strict: { type: 'boolean', description: 'Treat missing-signature as a hard failure' },
+          key_dir: { type: 'string', description: 'Directory of <signer>.public.pem files' },
+        },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'jacs_sign_image',
+      description: 'Sign a PNG/JPEG/WebP image by embedding a JACS signature in metadata.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          input_path: { type: 'string', description: 'Source image path' },
+          output_path: { type: 'string', description: 'Destination image path' },
+          format: { type: 'string', description: "Explicit format hint: 'png' | 'jpeg' | 'webp' (default: auto-detect)" },
+          robust: { type: 'boolean', description: 'Add LSB fallback (PNG/JPEG only)' },
+          refuse_overwrite: { type: 'boolean', description: 'Refuse to re-sign already-signed input' },
+        },
+        required: ['input_path', 'output_path'],
+      },
+    },
+    {
+      name: 'jacs_verify_image',
+      description: 'Verify the JACS signature embedded in a PNG/JPEG/WebP image.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the image to verify' },
+          strict: { type: 'boolean', description: 'Treat missing-signature as a hard failure' },
+          key_dir: { type: 'string', description: 'Directory of <signer>.public.pem files' },
+          robust: { type: 'boolean', description: 'Scan LSB channel for robust-mode payload when metadata is absent' },
+        },
+        required: ['file_path'],
+      },
+    },
+    {
+      name: 'jacs_extract_media_signature',
+      description: 'Extract the JACS signed-document JSON embedded in a PNG/JPEG/WebP image.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file_path: { type: 'string', description: 'Path to the image' },
+          raw_payload: { type: 'boolean', description: 'Return base64url wire form instead of decoded JSON' },
+          robust: { type: 'boolean', description: 'Scan LSB channel as fallback when metadata payload is absent (R-011)' },
+        },
+        required: ['file_path'],
+      },
+    },
   ];
 }
 
@@ -905,6 +981,89 @@ export async function handleJacsMcpToolCall(
         const nativeAgent = extractNativeAgent(client);
         await nativeAgent.reencryptKey(args.old_password, args.new_password);
         return text(JSON.stringify({ success: true, message: 'Key re-encrypted' }));
+      }
+
+      // Issue 005 / PRD §3 Q6 day-one parity for inline-text + media tools.
+      // PRD §4.2.6 / Issue 022 — every file-path arm calls the Rust path-policy
+      // delegate so Node, Python, and Rust enforce the same six-layer policy.
+      //
+      // REVIEW_001: these arms call methods on the JacsClient (which routes
+      // to the auxiliary `JacsSimpleAgent` slot via `requireSimpleAgent`).
+      // The five inline-text/media verbs do NOT live on the broader
+      // `JacsAgent` class; routing through the client is the supported path.
+      case 'jacs_sign_text': {
+        // sign_text writes the existing file in place; treat as Input
+        // (the Output kind would block existing files).
+        const filePath = resolveMcpPath(args.file_path, 'input');
+        const outcome = await client.signText(filePath, {
+          noBackup: Boolean(args.no_backup),
+        });
+        return text(JSON.stringify({
+          success: true,
+          file_path: outcome?.path ?? filePath,
+          signers_added: outcome?.signersAdded ?? 1,
+          backup_path: outcome?.backupPath ?? null,
+        }));
+      }
+
+      case 'jacs_verify_text': {
+        const filePath = resolveMcpPath(args.file_path, 'input');
+        const opts: any = {};
+        if (typeof args.strict === 'boolean') opts.strict = args.strict;
+        if (typeof args.key_dir === 'string') opts.keyDir = args.key_dir;
+        const result = await client.verifyText(filePath, opts);
+        return text(JSON.stringify({
+          success: true,
+          file_path: filePath,
+          result: result?.status ?? result,
+          signatures: result?.signatures ?? [],
+        }));
+      }
+
+      case 'jacs_sign_image': {
+        const inputPath = resolveMcpPath(args.input_path, 'input');
+        const outputPath = resolveMcpPath(args.output_path, 'output');
+        const opts: any = {};
+        if (typeof args.robust === 'boolean') opts.robust = args.robust;
+        if (typeof args.refuse_overwrite === 'boolean') opts.refuseOverwrite = args.refuse_overwrite;
+        if (typeof args.format === 'string') opts.format = args.format;
+        const outcome = await client.signImage(inputPath, outputPath, opts);
+        return text(JSON.stringify({
+          success: true,
+          out_path: outcome?.outPath ?? outputPath,
+          signer_id: outcome?.signerId ?? '',
+          format: outcome?.format ?? '',
+          robust: outcome?.robust ?? Boolean(args.robust),
+        }));
+      }
+
+      case 'jacs_verify_image': {
+        const filePath = resolveMcpPath(args.file_path, 'input');
+        const opts: any = {};
+        if (typeof args.strict === 'boolean') opts.strict = args.strict;
+        if (typeof args.key_dir === 'string') opts.keyDir = args.key_dir;
+        if (typeof args.robust === 'boolean') opts.robust = args.robust;
+        const result = await client.verifyImage(filePath, opts);
+        return text(JSON.stringify({
+          success: true,
+          file_path: filePath,
+          status: result?.status ?? null,
+          signer_id: result?.signerId ?? null,
+          format: result?.format ?? null,
+        }));
+      }
+
+      case 'jacs_extract_media_signature': {
+        const filePath = resolveMcpPath(args.file_path, 'input');
+        const opts: any = {};
+        if (typeof args.raw_payload === 'boolean') opts.rawPayload = args.raw_payload;
+        const payload = await client.extractMediaSignature(filePath, opts);
+        return text(JSON.stringify({
+          success: true,
+          file_path: filePath,
+          payload: payload,
+          raw_payload: Boolean(args.raw_payload),
+        }));
       }
 
       default:

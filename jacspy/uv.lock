@@ -1380,7 +1380,7 @@ wheels = [
 
 [[package]]
 name = "jacs"
-version = "0.9.14"
+version = "0.11.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1404,6 +1404,10 @@ anthropic = [
 ]
 crewai = [
     { name = "crewai" },
+]
+dev = [
+    { name = "pillow" },
+    { name = "pyyaml" },
 ]
 fastapi = [
     { name = "fastapi" },
@@ -1432,11 +1436,13 @@ requires-dist = [
     { name = "jacs", extras = ["mcp", "ws", "langchain", "langgraph", "crewai", "fastapi", "anthropic", "a2a", "a2a-server"], marker = "extra == 'all'" },
     { name = "langchain", marker = "extra == 'langchain'", specifier = ">=1.0.0,<2.0.0" },
     { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
+    { name = "pillow", marker = "extra == 'dev'", specifier = ">=10.0.0" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.37.0" },
     { name = "uvicorn", marker = "extra == 'a2a-server'", specifier = ">=0.30.0" },
     { name = "websockets", marker = "extra == 'ws'", specifier = ">=13.0" },
 ]
-provides-extras = ["mcp", "ws", "langchain", "langgraph", "crewai", "fastapi", "anthropic", "a2a", "a2a-server", "all"]
+provides-extras = ["mcp", "ws", "langchain", "langgraph", "crewai", "fastapi", "anthropic", "a2a", "a2a-server", "dev", "all"]
 
 [[package]]
 name = "jaraco-classes"

@@ -29,6 +29,12 @@ const EXPECTED_CANONICAL_TOOL_NAMES = new Set([
   'jacs_untrust_agent',
   'jacs_is_trusted',
   'jacs_reencrypt_key',
+  // v0.11 inline-text + media verbs (PRD §3.1, §3.2).
+  'jacs_sign_text',
+  'jacs_verify_text',
+  'jacs_sign_image',
+  'jacs_verify_image',
+  'jacs_extract_media_signature',
 ]);
 
 const EXPECTED_COMPATIBILITY_TOOL_NAMES = new Set([
