@@ -3536,6 +3536,7 @@ impl JacsMcpServer {
     ) -> String {
         tracing::info!(
             tool = "jacs_memory_save",
+            storage = "local",
             name = %params.name,
             "saving JACS memory"
         );
@@ -3656,6 +3657,7 @@ impl JacsMcpServer {
 
         tracing::info!(
             tool = "jacs_memory_save",
+            storage = "local",
             success = result.success,
             jacs_document_id = result.jacs_document_id.as_deref().unwrap_or(""),
             "JACS memory save completed"
@@ -3678,7 +3680,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MemoryRecallParams>,
     ) -> String {
-        tracing::info!(tool = "jacs_memory_recall", "recalling JACS memories");
+        tracing::info!(
+            tool = "jacs_memory_recall",
+            storage = "local",
+            "recalling JACS memories"
+        );
         let keys = match self.agent.list_document_keys() {
             Ok(keys) => keys,
             Err(e) => {
@@ -3807,7 +3813,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MemoryListParams>,
     ) -> String {
-        tracing::info!(tool = "jacs_memory_list", "listing JACS memories");
+        tracing::info!(
+            tool = "jacs_memory_list",
+            storage = "local",
+            "listing JACS memories"
+        );
         let keys = match self.agent.list_document_keys() {
             Ok(keys) => keys,
             Err(e) => {
@@ -3925,6 +3935,7 @@ impl JacsMcpServer {
 
         tracing::info!(
             tool = "jacs_memory_list",
+            storage = "local",
             total = result.total,
             "JACS memory list completed"
         );
@@ -3948,6 +3959,7 @@ impl JacsMcpServer {
     ) -> String {
         tracing::info!(
             tool = "jacs_memory_forget",
+            storage = "local",
             jacs_document_id = %params.jacs_id,
             "forgetting JACS memory"
         );
@@ -4031,6 +4043,7 @@ impl JacsMcpServer {
                 };
                 tracing::info!(
                     tool = "jacs_memory_forget",
+                    storage = "local",
                     success = true,
                     "JACS memory forget completed"
                 );
@@ -4062,6 +4075,7 @@ impl JacsMcpServer {
     ) -> String {
         tracing::info!(
             tool = "jacs_memory_update",
+            storage = "local",
             jacs_document_id = %params.jacs_id,
             "updating JACS memory"
         );
@@ -4146,6 +4160,7 @@ impl JacsMcpServer {
                 };
                 tracing::info!(
                     tool = "jacs_memory_update",
+                    storage = "local",
                     success = true,
                     jacs_document_id = result.jacs_document_id.as_deref().unwrap_or(""),
                     "JACS memory update completed"
