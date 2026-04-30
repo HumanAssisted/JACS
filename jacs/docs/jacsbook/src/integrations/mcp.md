@@ -14,7 +14,7 @@ There are three supported ways to use JACS with MCP today:
 
 | Runtime | Best starting point | What it gives you |
 |---|---|---|
-| Rust | `jacs-mcp` | Full MCP server with document, agreement, trust, A2A, and audit tools |
+| Rust CLI | `jacs mcp` | Full MCP server with document, agreement, trust, A2A, audit, text, and image tools |
 | Python | `jacs.mcp` or `jacs.adapters.mcp` | Local SSE transport security or FastMCP tool registration |
 | Node.js | `@hai.ai/jacs/mcp` | Transport proxy or MCP tool registration for existing SDK-based servers |
 
@@ -33,7 +33,7 @@ cargo install jacs-cli
 jacs mcp
 ```
 
-The MCP server is built into the `jacs` binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See `jacs-mcp/README.md` in the repo for the full tool list and client configuration examples.
+The MCP server is built into the `jacs` binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, security audit tools, and text/image provenance tools. The crate-level MCP README in the repo has the full contract details.
 
 ## 2. Transport Security Around Your Existing MCP Code
 
@@ -140,9 +140,9 @@ registerJacsTools(server, client);
 
 The Node tool set is intentionally smaller than the Rust MCP server. Use `jacs mcp` when you need the largest supported MCP surface.
 
-### Provenance MCP tools (v0.10.0)
+### Provenance MCP tools
 
-The MCP server exposes 5 new tools for inline text and image provenance — covering the same surface as the [`sign-text`](../guides/inline-text-signing.md) and [`sign-image`](../guides/media-signing.md) CLI verbs.
+The MCP server exposes tools for inline text and image provenance, covering the same surface as the [`sign-text`](../guides/inline-text-signing.md) and [`sign-image`](../guides/media-signing.md) CLI verbs.
 
 - `jacs_sign_text` — append a YAML-bodied signature block to a markdown / text file.
 - `jacs_verify_text` — verify all signature blocks in a file (permissive default; `strict` opt-in).
@@ -152,7 +152,6 @@ The MCP server exposes 5 new tools for inline text and image provenance — cove
 
 ## Example Paths In This Repo
 
-- `jacs-mcp/README.md`
 - `jacspy/examples/mcp/server.py`
 - `jacspy/examples/mcp/client.py`
 - `jacsnpm/examples/mcp.stdio.server.js`

@@ -175,151 +175,60 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="what-is-jacs"><a class="header" href="#what-is-jacs">What is JACS?</a></h1>
-<p><strong>JACS (JSON Agent Communication Standard)</strong> is a comprehensive framework designed to solve a critical problem in AI systems: <strong>How do agents communicate and collaborate securely with verifiable trust?</strong></p>
-<h2 id="the-problem-jacs-solves"><a class="header" href="#the-problem-jacs-solves">The Problem JACS Solves</a></h2>
-<p>As AI systems become more sophisticated, we're moving toward multi-agent architectures where different AI agents need to:</p>
+<p>JACS is a cryptographic provenance layer for AI agents and the artifacts they produce. It gives an agent a persistent signing identity, wraps important outputs in tamper-evident signatures, and lets other systems verify origin and integrity later.</p>
+<p>Use JACS when data crosses a trust boundary: another service, another agent, another organization, a user-facing audit trail, or a file that must remain verifiable after it leaves the process that created it.</p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
+<p>Agent systems increasingly produce artifacts that other systems act on:</p>
 <ul>
-<li><strong>Exchange tasks</strong> and delegate work to each other</li>
-<li><strong>Create agreements</strong> and verify their completion</li>
-<li><strong>Share data</strong> with guaranteed authenticity</li>
-<li><strong>Maintain audit trails</strong> of decisions and actions</li>
-<li><strong>Establish trust</strong> with flexible key resolution (local trust stores, DNS, optional key services)</li>
+<li>JSON tool results, reports, memories, and configs</li>
+<li>Markdown plans, design docs, and release notes</li>
+<li>Images, screenshots, charts, and generated media</li>
+<li>Email messages and attachments</li>
+<li>A2A artifacts, MCP tool calls, and multi-agent approvals</li>
 </ul>
-<p>Traditional approaches fall short because they lack:</p>
-<ul>
-<li>Cryptographic integrity for agent communications</li>
-<li>Standardized formats for agent interactions</li>
-<li>Built-in versioning and audit trails</li>
-<li>Support for multi-agent agreements and workflows</li>
-</ul>
-<h2 id="jacs-core-philosophy"><a class="header" href="#jacs-core-philosophy">JACS Core Philosophy</a></h2>
-<h3 id="-agent-first-design"><a class="header" href="#-agent-first-design">🎯 <strong>Agent-First Design</strong></a></h3>
-<p>JACS is built specifically for AI agent communication patterns, while still being usable as a general-purpose signed JSON provenance layer. It understands concepts like:</p>
-<ul>
-<li><strong>Agents</strong> with identities and capabilities</li>
-<li><strong>Tasks</strong> that can be delegated and tracked</li>
-<li><strong>Agreements</strong> between multiple parties</li>
-<li><strong>Versioning</strong> for iterative improvements</li>
-</ul>
-<h3 id="-trust-through-cryptography"><a class="header" href="#-trust-through-cryptography">🔐 <strong>Trust Through Cryptography</strong></a></h3>
-<p>Every JACS document includes:</p>
-<ul>
-<li><strong>Digital signatures</strong> proving authenticity</li>
-<li><strong>Hash verification</strong> ensuring integrity</li>
-<li><strong>Public key cryptography</strong> for identity verification</li>
-<li><strong>Timestamps</strong> for chronological ordering</li>
-</ul>
-<h3 id="-standards-based"><a class="header" href="#-standards-based">📋 <strong>Standards-Based</strong></a></h3>
-<p>JACS builds on proven standards:</p>
-<ul>
-<li><strong>JSON</strong> for universal compatibility</li>
-<li><strong>JSON Schema</strong> for structure validation</li>
-<li><strong>RFC 3339</strong> timestamps for consistency</li>
-<li><strong>Standard cryptographic algorithms</strong> (RSA, Ed25519, post-quantum)</li>
-</ul>
-<h2 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h2>
-<h3 id="agents"><a class="header" href="#agents">Agents</a></h3>
-<p>An <strong>Agent</strong> is an autonomous entity with:</p>
-<ul>
-<li>A unique identity (UUID)</li>
-<li>Cryptographic keys for signing</li>
-<li>Capabilities defined in services</li>
-<li>The ability to create and verify documents</li>
-</ul>
-<h3 id="documents"><a class="header" href="#documents">Documents</a></h3>
-<p>A <strong>Document</strong> is any JSON object that includes:</p>
-<ul>
-<li>JACS header fields (ID, version, creator, etc.)</li>
-<li>A cryptographic signature</li>
-<li>A hash for integrity verification</li>
-<li>Business logic specific to the document type</li>
-</ul>
-<h3 id="tasks"><a class="header" href="#tasks">Tasks</a></h3>
-<p>A <strong>Task</strong> is a special document type representing:</p>
-<ul>
-<li>Work to be performed</li>
-<li>Success/failure criteria</li>
-<li>Input/output specifications</li>
-<li>Delegation and completion tracking</li>
-</ul>
-<h3 id="agreements"><a class="header" href="#agreements">Agreements</a></h3>
-<p>An <strong>Agreement</strong> is a mechanism for:</p>
-<ul>
-<li>Multiple agents to consent to terms</li>
-<li>Tracking signatures from all required parties</li>
-<li>Ensuring all participants have signed before proceeding</li>
-<li>Creating binding commitments between agents</li>
-</ul>
-<h2 id="how-jacs-works"><a class="header" href="#how-jacs-works">How JACS Works</a></h2>
-<pre><code class="language-mermaid">graph TD
-    A[Agent A] --&gt;|Creates Task| T[JACS Task Document]
-    T --&gt;|Contains| S[Digital Signature]
-    T --&gt;|Contains| H[SHA256 Hash]
-    T --&gt;|Contains| M[Metadata]
-    
-    A --&gt;|Sends to| B[Agent B]
-    B --&gt;|Verifies| T
-    B --&gt;|Signs Agreement| AG[Agreement Document]
-    AG --&gt;|Returns to| A
-</code></pre>
-<ol>
-<li><strong>Agent A</strong> creates a task document with their requirements</li>
-<li>The document is <strong>signed</strong> with Agent A's private key</li>
-<li>A <strong>hash</strong> is calculated for integrity verification</li>
-<li><strong>Agent B</strong> receives and verifies the signature and hash</li>
-<li>Agent B can <strong>create an agreement</strong> to accept the task</li>
-<li>Both agents have a <strong>verifiable record</strong> of the interaction</li>
-</ol>
-<h2 id="real-world-examples"><a class="header" href="#real-world-examples">Real-World Examples</a></h2>
-<h3 id="-ai-content-pipeline"><a class="header" href="#-ai-content-pipeline">🤖 <strong>AI Content Pipeline</strong></a></h3>
-<pre><code>Content Agent → Research Agent → Review Agent → Publishing Agent
-</code></pre>
-<p>Each handoff includes signed task documents with clear requirements and deliverables.</p>
-<h3 id="-data-processing-workflow"><a class="header" href="#-data-processing-workflow">📊 <strong>Data Processing Workflow</strong></a></h3>
-<pre><code>Data Ingestion Agent → Processing Agent → Validation Agent → Storage Agent
-</code></pre>
-<p>Each step is tracked with verifiable completion certificates and quality metrics.</p>
-<h3 id="-multi-agent-analysis"><a class="header" href="#-multi-agent-analysis">🔍 <strong>Multi-Agent Analysis</strong></a></h3>
-<pre><code>Query Agent → Research Agent → Analysis Agent → Reporting Agent
-</code></pre>
-<p>Complex analysis tasks are broken down with clear accountability for each step.</p>
-<h2 id="benefits-over-alternatives"><a class="header" href="#benefits-over-alternatives">Benefits Over Alternatives</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>JACS</th><th>Traditional APIs</th><th>General Signing</th></tr></thead><tbody>
-<tr><td><strong>Agent Identity</strong></td><td>✅ Built-in</td><td>❌ Custom implementation</td><td>❌ Not agent-focused</td></tr>
-<tr><td><strong>Task Management</strong></td><td>⚠️ Schema-native (lifecycle via integrations)</td><td>❌ Application-specific</td><td>❌ Not applicable</td></tr>
-<tr><td><strong>Multi-Party Agreements</strong></td><td>✅ Core feature</td><td>❌ Complex to implement</td><td>⚠️ Possible but difficult</td></tr>
-<tr><td><strong>Audit Trails</strong></td><td>✅ Automatic</td><td>❌ Manual logging</td><td>⚠️ Basic signing only</td></tr>
-<tr><td><strong>Schema Validation</strong></td><td>✅ JSON Schema</td><td>❌ Custom validation</td><td>❌ No structure</td></tr>
-<tr><td><strong>Versioning</strong></td><td>✅ Built-in</td><td>❌ Manual versioning</td><td>❌ Not supported</td></tr>
-<tr><td><strong>Cross-Platform</strong></td><td>✅ JSON everywhere</td><td>⚠️ Protocol dependent</td><td>⚠️ Format dependent</td></tr>
+<p>Logs can say what happened, but they are usually controlled by the same system that produced the data. JACS attaches proof to the artifact itself.</p>
+<h2 id="core-ideas"><a class="header" href="#core-ideas">Core Ideas</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Concept</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><strong>Agent</strong></td><td>A named identity with signing keys and metadata.</td></tr>
+<tr><td><strong>Signed document</strong></td><td>A JSON envelope with payload, hash, signer metadata, and signature.</td></tr>
+<tr><td><strong>Artifact signature</strong></td><td>A JACS signature attached to non-JSON content, such as text, images, or email.</td></tr>
+<tr><td><strong>Trust store</strong></td><td>Local public keys and trust decisions used during verification.</td></tr>
+<tr><td><strong>Agreement</strong></td><td>A signed multi-party approval with quorum, timeout, and algorithm constraints.</td></tr>
 </tbody></table>
 </div>
-<blockquote>
-<p>JACS provides signed artifacts, schemas, trust primitives, and auditability. Real-time transport and task orchestration are handled by integrations (e.g., A2A, MCP, HTTP server layers).</p>
-</blockquote>
-<h2 id="when-to-use-jacs"><a class="header" href="#when-to-use-jacs">When to Use JACS</a></h2>
-<p>✅ <strong>Perfect for:</strong></p>
+<h2 id="what-verification-proves"><a class="header" href="#what-verification-proves">What Verification Proves</a></h2>
+<p>Verification answers two practical questions:</p>
+<ol>
+<li>Did the signer with this public key sign these canonical bytes?</li>
+<li>Has the signed content changed since it was signed?</li>
+</ol>
+<p>Verification does not prove first creation, copyright ownership, human authorship, or that a real-world statement is true. It gives you cryptographic accountability for the artifact.</p>
+<h2 id="where-jacs-fits"><a class="header" href="#where-jacs-fits">Where JACS Fits</a></h2>
+<pre><code class="language-mermaid">flowchart LR
+    A["Agent or service"] --&gt; B["Create artifact"]
+    B --&gt; C["Sign with JACS"]
+    C --&gt; D["Share or store"]
+    D --&gt; E["Verify before trust"]
+</code></pre>
+<p>JACS does not replace your application protocol. It works with CLI jobs, Rust services, Python and Node frameworks, MCP tools, A2A exchange, and file-based workflows.</p>
+<h2 id="when-to-use-it"><a class="header" href="#when-to-use-it">When To Use It</a></h2>
 <ul>
-<li>Multi-agent AI systems</li>
-<li>Task delegation and tracking</li>
-<li>Audit trail requirements</li>
-<li>Cross-organization AI collaboration</li>
-<li>Compliance-critical AI applications</li>
-<li>Research environments with multiple AI models</li>
+<li>A downstream system should verify who produced an artifact.</li>
+<li>Multiple agents or teams need an auditable handoff.</li>
+<li>A document, image, or email must stay verifiable outside your database.</li>
+<li>You need open source signing primitives without a mandatory central registry.</li>
 </ul>
-<p>⚠️ <strong>Consider alternatives for:</strong></p>
+<h2 id="when-not-to-use-it"><a class="header" href="#when-not-to-use-it">When Not To Use It</a></h2>
 <ul>
-<li>Simple single-agent systems</li>
-<li>Real-time streaming data</li>
-<li>High-frequency micro-transactions</li>
-<li>Systems where trust is not a concern</li>
+<li>Everything stays inside one trusted process and logs are enough.</li>
+<li>You only need accidental-corruption detection.</li>
+<li>There is no signer identity or audit requirement.</li>
 </ul>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>Ready to dive deeper? Continue with:</p>
 <ul>
-<li><strong><a href="concepts.html">Core Concepts</a></strong> - Learn about agents, documents, and agreements</li>
-<li><strong><a href="quick-start.html">Quick Start</a></strong> - Get hands-on experience</li>
-<li><strong>Implementation guides</strong> for <a href="../rust/installation.html">Rust</a>, <a href="../nodejs/installation.html">Node.js</a>, or <a href="../python/installation.html">Python</a></li>
+<li><a href="quick-start.html">Quick Start</a></li>
+<li><a href="decision-tree.html">Which Integration?</a></li>
+<li><a href="../usecases.html">Use Cases</a></li>
 </ul>
 
                     </main>

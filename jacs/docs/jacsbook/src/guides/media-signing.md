@@ -114,7 +114,7 @@ jacs verify-image signed.png --key-dir ./trusted-keys/
 | Embedded payload > 64 KiB | `Err(ErrorKind::PayloadTooLarge)` |
 | Unknown format (extension or magic) | `Err(ErrorKind::UnsupportedFormat)` |
 | `--refuse-overwrite` + already-signed input | `Err(ErrorKind::AlreadySigned)` |
-| Robust mode requested for WebP | `Err(ErrorKind::RobustNotSupported)` (v0.10.0) |
+| Robust mode requested for WebP | `Err(ErrorKind::RobustNotSupported)` |
 
 ## Clean-room provenance
 

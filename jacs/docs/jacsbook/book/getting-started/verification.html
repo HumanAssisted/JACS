@@ -177,8 +177,8 @@
                         <h1 id="verifying-signed-documents"><a class="header" href="#verifying-signed-documents">Verifying Signed Documents</a></h1>
 <p>Verify a JACS-signed document in under 2 minutes. Verification confirms two things: the document was signed by the claimed agent, and the content has not been modified since signing.</p>
 <p><strong>Verification does NOT require creating an agent.</strong> You only need the signed document (and optionally access to the signer's public key).</p>
-<h2 id="strict-vs-permissive-verification-v0100"><a class="header" href="#strict-vs-permissive-verification-v0100">Strict vs permissive verification (v0.10.0)</a></h2>
-<p><code>verify-text</code> and <code>verify-image</code> (added in v0.10.0) introduce a <strong>permissive default</strong>: a missing signature is a <em>typed status</em>, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.</p>
+<h2 id="strict-vs-permissive-verification"><a class="header" href="#strict-vs-permissive-verification">Strict vs permissive verification</a></h2>
+<p><code>verify-text</code> and <code>verify-image</code> use a <strong>permissive default</strong>: a missing signature is a <em>typed status</em>, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.</p>
 <div class="table-wrapper"><table><thead><tr><th>Surface</th><th>Permissive (default)</th><th>Strict (<code>--strict</code> / <code>strict=True</code> / <code>{ strict: true }</code> / <code>Strict: true</code>)</th></tr></thead><tbody>
 <tr><td><code>jacs verify-text</code> (CLI)</td><td>Exit <code>0</code> valid · <code>2</code> missing-sig · <code>1</code> invalid</td><td>Exit <code>0</code> valid · <code>1</code> missing OR invalid (stderr: <code>no JACS signature found</code>)</td></tr>
 <tr><td><code>jacs verify-image</code> (CLI)</td><td>Same as above</td><td>Same as above</td></tr>

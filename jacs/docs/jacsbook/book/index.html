@@ -175,62 +175,41 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="jacs-json-agent-communication-standard"><a class="header" href="#jacs-json-agent-communication-standard">JACS: JSON Agent Communication Standard</a></h1>
-<p>JACS is a cryptographic provenance layer for agent systems. Use it when an output, tool call, or agent handoff crosses a trust boundary and logs alone are not enough.</p>
-<h2 id="start-with-the-deployment"><a class="header" href="#start-with-the-deployment">Start With The Deployment</a></h2>
-<p>Most teams adopt JACS in one of four ways:</p>
+<p>JACS is an open source provenance layer for agent systems. Use it when an output, tool call, file, image, email, or agent handoff crosses a trust boundary and logs alone are not enough.</p>
+<h2 id="start-with-the-boundary"><a class="header" href="#start-with-the-boundary">Start With The Boundary</a></h2>
+<p>Most deployments start in one of four places:</p>
 <ul>
-<li><strong>LangChain / LangGraph / CrewAI / FastAPI</strong>: add signing at tool or API boundaries without changing the rest of the app</li>
-<li><strong>MCP</strong>: secure a local tool server or expose JACS itself as an MCP tool suite</li>
-<li><strong>A2A</strong>: publish an Agent Card, exchange signed artifacts, and apply trust policy across organizations</li>
-<li><strong>Core signing</strong>: sign JSON, files, or agreements directly from Rust, Python, Node.js, or Go</li>
+<li><strong>Core signing</strong>: sign JSON, files, Markdown/text, images, or Rust email payloads directly.</li>
+<li><strong>MCP</strong>: run <code>jacs mcp</code> as a local tool server, or add signing around an existing MCP transport.</li>
+<li><strong>Frameworks</strong>: add provenance at LangChain, LangGraph, FastAPI, Express, Koa, or Vercel AI SDK boundaries.</li>
+<li><strong>A2A and agreements</strong>: exchange signed artifacts or require multiple agents to sign off.</li>
 </ul>
-<p>The book now focuses on those supported workflows first. Older roadmap-style integration chapters have been reduced or removed from navigation.</p>
 <h2 id="what-jacs-gives-you"><a class="header" href="#what-jacs-gives-you">What JACS Gives You</a></h2>
 <ul>
-<li><strong>Signed JSON and file envelopes</strong> with tamper detection</li>
-<li><strong>Persistent agent identity</strong> with encrypted private keys</li>
-<li><strong>Trust bootstrap primitives</strong> such as <code>share_public_key</code>, <code>share_agent</code>, and <code>trust_agent_with_key</code></li>
-<li><strong>A2A artifact signing and trust policies</strong> (<code>open</code>, <code>verified</code>, <code>strict</code>)</li>
-<li><strong>MCP integration paths</strong> for ready-made servers, transport security, or tool registration</li>
-<li><strong>Framework adapters</strong> for Python and Node.js ecosystems</li>
-<li><strong>Multi-party agreements</strong> with quorum, timeout, and algorithm constraints</li>
-<li><strong>Cross-language compatibility</strong> across Rust, Python, Node.js, and Go</li>
+<li>Persistent agent identity with encrypted private keys</li>
+<li>Tamper-evident signed JSON and file envelopes</li>
+<li>Inline Markdown/text signatures that stay readable in place</li>
+<li>Embedded PNG/JPEG/WebP signatures for media provenance</li>
+<li>Rust email signing and verification with field-level content hashes</li>
+<li>Trust policies and local trust-store workflows</li>
+<li>Cross-language verification across Rust, Python, Node.js, and Go</li>
 </ul>
+<p>For platform workflows around verified documents, agent behavior, benchmarks, and hosted JACS identity flows, see <a href="https://github.com/HumanAssisted/haiai">HumanAssisted/haiai</a>.</p>
 <h2 id="best-entry-points"><a class="header" href="#best-entry-points">Best Entry Points</a></h2>
-<p>If you are choosing where to start:</p>
 <ol>
 <li><a href="getting-started/decision-tree.html">Which Integration?</a></li>
+<li><a href="getting-started/quick-start.html">Quick Start</a></li>
 <li><a href="usecases.html">Use Cases</a></li>
 <li><a href="integrations/mcp.html">MCP Overview</a></li>
-<li><a href="integrations/a2a.html">A2A Interoperability</a></li>
-<li><a href="python/adapters.html">Python Framework Adapters</a></li>
-<li><a href="nodejs/langchain.html">Node.js LangChain.js</a></li>
+<li><a href="guides/inline-text-signing.html">Inline Text Signatures</a></li>
+<li><a href="guides/media-signing.html">Image and Media Signatures</a></li>
+<li><a href="guides/email-signing.html">Email Signing and Verification</a></li>
 </ol>
-<h2 id="implementations"><a class="header" href="#implementations">Implementations</a></h2>
-<h3 id="rust"><a class="header" href="#rust">Rust</a></h3>
-<ul>
-<li>Deepest feature surface</li>
-<li>CLI plus library APIs</li>
-<li>Best fit when you want a ready-made MCP server via <code>jacs mcp</code></li>
-</ul>
-<h3 id="python-jacs"><a class="header" href="#python-jacs">Python (<code>jacs</code>)</a></h3>
-<ul>
-<li>Best fit for LangChain, LangGraph, CrewAI, FastAPI, and local MCP/A2A helpers</li>
-<li>Strong adapter story for adding provenance inside an existing app</li>
-</ul>
-<h3 id="nodejs-haiaijacs"><a class="header" href="#nodejs-haiaijacs">Node.js (<code>@hai.ai/jacs</code>)</a></h3>
-<ul>
-<li>Best fit for Express, Koa, Vercel AI SDK, LangChain.js, and MCP transport/tool integration</li>
-<li>Also exposes A2A helpers and Express discovery middleware</li>
-</ul>
-<h3 id="go-jacsgo"><a class="header" href="#go-jacsgo">Go (<code>jacsgo</code>)</a></h3>
-<ul>
-<li>Good fit for services that need signing and verification without framework adapters</li>
-</ul>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<h3 id="rust-cli"><a class="header" href="#rust-cli">Rust CLI</a></h3>
+<h2 id="install"><a class="header" href="#install">Install</a></h2>
+<h3 id="rust-cli-and-mcp-server"><a class="header" href="#rust-cli-and-mcp-server">Rust CLI and MCP server</a></h3>
 <pre><code class="language-bash">cargo install jacs-cli
 jacs quickstart --name my-agent --domain my-agent.example.com
+jacs mcp
 </code></pre>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <pre><code class="language-bash">pip install jacs
@@ -241,12 +220,11 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 <h3 id="go"><a class="header" href="#go">Go</a></h3>
 <pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
 </code></pre>
-<p>Rust, Python, and Node quickstart flows create or load a persistent agent and return agent metadata including config and key paths.</p>
 <h2 id="what-this-book-does-not-claim"><a class="header" href="#what-this-book-does-not-claim">What This Book Does Not Claim</a></h2>
 <ul>
-<li>It does <strong>not</strong> treat MCP and A2A as the same thing. MCP is for model-to-tool calls inside an application boundary; A2A is for agent discovery and exchange across boundaries.</li>
-<li>It does <strong>not</strong> assume every aspirational integration is first-class. If a chapter describes a feature that is not fully supported today, it has been moved out of the main path and tracked separately.</li>
-<li>It does <strong>not</strong> require a registry or blockchain to work. JACS identity is key-based and can be used entirely locally.</li>
+<li>MCP and A2A are different boundaries: MCP is model-to-tool; A2A is agent-to-agent discovery and exchange.</li>
+<li>JACS does not require a registry, blockchain, or central server.</li>
+<li>Email signing is currently documented as a Rust core API, not a CLI or Python/Node/Go binding surface.</li>
 </ul>
 <h2 id="community"><a class="header" href="#community">Community</a></h2>
 <ul>

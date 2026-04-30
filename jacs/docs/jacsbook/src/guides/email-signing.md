@@ -10,48 +10,43 @@ There are only two functions you need:
 
 | Action     | Function                       | What you supply                                     | What you get back                           |
 |------------|--------------------------------|-----------------------------------------------------|---------------------------------------------|
-| **Sign**   | `jacs::email::sign_email()`    | raw `.eml` bytes + your `EmailSigner`               | `.eml` bytes with `jacs-signature.json`     |
+| **Sign**   | `jacs::email::sign_email()`    | raw `.eml` bytes + a `JacsSigner`                   | `.eml` bytes with `jacs-signature.json`     |
 | **Verify** | `jacs::email::verify_email()`  | signed `.eml` bytes + sender's public key + verifier | `ContentVerificationResult` (pass/fail per field) |
 
 ## Signing an email
 
 ```rust
-use jacs::email::{sign_email, EmailSigner};
+use jacs::email::sign_email;
 
 // 1. Load raw email bytes (RFC 5322 format)
 let raw_eml = std::fs::read("outgoing.eml")?;
 
-// 2. Sign — your agent implements EmailSigner (see below)
+// 2. Sign — SimpleAgent implements JacsSigner
 let signed_eml = sign_email(&raw_eml, &my_agent)?;
 
 // 3. Send signed_eml — it is a valid .eml with the JACS attachment
 std::fs::write("outgoing_signed.eml", &signed_eml)?;
 ```
 
-### The `EmailSigner` trait
+### The `JacsSigner` trait
 
-Your agent must implement four methods:
+`sign_email` accepts any type that implements `JacsSigner`. `SimpleAgent` implements it out of the box.
 
 ```rust
-pub trait EmailSigner {
-    /// Sign raw bytes. Return the signature bytes.
-    fn sign_bytes(&self, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
+pub trait JacsSigner {
+    /// Create a signed JACS document from the email hash payload.
+    fn sign_message(&self, data: &serde_json::Value) -> Result<SignedDocument, JacsError>;
 
-    /// Your agent's JACS ID (e.g. "abc123:v1").
-    fn jacs_id(&self) -> &str;
-
-    /// The key identifier used for signing.
-    fn key_id(&self) -> &str;
-
-    /// The signing algorithm name. This comes from your JACS agent's
-    /// key configuration — never hardcode it.
-    fn algorithm(&self) -> &str;
+    /// Verify a signed JACS document using the sender's public key.
+    fn verify_with_key(
+        &self,
+        signed_document: &str,
+        public_key: Vec<u8>,
+    ) -> Result<VerificationResult, JacsError>;
 }
 ```
 
-The algorithm value (e.g. `"ed25519"`, `"pq2025"`, or legacy `"rsa-pss"` when verifying older mail signatures) is read from
-your JACS agent's key metadata at runtime. `sign_email` records it in the
-`jacs-signature.json` document so the verifier knows which algorithm to use.
+The signing algorithm is read from your JACS agent at runtime and recorded in the `jacs-signature.json` document. Do not hardcode it in email code.
 
 ### What `sign_email` does internally
 
@@ -59,7 +54,7 @@ your JACS agent's key metadata at runtime. `sign_email` records it in the
 2. Computes SHA-256 hashes for each header, body part, and attachment
 3. Builds the JACS email signature payload
 4. Canonicalizes the payload via RFC 8785 (JCS)
-5. Calls your `sign_bytes()` to produce the cryptographic signature
+5. Calls `sign_message()` to create a real signed JACS document
 6. Attaches the result as `jacs-signature.json`
 
 You do not need to know any of this to use it — it is a single function call.
@@ -84,7 +79,7 @@ use jacs::email::verify_email;
 use jacs::simple::SimpleAgent;
 
 let signed_eml = std::fs::read("incoming_signed.eml")?;
-let sender_public_key: Vec<u8> = /* fetch from HAI registry or local store */;
+let sender_public_key: Vec<u8> = /* fetch from local trust, DNS, or another trusted source */;
 
 // Any agent can verify — the sender's public key is passed explicitly
 let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
@@ -198,8 +193,8 @@ All items are re-exported from `jacs::email`:
 
 ```rust
 // Signing
-jacs::email::sign_email(raw_email: &[u8], signer: &dyn EmailSigner) -> Result<Vec<u8>, EmailError>
-jacs::email::EmailSigner                  // trait your agent implements
+jacs::email::sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>, EmailError>
+jacs::email::JacsSigner                   // trait implemented by SimpleAgent
 
 // Verification
 jacs::email::verify_email(raw, &agent, pubkey)       // one-call: crypto + content check

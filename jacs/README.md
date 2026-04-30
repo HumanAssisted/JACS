@@ -1,8 +1,14 @@
-# JACS: JSON Agent Communication Standard
+# JACS Rust Crate
 
-Cryptographic identity, signing, and verification for AI agents.
+Cryptographic identity, signing, and verification for agent systems.
 
 **[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://docs.rs/jacs/latest/jacs/)**
+
+```bash
+cargo add jacs
+```
+
+For the CLI and MCP server:
 
 ```bash
 cargo install jacs-cli
@@ -10,13 +16,15 @@ cargo install jacs-cli
 
 ## What it does
 
-| Capability | Description |
-|-----------|-------------|
-| **Agent Identity** | Generate a cryptographic keypair. Post-quantum (ML-DSA-87) or Ed25519 for new agents; RSA-PSS remains verification-only for legacy artifacts. |
-| **Data Provenance** | Sign any JSON document or file with tamper-evident signatures. |
-| **Agent Trust** | Verify identities, manage trust stores, enforce trust policies across agents. |
+| Capability | Rust API |
+|-----------|----------|
+| Agent identity and signed JSON | `jacs::simple` |
+| Inline Markdown/text signatures | `jacs::text` |
+| PNG/JPEG/WebP provenance | `jacs::media` |
+| RFC 5322 email signatures | `jacs::email` |
+| Agreements, storage, DNS, and trust | Core crate modules |
 
-## Quick start (Rust)
+## Quick start
 
 ```rust
 use jacs::simple::{load, sign_message, verify};
@@ -24,8 +32,44 @@ use jacs::simple::{load, sign_message, verify};
 load(None)?;
 
 let signed = sign_message(&serde_json::json!({"action": "approve"}))?;
-
 let result = verify(&signed.raw)?;
+
+assert!(result.valid);
+```
+
+## Artifact provenance
+
+```rust
+use jacs::media::{sign_image, verify_image, SignImageOptions};
+use jacs::text::{sign_text_file, verify_text_file, VerifyOptions};
+
+// Markdown/text: append an inline signature block.
+sign_text_file(&agent, "README.md")?;
+let text = verify_text_file(
+    &agent,
+    "README.md",
+    VerifyOptions { strict: false, key_dir: None },
+)?;
+
+// Images: embed a JACS signature in PNG iTXt, JPEG APP11, or WebP XMP.
+sign_image(&agent, "photo.png", "signed.png", SignImageOptions::default())?;
+let image = verify_image(
+    &agent,
+    "signed.png",
+    VerifyOptions { strict: false, key_dir: None },
+)?;
+```
+
+Email signing is Rust-only today:
+
+```rust
+use jacs::email::{sign_email, verify_email};
+
+let raw_eml = std::fs::read("outgoing.eml")?;
+let signed_eml = sign_email(&raw_eml, &agent)?;
+
+let sender_public_key = agent.get_public_key()?;
+let result = verify_email(&signed_eml, &agent, &sender_public_key)?;
 assert!(result.valid);
 ```
 
@@ -38,37 +82,14 @@ jacs verify signed-document.json
 jacs mcp                # start MCP server (stdio only)
 ```
 
-## What's new in 0.10.0
-
-*Why this matters:* shared markdown reviewed by multiple agents and signed images for AI-era provenance now have first-class support — the signature lives inside the artifact, the file renders normally, and downstream consumers verify identity + claimed timestamp via the same JACS trust model they already use for JSON documents.
-
-```rust
-use jacs::media::{sign_image, verify_image, SignImageOptions};
-use jacs::text::{sign_text_file, verify_text_file, VerifyOptions};
-
-// Inline text — signature appended in a YAML-bodied block at end of file
-sign_text_file(&agent, "README.md")?;
-let report = verify_text_file(&agent, "README.md", VerifyOptions { strict: false, key_dir: None })?;
-println!("status: {:?}", report.status);   // Signed { signers } | MissingSignature | Malformed
-
-// Strict mode rejects missing signatures with ErrorKind::MissingSignature
-let strict = verify_text_file(&agent, "README.md", VerifyOptions { strict: true, key_dir: None });
-
-// Images — signature embedded in PNG iTXt / JPEG APP11 / WebP XMP
-sign_image(&agent, "photo.png", "signed.png", SignImageOptions::default())?;
-let result = verify_image(&agent, "signed.png", VerifyOptions { strict: false, key_dir: None })?;
-```
-
-A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
-
 ## Security
 
 - Password entropy validation for key encryption
 - Private key zeroization on drop
 - Algorithm identification embedded in signatures with downgrade prevention
-- DNSSEC-validated identity verification
-- MCP server uses stdio only — no network exposure
-- 260+ automated tests covering cryptographic operations and attack scenarios
+- DNSSEC-aware identity verification paths
+- Stdio-only MCP server; no network listener
+- `pq2025` / ML-DSA-87 is the default for new agents
 
 Report vulnerabilities to security@hai.ai.
 
@@ -79,4 +100,4 @@ Report vulnerabilities to security@hai.ai.
 - [Crates.io](https://crates.io/crates/jacs)
 - [Development Guide](../DEVELOPMENT.md)
 
-**Version**: 0.10.1 | [HAI.AI](https://hai.ai)
+**Version**: 0.10.1 | [Apache-2.0](../LICENSE-APACHE)

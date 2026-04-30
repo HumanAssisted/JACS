@@ -326,7 +326,7 @@ else:
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
 <hr />
-<h3 id="sign_textpath--v0100"><a class="header" href="#sign_textpath--v0100">sign_text(path) — v0.10.0</a></h3>
+<h3 id="sign_textpath"><a class="header" href="#sign_textpath">sign_text(path)</a></h3>
 <p>Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered.</p>
 <p><strong>Parameters:</strong> <code>path</code> (str): file to sign in place</p>
 <p><strong>Returns:</strong> <code>None</code></p>
@@ -334,7 +334,7 @@ else:
 <pre><code class="language-python">jacs.sign_text("README.md")
 </code></pre>
 <hr />
-<h3 id="verify_textpath--strictfalse-key_dirnone--v0100"><a class="header" href="#verify_textpath--strictfalse-key_dirnone--v0100">verify_text(path, *, strict=False, key_dir=None) — v0.10.0</a></h3>
+<h3 id="verify_textpath--strictfalse-key_dirnone"><a class="header" href="#verify_textpath--strictfalse-key_dirnone">verify_text(path, *, strict=False, key_dir=None)</a></h3>
 <p>Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -354,7 +354,7 @@ except MissingSignatureError:
 </code></pre>
 <p>See the <a href="../guides/inline-text-signing.html">inline text signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0100"><a class="header" href="#sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0100">sign_image(path, *, out=None, robust=False, refuse_overwrite=False) — v0.10.0</a></h3>
+<h3 id="sign_imagepath--outnone-robustfalse-refuse_overwritefalse"><a class="header" href="#sign_imagepath--outnone-robustfalse-refuse_overwritefalse">sign_image(path, *, out=None, robust=False, refuse_overwrite=False)</a></h3>
 <p>Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -367,7 +367,7 @@ except MissingSignatureError:
 <pre><code class="language-python">jacs.sign_image("photo.png", out="signed.png")
 </code></pre>
 <hr />
-<h3 id="verify_imagepath--strictfalse-key_dirnone--v0100"><a class="header" href="#verify_imagepath--strictfalse-key_dirnone--v0100">verify_image(path, *, strict=False, key_dir=None) — v0.10.0</a></h3>
+<h3 id="verify_imagepath--strictfalse-key_dirnone"><a class="header" href="#verify_imagepath--strictfalse-key_dirnone">verify_image(path, *, strict=False, key_dir=None)</a></h3>
 <p>Verify the embedded signature on an image. Same permissive / strict model as <code>verify_text</code>.</p>
 <p><strong>Parameters:</strong> as for <code>verify_text</code>.</p>
 <p><strong>Returns:</strong> <code>VerifyImageResult</code> — <code>.status</code> is <code>'valid' | 'invalid' | 'missing_signature'</code>; <code>.signer_id</code>, <code>.signed_at</code>, <code>.algorithm</code> populated when valid.</p>
@@ -376,7 +376,7 @@ print(v.status)  # 'valid'
 </code></pre>
 <p>See the <a href="../guides/media-signing.html">media signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="extract_media_signaturepath--raw_payloadfalse--v0100"><a class="header" href="#extract_media_signaturepath--raw_payloadfalse--v0100">extract_media_signature(path, *, raw_payload=False) — v0.10.0</a></h3>
+<h3 id="extract_media_signaturepath--raw_payloadfalse"><a class="header" href="#extract_media_signaturepath--raw_payloadfalse">extract_media_signature(path, *, raw_payload=False)</a></h3>
 <p>Extract the embedded signature payload <strong>without verifying</strong> it.</p>
 <p><strong>Parameters:</strong></p>
 <ul>

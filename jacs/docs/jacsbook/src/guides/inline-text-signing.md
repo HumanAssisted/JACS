@@ -37,7 +37,7 @@ Multi-signer files contain multiple back-to-back blocks. The signers are unorder
 
 | Field | What it is |
 |-------|-----------|
-| `signatureBlockVersion` | Always `1` for v0.10.0. Versioning the block lets the format evolve without breaking older verifiers. |
+| `signatureBlockVersion` | Always `1`. Versioning the block lets the format evolve without breaking older verifiers. |
 | `algorithm` | Signing algorithm in use (`ed25519`, `pq2025`, etc.) — read from the agent's key metadata. |
 | `hashAlgorithm` | Hash used for the canonical pre-image (currently `sha256`). |
 | `canonicalization` | Tag identifying how the bytes are normalised before hashing (currently `jacs-text-v1`). |
@@ -127,7 +127,7 @@ Resolution order: self → `--key-dir` (when provided) → local trust store →
 2. **Use a zero-width space prefix** — the literal string differs by one byte.
 3. **Use inline emphasis** — wrap the marker in backticks or asterisks.
 
-There is intentionally **no** `--force-overwrite-markers` escape hatch in v0.10.0. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.
+There is intentionally **no** `--force-overwrite-markers` escape hatch. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.
 
 ## Caps and rejected inputs
 

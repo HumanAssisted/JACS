@@ -216,7 +216,7 @@ Verify a signed document **without** loading an agent. Use when you only need to
 
 ---
 
-### sign_text(path) — v0.10.0
+### sign_text(path)
 
 Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered.
 
@@ -232,7 +232,7 @@ jacs.sign_text("README.md")
 
 ---
 
-### verify_text(path, *, strict=False, key_dir=None) — v0.10.0
+### verify_text(path, *, strict=False, key_dir=None)
 
 Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.
 
@@ -258,7 +258,7 @@ See the [inline text signing guide](../guides/inline-text-signing.md) for the fu
 
 ---
 
-### sign_image(path, *, out=None, robust=False, refuse_overwrite=False) — v0.10.0
+### sign_image(path, *, out=None, robust=False, refuse_overwrite=False)
 
 Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).
 
@@ -276,7 +276,7 @@ jacs.sign_image("photo.png", out="signed.png")
 
 ---
 
-### verify_image(path, *, strict=False, key_dir=None) — v0.10.0
+### verify_image(path, *, strict=False, key_dir=None)
 
 Verify the embedded signature on an image. Same permissive / strict model as `verify_text`.
 
@@ -293,7 +293,7 @@ See the [media signing guide](../guides/media-signing.md) for the full feature s
 
 ---
 
-### extract_media_signature(path, *, raw_payload=False) — v0.10.0
+### extract_media_signature(path, *, raw_payload=False)
 
 Extract the embedded signature payload **without verifying** it.
 

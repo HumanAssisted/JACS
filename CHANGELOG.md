@@ -12,6 +12,12 @@
 
 - Local Rust publish targets now publish `jacs-media` before dependent crates, matching CI.
 
+### Documentation
+
+- Refreshed the repo, crate, CLI, Python, Node, and jacsbook landing docs around JACS as an open source provenance layer for agents and artifacts.
+- Simplified quickstart and use-case guidance, removed stale release-note framing, and made `jacs mcp` the canonical user-facing MCP server path.
+- Expanded visible docs to emphasize JSON/files, Markdown/text, images, and Rust email signing while keeping HAI.AI positioned as the hosted platform path for verified documents and agent behavior.
+
 ## 0.10.0
 
 ### New

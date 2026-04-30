@@ -201,7 +201,7 @@ signature: 9XsrVQ8...base64url...
 <p>Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes <em>before</em> the first block) is preserved byte-for-byte.</p>
 <h3 id="field-reference"><a class="header" href="#field-reference">Field reference</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>What it is</th></tr></thead><tbody>
-<tr><td><code>signatureBlockVersion</code></td><td>Always <code>1</code> for v0.10.0. Versioning the block lets the format evolve without breaking older verifiers.</td></tr>
+<tr><td><code>signatureBlockVersion</code></td><td>Always <code>1</code>. Versioning the block lets the format evolve without breaking older verifiers.</td></tr>
 <tr><td><code>algorithm</code></td><td>Signing algorithm in use (<code>ed25519</code>, <code>pq2025</code>, etc.) — read from the agent's key metadata.</td></tr>
 <tr><td><code>hashAlgorithm</code></td><td>Hash used for the canonical pre-image (currently <code>sha256</code>).</td></tr>
 <tr><td><code>canonicalization</code></td><td>Tag identifying how the bytes are normalised before hashing (currently <code>jacs-text-v1</code>).</td></tr>
@@ -272,7 +272,7 @@ signature: ...
 <li><strong>Use a zero-width space prefix</strong> — the literal string differs by one byte.</li>
 <li><strong>Use inline emphasis</strong> — wrap the marker in backticks or asterisks.</li>
 </ol>
-<p>There is intentionally <strong>no</strong> <code>--force-overwrite-markers</code> escape hatch in v0.10.0. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.</p>
+<p>There is intentionally <strong>no</strong> <code>--force-overwrite-markers</code> escape hatch. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.</p>
 <h2 id="caps-and-rejected-inputs"><a class="header" href="#caps-and-rejected-inputs">Caps and rejected inputs</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Limit</th><th>Cause failure</th></tr></thead><tbody>
 <tr><td>Block body &gt; 16 KiB</td><td><code>Err(ErrorKind::PayloadTooLarge)</code> (Rust) / equivalents in bindings</td></tr>

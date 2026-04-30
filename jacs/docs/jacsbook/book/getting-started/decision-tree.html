@@ -175,35 +175,35 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="which-jacs-path-should-i-use"><a class="header" href="#which-jacs-path-should-i-use">Which JACS Path Should I Use?</a></h1>
-<p>Choose the smallest supported integration that matches your deployment.</p>
+<p>Choose the smallest supported integration that matches the boundary you need to secure.</p>
 <h2 id="start-here"><a class="header" href="#start-here">Start Here</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>If you need...</th><th>Start here</th><th>Why</th></tr></thead><tbody>
-<tr><td>Signed tool outputs inside <strong>LangChain / LangGraph</strong> on Python</td><td><a href="../python/adapters.html">Python Framework Adapters</a></td><td>Smallest path: sign tool results without adding MCP</td></tr>
-<tr><td>Signed tool outputs inside <strong>LangChain.js / LangGraph</strong> on Node</td><td><a href="../nodejs/langchain.html">Node.js LangChain.js</a></td><td>Same idea for TypeScript</td></tr>
-<tr><td>A ready-made <strong>local MCP server</strong> for Claude, Codex, or another MCP client</td><td><a href="../integrations/mcp.html">MCP Overview</a> and <code>jacs-mcp</code></td><td>Fastest full server path</td></tr>
-<tr><td>To secure your <strong>existing MCP server/client code</strong></td><td><a href="../python/mcp.html">Python MCP</a> or <a href="../nodejs/mcp.html">Node.js MCP</a></td><td>Use wrappers or transport proxies around code you already have</td></tr>
-<tr><td>Cross-organization agent discovery and signed artifact exchange</td><td><a href="../integrations/a2a.html">A2A Interoperability</a></td><td>MCP is not enough for this boundary</td></tr>
-<tr><td>Signed HTTP APIs without adopting MCP</td><td><a href="../python/adapters.html">Python Framework Adapters</a>, <a href="../nodejs/express.html">Express</a>, <a href="../nodejs/koa.html">Koa</a></td><td>Sign requests or responses at the web layer</td></tr>
-<tr><td>Multi-party approval or quorum workflows</td><td><a href="multi-agent-agreement.html">Multi-Agent Agreements</a></td><td>Agreements are the right primitive, not just one-off signatures</td></tr>
-<tr><td>Direct signing from scripts, jobs, or services</td><td><a href="quick-start.html">Quick Start</a>, <a href="../python/basic-usage.html">Python Basic Usage</a>, <a href="../nodejs/basic-usage.html">Node Basic Usage</a>, <a href="../go/installation.html">Go Installation</a></td><td>Start from sign/verify before adding framework layers</td></tr>
-<tr><td>Sign a markdown file in place so a reader sees the content and signature together</td><td><a href="../guides/inline-text-signing.html">Inline Text Signatures</a></td><td>Signature appended in a YAML-bodied block at the end of the file; renders as markdown on GitHub</td></tr>
-<tr><td>Attach a tamper-evident provenance signature to a photo or AI-generated image</td><td><a href="../guides/media-signing.html">Image and Media Signatures</a></td><td>Signature embedded in PNG iTXt / JPEG APP11 / WebP XMP; no sidecar JSON</td></tr>
+<tr><td>Sign and verify JSON, files, or one-off artifacts</td><td><a href="quick-start.html">Quick Start</a></td><td>Establish the agent identity and trust model first.</td></tr>
+<tr><td>A ready-made local MCP server for Claude, Codex, or another MCP client</td><td><a href="../integrations/mcp.html">MCP Overview</a> and <code>jacs mcp</code></td><td>Fastest full server path; stdio only, no HTTP port.</td></tr>
+<tr><td>Signed tool outputs inside LangChain / LangGraph on Python</td><td><a href="../python/adapters.html">Python Framework Adapters</a></td><td>Add provenance without changing the rest of the app.</td></tr>
+<tr><td>Signed tool outputs inside LangChain.js / LangGraph on Node</td><td><a href="../nodejs/langchain.html">Node.js LangChain.js</a></td><td>Same pattern for TypeScript.</td></tr>
+<tr><td>Secure existing MCP server/client code</td><td><a href="../python/mcp.html">Python MCP</a> or <a href="../nodejs/mcp.html">Node.js MCP</a></td><td>Wrap the transport or register JACS tools.</td></tr>
+<tr><td>Sign Markdown or text in place</td><td><a href="../guides/inline-text-signing.html">Inline Text Signatures</a></td><td>Signature stays with the readable file; supports multi-signer review.</td></tr>
+<tr><td>Attach provenance to PNG, JPEG, or WebP images</td><td><a href="../guides/media-signing.html">Image and Media Signatures</a></td><td>Signature is embedded in the image; no sidecar JSON.</td></tr>
+<tr><td>Sign and verify raw email</td><td><a href="../guides/email-signing.html">Email Signing and Verification</a></td><td>Rust API for <code>.eml</code> messages with field-level content hashes.</td></tr>
+<tr><td>Cross-organization agent discovery and artifact exchange</td><td><a href="../integrations/a2a.html">A2A Interoperability</a></td><td>Use A2A for agent-to-agent boundaries.</td></tr>
+<tr><td>Multi-party approval or quorum workflows</td><td><a href="multi-agent-agreement.html">Multi-Agent Agreements</a></td><td>Agreements are the right primitive for sign-off.</td></tr>
 </tbody></table>
 </div>
 <h2 id="when-you-probably-do-not-need-jacs"><a class="header" href="#when-you-probably-do-not-need-jacs">When You Probably Do Not Need JACS</a></h2>
 <ul>
-<li>Everything stays inside one service you control and your own logs are enough</li>
-<li>You only need integrity, not signer identity or third-party verification</li>
-<li>A plain checksum or database audit log already satisfies the requirement</li>
+<li>Everything stays inside one service you control and logs are enough.</li>
+<li>You only need integrity, not signer identity or third-party verification.</li>
+<li>A plain checksum or database audit log already satisfies the requirement.</li>
 </ul>
 <h2 id="recommended-adoption-order"><a class="header" href="#recommended-adoption-order">Recommended Adoption Order</a></h2>
 <ol>
-<li><strong>Prototype</strong> with quickstart and simple sign/verify calls.</li>
-<li><strong>Attach provenance</strong> at the boundary that already exists in your system: LangChain tool, FastAPI response, MCP call, or A2A artifact.</li>
-<li><strong>Add trust policy</strong> only when other agents or organizations enter the picture.</li>
-<li><strong>Add agreements, DNS, or attestations</strong> only if your deployment actually needs them.</li>
+<li>Prototype with quickstart and simple sign/verify calls.</li>
+<li>Attach provenance at the boundary that already exists: file, API response, framework tool, MCP call, image, email, or A2A artifact.</li>
+<li>Add trust policy when other agents, services, or organizations enter the workflow.</li>
+<li>Add agreements, DNS, or attestations only when the deployment needs them.</li>
 </ol>
-<p>The mistake to avoid is starting with the broadest story. Start with the boundary you need to secure now.</p>
+<p>Start with the boundary you need to secure now.</p>
 
                     </main>
 

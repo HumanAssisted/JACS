@@ -1,6 +1,6 @@
 # jacs-cli
 
-CLI and MCP server for JACS — cryptographic identity, signing, and verification for AI agents.
+CLI and built-in MCP server for JACS: cryptographic identity, signing, and verification for agents and artifacts.
 
 ```bash
 cargo install jacs-cli
@@ -13,7 +13,7 @@ brew tap HumanAssisted/homebrew-jacs
 brew install jacs
 ```
 
-This installs the `jacs` binary with CLI and MCP server built in.
+This installs the `jacs` binary with the CLI and stdio MCP server built in.
 
 ## Quick start
 
@@ -25,58 +25,52 @@ jacs document create -f mydata.json
 jacs verify signed-document.json
 ```
 
-## What's new in 0.10.0 — provenance commands
+## Provenance commands
 
-*Why this matters:* shared markdown reviewed by multiple agents and signed images for AI-era provenance now have first-class CLI support — the signature lives inside the artifact, no sidecar JSON required.
-
-### `jacs sign-text` / `jacs verify-text` (inline text signatures)
+### JSON and files
 
 ```bash
-# Sign a markdown file — content preserved byte-for-byte, YAML-bodied JACS
-# signature block appended at the end.
+jacs document create -f mydata.json
+jacs verify signed-document.json
+```
+
+### Markdown and text
+
+```bash
+# Append a YAML-bodied JACS signature block at the end of the file.
 jacs sign-text README.md
 
-# A second agent counter-signs (multi-signer is unordered)
-jacs sign-text README.md  # (run as a different agent)
+# Another agent can counter-sign the same content.
+jacs sign-text README.md
 
-# Verify per-signer (permissive — missing-sig is exit 2, not an error)
+# Permissive verify: 0 valid, 1 invalid, 2 missing signature.
 jacs verify-text README.md
-# - agent-abc123 (ed25519)   valid
-# - agent-def456 (pq2025)    valid
 
-# Strict mode — missing signature exits 1 instead of 2
+# Strict mode treats a missing signature as failure.
 jacs verify-text --strict README.md
-# stderr: "no JACS signature found"
 
-# Override trust store with a directory of <signer_id>.public.pem files
+# Override trust store with <signer_id>.public.pem files.
 jacs verify-text README.md --key-dir ./trusted-keys/
 ```
 
-**Exit codes** — permissive verify: `0` valid, `1` invalid signature, `2` missing signature. Strict verify collapses `2` into `1`.
-
-### `jacs sign-image` / `jacs verify-image` / `jacs extract-media-signature`
+### Images
 
 ```bash
-# Embed signature in PNG iTXt / JPEG APP11 / WebP XMP
+# Embed signature in PNG iTXt, JPEG APP11, or WebP XMP.
 jacs sign-image photo.png --out signed.png
 
-# Refuse to overwrite an existing signature (default is overwrite)
+# Refuse to overwrite an existing image signature.
 jacs sign-image photo.png --out signed.png --refuse-overwrite
 
-# Verify (permissive)
 jacs verify-image signed.png
-
-# Strict verify — missing signature exits 1
 jacs verify-image --strict signed.png
 
-# Extract the embedded payload (decoded JSON by default)
+# Extract the embedded payload; this does not verify it.
 jacs extract-media-signature signed.png
-
-# Wire form (base64url)
 jacs extract-media-signature signed.png --raw-payload
 ```
 
-A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
+JACS proves that an agent signed specific canonical bytes at its claimed time. It does not prove first creation or legal ownership.
 
 ## MCP server
 
@@ -84,9 +78,9 @@ A JACS inline signature proves "agent X signed these canonical bytes at their cl
 jacs mcp
 ```
 
-The MCP server uses **stdio transport only** — no HTTP endpoints. This is deliberate: the server holds the agent's private key, so it runs as a subprocess of your MCP client. No ports are opened.
+The MCP server uses stdio transport only. It runs as a subprocess of your MCP client, holds the private key locally, and opens no HTTP port.
 
-Configure in your MCP client (Claude Desktop, Cursor, Claude Code, etc.):
+Configure in your MCP client:
 
 ```json
 {
@@ -114,6 +108,6 @@ jacs mcp
 - [Quick Start Guide](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 - [CLI Command Reference](https://humanassisted.github.io/JACS/rust/cli.html)
 - [MCP Integration](https://humanassisted.github.io/JACS/integrations/mcp.html)
-- [JACS on crates.io](https://crates.io/crates/jacs)
+- [JACS on crates.io](https://crates.io/crates/jacs-cli)
 
-v0.10.1 | [Apache 2.0 with Common Clause](../LICENSE)
+v0.10.1 | [Apache-2.0](../LICENSE-APACHE)

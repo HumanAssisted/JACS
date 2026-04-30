@@ -175,438 +175,96 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>Get signing and verifying in under a minute. No manual setup needed.</p>
-<h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
-<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.</p>
-<h3 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h3>
-<p>Rust CLI quickstart requires a password source. Choose one:</p>
-<pre><code class="language-bash"># Option A: Environment variable (recommended for CI/servers)
-export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
-
-# Option B: OS keychain (recommended for developer workstations)
-jacs keychain set --agent-id &lt;YOUR_AGENT_UUID&gt;   # prompts once, then JACS finds the password automatically
-
-# Option C: Password file (CLI convenience)
-export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+<p>Get a persistent agent identity, sign data, and verify it.</p>
+<h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
+<p>Install the unified CLI/MCP binary:</p>
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
-<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity. The OS keychain is the lowest-priority source and is only consulted when neither env var nor password file is set.</p>
-<p>Python/Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. Set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want the generated password persisted to <code>./jacs_keys/.jacs_password</code>. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.
-One call and you're signing.</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="tab-python" name="tab-group" checked>
-<label for="tab-python">Python</label>
-<div class="content">
+<p>Create or load an agent, then sign and verify a JSON file:</p>
+<pre><code class="language-bash">export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+jacs quickstart --name my-agent --domain my-agent.example.com
+jacs document create -f mydata.json
+jacs verify signed-document.json
+</code></pre>
+<p>Homebrew is also supported:</p>
+<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+</code></pre>
+<h2 id="python"><a class="header" href="#python">Python</a></h2>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
 <pre><code class="language-python">import jacs.simple as jacs
 
 info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
-print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="tab-nodejs" name="tab-group">
-<label for="tab-nodejs">Node.js</label>
-<div class="content">
+<h2 id="nodejs"><a class="header" href="#nodejs">Node.js</a></h2>
 <pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
-const info = await jacs.quickstart({
+await jacs.quickstart({
   name: 'my-agent',
   domain: 'my-agent.example.com',
 });
-console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
+
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 </code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="tab-rust" name="tab-group">
-<label for="tab-rust">Rust CLI</label>
-<div class="content">
-<pre><code class="language-bash">cargo install jacs-cli
+<h2 id="sign-markdown-or-text"><a class="header" href="#sign-markdown-or-text">Sign Markdown or text</a></h2>
+<pre><code class="language-bash">jacs sign-text README.md
+jacs verify-text README.md
+jacs verify-text --strict README.md
 </code></pre>
-<pre><code class="language-bash"># Info mode -- prints agent ID and algorithm
-jacs quickstart --name my-agent --domain my-agent.example.com
-
-# Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
-
-# Sign a file
-jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
+<p><code>sign-text</code> appends a <code>-----BEGIN JACS SIGNATURE-----</code> block at the end of the file. The original content remains readable and can be counter-signed by another agent.</p>
+<p>See <a href="../guides/inline-text-signing.html">Inline Text Signatures</a> for multi-signer flows, strict mode, and <code>--key-dir</code>.</p>
+<h2 id="sign-images"><a class="header" href="#sign-images">Sign images</a></h2>
+<pre><code class="language-bash">jacs sign-image photo.png --out signed.png
+jacs verify-image signed.png
+jacs extract-media-signature signed.png
 </code></pre>
-</div>
-</div>
-</div>
-<p>Pass <code>algorithm="ring-Ed25519"</code> (or <code>{ algorithm: 'ring-Ed25519' }</code> in JS, <code>--algorithm ring-Ed25519</code> in CLI) to override the default (<code>pq2025</code>).</p>
-<blockquote>
-<p><strong>That's it -- you're signing.</strong> For most use cases, the quick start above is all you need. Jump to <a href="../getting-started/decision-tree.html">Which integration should I use?</a> to find the right framework adapter, or read on for manual agent setup.</p>
-</blockquote>
-<h3 id="try-signing-a-markdown-file-v0100"><a class="header" href="#try-signing-a-markdown-file-v0100">Try signing a markdown file (v0.10.0)</a></h3>
-<pre><code class="language-bash">jacs sign-text README.md          # appends a YAML-bodied signature block at end of file
-jacs verify-text README.md        # permissive verify — exit 0 valid, exit 2 missing-sig, exit 1 invalid
+<p>JACS embeds the signature in PNG, JPEG, or WebP metadata. See <a href="../guides/media-signing.html">Image and Media Signatures</a> for overwrite policy, robust mode, and verification details.</p>
+<h2 id="start-the-mcp-server"><a class="header" href="#start-the-mcp-server">Start the MCP server</a></h2>
+<p>The MCP server is built into the <code>jacs</code> binary. It uses stdio transport only.</p>
+<pre><code class="language-bash">jacs mcp
 </code></pre>
-<p>The file content is preserved byte-for-byte; the signature lives in a <code>-----BEGIN JACS SIGNATURE-----</code> block at the end. See the <a href="../guides/inline-text-signing.html">Inline Text Signatures</a> guide for multi-signer flows, strict mode, and <code>--key-dir</code> overrides.</p>
-<h3 id="macos-homebrew-install-rust-cli"><a class="header" href="#macos-homebrew-install-rust-cli">macOS Homebrew install (Rust CLI)</a></h3>
-<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
-brew install jacs
-</code></pre>
-<h3 id="mcp-server-rust-cli"><a class="header" href="#mcp-server-rust-cli">MCP server (Rust CLI)</a></h3>
-<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
-<pre><code class="language-bash"># Start the MCP server (stdio transport)
-jacs mcp
-</code></pre>
-<h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
-<p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart(...)</code> already creates a persistent agent.</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="adv-rust" name="adv-group" checked>
-<label for="adv-rust">Rust CLI</label>
-<div class="content">
-<h3 id="install"><a class="header" href="#install">Install</a></h3>
-<pre><code class="language-bash">cargo install jacs-cli
-</code></pre>
-<h3 id="initialize"><a class="header" href="#initialize">Initialize</a></h3>
-<pre><code class="language-bash"># Create configuration and agent in one step
-jacs init
-
-# Or step by step:
-# 1. Create config
-jacs config create
-# 2. Create agent with keys
-jacs agent create --create-keys true
-# 3. Verify
-jacs agent verify
-</code></pre>
-<h3 id="sign-a-document"><a class="header" href="#sign-a-document">Sign a document</a></h3>
-<pre><code class="language-bash">jacs document create -f mydata.json
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="adv-nodejs" name="adv-group">
-<label for="adv-nodejs">Node.js</label>
-<div class="content">
-<h3 id="install-1"><a class="header" href="#install-1">Install</a></h3>
-<pre><code class="language-bash">npm install @hai.ai/jacs
-</code></pre>
-<h3 id="load-and-use"><a class="header" href="#load-and-use">Load and use</a></h3>
-<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-
-// Load from config file
-await jacs.load('./jacs.config.json');
-
-const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
-const result = await jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}`);
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="adv-python" name="adv-group">
-<label for="adv-python">Python</label>
-<div class="content">
-<h3 id="install-2"><a class="header" href="#install-2">Install</a></h3>
-<pre><code class="language-bash">pip install jacs
-</code></pre>
-<h3 id="load-and-use-1"><a class="header" href="#load-and-use-1">Load and use</a></h3>
-<pre><code class="language-python">import jacs.simple as jacs
-
-# Load from config file
-jacs.load("./jacs.config.json")
-
-signed = jacs.sign_message({"action": "approve", "amount": 100})
-result = jacs.verify(signed.raw)
-print(f"Valid: {result.valid}")
-</code></pre>
-</div>
-</div>
-</div>
-<h2 id="programmatic-agent-creation-v060"><a class="header" href="#programmatic-agent-creation-v060">Programmatic Agent Creation (v0.6.0+)</a></h2>
-<p>For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use <code>create()</code>. For most cases, <code>quickstart(...)</code> above is simpler and also creates a persistent agent.</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="prog-python" name="prog-group" checked>
-<label for="prog-python">Python</label>
-<div class="content">
-<pre><code class="language-python">import jacs.simple as jacs
-
-agent = jacs.create(
-    name="my-agent",
-    password="Str0ng-P@ssw0rd!",  # or set JACS_PRIVATE_KEY_PASSWORD
-    algorithm="pq2025",
-)
-print(f"Agent: {agent.agent_id}")
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="prog-nodejs" name="prog-group">
-<label for="prog-nodejs">Node.js</label>
-<div class="content">
-<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-
-const agent = await jacs.create({
-  name: 'my-agent',
-  password: process.env.JACS_PRIVATE_KEY_PASSWORD,
-  algorithm: 'pq2025',
-});
-console.log(`Agent: ${agent.agentId}`);
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="prog-go" name="prog-group">
-<label for="prog-go">Go</label>
-<div class="content">
-<pre><code class="language-go">info, err := jacs.Create("my-agent", &amp;jacs.CreateAgentOptions{
-    Password:  os.Getenv("JACS_PRIVATE_KEY_PASSWORD"),
-    Algorithm: "pq2025",
-})
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="prog-rust" name="prog-group">
-<label for="prog-rust">Rust</label>
-<div class="content">
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use jacs::simple::{CreateAgentParams, SimpleAgent};
-
-let params = CreateAgentParams {
-    name: "my-agent".into(),
-    password: std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap(),
-    algorithm: "pq2025".into(),
-    ..Default::default()
-};
-let (agent, info) = SimpleAgent::create_with_params(params)?;
-<span class="boring">}</span></code></pre></pre>
-</div>
-</div>
-</div>
-<p><strong>Password requirements</strong>: At least 8 characters, with uppercase, lowercase, a digit, and a special character.</p>
-<p><strong>Algorithm note</strong>: <code>pq-dilithium</code> is deprecated in v0.6.0. Use <code>pq2025</code> (ML-DSA-87, FIPS-204) instead.</p>
-<h2 id="understanding-what-happened"><a class="header" href="#understanding-what-happened">Understanding What Happened</a></h2>
-<p>When you completed the quick start, several important things occurred:</p>
-<h3 id="1-agent-creation"><a class="header" href="#1-agent-creation">1. <strong>Agent Creation</strong></a></h3>
-<ul>
-<li>A unique identity (UUID) was generated for your agent</li>
-<li>Cryptographic key pair was created for signing</li>
-<li>Agent document was created and self-signed</li>
-<li>Public key was stored for verification</li>
-</ul>
-<h3 id="2-configuration-setup"><a class="header" href="#2-configuration-setup">2. <strong>Configuration Setup</strong></a></h3>
-<ul>
-<li>Storage directories were configured</li>
-<li>Cryptographic algorithm was selected</li>
-<li>Agent identity was linked to configuration</li>
-</ul>
-<h3 id="3-task-creation"><a class="header" href="#3-task-creation">3. <strong>Task Creation</strong></a></h3>
-<ul>
-<li>Task document was structured according to JACS schema</li>
-<li>Document was signed with your agent's private key</li>
-<li>SHA-256 hash was calculated for integrity</li>
-<li>Signature metadata was embedded in the document</li>
-</ul>
-<h2 id="verify-everything-works"><a class="header" href="#verify-everything-works">Verify Everything Works</a></h2>
-<p>Let's verify that the documents are properly signed and can be validated:</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="verify-rust" name="verify-group" checked>
-<label for="verify-rust">🦀 Rust</label>
-<div class="content">
-<pre><code class="language-bash"># Verify agent signature
-jacs agent verify
-
-# Verify a specific document
-jacs document verify -f ./jacs_data/[document-id].json
-
-# Sign a document
-jacs document sign -f ./jacs_data/[document-id].json
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="verify-nodejs" name="verify-group">
-<label for="verify-nodejs">🟢 Node.js</label>
-<div class="content">
-<pre><code class="language-javascript">// Verify agent signature (async)
-const isValid = await agent.verifyAgent();
-console.log('Agent signature valid:', isValid);
-
-// Verify task signature
-const taskValid = await agent.verifyDocument(signedTask);
-console.log('Task signature valid:', taskValid);
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="verify-python" name="verify-group">
-<label for="verify-python">🐍 Python</label>
-<div class="content">
-<pre><code class="language-python"># Verify agent signature
-is_valid = agent.verify_agent()
-print(f'Agent signature valid: {is_valid}')
-
-# List all documents
-documents = agent.list_documents()
-print(f'Documents: {len(documents)}')
-
-# Verify task signature  
-task_valid = agent.verify_document(signed_task)
-print(f'Task signature valid: {task_valid}')
-
-# Get document details
-task_details = agent.get_document(signed_task["jacsId"])
-print(f'Task details: {task_details}')
-</code></pre>
-</div>
-</div>
-</div>
-<h2 id="next-steps-multi-agent-workflow"><a class="header" href="#next-steps-multi-agent-workflow">Next Steps: Multi-Agent Workflow</a></h2>
-<p>Now let's create a second agent and demonstrate inter-agent communication:</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="multi-rust" name="multi-group" checked>
-<label for="multi-rust">🦀 Rust</label>
-<div class="content">
-<pre><code class="language-bash"># Create a second agent configuration
-cp jacs.config.json reviewer.config.json
-# Edit reviewer.config.json to set jacs_agent_id_and_version to null
-
-# Create reviewer agent (uses JACS_CONFIG_PATH environment variable)
-JACS_CONFIG_PATH=./reviewer.config.json jacs agent create --create-keys true
-
-# Create an agreement on a document
-jacs agreement create -f ./document.json \
-  --agents [agent-1-id],[agent-2-id] \
-  --question "Do you agree to collaborate on this content task?"
-
-# Sign the agreement as first agent
-jacs agreement sign -f ./document.json
-
-# Sign as second agent (using reviewer config)
-JACS_CONFIG_PATH=./reviewer.config.json jacs agreement sign -f ./document.json
-
-# Verify agreement is complete
-jacs agreement check -f ./document.json
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="multi-nodejs" name="multi-group">
-<label for="multi-nodejs">🟢 Node.js</label>
-<div class="content">
-<pre><code class="language-javascript">// Create second agent with separate config file
-const reviewerConfig = { ...config };
-reviewerConfig.jacs_agent_id_and_version = null;
-
-fs.writeFileSync('./reviewer.config.json', JSON.stringify(reviewerConfig, null, 2));
-
-const reviewer = new JacsAgent();
-await reviewer.load('./reviewer.config.json');
-
-// Create agreement between agents
-const signedAgreement = await agent.createAgreement(
-  signedTask,
-  [agentDoc.jacsId, reviewerDoc.jacsId],
-  'Do you agree to collaborate on this content task?'
-);
-
-// Both agents sign the agreement
-const signed1 = await agent.signAgreement(signedAgreement);
-const signed2 = await reviewer.signAgreement(signed1);
-
-// Check agreement status
-const status = await agent.checkAgreement(signed2);
-console.log('Agreement status:', JSON.parse(status));
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="multi-python" name="multi-group">
-<label for="multi-python">🐍 Python</label>
-<div class="content">
-<pre><code class="language-python"># Create second agent with separate config file
-reviewer_config = config.copy()
-reviewer_config["jacs_agent_id_and_version"] = None
-
-with open('reviewer.config.json', 'w') as f:
-    json.dump(reviewer_config, f, indent=2)
-
-reviewer = jacs.JacsAgent()
-reviewer.load("./reviewer.config.json")
-reviewer.generate_keys()
-
-reviewer_doc = reviewer.create_agent({
-    "name": "Content Reviewer Bot", 
-    "description": "AI agent specialized in content review"
-})
-
-# Create agreement between agents
-agreement = {
-    "title": "Content Collaboration Agreement",
-    "question": "Do you agree to collaborate on this content task?",
-    "context": f"Task: {signed_task['jacsId']}",
-    "agents": [agent_doc["jacsId"], reviewer_doc["jacsId"]]
+<p>Example MCP client config:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp"]
+    }
+  }
 }
-
-signed_agreement = agent.create_agreement(agreement)
-
-# Both agents sign the agreement
-agent.sign_agreement(signed_agreement["jacsId"])
-reviewer.sign_agreement(signed_agreement["jacsId"])
-
-# Verify all signatures
-agreement_valid = agent.verify_agreement(signed_agreement["jacsId"])
-print(f'Agreement complete: {agreement_valid}')
 </code></pre>
-</div>
-</div>
-</div>
-<h2 id="what-youve-accomplished"><a class="header" href="#what-youve-accomplished">What You've Accomplished</a></h2>
-<p>Congratulations! You've successfully:</p>
-<p>✅ <strong>Created JACS agents</strong> with cryptographic identities
-✅ <strong>Generated and signed documents</strong> with verifiable integrity<br />
-✅ <strong>Established multi-agent agreements</strong> with cryptographic consent
-✅ <strong>Verified signatures</strong> and document authenticity
-✅ <strong>Created an audit trail</strong> of all interactions</p>
-<h2 id="key-takeaways"><a class="header" href="#key-takeaways">Key Takeaways</a></h2>
+<h2 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h2>
+<p>The Rust CLI needs a password source before it can sign:</p>
+<pre><code class="language-bash"># CI/server
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+# Developer workstation
+jacs keychain set --agent-id &lt;YOUR_AGENT_UUID&gt;
+
+# File-based secret
+export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+</code></pre>
+<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, the CLI fails fast to avoid ambiguity. The OS keychain is only consulted when neither environment source is set.</p>
+<p>Python and Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.</p>
+<h2 id="algorithm"><a class="header" href="#algorithm">Algorithm</a></h2>
+<p>The default signing algorithm is <code>pq2025</code> (ML-DSA-87 / FIPS-204). Use <code>ring-Ed25519</code> if you need a smaller classical signature:</p>
+<pre><code class="language-bash">jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>
-<li><strong>Everything is verifiable</strong>: All documents have cryptographic signatures</li>
-<li><strong>Agents are autonomous</strong>: Each has its own identity and keys</li>
-<li><strong>Agreements enable trust</strong>: Multi-party consent before proceeding</li>
-<li><strong>Audit trails are automatic</strong>: Complete history of all interactions</li>
-<li><strong>JSON is universal</strong>: Documents work everywhere</li>
+<li><a href="decision-tree.html">Which Integration?</a></li>
+<li><a href="verification.html">Verifying Signed Documents</a></li>
+<li><a href="../integrations/mcp.html">MCP Overview</a></li>
 </ul>
-<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to Go Next</a></h2>
-<p>Now that you have the basics working:</p>
-<ol>
-<li><strong><a href="verification.html">Verify Signed Documents</a></strong> - Verify any document from CLI, Python, or Node.js -- no agent required</li>
-<li><strong><a href="../guides/a2a-quickstart.html">A2A Quickstart</a></strong> - Make your agent discoverable by other A2A agents in minutes</li>
-<li><strong><a href="../python/adapters.html">Framework Adapters</a></strong> - Add auto-signing to LangChain, FastAPI, CrewAI, or Anthropic SDK in 1-3 lines</li>
-<li><strong><a href="../rust/agreements.html">Multi-Agent Agreements</a></strong> - Cross-trust-boundary verification with quorum and timeout</li>
-<li><strong><a href="../rust/library.html">Rust Deep Dive</a></strong> - Learn the full Rust API</li>
-<li><strong><a href="../nodejs/mcp.html">Node.js Integration</a></strong> - Add MCP support</li>
-<li><strong><a href="../python/mcp.html">Python MCP</a></strong> - Build authenticated MCP servers</li>
-<li><strong><a href="../advanced/security.html">Production Security</a></strong> - Harden runtime settings and key management</li>
-<li><strong><a href="../examples/integrations.html">Real Examples</a></strong> - See production patterns</li>
-</ol>
-<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
-<p><strong>Agent creation fails</strong>: Check that the data and key directories exist and are writable
-<strong>Signature verification fails</strong>: Ensure public keys are properly stored and accessible
-<strong>Agreement signing fails</strong>: Verify all agent IDs are correct and agents exist
-<strong>Documents not found</strong>: Check the data directory configuration</p>
-<p>Need help? Check the <a href="https://github.com/HumanAssisted/JACS/issues">GitHub issues</a> or review the detailed implementation guides.</p>
 
                     </main>
 

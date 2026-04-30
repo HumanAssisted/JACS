@@ -1,12 +1,12 @@
 # JACS for Node.js
 
-Cryptographic identity, signing, and verification for AI agents — from Node.js.
+Cryptographic identity, signing, and verification for AI agents from Node.js.
 
 ```bash
 npm install @hai.ai/jacs
 ```
 
-Prebuilt native bindings. No Rust compilation during install.
+Prebuilt native bindings are included. A normal install does not require compiling Rust.
 
 [Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
@@ -21,35 +21,34 @@ const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 ```
 
-All operations are async by default. Sync variants available with a `Sync` suffix (e.g. `signMessageSync`).
+All operations are async by default. Sync variants are available with a `Sync` suffix, for example `signMessageSync`.
 
 ## Core operations
 
 | Function | Description |
 |----------|-------------|
-| `quickstart(options)` | Create a persistent agent with keys — zero config |
-| `load(configPath)` | Load agent from config file |
-| `signMessage(data)` | Sign any JSON data |
+| `quickstart(options)` | Create or load a persistent agent |
+| `load(configPath)` | Load an agent from config |
+| `signMessage(data)` | Sign JSON data |
 | `signFile(path, embed)` | Sign a file |
-| `verify(doc)` | Verify signed document |
+| `verify(doc)` | Verify a signed document |
 | `verifyStandalone(doc, opts)` | Verify without loading an agent |
 | `audit()` | Run a security audit |
 
-## What's new in 0.10.0
+## Text and image provenance
 
-*Why this matters:* shared markdown that multiple agents review and counter-sign, plus signed images for AI-era provenance, are now first-class — the signature is embedded in the artifact, no sidecar JSON required.
+Node exposes the same inline text and image signing surface as the CLI:
 
 ```typescript
 import * as jacs from '@hai.ai/jacs/simple';
 
 await jacs.load('./jacs.config.json');
 
-// Text — permissive verify (default)
+// Markdown/text: append and verify an inline signature block.
 await jacs.signText('README.md');
-const result = await jacs.verifyText('README.md');
-console.log(result.status);  // 'signed' | 'missing_signature' | 'malformed'
+const text = await jacs.verifyText('README.md');
+console.log(text.status);  // 'signed' | 'missing_signature' | 'malformed'
 
-// Hard-fail if the file isn't signed — Promise rejects with MissingSignature error
 try {
   await jacs.verifyText('README.md', { strict: true });
 } catch (err) {
@@ -60,21 +59,17 @@ try {
   }
 }
 
-// Override trust store with a directory of <signer_id>.public.pem files
 await jacs.verifyText('README.md', { keyDir: './trusted-keys/' });
 
-// Images
+// Images: embed and verify a signature in PNG, JPEG, or WebP metadata.
 await jacs.signImage('photo.png', 'signed.png');
-const v = await jacs.verifyImage('signed.png');
-console.log(v.status);  // 'valid'
+const image = await jacs.verifyImage('signed.png');
+console.log(image.status);  // 'valid'
 
-// Extract the embedded provenance payload (decoded JSON by default)
 const payload = await jacs.extractMediaSignature('signed.png');
 ```
 
-The same five methods are available on the instance-based `JacsClient` for multi-agent processes. All operations return Promises (async-first since v0.7.0).
-
-A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
+The same methods are available on the instance-based `JacsClient` for multi-agent processes. These signatures prove that an agent signed specific canonical bytes at its claimed time; they do not prove first creation or legal ownership.
 
 ## Verify without an agent
 
@@ -84,11 +79,11 @@ import { verifyStandalone } from '@hai.ai/jacs/simple';
 const result = verifyStandalone(signedJson, { keyDirectory: './keys/' });
 ```
 
-Cross-language interop tested on every commit — documents signed in Rust or Python verify identically in Node.js.
+Cross-language interop is tested on every commit. Documents signed in Rust or Python verify in Node.js, and Node-signed documents verify in the other bindings.
 
 ## Framework adapters
 
-Adapters for Vercel AI SDK, Express, Koa, LangChain.js, and MCP. All framework dependencies are optional peer deps.
+Adapters for Vercel AI SDK, Express, Koa, LangChain.js, and MCP are available. Framework dependencies are optional peer dependencies.
 
 ## Instance-based API
 
@@ -101,7 +96,7 @@ const client = await JacsClient.quickstart({ name: 'my-agent', domain: 'example.
 const signed = await client.signMessage({ action: 'approve' });
 ```
 
-See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference, advanced usage (agreements, A2A, attestation, headless loading), framework adapter examples, and testing utilities.
+See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference, advanced usage, framework adapter examples, and testing utilities.
 
 ## Links
 
