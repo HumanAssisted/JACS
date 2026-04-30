@@ -49,10 +49,15 @@ fn internal_algorithm(friendly: &str) -> &str {
 
 const TEST_PASSWORD: &str = "TestP@ss123!#";
 
+fn temp_root(dir: &TempDir) -> std::path::PathBuf {
+    dir.path().canonicalize().expect("canonical temp dir")
+}
+
 fn persistent_agent_in(dir: &TempDir, algorithm: &str) -> (SimpleAgent, jacs::simple::AgentInfo) {
-    let data_dir = dir.path().join("jacs_data");
-    let key_dir = dir.path().join("jacs_keys");
-    let config_path = dir.path().join("jacs.config.json");
+    let root = temp_root(dir);
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     let params = CreateAgentParams::builder()
         .name("test-agent")
@@ -91,8 +96,9 @@ fn test_create_returns_agent_and_info() {
     // create() writes to CWD (./jacs_keys, ./jacs_data, ./jacs.config.json),
     // so we must run it from a temp directory to avoid polluting the repo.
     let tmp = TempDir::new().unwrap();
+    let root = temp_root(&tmp);
     let original_dir = std::env::current_dir().unwrap();
-    std::env::set_current_dir(tmp.path()).unwrap();
+    std::env::set_current_dir(&root).unwrap();
 
     // Set env vars that create() needs — it reads from env for key config
     unsafe {
@@ -119,15 +125,15 @@ fn test_create_returns_agent_and_info() {
 
     // create() should have written files in the temp directory
     assert!(
-        tmp.path().join("jacs_keys").exists(),
+        root.join("jacs_keys").exists(),
         "create() should create jacs_keys directory"
     );
     assert!(
-        tmp.path().join("jacs_data").exists(),
+        root.join("jacs_data").exists(),
         "create() should create jacs_data directory"
     );
     assert!(
-        tmp.path().join("jacs.config.json").exists(),
+        root.join("jacs.config.json").exists(),
         "create() should create jacs.config.json"
     );
 
@@ -148,9 +154,10 @@ fn test_create_returns_agent_and_info() {
 #[serial]
 fn test_create_with_params_respects_all_fields() {
     let tmp = TempDir::new().unwrap();
-    let data_dir = tmp.path().join("custom_data");
-    let key_dir = tmp.path().join("custom_keys");
-    let config_path = tmp.path().join("custom.config.json");
+    let root = temp_root(&tmp);
+    let data_dir = root.join("custom_data");
+    let key_dir = root.join("custom_keys");
+    let config_path = root.join("custom.config.json");
 
     let params = CreateAgentParams::builder()
         .name("params-test-agent")
@@ -197,10 +204,11 @@ fn test_create_with_params_refuses_dangling_symlink_config_path() {
     use std::os::unix::fs::symlink;
 
     let tmp = TempDir::new().unwrap();
-    let data_dir = tmp.path().join("data");
-    let key_dir = tmp.path().join("keys");
-    let config_path = tmp.path().join("jacs.config.json");
-    let outside_target = tmp.path().join("outside-created-by-symlink.json");
+    let root = temp_root(&tmp);
+    let data_dir = root.join("data");
+    let key_dir = root.join("keys");
+    let config_path = root.join("jacs.config.json");
+    let outside_target = root.join("outside-created-by-symlink.json");
     symlink(&outside_target, &config_path).expect("create dangling symlink");
 
     let params = CreateAgentParams::builder()
@@ -272,9 +280,10 @@ fn test_create_with_params_pq2025() {
 #[serial]
 fn test_load_roundtrips_with_create() {
     let tmp = TempDir::new().unwrap();
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let root = temp_root(&tmp);
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     let params = CreateAgentParams::builder()
         .name("load-roundtrip-agent")
