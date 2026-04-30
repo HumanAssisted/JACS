@@ -191,6 +191,47 @@ fn test_create_with_params_respects_all_fields() {
 }
 
 #[test]
+#[cfg(unix)]
+#[serial]
+fn test_create_with_params_refuses_dangling_symlink_config_path() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = TempDir::new().unwrap();
+    let data_dir = tmp.path().join("data");
+    let key_dir = tmp.path().join("keys");
+    let config_path = tmp.path().join("jacs.config.json");
+    let outside_target = tmp.path().join("outside-created-by-symlink.json");
+    symlink(&outside_target, &config_path).expect("create dangling symlink");
+
+    let params = CreateAgentParams::builder()
+        .name("symlink-config-agent")
+        .password(TEST_PASSWORD)
+        .algorithm(internal_algorithm("ed25519"))
+        .data_directory(data_dir.to_str().unwrap())
+        .key_directory(key_dir.to_str().unwrap())
+        .config_path(config_path.to_str().unwrap())
+        .build();
+
+    let result = SimpleAgent::create_with_params(params);
+
+    assert!(
+        result.is_err(),
+        "create_with_params must refuse to write through a config-path symlink"
+    );
+    assert!(
+        !outside_target.exists(),
+        "dangling symlink target must not be created"
+    );
+    assert!(
+        std::fs::symlink_metadata(&config_path)
+            .expect("symlink should remain")
+            .file_type()
+            .is_symlink(),
+        "the symlink itself should not be replaced"
+    );
+}
+
+#[test]
 #[serial]
 fn test_create_with_params_ed25519() {
     let tmp = TempDir::new().unwrap();

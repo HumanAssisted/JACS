@@ -1268,7 +1268,13 @@ impl Agent {
         let json_str = serde_json::to_string_pretty(&signed).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize repaired config: {}", e),
         })?;
-        std::fs::write(config_path, json_str).map_err(|e| JacsError::Internal {
+        crate::secure_io::write_atomic_replace_no_symlink(
+            config_path,
+            json_str.as_bytes(),
+            0o644,
+            true,
+        )
+        .map_err(|e| JacsError::Internal {
             message: format!(
                 "Failed to write repaired config to '{}': {}",
                 config_path, e

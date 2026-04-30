@@ -71,17 +71,19 @@ pub(crate) fn write_key_directory_ignore_files(key_dir: &Path) {
         *.key.enc\n";
 
     let gitignore_path = key_dir.join(".gitignore");
-    if !gitignore_path.exists() {
-        if let Err(e) = std::fs::write(&gitignore_path, ignore_content) {
-            warn!("Could not write {}: {}", gitignore_path.display(), e);
-        }
+    if let Err(e) =
+        crate::secure_io::write_new_file(&gitignore_path, ignore_content.as_bytes(), 0o644)
+        && e.kind() != std::io::ErrorKind::AlreadyExists
+    {
+        warn!("Could not write {}: {}", gitignore_path.display(), e);
     }
 
     let dockerignore_path = key_dir.join(".dockerignore");
-    if !dockerignore_path.exists() {
-        if let Err(e) = std::fs::write(&dockerignore_path, ignore_content) {
-            warn!("Could not write {}: {}", dockerignore_path.display(), e);
-        }
+    if let Err(e) =
+        crate::secure_io::write_new_file(&dockerignore_path, ignore_content.as_bytes(), 0o644)
+        && e.kind() != std::io::ErrorKind::AlreadyExists
+    {
+        warn!("Could not write {}: {}", dockerignore_path.display(), e);
     }
 }
 
@@ -586,13 +588,16 @@ impl SimpleAgent {
         // and only update the agent ID. Log differences between existing values
         // and params so the caller knows. If no config exists, create one fresh.
         let config_path = Path::new(&params.config_path);
-        let config_str = if config_path.exists() {
+        let config_entry_exists = std::fs::symlink_metadata(config_path).is_ok();
+        let config_str = if config_entry_exists {
             let existing_str =
-                fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
-                    message: format!(
-                        "Failed to read existing config '{}': {}",
-                        params.config_path, e
-                    ),
+                crate::secure_io::read_to_string_no_follow(config_path).map_err(|e| {
+                    JacsError::Internal {
+                        message: format!(
+                            "Failed to read existing config '{}': {}",
+                            params.config_path, e
+                        ),
+                    }
                 })?;
             let mut existing: serde_json::Value =
                 serde_json::from_str(&existing_str).map_err(|e| JacsError::Internal {
@@ -659,7 +664,13 @@ impl SimpleAgent {
                 serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                     message: format!("Failed to serialize updated config: {}", e),
                 })?;
-            fs::write(config_path, &updated_str).map_err(|e| JacsError::Internal {
+            crate::secure_io::write_atomic_replace_no_symlink(
+                config_path,
+                updated_str.as_bytes(),
+                0o644,
+                true,
+            )
+            .map_err(|e| JacsError::Internal {
                 message: format!("Failed to write config to '{}': {}", params.config_path, e),
             })?;
             info!(
@@ -717,9 +728,11 @@ impl SimpleAgent {
                     })?;
                 }
             }
-            fs::write(config_path, &new_str).map_err(|e| JacsError::Internal {
-                message: format!("Failed to write config to '{}': {}", params.config_path, e),
-            })?;
+            crate::secure_io::write_new_file(config_path, new_str.as_bytes(), 0o644).map_err(
+                |e| JacsError::Internal {
+                    message: format!("Failed to write config to '{}': {}", params.config_path, e),
+                },
+            )?;
             info!(
                 "Created new config '{}' for agent {}",
                 params.config_path, lookup_id

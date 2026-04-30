@@ -866,6 +866,67 @@ fn text_backup_rejects_symlink_target() {
     assert_eq!(target_after, b"original target");
 }
 
+#[test]
+fn text_backup_replaces_existing_hardlink_without_modifying_link_target() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("doc.md");
+    fs::write(&path, b"# Hardlink backup\n\nbody\n").unwrap();
+
+    // A hard link is reported as a normal file, so a pre-write symlink check
+    // is not enough. The backup writer must replace the .bak directory entry
+    // instead of truncating/writing through the existing inode.
+    let target = dir.path().join("external_target");
+    fs::write(&target, b"original target").unwrap();
+    let bak_path = dir.path().join("doc.md.bak");
+    fs::hard_link(&target, &bak_path).expect("hard link");
+
+    let outcome = sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default())
+        .expect("sign should succeed");
+
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        b"original target",
+        "backup write must not mutate the hard-link target"
+    );
+    assert_eq!(
+        outcome.backup_path.as_deref(),
+        Some(bak_path.to_str().unwrap())
+    );
+    assert_eq!(
+        fs::read(&bak_path).unwrap(),
+        b"# Hardlink backup\n\nbody\n",
+        "backup path should now contain the original document bytes"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn sign_text_file_rejects_symlink_input_before_reading() {
+    use std::os::unix::fs::symlink;
+
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().expect("tempdir");
+    let target = dir.path().join("secret.md");
+    fs::write(&target, b"# Secret\n\nbody\n").unwrap();
+    let link = dir.path().join("doc.md");
+    symlink(&target, &link).expect("symlink");
+
+    let result = sign_text_file(&agent, link.to_str().unwrap(), SignTextOptions::default());
+    assert!(result.is_err(), "expected refusal on symlink input");
+    let msg = format!("{}", result.unwrap_err());
+    assert!(
+        msg.contains("symlink") || msg.contains("Too many levels"),
+        "error must identify symlink refusal; got: {}",
+        msg
+    );
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        b"# Secret\n\nbody\n",
+        "symlink target must remain untouched"
+    );
+}
+
 // =============================================================================
 // DNS-published-key resolution (Wave 4 — soft-fail semantics)
 // =============================================================================

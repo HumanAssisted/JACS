@@ -11,7 +11,6 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
-use std::fs;
 use std::str::FromStr;
 use tracing::{error, info, warn};
 
@@ -912,7 +911,7 @@ impl Config {
     /// This is the recommended way to load a config file. For 12-Factor compliance,
     /// call `config.apply_env_overrides()` after loading, then `Agent::from_config(config, password)`.
     pub fn from_file(path: &str) -> Result<Config, JacsError> {
-        let json_str = fs::read_to_string(path).map_err(|e| {
+        let json_str = crate::secure_io::read_to_string_no_follow(path).map_err(|e| {
             let help = match e.kind() {
                 std::io::ErrorKind::NotFound => {
                     format!(
