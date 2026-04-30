@@ -3807,6 +3807,7 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MemoryListParams>,
     ) -> String {
+        tracing::info!(tool = "jacs_memory_list", "listing JACS memories");
         let keys = match self.agent.list_document_keys() {
             Ok(keys) => keys,
             Err(e) => {
@@ -3922,6 +3923,11 @@ impl JacsMcpServer {
             error: None,
         };
 
+        tracing::info!(
+            tool = "jacs_memory_list",
+            total = result.total,
+            "JACS memory list completed"
+        );
         let serialized =
             serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
         // Memory documents are always private by design.
@@ -3940,6 +3946,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MemoryForgetParams>,
     ) -> String {
+        tracing::info!(
+            tool = "jacs_memory_forget",
+            jacs_document_id = %params.jacs_id,
+            "forgetting JACS memory"
+        );
         let existing_doc_string = match self.agent.get_document_by_id(&params.jacs_id) {
             Ok(s) => s,
             Err(e) => {
@@ -4018,6 +4029,11 @@ impl JacsMcpServer {
                     ),
                     error: None,
                 };
+                tracing::info!(
+                    tool = "jacs_memory_forget",
+                    success = true,
+                    "JACS memory forget completed"
+                );
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
             Err(e) => {
@@ -4044,6 +4060,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MemoryUpdateParams>,
     ) -> String {
+        tracing::info!(
+            tool = "jacs_memory_update",
+            jacs_document_id = %params.jacs_id,
+            "updating JACS memory"
+        );
         let existing_doc_string = match self.agent.get_document_by_id(&params.jacs_id) {
             Ok(s) => s,
             Err(e) => {
@@ -4123,6 +4144,12 @@ impl JacsMcpServer {
                     message: format!("Memory '{}' updated successfully", params.jacs_id),
                     error: None,
                 };
+                tracing::info!(
+                    tool = "jacs_memory_update",
+                    success = true,
+                    jacs_document_id = result.jacs_document_id.as_deref().unwrap_or(""),
+                    "JACS memory update completed"
+                );
                 let serialized = serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|e| format!("Error: {}", e));
                 inject_meta(&serialized, None)

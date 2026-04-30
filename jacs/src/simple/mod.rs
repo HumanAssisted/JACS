@@ -863,9 +863,10 @@ mod tests {
     ) -> (SimpleAgent, AgentInfo, tempfile::TempDir, CwdGuard) {
         let saved_cwd = std::env::current_dir().expect("get cwd");
         let tmp = tempfile::tempdir().expect("create temp dir");
+        let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
 
         // Change CWD to temp dir so relative paths work
-        std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
+        std::env::set_current_dir(&tmp_root).expect("cd to temp dir");
         let guard = CwdGuard { saved: saved_cwd };
 
         let params = CreateAgentParams::builder()
@@ -899,7 +900,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
 
         let (agent, _info, tmp, guard) = create_persistent_test_agent("load-relative-root-test");
-        let config_path = tmp.path().join("jacs.config.json");
+        let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+        let config_path = tmp_root.join("jacs.config.json");
         drop(guard);
 
         let signed = agent
@@ -1013,14 +1015,15 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
 
         let (agent, _info, tmp, guard) = create_persistent_test_agent("mixed-dir-root-test");
-        let config_path = tmp.path().join("jacs.config.json");
+        let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+        let config_path = tmp_root.join("jacs.config.json");
 
         // Make key directory absolute while keeping data directory relative.
         let mut config_value: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&config_path).expect("read config"))
                 .expect("parse config json");
         config_value["jacs_key_directory"] =
-            serde_json::Value::String(tmp.path().join("jacs_keys").to_string_lossy().to_string());
+            serde_json::Value::String(tmp_root.join("jacs_keys").to_string_lossy().to_string());
         std::fs::write(
             &config_path,
             serde_json::to_string_pretty(&config_value).expect("serialize config"),
@@ -1061,7 +1064,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
 
         let (_agent, _info, tmp, guard) = create_persistent_test_agent("reject-parent-dir-test");
-        let config_path = tmp.path().join("jacs.config.json");
+        let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+        let config_path = tmp_root.join("jacs.config.json");
 
         let mut config_value: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&config_path).expect("read config"))
