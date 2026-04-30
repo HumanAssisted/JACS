@@ -205,9 +205,10 @@ mod trust_a2a_card_unverified {
     #[serial_test::serial]
     fn trust_a2a_card_accepts_valid_card() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
+        let trust_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
         // SAFETY: tests run serially
         unsafe {
-            std::env::set_var("JACS_TRUST_STORE_DIR", temp_dir.path().to_str().unwrap());
+            std::env::set_var("JACS_TRUST_STORE_DIR", trust_dir.to_str().unwrap());
         }
 
         let agent_id = "550e8400-e29b-41d4-a716-446655440000:660e8400-e29b-41d4-a716-446655440000";

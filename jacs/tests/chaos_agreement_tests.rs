@@ -9,9 +9,12 @@ use jacs::agent::agreement::{Agreement, AgreementOptions};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use serde_json::Value;
+use serial_test::serial;
 
 mod utils;
-use utils::{DOCTESTFILECONFIG, load_local_document, load_test_agent_one, load_test_agent_two};
+use utils::{
+    create_owned_config_fixture_document, load_test_agent_one_ed25519, load_test_agent_two_ed25519,
+};
 
 /// Helper: set up 2-agent agreement with options, both agents sign, return the
 /// fully-signed document key (from agent_two's perspective).
@@ -22,9 +25,7 @@ fn setup_fully_signed_agreement(
 ) -> (String, String) {
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(agent);
 
     let agreement_doc = agent
         .create_agreement_with_options(
@@ -66,16 +67,15 @@ fn setup_fully_signed_agreement(
 // ==========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_partial_agreement_reports_incomplete_with_details() {
     // MA-5a: 2-agent agreement, only agent 1 signs.
     // check_agreement should report which agents haven't signed.
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
 
     let agreement_doc = agent
         .create_agreement(
@@ -108,11 +108,12 @@ fn test_partial_agreement_reports_incomplete_with_details() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_partial_agreement_with_quorum_reports_count() {
     // MA-5a variant with quorum: 2-agent agreement, quorum=2, only 1 signs.
     // Error should include specific counts.
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -120,9 +121,7 @@ fn test_partial_agreement_with_quorum_reports_count() {
         ..Default::default()
     };
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
 
     let agreement_doc = agent
         .create_agreement_with_options(
@@ -169,6 +168,7 @@ fn test_partial_agreement_with_quorum_reports_count() {
 // ==========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_tampered_signature_identified() {
     // MA-5d: Both agents sign, then tamper with one signature.
     // check_agreement should fail on signature verification.
@@ -176,8 +176,8 @@ fn test_tampered_signature_identified() {
     // We use update_document to inject the tampered content (which recalculates
     // the doc-level SHA-256), so the document loads cleanly but the agreement
     // signature verification fails.
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let mut agent_two = load_test_agent_two_ed25519();
 
     let (signed_key, _) =
         setup_fully_signed_agreement(&mut agent, &mut agent_two, &AgreementOptions::default());
@@ -241,6 +241,7 @@ fn test_tampered_signature_identified() {
 // ==========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_tampered_body_detected_as_modification() {
     // MA-5e: Both agents sign, then modify the document body.
     // check_agreement should detect the body was modified (agreement hash mismatch),
@@ -248,8 +249,8 @@ fn test_tampered_body_detected_as_modification() {
     //
     // We use update_document to inject the tampered content (recalculates doc SHA-256),
     // so the document loads fine but the agreement hash no longer matches.
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let mut agent_two = load_test_agent_two_ed25519();
 
     let (signed_key, _) =
         setup_fully_signed_agreement(&mut agent, &mut agent_two, &AgreementOptions::default());
@@ -299,12 +300,13 @@ fn test_tampered_body_detected_as_modification() {
 // ==========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_sign_agreement_in_memory_without_save() {
     // MA-5c: Verify that sign_agreement updates in-memory state correctly
     // even if we never call save(). The document should be retrievable
     // from in-memory storage and retryable.
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -312,9 +314,7 @@ fn test_sign_agreement_in_memory_without_save() {
         ..Default::default()
     };
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
 
     let agreement_doc = agent
         .create_agreement_with_options(
@@ -352,7 +352,7 @@ fn test_sign_agreement_in_memory_without_save() {
     // Verify we can re-sign (retry scenario) — agent two signs
     // This proves the in-memory state is consistent enough for retry
     let signed_str = serde_json::to_string_pretty(&signed_doc.value).unwrap();
-    let mut agent_two_retry = load_test_agent_two();
+    let mut agent_two_retry = load_test_agent_two_ed25519();
     let _ = agent_two_retry.load_document(&signed_str).unwrap();
     let result =
         agent_two_retry.sign_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
@@ -368,6 +368,7 @@ fn test_sign_agreement_in_memory_without_save() {
 // ==========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_dns_key_unavailable_error_message() {
     // MA-5b: Verify that when a signer's public key can't be loaded,
     // the error message identifies which agent's key is missing.
@@ -377,8 +378,8 @@ fn test_dns_key_unavailable_error_message() {
     // Note: Full DNS testing requires network infrastructure. This test
     // validates the error message when a public key hash doesn't resolve
     // to a local file, which is the same code path as DNS failure fallback.
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let mut agent_two = load_test_agent_two_ed25519();
 
     let (signed_key, _) =
         setup_fully_signed_agreement(&mut agent, &mut agent_two, &AgreementOptions::default());

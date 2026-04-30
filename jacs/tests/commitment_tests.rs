@@ -9,9 +9,10 @@ use jacs::schema::commitment_crud::{
     set_todo_ref, update_commitment_dates, update_commitment_status,
 };
 use serde_json::json;
+use serial_test::serial;
 
 mod utils;
-use utils::{load_test_agent_one, load_test_agent_two};
+use utils::{load_test_agent_one_ed25519, load_test_agent_two_ed25519};
 
 // =============================================================================
 // Phase 1A: Schema Validation Tests (Steps 1-17)
@@ -20,6 +21,7 @@ use utils::{load_test_agent_one, load_test_agent_two};
 /// Step 1: Create a minimal commitment with just a description.
 /// Verify status defaults to "pending" and no references are required.
 #[test]
+#[serial(jacs_env)]
 fn test_create_minimal_commitment() {
     let doc = create_minimal_commitment("Deliver the quarterly report by Friday")
         .expect("Should create a minimal commitment");
@@ -53,6 +55,7 @@ fn test_create_minimal_commitment() {
 
 /// Step 2: Create a commitment with structured terms and verify they are preserved.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_with_terms() {
     let terms = json!({
         "deliverable": "Quarterly financial report",
@@ -86,6 +89,7 @@ fn test_commitment_with_terms() {
 
 /// Step 3: Create a commitment with start and end dates in date-time format.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_with_dates() {
     let mut doc = create_minimal_commitment("Time-bounded task").expect("Should create commitment");
 
@@ -112,6 +116,7 @@ fn test_commitment_with_dates() {
 /// the field is set and that schema validation would catch invalid formats
 /// when the document goes through the full signing pipeline.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_invalid_date_format() {
     let mut doc = create_minimal_commitment("Bad date test").expect("Should create commitment");
 
@@ -123,7 +128,7 @@ fn test_commitment_invalid_date_format() {
     assert_eq!(doc["jacsCommitmentStartDate"], "not-a-date");
 
     // Now test that the schema validator rejects this when header fields are present
-    let agent = load_test_agent_one();
+    let agent = load_test_agent_one_ed25519();
     let mut full_doc = doc.clone();
     full_doc["jacsId"] = json!("test-id");
     full_doc["jacsVersion"] = json!("test-version");
@@ -150,6 +155,7 @@ fn test_commitment_invalid_date_format() {
 
 /// Step 5: Create a commitment with question and answer fields.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_question_answer() {
     let mut doc = create_minimal_commitment("Q&A commitment").expect("Should create commitment");
 
@@ -170,6 +176,7 @@ fn test_commitment_question_answer() {
 
 /// Step 6: Create a commitment with completion question and answer fields.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_completion_question_answer() {
     let mut doc =
         create_minimal_commitment("Completion Q&A test").expect("Should create commitment");
@@ -191,6 +198,7 @@ fn test_commitment_completion_question_answer() {
 
 /// Step 7: Create a commitment with a recurrence pattern.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_recurrence() {
     let mut doc =
         create_minimal_commitment("Weekly standup commitment").expect("Should create commitment");
@@ -219,9 +227,10 @@ fn test_commitment_recurrence() {
 
 /// Step 8: Create a commitment with an agreement referencing two agent IDs.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_with_agreement() {
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
 
     let doc = create_minimal_commitment("Joint commitment between two agents")
         .expect("Should create commitment");
@@ -265,6 +274,7 @@ fn test_commitment_with_agreement() {
 
 /// Step 9: Create a commitment linked to a todo item via jacsCommitmentTodoRef.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_linked_to_todo_item() {
     let mut doc =
         create_minimal_commitment("Linked to todo item").expect("Should create commitment");
@@ -280,6 +290,7 @@ fn test_commitment_linked_to_todo_item() {
 
 /// Step 10: Create a commitment linked to a task via jacsCommitmentTaskId.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_linked_to_task() {
     let mut doc = create_minimal_commitment("Linked to task").expect("Should create commitment");
 
@@ -291,6 +302,7 @@ fn test_commitment_linked_to_task() {
 
 /// Step 11: Create a commitment referencing a conversation thread.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_references_conversation() {
     let mut doc =
         create_minimal_commitment("Born from conversation").expect("Should create commitment");
@@ -303,6 +315,7 @@ fn test_commitment_references_conversation() {
 
 /// Step 12: Test the full commitment status lifecycle through all 7 valid statuses.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_status_lifecycle() {
     let valid_statuses = [
         "pending",
@@ -329,6 +342,7 @@ fn test_commitment_status_lifecycle() {
 
 /// Step 13: Verify that an invalid status is rejected by the CRUD layer.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_invalid_status() {
     let mut doc =
         create_minimal_commitment("Invalid status test").expect("Should create commitment");
@@ -354,6 +368,7 @@ fn test_commitment_invalid_status() {
 
 /// Step 14: Test disputing a commitment with a reason.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_dispute() {
     let mut doc =
         create_minimal_commitment("Disputable commitment").expect("Should create commitment");
@@ -375,6 +390,7 @@ fn test_commitment_dispute() {
 
 /// Step 15: A commitment works with ONLY description and status, no other fields.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_standalone_without_refs() {
     let doc = create_minimal_commitment("Standalone commitment").expect("Should create commitment");
 
@@ -401,7 +417,7 @@ fn test_commitment_standalone_without_refs() {
     assert!(doc.get("jacsAgreement").is_none());
 
     // Load through the agent pipeline to verify it signs correctly
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let loaded = agent
         .create_document_and_load(&doc.to_string(), None, None)
         .expect("Standalone commitment should load through agent pipeline");
@@ -415,8 +431,9 @@ fn test_commitment_standalone_without_refs() {
 
 /// Step 16: Test that jacsCommitmentOwner can hold a single-agent signature reference.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_owner_signature() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let mut doc = create_minimal_commitment("Owned commitment").expect("Should create commitment");
 
@@ -448,8 +465,9 @@ fn test_commitment_owner_signature() {
 
 /// Step 17: Test that validate_commitment() accepts a valid commitment document.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_schema_validation() {
-    let agent = load_test_agent_one();
+    let agent = load_test_agent_one_ed25519();
 
     let mut doc =
         create_minimal_commitment("Schema validation test").expect("Should create commitment");
@@ -475,8 +493,9 @@ fn test_commitment_schema_validation() {
 
 /// Step 18: Full signing workflow: create, sign, verify.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_signing_workflow() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_commitment("Signing workflow test").expect("Should create commitment");
 
@@ -519,8 +538,9 @@ fn test_commitment_signing_workflow() {
 
 /// Step 19: Modify terms on a signed commitment, re-sign, and verify.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_resign_on_change() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let terms = json!({
         "deliverable": "Initial deliverable",
@@ -593,8 +613,9 @@ fn test_commitment_resign_on_change() {
 
 /// Step 20: Create 3 versions and verify all are independently verifiable.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_version_chain() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Version 1
     let doc = create_minimal_commitment("Version chain test").expect("Should create commitment");
@@ -675,8 +696,9 @@ fn test_commitment_version_chain() {
 
 /// Step 21: Tamper with a signed commitment document and verify detection.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_tamper_detection() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_commitment("Tamper detection test").expect("Should create commitment");
 
@@ -716,8 +738,9 @@ fn test_commitment_tamper_detection() {
 
 /// Step 22: Verify that all required JACS header fields are present after signing.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_header_fields_present() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let doc = create_minimal_commitment("Header fields test").expect("Should create commitment");
 

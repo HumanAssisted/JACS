@@ -4,18 +4,20 @@ use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::agreement::{Agreement, AgreementOptions, algorithm_strength};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
+use serial_test::serial;
 
 mod utils;
-use utils::{DOCTESTFILECONFIG, load_local_document, load_test_agent_one, load_test_agent_two};
+use utils::{
+    DOCTESTFILECONFIG, create_owned_config_fixture_document, load_local_document,
+    load_test_agent_one, load_test_agent_one_ed25519, load_test_agent_two_ed25519,
+};
 
 fn setup_agreement_doc(
     agent: &mut jacs::agent::Agent,
     agentids: &[String],
     options: &AgreementOptions,
 ) -> String {
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(agent);
     let agreement_doc = agent
         .create_agreement_with_options(
             &document_key,
@@ -34,6 +36,7 @@ fn setup_agreement_doc(
 // =========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_algorithm_strength_classification() {
     assert_eq!(algorithm_strength("ring-Ed25519"), "classical");
     assert_eq!(algorithm_strength("RSA-PSS"), "classical");
@@ -46,9 +49,10 @@ fn test_algorithm_strength_classification() {
 // =========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_timeout_future_allows_signing() {
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     // Timeout far in the future
@@ -65,6 +69,7 @@ fn test_timeout_future_allows_signing() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_timeout_expired_blocks_signing() {
     let mut agent = load_test_agent_one();
     let agentids = vec![agent.get_id().unwrap()];
@@ -96,8 +101,9 @@ fn test_timeout_expired_blocks_signing() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_timeout_expired_blocks_check() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     // Create with a future timeout, then we'll test check behavior
@@ -124,6 +130,7 @@ fn test_timeout_expired_blocks_check() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_invalid_timeout_format_rejected() {
     let mut agent = load_test_agent_one();
     let agentids = vec![agent.get_id().unwrap()];
@@ -152,9 +159,10 @@ fn test_invalid_timeout_format_rejected() {
 // =========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_quorum_met_with_partial_signatures() {
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     // Quorum of 1 out of 2
@@ -183,9 +191,10 @@ fn test_quorum_met_with_partial_signatures() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_quorum_not_met() {
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     // Quorum of 2 out of 2 (same as default, but explicit)
@@ -217,6 +226,7 @@ fn test_quorum_not_met() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_quorum_zero_rejected() {
     let mut agent = load_test_agent_one();
     let agentids = vec![agent.get_id().unwrap()];
@@ -241,6 +251,7 @@ fn test_quorum_zero_rejected() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_quorum_exceeds_agents_rejected() {
     let mut agent = load_test_agent_one();
     let agentids = vec![agent.get_id().unwrap()];
@@ -275,13 +286,14 @@ fn test_quorum_exceeds_agents_rejected() {
 // =========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_required_algorithms_allows_matching() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
-    // Agent one uses RSA-PSS (from fixture). Allow it.
+    // Agent one uses Ed25519 for signing. Allow it.
     let options = AgreementOptions {
-        required_algorithms: Some(vec!["RSA-PSS".to_string(), "ring-Ed25519".to_string()]),
+        required_algorithms: Some(vec!["ring-Ed25519".to_string()]),
         ..Default::default()
     };
 
@@ -299,11 +311,12 @@ fn test_required_algorithms_allows_matching() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_required_algorithms_blocks_non_matching() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
-    // Agent one uses RSA-PSS. Only allow pq2025.
+    // Agent one uses Ed25519. Only allow pq2025.
     let options = AgreementOptions {
         required_algorithms: Some(vec!["pq2025".to_string()]),
         ..Default::default()
@@ -323,8 +336,9 @@ fn test_required_algorithms_blocks_non_matching() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_minimum_strength_classical_accepts_all() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -334,7 +348,7 @@ fn test_minimum_strength_classical_accepts_all() {
 
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
-    // RSA-PSS is classical, should be accepted
+    // Ed25519 is classical, should be accepted
     let signed_doc = agent
         .sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()))
         .expect("sign should succeed with classical strength");
@@ -347,8 +361,9 @@ fn test_minimum_strength_classical_accepts_all() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_minimum_strength_post_quantum_blocks_classical() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -358,7 +373,7 @@ fn test_minimum_strength_post_quantum_blocks_classical() {
 
     let agreement_key = setup_agreement_doc(&mut agent, &agentids, &options);
 
-    // RSA-PSS is classical, post-quantum required → should fail
+    // Ed25519 is classical, post-quantum required -> should fail
     let result = agent.sign_agreement(&agreement_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));
     assert!(
         result.is_err(),
@@ -373,6 +388,7 @@ fn test_minimum_strength_post_quantum_blocks_classical() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_invalid_minimum_strength_rejected() {
     let mut agent = load_test_agent_one();
     let agentids = vec![agent.get_id().unwrap()];
@@ -404,9 +420,10 @@ fn test_invalid_minimum_strength_rejected() {
 // =========================================================================
 
 #[test]
+#[serial(jacs_env)]
 fn test_combined_quorum_and_timeout() {
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -433,10 +450,11 @@ fn test_combined_quorum_and_timeout() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_default_options_preserves_original_behavior() {
     // Default AgreementOptions should produce the exact same behavior as the original API
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let mut agent_two = load_test_agent_two_ed25519();
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
 
     let options = AgreementOptions::default();

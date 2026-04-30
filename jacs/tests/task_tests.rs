@@ -6,17 +6,22 @@ use jacs::schema::action_crud::create_minimal_action;
 use jacs::schema::message_crud::create_message;
 use jacs::schema::task_crud::{add_action_to_task, create_minimal_task};
 use serde_json::json;
+use serial_test::serial;
 
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use serde_json::Value;
 mod utils;
 use utils::DOCTESTFILE;
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two, raw_fixture};
+use utils::{
+    load_local_document, load_test_agent_one, load_test_agent_one_ed25519,
+    load_test_agent_two_ed25519, raw_fixture,
+};
 // use color_eyre::eyre::Result;
 use chrono::{Duration, Utc};
 
 #[test]
+#[serial(jacs_env)]
 fn test_hai_fields_custom_schema_and_custom_document() {
     // cargo test   --test task_tests test_hai_fields_custom_schema_and_custom_document -- --nocapture
     let mut agent = load_test_agent_one();
@@ -42,10 +47,11 @@ fn test_hai_fields_custom_schema_and_custom_document() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_create_task_with_actions() {
     // cargo test   --test task_tests test_create_task_with_actions -- --nocapture
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let mut agent_two = load_test_agent_two_ed25519();
     let mut actions: Vec<Value> = Vec::new();
     let start_in_a_week = Utc::now() + Duration::weeks(1);
     let action = create_minimal_action("go to mars", " how to go to mars", None, None);

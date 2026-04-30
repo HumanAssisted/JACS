@@ -5,9 +5,10 @@ use jacs::schema::todo_crud::{
     set_item_conversation_ref, set_item_tags, update_todo_item_status,
 };
 use serde_json::json;
+use serial_test::serial;
 
 mod utils;
-use utils::load_test_agent_one;
+use utils::load_test_agent_one_ed25519;
 
 // =============================================================================
 // Phase 1C: Schema / CRUD Tests (Steps 51-63)
@@ -16,6 +17,7 @@ use utils::load_test_agent_one;
 /// Step 51: Create a minimal todo list with an empty items array.
 /// Verify jacsType="todo" and jacsLevel="config".
 #[test]
+#[serial(jacs_env)]
 fn test_create_minimal_todo_list() {
     let doc =
         create_minimal_todo_list("My Active Work").expect("Should create a minimal todo list");
@@ -39,6 +41,7 @@ fn test_create_minimal_todo_list() {
 
 /// Step 52: Add a goal-type item to the todo list.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_with_goal_item() {
     let mut list = create_minimal_todo_list("Goals List").expect("Should create todo list");
 
@@ -60,6 +63,7 @@ fn test_todo_list_with_goal_item() {
 
 /// Step 53: Add a task-type item to the todo list.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_with_task_item() {
     let mut list = create_minimal_todo_list("Task List").expect("Should create todo list");
 
@@ -79,6 +83,7 @@ fn test_todo_list_with_task_item() {
 
 /// Step 54: Goal with childItemIds referencing task items.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_goal_with_child_tasks() {
     let mut list = create_minimal_todo_list("Goal with Children").expect("Should create todo list");
 
@@ -108,6 +113,7 @@ fn test_todo_goal_with_child_tasks() {
 
 /// Step 55: Verify all valid statuses: pending, in-progress, completed, abandoned.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_all_valid_statuses() {
     let valid_statuses = ["pending", "in-progress", "completed", "abandoned"];
 
@@ -132,6 +138,7 @@ fn test_todo_item_all_valid_statuses() {
 
 /// Step 56: Reject an invalid status value.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_invalid_status() {
     let mut list =
         create_minimal_todo_list("Invalid status test").expect("Should create todo list");
@@ -157,6 +164,7 @@ fn test_todo_item_invalid_status() {
 
 /// Step 57: Verify all valid priorities: low, medium, high, critical.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_all_priorities() {
     let valid_priorities = ["low", "medium", "high", "critical"];
 
@@ -184,6 +192,7 @@ fn test_todo_item_all_priorities() {
 
 /// Step 58: Item references a commitment via relatedCommitmentId.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_references_commitment() {
     let mut list =
         create_minimal_todo_list("Commitment ref test").expect("Should create todo list");
@@ -204,6 +213,7 @@ fn test_todo_item_references_commitment() {
 
 /// Step 59: Item with tags array.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_with_tags() {
     let mut list = create_minimal_todo_list("Tags test").expect("Should create todo list");
 
@@ -223,6 +233,7 @@ fn test_todo_item_with_tags() {
 
 /// Step 60: Item references a conversation thread.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_references_conversation() {
     let mut list =
         create_minimal_todo_list("Conversation ref test").expect("Should create todo list");
@@ -243,6 +254,7 @@ fn test_todo_item_references_conversation() {
 
 /// Step 61: Archive references on a todo list.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_archive_refs() {
     let mut list = create_minimal_todo_list("Archive ref test").expect("Should create todo list");
 
@@ -262,6 +274,7 @@ fn test_todo_list_archive_refs() {
 
 /// Step 62: Reject invalid item type.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_invalid_type() {
     let mut list = create_minimal_todo_list("Invalid type test").expect("Should create todo list");
 
@@ -281,6 +294,7 @@ fn test_todo_item_invalid_type() {
 
 /// Step 63: Reject empty description.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_empty_description() {
     let mut list = create_minimal_todo_list("Empty desc test").expect("Should create todo list");
 
@@ -297,8 +311,9 @@ fn test_todo_item_empty_description() {
 
 /// Step 64: Create a todo list, add items, sign via agent, and verify signature.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_signing_and_verification() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let mut list = create_minimal_todo_list("Signing test list").expect("Should create todo list");
 
@@ -356,8 +371,9 @@ fn test_todo_list_signing_and_verification() {
 
 /// Step 65: Modify item status, re-sign via update_document, and verify.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_update_and_resign() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let mut list = create_minimal_todo_list("Update test list").expect("Should create todo list");
 
@@ -431,8 +447,9 @@ fn test_todo_list_update_and_resign() {
 
 /// Step 66: Version chain: add item -> mark complete -> verify chain across 3 versions.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_versioning_on_update() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Version 1: empty list
     let list = create_minimal_todo_list("Version chain test").expect("Should create todo list");
@@ -533,6 +550,7 @@ fn test_todo_list_versioning_on_update() {
 
 /// Step 67: Archive workflow: add items, complete some, remove completed, add archive ref.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_archive_workflow() {
     let mut list =
         create_minimal_todo_list("Archive workflow test").expect("Should create todo list");
@@ -567,7 +585,7 @@ fn test_todo_list_archive_workflow() {
     assert_eq!(refs[0], archive_uuid);
 
     // Now sign the archived-state list through the agent
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let loaded = agent
         .create_document_and_load(&list.to_string(), None, None)
         .expect("Should sign archived todo list");
@@ -583,8 +601,9 @@ fn test_todo_list_archive_workflow() {
 
 /// Step 68: Agent creates 2 separate todo lists, both signed independently.
 #[test]
+#[serial(jacs_env)]
 fn test_multiple_todo_lists_per_agent() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // First list
     let mut list1 = create_minimal_todo_list("Work Items").expect("Should create first todo list");
@@ -648,8 +667,9 @@ fn test_multiple_todo_lists_per_agent() {
 
 /// Step 69: Verify all required header fields are present after signing.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_header_fields_present() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let mut list = create_minimal_todo_list("Header fields test").expect("Should create todo list");
     add_todo_item(&mut list, "task", "Verify headers", None).expect("Should add item");
@@ -706,8 +726,9 @@ fn test_todo_list_header_fields_present() {
 
 /// Step 70: Tamper with a signed todo list and verify detection.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_tamper_detection() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let mut list =
         create_minimal_todo_list("Tamper detection test").expect("Should create todo list");
@@ -744,8 +765,9 @@ fn test_todo_list_tamper_detection() {
 
 /// Step 71: validate_todo() accepts a valid todo document with header fields.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_list_schema_validation() {
-    let agent = load_test_agent_one();
+    let agent = load_test_agent_one_ed25519();
 
     let mut list =
         create_minimal_todo_list("Schema validation test").expect("Should create todo list");

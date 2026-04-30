@@ -3,23 +3,25 @@ use jacs::agent::agreement::Agreement;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use secrecy::ExposeSecret;
+use serial_test::serial;
 mod utils;
-use jacs::crypt::aes_encrypt::decrypt_private_key;
+use jacs::crypt::aes_encrypt::decrypt_private_key_secure;
 
-use utils::{DOCTESTFILECONFIG, load_local_document, load_test_agent_one, load_test_agent_two};
+use utils::{
+    create_owned_config_fixture_document, load_test_agent_one_ed25519, load_test_agent_two_ed25519,
+};
 
 #[test]
+#[serial(jacs_env)]
 fn test_create_agreement() {
     // cargo test   --test agreement_test -- --nocapture test_create_agreement
-    let mut agent = load_test_agent_one();
-    let agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let agent_two = load_test_agent_two_ed25519();
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     // agent one creates agreement document
     let unsigned_doc = agent
         .create_agreement(
@@ -54,16 +56,15 @@ fn test_create_agreement() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_add_and_remove_agents() {
     // cargo test   --test agreement_test -- --nocapture test_add_and_remove_agents
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agents_orig: Vec<String> = vec!["mariko".to_string(), "takeda".to_string()];
     let agents_to_add: Vec<String> = vec!["gaijin".to_string()];
     let agents_to_remove: Vec<String> = vec!["mariko".to_string()];
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     let doc_v1 = agent
         .create_agreement(
             &document_key,
@@ -127,18 +128,19 @@ fn test_add_and_remove_agents() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
     // cargo test   --test agreement_test -- --nocapture test_sign_agreement
-    let mut agent = load_test_agent_one();
-    let mut agent_two = load_test_agent_two();
+    let mut agent = load_test_agent_one_ed25519();
+    let mut agent_two = load_test_agent_two_ed25519();
 
     let a1k = agent.get_private_key().unwrap();
     let a2k = agent_two.get_private_key().unwrap();
     let borrowed_key = a1k.expose_secret();
-    let _ = decrypt_private_key(borrowed_key).expect("Failed to decrypt key");
+    let _ = decrypt_private_key_secure(borrowed_key).expect("Failed to decrypt key");
 
     let borrowed_key2 = a2k.expose_secret();
-    let _ = decrypt_private_key(borrowed_key2).expect("Failed to decrypt key 2");
+    let _ = decrypt_private_key_secure(borrowed_key2).expect("Failed to decrypt key 2");
 
     // println!(
     //     "public \n {:?}\n{:?}\nprivate\n{:?}\n{:?}",
@@ -152,9 +154,7 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     // agent one creates agreement document
     let unsigned_doc = agent
         .create_agreement(
