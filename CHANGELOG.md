@@ -2,6 +2,16 @@
 
 (unreleased)
 
+### Security
+
+- Hardened config, key, trust, rotation journal, text, and media file IO against symlink and hard-link write races.
+- Reworked `secure_io` on Unix to use opened parent-directory capabilities with fd-relative operations; strict JACS-owned state rejects parent symlinks by default.
+- Added a `secure_io` guard in pre-commit and CI for newly introduced raw filesystem writes/reads in sensitive modules.
+
+### Release
+
+- Local Rust publish targets now publish `jacs-media` before dependent crates, matching CI.
+
 ## 0.10.0
 
 ### New

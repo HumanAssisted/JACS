@@ -685,6 +685,15 @@ impl Config {
             .map_err(|e| JacsError::ConfigError(e.to_string()))
     }
 
+    /// Return the effective log level from the canonical observability config.
+    pub fn effective_log_level(&self) -> &str {
+        self.observability
+            .as_ref()
+            .map(|obs| obs.logs.level.as_str())
+            .filter(|level| !level.trim().is_empty())
+            .unwrap_or("info")
+    }
+
     /// Set the key algorithm in the in-memory config.
     ///
     /// Used during cross-algorithm key rotation to update the config's algorithm
@@ -1600,6 +1609,27 @@ mod tests {
     }
 
     #[test]
+    fn effective_log_level_defaults_to_info() {
+        let config = Config::with_defaults();
+        assert_eq!(config.effective_log_level(), "info");
+    }
+
+    #[test]
+    fn effective_log_level_reads_observability_logs_level() {
+        let config: Config = serde_json::from_str(
+            r#"{
+                "observability": {
+                    "logs": {
+                        "level": "debug"
+                    }
+                }
+            }"#,
+        )
+        .expect("parse config");
+        assert_eq!(config.effective_log_level(), "debug");
+    }
+
+    #[test]
     fn test_config_merge() {
         // This test doesn't use env vars, so no serial needed
         let mut base = Config::with_defaults();
@@ -2416,7 +2446,8 @@ mod tests {
         }"#;
         let tmp = tempfile::NamedTempFile::new().expect("temp file");
         std::fs::write(tmp.path(), json).expect("write");
-        let config = Config::from_file(tmp.path().to_str().unwrap()).expect("load");
+        let tmp_path = tmp.path().canonicalize().expect("canonical temp file");
+        let config = Config::from_file(tmp_path.to_str().unwrap()).expect("load");
         assert!(
             !config.is_signed,
             "unsigned config must report is_signed=false"
@@ -2436,7 +2467,8 @@ mod tests {
         }"#;
         let tmp = tempfile::NamedTempFile::new().expect("temp file");
         std::fs::write(tmp.path(), json).expect("write");
-        let config = Config::from_file(tmp.path().to_str().unwrap()).expect("load");
+        let tmp_path = tmp.path().canonicalize().expect("canonical temp file");
+        let config = Config::from_file(tmp_path.to_str().unwrap()).expect("load");
         assert!(config.is_signed, "signed config must report is_signed=true");
     }
 

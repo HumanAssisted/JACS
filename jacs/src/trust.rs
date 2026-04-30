@@ -851,6 +851,10 @@ mod tests {
             let original_home = env::var("HOME").ok();
 
             let temp_dir = TempDir::new().expect("Failed to create temp directory for test");
+            let temp_home = temp_dir
+                .path()
+                .canonicalize()
+                .expect("Failed to canonicalize temporary HOME for test");
 
             // SAFETY: `env::set_var` is unsafe in Rust 2024+ due to potential data races when
             // other threads read environment variables concurrently. This is safe here because:
@@ -861,7 +865,7 @@ mod tests {
             // If these invariants are violated (e.g., parallel test execution), undefined
             // behavior could occur from concurrent env access.
             unsafe {
-                env::set_var("HOME", temp_dir.path().to_str().unwrap());
+                env::set_var("HOME", temp_home.to_str().unwrap());
             }
 
             Self {

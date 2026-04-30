@@ -967,19 +967,14 @@ impl<'a> crate::inline::KeyResolver for DefaultKeyResolver<'a> {
             }
             let encoded = encode_signer_id_for_filename(signer_id);
             let candidate = dir.join(format!("{}.public.pem", encoded));
-            if candidate.exists() {
-                // Defence-in-depth: canonical-path check rejects symlink escapes.
-                if let (Ok(c_can), Ok(d_can)) = (
-                    std::fs::canonicalize(&candidate),
-                    std::fs::canonicalize(dir),
-                ) && !c_can.starts_with(&d_can)
-                {
-                    return None;
-                }
-                if let Ok(pem_bytes) = std::fs::read(&candidate) {
+            match crate::secure_io::read_no_follow_allow_resolved_parent(&candidate) {
+                Ok(pem_bytes) => {
                     return resolved_from_pem_or_raw(&pem_bytes);
                 }
-                // File exists but unreadable — fall through to trust store.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => {
+                    // File exists but unreadable or unsafe — fall through to trust store.
+                }
             }
             // Not in key_dir — fall through (key_dir is additive per PRD §4.1.5).
         }
@@ -1246,7 +1241,7 @@ pub(crate) fn write_backup_or_err(
     // "overwrite existing .bak" contract without writing through a hard link
     // or a symlink swapped in after the preflight check.
     let effective_mode = mode.unwrap_or(0o600);
-    crate::secure_io::write_atomic_replace_no_symlink(
+    crate::secure_io::write_atomic_replace_no_symlink_allow_resolved_parent(
         backup_path,
         src_bytes,
         effective_mode,
@@ -1276,15 +1271,13 @@ pub fn sign_text_file(
     path: &str,
     opts: SignTextOptions,
 ) -> Result<SignTextOutcome, JacsError> {
-    use std::io::Write;
-
-    let path_obj = std::path::Path::new(path);
-    let original = crate::secure_io::read_to_string_no_follow(path).map_err(|e| {
-        JacsError::FileReadFailed {
-            path: path.to_string(),
-            reason: e.to_string(),
-        }
-    })?;
+    let original =
+        crate::secure_io::read_to_string_no_follow_allow_resolved_parent(path).map_err(|e| {
+            JacsError::FileReadFailed {
+                path: path.to_string(),
+                reason: e.to_string(),
+            }
+        })?;
 
     let new_content = crate::inline::sign_inline(&original, agent)?;
 
@@ -1310,43 +1303,16 @@ pub fn sign_text_file(
         None
     };
 
-    // Atomic write via tempfile in the same directory.
-    let parent = path_obj
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let mut tmp =
-        tempfile::NamedTempFile::new_in(parent).map_err(|e| JacsError::FileWriteFailed {
-            path: path.to_string(),
-            reason: format!("create tempfile: {}", e),
-        })?;
-    tmp.write_all(new_content.as_bytes())
-        .map_err(|e| JacsError::FileWriteFailed {
-            path: path.to_string(),
-            reason: format!("write tempfile: {}", e),
-        })?;
-    tmp.as_file_mut()
-        .sync_all()
-        .map_err(|e| JacsError::FileWriteFailed {
-            path: path.to_string(),
-            reason: format!("sync tempfile: {}", e),
-        })?;
-
-    // Preserve mode bits (Unix only).
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = std::fs::symlink_metadata(path)
-            && meta.file_type().is_file()
-        {
-            let mode = meta.permissions().mode();
-            let _ = std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(mode));
-        }
-    }
-
-    tmp.persist(path).map_err(|e| JacsError::FileWriteFailed {
+    let mode = file_mode_or(path, 0o600);
+    crate::secure_io::write_atomic_replace_no_symlink_allow_resolved_parent(
+        path,
+        new_content.as_bytes(),
+        mode,
+        true,
+    )
+    .map_err(|e| JacsError::FileWriteFailed {
         path: path.to_string(),
-        reason: format!("persist tempfile: {}", e),
+        reason: e.to_string(),
     })?;
 
     Ok(SignTextOutcome {
@@ -1374,12 +1340,13 @@ pub fn verify_text_file(
     path: &str,
     opts: crate::inline::VerifyOptions,
 ) -> Result<crate::inline::VerifyTextResult, JacsError> {
-    let framed = crate::secure_io::read_to_string_no_follow(path).map_err(|e| {
-        JacsError::FileReadFailed {
-            path: path.to_string(),
-            reason: e.to_string(),
-        }
-    })?;
+    let framed =
+        crate::secure_io::read_to_string_no_follow_allow_resolved_parent(path).map_err(|e| {
+            JacsError::FileReadFailed {
+                path: path.to_string(),
+                reason: e.to_string(),
+            }
+        })?;
 
     let key_dir_owned = opts.key_dir.clone();
     let resolver = DefaultKeyResolver::new(agent, key_dir_owned.as_deref());
@@ -1409,13 +1376,12 @@ pub fn sign_image(
     out_path: &str,
     opts: SignImageOptions,
 ) -> Result<SignedMedia, JacsError> {
-    use std::io::Write;
-
-    let bytes =
-        crate::secure_io::read_no_follow(in_path).map_err(|e| JacsError::FileReadFailed {
+    let bytes = crate::secure_io::read_no_follow_allow_resolved_parent(in_path).map_err(|e| {
+        JacsError::FileReadFailed {
             path: in_path.to_string(),
             reason: e.to_string(),
-        })?;
+        }
+    })?;
 
     // Format detection — clean error on unsupported.
     //
@@ -1552,17 +1518,29 @@ pub fn sign_image(
         _ => in_path == out_path,
     };
 
-    let backup_path = if opts.backup && (in_place || std::path::Path::new(out_path).exists()) {
+    let existing_out_bytes = if opts.backup && !in_place {
+        match crate::secure_io::read_no_follow_allow_resolved_parent(out_path) {
+            Ok(bytes) => Some(bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                return Err(JacsError::FileReadFailed {
+                    path: out_path.to_string(),
+                    reason: e.to_string(),
+                });
+            }
+        }
+    } else {
+        None
+    };
+
+    let backup_path = if opts.backup && (in_place || existing_out_bytes.is_some()) {
         let bak = format!("{}.bak", out_path);
         // Backup source: when in_place, the source bytes ARE the input bytes
         // we already read. Otherwise, only back up if out_path exists.
         let src_bytes: Vec<u8> = if in_place {
             bytes.clone()
         } else {
-            crate::secure_io::read_no_follow(out_path).map_err(|e| JacsError::FileReadFailed {
-                path: out_path.to_string(),
-                reason: e.to_string(),
-            })?
+            existing_out_bytes.expect("existing output bytes")
         };
         // Shared helper applies symlink-reject + 0o600 default (PRD §4.2.4b).
         write_backup_or_err(&src_bytes, &bak, opts.unsafe_bak_mode)?;
@@ -1571,51 +1549,20 @@ pub fn sign_image(
         None
     };
 
-    // Atomic write of new_bytes to out_path.
-    let out_path_obj = std::path::Path::new(out_path);
-    let parent = out_path_obj
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let mut tmp =
-        tempfile::NamedTempFile::new_in(parent).map_err(|e| JacsError::FileWriteFailed {
-            path: out_path.to_string(),
-            reason: format!("create tempfile: {}", e),
-        })?;
-    tmp.write_all(&new_bytes)
-        .map_err(|e| JacsError::FileWriteFailed {
-            path: out_path.to_string(),
-            reason: format!("write tempfile: {}", e),
-        })?;
-    tmp.as_file_mut()
-        .sync_all()
-        .map_err(|e| JacsError::FileWriteFailed {
-            path: out_path.to_string(),
-            reason: format!("sync tempfile: {}", e),
-        })?;
-
     // Mode preservation: if out_path exists, mirror its mode; else mirror in_path.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode_src = if out_path_obj.exists() {
-            out_path
-        } else {
-            in_path
-        };
-        if let Ok(meta) = std::fs::symlink_metadata(mode_src)
-            && meta.file_type().is_file()
-        {
-            let mode = meta.permissions().mode();
-            let _ = std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(mode));
-        }
-    }
-
-    tmp.persist(out_path)
-        .map_err(|e| JacsError::FileWriteFailed {
-            path: out_path.to_string(),
-            reason: format!("persist tempfile: {}", e),
-        })?;
+    let mode_src = if path_is_regular_file_no_follow(out_path) {
+        out_path
+    } else {
+        in_path
+    };
+    let mode = file_mode_or(mode_src, 0o600);
+    crate::secure_io::write_atomic_replace_no_symlink_allow_resolved_parent(
+        out_path, &new_bytes, mode, false,
+    )
+    .map_err(|e| JacsError::FileWriteFailed {
+        path: out_path.to_string(),
+        reason: e.to_string(),
+    })?;
 
     let signer_id = agent.get_agent_id()?;
     Ok(SignedMedia {
@@ -1633,9 +1580,11 @@ pub fn verify_image(
     path: &str,
     opts: VerifyImageOptions,
 ) -> Result<MediaVerificationResult, JacsError> {
-    let bytes = crate::secure_io::read_no_follow(path).map_err(|e| JacsError::FileReadFailed {
-        path: path.to_string(),
-        reason: e.to_string(),
+    let bytes = crate::secure_io::read_no_follow_allow_resolved_parent(path).map_err(|e| {
+        JacsError::FileReadFailed {
+            path: path.to_string(),
+            reason: e.to_string(),
+        }
     })?;
 
     // Format detection.
@@ -2010,9 +1959,11 @@ pub fn extract_media_signature_with_options(
     opts: crate::simple::types::ExtractMediaOptions,
 ) -> Result<Option<String>, JacsError> {
     use base64::Engine;
-    let bytes = crate::secure_io::read_no_follow(path).map_err(|e| JacsError::FileReadFailed {
-        path: path.to_string(),
-        reason: e.to_string(),
+    let bytes = crate::secure_io::read_no_follow_allow_resolved_parent(path).map_err(|e| {
+        JacsError::FileReadFailed {
+            path: path.to_string(),
+            reason: e.to_string(),
+        }
     })?;
     match jacs_media::extract_signature(&bytes, opts.scan_robust).map_err(media_to_jacs_err)? {
         Some(raw_b64) => {
@@ -2035,9 +1986,11 @@ pub fn extract_media_signature_raw_with_options(
     path: &str,
     opts: crate::simple::types::ExtractMediaOptions,
 ) -> Result<Option<String>, JacsError> {
-    let bytes = crate::secure_io::read_no_follow(path).map_err(|e| JacsError::FileReadFailed {
-        path: path.to_string(),
-        reason: e.to_string(),
+    let bytes = crate::secure_io::read_no_follow_allow_resolved_parent(path).map_err(|e| {
+        JacsError::FileReadFailed {
+            path: path.to_string(),
+            reason: e.to_string(),
+        }
     })?;
     jacs_media::extract_signature(&bytes, opts.scan_robust).map_err(media_to_jacs_err)
 }
@@ -2045,6 +1998,34 @@ pub fn extract_media_signature_raw_with_options(
 // =============================================================================
 // Local helpers
 // =============================================================================
+
+#[cfg(unix)]
+fn path_is_regular_file_no_follow(path: &str) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_file())
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn path_is_regular_file_no_follow(path: &str) -> bool {
+    std::path::Path::new(path).is_file()
+}
+
+#[cfg(unix)]
+fn file_mode_or(path: &str, fallback: u32) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::symlink_metadata(path)
+        .ok()
+        .filter(|meta| meta.file_type().is_file())
+        .map(|meta| meta.permissions().mode())
+        .unwrap_or(fallback)
+}
+
+#[cfg(not(unix))]
+fn file_mode_or(_path: &str, fallback: u32) -> u32 {
+    fallback
+}
 
 fn media_to_jacs_err(e: jacs_media::MediaError) -> JacsError {
     use jacs_media::MediaError;

@@ -1804,7 +1804,8 @@ mod tests {
     #[test]
     fn test_journal_write_creates_file() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let journal = RotationJournal::create(
             key_dir,
@@ -1840,7 +1841,8 @@ mod tests {
     #[test]
     fn test_journal_advance_stage() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let mut journal = RotationJournal::create(
             key_dir,
@@ -1866,7 +1868,8 @@ mod tests {
     #[test]
     fn test_journal_delete() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let journal = RotationJournal::create(
             key_dir,
@@ -1894,7 +1897,8 @@ mod tests {
     #[test]
     fn test_journal_read_existing() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let _journal = RotationJournal::create(
             key_dir,
@@ -1919,7 +1923,8 @@ mod tests {
     #[test]
     fn test_journal_create_refuses_overwrite() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let _journal = RotationJournal::create(
             key_dir,
@@ -1948,7 +1953,8 @@ mod tests {
     #[test]
     fn test_journal_update_replaces_hardlink_without_modifying_target() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let mut journal = RotationJournal::create(
             key_dir,
@@ -1963,7 +1969,7 @@ mod tests {
         let path = RotationJournal::journal_path(key_dir);
         std::fs::remove_file(&path).expect("remove journal");
 
-        let target = tmp.path().join("external_target");
+        let target = key_dir_path.join("external_target");
         std::fs::write(&target, b"do not mutate").expect("write target");
         std::fs::hard_link(&target, &path).expect("hard link journal path");
 

@@ -71,17 +71,21 @@ pub(crate) fn write_key_directory_ignore_files(key_dir: &Path) {
         *.key.enc\n";
 
     let gitignore_path = key_dir.join(".gitignore");
-    if let Err(e) =
-        crate::secure_io::write_new_file(&gitignore_path, ignore_content.as_bytes(), 0o644)
-        && e.kind() != std::io::ErrorKind::AlreadyExists
+    if let Err(e) = crate::secure_io::write_new_file_allow_resolved_parent(
+        &gitignore_path,
+        ignore_content.as_bytes(),
+        0o644,
+    ) && e.kind() != std::io::ErrorKind::AlreadyExists
     {
         warn!("Could not write {}: {}", gitignore_path.display(), e);
     }
 
     let dockerignore_path = key_dir.join(".dockerignore");
-    if let Err(e) =
-        crate::secure_io::write_new_file(&dockerignore_path, ignore_content.as_bytes(), 0o644)
-        && e.kind() != std::io::ErrorKind::AlreadyExists
+    if let Err(e) = crate::secure_io::write_new_file_allow_resolved_parent(
+        &dockerignore_path,
+        ignore_content.as_bytes(),
+        0o644,
+    ) && e.kind() != std::io::ErrorKind::AlreadyExists
     {
         warn!("Could not write {}: {}", dockerignore_path.display(), e);
     }

@@ -4,7 +4,7 @@
         test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
         test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         audit-jacs \
-        publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
+        publish-jacs publish-jacs-media publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
         publish-jacs-storage publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
         release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-everything release-delete-tags \
         retry-jacs retry-jacspy retry-jacsnpm retry-cli retry-everything \
@@ -277,6 +277,9 @@ check-versions:
 # Publish all Rust crates to crates.io in dependency order with delays.
 # Requires ~/.cargo/credentials or CARGO_REGISTRY_TOKEN.
 publish-jacs:
+	cd jacs-media && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs-media..."
+	sleep 30
 	cd jacs && cargo publish
 	@echo "Waiting 30s for crates.io to index jacs..."
 	sleep 30
@@ -289,6 +292,9 @@ publish-jacs:
 	cd jacs-cli && cargo publish
 
 # Individual crate publish targets (use when resuming a partial publish)
+publish-jacs-media:
+	cd jacs-media && cargo publish
+
 publish-jacs-core:
 	cd jacs && cargo publish
 
@@ -329,6 +335,7 @@ publish-jacs-postgresql:
 
 # Dry run for crates.io publish
 publish-jacs-dry:
+	cd jacs-media && cargo publish --dry-run
 	cd jacs && cargo publish --dry-run
 	cd binding-core && cargo publish --dry-run
 	cd jacs-mcp && cargo publish --dry-run

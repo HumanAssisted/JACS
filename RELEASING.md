@@ -92,7 +92,7 @@ make release-everything
 Or release individually:
 
 ```bash
-make release-jacs       # crates.io (jacs, binding-core, jacs-mcp, jacs-cli)
+make release-jacs       # crates.io (jacs-media, jacs, binding-core, jacs-mcp, jacs-cli)
 make release-jacspy     # PyPI
 make release-jacsnpm    # npm
 make release-cli        # GitHub Release binaries
@@ -102,6 +102,7 @@ make release-jacs-storage  # storage backend crates
 ### 4. Verify
 
 Check each registry:
+- https://crates.io/crates/jacs-media
 - https://crates.io/crates/jacs
 - https://crates.io/crates/jacs-cli
 - https://crates.io/crates/jacs-binding-core
@@ -118,7 +119,8 @@ make retry-cli
 ```
 
 For crates.io, if a crate already published but a later one failed, just re-run
-`make release-jacs` — the workflow skips already-published crates.
+`make release-jacs` — the workflow skips already-published crates. Publish order
+is `jacs-media`, `jacs`, `jacs-binding-core`, `jacs-mcp`, then `jacs-cli`.
 
 ### Storage backend crates
 

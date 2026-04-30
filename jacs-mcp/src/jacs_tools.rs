@@ -3534,6 +3534,11 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MemorySaveParams>,
     ) -> String {
+        tracing::info!(
+            tool = "jacs_memory_save",
+            name = %params.name,
+            "saving JACS memory"
+        );
         // Build agentstate document with inline content (no file path).
         let mut doc = match agentstate_crud::create_agentstate_with_content(
             "memory",
@@ -3649,6 +3654,12 @@ impl JacsMcpServer {
             },
         };
 
+        tracing::info!(
+            tool = "jacs_memory_save",
+            success = result.success,
+            jacs_document_id = result.jacs_document_id.as_deref().unwrap_or(""),
+            "JACS memory save completed"
+        );
         let serialized =
             serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
         inject_meta(&serialized, None)
@@ -3667,6 +3678,7 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<MemoryRecallParams>,
     ) -> String {
+        tracing::info!(tool = "jacs_memory_recall", "recalling JACS memories");
         let keys = match self.agent.list_document_keys() {
             Ok(keys) => keys,
             Err(e) => {
@@ -3772,6 +3784,11 @@ impl JacsMcpServer {
             error: None,
         };
 
+        tracing::info!(
+            tool = "jacs_memory_recall",
+            total = result.total,
+            "JACS memory recall completed"
+        );
         let serialized =
             serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
         // Memory documents are always private by design.
