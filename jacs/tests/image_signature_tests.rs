@@ -1025,6 +1025,77 @@ fn sign_image_populates_public_key_hash() {
 }
 
 #[test]
+fn sign_image_embeds_full_jacs_document_metadata() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(16, 16));
+    let out_path = dir.path().join("out.png");
+
+    sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions::default(),
+    )
+    .unwrap();
+
+    let payload = extract_media_signature(out_path.to_str().unwrap())
+        .unwrap()
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+
+    assert!(value.get("jacsId").and_then(|v| v.as_str()).is_some());
+    assert!(value.get("jacsVersion").and_then(|v| v.as_str()).is_some());
+    assert!(value.get("jacsType").and_then(|v| v.as_str()).is_some());
+    assert!(value.get("jacsSignature").is_some());
+    assert!(value.get("jacsSha256").and_then(|v| v.as_str()).is_some());
+
+    let verified = agent
+        .verify(&payload)
+        .expect("embedded media payload must be a normal verifiable JACS document");
+    assert!(
+        verified.valid,
+        "embedded media payload JACS signature/hash must verify: {:?}",
+        verified.errors
+    );
+}
+
+#[test]
+fn robust_lsb_payload_extracts_to_verifiable_jacs_document() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().unwrap();
+    let in_path = write_fixture(&dir, "in.png", &make_fixture_png(256, 256));
+    let out_path = dir.path().join("out.png");
+
+    sign_image(
+        &agent,
+        in_path.to_str().unwrap(),
+        out_path.to_str().unwrap(),
+        SignImageOptions {
+            robust: true,
+            ..SignImageOptions::default()
+        },
+    )
+    .unwrap();
+
+    let payload = extract_media_signature_with_options(
+        out_path.to_str().unwrap(),
+        ExtractMediaOptions { scan_robust: true },
+    )
+    .unwrap()
+    .expect("robust LSB payload present");
+
+    let verified = agent
+        .verify(&payload)
+        .expect("robust LSB payload must be a normal verifiable JACS document");
+    assert!(
+        verified.valid,
+        "robust LSB payload JACS signature/hash must verify: {:?}",
+        verified.errors
+    );
+}
+
+#[test]
 fn unsupported_format_clean_error() {
     let agent = ephemeral_ed25519();
     let dir = TempDir::new().unwrap();

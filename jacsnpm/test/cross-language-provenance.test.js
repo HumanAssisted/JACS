@@ -138,10 +138,10 @@ describe('cross-language provenance fixtures (Node verifies Rust-signed)', funct
 
   // -------------------------------------------------------------------
   // C3 — js-yaml parses the Rust-signed markdown signature block body
-  // and the camelCase fields are present.
+  // as a full JACS YAML document footer.
   // -------------------------------------------------------------------
 
-  it('C3: js-yaml parses Rust-signed markdown block body with camelCase fields', function () {
+  it('C3: js-yaml parses Rust-signed markdown block body as full JACS footer', function () {
     if (!yaml) this.skip();
     const content = fs.readFileSync(
       path.join(FIXTURES_DIR, 'rust_signed_ed25519.md'),
@@ -155,15 +155,14 @@ describe('cross-language provenance fixtures (Node verifies Rust-signed)', funct
     const body = content.slice(start, end);
     const parsed = yaml.load(body);
 
-    for (const key of [
-      'signer',
-      'signedContentHash',
-      'publicKeyHash',
-      'algorithm',
-      'signature',
-    ]) {
-      expect(parsed, `missing ${key}`).to.have.property(key);
-    }
+    expect(parsed).to.have.property('jacsType', 'inline-md');
+    expect(parsed).to.have.property('jacsId').that.is.a('string');
+    expect(parsed).to.have.property('jacsVersion').that.is.a('string');
+    expect(parsed).to.have.nested.property('jacsSignature.agentID').that.is.a('string');
+    expect(parsed).to.have.nested.property('jacsSignature.publicKeyHash').that.is.a('string');
+    expect(parsed).to.have.nested.property('jacsSignature.signature').that.is.a('string');
+    expect(parsed).to.have.nested.property('content.inlineSignatureVersion', 1);
+    expect(parsed).to.have.nested.property('content.signedContentHash').that.is.a('string');
   });
 
   // -------------------------------------------------------------------

@@ -148,6 +148,17 @@ pub fn regenerate_all() -> std::io::Result<()> {
     let key_dir = keys_dir();
     fs::create_dir_all(&out_dir)?;
     fs::create_dir_all(&key_dir)?;
+    for entry in fs::read_dir(&key_dir)? {
+        let path = entry?.path();
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.ends_with(".public.pem"))
+            .unwrap_or(false)
+        {
+            fs::remove_file(path)?;
+        }
+    }
 
     // Two ephemeral agents: ed25519 + pq2025. These power both the markdown
     // multi-algo fixture and the per-format coverage matrix.

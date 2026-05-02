@@ -184,6 +184,67 @@ fn verify_text_file_strict_valid_signature_ok() {
 }
 
 #[test]
+fn generic_verify_accepts_signed_markdown_body() {
+    let agent = ephemeral_ed25519();
+    let (_d, path) = write_temp_file("# Release notes\n\nShip it.\n");
+    sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default()).unwrap();
+    let signed_markdown = fs::read_to_string(&path).unwrap();
+
+    let result = agent
+        .verify(&signed_markdown)
+        .expect("generic verify must dispatch signed markdown to inline verifier");
+
+    assert!(
+        result.valid,
+        "signed markdown must verify: {:?}",
+        result.errors
+    );
+    assert_eq!(result.signer_id, agent.get_agent_id().unwrap());
+    assert_eq!(result.data["verificationType"], "inline-text");
+    assert_eq!(result.data["signatures"][0]["status"], "valid");
+}
+
+#[test]
+fn generic_verify_json_document_with_marker_text_stays_json() {
+    let agent = ephemeral_ed25519();
+    let signed = agent
+        .sign_message(&serde_json::json!({
+            "body": "This JSON content mentions -----BEGIN JACS SIGNATURE----- as text."
+        }))
+        .expect("sign message");
+
+    let result = agent
+        .verify(&signed.raw)
+        .expect("JSON signed document must stay on JSON verifier");
+
+    assert!(result.valid, "signed JSON must verify: {:?}", result.errors);
+    assert_ne!(result.data["verificationType"], "inline-text");
+}
+
+#[test]
+fn generic_verify_with_markdown_mime_rejects_tampered_body() {
+    let agent = ephemeral_ed25519();
+    let (_d, path) = write_temp_file("# Release notes\n\nShip it.\n");
+    sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default()).unwrap();
+    let signed_markdown = fs::read_to_string(&path).unwrap();
+    let tampered = signed_markdown.replace("Ship it.", "Do not ship it.");
+
+    let result = agent
+        .verify_with_mime(&tampered, "text/markdown; profile=jacs-text-v1")
+        .expect("generic mime verify should return an invalid result, not JSON parse failure");
+
+    assert!(!result.valid, "tampered markdown must not verify");
+    assert!(
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("hash_mismatch") || e.contains("HashMismatch")),
+        "expected hash mismatch in errors, got {:?}",
+        result.errors
+    );
+}
+
+#[test]
 fn sign_text_file_multi_signer_unordered_mixed_algos() {
     let agent_a = ephemeral_ed25519();
     let agent_b = ephemeral_pq2025();

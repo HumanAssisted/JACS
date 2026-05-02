@@ -14826,40 +14826,55 @@ const signed = await jacs.signMessage({
 </div>
 <p>All bindings are async-first on Node (returns <code>Promise</code>); CLI is synchronous; Python and Rust are synchronous; Go is synchronous.</p>
 <h2 id="the-signature-block"><a class="header" href="#the-signature-block">The signature block</a></h2>
-<p><code>sign-text</code> appends a block of the following exact shape at the end of the file:</p>
+<p><code>sign-text</code> appends a YAML footer at the end of the file. The markers stay
+small and stable; the body is a full signed JACS document so markdown can carry
+the same <code>jacsId</code> / <code>jacsVersion</code> chain as JSON-envelope documents:</p>
 <pre><code class="language-text">-----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: ed25519
-hashAlgorithm: sha256
-canonicalization: jacs-text-v1
-signerId: agent-abc123
-publicKeyHash: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
-signedAt: 2026-04-24T18:00:00Z
-contentHash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-signature: 9XsrVQ8...base64url...
+jacsId: 5f7e...
+jacsVersion: 7c6d...
+jacsVersionDate: "2026-05-01T12:00:00Z"
+jacsType: inline-md
+jacsLevel: artifact
+content:
+  inlineSignatureVersion: 1
+  canonicalization: jacs-text-v1
+  hashAlgorithm: sha256
+  signedContentHash: no5d...
+jacsSignature:
+  agentID: agent-abc123
+  signingAlgorithm: ring-Ed25519
+  publicKeyHash: 3b2f...
+  signature: ...
+jacsSha256: 9a8b...
 -----END JACS SIGNATURE-----
 </code></pre>
-<p>Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes <em>before</em> the first block) is preserved byte-for-byte.</p>
+<p>Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes <em>before</em> the first block) is preserved byte-for-byte. When the same signer re-signs edited content, JACS replaces that signer's footer with a new version of the same inline document: <code>jacsId</code> stays the same, <code>jacsVersion</code> changes, and <code>jacsPreviousVersion</code> points to the prior version.</p>
 <h3 id="field-reference"><a class="header" href="#field-reference">Field reference</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>What it is</th></tr></thead><tbody>
-<tr><td><code>signatureBlockVersion</code></td><td>Always <code>1</code>. Versioning the block lets the format evolve without breaking older verifiers.</td></tr>
-<tr><td><code>algorithm</code></td><td>Signing algorithm in use (<code>ed25519</code>, <code>pq2025</code>, etc.) — read from the agent's key metadata.</td></tr>
-<tr><td><code>hashAlgorithm</code></td><td>Hash used for the canonical pre-image (currently <code>sha256</code>).</td></tr>
-<tr><td><code>canonicalization</code></td><td>Tag identifying how the bytes are normalised before hashing (currently <code>jacs-text-v1</code>).</td></tr>
-<tr><td><code>signerId</code></td><td>Agent ID. Resolves to a public key via the local trust store, the <code>--key-dir</code> override, or DNS.</td></tr>
-<tr><td><code>publicKeyHash</code></td><td>SHA-256 of the signer's public key — defends against silent key swap.</td></tr>
-<tr><td><code>signedAt</code></td><td>RFC 3339 / ISO 8601 timestamp the signer claims. <em>This is a claim, not a notarised proof.</em></td></tr>
-<tr><td><code>contentHash</code></td><td><code>sha256:&lt;hex&gt;</code> of the canonicalised content.</td></tr>
-<tr><td><code>signature</code></td><td>Base64url-encoded signature over a domain-separated pre-image (<code>JACS-INLINE-TEXT-V1\nsha256:&lt;hash&gt;</code>).</td></tr>
+<tr><td><code>jacsId</code></td><td>Stable identity for this signer's inline markdown document across edits.</td></tr>
+<tr><td><code>jacsVersion</code></td><td>Version ID for this footer. Changes whenever the signer re-signs edited content.</td></tr>
+<tr><td><code>jacsPreviousVersion</code></td><td>Previous <code>jacsVersion</code> for same-ID updates; absent or <code>null</code> on first signature.</td></tr>
+<tr><td><code>jacsVersionDate</code></td><td>RFC 3339 / ISO 8601 timestamp the signer claims. <em>This is a claim, not a notarised proof.</em></td></tr>
+<tr><td><code>jacsType</code></td><td><code>inline-md</code> for inline markdown/text footers.</td></tr>
+<tr><td><code>content.signedContentHash</code></td><td>Base64url SHA-256 of the canonicalised markdown/text body.</td></tr>
+<tr><td><code>content.canonicalization</code></td><td>Tag identifying how the bytes are normalised before hashing (currently <code>jacs-text-v1</code>).</td></tr>
+<tr><td><code>jacsSignature.agentID</code></td><td>Agent ID. Resolves to a public key via the local trust store, the <code>--key-dir</code> override, or DNS.</td></tr>
+<tr><td><code>jacsSignature.publicKeyHash</code></td><td>SHA-256 of the signer's public key — defends against silent key swap.</td></tr>
+<tr><td><code>jacsSignature.signature</code></td><td>Normal JACS document signature over the footer document fields.</td></tr>
+<tr><td><code>jacsSha256</code></td><td>Normal JACS document hash for the signed footer.</td></tr>
 </tbody></table>
 </div>
-<p>The body is valid YAML 1.2; any YAML 1.2 parser can read it. Anchors / tags / aliases are rejected by the verifier, and the body is capped at 16 KiB. A file may contain at most 256 signature blocks.</p>
+<p>The body is valid YAML 1.2; any YAML 1.2 parser can read it, and JACS converts it back through the same <code>yaml_to_jacs</code> path used by email YAML signing. Legacy v0.10.0 mini-blocks still verify, but new writes use the full JACS footer. A file may contain at most 256 signature blocks.</p>
+<p>Generic document verification also recognizes inline-signed markdown/text: when
+the body has a signature footer, <code>jacs verify &lt;file&gt;</code> and
+<code>SimpleAgent::verify()</code> dispatch to the inline verifier instead of treating the
+input as JSON. When the MIME type is known, callers should pass
+<code>text/markdown</code> or <code>text/plain</code> and use the same inline verification path.</p>
 <h2 id="canonicalization-jacs-text-v1"><a class="header" href="#canonicalization-jacs-text-v1">Canonicalization (<code>jacs-text-v1</code>)</a></h2>
-<p>The bytes hashed by <code>contentHash</code> are derived from the file content (everything before the first signature block) by:</p>
+<p>The bytes hashed by <code>content.signedContentHash</code> are derived from the file content (everything before the first signature block) by:</p>
 <ol>
 <li>Normalising line endings to <code>\n</code> (CRLF / CR collapsed to LF).</li>
-<li>Stripping trailing whitespace from each line.</li>
-<li>Removing trailing blank lines at end of file.</li>
+<li>Stripping trailing spaces, tabs, and blank lines at the end of the content.</li>
 </ol>
 <p>The file <em>on disk</em> is NOT modified by canonicalization — the original bytes are preserved. Canonicalization only affects the hash input.</p>
 <h2 id="permissive-vs-strict-verification"><a class="header" href="#permissive-vs-strict-verification">Permissive vs strict verification</a></h2>
@@ -14888,16 +14903,18 @@ jacs verify-text README.md
 <p>After both signers, the on-disk file is:</p>
 <pre><code class="language-markdown">This README documents the v1 release.
 -----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: ed25519
+jacsId: ...
+jacsType: inline-md
 ... (agent-a)
-signature: ...
+jacsSignature:
+  signature: ...
 -----END JACS SIGNATURE-----
 -----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: pq2025
+jacsId: ...
+jacsType: inline-md
 ... (agent-b)
-signature: ...
+jacsSignature:
+  signature: ...
 -----END JACS SIGNATURE-----
 </code></pre>
 <p>You can swap the order of the two blocks on disk and <code>jacs verify-text</code> still reports both as valid — multi-signer is unordered.</p>
@@ -14957,7 +14974,7 @@ signature: ...
 </code></pre>
 <p>Wrapped in a JACS signed document, the same shape is what <code>verify-image</code> reads to confirm signer identity, claimed timestamp, and pixel-content integrity.</p>
 <h2 id="inline-text-vs-media--why-the-asymmetry"><a class="header" href="#inline-text-vs-media--why-the-asymmetry">Inline text vs media — why the asymmetry</a></h2>
-<p>Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. The two formats share the cryptographic core (domain-separated pre-image, hash algorithm, canonicalization tag) but differ in serialisation. Don't try to unify them.</p>
+<p>Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. Both paths now carry full signed JACS documents; text renders that document as YAML between footer markers, while images embed the signed document JSON in the media container.</p>
 <h2 id="robust-mode---robust--opt-in-lsb-fallback"><a class="header" href="#robust-mode---robust--opt-in-lsb-fallback">Robust mode (<code>--robust</code>) — opt-in LSB fallback</a></h2>
 <p>The default mode embeds in metadata chunks, which survives most pipelines but does <em>not</em> survive a deliberate "strip all metadata" pass. Robust mode adds an LSB (least-significant-bit) embedding in the pixel data so a stripped image still verifies.</p>
 <div class="table-wrapper"><table><thead><tr><th>Format</th><th>Robust support</th></tr></thead><tbody>

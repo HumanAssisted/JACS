@@ -41,7 +41,7 @@ Wrapped in a JACS signed document, the same shape is what `verify-image` reads t
 
 ## Inline text vs media — why the asymmetry
 
-Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. The two formats share the cryptographic core (domain-separated pre-image, hash algorithm, canonicalization tag) but differ in serialisation. Don't try to unify them.
+Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. Both paths now carry full signed JACS documents; text renders that document as YAML between footer markers, while images embed the signed document JSON in the media container.
 
 ## Robust mode (`--robust`) — opt-in LSB fallback
 

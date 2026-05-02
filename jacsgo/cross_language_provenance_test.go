@@ -257,7 +257,8 @@ func TestProvenanceVerifyRustSignedWebp(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// C3 — yaml.v3 parses the Rust-signed markdown signature block body.
+// C3 — yaml.v3 parses the Rust-signed markdown signature block body as a full
+// JACS document footer.
 // ---------------------------------------------------------------------------
 
 func TestProvenanceYamlParsesRustSignedBlockBody(t *testing.T) {
@@ -283,10 +284,32 @@ func TestProvenanceYamlParsesRustSignedBlockBody(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(body), &parsed); err != nil {
 		t.Fatalf("yaml.Unmarshal: %v", err)
 	}
-	for _, key := range []string{"signer", "signedContentHash", "publicKeyHash", "algorithm", "signature"} {
+	if parsed["jacsType"] != "inline-md" {
+		t.Fatalf("expected jacsType inline-md, got %#v", parsed["jacsType"])
+	}
+	for _, key := range []string{"jacsId", "jacsVersion", "jacsSignature", "content"} {
 		if _, ok := parsed[key]; !ok {
 			t.Fatalf("missing %q in parsed YAML body: %#v", key, parsed)
 		}
+	}
+	signature, ok := parsed["jacsSignature"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("jacsSignature did not parse as map: %#v", parsed["jacsSignature"])
+	}
+	for _, key := range []string{"agentID", "publicKeyHash", "signature"} {
+		if _, ok := signature[key]; !ok {
+			t.Fatalf("missing jacsSignature.%s in parsed YAML body: %#v", key, parsed)
+		}
+	}
+	contentMap, ok := parsed["content"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("content did not parse as map: %#v", parsed["content"])
+	}
+	if contentMap["inlineSignatureVersion"] != 1 {
+		t.Fatalf("expected inlineSignatureVersion 1, got %#v", contentMap["inlineSignatureVersion"])
+	}
+	if _, ok := contentMap["signedContentHash"]; !ok {
+		t.Fatalf("missing content.signedContentHash in parsed YAML body: %#v", parsed)
 	}
 }
 

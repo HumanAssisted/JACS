@@ -8,6 +8,12 @@
 - Reworked `secure_io` on Unix to use opened parent-directory capabilities with fd-relative operations; strict JACS-owned state rejects parent symlinks by default.
 - Added a `secure_io` guard in pre-commit and CI for newly introduced raw filesystem writes/reads in sensitive modules.
 
+### Fixed
+
+- Inline markdown/text signing now writes a full signed JACS document YAML footer between the existing `BEGIN/END JACS SIGNATURE` markers. Re-signing edited content by the same agent preserves `jacsId`, creates a new `jacsVersion`, and sets `jacsPreviousVersion`; legacy mini YAML blocks still verify.
+- Generic document verification now recognizes inline-signed markdown/text by marker or `text/plain` / `text/markdown` MIME and dispatches to the inline verifier instead of failing as non-JSON.
+- Added regression tests confirming image signatures, including robust LSB payloads, continue to embed/extract full signed JACS document JSON that verifies through normal JACS document verification.
+
 ### Release
 
 - Local Rust publish targets now publish `jacs-media` before dependent crates, matching CI.
@@ -17,6 +23,7 @@
 - Refreshed the repo, crate, CLI, Python, Node, and jacsbook landing docs around JACS as an open source provenance layer for agents and artifacts.
 - Simplified quickstart and use-case guidance, removed stale release-note framing, and made `jacs mcp` the canonical user-facing MCP server path.
 - Expanded visible docs to emphasize JSON/files, Markdown/text, images, and Rust email signing while keeping HAI.AI positioned as the hosted platform path for verified documents and agent behavior.
+- Added API migration notes for consuming the new full inline-text footer shape and keeping the old synthetic inline metadata path as a legacy fallback.
 
 ## 0.10.0
 

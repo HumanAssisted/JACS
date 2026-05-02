@@ -1847,10 +1847,10 @@ fn handle_sign_text(sub: &clap::ArgMatches) {
     let json_output = *sub.get_one::<bool>("json").unwrap_or(&false);
 
     // PRD §4.1.1: refuse to sign content that already contains a column-zero
-    // signature marker pair whose YAML body does not deserialize as a
-    // well-formed `SignatureBlockYaml`. This catches pre-poisoned inputs
-    // (bogus YAML, partial blocks). Documented workaround: indent the marker
-    // (it stays in code blocks) so the column-zero scan misses it.
+    // signature marker pair whose YAML body does not resemble either a full
+    // JACS inline footer or a legacy mini-block. This catches pre-poisoned
+    // inputs (bogus YAML, partial blocks). Documented workaround: indent the
+    // marker so the column-zero scan misses it.
     if let Ok(content) = std::fs::read_to_string(file_path)
         && let Some(offset) = column_zero_marker_collision(&content)
     {
@@ -1905,15 +1905,13 @@ fn handle_sign_text(sub: &clap::ArgMatches) {
 }
 
 /// PRD §4.1.1: scan a text body for column-zero `-----BEGIN JACS SIGNATURE-----`
-/// markers paired with `-----END JACS SIGNATURE-----` markers whose body
-/// does not look like a `jacs::inline::SignatureBlockYaml`. Returns the
-/// byte offset of the first such offending block, or None if none found.
+/// markers paired with `-----END JACS SIGNATURE-----` markers whose body does
+/// not look like either a full JACS YAML document footer or a legacy
+/// `jacs::inline::SignatureBlockYaml`. Returns the byte offset of the first
+/// such offending block, or None if none found.
 ///
-/// We check for required field presence (`signer:` and either
-/// `signature_block_version:` or `signatureBlockVersion:`) without doing
-/// a full YAML deserialize — we don't want to pull serde_yaml_ng into
-/// jacs-cli just for this check. A block that's missing these required
-/// markers is treated as bogus.
+/// We check for required field presence without doing a full YAML deserialize.
+/// The library still performs the authoritative parse and verification.
 fn column_zero_marker_collision(content: &str) -> Option<usize> {
     const BEGIN: &str = "-----BEGIN JACS SIGNATURE-----";
     const END: &str = "-----END JACS SIGNATURE-----";
@@ -1944,9 +1942,8 @@ fn column_zero_marker_collision(content: &str) -> Option<usize> {
             None => return None, // No END — the lib will reject.
         };
         let body = content[body_start..end_offset].trim();
-        // Required-field heuristic. A real SignatureBlockYaml always has
-        // both `signer` and `signature_block_version` (or its camelCase
-        // alias). Reject anything missing both anchors.
+        // Required-field heuristic. New inline footers are full JACS documents;
+        // legacy footers are mini SignatureBlockYaml values.
         let has_signer = body.lines().any(|line| {
             let t = line.trim_start();
             t.starts_with("signer:") || t.starts_with("\"signer\":")
@@ -1958,7 +1955,28 @@ fn column_zero_marker_collision(content: &str) -> Option<usize> {
                 || t.starts_with("\"signature_block_version\":")
                 || t.starts_with("\"signatureBlockVersion\":")
         });
-        if !has_signer || !has_version {
+        let has_jacs_id = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("jacsId:") || t.starts_with("\"jacsId\":")
+        });
+        let has_jacs_version = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("jacsVersion:") || t.starts_with("\"jacsVersion\":")
+        });
+        let has_jacs_signature = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("jacsSignature:") || t.starts_with("\"jacsSignature\":")
+        });
+        let has_inline_type = body.lines().any(|line| {
+            let t = line.trim_start();
+            t.starts_with("jacsType: inline-md")
+                || t.starts_with("jacsType: \"inline-md\"")
+                || t.starts_with("\"jacsType\": \"inline-md\"")
+        });
+        let looks_legacy = has_signer && has_version;
+        let looks_full_jacs =
+            has_jacs_id && has_jacs_version && has_jacs_signature && has_inline_type;
+        if !looks_legacy && !looks_full_jacs {
             return Some(begin_idx);
         }
         // Block looks structurally plausible; the lib will catch deeper

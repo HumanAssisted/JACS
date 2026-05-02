@@ -75,7 +75,7 @@ describe('inline text signatures (JacsSimpleAgent)', function () {
     expect(prefix).to.equal(original);
   });
 
-  it('C3: signature block body has the required YAML-ish keys', async function () {
+  it('C3: signature block body has the full JACS YAML footer keys', async function () {
     const p = path.join(tmp, 'c3.md');
     fs.writeFileSync(p, 'hi\n');
     await agent.signText(p);
@@ -85,10 +85,8 @@ describe('inline text signatures (JacsSimpleAgent)', function () {
     const end = content.indexOf('\n-----END JACS SIGNATURE-----');
     expect(end).to.be.greaterThan(start);
     const body = content.slice(start, end);
-    // Verify the four required fields are present without depending on a YAML parser
-    // (we don't add js-yaml as a devDep; the same fields are checked in the Rust + Python
-    // tests with a real YAML parser, this is a lightweight binding-side smoke check).
-    for (const key of ['signer:', 'algorithm:', 'signedContentHash:', 'signature:']) {
+    // Lightweight binding-side smoke check without adding a YAML parser here.
+    for (const key of ['jacsId:', 'jacsVersion:', 'jacsType: inline-md', 'jacsSignature:', 'signedContentHash:']) {
       expect(body).to.contain(key);
     }
   });

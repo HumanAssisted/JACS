@@ -1077,4 +1077,26 @@ mod tests {
             v
         );
     }
+
+    #[test]
+    fn verify_json_accepts_inline_signed_markdown_string() {
+        let wrapper = test_wrapper();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("signed.md");
+        std::fs::write(&path, b"# Plain\n\nsigned through the inline footer\n")
+            .expect("write fixture");
+
+        wrapper
+            .sign_text_file_json(path.to_str().unwrap(), r#"{"backup": false}"#)
+            .expect("sign text");
+        let signed_markdown = std::fs::read_to_string(&path).expect("read signed markdown");
+        let result = wrapper
+            .verify_json(&signed_markdown)
+            .expect("verify_json must dispatch inline signed markdown");
+        let v: serde_json::Value = serde_json::from_str(&result).expect("result is JSON");
+
+        assert_eq!(v["valid"], true);
+        assert_eq!(v["data"]["verificationType"], "inline-text");
+        assert_eq!(v["data"]["signatures"][0]["status"], "valid");
+    }
 }
