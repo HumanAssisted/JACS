@@ -220,6 +220,19 @@ struct CollectedSignatureBlock {
 /// Idempotent per signer: if an existing valid block with the same `signer`
 /// and `signed_content_hash` is already present, the input is returned unchanged.
 pub fn sign_inline(content: &str, agent: &SimpleAgent) -> Result<String, JacsError> {
+    sign_inline_typed(content, agent, None)
+}
+
+/// Sign `content` with `agent` using a caller-supplied `jacs_type`. If
+/// `jacs_type` is `None`, defaults to `"inline-md"` for backward compatibility.
+///
+/// This is the typed variant of [`sign_inline`].
+pub fn sign_inline_typed(
+    content: &str,
+    agent: &SimpleAgent,
+    jacs_type: Option<&str>,
+) -> Result<String, JacsError> {
+    let effective_type = jacs_type.unwrap_or("inline-md");
     // Split at the first BEGIN marker. For unsigned content, (content_bytes,
     // existing_blocks) = (content, "").
     let (content_bytes, existing_blocks) = split_at_first_signature_marker(content);
@@ -307,7 +320,7 @@ pub fn sign_inline(content: &str, agent: &SimpleAgent) -> Result<String, JacsErr
     let signed_doc = if let Some(existing) = same_signer_full_doc.as_ref() {
         update_inline_jacs_document(agent, existing, &content_hash_b64)?
     } else {
-        create_inline_jacs_document(agent, &content_hash_b64)?
+        create_inline_jacs_document(agent, &content_hash_b64, effective_type)?
     };
     let signed_doc_json = serde_json::to_string(&signed_doc).map_err(|e| JacsError::Internal {
         message: format!("failed to serialise inline JACS document: {e}"),
@@ -350,6 +363,19 @@ pub fn sign_inline(content: &str, agent: &SimpleAgent) -> Result<String, JacsErr
 /// already carries signature footers, use [`update_inline`] or [`sign_inline`].
 pub fn create_inline(content: &str, agent: &SimpleAgent) -> Result<String, JacsError> {
     sign_inline(content, agent)
+}
+
+/// Create an inline-signed text body with a caller-supplied `jacs_type`.
+///
+/// This is the typed variant of [`create_inline`]. Use `jacs_type = "soul"` for
+/// soul documents or `jacs_type = "memory"` for memory documents. Passing
+/// `"inline-md"` is equivalent to [`create_inline`].
+pub fn create_inline_typed(
+    content: &str,
+    agent: &SimpleAgent,
+    jacs_type: &str,
+) -> Result<String, JacsError> {
+    sign_inline_typed(content, agent, Some(jacs_type))
 }
 
 /// Update an inline-signed text body, preserving this signer's `jacsId` when a
@@ -464,9 +490,10 @@ fn inline_claim(content_hash_b64: &str) -> Value {
 fn create_inline_jacs_document(
     agent: &SimpleAgent,
     content_hash_b64: &str,
+    jacs_type: &str,
 ) -> Result<Value, JacsError> {
     let doc_content = json!({
-        "jacsType": "inline-md",
+        "jacsType": jacs_type,
         "jacsLevel": "artifact",
         "content": inline_claim(content_hash_b64),
     });
@@ -598,8 +625,10 @@ fn parse_full_jacs_inline_block(body: &str) -> Result<Value, String> {
     {
         return Err("not a full JACS document".to_string());
     }
-    if value.get("jacsType").and_then(|v| v.as_str()) != Some("inline-md") {
-        return Err("full JACS document is not jacsType inline-md".to_string());
+    // jacsType is required but no longer restricted to "inline-md"; soul,
+    // memory, and other typed markdown/text documents are valid.
+    if value.get("jacsType").and_then(|v| v.as_str()).is_none() {
+        return Err("full JACS document missing jacsType".to_string());
     }
     if value
         .pointer("/content/inlineSignatureVersion")
@@ -828,8 +857,10 @@ fn verify_full_jacs_block(
         status: SignatureStatus::Malformed(message),
     };
 
-    if value.get("jacsType").and_then(|v| v.as_str()) != Some("inline-md") {
-        return malformed("full JACS footer has unsupported jacsType".to_string());
+    // jacsType is required but not restricted to "inline-md"; soul, memory,
+    // and other typed markdown/text documents are valid inline footers.
+    if value.get("jacsType").and_then(|v| v.as_str()).is_none() {
+        return malformed("full JACS footer missing jacsType".to_string());
     }
     if value
         .pointer("/content/inlineSignatureVersion")
@@ -1755,6 +1786,143 @@ mod tests {
                 assert!(has_pq);
             }
             other => panic!("{:?}", other),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // TASK_001 — caller-supplied jacsType in create_inline
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn create_inline_typed_soul_produces_jacs_type_soul() {
+        let agent = make_ed25519_agent();
+        let content = "# Soul\n\nI am a soul.\n";
+        let signed = create_inline_typed(content, &agent, "soul").expect("sign");
+        let doc = first_block_as_json(&signed);
+        assert_eq!(
+            doc.get("jacsType").and_then(|v| v.as_str()),
+            Some("soul"),
+            "jacsType must be 'soul'"
+        );
+    }
+
+    #[test]
+    fn create_inline_typed_memory_produces_jacs_type_memory() {
+        let agent = make_ed25519_agent();
+        let content = "# Memory\n\nSome memory content.\n";
+        let signed = create_inline_typed(content, &agent, "memory").expect("sign");
+        let doc = first_block_as_json(&signed);
+        assert_eq!(
+            doc.get("jacsType").and_then(|v| v.as_str()),
+            Some("memory"),
+            "jacsType must be 'memory'"
+        );
+    }
+
+    #[test]
+    fn default_create_inline_still_produces_inline_md() {
+        let agent = make_ed25519_agent();
+        let content = "# Default\n\nDefault content.\n";
+        let signed = create_inline(content, &agent).expect("sign");
+        let doc = first_block_as_json(&signed);
+        assert_eq!(
+            doc.get("jacsType").and_then(|v| v.as_str()),
+            Some("inline-md"),
+            "default jacsType must remain 'inline-md'"
+        );
+    }
+
+    #[test]
+    fn sign_inline_typed_none_defaults_to_inline_md() {
+        let agent = make_ed25519_agent();
+        let content = "# Test\n\nContent.\n";
+        let signed = sign_inline_typed(content, &agent, None).expect("sign");
+        let doc = first_block_as_json(&signed);
+        assert_eq!(
+            doc.get("jacsType").and_then(|v| v.as_str()),
+            Some("inline-md"),
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // TASK_002 — parse and verify accept non-inline-md jacsType
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn parse_full_jacs_inline_block_accepts_soul_type() {
+        let agent = make_ed25519_agent();
+        let content = "# Soul\n\nMy soul document.\n";
+        let signed = create_inline_typed(content, &agent, "soul").expect("sign");
+        let body = first_block_body(&signed);
+        let result = parse_full_jacs_inline_block(body);
+        assert!(
+            result.is_ok(),
+            "parse_full_jacs_inline_block must accept jacsType='soul'"
+        );
+        let doc = result.unwrap();
+        assert_eq!(doc.get("jacsType").and_then(|v| v.as_str()), Some("soul"));
+    }
+
+    #[test]
+    fn parse_full_jacs_inline_block_accepts_memory_type() {
+        let agent = make_ed25519_agent();
+        let content = "# Memory\n\nSome memory.\n";
+        let signed = create_inline_typed(content, &agent, "memory").expect("sign");
+        let body = first_block_body(&signed);
+        let result = parse_full_jacs_inline_block(body);
+        assert!(
+            result.is_ok(),
+            "parse_full_jacs_inline_block must accept jacsType='memory'"
+        );
+        let doc = result.unwrap();
+        assert_eq!(doc.get("jacsType").and_then(|v| v.as_str()), Some("memory"));
+    }
+
+    #[test]
+    fn parse_full_jacs_inline_block_rejects_missing_jacs_id() {
+        // Construct a YAML body that is missing jacsId
+        let yaml = "jacsVersion: v1\njacsType: soul\njacsSignature:\n  agentID: foo\ncontent:\n  inlineSignatureVersion: 1\n";
+        let result = parse_full_jacs_inline_block(yaml);
+        assert!(result.is_err(), "must reject document missing jacsId");
+    }
+
+    #[test]
+    fn verify_does_not_return_malformed_for_soul_type() {
+        let agent = make_ed25519_agent();
+        let resolver = SelfKeyResolver::from_agent(&agent);
+        let content = "# Soul\n\nSoul content.\n";
+        let signed = create_inline_typed(content, &agent, "soul").expect("sign");
+        let result = verify_inline(&signed, &resolver, VerifyOptions::default()).expect("verify");
+        match result {
+            VerifyTextResult::Signed { signatures } => {
+                assert_eq!(signatures.len(), 1);
+                assert_eq!(
+                    signatures[0].status,
+                    SignatureStatus::Valid,
+                    "soul type must not produce Malformed status"
+                );
+            }
+            other => panic!("expected Signed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn verify_does_not_return_malformed_for_memory_type() {
+        let agent = make_ed25519_agent();
+        let resolver = SelfKeyResolver::from_agent(&agent);
+        let content = "# Memory\n\nMemory content.\n";
+        let signed = create_inline_typed(content, &agent, "memory").expect("sign");
+        let result = verify_inline(&signed, &resolver, VerifyOptions::default()).expect("verify");
+        match result {
+            VerifyTextResult::Signed { signatures } => {
+                assert_eq!(signatures.len(), 1);
+                assert_eq!(
+                    signatures[0].status,
+                    SignatureStatus::Valid,
+                    "memory type must not produce Malformed status"
+                );
+            }
+            other => panic!("expected Signed, got {:?}", other),
         }
     }
 }
