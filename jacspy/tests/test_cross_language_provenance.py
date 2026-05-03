@@ -162,9 +162,14 @@ def test_python_yaml_parses_rust_signed_block_body():
     end = content.index(end_marker)
     parsed = yaml.safe_load(content[start:end])
 
-    # camelCase fields are mandated by the YAML schema (PRD §3.1 / §4.1.2).
-    for key in ("signer", "signedContentHash", "publicKeyHash", "algorithm", "signature"):
-        assert key in parsed, f"missing {key} in YAML body"
+    assert parsed["jacsType"] == "inline-md"
+    assert parsed["jacsId"]
+    assert parsed["jacsVersion"]
+    assert parsed["jacsSignature"]["agentID"]
+    assert parsed["jacsSignature"]["publicKeyHash"]
+    assert parsed["jacsSignature"]["signature"]
+    assert parsed["content"]["inlineSignatureVersion"] == 1
+    assert parsed["content"]["signedContentHash"]
 
 
 # ---------------------------------------------------------------------------

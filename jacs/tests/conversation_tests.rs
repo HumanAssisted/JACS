@@ -4,9 +4,10 @@ use jacs::schema::conversation_crud::{
     create_conversation_message, get_previous_message_id, get_thread_id, start_new_conversation,
 };
 use serde_json::json;
+use serial_test::serial;
 
 mod utils;
-use utils::load_test_agent_one;
+use utils::load_test_agent_one_ed25519;
 
 // =============================================================================
 // Conversation CRUD Integration Tests
@@ -15,8 +16,9 @@ use utils::load_test_agent_one;
 /// Test 1: Create a conversation message via CRUD, sign it through the agent
 /// pipeline, and verify the signature is valid.
 #[test]
+#[serial(jacs_env)]
 fn test_create_and_sign_conversation_message() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     let thread_id = uuid::Uuid::new_v4().to_string();
     let agent_id = agent.get_id().expect("Should get agent id");
@@ -64,8 +66,9 @@ fn test_create_and_sign_conversation_message() {
 
 /// Test 2: Start a new conversation, sign the first message, and verify.
 #[test]
+#[serial(jacs_env)]
 fn test_start_new_conversation_and_sign() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     let (msg, thread_id) = start_new_conversation(
@@ -119,8 +122,9 @@ fn test_start_new_conversation_and_sign() {
 /// Test 3: Create a chain of 3 messages in a thread, each referencing the
 /// previous via jacsMessagePreviousId. Sign all messages and verify all.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_thread_chain() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     // Message 1: start the conversation
@@ -237,8 +241,9 @@ fn test_conversation_thread_chain() {
 /// happens by creating new messages that reference the previous one,
 /// not by mutating existing messages.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_message_immutability() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     let (msg, _thread_id) = start_new_conversation(
@@ -317,8 +322,9 @@ fn test_conversation_message_immutability() {
 /// Test 5: Create a message, sign it, retrieve it, and verify that
 /// the threadID field is preserved through the signing pipeline.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_thread_id_preserved() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     let thread_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
@@ -368,8 +374,9 @@ fn test_conversation_thread_id_preserved() {
 /// Test 6: Create a message with a previous message ID, sign it, retrieve it,
 /// and verify that jacsMessagePreviousId is preserved.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_previous_id_preserved() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     let thread_id = uuid::Uuid::new_v4().to_string();
@@ -420,8 +427,9 @@ fn test_conversation_previous_id_preserved() {
 /// Test 7: Create and sign a conversation message, tamper with the content,
 /// and verify that loading the tampered document fails signature verification.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_message_tamper_detection() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     let (msg, _thread_id) = start_new_conversation(
@@ -463,8 +471,9 @@ fn test_conversation_message_tamper_detection() {
 /// Test 8: Create messages in two different threads and verify they are
 /// independent -- different thread IDs and separate document identities.
 #[test]
+#[serial(jacs_env)]
 fn test_multiple_conversations() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     // Conversation 1
@@ -543,8 +552,9 @@ fn test_multiple_conversations() {
 /// Test 9: Create a conversation message with rich content containing various
 /// fields, sign it, and verify all content is preserved.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_with_rich_content() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     let rich_content = json!({
@@ -614,6 +624,7 @@ fn test_conversation_with_rich_content() {
 /// Test 10: Verify that empty `to` or `from` arrays are rejected by the
 /// CRUD functions at the application level.
 #[test]
+#[serial(jacs_env)]
 fn test_empty_recipients_rejected() {
     // Empty "to" should be rejected
     let result_empty_to = create_conversation_message(
@@ -692,8 +703,9 @@ fn test_empty_recipients_rejected() {
 /// Test: Verify all required JACS header fields are present after signing
 /// a conversation message.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_message_header_fields_present() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     let (msg, _thread_id) = start_new_conversation(
@@ -756,8 +768,9 @@ fn test_conversation_message_header_fields_present() {
 /// Test: Verify get_thread_id and get_previous_message_id helper functions
 /// work correctly on signed documents retrieved from the agent store.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_helper_functions_on_signed_docs() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     // Create and sign a first message

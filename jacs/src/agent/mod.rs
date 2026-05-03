@@ -381,11 +381,7 @@ impl Agent {
             .as_deref()
             .unwrap_or("fs")
             .to_string();
-        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
-            "fs".to_string()
-        } else {
-            storage_type.clone()
-        };
+        let file_storage_type = Self::local_agent_storage_type(&storage_type, "Agent::from_config");
 
         let storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
             format!(
@@ -461,7 +457,7 @@ impl Agent {
             .as_deref()
             .unwrap_or("")
             .to_string();
-        let uses_filesystem_paths = matches!(storage_type.as_str(), "fs" | "rusqlite" | "sqlite");
+        let uses_filesystem_paths = Self::storage_uses_local_agent_filesystem(&storage_type);
         if !uses_filesystem_paths {
             return Ok((std::env::current_dir()?, config));
         }
@@ -559,6 +555,24 @@ impl Agent {
         normalized_config.set_config_dir(config.config_dir().map(std::path::PathBuf::from));
 
         Ok((storage_root, normalized_config))
+    }
+
+    fn storage_uses_local_agent_filesystem(storage_type: &str) -> bool {
+        matches!(storage_type, "fs" | "rusqlite" | "sqlite" | "remote")
+    }
+
+    fn local_agent_storage_type(storage_type: &str, caller: &str) -> String {
+        match storage_type {
+            "rusqlite" | "sqlite" => "fs".to_string(),
+            "remote" => {
+                warn!(
+                    "{} received jacs_default_storage=remote. 'remote' is an outer provider routing label, not a native JACS storage backend; using fs for local agent material.",
+                    caller
+                );
+                "fs".to_string()
+            }
+            other => other.to_string(),
+        }
     }
 
     /// Create an ephemeral agent with in-memory keys and storage.
@@ -833,11 +847,7 @@ impl Agent {
         // Refresh key_paths from the new config so build_fs_store() uses the
         // correct key directory, not stale paths from construction time (Issue 012).
         self.refresh_key_paths_from_config();
-        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
-            "fs".to_string()
-        } else {
-            storage_type.clone()
-        };
+        let file_storage_type = Self::local_agent_storage_type(&storage_type, caller);
         self.storage = MultiStorage::_new(file_storage_type, storage_root).map_err(|e| {
             format!(
                 "{} failed: Could not initialize storage type '{}' (from config '{}'): {}",
@@ -1268,7 +1278,13 @@ impl Agent {
         let json_str = serde_json::to_string_pretty(&signed).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize repaired config: {}", e),
         })?;
-        std::fs::write(config_path, json_str).map_err(|e| JacsError::Internal {
+        crate::secure_io::write_atomic_replace_no_symlink(
+            config_path,
+            json_str.as_bytes(),
+            0o644,
+            true,
+        )
+        .map_err(|e| JacsError::Internal {
             message: format!(
                 "Failed to write repaired config to '{}': {}",
                 config_path, e
@@ -1307,11 +1323,7 @@ impl Agent {
             .as_ref()
             .and_then(|c| c.jacs_default_storage().clone())
             .unwrap_or_else(|| "fs".to_string());
-        let file_storage_type = if matches!(storage_type.as_str(), "rusqlite" | "sqlite") {
-            "fs".to_string()
-        } else {
-            storage_type
-        };
+        let file_storage_type = Self::local_agent_storage_type(&storage_type, "set_storage_root");
         self.storage = MultiStorage::_new(file_storage_type, root)?;
         Ok(())
     }

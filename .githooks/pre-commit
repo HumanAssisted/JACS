@@ -26,4 +26,6 @@ if echo "${changed}" | rg -q '^jacs/tests/fixtures/cross-language/'; then
   esac
 fi
 
+./scripts/check-secure-io.sh --cached
+
 exit 0

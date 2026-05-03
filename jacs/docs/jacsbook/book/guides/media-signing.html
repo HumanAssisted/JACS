@@ -206,7 +206,7 @@
 </code></pre>
 <p>Wrapped in a JACS signed document, the same shape is what <code>verify-image</code> reads to confirm signer identity, claimed timestamp, and pixel-content integrity.</p>
 <h2 id="inline-text-vs-media--why-the-asymmetry"><a class="header" href="#inline-text-vs-media--why-the-asymmetry">Inline text vs media — why the asymmetry</a></h2>
-<p>Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. The two formats share the cryptographic core (domain-separated pre-image, hash algorithm, canonicalization tag) but differ in serialisation. Don't try to unify them.</p>
+<p>Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. Both paths now carry full signed JACS documents; text renders that document as YAML between footer markers, while images embed the signed document JSON in the media container.</p>
 <h2 id="robust-mode---robust--opt-in-lsb-fallback"><a class="header" href="#robust-mode---robust--opt-in-lsb-fallback">Robust mode (<code>--robust</code>) — opt-in LSB fallback</a></h2>
 <p>The default mode embeds in metadata chunks, which survives most pipelines but does <em>not</em> survive a deliberate "strip all metadata" pass. Robust mode adds an LSB (least-significant-bit) embedding in the pixel data so a stripped image still verifies.</p>
 <div class="table-wrapper"><table><thead><tr><th>Format</th><th>Robust support</th></tr></thead><tbody>
@@ -254,7 +254,7 @@ jacs sign-image photo.png --out signed.png --refuse-overwrite
 <tr><td>Embedded payload &gt; 64 KiB</td><td><code>Err(ErrorKind::PayloadTooLarge)</code></td></tr>
 <tr><td>Unknown format (extension or magic)</td><td><code>Err(ErrorKind::UnsupportedFormat)</code></td></tr>
 <tr><td><code>--refuse-overwrite</code> + already-signed input</td><td><code>Err(ErrorKind::AlreadySigned)</code></td></tr>
-<tr><td>Robust mode requested for WebP</td><td><code>Err(ErrorKind::RobustNotSupported)</code> (v0.10.0)</td></tr>
+<tr><td>Robust mode requested for WebP</td><td><code>Err(ErrorKind::RobustNotSupported)</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="clean-room-provenance"><a class="header" href="#clean-room-provenance">Clean-room provenance</a></h2>

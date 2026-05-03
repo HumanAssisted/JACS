@@ -174,7 +174,8 @@ pub static AGENTTWO: &str =
 
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
-    let mut agent = load_test_agent_one();
+    // Ed25519 agent: RSA private-key signing is disabled (RUSTSEC-2023-0071).
+    let mut agent = load_test_agent_one_ed25519();
     let mut document_string =
         load_local_document(&raw_fixture("embed-xml.json").to_string_lossy().to_string()).unwrap();
     let mut document = agent
@@ -398,6 +399,31 @@ pub fn load_local_document(filepath: &String) -> Result<String, Box<dyn Error>> 
             panic!("Failed to find file: {} {}", resolved_path.display(), e);
         }
     }
+}
+
+#[cfg(test)]
+pub fn create_owned_config_fixture_document(agent: &mut Agent) -> String {
+    let document_string =
+        load_local_document(&DOCTESTFILECONFIG.to_string()).expect("load config fixture");
+    let mut document_value: serde_json::Value =
+        serde_json::from_str(&document_string).expect("fixture should be valid JSON");
+    if let Some(object) = document_value.as_object_mut() {
+        for field in [
+            "jacsId",
+            "jacsVersion",
+            "jacsVersionDate",
+            "jacsOriginalDate",
+            "jacsOriginalVersion",
+            "jacsSha256",
+            "jacsSignature",
+        ] {
+            object.remove(field);
+        }
+    }
+    agent
+        .create_document_and_load(&document_value.to_string(), None, None)
+        .expect("create owned config fixture document")
+        .getkey()
 }
 
 #[cfg(test)]
@@ -663,6 +689,43 @@ pub fn load_test_agent_one_ed25519() -> Agent {
     agent
         .load_by_id(agentid)
         .expect("Ed25519 fixture agent should load");
+    if let Some(config) = agent.config.as_mut() {
+        config
+            .set_key_algorithm("ring-Ed25519".to_string())
+            .expect("Ed25519 fixture config should accept ring-Ed25519");
+    }
+    agent
+}
+
+#[cfg(test)]
+pub fn load_test_agent_two_ed25519() -> Agent {
+    let mut agent = load_test_agent_two();
+    unsafe {
+        env::set_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "agent-ed25519.private.pem.enc",
+        );
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-ed25519.public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
+    }
+
+    let key_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/keys");
+    let encrypted_private_key =
+        fs::read(key_dir.join("agent-ed25519.private.pem.enc")).expect("read Ed25519 private key");
+    let private_key = jacs::crypt::aes_encrypt::decrypt_private_key_secure(&encrypted_private_key)
+        .expect("decrypt Ed25519 private key")
+        .as_slice()
+        .to_vec();
+    let public_key =
+        fs::read(key_dir.join("agent-ed25519.public.pem")).expect("read Ed25519 public key");
+    agent
+        .set_keys(private_key, public_key, "ring-Ed25519")
+        .expect("second fixture agent should use Ed25519 signing keys");
+    if let Some(config) = agent.config.as_mut() {
+        config
+            .set_key_algorithm("ring-Ed25519".to_string())
+            .expect("second fixture config should accept ring-Ed25519");
+    }
     agent
 }
 

@@ -4,7 +4,7 @@
         test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
         test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         audit-jacs \
-        publish-jacs publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
+        publish-jacs publish-jacs-media publish-jacs-core publish-jacs-binding-core publish-jacs-mcp publish-jacs-cli publish-jacspy publish-jacsnpm \
         publish-jacs-storage publish-jacs-duckdb publish-jacs-redb publish-jacs-surrealdb publish-jacs-postgresql \
         release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-everything release-delete-tags \
         retry-jacs retry-jacspy retry-jacsnpm retry-cli retry-everything \
@@ -26,6 +26,9 @@ JACS_MCP_VERSION := $(shell grep '^version' jacs-mcp/Cargo.toml | head -1 | sed 
 
 # Shared Rust binding core version (from binding-core/Cargo.toml)
 BINDING_CORE_VERSION := $(shell grep '^version' binding-core/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+# Media signing helper crate version (from jacs-media/Cargo.toml)
+JACS_MEDIA_VERSION := $(shell grep '^version' jacs-media/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
 # Python bindings version (from jacspy/pyproject.toml)
 JACSPY_VERSION := $(shell grep '^version' jacspy/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
@@ -205,6 +208,7 @@ versions:
 	@echo "  jacs (Cargo.toml):        $(JACS_VERSION)"
 	@echo "  jacs-mcp (Cargo.toml):    $(JACS_MCP_VERSION)"
 	@echo "  binding-core (Cargo.toml):$(BINDING_CORE_VERSION)"
+	@echo "  jacs-media (Cargo.toml):  $(JACS_MEDIA_VERSION)"
 	@echo "  jacspy (pyproject.toml):  $(JACSPY_VERSION)"
 	@echo "  jacspy (Cargo.toml):      $(JACSPY_RUST_VERSION)"
 	@echo "  jacsnpm (package.json):   $(JACSNPM_VERSION)"
@@ -217,6 +221,7 @@ versions:
 	@echo ""
 	@if [ "$(JACS_VERSION)" = "$(JACS_MCP_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(BINDING_CORE_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACS_MEDIA_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSPY_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSPY_RUST_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSNPM_VERSION)" ] && \
@@ -237,6 +242,10 @@ check-versions:
 	fi
 	@if [ "$(JACS_VERSION)" != "$(BINDING_CORE_VERSION)" ]; then \
 		echo "ERROR: jacs ($(JACS_VERSION)) != binding-core ($(BINDING_CORE_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(JACS_MEDIA_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-media ($(JACS_MEDIA_VERSION))"; \
 		exit 1; \
 	fi
 	@if [ "$(JACS_VERSION)" != "$(JACSPY_VERSION)" ]; then \
@@ -268,6 +277,9 @@ check-versions:
 # Publish all Rust crates to crates.io in dependency order with delays.
 # Requires ~/.cargo/credentials or CARGO_REGISTRY_TOKEN.
 publish-jacs:
+	cd jacs-media && cargo publish
+	@echo "Waiting 30s for crates.io to index jacs-media..."
+	sleep 30
 	cd jacs && cargo publish
 	@echo "Waiting 30s for crates.io to index jacs..."
 	sleep 30
@@ -280,6 +292,9 @@ publish-jacs:
 	cd jacs-cli && cargo publish
 
 # Individual crate publish targets (use when resuming a partial publish)
+publish-jacs-media:
+	cd jacs-media && cargo publish
+
 publish-jacs-core:
 	cd jacs && cargo publish
 
@@ -320,6 +335,7 @@ publish-jacs-postgresql:
 
 # Dry run for crates.io publish
 publish-jacs-dry:
+	cd jacs-media && cargo publish --dry-run
 	cd jacs && cargo publish --dry-run
 	cd binding-core && cargo publish --dry-run
 	cd jacs-mcp && cargo publish --dry-run

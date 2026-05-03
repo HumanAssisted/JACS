@@ -148,6 +148,46 @@ fn sign_text_no_backup_flag_suppresses() {
     );
 }
 
+#[test]
+fn sign_text_edited_content_preserves_jacs_identity() {
+    let dir = fresh_tmpdir();
+    bootstrap_agent(&dir, "ed25519");
+    let path = write_text(&dir, "doc.md", "version one\n");
+
+    cmd()
+        .current_dir(dir.path())
+        .args(["sign-text", "--no-backup"])
+        .arg(path.to_str().unwrap())
+        .assert()
+        .success();
+
+    let signed_v1 = std::fs::read_to_string(&path).expect("read signed v1");
+    let doc_v1 = first_footer_json(&signed_v1).expect("parse footer v1");
+    let jacs_id = doc_v1["jacsId"].as_str().unwrap().to_string();
+    let version_v1 = doc_v1["jacsVersion"].as_str().unwrap().to_string();
+    let marker = "-----BEGIN JACS SIGNATURE-----";
+    let suffix_start = signed_v1.find(marker).expect("marker");
+    let edited = format!("version two\n{}", &signed_v1[suffix_start..]);
+    std::fs::write(&path, edited).expect("write edited");
+
+    cmd()
+        .current_dir(dir.path())
+        .args(["sign-text", "--no-backup"])
+        .arg(path.to_str().unwrap())
+        .assert()
+        .success();
+
+    let signed_v2 = std::fs::read_to_string(&path).expect("read signed v2");
+    let doc_v2 = first_footer_json(&signed_v2).expect("parse footer v2");
+    assert_eq!(doc_v2["jacsId"].as_str(), Some(jacs_id.as_str()));
+    assert_ne!(doc_v2["jacsVersion"].as_str(), Some(version_v1.as_str()));
+    assert_eq!(
+        doc_v2["jacsPreviousVersion"].as_str(),
+        Some(version_v1.as_str())
+    );
+    assert_eq!(signed_v2.matches(marker).count(), 1);
+}
+
 // =============================================================================
 // verify-text — happy path + tampering
 // =============================================================================
@@ -171,6 +211,28 @@ fn verify_text_valid_exit_zero() {
         .arg(path.to_str().unwrap())
         .assert()
         .success();
+}
+
+#[test]
+fn generic_verify_accepts_signed_text_file() {
+    let dir = fresh_tmpdir();
+    bootstrap_agent(&dir, "ed25519");
+    let path = write_text(&dir, "doc.md", "## Heading\n\nBody.\n");
+
+    cmd()
+        .current_dir(dir.path())
+        .args(["sign-text"])
+        .arg(path.to_str().unwrap())
+        .assert()
+        .success();
+
+    cmd()
+        .current_dir(dir.path())
+        .args(["verify"])
+        .arg(path.to_str().unwrap())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("VALID"));
 }
 
 #[test]
@@ -548,15 +610,25 @@ fn read_agent_public_key(dir: &std::path::Path) -> Option<String> {
     Some(jacs::crypt::normalize_public_key_pem(&raw))
 }
 
-/// Extract the first signer's id from a signed text file. The YAML uses
-/// `serde(rename_all = "camelCase")` so the key is plain `signer:` (not
-/// `signer_id:` — that was renamed during serialization).
+/// Extract the first signer's id from a signed text file. New footers carry a
+/// full JACS document (`jacsSignature.agentID`); legacy mini-blocks used a
+/// top-level `signer` field.
 fn extract_first_signer_id(signed: &str) -> Option<String> {
     let begin = "-----BEGIN JACS SIGNATURE-----\n";
     let end = "\n-----END JACS SIGNATURE-----";
     let start = signed.find(begin)? + begin.len();
     let stop = signed[start..].find(end)? + start;
     let body = &signed[start..stop];
+
+    if let Ok(json) = jacs::convert::yaml_to_jacs(body)
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(&json)
+        && let Some(agent_id) = value
+            .pointer("/jacsSignature/agentID")
+            .and_then(|v| v.as_str())
+    {
+        return Some(agent_id.to_string());
+    }
+
     for line in body.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("signer:") {
@@ -570,6 +642,16 @@ fn extract_first_signer_id(signed: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn first_footer_json(signed: &str) -> Option<serde_json::Value> {
+    let begin = "-----BEGIN JACS SIGNATURE-----\n";
+    let end = "\n-----END JACS SIGNATURE-----";
+    let start = signed.find(begin)? + begin.len();
+    let stop = signed[start..].find(end)? + start;
+    let body = &signed[start..stop];
+    let json = jacs::convert::yaml_to_jacs(body).ok()?;
+    serde_json::from_str(&json).ok()
 }
 
 /// Construct a synthetic framed signature block whose signer field contains

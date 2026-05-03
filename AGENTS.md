@@ -8,6 +8,14 @@ jacs/ is the directory with the core library.
 Look for examples in tests for how to use the library.
 README.md and CHANGELOG.md may be useful to understand some future goals and what has been done.
 
+## Working Norms
+
+1. **Observability.** Good logging and how a system admin monitors the system. More 12-factor. Structured JSON logs to stdout, env-driven config (`RUST_LOG`, `LOG_FORMAT`, `LOG_LEVEL`), `/metrics` on Prometheus, `/health` and `/health/ready`, request IDs propagated. Auth and verification failures log at WARN, not DEBUG. Every PRD says what the sysadmin sees when this fails: which log line, which metric, which alert. `jacs mcp` and the JACS CLI must initialize a tracing subscriber before serving — silent stdio is not acceptable.
+
+2. **Vertical integration.** In a buy-or-build decision, prefer a well-integrated monolith over a bloated open-source dependency we use 10% of, when the feature is simple, sure, and well known. Every PRD that introduces or depends on an external service includes a buy/build assessment: what surface we use, what ships unused, what the smallest owned alternative would cost.
+
+3. **Simplicity.** We don't want a cap on tasks. We want small reversible changes. 100 tasks is fine if each is clear, well-defined, simple, and atomic. The bar is per-task: each task is reversible — its diff can be reverted in one commit without dependent fallout. When stuck, cut scope before adding layers.
+
 ## Where Binding Methods Belong
 
 `binding-core/src/simple_wrapper.rs::SimpleAgentWrapper` is the **public binding API**. All language bindings (PyO3, napi-rs, CGo) call into it. New methods that need to be exposed to Python/Node/Go go here, and you must update `binding-core/tests/fixtures/method_parity.json` (see Feature Parity Enforcement below) or four snapshot tests fail.
@@ -113,6 +121,7 @@ The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order 
 |------|-------|
 | `jacs/Cargo.toml` | `version` |
 | `binding-core/Cargo.toml` | `version` |
+| `jacs-media/Cargo.toml` | `version` |
 | `jacs-mcp/Cargo.toml` | `version` |
 | `jacs-cli/Cargo.toml` | `version` |
 | `jacspy/Cargo.toml` | `version` |
@@ -124,6 +133,7 @@ The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order 
 | File | Dependency |
 |------|------------|
 | `binding-core/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
+| `jacs/Cargo.toml` | `jacs-media = { version = "X.Y.Z", path = ... }` |
 | `jacs-mcp/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
 | `jacs-mcp/Cargo.toml` | `jacs-binding-core = { version = "X.Y.Z", path = ... }` |
 | `jacs-cli/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |

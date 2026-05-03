@@ -5,26 +5,81 @@
 //! do NOT return non-memory agentstate documents.
 
 use std::fs;
+use std::io::{self, Write};
+use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use rmcp::{
     RoleClient, ServiceExt,
+    handler::server::wrapper::Parameters,
     model::CallToolRequestParam,
     service::RunningService,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
+use tracing::Level;
+use tracing_subscriber::fmt::MakeWriter;
 
 mod support;
 // Memory save/update/forget sign new JACS documents — use Ed25519 fixture
 // (RSA private-key signing is disabled by RUSTSEC-2023-0071).
-use support::{TEST_PASSWORD, prepare_temp_workspace_ed25519 as prepare_temp_workspace};
+use jacs_mcp::tools::types::MemorySaveParams;
+use support::{
+    ENV_LOCK, ScopedEnvVar, TEST_PASSWORD, cleanup_workspace,
+    prepare_temp_workspace_ed25519 as prepare_temp_workspace,
+};
 
 static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 type McpClient = RunningService<RoleClient, ()>;
+
+#[derive(Clone, Default)]
+struct CapturedLogs(Arc<Mutex<Vec<u8>>>);
+
+impl CapturedLogs {
+    fn as_string(&self) -> String {
+        String::from_utf8(self.0.lock().expect("logs lock").clone()).expect("utf8 logs")
+    }
+}
+
+impl<'a> MakeWriter<'a> for CapturedLogs {
+    type Writer = CapturedWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        CapturedWriter(Arc::clone(&self.0))
+    }
+}
+
+struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
+
+impl Write for CapturedWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.lock().expect("logs lock").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+struct CurrentDirGuard(PathBuf);
+
+impl CurrentDirGuard {
+    fn chdir(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self> {
+        let original = std::env::current_dir()?;
+        std::env::set_current_dir(path)?;
+        Ok(Self(original))
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.0);
+    }
+}
 
 struct Session {
     client: McpClient,
@@ -104,6 +159,49 @@ async fn jacs_memory_save_creates_private_memory() -> anyhow::Result<()> {
     );
 
     s.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn jacs_memory_save_emits_local_storage_trace() -> anyhow::Result<()> {
+    let _env_guard = ENV_LOCK.lock().unwrap();
+    let (config, base) = prepare_temp_workspace();
+    let config = config.canonicalize()?;
+    let base = base.canonicalize()?;
+    let _password = ScopedEnvVar::set("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
+    let _cwd = CurrentDirGuard::chdir(&base)?;
+    let agent = jacs_mcp::load_agent_from_config_path(&config)?;
+    let server = jacs_mcp::JacsMcpServer::new(agent);
+    let logs = CapturedLogs::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(Level::INFO)
+        .with_ansi(false)
+        .with_writer(logs.clone())
+        .finish();
+
+    let _trace_guard = tracing::subscriber::set_default(subscriber);
+    let result = server
+        .jacs_memory_save(Parameters(MemorySaveParams {
+            name: "trace memory".to_string(),
+            content: "remember tracing local storage".to_string(),
+            description: None,
+            tags: None,
+            framework: None,
+        }))
+        .await;
+    drop(_trace_guard);
+
+    let parsed: serde_json::Value = serde_json::from_str(&result)?;
+    assert_eq!(parsed["success"], true, "save failed: {}", parsed);
+    let output = logs.as_string();
+    assert!(output.contains("jacs_memory_save"), "{output}");
+    assert!(
+        output.contains("storage=\"local\"") || output.contains("storage=local"),
+        "{output}"
+    );
+
+    drop(_cwd);
+    cleanup_workspace(&base);
     Ok(())
 }
 

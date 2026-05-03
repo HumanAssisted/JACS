@@ -11,7 +11,6 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
-use std::fs;
 use std::str::FromStr;
 use tracing::{error, info, warn};
 
@@ -686,6 +685,15 @@ impl Config {
             .map_err(|e| JacsError::ConfigError(e.to_string()))
     }
 
+    /// Return the effective log level from the canonical observability config.
+    pub fn effective_log_level(&self) -> &str {
+        self.observability
+            .as_ref()
+            .map(|obs| obs.logs.level.as_str())
+            .filter(|level| !level.trim().is_empty())
+            .unwrap_or("info")
+    }
+
     /// Set the key algorithm in the in-memory config.
     ///
     /// Used during cross-algorithm key rotation to update the config's algorithm
@@ -912,7 +920,7 @@ impl Config {
     /// This is the recommended way to load a config file. For 12-Factor compliance,
     /// call `config.apply_env_overrides()` after loading, then `Agent::from_config(config, password)`.
     pub fn from_file(path: &str) -> Result<Config, JacsError> {
-        let json_str = fs::read_to_string(path).map_err(|e| {
+        let json_str = crate::secure_io::read_to_string_no_follow(path).map_err(|e| {
             let help = match e.kind() {
                 std::io::ErrorKind::NotFound => {
                     format!(
@@ -1598,6 +1606,27 @@ mod tests {
         assert_eq!(config.jacs_default_storage, Some("fs".to_string()));
         // Password should never be in config
         assert!(config.jacs_private_key_password.is_none());
+    }
+
+    #[test]
+    fn effective_log_level_defaults_to_info() {
+        let config = Config::with_defaults();
+        assert_eq!(config.effective_log_level(), "info");
+    }
+
+    #[test]
+    fn effective_log_level_reads_observability_logs_level() {
+        let config: Config = serde_json::from_str(
+            r#"{
+                "observability": {
+                    "logs": {
+                        "level": "debug"
+                    }
+                }
+            }"#,
+        )
+        .expect("parse config");
+        assert_eq!(config.effective_log_level(), "debug");
     }
 
     #[test]
@@ -2417,7 +2446,8 @@ mod tests {
         }"#;
         let tmp = tempfile::NamedTempFile::new().expect("temp file");
         std::fs::write(tmp.path(), json).expect("write");
-        let config = Config::from_file(tmp.path().to_str().unwrap()).expect("load");
+        let tmp_path = tmp.path().canonicalize().expect("canonical temp file");
+        let config = Config::from_file(tmp_path.to_str().unwrap()).expect("load");
         assert!(
             !config.is_signed,
             "unsigned config must report is_signed=false"
@@ -2437,7 +2467,8 @@ mod tests {
         }"#;
         let tmp = tempfile::NamedTempFile::new().expect("temp file");
         std::fs::write(tmp.path(), json).expect("write");
-        let config = Config::from_file(tmp.path().to_str().unwrap()).expect("load");
+        let tmp_path = tmp.path().canonicalize().expect("canonical temp file");
+        let config = Config::from_file(tmp_path.to_str().unwrap()).expect("load");
         assert!(config.is_signed, "signed config must report is_signed=true");
     }
 

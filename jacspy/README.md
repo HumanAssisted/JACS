@@ -1,12 +1,12 @@
 # JACS Python Library
 
-Cryptographic identity, signing, and verification for AI agents — from Python.
+Cryptographic identity, signing, and verification for AI agents from Python.
 
 ```bash
 pip install jacs
 ```
 
-Prebuilt native bindings via maturin. No Rust compilation during install.
+Prebuilt native bindings are distributed via maturin. A normal install does not require compiling Rust.
 
 [Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
@@ -27,18 +27,18 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 
 | Operation | Description |
 |-----------|-------------|
-| `quickstart(name, domain)` | Create a persistent agent with keys — zero config |
+| `quickstart(name, domain)` | Create or load a persistent agent |
 | `load()` | Load an existing agent from config |
-| `sign_message()` | Sign any JSON-serializable data |
+| `sign_message()` | Sign JSON-serializable data |
 | `sign_file()` | Sign a file with optional embedding |
-| `verify()` | Verify any signed document |
+| `verify()` | Verify a signed document |
 | `verify_standalone()` | Verify without loading an agent |
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
 
-## What's new in 0.10.0
+## Text and image provenance
 
-*Why this matters:* shared markdown that multiple Python agents review and counter-sign, plus signed images for AI-era provenance, are now first-class — the signature is embedded in the artifact, no sidecar JSON required.
+Python exposes the same inline text and image signing surface as the CLI:
 
 ```python
 import jacs.simple as jacs
@@ -46,33 +46,27 @@ from jacs import MissingSignatureError
 
 jacs.load("./jacs.config.json")
 
-# Text — permissive verify (default)
+# Markdown/text: append and verify an inline signature block.
 jacs.sign_text("README.md")
-result = jacs.verify_text("README.md")
-print(result.status)  # 'signed' | 'missing_signature' | 'malformed'
+text = jacs.verify_text("README.md")
+print(text.status)  # 'signed' | 'missing_signature' | 'malformed'
 
-# Hard-fail if the file isn't signed
 try:
     jacs.verify_text("README.md", strict=True)
-except MissingSignatureError as e:
-    print("not signed:", e)
+except MissingSignatureError:
+    print("not signed")
 
-# Override the trust store with a directory of <signer_id>.public.pem files
 jacs.verify_text("README.md", key_dir="./trusted-keys/")
 
-# Images
+# Images: embed and verify a signature in PNG, JPEG, or WebP metadata.
 jacs.sign_image("photo.png", out="signed.png")
-v = jacs.verify_image("signed.png")
-print(v.status)  # 'valid'
-v_strict = jacs.verify_image("signed.png", strict=True)  # raises if not signed
+image = jacs.verify_image("signed.png")
+print(image.status)  # 'valid'
 
-# Extract the embedded provenance payload (decoded JSON by default)
 payload = jacs.extract_media_signature("signed.png")
 ```
 
-The same five methods are available on the instance-based `JacsClient` for multi-agent processes.
-
-A JACS inline signature proves "agent X signed these canonical bytes at their claimed time." It does not prove first creation or legal ownership.
+The same methods are available on the instance-based `JacsClient` for multi-agent processes. These signatures prove that an agent signed specific canonical bytes at its claimed time; they do not prove first creation or legal ownership.
 
 ## Verify without an agent
 
@@ -80,7 +74,7 @@ A JACS inline signature proves "agent X signed these canonical bytes at their cl
 result = jacs.verify_standalone(signed_json, key_directory="./keys")
 ```
 
-Cross-language interop tested on every commit — documents signed in Rust or Node.js verify identically in Python.
+Cross-language interop is tested on every commit. Documents signed in Rust or Node.js verify in Python, and Python-signed documents verify in the other bindings.
 
 ## Framework adapters
 
@@ -104,7 +98,7 @@ client = JacsClient.quickstart(name="my-agent", domain="example.com")
 signed = client.sign_message({"action": "approve"})
 ```
 
-See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference, advanced usage (agreements, A2A, attestation, headless loading), framework adapter examples, and testing utilities.
+See [DEVELOPMENT.md](https://github.com/HumanAssisted/JACS/blob/main/DEVELOPMENT.md) for the full API reference, advanced usage, framework adapter examples, and testing utilities.
 
 ## Links
 

@@ -338,6 +338,58 @@ fn test_agent_from_config_without_env_overrides() {
     clear_test_env_vars();
 }
 
+/// Test that Agent::from_config keeps a caller-provided local storage override
+/// authoritative even when the ambient environment uses a routed provider label.
+#[test]
+#[serial]
+fn test_agent_from_config_local_override_wins_over_remote_env() {
+    clear_test_env_vars();
+    set_env_var("JACS_DEFAULT_STORAGE", "remote").unwrap();
+
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let mut config = Config::builder()
+        .default_storage("fs")
+        .data_directory("jacs_data")
+        .key_directory("jacs_keys")
+        .build();
+    config.set_config_dir(Some(temp_dir.path().to_path_buf()));
+
+    let agent = Agent::from_config(config, None);
+    assert!(
+        agent.is_ok(),
+        "Agent::from_config should preserve the caller's fs override despite JACS_DEFAULT_STORAGE=remote: {:?}",
+        agent.err()
+    );
+
+    clear_test_env_vars();
+}
+
+/// Test that the haiai-routed `remote` storage label does not prevent JACS from
+/// loading local agent material. JACS still does not expose a native remote
+/// MultiStorage backend; this label falls back to fs at the Agent boundary.
+#[test]
+#[serial]
+fn test_agent_from_config_remote_storage_label_falls_back_to_fs() {
+    clear_test_env_vars();
+
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let mut config = Config::builder()
+        .default_storage("remote")
+        .data_directory("jacs_data")
+        .key_directory("jacs_keys")
+        .build();
+    config.set_config_dir(Some(temp_dir.path().to_path_buf()));
+
+    let agent = Agent::from_config(config, None);
+    assert!(
+        agent.is_ok(),
+        "Agent::from_config should use fs for local agent material when jacs_default_storage=remote: {:?}",
+        agent.err()
+    );
+
+    clear_test_env_vars();
+}
+
 /// Test that Agent::from_config with None password falls back to env var
 #[test]
 #[serial]

@@ -21,9 +21,15 @@ const TEST_PASSWORD: &str = "TestP@ss123!#";
 /// and the SimpleAgent (in case tests need to inspect agent state).
 fn create_test_service() -> (FilesystemDocumentService, TempDir, SimpleAgent) {
     let tmp = TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    // Canonicalize to resolve macOS /var → /private/var symlink. The secure-IO
+    // writer rejects symlinks anywhere in the parent path. No-op on Linux.
+    let tmp_root = tmp
+        .path()
+        .canonicalize()
+        .expect("canonicalize tempdir path");
+    let data_dir = tmp_root.join("jacs_data");
+    let key_dir = tmp_root.join("jacs_keys");
+    let config_path = tmp_root.join("jacs.config.json");
 
     let params = CreateAgentParams::builder()
         .name("docservice-test-agent")

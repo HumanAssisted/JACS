@@ -711,6 +711,50 @@ pub struct AgentWrapper {
     private_key_password: Arc<Mutex<Option<String>>>,
 }
 
+struct AgentWrapperInlineResolver<'a> {
+    wrapper: &'a AgentWrapper,
+}
+
+impl<'a> jacs::inline::KeyResolver for AgentWrapperInlineResolver<'a> {
+    fn resolve(&self, signer_id: &str) -> Option<jacs::inline::ResolvedKey> {
+        let agent = self.wrapper.inner.lock().ok()?;
+        let my_id = agent
+            .get_value()
+            .and_then(|value| value.get("jacsId"))
+            .and_then(|value| value.as_str())?;
+        if my_id != signer_id {
+            return None;
+        }
+
+        let public_key = agent.get_public_key().ok()?;
+        let algorithm = jacs::crypt::detect_algorithm_from_public_key(&public_key)
+            .ok()
+            .map(binding_inline_algorithm_tag)
+            .unwrap_or_else(|| "ed25519".to_string());
+        Some(jacs::inline::ResolvedKey {
+            public_key_pem: public_key,
+            algorithm,
+        })
+    }
+}
+
+fn binding_inline_algorithm_tag<T: std::fmt::Display>(algo: T) -> String {
+    let s = algo.to_string();
+    match s.as_str() {
+        "ring-Ed25519" | "ed25519" | "Ed25519" => "ed25519".to_string(),
+        "pq2025" | "ML-DSA-87" | "ml-dsa-87" => "pq2025".to_string(),
+        "RSA-PSS" | "rsa-pss" => "rsa-pss".to_string(),
+        _ => s.to_lowercase(),
+    }
+}
+
+fn binding_should_auto_dispatch_inline_text(content: &str) -> bool {
+    let trimmed = content.trim_start();
+    content.contains(jacs::inline::BEGIN_MARKER)
+        && !trimmed.starts_with('{')
+        && !trimmed.starts_with('[')
+}
+
 // ScopedPrivateKeyEnv and private_key_env_lock removed:
 // Password is now set directly on Agent.password (agent-scoped, no global state).
 // See ENV_SECURITY_PRD Task 006.
@@ -752,6 +796,53 @@ impl AgentWrapper {
     /// Get a locked reference to the inner agent.
     fn lock(&self) -> BindingResult<MutexGuard<'_, Agent>> {
         self.inner.lock().map_err(BindingCoreError::from)
+    }
+
+    fn verify_inline_document(&self, framed: &str) -> BindingResult<bool> {
+        let resolver = AgentWrapperInlineResolver { wrapper: self };
+        let result = jacs::inline::verify_inline(
+            framed,
+            &resolver,
+            jacs::inline::VerifyOptions {
+                strict: false,
+                key_dir: None,
+            },
+        )
+        .map_err(|e| {
+            BindingCoreError::document_failed(format!("Inline text verify failed: {e}"))
+        })?;
+
+        match result {
+            jacs::inline::VerifyTextResult::Signed { signatures } => {
+                if signatures
+                    .iter()
+                    .all(|entry| entry.status == jacs::inline::SignatureStatus::Valid)
+                {
+                    Ok(true)
+                } else {
+                    let errors: Vec<String> = signatures
+                        .iter()
+                        .filter_map(|entry| {
+                            if entry.status == jacs::inline::SignatureStatus::Valid {
+                                None
+                            } else {
+                                Some(format!("{}: {:?}", entry.signer_id, entry.status))
+                            }
+                        })
+                        .collect();
+                    Err(BindingCoreError::verification_failed(format!(
+                        "Inline text verification failed: {}",
+                        errors.join("; ")
+                    )))
+                }
+            }
+            jacs::inline::VerifyTextResult::MissingSignature => Err(
+                BindingCoreError::document_failed("No inline JACS signature found".to_string()),
+            ),
+            jacs::inline::VerifyTextResult::Malformed(detail) => Err(
+                BindingCoreError::document_failed(format!("Malformed inline signature: {detail}")),
+            ),
+        }
     }
 
     fn configured_private_key_password(&self) -> BindingResult<Option<String>> {
@@ -1003,6 +1094,10 @@ impl AgentWrapper {
 
     /// Verify a document's signature and hash.
     pub fn verify_document(&self, document_string: &str) -> BindingResult<bool> {
+        if binding_should_auto_dispatch_inline_text(document_string) {
+            return self.verify_inline_document(document_string);
+        }
+
         let mut agent = self.lock()?;
 
         let doc = agent.load_document(document_string).map_err(|e| {
@@ -1063,6 +1158,10 @@ impl AgentWrapper {
         document_string: &str,
         signature_field: Option<String>,
     ) -> BindingResult<bool> {
+        if signature_field.is_none() && binding_should_auto_dispatch_inline_text(document_string) {
+            return self.verify_inline_document(document_string);
+        }
+
         let mut agent = self.lock()?;
 
         let doc = agent.load_document(document_string).map_err(|e| {

@@ -4,11 +4,14 @@ mod utils;
 use utils::DOCTESTFILECONFIG;
 use utils::TESTFILE_MODIFIED;
 
-use utils::{load_local_document, load_test_agent_one, load_test_agent_two, raw_fixture};
+use utils::{
+    load_local_document, load_test_agent_one_ed25519, load_test_agent_two_ed25519, raw_fixture,
+};
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
 extern crate env_logger;
 use log::{error, info};
+use serial_test::serial;
 
 // Define the correct path for the custom schema
 
@@ -26,15 +29,17 @@ mod tests {
     use super::*;
 
     #[test]
+    #[serial(jacs_env)]
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_load_all() {
     // cargo test   --test document_tests -- --nocapture test_load_all
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let save_docs = true;
     let load_only_recent = true;
     let all_docs = agent
@@ -44,9 +49,10 @@ fn test_load_all() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_load_only_recent() {
     // cargo test   --test document_tests -- --nocapture test_load_only_recent
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let save_docs = true;
     let load_only_recent = true;
     let all_docs = agent
@@ -69,9 +75,10 @@ fn test_load_only_recent() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_load_custom_schema_and_custom_document() {
     // cargo test   --test document_tests -- --nocapture
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => {
@@ -117,9 +124,10 @@ fn test_load_custom_schema_and_custom_document() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_load_custom_schema_and_custom_invalid_document() {
     // cargo test   --test document_tests -- --nocapture
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     info!("Starting to load custom schemas.");
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {
@@ -183,15 +191,17 @@ fn test_load_custom_schema_and_custom_invalid_document() {
 // extensively in document_lifecycle.rs and document_fs.rs.
 
 #[test]
+#[serial(jacs_env)]
 fn test_create_attachments_no_save() {
     // RUST_BACKTRACE=1 cargo test document_tests -- --test test_create_attachments_no_save
     utils::generate_new_docs_with_attachments(false);
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_load_custom_schema_and_new_custom_document() {
     // cargo test   --test document_tests -- --nocapture
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!("Schemas loaded successfully."),
@@ -243,9 +253,10 @@ fn test_load_custom_schema_and_new_custom_document() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Test case started");
-    let mut agent = load_test_agent_two();
+    let mut agent = load_test_agent_two_ed25519();
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Agent loaded");
 
     info!(
@@ -318,9 +329,14 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     // cargo test   --test document_tests -- --nocapture
-    let mut agent = load_test_agent_one();
+    // Note: this test used to load DOCTESTFILECONFIG (RSA-signed by the legacy
+    // ddf35096-... agent) directly. Update is now owner-gated, and the legacy
+    // RSA agent can no longer sign (RUSTSEC-2023-0071). So we create a fresh
+    // Ed25519-owned document, then update + verify against the same agent.
+    let mut agent = load_test_agent_one_ed25519();
 
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!(
@@ -338,30 +354,32 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         }
     };
 
-    let document_string = match load_local_document(&DOCTESTFILECONFIG.to_string()) {
+    let raw_source = match load_local_document(
+        &raw_fixture("favorite-fruit.json")
+            .to_string_lossy()
+            .to_string(),
+    ) {
         Ok(content) => content,
         Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading local document: {}",
+            "Error loading raw source for test_load_custom_schema_and_custom_document_and_update_and_verify_signature: {}",
             e
         ),
     };
 
-    let document = match agent.load_document(&document_string) {
+    let document = match agent.create_document_and_load(&raw_source, None, None) {
         Ok(doc) => doc,
         Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading document: {}",
+            "Error creating fresh Ed25519-owned document in test_load_custom_schema_and_custom_document_and_update_and_verify_signature: {}",
             e
         ),
     };
 
     let document_key = document.getkey();
-    let modified_document_string = match load_local_document(&TESTFILE_MODIFIED.to_string()) {
-        Ok(content) => content,
-        Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading modified document: {}",
-            e
-        ),
-    };
+
+    let mut modified_value = document.getvalue().clone();
+    modified_value["favorite-snack"] = serde_json::json!("mango");
+    let modified_document_string =
+        serde_json::to_string(&modified_value).expect("re-serialize modified document for update");
 
     let new_document = match agent.update_document(
         &document_key,
@@ -422,7 +440,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         ),
     };
 
-    let mut agent2 = load_test_agent_two();
+    let mut agent2 = load_test_agent_two_ed25519();
     let new_document_string = new_document_ref.to_string();
     let copy_newdocument = match agent2.load_document(&new_document_string) {
         Ok(doc) => doc,
@@ -453,9 +471,10 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
 }
 
 #[test]
+#[serial(jacs_env)]
 fn test_update_document_rejects_non_owner_editor() {
-    let mut owner = load_test_agent_one();
-    let mut non_owner = load_test_agent_two();
+    let mut owner = load_test_agent_one_ed25519();
+    let mut non_owner = load_test_agent_two_ed25519();
 
     let original_document_string = load_local_document(&DOCTESTFILECONFIG.to_string())
         .expect("Failed to load source document fixture");

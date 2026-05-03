@@ -148,7 +148,6 @@ This is the cleanest path into `strict` policy.
 
 ## Example Paths In This Repo
 
-- `jacs-mcp/README.md`
 - `jacspy/tests/test_a2a_server.py`
 - `jacsnpm/src/a2a-server.js`
 - `jacsnpm/examples/a2a-agent-example.js`

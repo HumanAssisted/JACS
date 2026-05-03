@@ -15,47 +15,63 @@ All bindings are async-first on Node (returns `Promise`); CLI is synchronous; Py
 
 ## The signature block
 
-`sign-text` appends a block of the following exact shape at the end of the file:
+`sign-text` appends a YAML footer at the end of the file. The markers stay
+small and stable; the body is a full signed JACS document so markdown can carry
+the same `jacsId` / `jacsVersion` chain as JSON-envelope documents:
 
 ```text
 -----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: ed25519
-hashAlgorithm: sha256
-canonicalization: jacs-text-v1
-signerId: agent-abc123
-publicKeyHash: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
-signedAt: 2026-04-24T18:00:00Z
-contentHash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-signature: 9XsrVQ8...base64url...
+jacsId: 5f7e...
+jacsVersion: 7c6d...
+jacsVersionDate: "2026-05-01T12:00:00Z"
+jacsType: inline-md
+jacsLevel: artifact
+content:
+  inlineSignatureVersion: 1
+  canonicalization: jacs-text-v1
+  hashAlgorithm: sha256
+  signedContentHash: no5d...
+jacsSignature:
+  agentID: agent-abc123
+  signingAlgorithm: ring-Ed25519
+  publicKeyHash: 3b2f...
+  signature: ...
+jacsSha256: 9a8b...
 -----END JACS SIGNATURE-----
 ```
 
-Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes *before* the first block) is preserved byte-for-byte.
+Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes *before* the first block) is preserved byte-for-byte. When the same signer re-signs edited content, JACS replaces that signer's footer with a new version of the same inline document: `jacsId` stays the same, `jacsVersion` changes, and `jacsPreviousVersion` points to the prior version.
 
 ### Field reference
 
 | Field | What it is |
 |-------|-----------|
-| `signatureBlockVersion` | Always `1` for v0.10.0. Versioning the block lets the format evolve without breaking older verifiers. |
-| `algorithm` | Signing algorithm in use (`ed25519`, `pq2025`, etc.) — read from the agent's key metadata. |
-| `hashAlgorithm` | Hash used for the canonical pre-image (currently `sha256`). |
-| `canonicalization` | Tag identifying how the bytes are normalised before hashing (currently `jacs-text-v1`). |
-| `signerId` | Agent ID. Resolves to a public key via the local trust store, the `--key-dir` override, or DNS. |
-| `publicKeyHash` | SHA-256 of the signer's public key — defends against silent key swap. |
-| `signedAt` | RFC 3339 / ISO 8601 timestamp the signer claims. *This is a claim, not a notarised proof.* |
-| `contentHash` | `sha256:<hex>` of the canonicalised content. |
-| `signature` | Base64url-encoded signature over a domain-separated pre-image (`JACS-INLINE-TEXT-V1\nsha256:<hash>`). |
+| `jacsId` | Stable identity for this signer's inline markdown document across edits. |
+| `jacsVersion` | Version ID for this footer. Changes whenever the signer re-signs edited content. |
+| `jacsPreviousVersion` | Previous `jacsVersion` for same-ID updates; absent or `null` on first signature. |
+| `jacsVersionDate` | RFC 3339 / ISO 8601 timestamp the signer claims. *This is a claim, not a notarised proof.* |
+| `jacsType` | `inline-md` for inline markdown/text footers. |
+| `content.signedContentHash` | Base64url SHA-256 of the canonicalised markdown/text body. |
+| `content.canonicalization` | Tag identifying how the bytes are normalised before hashing (currently `jacs-text-v1`). |
+| `jacsSignature.agentID` | Agent ID. Resolves to a public key via the local trust store, the `--key-dir` override, or DNS. |
+| `jacsSignature.publicKeyHash` | SHA-256 of the signer's public key — defends against silent key swap. |
+| `jacsSignature.signature` | Normal JACS document signature over the footer document fields. |
+| `jacsSha256` | Normal JACS document hash for the signed footer. |
 
-The body is valid YAML 1.2; any YAML 1.2 parser can read it. Anchors / tags / aliases are rejected by the verifier, and the body is capped at 16 KiB. A file may contain at most 256 signature blocks.
+The body is valid YAML 1.2; any YAML 1.2 parser can read it, and JACS converts it back through the same `yaml_to_jacs` path used by email YAML signing. Legacy v0.10.0 mini-blocks still verify, but new writes use the full JACS footer. A file may contain at most 256 signature blocks.
+
+Generic document verification also recognizes inline-signed markdown/text: when
+the body has a signature footer, `jacs verify <file>` and
+`SimpleAgent::verify()` dispatch to the inline verifier instead of treating the
+input as JSON. When the MIME type is known, callers should pass
+`text/markdown` or `text/plain` and use the same inline verification path.
 
 ## Canonicalization (`jacs-text-v1`)
 
-The bytes hashed by `contentHash` are derived from the file content (everything before the first signature block) by:
+The bytes hashed by `content.signedContentHash` are derived from the file content (everything before the first signature block) by:
 
 1. Normalising line endings to `\n` (CRLF / CR collapsed to LF).
-2. Stripping trailing whitespace from each line.
-3. Removing trailing blank lines at end of file.
+2. Stripping trailing spaces, tabs, and blank lines at the end of the content.
 
 The file *on disk* is NOT modified by canonicalization — the original bytes are preserved. Canonicalization only affects the hash input.
 
@@ -94,16 +110,18 @@ After both signers, the on-disk file is:
 ```markdown
 This README documents the v1 release.
 -----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: ed25519
+jacsId: ...
+jacsType: inline-md
 ... (agent-a)
-signature: ...
+jacsSignature:
+  signature: ...
 -----END JACS SIGNATURE-----
 -----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: pq2025
+jacsId: ...
+jacsType: inline-md
 ... (agent-b)
-signature: ...
+jacsSignature:
+  signature: ...
 -----END JACS SIGNATURE-----
 ```
 
@@ -127,7 +145,7 @@ Resolution order: self → `--key-dir` (when provided) → local trust store →
 2. **Use a zero-width space prefix** — the literal string differs by one byte.
 3. **Use inline emphasis** — wrap the marker in backticks or asterisks.
 
-There is intentionally **no** `--force-overwrite-markers` escape hatch in v0.10.0. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.
+There is intentionally **no** `--force-overwrite-markers` escape hatch. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.
 
 ## Caps and rejected inputs
 

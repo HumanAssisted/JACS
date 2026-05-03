@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -75,7 +75,7 @@ regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
 encoding_rs = "0.8.35"
-difference = "2.0.0"
+similar = "2.6"
 rpassword = "7.3.1"
 validator = "0.20.0"
 uuid = { version = "1.16.0", features = ["v4", "v7", "js"] }
@@ -95,7 +95,7 @@ hkdf = "0.12"
 zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 serde_yaml_ng = "0.10"
-jacs-media = { version = "0.10.0", path = "../jacs-media" }
+jacs-media = { version = "0.10.1", path = "../jacs-media" }
 tempfile = "3"
 
 

@@ -226,9 +226,10 @@ fn test_concurrent_persistent_agents_different_passwords() {
         .map(|i| {
             thread::spawn(move || {
                 let dir = tempfile::tempdir().expect("tempdir");
-                let data_dir = dir.path().join("data");
-                let key_dir = dir.path().join("keys");
-                let config_path = dir.path().join("jacs.config.json");
+                let root = dir.path().canonicalize().expect("canonical tempdir");
+                let data_dir = root.join("data");
+                let key_dir = root.join("keys");
+                let config_path = root.join("jacs.config.json");
 
                 let params = CreateAgentParams::builder()
                     .name(&format!("concurrent-agent-{}", i))

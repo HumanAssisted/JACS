@@ -2,7 +2,7 @@
 
 `jacsgo` provides Go bindings for signing and verifying JACS documents in services, APIs, and agent runtimes.
 
-> Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For full MCP surface use the Rust `jacs-mcp` server; the Go MCP examples in the repo are demo code.
+> Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For the full MCP surface, install `jacs-cli` and run `jacs mcp`; the Go MCP examples in the repo are demo code.
 
 ## Install
 

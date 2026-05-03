@@ -10,9 +10,7 @@ use crate::storage::jenv::set_env_var;
 use rpassword::read_password;
 use serde_json::{Value, json};
 use std::env;
-use std::fs::File;
 use std::io;
-use std::io::Write;
 use std::path::Path;
 
 use crate::simple::{AgentInfo, CreateAgentParams, SimpleAgent};
@@ -187,7 +185,7 @@ pub fn handle_config_create() -> Result<(), JacsError> {
 
     // --- Check if config file already exists ---
     let config_path = "jacs.config.json";
-    if Path::new(config_path).exists() {
+    if std::fs::symlink_metadata(config_path).is_ok() {
         return Err(format!(
             "Configuration file '{}' already exists. Please remove or rename it if you want to create a new one.",
             config_path
@@ -315,10 +313,8 @@ pub fn handle_config_create() -> Result<(), JacsError> {
     }
     */
 
-    let mut file = File::create(config_path)
+    crate::secure_io::write_new_file(config_path, serialized.as_bytes(), 0o644)
         .map_err(|e| format!("Failed to create config file '{}': {}", config_path, e))?;
-    file.write_all(serialized.as_bytes())
-        .map_err(|e| format!("Failed to write to config file '{}': {}", config_path, e))?;
 
     println!("jacs.config.json file generated successfully!");
     Ok(())

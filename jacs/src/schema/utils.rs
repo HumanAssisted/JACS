@@ -566,7 +566,7 @@ fn normalize_access_path(path: &str) -> Result<std::path::PathBuf, JacsError> {
 fn check_filesystem_schema_access(
     path: &str,
     config: Option<&crate::config::Config>,
-) -> Result<(), JacsError> {
+) -> Result<std::path::PathBuf, JacsError> {
     // Check if filesystem schemas are enabled (process-level feature gate, stays as env read)
     let fs_enabled = std::env::var("JACS_ALLOW_FILESYSTEM_SCHEMAS")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
@@ -596,8 +596,8 @@ fn check_filesystem_schema_access(
     let schema_dir = std::env::var("JACS_SCHEMA_DIRECTORY").ok();
 
     // If specific directories are configured, check that the path is within them
+    let candidate = normalize_access_path(path)?;
     if data_dir.is_some() || schema_dir.is_some() {
-        let candidate = normalize_access_path(path)?;
         let mut allowed = false;
 
         if let Some(ref data) = data_dir {
@@ -623,7 +623,7 @@ fn check_filesystem_schema_access(
         }
     }
 
-    Ok(())
+    Ok(candidate)
 }
 
 /// Resolves a schema from various sources based on the provided path.
@@ -711,28 +711,31 @@ pub fn resolve_schema_with_config(
         }
     } else {
         // Filesystem path - check security restrictions
-        check_filesystem_schema_access(rawpath, config)?;
+        let checked_path = check_filesystem_schema_access(rawpath, config)?;
+        run_schema_access_test_hook(rawpath);
+        let checked_path = checked_path.to_string_lossy().into_owned();
 
         let storage = MultiStorage::default_new()
             .map_err(|e| JacsError::SchemaError(format!("Failed to initialize storage: {}", e)))?;
-        if storage.file_exists(rawpath, None).map_err(|e| {
+        if storage.file_exists(&checked_path, None).map_err(|e| {
             JacsError::SchemaError(format!("Failed to check schema file existence: {}", e))
         })? {
-            let file_bytes = storage.get_file(rawpath, None).map_err(|e| {
-                JacsError::SchemaError(format!("Failed to read schema file '{}': {}", rawpath, e))
+            let file_bytes = storage.get_file(&checked_path, None).map_err(|e| {
+                JacsError::SchemaError(format!(
+                    "Failed to read schema file '{}': {}",
+                    checked_path, e
+                ))
             })?;
             let schema_json = String::from_utf8(file_bytes).map_err(|e| {
                 JacsError::SchemaError(format!(
                     "Schema file '{}' contains invalid UTF-8: {}",
-                    rawpath, e
+                    checked_path, e
                 ))
             })?;
             let schema_value: Value = serde_json::from_str(&schema_json)?;
             Arc::new(schema_value)
         } else {
-            return Err(JacsError::FileNotFound {
-                path: rawpath.to_string(),
-            });
+            return Err(JacsError::FileNotFound { path: checked_path });
         }
     };
 
@@ -755,6 +758,50 @@ fn get_cached_schema(key: &str) -> Option<Arc<Value>> {
     schema_cache().read().ok()?.get(key).cloned()
 }
 
+#[cfg(test)]
+fn set_schema_access_test_hook<F>(path: String, hook: F) -> SchemaAccessHookGuard
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    let slot = SCHEMA_ACCESS_TEST_HOOK.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().expect("schema hook mutex") = Some((path, Arc::new(hook)));
+    SchemaAccessHookGuard
+}
+
+#[cfg(test)]
+fn run_schema_access_test_hook(path: &str) {
+    let hook = SCHEMA_ACCESS_TEST_HOOK
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .expect("schema hook mutex")
+        .clone();
+    if let Some((expected_path, hook)) = hook
+        && expected_path == path
+    {
+        hook();
+    }
+}
+
+#[cfg(not(test))]
+fn run_schema_access_test_hook(_path: &str) {}
+
+#[cfg(test)]
+struct SchemaAccessHookGuard;
+
+#[cfg(test)]
+impl Drop for SchemaAccessHookGuard {
+    fn drop(&mut self) {
+        if let Some(slot) = SCHEMA_ACCESS_TEST_HOOK.get() {
+            *slot.lock().expect("schema hook mutex") = None;
+        }
+    }
+}
+
+#[cfg(test)]
+static SCHEMA_ACCESS_TEST_HOOK: OnceLock<
+    std::sync::Mutex<Option<(String, Arc<dyn Fn() + Send + Sync + 'static>)>>,
+> = OnceLock::new();
+
 fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
     if let Ok(mut cache) = schema_cache().write() {
         if let Some(existing) = cache.get(&key) {
@@ -767,7 +814,7 @@ fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_schema;
+    use super::{resolve_schema, set_schema_access_test_hook};
     use serial_test::serial;
     use std::sync::Arc;
 
@@ -831,6 +878,68 @@ mod tests {
         assert!(
             result.is_ok(),
             "absolute schema path inside allowed directory should resolve"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    #[serial(jacs_env)]
+    fn resolve_schema_reads_prevalidated_canonical_path_after_symlink_swap() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("create tempdir");
+        let allowed_dir = temp.path().join("fixtures");
+        let outside_dir = temp.path().join("outside");
+        std::fs::create_dir_all(&allowed_dir).expect("create allowed dir");
+        std::fs::create_dir_all(&outside_dir).expect("create outside dir");
+
+        let safe_schema = allowed_dir.join("safe.schema.json");
+        std::fs::write(
+            &safe_schema,
+            r#"{"$schema":"http://json-schema.org/draft-07/schema#","type":"object"}"#,
+        )
+        .expect("write safe schema");
+        let outside_schema = outside_dir.join("outside.schema.json");
+        std::fs::write(
+            &outside_schema,
+            r#"{"$schema":"http://json-schema.org/draft-07/schema#","type":"string"}"#,
+        )
+        .expect("write outside schema");
+        let link_schema = allowed_dir.join("link.schema.json");
+        symlink(&safe_schema, &link_schema).expect("create schema symlink");
+
+        // SAFETY: serial test; env var mutations are isolated to this test's phase.
+        unsafe {
+            std::env::set_var("JACS_ALLOW_FILESYSTEM_SCHEMAS", "true");
+            std::env::set_var(
+                "JACS_DATA_DIRECTORY",
+                allowed_dir.to_string_lossy().to_string(),
+            );
+            std::env::remove_var("JACS_SCHEMA_DIRECTORY");
+        }
+
+        let link_for_hook = link_schema.clone();
+        let outside_for_hook = outside_schema.clone();
+        let _hook_guard =
+            set_schema_access_test_hook(link_schema.to_string_lossy().to_string(), move || {
+                std::fs::remove_file(&link_for_hook).expect("remove checked symlink");
+                symlink(&outside_for_hook, &link_for_hook).expect("swap schema symlink");
+            });
+
+        let result = resolve_schema(link_schema.to_string_lossy().as_ref());
+
+        // SAFETY: serial test; cleanup mirrors setup above.
+        unsafe {
+            std::env::remove_var("JACS_ALLOW_FILESYSTEM_SCHEMAS");
+            std::env::remove_var("JACS_DATA_DIRECTORY");
+            std::env::remove_var("JACS_SCHEMA_DIRECTORY");
+        }
+
+        let schema = result.expect("schema should resolve from the prevalidated target");
+        assert_eq!(
+            schema.get("type").and_then(|v| v.as_str()),
+            Some("object"),
+            "resolver must not read the swapped symlink target"
         );
     }
 }

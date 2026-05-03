@@ -16,12 +16,12 @@ use crate::crypt::hash::{hash_bytes, hash_string};
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
 use chrono::Local;
-use difference::{Changeset, Difference};
 use flate2::read::GzDecoder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
+use similar::{ChangeTag, TextDiff};
 use std::collections::HashMap;
 use std::fmt;
 use std::io::Read;
@@ -1100,15 +1100,16 @@ impl DocumentTraits for Agent {
 
     /// Function to diff two JSON strings and print the differences.
     fn diff_json_strings(&self, json1: &str, json2: &str) -> Result<(String, String), JacsError> {
-        let changeset = Changeset::new(json1, json2, "\n");
+        let diff = TextDiff::from_lines(json1, json2);
         let mut same = String::new();
         let mut diffs = String::new();
 
-        for diff in changeset.diffs {
-            match diff {
-                Difference::Same(ref x) => same.push_str(format!(" {}", x).as_str()),
-                Difference::Add(ref x) => diffs.push_str(format!("+{}", x).as_str()),
-                Difference::Rem(ref x) => diffs.push_str(format!("-{}", x).as_str()),
+        for change in diff.iter_all_changes() {
+            let value = change.value();
+            match change.tag() {
+                ChangeTag::Equal => same.push_str(format!(" {}", value).as_str()),
+                ChangeTag::Insert => diffs.push_str(format!("+{}", value).as_str()),
+                ChangeTag::Delete => diffs.push_str(format!("-{}", value).as_str()),
             }
         }
 
@@ -1116,17 +1117,17 @@ impl DocumentTraits for Agent {
     }
 
     fn diff_strings(&self, string_one: &str, string_two: &str) -> (String, String, String) {
-        let changeset = Changeset::new(string_one, string_two, " ");
+        let diff = TextDiff::from_words(string_one, string_two);
         let mut same = String::new();
         let mut add = String::new();
         let mut rem = String::new();
 
-        // Collect detailed differences
-        for diff in &changeset.diffs {
-            match diff {
-                Difference::Same(x) => same.push_str(x),
-                Difference::Add(x) => add.push_str(x),
-                Difference::Rem(x) => rem.push_str(x),
+        for change in diff.iter_all_changes() {
+            let value = change.value();
+            match change.tag() {
+                ChangeTag::Equal => same.push_str(value),
+                ChangeTag::Insert => add.push_str(value),
+                ChangeTag::Delete => rem.push_str(value),
             }
         }
 

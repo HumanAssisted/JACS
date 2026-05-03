@@ -69,54 +69,21 @@ fn write_journal_file_securely(
 ) -> Result<(), JacsError> {
     let path_obj = std::path::Path::new(path);
 
-    if let Some(parent) = path_obj.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    if !create_new {
-        let metadata = std::fs::symlink_metadata(path_obj).map_err(|e| JacsError::Internal {
-            message: format!("Failed to stat rotation journal '{}': {}", path, e),
-        })?;
-        if !metadata.file_type().is_file() {
-            return Err(JacsError::Internal {
-                message: format!(
-                    "Refusing to update rotation journal at '{}': path is not a regular file.",
-                    path
-                ),
-            });
-        }
-    }
-
-    let mut options = OpenOptions::new();
-    options.write(true);
     if create_new {
-        options.create_new(true);
+        crate::secure_io::write_new_file(path_obj, contents, 0o600).map_err(|e| {
+            JacsError::Internal {
+                message: format!(
+                    "Failed to create rotation journal at '{}': {}. \
+                     If a stale journal exists, repair it before starting another rotation.",
+                    path, e
+                ),
+            }
+        })?;
     } else {
-        options.truncate(true);
-    }
-
-    #[cfg(unix)]
-    {
-        options.mode(0o600);
-    }
-
-    let mut file = options.open(path_obj).map_err(|e| JacsError::Internal {
-        message: if create_new {
-            format!(
-                "Failed to create rotation journal at '{}': {}. \
-                 If a stale journal exists, repair it before starting another rotation.",
-                path, e
-            )
-        } else {
-            format!("Failed to update rotation journal at '{}': {}", path, e)
-        },
-    })?;
-    file.write_all(contents)?;
-    file.sync_all()?;
-
-    #[cfg(unix)]
-    {
-        let _ = set_secure_permissions(path, false);
+        crate::secure_io::write_atomic_replace_no_symlink(path_obj, contents, 0o600, true)
+            .map_err(|e| JacsError::Internal {
+                message: format!("Failed to update rotation journal at '{}': {}", path, e),
+            })?;
     }
 
     Ok(())
@@ -942,6 +909,8 @@ impl RotationJournal {
 mod tests {
     use super::*;
     use serial_test::serial;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
 
     #[test]
@@ -1835,7 +1804,8 @@ mod tests {
     #[test]
     fn test_journal_write_creates_file() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let journal = RotationJournal::create(
             key_dir,
@@ -1857,12 +1827,22 @@ mod tests {
             Path::new(&path).exists(),
             "Journal file should exist on disk"
         );
+        #[cfg(unix)]
+        {
+            let mode = std::fs::metadata(&path)
+                .expect("journal metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "journal should be created owner-only");
+        }
     }
 
     #[test]
     fn test_journal_advance_stage() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let mut journal = RotationJournal::create(
             key_dir,
@@ -1888,7 +1868,8 @@ mod tests {
     #[test]
     fn test_journal_delete() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let journal = RotationJournal::create(
             key_dir,
@@ -1916,7 +1897,8 @@ mod tests {
     #[test]
     fn test_journal_read_existing() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let _journal = RotationJournal::create(
             key_dir,
@@ -1941,7 +1923,8 @@ mod tests {
     #[test]
     fn test_journal_create_refuses_overwrite() {
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let key_dir = tmp.path().to_str().unwrap();
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
 
         let _journal = RotationJournal::create(
             key_dir,
@@ -1964,6 +1947,44 @@ mod tests {
         assert!(
             second.is_err(),
             "Creating a second journal at the same path should fail"
+        );
+    }
+
+    #[test]
+    fn test_journal_update_replaces_hardlink_without_modifying_target() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let key_dir_path = tmp.path().canonicalize().expect("canonical temp dir");
+        let key_dir = key_dir_path.to_str().unwrap();
+
+        let mut journal = RotationJournal::create(
+            key_dir,
+            "agent-456",
+            "v2",
+            "hash-xyz",
+            "pq2025",
+            "/some/config.json",
+        )
+        .expect("journal create");
+
+        let path = RotationJournal::journal_path(key_dir);
+        std::fs::remove_file(&path).expect("remove journal");
+
+        let target = key_dir_path.join("external_target");
+        std::fs::write(&target, b"do not mutate").expect("write target");
+        std::fs::hard_link(&target, &path).expect("hard link journal path");
+
+        journal.advance("rewritten").expect("advance journal");
+
+        assert_eq!(
+            std::fs::read(&target).expect("read target"),
+            b"do not mutate",
+            "journal update must replace the path, not write through the hard link"
+        );
+        let rewritten = std::fs::read_to_string(&path).expect("read rewritten journal");
+        assert!(
+            rewritten.contains("\"stage\": \"rewritten\""),
+            "journal path should contain the updated journal: {}",
+            rewritten
         );
     }
 

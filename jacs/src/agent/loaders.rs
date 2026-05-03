@@ -121,9 +121,12 @@ pub trait FileLoader {
 impl FileLoader for Agent {
     fn use_filesystem(&self) -> bool {
         // Handle Option<Config> and Option<String> from getter
-        self.config
-            .as_ref()
-            .is_some_and(|conf| conf.jacs_default_storage().as_deref() == Some("fs"))
+        self.config.as_ref().is_some_and(|conf| {
+            matches!(
+                conf.jacs_default_storage().as_deref(),
+                Some("fs" | "remote")
+            )
+        })
     }
 
     fn fs_save_keys(&mut self) -> Result<(), JacsError> {

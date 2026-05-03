@@ -185,7 +185,7 @@
 </ol>
 <h2 id="best-fit-by-runtime"><a class="header" href="#best-fit-by-runtime">Best Fit By Runtime</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Runtime</th><th>Best starting point</th><th>What it gives you</th></tr></thead><tbody>
-<tr><td>Rust</td><td><code>jacs-mcp</code></td><td>Full MCP server with document, agreement, trust, A2A, and audit tools</td></tr>
+<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Full MCP server with document, agreement, trust, A2A, audit, text, and image tools</td></tr>
 <tr><td>Python</td><td><code>jacs.mcp</code> or <code>jacs.adapters.mcp</code></td><td>Local SSE transport security or FastMCP tool registration</td></tr>
 <tr><td>Node.js</td><td><code>@hai.ai/jacs/mcp</code></td><td>Transport proxy or MCP tool registration for existing SDK-based servers</td></tr>
 </tbody></table>
@@ -201,7 +201,7 @@
 <pre><code class="language-bash">cargo install jacs-cli
 jacs mcp
 </code></pre>
-<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
+<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, security audit tools, and text/image provenance tools. The crate-level MCP README in the repo has the full contract details.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
@@ -281,8 +281,8 @@ const client = await JacsClient.quickstart({
 registerJacsTools(server, client);
 </code></pre>
 <p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
-<h3 id="provenance-mcp-tools-v0100"><a class="header" href="#provenance-mcp-tools-v0100">Provenance MCP tools (v0.10.0)</a></h3>
-<p>The MCP server exposes 5 new tools for inline text and image provenance — covering the same surface as the <a href="../guides/inline-text-signing.html"><code>sign-text</code></a> and <a href="../guides/media-signing.html"><code>sign-image</code></a> CLI verbs.</p>
+<h3 id="provenance-mcp-tools"><a class="header" href="#provenance-mcp-tools">Provenance MCP tools</a></h3>
+<p>The MCP server exposes tools for inline text and image provenance, covering the same surface as the <a href="../guides/inline-text-signing.html"><code>sign-text</code></a> and <a href="../guides/media-signing.html"><code>sign-image</code></a> CLI verbs.</p>
 <ul>
 <li><code>jacs_sign_text</code> — append a YAML-bodied signature block to a markdown / text file.</li>
 <li><code>jacs_verify_text</code> — verify all signature blocks in a file (permissive default; <code>strict</code> opt-in).</li>
@@ -292,7 +292,6 @@ registerJacsTools(server, client);
 </ul>
 <h2 id="example-paths-in-this-repo"><a class="header" href="#example-paths-in-this-repo">Example Paths In This Repo</a></h2>
 <ul>
-<li><code>jacs-mcp/README.md</code></li>
 <li><code>jacspy/examples/mcp/server.py</code></li>
 <li><code>jacspy/examples/mcp/client.py</code></li>
 <li><code>jacsnpm/examples/mcp.stdio.server.js</code></li>

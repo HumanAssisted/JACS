@@ -26,7 +26,8 @@ impl Drop for CwdGuard {
 fn create_test_agent(name: &str) -> (SimpleAgent, simple::AgentInfo, tempfile::TempDir, CwdGuard) {
     let saved_cwd = std::env::current_dir().expect("get cwd");
     let tmp = tempfile::tempdir().expect("create temp dir");
-    std::env::set_current_dir(tmp.path()).expect("cd to temp dir");
+    let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+    std::env::set_current_dir(&tmp_root).expect("cd to temp dir");
     let guard = CwdGuard { saved: saved_cwd };
 
     let params = CreateAgentParams::builder()
@@ -211,7 +212,8 @@ fn test_unsigned_config_loads_without_error() {
     }"#;
 
     let tmp = tempfile::tempdir().expect("create temp dir");
-    let config_path = tmp.path().join("jacs.config.json");
+    let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+    let config_path = tmp_root.join("jacs.config.json");
     std::fs::write(&config_path, config_json).expect("write unsigned config");
 
     let config = jacs::config::Config::from_file(&config_path.display().to_string())

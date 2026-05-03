@@ -63,7 +63,11 @@ fn sign_text_file_single_signer() {
 
 #[test]
 fn sign_text_file_block_body_is_yaml() {
-    use jacs::inline::SignatureBlockYaml;
+    // v0.10.1+ writes a full JACS YAML document inside the BEGIN/END markers
+    // (with $schema, jacsId, jacsVersion, jacsSignature, content.*). The
+    // legacy SignatureBlockYaml mini-schema is only kept for verifying older
+    // files. Assert the body round-trips through the YAML→JACS converter and
+    // exposes the required JACS fields.
     let agent = ephemeral_ed25519();
     let (_d, path) = write_temp_file("hello\n");
     sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default()).unwrap();
@@ -74,8 +78,28 @@ fn sign_text_file_block_body_is_yaml() {
     let body_start = begin + "-----BEGIN JACS SIGNATURE-----\n".len();
     let end = written.find("\n-----END JACS SIGNATURE-----").expect("end");
     let body = &written[body_start..end];
-    let _: SignatureBlockYaml =
-        serde_yaml_ng::from_str(body).expect("body must be valid YAML matching schema");
+    let json = jacs::convert::yaml_to_jacs(body).expect("body must be valid YAML");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("yaml_to_jacs must produce JSON");
+    assert!(
+        value.get("jacsId").and_then(|v| v.as_str()).is_some(),
+        "block body must include jacsId"
+    );
+    assert!(
+        value.get("jacsVersion").and_then(|v| v.as_str()).is_some(),
+        "block body must include jacsVersion"
+    );
+    assert!(
+        value.get("jacsSignature").is_some(),
+        "block body must include jacsSignature"
+    );
+    assert!(
+        value
+            .pointer("/content/inlineSignatureVersion")
+            .and_then(|v| v.as_u64())
+            .is_some(),
+        "block body must include content.inlineSignatureVersion"
+    );
 }
 
 #[test]
@@ -181,6 +205,67 @@ fn verify_text_file_strict_valid_signature_ok() {
         }
         other => panic!("expected Signed; got {:?}", other),
     }
+}
+
+#[test]
+fn generic_verify_accepts_signed_markdown_body() {
+    let agent = ephemeral_ed25519();
+    let (_d, path) = write_temp_file("# Release notes\n\nShip it.\n");
+    sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default()).unwrap();
+    let signed_markdown = fs::read_to_string(&path).unwrap();
+
+    let result = agent
+        .verify(&signed_markdown)
+        .expect("generic verify must dispatch signed markdown to inline verifier");
+
+    assert!(
+        result.valid,
+        "signed markdown must verify: {:?}",
+        result.errors
+    );
+    assert_eq!(result.signer_id, agent.get_agent_id().unwrap());
+    assert_eq!(result.data["verificationType"], "inline-text");
+    assert_eq!(result.data["signatures"][0]["status"], "valid");
+}
+
+#[test]
+fn generic_verify_json_document_with_marker_text_stays_json() {
+    let agent = ephemeral_ed25519();
+    let signed = agent
+        .sign_message(&serde_json::json!({
+            "body": "This JSON content mentions -----BEGIN JACS SIGNATURE----- as text."
+        }))
+        .expect("sign message");
+
+    let result = agent
+        .verify(&signed.raw)
+        .expect("JSON signed document must stay on JSON verifier");
+
+    assert!(result.valid, "signed JSON must verify: {:?}", result.errors);
+    assert_ne!(result.data["verificationType"], "inline-text");
+}
+
+#[test]
+fn generic_verify_with_markdown_mime_rejects_tampered_body() {
+    let agent = ephemeral_ed25519();
+    let (_d, path) = write_temp_file("# Release notes\n\nShip it.\n");
+    sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default()).unwrap();
+    let signed_markdown = fs::read_to_string(&path).unwrap();
+    let tampered = signed_markdown.replace("Ship it.", "Do not ship it.");
+
+    let result = agent
+        .verify_with_mime(&tampered, "text/markdown; profile=jacs-text-v1")
+        .expect("generic mime verify should return an invalid result, not JSON parse failure");
+
+    assert!(!result.valid, "tampered markdown must not verify");
+    assert!(
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("hash_mismatch") || e.contains("HashMismatch")),
+        "expected hash mismatch in errors, got {:?}",
+        result.errors
+    );
 }
 
 #[test]
@@ -864,6 +949,67 @@ fn text_backup_rejects_symlink_target() {
     // Attacker target unchanged.
     let target_after = fs::read(&target).unwrap();
     assert_eq!(target_after, b"original target");
+}
+
+#[test]
+fn text_backup_replaces_existing_hardlink_without_modifying_link_target() {
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("doc.md");
+    fs::write(&path, b"# Hardlink backup\n\nbody\n").unwrap();
+
+    // A hard link is reported as a normal file, so a pre-write symlink check
+    // is not enough. The backup writer must replace the .bak directory entry
+    // instead of truncating/writing through the existing inode.
+    let target = dir.path().join("external_target");
+    fs::write(&target, b"original target").unwrap();
+    let bak_path = dir.path().join("doc.md.bak");
+    fs::hard_link(&target, &bak_path).expect("hard link");
+
+    let outcome = sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default())
+        .expect("sign should succeed");
+
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        b"original target",
+        "backup write must not mutate the hard-link target"
+    );
+    assert_eq!(
+        outcome.backup_path.as_deref(),
+        Some(bak_path.to_str().unwrap())
+    );
+    assert_eq!(
+        fs::read(&bak_path).unwrap(),
+        b"# Hardlink backup\n\nbody\n",
+        "backup path should now contain the original document bytes"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn sign_text_file_rejects_symlink_input_before_reading() {
+    use std::os::unix::fs::symlink;
+
+    let agent = ephemeral_ed25519();
+    let dir = TempDir::new().expect("tempdir");
+    let target = dir.path().join("secret.md");
+    fs::write(&target, b"# Secret\n\nbody\n").unwrap();
+    let link = dir.path().join("doc.md");
+    symlink(&target, &link).expect("symlink");
+
+    let result = sign_text_file(&agent, link.to_str().unwrap(), SignTextOptions::default());
+    assert!(result.is_err(), "expected refusal on symlink input");
+    let msg = format!("{}", result.unwrap_err());
+    assert!(
+        msg.contains("symlink") || msg.contains("Too many levels"),
+        "error must identify symlink refusal; got: {}",
+        msg
+    );
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        b"# Secret\n\nbody\n",
+        "symlink target must remain untouched"
+    );
 }
 
 // =============================================================================

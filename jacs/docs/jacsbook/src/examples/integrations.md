@@ -4,7 +4,7 @@ This page is now a curated index of examples that still line up with the current
 
 ## MCP
 
-- `jacs-mcp/README.md`
+- `jacs mcp`
   - Best starting point for the full Rust MCP server
 - `jacspy/examples/mcp/server.py`
   - Python FastMCP server wrapped with `JACSMCPServer`

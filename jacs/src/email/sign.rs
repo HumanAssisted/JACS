@@ -522,7 +522,8 @@ mod tests {
         use crate::simple::CreateAgentParams;
 
         let tmp = tempfile::tempdir().expect("create temp dir");
-        let tmp_path = tmp.path().to_string_lossy().to_string();
+        let tmp_root = tmp.path().canonicalize().expect("canonical temp dir");
+        let tmp_path = tmp_root.to_string_lossy().to_string();
 
         let params = CreateAgentParams::builder()
             .name("email-sign-test-agent")

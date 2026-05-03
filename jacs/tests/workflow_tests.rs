@@ -12,9 +12,10 @@ use jacs::schema::todo_crud::{
     add_todo_item, create_minimal_todo_list, set_item_commitment_ref, set_item_conversation_ref,
 };
 use serde_json::json;
+use serial_test::serial;
 
 mod utils;
-use utils::load_test_agent_one;
+use utils::load_test_agent_one_ed25519;
 
 // =============================================================================
 // Cross-Document Workflow Integration Tests
@@ -28,8 +29,9 @@ use utils::load_test_agent_one;
 /// the thread ID via set_conversation_ref(), sign both, and verify the
 /// commitment's jacsCommitmentConversationRef field matches the thread ID.
 #[test]
+#[serial(jacs_env)]
 fn test_conversation_to_commitment_workflow() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     // Step 1: Start a conversation and sign the first message.
@@ -111,8 +113,9 @@ fn test_conversation_to_commitment_workflow() {
 /// link the todo item to the commitment via set_item_commitment_ref(),
 /// sign the todo list, and verify the cross-reference survives signing.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_to_todo_workflow() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Step 1: Create and sign a commitment.
     let commitment = create_minimal_commitment("Implement authentication module")
@@ -196,8 +199,9 @@ fn test_commitment_to_todo_workflow() {
 ///   f. Verify all signatures
 ///   g. Verify all cross-references are preserved
 #[test]
+#[serial(jacs_env)]
 fn test_full_lifecycle_conversation_commitment_todo() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     // --- (a) Start a conversation with 3 messages in a thread ---
@@ -392,8 +396,9 @@ fn test_full_lifecycle_conversation_commitment_todo() {
 /// using build_todo_item_ref(), set it on a commitment via set_todo_ref(),
 /// sign, and verify the ref survives and is parseable via parse_todo_item_ref().
 #[test]
+#[serial(jacs_env)]
 fn test_todo_ref_format_on_commitment() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Step 1: Create a todo list and add an item.
     let mut todo_list =
@@ -491,8 +496,9 @@ fn test_todo_ref_format_on_commitment() {
 /// version, then dispute it with a reason, sign another version. Verify
 /// the version chain and that the dispute reason persists.
 #[test]
+#[serial(jacs_env)]
 fn test_commitment_dispute_workflow() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Version 1: Create and sign a pending commitment.
     let commitment = create_minimal_commitment("Partnership agreement for Q2")
@@ -602,8 +608,9 @@ fn test_commitment_dispute_workflow() {
 /// -> completed), verify completedDate is set, remove completed items,
 /// and verify archive works.
 #[test]
+#[serial(jacs_env)]
 fn test_todo_item_lifecycle_with_refs() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
 
     // Create and sign a commitment so we have a real jacsId to reference.
     let commitment =
@@ -771,8 +778,9 @@ fn test_todo_item_lifecycle_with_refs() {
 /// referencing the same thread, sign all. Verify they each reference
 /// the same thread ID but have different jacsId values.
 #[test]
+#[serial(jacs_env)]
 fn test_multiple_commitments_one_conversation() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     // Start a conversation thread.
@@ -865,8 +873,9 @@ fn test_multiple_commitments_one_conversation() {
 /// validate them with validate_uuid_ref(), build and parse todo refs from
 /// real document IDs.
 #[test]
+#[serial(jacs_env)]
 fn test_reference_utils_with_real_documents() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agent_id = agent.get_id().expect("Should get agent id");
 
     // Create and sign a conversation message.

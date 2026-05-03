@@ -259,7 +259,13 @@ pub fn trust_agent_with_key(
 
     // Save the agent file
     let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    fs::write(&agent_file, agent_json).map_err(|e| JacsError::FileWriteFailed {
+    crate::secure_io::write_atomic_replace_no_symlink(
+        &agent_file,
+        agent_json.as_bytes(),
+        0o644,
+        false,
+    )
+    .map_err(|e| JacsError::FileWriteFailed {
         path: agent_file.to_string_lossy().to_string(),
         reason: e.to_string(),
     })?;
@@ -286,7 +292,13 @@ pub fn trust_agent_with_key(
         serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize metadata: {}", e),
         })?;
-    fs::write(&metadata_file, metadata_json).map_err(|e| JacsError::Internal {
+    crate::secure_io::write_atomic_replace_no_symlink(
+        &metadata_file,
+        metadata_json.as_bytes(),
+        0o644,
+        false,
+    )
+    .map_err(|e| JacsError::Internal {
         message: format!("Failed to write metadata file: {}", e),
     })?;
 
@@ -440,7 +452,7 @@ pub fn get_trusted_agent(agent_id: &str) -> Result<String, JacsError> {
         }
     }
 
-    fs::read_to_string(&agent_file).map_err(|e| JacsError::FileReadFailed {
+    crate::secure_io::read_to_string_no_follow(&agent_file).map_err(|e| JacsError::FileReadFailed {
         path: agent_file.to_string_lossy().to_string(),
         reason: e.to_string(),
     })
@@ -512,7 +524,13 @@ pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsErr
 
     // Save the agent card file
     let agent_file = trust_dir.join(format!("{}.json", agent_id));
-    fs::write(&agent_file, card_json).map_err(|e| JacsError::FileWriteFailed {
+    crate::secure_io::write_atomic_replace_no_symlink(
+        &agent_file,
+        card_json.as_bytes(),
+        0o644,
+        false,
+    )
+    .map_err(|e| JacsError::FileWriteFailed {
         path: agent_file.to_string_lossy().to_string(),
         reason: e.to_string(),
     })?;
@@ -532,7 +550,13 @@ pub fn trust_a2a_card(agent_id: &str, card_json: &str) -> Result<String, JacsErr
         serde_json::to_string_pretty(&trusted_agent).map_err(|e| JacsError::Internal {
             message: format!("Failed to serialize metadata: {}", e),
         })?;
-    fs::write(&metadata_file, metadata_json).map_err(|e| JacsError::Internal {
+    crate::secure_io::write_atomic_replace_no_symlink(
+        &metadata_file,
+        metadata_json.as_bytes(),
+        0o644,
+        false,
+    )
+    .map_err(|e| JacsError::Internal {
         message: format!("Failed to write metadata file: {}", e),
     })?;
 
@@ -578,9 +602,11 @@ fn read_trusted_agent_metadata(agent_id: &str) -> Result<Option<TrustedAgent>, J
     }
 
     let metadata_json =
-        fs::read_to_string(&metadata_file).map_err(|e| JacsError::FileReadFailed {
-            path: metadata_file.to_string_lossy().to_string(),
-            reason: e.to_string(),
+        crate::secure_io::read_to_string_no_follow(&metadata_file).map_err(|e| {
+            JacsError::FileReadFailed {
+                path: metadata_file.to_string_lossy().to_string(),
+                reason: e.to_string(),
+            }
         })?;
 
     let metadata =
@@ -617,7 +643,7 @@ fn load_public_key_from_cache(public_key_hash: &str) -> Result<Vec<u8>, JacsErro
         )));
     }
 
-    fs::read(&key_file).map_err(|e| JacsError::FileReadFailed {
+    crate::secure_io::read_no_follow(&key_file).map_err(|e| JacsError::FileReadFailed {
         path: key_file.to_string_lossy().to_string(),
         reason: e.to_string(),
     })
@@ -641,15 +667,22 @@ fn save_public_key_to_cache(
 
     // Save the public key
     let key_file = keys_dir.join(format!("{}.pem", public_key_hash));
-    fs::write(&key_file, public_key_bytes).map_err(|e| JacsError::FileWriteFailed {
-        path: key_file.to_string_lossy().to_string(),
-        reason: e.to_string(),
-    })?;
+    crate::secure_io::write_atomic_replace_no_symlink(&key_file, public_key_bytes, 0o644, false)
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: key_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
 
     // Save the algorithm type if provided
     if let Some(algo) = algorithm {
         let algo_file = keys_dir.join(format!("{}.algo", public_key_hash));
-        fs::write(&algo_file, algo).map_err(|e| JacsError::FileWriteFailed {
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &algo_file,
+            algo.as_bytes(),
+            0o644,
+            false,
+        )
+        .map_err(|e| JacsError::FileWriteFailed {
             path: algo_file.to_string_lossy().to_string(),
             reason: e.to_string(),
         })?;
@@ -818,6 +851,10 @@ mod tests {
             let original_home = env::var("HOME").ok();
 
             let temp_dir = TempDir::new().expect("Failed to create temp directory for test");
+            let temp_home = temp_dir
+                .path()
+                .canonicalize()
+                .expect("Failed to canonicalize temporary HOME for test");
 
             // SAFETY: `env::set_var` is unsafe in Rust 2024+ due to potential data races when
             // other threads read environment variables concurrently. This is safe here because:
@@ -828,7 +865,7 @@ mod tests {
             // If these invariants are violated (e.g., parallel test execution), undefined
             // behavior could occur from concurrent env access.
             unsafe {
-                env::set_var("HOME", temp_dir.path().to_str().unwrap());
+                env::set_var("HOME", temp_home.to_str().unwrap());
             }
 
             Self {

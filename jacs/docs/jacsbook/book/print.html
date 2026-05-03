@@ -176,62 +176,41 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="jacs-json-agent-communication-standard"><a class="header" href="#jacs-json-agent-communication-standard">JACS: JSON Agent Communication Standard</a></h1>
-<p>JACS is a cryptographic provenance layer for agent systems. Use it when an output, tool call, or agent handoff crosses a trust boundary and logs alone are not enough.</p>
-<h2 id="start-with-the-deployment"><a class="header" href="#start-with-the-deployment">Start With The Deployment</a></h2>
-<p>Most teams adopt JACS in one of four ways:</p>
+<p>JACS is an open source provenance layer for agent systems. Use it when an output, tool call, file, image, email, or agent handoff crosses a trust boundary and logs alone are not enough.</p>
+<h2 id="start-with-the-boundary"><a class="header" href="#start-with-the-boundary">Start With The Boundary</a></h2>
+<p>Most deployments start in one of four places:</p>
 <ul>
-<li><strong>LangChain / LangGraph / CrewAI / FastAPI</strong>: add signing at tool or API boundaries without changing the rest of the app</li>
-<li><strong>MCP</strong>: secure a local tool server or expose JACS itself as an MCP tool suite</li>
-<li><strong>A2A</strong>: publish an Agent Card, exchange signed artifacts, and apply trust policy across organizations</li>
-<li><strong>Core signing</strong>: sign JSON, files, or agreements directly from Rust, Python, Node.js, or Go</li>
+<li><strong>Core signing</strong>: sign JSON, files, Markdown/text, images, or Rust email payloads directly.</li>
+<li><strong>MCP</strong>: run <code>jacs mcp</code> as a local tool server, or add signing around an existing MCP transport.</li>
+<li><strong>Frameworks</strong>: add provenance at LangChain, LangGraph, FastAPI, Express, Koa, or Vercel AI SDK boundaries.</li>
+<li><strong>A2A and agreements</strong>: exchange signed artifacts or require multiple agents to sign off.</li>
 </ul>
-<p>The book now focuses on those supported workflows first. Older roadmap-style integration chapters have been reduced or removed from navigation.</p>
 <h2 id="what-jacs-gives-you"><a class="header" href="#what-jacs-gives-you">What JACS Gives You</a></h2>
 <ul>
-<li><strong>Signed JSON and file envelopes</strong> with tamper detection</li>
-<li><strong>Persistent agent identity</strong> with encrypted private keys</li>
-<li><strong>Trust bootstrap primitives</strong> such as <code>share_public_key</code>, <code>share_agent</code>, and <code>trust_agent_with_key</code></li>
-<li><strong>A2A artifact signing and trust policies</strong> (<code>open</code>, <code>verified</code>, <code>strict</code>)</li>
-<li><strong>MCP integration paths</strong> for ready-made servers, transport security, or tool registration</li>
-<li><strong>Framework adapters</strong> for Python and Node.js ecosystems</li>
-<li><strong>Multi-party agreements</strong> with quorum, timeout, and algorithm constraints</li>
-<li><strong>Cross-language compatibility</strong> across Rust, Python, Node.js, and Go</li>
+<li>Persistent agent identity with encrypted private keys</li>
+<li>Tamper-evident signed JSON and file envelopes</li>
+<li>Inline Markdown/text signatures that stay readable in place</li>
+<li>Embedded PNG/JPEG/WebP signatures for media provenance</li>
+<li>Rust email signing and verification with field-level content hashes</li>
+<li>Trust policies and local trust-store workflows</li>
+<li>Cross-language verification across Rust, Python, Node.js, and Go</li>
 </ul>
+<p>For platform workflows around verified documents, agent behavior, benchmarks, and hosted JACS identity flows, see <a href="https://github.com/HumanAssisted/haiai">HumanAssisted/haiai</a>.</p>
 <h2 id="best-entry-points"><a class="header" href="#best-entry-points">Best Entry Points</a></h2>
-<p>If you are choosing where to start:</p>
 <ol>
 <li><a href="getting-started/decision-tree.html">Which Integration?</a></li>
+<li><a href="getting-started/quick-start.html">Quick Start</a></li>
 <li><a href="usecases.html">Use Cases</a></li>
 <li><a href="integrations/mcp.html">MCP Overview</a></li>
-<li><a href="integrations/a2a.html">A2A Interoperability</a></li>
-<li><a href="python/adapters.html">Python Framework Adapters</a></li>
-<li><a href="nodejs/langchain.html">Node.js LangChain.js</a></li>
+<li><a href="guides/inline-text-signing.html">Inline Text Signatures</a></li>
+<li><a href="guides/media-signing.html">Image and Media Signatures</a></li>
+<li><a href="guides/email-signing.html">Email Signing and Verification</a></li>
 </ol>
-<h2 id="implementations"><a class="header" href="#implementations">Implementations</a></h2>
-<h3 id="rust"><a class="header" href="#rust">Rust</a></h3>
-<ul>
-<li>Deepest feature surface</li>
-<li>CLI plus library APIs</li>
-<li>Best fit when you want a ready-made MCP server via <code>jacs mcp</code></li>
-</ul>
-<h3 id="python-jacs"><a class="header" href="#python-jacs">Python (<code>jacs</code>)</a></h3>
-<ul>
-<li>Best fit for LangChain, LangGraph, CrewAI, FastAPI, and local MCP/A2A helpers</li>
-<li>Strong adapter story for adding provenance inside an existing app</li>
-</ul>
-<h3 id="nodejs-haiaijacs"><a class="header" href="#nodejs-haiaijacs">Node.js (<code>@hai.ai/jacs</code>)</a></h3>
-<ul>
-<li>Best fit for Express, Koa, Vercel AI SDK, LangChain.js, and MCP transport/tool integration</li>
-<li>Also exposes A2A helpers and Express discovery middleware</li>
-</ul>
-<h3 id="go-jacsgo"><a class="header" href="#go-jacsgo">Go (<code>jacsgo</code>)</a></h3>
-<ul>
-<li>Good fit for services that need signing and verification without framework adapters</li>
-</ul>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<h3 id="rust-cli"><a class="header" href="#rust-cli">Rust CLI</a></h3>
+<h2 id="install"><a class="header" href="#install">Install</a></h2>
+<h3 id="rust-cli-and-mcp-server"><a class="header" href="#rust-cli-and-mcp-server">Rust CLI and MCP server</a></h3>
 <pre><code class="language-bash">cargo install jacs-cli
 jacs quickstart --name my-agent --domain my-agent.example.com
+jacs mcp
 </code></pre>
 <h3 id="python"><a class="header" href="#python">Python</a></h3>
 <pre><code class="language-bash">pip install jacs
@@ -242,12 +221,11 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 <h3 id="go"><a class="header" href="#go">Go</a></h3>
 <pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
 </code></pre>
-<p>Rust, Python, and Node quickstart flows create or load a persistent agent and return agent metadata including config and key paths.</p>
 <h2 id="what-this-book-does-not-claim"><a class="header" href="#what-this-book-does-not-claim">What This Book Does Not Claim</a></h2>
 <ul>
-<li>It does <strong>not</strong> treat MCP and A2A as the same thing. MCP is for model-to-tool calls inside an application boundary; A2A is for agent discovery and exchange across boundaries.</li>
-<li>It does <strong>not</strong> assume every aspirational integration is first-class. If a chapter describes a feature that is not fully supported today, it has been moved out of the main path and tracked separately.</li>
-<li>It does <strong>not</strong> require a registry or blockchain to work. JACS identity is key-based and can be used entirely locally.</li>
+<li>MCP and A2A are different boundaries: MCP is model-to-tool; A2A is agent-to-agent discovery and exchange.</li>
+<li>JACS does not require a registry, blockchain, or central server.</li>
+<li>Email signing is currently documented as a Rust core API, not a CLI or Python/Node/Go binding surface.</li>
 </ul>
 <h2 id="community"><a class="header" href="#community">Community</a></h2>
 <ul>
@@ -255,226 +233,110 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 <li><a href="https://github.com/HumanAssisted/JACS/issues">Issue Tracker</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="what-is-jacs"><a class="header" href="#what-is-jacs">What is JACS?</a></h1>
-<p><strong>JACS (JSON Agent Communication Standard)</strong> is a comprehensive framework designed to solve a critical problem in AI systems: <strong>How do agents communicate and collaborate securely with verifiable trust?</strong></p>
-<h2 id="the-problem-jacs-solves"><a class="header" href="#the-problem-jacs-solves">The Problem JACS Solves</a></h2>
-<p>As AI systems become more sophisticated, we're moving toward multi-agent architectures where different AI agents need to:</p>
+<p>JACS is a cryptographic provenance layer for AI agents and the artifacts they produce. It gives an agent a persistent signing identity, wraps important outputs in tamper-evident signatures, and lets other systems verify origin and integrity later.</p>
+<p>Use JACS when data crosses a trust boundary: another service, another agent, another organization, a user-facing audit trail, or a file that must remain verifiable after it leaves the process that created it.</p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
+<p>Agent systems increasingly produce artifacts that other systems act on:</p>
 <ul>
-<li><strong>Exchange tasks</strong> and delegate work to each other</li>
-<li><strong>Create agreements</strong> and verify their completion</li>
-<li><strong>Share data</strong> with guaranteed authenticity</li>
-<li><strong>Maintain audit trails</strong> of decisions and actions</li>
-<li><strong>Establish trust</strong> with flexible key resolution (local trust stores, DNS, optional key services)</li>
+<li>JSON tool results, reports, memories, and configs</li>
+<li>Markdown plans, design docs, and release notes</li>
+<li>Images, screenshots, charts, and generated media</li>
+<li>Email messages and attachments</li>
+<li>A2A artifacts, MCP tool calls, and multi-agent approvals</li>
 </ul>
-<p>Traditional approaches fall short because they lack:</p>
-<ul>
-<li>Cryptographic integrity for agent communications</li>
-<li>Standardized formats for agent interactions</li>
-<li>Built-in versioning and audit trails</li>
-<li>Support for multi-agent agreements and workflows</li>
-</ul>
-<h2 id="jacs-core-philosophy"><a class="header" href="#jacs-core-philosophy">JACS Core Philosophy</a></h2>
-<h3 id="-agent-first-design"><a class="header" href="#-agent-first-design">🎯 <strong>Agent-First Design</strong></a></h3>
-<p>JACS is built specifically for AI agent communication patterns, while still being usable as a general-purpose signed JSON provenance layer. It understands concepts like:</p>
-<ul>
-<li><strong>Agents</strong> with identities and capabilities</li>
-<li><strong>Tasks</strong> that can be delegated and tracked</li>
-<li><strong>Agreements</strong> between multiple parties</li>
-<li><strong>Versioning</strong> for iterative improvements</li>
-</ul>
-<h3 id="-trust-through-cryptography"><a class="header" href="#-trust-through-cryptography">🔐 <strong>Trust Through Cryptography</strong></a></h3>
-<p>Every JACS document includes:</p>
-<ul>
-<li><strong>Digital signatures</strong> proving authenticity</li>
-<li><strong>Hash verification</strong> ensuring integrity</li>
-<li><strong>Public key cryptography</strong> for identity verification</li>
-<li><strong>Timestamps</strong> for chronological ordering</li>
-</ul>
-<h3 id="-standards-based"><a class="header" href="#-standards-based">📋 <strong>Standards-Based</strong></a></h3>
-<p>JACS builds on proven standards:</p>
-<ul>
-<li><strong>JSON</strong> for universal compatibility</li>
-<li><strong>JSON Schema</strong> for structure validation</li>
-<li><strong>RFC 3339</strong> timestamps for consistency</li>
-<li><strong>Standard cryptographic algorithms</strong> (RSA, Ed25519, post-quantum)</li>
-</ul>
-<h2 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h2>
-<h3 id="agents"><a class="header" href="#agents">Agents</a></h3>
-<p>An <strong>Agent</strong> is an autonomous entity with:</p>
-<ul>
-<li>A unique identity (UUID)</li>
-<li>Cryptographic keys for signing</li>
-<li>Capabilities defined in services</li>
-<li>The ability to create and verify documents</li>
-</ul>
-<h3 id="documents"><a class="header" href="#documents">Documents</a></h3>
-<p>A <strong>Document</strong> is any JSON object that includes:</p>
-<ul>
-<li>JACS header fields (ID, version, creator, etc.)</li>
-<li>A cryptographic signature</li>
-<li>A hash for integrity verification</li>
-<li>Business logic specific to the document type</li>
-</ul>
-<h3 id="tasks"><a class="header" href="#tasks">Tasks</a></h3>
-<p>A <strong>Task</strong> is a special document type representing:</p>
-<ul>
-<li>Work to be performed</li>
-<li>Success/failure criteria</li>
-<li>Input/output specifications</li>
-<li>Delegation and completion tracking</li>
-</ul>
-<h3 id="agreements"><a class="header" href="#agreements">Agreements</a></h3>
-<p>An <strong>Agreement</strong> is a mechanism for:</p>
-<ul>
-<li>Multiple agents to consent to terms</li>
-<li>Tracking signatures from all required parties</li>
-<li>Ensuring all participants have signed before proceeding</li>
-<li>Creating binding commitments between agents</li>
-</ul>
-<h2 id="how-jacs-works"><a class="header" href="#how-jacs-works">How JACS Works</a></h2>
-<pre><code class="language-mermaid">graph TD
-    A[Agent A] --&gt;|Creates Task| T[JACS Task Document]
-    T --&gt;|Contains| S[Digital Signature]
-    T --&gt;|Contains| H[SHA256 Hash]
-    T --&gt;|Contains| M[Metadata]
-    
-    A --&gt;|Sends to| B[Agent B]
-    B --&gt;|Verifies| T
-    B --&gt;|Signs Agreement| AG[Agreement Document]
-    AG --&gt;|Returns to| A
-</code></pre>
-<ol>
-<li><strong>Agent A</strong> creates a task document with their requirements</li>
-<li>The document is <strong>signed</strong> with Agent A's private key</li>
-<li>A <strong>hash</strong> is calculated for integrity verification</li>
-<li><strong>Agent B</strong> receives and verifies the signature and hash</li>
-<li>Agent B can <strong>create an agreement</strong> to accept the task</li>
-<li>Both agents have a <strong>verifiable record</strong> of the interaction</li>
-</ol>
-<h2 id="real-world-examples"><a class="header" href="#real-world-examples">Real-World Examples</a></h2>
-<h3 id="-ai-content-pipeline"><a class="header" href="#-ai-content-pipeline">🤖 <strong>AI Content Pipeline</strong></a></h3>
-<pre><code>Content Agent → Research Agent → Review Agent → Publishing Agent
-</code></pre>
-<p>Each handoff includes signed task documents with clear requirements and deliverables.</p>
-<h3 id="-data-processing-workflow"><a class="header" href="#-data-processing-workflow">📊 <strong>Data Processing Workflow</strong></a></h3>
-<pre><code>Data Ingestion Agent → Processing Agent → Validation Agent → Storage Agent
-</code></pre>
-<p>Each step is tracked with verifiable completion certificates and quality metrics.</p>
-<h3 id="-multi-agent-analysis"><a class="header" href="#-multi-agent-analysis">🔍 <strong>Multi-Agent Analysis</strong></a></h3>
-<pre><code>Query Agent → Research Agent → Analysis Agent → Reporting Agent
-</code></pre>
-<p>Complex analysis tasks are broken down with clear accountability for each step.</p>
-<h2 id="benefits-over-alternatives"><a class="header" href="#benefits-over-alternatives">Benefits Over Alternatives</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>JACS</th><th>Traditional APIs</th><th>General Signing</th></tr></thead><tbody>
-<tr><td><strong>Agent Identity</strong></td><td>✅ Built-in</td><td>❌ Custom implementation</td><td>❌ Not agent-focused</td></tr>
-<tr><td><strong>Task Management</strong></td><td>⚠️ Schema-native (lifecycle via integrations)</td><td>❌ Application-specific</td><td>❌ Not applicable</td></tr>
-<tr><td><strong>Multi-Party Agreements</strong></td><td>✅ Core feature</td><td>❌ Complex to implement</td><td>⚠️ Possible but difficult</td></tr>
-<tr><td><strong>Audit Trails</strong></td><td>✅ Automatic</td><td>❌ Manual logging</td><td>⚠️ Basic signing only</td></tr>
-<tr><td><strong>Schema Validation</strong></td><td>✅ JSON Schema</td><td>❌ Custom validation</td><td>❌ No structure</td></tr>
-<tr><td><strong>Versioning</strong></td><td>✅ Built-in</td><td>❌ Manual versioning</td><td>❌ Not supported</td></tr>
-<tr><td><strong>Cross-Platform</strong></td><td>✅ JSON everywhere</td><td>⚠️ Protocol dependent</td><td>⚠️ Format dependent</td></tr>
+<p>Logs can say what happened, but they are usually controlled by the same system that produced the data. JACS attaches proof to the artifact itself.</p>
+<h2 id="core-ideas"><a class="header" href="#core-ideas">Core Ideas</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Concept</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><strong>Agent</strong></td><td>A named identity with signing keys and metadata.</td></tr>
+<tr><td><strong>Signed document</strong></td><td>A JSON envelope with payload, hash, signer metadata, and signature.</td></tr>
+<tr><td><strong>Artifact signature</strong></td><td>A JACS signature attached to non-JSON content, such as text, images, or email.</td></tr>
+<tr><td><strong>Trust store</strong></td><td>Local public keys and trust decisions used during verification.</td></tr>
+<tr><td><strong>Agreement</strong></td><td>A signed multi-party approval with quorum, timeout, and algorithm constraints.</td></tr>
 </tbody></table>
 </div>
-<blockquote>
-<p>JACS provides signed artifacts, schemas, trust primitives, and auditability. Real-time transport and task orchestration are handled by integrations (e.g., A2A, MCP, HTTP server layers).</p>
-</blockquote>
-<h2 id="when-to-use-jacs"><a class="header" href="#when-to-use-jacs">When to Use JACS</a></h2>
-<p>✅ <strong>Perfect for:</strong></p>
+<h2 id="what-verification-proves"><a class="header" href="#what-verification-proves">What Verification Proves</a></h2>
+<p>Verification answers two practical questions:</p>
+<ol>
+<li>Did the signer with this public key sign these canonical bytes?</li>
+<li>Has the signed content changed since it was signed?</li>
+</ol>
+<p>Verification does not prove first creation, copyright ownership, human authorship, or that a real-world statement is true. It gives you cryptographic accountability for the artifact.</p>
+<h2 id="where-jacs-fits"><a class="header" href="#where-jacs-fits">Where JACS Fits</a></h2>
+<pre><code class="language-mermaid">flowchart LR
+    A["Agent or service"] --&gt; B["Create artifact"]
+    B --&gt; C["Sign with JACS"]
+    C --&gt; D["Share or store"]
+    D --&gt; E["Verify before trust"]
+</code></pre>
+<p>JACS does not replace your application protocol. It works with CLI jobs, Rust services, Python and Node frameworks, MCP tools, A2A exchange, and file-based workflows.</p>
+<h2 id="when-to-use-it"><a class="header" href="#when-to-use-it">When To Use It</a></h2>
 <ul>
-<li>Multi-agent AI systems</li>
-<li>Task delegation and tracking</li>
-<li>Audit trail requirements</li>
-<li>Cross-organization AI collaboration</li>
-<li>Compliance-critical AI applications</li>
-<li>Research environments with multiple AI models</li>
+<li>A downstream system should verify who produced an artifact.</li>
+<li>Multiple agents or teams need an auditable handoff.</li>
+<li>A document, image, or email must stay verifiable outside your database.</li>
+<li>You need open source signing primitives without a mandatory central registry.</li>
 </ul>
-<p>⚠️ <strong>Consider alternatives for:</strong></p>
+<h2 id="when-not-to-use-it"><a class="header" href="#when-not-to-use-it">When Not To Use It</a></h2>
 <ul>
-<li>Simple single-agent systems</li>
-<li>Real-time streaming data</li>
-<li>High-frequency micro-transactions</li>
-<li>Systems where trust is not a concern</li>
+<li>Everything stays inside one trusted process and logs are enough.</li>
+<li>You only need accidental-corruption detection.</li>
+<li>There is no signer identity or audit requirement.</li>
 </ul>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>Ready to dive deeper? Continue with:</p>
 <ul>
-<li><strong><a href="getting-started/concepts.html">Core Concepts</a></strong> - Learn about agents, documents, and agreements</li>
-<li><strong><a href="getting-started/quick-start.html">Quick Start</a></strong> - Get hands-on experience</li>
-<li><strong>Implementation guides</strong> for <a href="getting-started/../rust/installation.html">Rust</a>, <a href="getting-started/../nodejs/installation.html">Node.js</a>, or <a href="getting-started/../python/installation.html">Python</a></li>
+<li><a href="getting-started/quick-start.html">Quick Start</a></li>
+<li><a href="getting-started/decision-tree.html">Which Integration?</a></li>
+<li><a href="getting-started/../usecases.html">Use Cases</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="which-jacs-path-should-i-use"><a class="header" href="#which-jacs-path-should-i-use">Which JACS Path Should I Use?</a></h1>
-<p>Choose the smallest supported integration that matches your deployment.</p>
+<p>Choose the smallest supported integration that matches the boundary you need to secure.</p>
 <h2 id="start-here"><a class="header" href="#start-here">Start Here</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>If you need...</th><th>Start here</th><th>Why</th></tr></thead><tbody>
-<tr><td>Signed tool outputs inside <strong>LangChain / LangGraph</strong> on Python</td><td><a href="getting-started/../python/adapters.html">Python Framework Adapters</a></td><td>Smallest path: sign tool results without adding MCP</td></tr>
-<tr><td>Signed tool outputs inside <strong>LangChain.js / LangGraph</strong> on Node</td><td><a href="getting-started/../nodejs/langchain.html">Node.js LangChain.js</a></td><td>Same idea for TypeScript</td></tr>
-<tr><td>A ready-made <strong>local MCP server</strong> for Claude, Codex, or another MCP client</td><td><a href="getting-started/../integrations/mcp.html">MCP Overview</a> and <code>jacs-mcp</code></td><td>Fastest full server path</td></tr>
-<tr><td>To secure your <strong>existing MCP server/client code</strong></td><td><a href="getting-started/../python/mcp.html">Python MCP</a> or <a href="getting-started/../nodejs/mcp.html">Node.js MCP</a></td><td>Use wrappers or transport proxies around code you already have</td></tr>
-<tr><td>Cross-organization agent discovery and signed artifact exchange</td><td><a href="getting-started/../integrations/a2a.html">A2A Interoperability</a></td><td>MCP is not enough for this boundary</td></tr>
-<tr><td>Signed HTTP APIs without adopting MCP</td><td><a href="getting-started/../python/adapters.html">Python Framework Adapters</a>, <a href="getting-started/../nodejs/express.html">Express</a>, <a href="getting-started/../nodejs/koa.html">Koa</a></td><td>Sign requests or responses at the web layer</td></tr>
-<tr><td>Multi-party approval or quorum workflows</td><td><a href="getting-started/multi-agent-agreement.html">Multi-Agent Agreements</a></td><td>Agreements are the right primitive, not just one-off signatures</td></tr>
-<tr><td>Direct signing from scripts, jobs, or services</td><td><a href="getting-started/quick-start.html">Quick Start</a>, <a href="getting-started/../python/basic-usage.html">Python Basic Usage</a>, <a href="getting-started/../nodejs/basic-usage.html">Node Basic Usage</a>, <a href="getting-started/../go/installation.html">Go Installation</a></td><td>Start from sign/verify before adding framework layers</td></tr>
-<tr><td>Sign a markdown file in place so a reader sees the content and signature together</td><td><a href="getting-started/../guides/inline-text-signing.html">Inline Text Signatures</a></td><td>Signature appended in a YAML-bodied block at the end of the file; renders as markdown on GitHub</td></tr>
-<tr><td>Attach a tamper-evident provenance signature to a photo or AI-generated image</td><td><a href="getting-started/../guides/media-signing.html">Image and Media Signatures</a></td><td>Signature embedded in PNG iTXt / JPEG APP11 / WebP XMP; no sidecar JSON</td></tr>
+<tr><td>Sign and verify JSON, files, or one-off artifacts</td><td><a href="getting-started/quick-start.html">Quick Start</a></td><td>Establish the agent identity and trust model first.</td></tr>
+<tr><td>A ready-made local MCP server for Claude, Codex, or another MCP client</td><td><a href="getting-started/../integrations/mcp.html">MCP Overview</a> and <code>jacs mcp</code></td><td>Fastest full server path; stdio only, no HTTP port.</td></tr>
+<tr><td>Signed tool outputs inside LangChain / LangGraph on Python</td><td><a href="getting-started/../python/adapters.html">Python Framework Adapters</a></td><td>Add provenance without changing the rest of the app.</td></tr>
+<tr><td>Signed tool outputs inside LangChain.js / LangGraph on Node</td><td><a href="getting-started/../nodejs/langchain.html">Node.js LangChain.js</a></td><td>Same pattern for TypeScript.</td></tr>
+<tr><td>Secure existing MCP server/client code</td><td><a href="getting-started/../python/mcp.html">Python MCP</a> or <a href="getting-started/../nodejs/mcp.html">Node.js MCP</a></td><td>Wrap the transport or register JACS tools.</td></tr>
+<tr><td>Sign Markdown or text in place</td><td><a href="getting-started/../guides/inline-text-signing.html">Inline Text Signatures</a></td><td>Signature stays with the readable file; supports multi-signer review.</td></tr>
+<tr><td>Attach provenance to PNG, JPEG, or WebP images</td><td><a href="getting-started/../guides/media-signing.html">Image and Media Signatures</a></td><td>Signature is embedded in the image; no sidecar JSON.</td></tr>
+<tr><td>Sign and verify raw email</td><td><a href="getting-started/../guides/email-signing.html">Email Signing and Verification</a></td><td>Rust API for <code>.eml</code> messages with field-level content hashes.</td></tr>
+<tr><td>Cross-organization agent discovery and artifact exchange</td><td><a href="getting-started/../integrations/a2a.html">A2A Interoperability</a></td><td>Use A2A for agent-to-agent boundaries.</td></tr>
+<tr><td>Multi-party approval or quorum workflows</td><td><a href="getting-started/multi-agent-agreement.html">Multi-Agent Agreements</a></td><td>Agreements are the right primitive for sign-off.</td></tr>
 </tbody></table>
 </div>
 <h2 id="when-you-probably-do-not-need-jacs"><a class="header" href="#when-you-probably-do-not-need-jacs">When You Probably Do Not Need JACS</a></h2>
 <ul>
-<li>Everything stays inside one service you control and your own logs are enough</li>
-<li>You only need integrity, not signer identity or third-party verification</li>
-<li>A plain checksum or database audit log already satisfies the requirement</li>
+<li>Everything stays inside one service you control and logs are enough.</li>
+<li>You only need integrity, not signer identity or third-party verification.</li>
+<li>A plain checksum or database audit log already satisfies the requirement.</li>
 </ul>
 <h2 id="recommended-adoption-order"><a class="header" href="#recommended-adoption-order">Recommended Adoption Order</a></h2>
 <ol>
-<li><strong>Prototype</strong> with quickstart and simple sign/verify calls.</li>
-<li><strong>Attach provenance</strong> at the boundary that already exists in your system: LangChain tool, FastAPI response, MCP call, or A2A artifact.</li>
-<li><strong>Add trust policy</strong> only when other agents or organizations enter the picture.</li>
-<li><strong>Add agreements, DNS, or attestations</strong> only if your deployment actually needs them.</li>
+<li>Prototype with quickstart and simple sign/verify calls.</li>
+<li>Attach provenance at the boundary that already exists: file, API response, framework tool, MCP call, image, email, or A2A artifact.</li>
+<li>Add trust policy when other agents, services, or organizations enter the workflow.</li>
+<li>Add agreements, DNS, or attestations only when the deployment needs them.</li>
 </ol>
-<p>The mistake to avoid is starting with the broadest story. Start with the boundary you need to secure now.</p>
+<p>Start with the boundary you need to secure now.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h1>
-<p>This chapter stays close to current product use, not roadmap integrations.</p>
-<h2 id="1-secure-a-local-mcp-tool-server"><a class="header" href="#1-secure-a-local-mcp-tool-server">1. Secure A Local MCP Tool Server</a></h2>
-<p><strong>Use this when:</strong> Claude Desktop, Codex, or another MCP client is calling tools that should not run on blind trust.</p>
-<p><strong>Recommended JACS path:</strong></p>
+<p>These are current JACS use cases, not speculative integrations.</p>
+<h2 id="1-keep-json-and-files-verifiable"><a class="header" href="#1-keep-json-and-files-verifiable">1. Keep JSON and files verifiable</a></h2>
+<p>Use JACS when a report, memory, config, policy, or audit artifact needs to stay verifiable after it leaves the process that created it.</p>
+<p><strong>Start with:</strong></p>
 <ul>
-<li>Use <code>jacs-mcp</code> if you want a full server immediately</li>
-<li>Use <a href="python/mcp.html">Python MCP Integration</a> or <a href="nodejs/mcp.html">Node.js MCP Integration</a> if you already have server code</li>
+<li><a href="getting-started/quick-start.html">Quick Start</a></li>
+<li><a href="getting-started/verification.html">Verifying Signed Documents</a></li>
+<li><a href="rust/documents.html">Working with Documents</a></li>
 </ul>
 <p><strong>What JACS adds:</strong></p>
 <ul>
-<li>Signed JSON-RPC messages</li>
-<li>Fail-closed verification by default</li>
-<li>Agent identity and auditability for tool calls</li>
+<li>Self-contained signed envelopes</li>
+<li>Re-verification at read time</li>
+<li>Cross-language compatibility across Rust, Python, Node.js, and Go</li>
 </ul>
-<h2 id="2-add-provenance-to-langchain-or-langgraph"><a class="header" href="#2-add-provenance-to-langchain-or-langgraph">2. Add Provenance To LangChain Or LangGraph</a></h2>
-<p><strong>Use this when:</strong> your model already runs inside LangChain or LangGraph and you want signed tool outputs without introducing MCP.</p>
-<p><strong>Recommended JACS path:</strong></p>
-<ul>
-<li><a href="python/adapters.html">Python Framework Adapters</a></li>
-<li><a href="nodejs/langchain.html">Node.js LangChain.js</a></li>
-</ul>
-<p><strong>What JACS adds:</strong></p>
-<ul>
-<li>Signed tool results</li>
-<li>Optional strict mode at the adapter boundary</li>
-<li>Minimal changes to existing framework code</li>
-</ul>
-<h2 id="3-exchange-signed-artifacts-across-organizations"><a class="header" href="#3-exchange-signed-artifacts-across-organizations">3. Exchange Signed Artifacts Across Organizations</a></h2>
-<p><strong>Use this when:</strong> one agent produces work that another organization, service, or team must verify before acting on it.</p>
-<p><strong>Recommended JACS path:</strong></p>
-<ul>
-<li><a href="integrations/a2a.html">A2A Interoperability</a></li>
-<li><a href="guides/a2a-quickstart.html">A2A Quickstart</a></li>
-</ul>
-<p><strong>What JACS adds:</strong></p>
-<ul>
-<li>Agent Cards with JACS provenance metadata</li>
-<li>Signed A2A artifacts</li>
-<li>Trust policies for admission control</li>
-</ul>
-<h2 id="4-sign-markdown-in-place-for-cross-team-review"><a class="header" href="#4-sign-markdown-in-place-for-cross-team-review">4. Sign Markdown In Place For Cross-Team Review</a></h2>
-<p><strong>Use this when:</strong> a shared README or design doc moves through a multi-agent review and you want each reviewer's identity and claimed timestamp attached to the exact bytes they signed off on — without a sidecar JSON.</p>
-<p><strong>Recommended JACS path:</strong></p>
+<h2 id="2-sign-markdown-in-place-for-review"><a class="header" href="#2-sign-markdown-in-place-for-review">2. Sign Markdown in place for review</a></h2>
+<p>Use JACS when a README, design doc, policy, or release note needs visible content and verifiable sign-off in the same file.</p>
+<p><strong>Start with:</strong></p>
 <ul>
 <li><a href="guides/inline-text-signing.html">Inline Text Signatures</a></li>
 </ul>
@@ -482,85 +344,88 @@ jacs quickstart --name my-agent --domain my-agent.example.com
 JACS_CONFIG=./reviewer-b.config.json jacs sign-text DESIGN.md
 jacs verify-text DESIGN.md
 </code></pre>
-<pre><code class="language-python">import jacs.simple as jacs
-jacs.load("./jacs.config.json")
-jacs.sign_text("DESIGN.md")
-result = jacs.verify_text("DESIGN.md")
-print(result.status)  # 'signed'
-</code></pre>
 <p><strong>What JACS adds:</strong></p>
 <ul>
-<li>Signature appended at the end in a YAML-bodied block; file still renders as markdown on GitHub</li>
-<li>Unordered multi-signer; each block carries signer ID, claimed time, and content hash</li>
-<li>Permissive verify by default (missing-signature is exit 2, not an error); <code>--strict</code> opts in to error-on-missing</li>
+<li>A readable signature block appended at the end</li>
+<li>Multi-signer review without sidecar JSON</li>
+<li>Permissive or strict verification modes</li>
 </ul>
-<h2 id="5-embed-image-provenance-for-ai-era-authorship-claims"><a class="header" href="#5-embed-image-provenance-for-ai-era-authorship-claims">5. Embed Image Provenance For AI-Era Authorship Claims</a></h2>
-<p><strong>Use this when:</strong> a photo, AI render, or chart needs a verifiable signed-at-claimed-time provenance signature embedded <em>inside</em> the image so downstream consumers can verify identity without a sidecar.</p>
-<p><strong>Recommended JACS path:</strong></p>
+<h2 id="3-embed-provenance-in-images"><a class="header" href="#3-embed-provenance-in-images">3. Embed provenance in images</a></h2>
+<p>Use JACS when a photo, chart, screenshot, or AI-generated image needs verifiable signer identity without a separate metadata file.</p>
+<p><strong>Start with:</strong></p>
 <ul>
 <li><a href="guides/media-signing.html">Image and Media Signatures</a></li>
 </ul>
 <pre><code class="language-bash">jacs sign-image photo.png --out signed.png
 jacs verify-image signed.png
-jacs extract-media-signature signed.png | jq .signedAt
-</code></pre>
-<pre><code class="language-typescript">import * as jacs from '@hai.ai/jacs/simple';
-await jacs.load('./jacs.config.json');
-await jacs.signImage('photo.png', 'signed.png');
-const v = await jacs.verifyImage('signed.png');
-console.log(v.status);  // 'valid'
+jacs extract-media-signature signed.png
 </code></pre>
 <p><strong>What JACS adds:</strong></p>
 <ul>
-<li>Signature embedded in PNG iTXt / JPEG APP11 / WebP XMP — no sidecar file</li>
-<li>100% Rust, Apache-2.0 / MIT, zero AGPL dependencies</li>
-<li>Optional <code>--robust</code> LSB fallback for PNG/JPEG when metadata-strip is a concern</li>
+<li>Embedded PNG iTXt, JPEG APP11, or WebP XMP signatures</li>
+<li>Pixel-content integrity checks</li>
+<li>Optional robust mode for PNG/JPEG metadata-strip threat models</li>
 </ul>
-<h2 id="6-sign-http-or-api-boundaries-without-mcp"><a class="header" href="#6-sign-http-or-api-boundaries-without-mcp">6. Sign HTTP Or API Boundaries Without MCP</a></h2>
-<p><strong>Use this when:</strong> the boundary is an API route, not an MCP transport.</p>
-<p><strong>Recommended JACS path:</strong></p>
+<h2 id="4-sign-email-with-rust"><a class="header" href="#4-sign-email-with-rust">4. Sign email with Rust</a></h2>
+<p>Use JACS when raw RFC 5322 email needs a verifiable signature attachment and field-level content verification.</p>
+<p><strong>Start with:</strong></p>
 <ul>
-<li><a href="python/adapters.html">Python Framework Adapters</a> for FastAPI</li>
+<li><a href="guides/email-signing.html">Email Signing and Verification</a></li>
+</ul>
+<p><strong>What JACS adds:</strong></p>
+<ul>
+<li><code>jacs-signature.json</code> MIME attachment</li>
+<li>Header, body, and attachment hashes</li>
+<li>Forwarding chains through parent signature hashes</li>
+</ul>
+<p>Email signing is currently documented as a Rust core API via <code>jacs::email</code>, not as a CLI or Python/Node/Go binding surface.</p>
+<h2 id="5-secure-a-local-mcp-tool-server"><a class="header" href="#5-secure-a-local-mcp-tool-server">5. Secure a local MCP tool server</a></h2>
+<p>Use JACS when an MCP client is calling tools that should not run on blind trust.</p>
+<p><strong>Start with:</strong></p>
+<ul>
+<li><a href="integrations/mcp.html">MCP Overview</a></li>
+</ul>
+<pre><code class="language-bash">cargo install jacs-cli
+jacs mcp
+</code></pre>
+<p><strong>What JACS adds:</strong></p>
+<ul>
+<li>A ready-made stdio MCP server</li>
+<li>Signing and verification tools for documents, text, images, trust, audit, and agent workflows</li>
+<li>Local private-key custody; no HTTP listener</li>
+</ul>
+<h2 id="6-add-provenance-to-framework-boundaries"><a class="header" href="#6-add-provenance-to-framework-boundaries">6. Add provenance to framework boundaries</a></h2>
+<p>Use JACS when an existing app already has a boundary such as LangChain tool output, FastAPI response, Express middleware, or Koa middleware.</p>
+<p><strong>Start with:</strong></p>
+<ul>
+<li><a href="python/adapters.html">Python Framework Adapters</a></li>
+<li><a href="nodejs/langchain.html">Node.js LangChain.js</a></li>
 <li><a href="nodejs/express.html">Express Middleware</a></li>
 <li><a href="nodejs/koa.html">Koa Middleware</a></li>
 </ul>
 <p><strong>What JACS adds:</strong></p>
 <ul>
-<li>Signed JSON responses</li>
-<li>Verified inbound requests</li>
-<li>A clean upgrade path to A2A discovery on the same app boundary</li>
+<li>Signed tool results and responses</li>
+<li>Optional strict verification at adapter boundaries</li>
+<li>Minimal changes to existing framework code</li>
 </ul>
-<h2 id="7-run-multi-agent-approval-workflows"><a class="header" href="#7-run-multi-agent-approval-workflows">7. Run Multi-Agent Approval Workflows</a></h2>
-<p><strong>Use this when:</strong> multiple agents must sign off on the same document, deployment, or decision.</p>
-<p><strong>Recommended JACS path:</strong></p>
+<h2 id="7-exchange-artifacts-across-agents-or-organizations"><a class="header" href="#7-exchange-artifacts-across-agents-or-organizations">7. Exchange artifacts across agents or organizations</a></h2>
+<p>Use JACS when one agent produces work that another agent, service, or organization must verify before acting on it.</p>
+<p><strong>Start with:</strong></p>
 <ul>
+<li><a href="integrations/a2a.html">A2A Interoperability</a></li>
+<li><a href="guides/a2a-quickstart.html">A2A Quickstart</a></li>
 <li><a href="getting-started/multi-agent-agreement.html">Multi-Agent Agreements</a></li>
-<li><a href="rust/agreements.html">Rust Agreements</a></li>
 </ul>
 <p><strong>What JACS adds:</strong></p>
 <ul>
-<li>M-of-N quorum</li>
-<li>Timeout and algorithm constraints</li>
-<li>Verifiable signature chain across signers</li>
+<li>Signed A2A artifacts</li>
+<li>Trust policies for admission control</li>
+<li>M-of-N approvals with quorum and algorithm constraints</li>
 </ul>
-<h2 id="8-keep-signed-files-or-json-as-durable-artifacts"><a class="header" href="#8-keep-signed-files-or-json-as-durable-artifacts">8. Keep Signed Files Or JSON As Durable Artifacts</a></h2>
-<p><strong>Use this when:</strong> you need an artifact to stay verifiable after it leaves the process that created it.</p>
-<p><strong>Recommended JACS path:</strong></p>
-<ul>
-<li><a href="getting-started/verification.html">Verifying Signed Documents</a></li>
-<li><a href="rust/documents.html">Working with Documents</a></li>
-<li><a href="python/basic-usage.html">Python Basic Usage</a></li>
-<li><a href="nodejs/basic-usage.html">Node.js Basic Usage</a></li>
-</ul>
-<p><strong>What JACS adds:</strong></p>
-<ul>
-<li>Self-contained signed envelopes</li>
-<li>Re-verification at read time</li>
-<li>Cross-language interoperability</li>
-</ul>
-<h2 id="9-publish-public-identity-without-a-central-auth-service"><a class="header" href="#9-publish-public-identity-without-a-central-auth-service">9. Publish Public Identity Without A Central Auth Service</a></h2>
-<p><strong>Use this when:</strong> external systems need to verify your agent identity but you do not want a shared auth server in the middle.</p>
-<p><strong>Recommended JACS path:</strong></p>
+<h2 id="8-publish-identity-without-a-central-auth-service"><a class="header" href="#8-publish-identity-without-a-central-auth-service">8. Publish identity without a central auth service</a></h2>
+<p>Use JACS when external systems need to verify an agent identity without putting a shared server in the middle.</p>
+<p><strong>Start with:</strong></p>
 <ul>
 <li><a href="rust/dns.html">DNS-Based Verification</a></li>
 <li><a href="advanced/dns-trust.html">DNS Trust Anchoring</a></li>
@@ -568,12 +433,15 @@ console.log(v.status);  // 'valid'
 <p><strong>What JACS adds:</strong></p>
 <ul>
 <li>Public key fingerprint anchoring</li>
-<li>DNS-based verification flows</li>
+<li>Local trust-store workflows</li>
 <li>Local private-key custody</li>
 </ul>
+<h2 id="9-add-hosted-verification-with-haiai"><a class="header" href="#9-add-hosted-verification-with-haiai">9. Add hosted verification with HAI.AI</a></h2>
+<p>Use <a href="https://github.com/HumanAssisted/haiai">HumanAssisted/haiai</a> when you want platform workflows for verified documents, agent behavior, benchmarks, and hosted JACS identity flows.</p>
+<p>JACS remains the local open source signing and verification layer. HAI.AI is the hosted platform path around those identities and artifacts.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="core-concepts"><a class="header" href="#core-concepts">Core Concepts</a></h1>
 <p>Understanding JACS requires familiarity with several key concepts that work together to create a secure, verifiable communication framework for AI agents.</p>
-<h2 id="agents-1"><a class="header" href="#agents-1">Agents</a></h2>
+<h2 id="agents"><a class="header" href="#agents">Agents</a></h2>
 <p>An <strong>Agent</strong> is the fundamental entity in JACS - an autonomous participant that can create, sign, and verify documents.</p>
 <h3 id="agent-identity"><a class="header" href="#agent-identity">Agent Identity</a></h3>
 <pre><code class="language-json">{
@@ -610,7 +478,7 @@ console.log(v.status);  // 'valid'
 <p><strong>Without loading an agent</strong> (one-off verification): Call <code>verify_standalone(signedDocument, options)</code> (or the language equivalent: <code>verifyStandalone</code>, <code>VerifyStandalone</code>). This verifies the document using only the options you pass (e.g. <code>keyResolution</code>, <code>keyDirectory</code>). No config file or persistent agent state is required. Use this in lightweight services that only need to verify incoming documents.</p>
 </li>
 </ul>
-<h2 id="documents-1"><a class="header" href="#documents-1">Documents</a></h2>
+<h2 id="documents"><a class="header" href="#documents">Documents</a></h2>
 <p>A <strong>Document</strong> is any JSON object that follows JACS conventions for identity, versioning, and cryptographic integrity.</p>
 <h3 id="document-structure"><a class="header" href="#document-structure">Document Structure</a></h3>
 <pre><code class="language-json">{
@@ -675,7 +543,7 @@ console.log(v.status);  // 'valid'
 <li>Track required and actual signatures</li>
 <li>Enforce completion before proceeding</li>
 </ul>
-<h2 id="tasks-1"><a class="header" href="#tasks-1">Tasks</a></h2>
+<h2 id="tasks"><a class="header" href="#tasks">Tasks</a></h2>
 <p>Tasks represent work that can be delegated, tracked, and verified between agents.</p>
 <h3 id="task-structure"><a class="header" href="#task-structure">Task Structure</a></h3>
 <pre><code class="language-json">{
@@ -723,7 +591,7 @@ console.log(v.status);  // 'valid'
 <li><strong>requirements</strong>: Specific needs</li>
 <li><strong>constraints</strong>: Limitations or restrictions</li>
 </ul>
-<h2 id="agreements-1"><a class="header" href="#agreements-1">Agreements</a></h2>
+<h2 id="agreements"><a class="header" href="#agreements">Agreements</a></h2>
 <p>Agreements enable multi-party consent and coordination between agents.</p>
 <h3 id="agreement-structure"><a class="header" href="#agreement-structure">Agreement Structure</a></h3>
 <pre><code class="language-json">{
@@ -849,438 +717,96 @@ console.log(v.status);  // 'valid'
 <li><strong><a href="getting-started/../examples/cli.html">Examples</a></strong> - See real-world usage patterns</li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="quick-start-guide"><a class="header" href="#quick-start-guide">Quick Start Guide</a></h1>
-<p>Get signing and verifying in under a minute. No manual setup needed.</p>
-<h2 id="zero-config-quick-start"><a class="header" href="#zero-config-quick-start">Zero-Config Quick Start</a></h2>
-<p><code>quickstart(name, domain, ...)</code> creates a persistent agent with keys on disk (default algorithm: <code>pq2025</code>). If <code>./jacs.config.json</code> already exists, it loads it; otherwise it creates a new agent. Returned <code>AgentInfo</code> includes config/key paths (<code>config_path</code>/<code>public_key_path</code>/<code>private_key_path</code> in Python, <code>configPath</code>/<code>publicKeyPath</code>/<code>privateKeyPath</code> in Node) plus key directory metadata so you can locate key material immediately. Rust/CLI quickstart requires an explicit password source (<code>JACS_PRIVATE_KEY_PASSWORD</code>, or <code>JACS_PASSWORD_FILE</code> in CLI). Python/Node can auto-generate a password if needed; set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want that generated password persisted to <code>./jacs_keys/.jacs_password</code>.</p>
-<h3 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h3>
-<p>Rust CLI quickstart requires a password source. Choose one:</p>
-<pre><code class="language-bash"># Option A: Environment variable (recommended for CI/servers)
-export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
-
-# Option B: OS keychain (recommended for developer workstations)
-jacs keychain set --agent-id &lt;YOUR_AGENT_UUID&gt;   # prompts once, then JACS finds the password automatically
-
-# Option C: Password file (CLI convenience)
-export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+<p>Get a persistent agent identity, sign data, and verify it.</p>
+<h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
+<p>Install the unified CLI/MCP binary:</p>
+<pre><code class="language-bash">cargo install jacs-cli
 </code></pre>
-<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, CLI fails fast to avoid ambiguity. The OS keychain is the lowest-priority source and is only consulted when neither env var nor password file is set.</p>
-<p>Python/Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. Set <code>JACS_SAVE_PASSWORD_FILE=true</code> if you want the generated password persisted to <code>./jacs_keys/.jacs_password</code>. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.
-One call and you're signing.</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="tab-python" name="tab-group" checked>
-<label for="tab-python">Python</label>
-<div class="content">
+<p>Create or load an agent, then sign and verify a JSON file:</p>
+<pre><code class="language-bash">export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+jacs quickstart --name my-agent --domain my-agent.example.com
+jacs document create -f mydata.json
+jacs verify signed-document.json
+</code></pre>
+<p>Homebrew is also supported:</p>
+<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
+brew install jacs
+</code></pre>
+<h2 id="python-1"><a class="header" href="#python-1">Python</a></h2>
 <pre><code class="language-bash">pip install jacs
 </code></pre>
 <pre><code class="language-python">import jacs.simple as jacs
 
 info = jacs.quickstart(name="my-agent", domain="my-agent.example.com")
-print(info.config_path, info.public_key_path, info.private_key_path)
 signed = jacs.sign_message({"action": "approve", "amount": 100})
 result = jacs.verify(signed.raw)
 print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 </code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="tab-nodejs" name="tab-group">
-<label for="tab-nodejs">Node.js</label>
-<div class="content">
+<h2 id="nodejs-1"><a class="header" href="#nodejs-1">Node.js</a></h2>
 <pre><code class="language-bash">npm install @hai.ai/jacs
 </code></pre>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
-const info = await jacs.quickstart({
+await jacs.quickstart({
   name: 'my-agent',
   domain: 'my-agent.example.com',
 });
-console.log(info.configPath, info.publicKeyPath, info.privateKeyPath);
+
 const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 const result = await jacs.verify(signed.raw);
 console.log(`Valid: ${result.valid}, Signer: ${result.signerId}`);
 </code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="tab-rust" name="tab-group">
-<label for="tab-rust">Rust CLI</label>
-<div class="content">
-<pre><code class="language-bash">cargo install jacs-cli
+<h2 id="sign-markdown-or-text"><a class="header" href="#sign-markdown-or-text">Sign Markdown or text</a></h2>
+<pre><code class="language-bash">jacs sign-text README.md
+jacs verify-text README.md
+jacs verify-text --strict README.md
 </code></pre>
-<pre><code class="language-bash"># Info mode -- prints agent ID and algorithm
-jacs quickstart --name my-agent --domain my-agent.example.com
-
-# Sign JSON from stdin
-echo '{"action":"approve"}' | jacs quickstart --name my-agent --domain my-agent.example.com --sign
-
-# Sign a file
-jacs quickstart --name my-agent --domain my-agent.example.com --sign --file mydata.json
+<p><code>sign-text</code> appends a <code>-----BEGIN JACS SIGNATURE-----</code> block at the end of the file. The original content remains readable and can be counter-signed by another agent.</p>
+<p>See <a href="getting-started/../guides/inline-text-signing.html">Inline Text Signatures</a> for multi-signer flows, strict mode, and <code>--key-dir</code>.</p>
+<h2 id="sign-images"><a class="header" href="#sign-images">Sign images</a></h2>
+<pre><code class="language-bash">jacs sign-image photo.png --out signed.png
+jacs verify-image signed.png
+jacs extract-media-signature signed.png
 </code></pre>
-</div>
-</div>
-</div>
-<p>Pass <code>algorithm="ring-Ed25519"</code> (or <code>{ algorithm: 'ring-Ed25519' }</code> in JS, <code>--algorithm ring-Ed25519</code> in CLI) to override the default (<code>pq2025</code>).</p>
-<blockquote>
-<p><strong>That's it -- you're signing.</strong> For most use cases, the quick start above is all you need. Jump to <a href="getting-started/../getting-started/decision-tree.html">Which integration should I use?</a> to find the right framework adapter, or read on for manual agent setup.</p>
-</blockquote>
-<h3 id="try-signing-a-markdown-file-v0100"><a class="header" href="#try-signing-a-markdown-file-v0100">Try signing a markdown file (v0.10.0)</a></h3>
-<pre><code class="language-bash">jacs sign-text README.md          # appends a YAML-bodied signature block at end of file
-jacs verify-text README.md        # permissive verify — exit 0 valid, exit 2 missing-sig, exit 1 invalid
+<p>JACS embeds the signature in PNG, JPEG, or WebP metadata. See <a href="getting-started/../guides/media-signing.html">Image and Media Signatures</a> for overwrite policy, robust mode, and verification details.</p>
+<h2 id="start-the-mcp-server"><a class="header" href="#start-the-mcp-server">Start the MCP server</a></h2>
+<p>The MCP server is built into the <code>jacs</code> binary. It uses stdio transport only.</p>
+<pre><code class="language-bash">jacs mcp
 </code></pre>
-<p>The file content is preserved byte-for-byte; the signature lives in a <code>-----BEGIN JACS SIGNATURE-----</code> block at the end. See the <a href="getting-started/../guides/inline-text-signing.html">Inline Text Signatures</a> guide for multi-signer flows, strict mode, and <code>--key-dir</code> overrides.</p>
-<h3 id="macos-homebrew-install-rust-cli"><a class="header" href="#macos-homebrew-install-rust-cli">macOS Homebrew install (Rust CLI)</a></h3>
-<pre><code class="language-bash">brew tap HumanAssisted/homebrew-jacs
-brew install jacs
-</code></pre>
-<h3 id="mcp-server-rust-cli"><a class="header" href="#mcp-server-rust-cli">MCP server (Rust CLI)</a></h3>
-<p>The MCP server is built into the <code>jacs</code> binary. No separate install step needed.</p>
-<pre><code class="language-bash"># Start the MCP server (stdio transport)
-jacs mcp
-</code></pre>
-<h2 id="advanced-explicit-agent-setup"><a class="header" href="#advanced-explicit-agent-setup">Advanced: Explicit Agent Setup</a></h2>
-<p>For full control over agent creation, you can set up an agent manually with a config file and <code>JACS_PRIVATE_KEY_PASSWORD</code> environment variable. This is optional since <code>quickstart(...)</code> already creates a persistent agent.</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="adv-rust" name="adv-group" checked>
-<label for="adv-rust">Rust CLI</label>
-<div class="content">
-<h3 id="install"><a class="header" href="#install">Install</a></h3>
-<pre><code class="language-bash">cargo install jacs-cli
-</code></pre>
-<h3 id="initialize"><a class="header" href="#initialize">Initialize</a></h3>
-<pre><code class="language-bash"># Create configuration and agent in one step
-jacs init
-
-# Or step by step:
-# 1. Create config
-jacs config create
-# 2. Create agent with keys
-jacs agent create --create-keys true
-# 3. Verify
-jacs agent verify
-</code></pre>
-<h3 id="sign-a-document"><a class="header" href="#sign-a-document">Sign a document</a></h3>
-<pre><code class="language-bash">jacs document create -f mydata.json
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="adv-nodejs" name="adv-group">
-<label for="adv-nodejs">Node.js</label>
-<div class="content">
-<h3 id="install-1"><a class="header" href="#install-1">Install</a></h3>
-<pre><code class="language-bash">npm install @hai.ai/jacs
-</code></pre>
-<h3 id="load-and-use"><a class="header" href="#load-and-use">Load and use</a></h3>
-<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-
-// Load from config file
-await jacs.load('./jacs.config.json');
-
-const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
-const result = await jacs.verify(signed.raw);
-console.log(`Valid: ${result.valid}`);
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="adv-python" name="adv-group">
-<label for="adv-python">Python</label>
-<div class="content">
-<h3 id="install-2"><a class="header" href="#install-2">Install</a></h3>
-<pre><code class="language-bash">pip install jacs
-</code></pre>
-<h3 id="load-and-use-1"><a class="header" href="#load-and-use-1">Load and use</a></h3>
-<pre><code class="language-python">import jacs.simple as jacs
-
-# Load from config file
-jacs.load("./jacs.config.json")
-
-signed = jacs.sign_message({"action": "approve", "amount": 100})
-result = jacs.verify(signed.raw)
-print(f"Valid: {result.valid}")
-</code></pre>
-</div>
-</div>
-</div>
-<h2 id="programmatic-agent-creation-v060"><a class="header" href="#programmatic-agent-creation-v060">Programmatic Agent Creation (v0.6.0+)</a></h2>
-<p>For scripts, CI/CD, and server environments where you need agents created programmatically with explicit parameters (without interactive prompts), use <code>create()</code>. For most cases, <code>quickstart(...)</code> above is simpler and also creates a persistent agent.</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="prog-python" name="prog-group" checked>
-<label for="prog-python">Python</label>
-<div class="content">
-<pre><code class="language-python">import jacs.simple as jacs
-
-agent = jacs.create(
-    name="my-agent",
-    password="Str0ng-P@ssw0rd!",  # or set JACS_PRIVATE_KEY_PASSWORD
-    algorithm="pq2025",
-)
-print(f"Agent: {agent.agent_id}")
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="prog-nodejs" name="prog-group">
-<label for="prog-nodejs">Node.js</label>
-<div class="content">
-<pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
-
-const agent = await jacs.create({
-  name: 'my-agent',
-  password: process.env.JACS_PRIVATE_KEY_PASSWORD,
-  algorithm: 'pq2025',
-});
-console.log(`Agent: ${agent.agentId}`);
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="prog-go" name="prog-group">
-<label for="prog-go">Go</label>
-<div class="content">
-<pre><code class="language-go">info, err := jacs.Create("my-agent", &amp;jacs.CreateAgentOptions{
-    Password:  os.Getenv("JACS_PRIVATE_KEY_PASSWORD"),
-    Algorithm: "pq2025",
-})
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="prog-rust" name="prog-group">
-<label for="prog-rust">Rust</label>
-<div class="content">
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use jacs::simple::{CreateAgentParams, SimpleAgent};
-
-let params = CreateAgentParams {
-    name: "my-agent".into(),
-    password: std::env::var("JACS_PRIVATE_KEY_PASSWORD").unwrap(),
-    algorithm: "pq2025".into(),
-    ..Default::default()
-};
-let (agent, info) = SimpleAgent::create_with_params(params)?;
-<span class="boring">}</span></code></pre></pre>
-</div>
-</div>
-</div>
-<p><strong>Password requirements</strong>: At least 8 characters, with uppercase, lowercase, a digit, and a special character.</p>
-<p><strong>Algorithm note</strong>: <code>pq-dilithium</code> is deprecated in v0.6.0. Use <code>pq2025</code> (ML-DSA-87, FIPS-204) instead.</p>
-<h2 id="understanding-what-happened"><a class="header" href="#understanding-what-happened">Understanding What Happened</a></h2>
-<p>When you completed the quick start, several important things occurred:</p>
-<h3 id="1-agent-creation"><a class="header" href="#1-agent-creation">1. <strong>Agent Creation</strong></a></h3>
-<ul>
-<li>A unique identity (UUID) was generated for your agent</li>
-<li>Cryptographic key pair was created for signing</li>
-<li>Agent document was created and self-signed</li>
-<li>Public key was stored for verification</li>
-</ul>
-<h3 id="2-configuration-setup"><a class="header" href="#2-configuration-setup">2. <strong>Configuration Setup</strong></a></h3>
-<ul>
-<li>Storage directories were configured</li>
-<li>Cryptographic algorithm was selected</li>
-<li>Agent identity was linked to configuration</li>
-</ul>
-<h3 id="3-task-creation"><a class="header" href="#3-task-creation">3. <strong>Task Creation</strong></a></h3>
-<ul>
-<li>Task document was structured according to JACS schema</li>
-<li>Document was signed with your agent's private key</li>
-<li>SHA-256 hash was calculated for integrity</li>
-<li>Signature metadata was embedded in the document</li>
-</ul>
-<h2 id="verify-everything-works"><a class="header" href="#verify-everything-works">Verify Everything Works</a></h2>
-<p>Let's verify that the documents are properly signed and can be validated:</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="verify-rust" name="verify-group" checked>
-<label for="verify-rust">🦀 Rust</label>
-<div class="content">
-<pre><code class="language-bash"># Verify agent signature
-jacs agent verify
-
-# Verify a specific document
-jacs document verify -f ./jacs_data/[document-id].json
-
-# Sign a document
-jacs document sign -f ./jacs_data/[document-id].json
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="verify-nodejs" name="verify-group">
-<label for="verify-nodejs">🟢 Node.js</label>
-<div class="content">
-<pre><code class="language-javascript">// Verify agent signature (async)
-const isValid = await agent.verifyAgent();
-console.log('Agent signature valid:', isValid);
-
-// Verify task signature
-const taskValid = await agent.verifyDocument(signedTask);
-console.log('Task signature valid:', taskValid);
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="verify-python" name="verify-group">
-<label for="verify-python">🐍 Python</label>
-<div class="content">
-<pre><code class="language-python"># Verify agent signature
-is_valid = agent.verify_agent()
-print(f'Agent signature valid: {is_valid}')
-
-# List all documents
-documents = agent.list_documents()
-print(f'Documents: {len(documents)}')
-
-# Verify task signature  
-task_valid = agent.verify_document(signed_task)
-print(f'Task signature valid: {task_valid}')
-
-# Get document details
-task_details = agent.get_document(signed_task["jacsId"])
-print(f'Task details: {task_details}')
-</code></pre>
-</div>
-</div>
-</div>
-<h2 id="next-steps-multi-agent-workflow"><a class="header" href="#next-steps-multi-agent-workflow">Next Steps: Multi-Agent Workflow</a></h2>
-<p>Now let's create a second agent and demonstrate inter-agent communication:</p>
-<div class="tabs">
-<div class="tab">
-<input type="radio" id="multi-rust" name="multi-group" checked>
-<label for="multi-rust">🦀 Rust</label>
-<div class="content">
-<pre><code class="language-bash"># Create a second agent configuration
-cp jacs.config.json reviewer.config.json
-# Edit reviewer.config.json to set jacs_agent_id_and_version to null
-
-# Create reviewer agent (uses JACS_CONFIG_PATH environment variable)
-JACS_CONFIG_PATH=./reviewer.config.json jacs agent create --create-keys true
-
-# Create an agreement on a document
-jacs agreement create -f ./document.json \
-  --agents [agent-1-id],[agent-2-id] \
-  --question "Do you agree to collaborate on this content task?"
-
-# Sign the agreement as first agent
-jacs agreement sign -f ./document.json
-
-# Sign as second agent (using reviewer config)
-JACS_CONFIG_PATH=./reviewer.config.json jacs agreement sign -f ./document.json
-
-# Verify agreement is complete
-jacs agreement check -f ./document.json
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="multi-nodejs" name="multi-group">
-<label for="multi-nodejs">🟢 Node.js</label>
-<div class="content">
-<pre><code class="language-javascript">// Create second agent with separate config file
-const reviewerConfig = { ...config };
-reviewerConfig.jacs_agent_id_and_version = null;
-
-fs.writeFileSync('./reviewer.config.json', JSON.stringify(reviewerConfig, null, 2));
-
-const reviewer = new JacsAgent();
-await reviewer.load('./reviewer.config.json');
-
-// Create agreement between agents
-const signedAgreement = await agent.createAgreement(
-  signedTask,
-  [agentDoc.jacsId, reviewerDoc.jacsId],
-  'Do you agree to collaborate on this content task?'
-);
-
-// Both agents sign the agreement
-const signed1 = await agent.signAgreement(signedAgreement);
-const signed2 = await reviewer.signAgreement(signed1);
-
-// Check agreement status
-const status = await agent.checkAgreement(signed2);
-console.log('Agreement status:', JSON.parse(status));
-</code></pre>
-</div>
-</div>
-<div class="tab">
-<input type="radio" id="multi-python" name="multi-group">
-<label for="multi-python">🐍 Python</label>
-<div class="content">
-<pre><code class="language-python"># Create second agent with separate config file
-reviewer_config = config.copy()
-reviewer_config["jacs_agent_id_and_version"] = None
-
-with open('reviewer.config.json', 'w') as f:
-    json.dump(reviewer_config, f, indent=2)
-
-reviewer = jacs.JacsAgent()
-reviewer.load("./reviewer.config.json")
-reviewer.generate_keys()
-
-reviewer_doc = reviewer.create_agent({
-    "name": "Content Reviewer Bot", 
-    "description": "AI agent specialized in content review"
-})
-
-# Create agreement between agents
-agreement = {
-    "title": "Content Collaboration Agreement",
-    "question": "Do you agree to collaborate on this content task?",
-    "context": f"Task: {signed_task['jacsId']}",
-    "agents": [agent_doc["jacsId"], reviewer_doc["jacsId"]]
+<p>Example MCP client config:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "jacs": {
+      "command": "jacs",
+      "args": ["mcp"]
+    }
+  }
 }
-
-signed_agreement = agent.create_agreement(agreement)
-
-# Both agents sign the agreement
-agent.sign_agreement(signed_agreement["jacsId"])
-reviewer.sign_agreement(signed_agreement["jacsId"])
-
-# Verify all signatures
-agreement_valid = agent.verify_agreement(signed_agreement["jacsId"])
-print(f'Agreement complete: {agreement_valid}')
 </code></pre>
-</div>
-</div>
-</div>
-<h2 id="what-youve-accomplished"><a class="header" href="#what-youve-accomplished">What You've Accomplished</a></h2>
-<p>Congratulations! You've successfully:</p>
-<p>✅ <strong>Created JACS agents</strong> with cryptographic identities
-✅ <strong>Generated and signed documents</strong> with verifiable integrity<br />
-✅ <strong>Established multi-agent agreements</strong> with cryptographic consent
-✅ <strong>Verified signatures</strong> and document authenticity
-✅ <strong>Created an audit trail</strong> of all interactions</p>
-<h2 id="key-takeaways"><a class="header" href="#key-takeaways">Key Takeaways</a></h2>
+<h2 id="password-bootstrap"><a class="header" href="#password-bootstrap">Password bootstrap</a></h2>
+<p>The Rust CLI needs a password source before it can sign:</p>
+<pre><code class="language-bash"># CI/server
+export JACS_PRIVATE_KEY_PASSWORD='use-a-strong-password'
+
+# Developer workstation
+jacs keychain set --agent-id &lt;YOUR_AGENT_UUID&gt;
+
+# File-based secret
+export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
+</code></pre>
+<p>If both <code>JACS_PRIVATE_KEY_PASSWORD</code> and <code>JACS_PASSWORD_FILE</code> are set, the CLI fails fast to avoid ambiguity. The OS keychain is only consulted when neither environment source is set.</p>
+<p>Python and Node quickstart can auto-generate a secure password if <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset. In production, set <code>JACS_PRIVATE_KEY_PASSWORD</code> explicitly.</p>
+<h2 id="algorithm"><a class="header" href="#algorithm">Algorithm</a></h2>
+<p>The default signing algorithm is <code>pq2025</code> (ML-DSA-87 / FIPS-204). Use <code>ring-Ed25519</code> if you need a smaller classical signature:</p>
+<pre><code class="language-bash">jacs quickstart --name my-agent --domain my-agent.example.com --algorithm ring-Ed25519
+</code></pre>
+<h2 id="next-steps-2"><a class="header" href="#next-steps-2">Next steps</a></h2>
 <ul>
-<li><strong>Everything is verifiable</strong>: All documents have cryptographic signatures</li>
-<li><strong>Agents are autonomous</strong>: Each has its own identity and keys</li>
-<li><strong>Agreements enable trust</strong>: Multi-party consent before proceeding</li>
-<li><strong>Audit trails are automatic</strong>: Complete history of all interactions</li>
-<li><strong>JSON is universal</strong>: Documents work everywhere</li>
+<li><a href="getting-started/decision-tree.html">Which Integration?</a></li>
+<li><a href="getting-started/verification.html">Verifying Signed Documents</a></li>
+<li><a href="getting-started/../integrations/mcp.html">MCP Overview</a></li>
 </ul>
-<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to Go Next</a></h2>
-<p>Now that you have the basics working:</p>
-<ol>
-<li><strong><a href="getting-started/verification.html">Verify Signed Documents</a></strong> - Verify any document from CLI, Python, or Node.js -- no agent required</li>
-<li><strong><a href="getting-started/../guides/a2a-quickstart.html">A2A Quickstart</a></strong> - Make your agent discoverable by other A2A agents in minutes</li>
-<li><strong><a href="getting-started/../python/adapters.html">Framework Adapters</a></strong> - Add auto-signing to LangChain, FastAPI, CrewAI, or Anthropic SDK in 1-3 lines</li>
-<li><strong><a href="getting-started/../rust/agreements.html">Multi-Agent Agreements</a></strong> - Cross-trust-boundary verification with quorum and timeout</li>
-<li><strong><a href="getting-started/../rust/library.html">Rust Deep Dive</a></strong> - Learn the full Rust API</li>
-<li><strong><a href="getting-started/../nodejs/mcp.html">Node.js Integration</a></strong> - Add MCP support</li>
-<li><strong><a href="getting-started/../python/mcp.html">Python MCP</a></strong> - Build authenticated MCP servers</li>
-<li><strong><a href="getting-started/../advanced/security.html">Production Security</a></strong> - Harden runtime settings and key management</li>
-<li><strong><a href="getting-started/../examples/integrations.html">Real Examples</a></strong> - See production patterns</li>
-</ol>
-<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
-<p><strong>Agent creation fails</strong>: Check that the data and key directories exist and are writable
-<strong>Signature verification fails</strong>: Ensure public keys are properly stored and accessible
-<strong>Agreement signing fails</strong>: Verify all agent IDs are correct and agents exist
-<strong>Documents not found</strong>: Check the data directory configuration</p>
-<p>Need help? Check the <a href="https://github.com/HumanAssisted/JACS/issues">GitHub issues</a> or review the detailed implementation guides.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="multi-agent-agreements"><a class="header" href="#multi-agent-agreements">Multi-Agent Agreements</a></h1>
 <p><strong>Three agents from different organizations sign an agreement with 2-of-3 quorum.</strong></p>
 <p>Imagine three departments -- Finance, Compliance, and Legal -- must approve a production deployment. Requiring all three creates bottlenecks. With JACS quorum agreements, any two of three is sufficient: cryptographically signed, independently verifiable, with a full audit trail.</p>
@@ -1288,7 +814,7 @@ print(f'Agreement complete: {agreement_valid}')
 <h2 id="the-lifecycle"><a class="header" href="#the-lifecycle">The Lifecycle</a></h2>
 <pre><code>Create Agreement --&gt; Agent A Signs --&gt; Agent B Signs --&gt; Quorum Met (2/3) --&gt; Verified
 </code></pre>
-<h2 id="python-1"><a class="header" href="#python-1">Python</a></h2>
+<h2 id="python-2"><a class="header" href="#python-2">Python</a></h2>
 <pre><code class="language-python">from jacs.client import JacsClient
 
 # Step 1: Create three agents (one per organization)
@@ -1391,7 +917,7 @@ main().catch(console.error);
 <li><strong>Any party can verify</strong> the agreement independently. The cryptographic proof chain is self-contained.</li>
 </ol>
 <p>Every signature includes: the signer's agent ID, the signing algorithm, a timestamp, and a hash of the agreement content. If anyone tampers with the document after signing, verification fails.</p>
-<h2 id="next-steps-2"><a class="header" href="#next-steps-2">Next Steps</a></h2>
+<h2 id="next-steps-3"><a class="header" href="#next-steps-3">Next Steps</a></h2>
 <ul>
 <li><a href="getting-started/../rust/agreements.html">Agreements API Reference</a> -- timeout, algorithm constraints, and more</li>
 <li><a href="getting-started/../python/adapters.html">Python Framework Adapters</a> -- use agreements inside LangChain, FastAPI, CrewAI</li>
@@ -1400,8 +926,8 @@ main().catch(console.error);
 <div style="break-before: page; page-break-before: always;"></div><h1 id="verifying-signed-documents"><a class="header" href="#verifying-signed-documents">Verifying Signed Documents</a></h1>
 <p>Verify a JACS-signed document in under 2 minutes. Verification confirms two things: the document was signed by the claimed agent, and the content has not been modified since signing.</p>
 <p><strong>Verification does NOT require creating an agent.</strong> You only need the signed document (and optionally access to the signer's public key).</p>
-<h2 id="strict-vs-permissive-verification-v0100"><a class="header" href="#strict-vs-permissive-verification-v0100">Strict vs permissive verification (v0.10.0)</a></h2>
-<p><code>verify-text</code> and <code>verify-image</code> (added in v0.10.0) introduce a <strong>permissive default</strong>: a missing signature is a <em>typed status</em>, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.</p>
+<h2 id="strict-vs-permissive-verification"><a class="header" href="#strict-vs-permissive-verification">Strict vs permissive verification</a></h2>
+<p><code>verify-text</code> and <code>verify-image</code> use a <strong>permissive default</strong>: a missing signature is a <em>typed status</em>, not an error. Strict mode opts in to error-on-missing. The choice maps onto every binding the same way.</p>
 <div class="table-wrapper"><table><thead><tr><th>Surface</th><th>Permissive (default)</th><th>Strict (<code>--strict</code> / <code>strict=True</code> / <code>{ strict: true }</code> / <code>Strict: true</code>)</th></tr></thead><tbody>
 <tr><td><code>jacs verify-text</code> (CLI)</td><td>Exit <code>0</code> valid · <code>2</code> missing-sig · <code>1</code> invalid</td><td>Exit <code>0</code> valid · <code>1</code> missing OR invalid (stderr: <code>no JACS signature found</code>)</td></tr>
 <tr><td><code>jacs verify-image</code> (CLI)</td><td>Same as above</td><td>Same as above</td></tr>
@@ -1448,7 +974,7 @@ else
 fi
 </code></pre>
 <p>If a <code>jacs.config.json</code> and agent keys exist in the current directory, the CLI uses them automatically. Otherwise, it creates a temporary ephemeral verifier internally.</p>
-<h2 id="python-2"><a class="header" href="#python-2">Python</a></h2>
+<h2 id="python-3"><a class="header" href="#python-3">Python</a></h2>
 <h3 id="with-an-agent-loaded"><a class="header" href="#with-an-agent-loaded">With an agent loaded</a></h3>
 <pre><code class="language-python">import jacs.simple as jacs
 
@@ -1475,7 +1001,7 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 <p>If the document is in local storage and you know its ID:</p>
 <pre><code class="language-python">result = jacs.verify_by_id("550e8400-e29b-41d4:1")
 </code></pre>
-<h2 id="nodejs-1"><a class="header" href="#nodejs-1">Node.js</a></h2>
+<h2 id="nodejs-2"><a class="header" href="#nodejs-2">Node.js</a></h2>
 <h3 id="with-an-agent-loaded-1"><a class="header" href="#with-an-agent-loaded-1">With an agent loaded</a></h3>
 <pre><code class="language-typescript">import * as jacs from '@hai.ai/jacs/simple';
 
@@ -1547,7 +1073,7 @@ trusted -- the evidence, the claims, and the reasoning behind that trust.</p>
 <tr><td><strong>Verification</strong></td><td>Was it tampered with?</td><td>Was it tampered with? Are the claims valid? Is the evidence fresh?</td></tr>
 </tbody></table>
 </div>
-<h2 id="key-concepts-1"><a class="header" href="#key-concepts-1">Key Concepts</a></h2>
+<h2 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h2>
 <h3 id="subject"><a class="header" href="#subject">Subject</a></h3>
 <p>What is being attested. Every attestation targets a specific <em>subject</em> -- an
 artifact, agent, workflow, or identity. The subject is identified by type, ID,
@@ -1722,7 +1248,7 @@ cd jacspy &amp;&amp; maturin develop --release
 cd jacsnpm &amp;&amp; npm run build
 </code></pre>
 <p>Requires Rust 1.93+ toolchain installed via <a href="https://rustup.rs/">rustup</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="troubleshooting-1"><a class="header" href="#troubleshooting-1">Troubleshooting</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
 <p>Common issues and solutions when installing or using JACS.</p>
 <h2 id="installation-issues"><a class="header" href="#installation-issues">Installation Issues</a></h2>
 <h3 id="pip-install-fails"><a class="header" href="#pip-install-fails">pip install fails</a></h3>
@@ -1887,7 +1413,7 @@ jacs agent create --create-keys true
 <tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>pq2025</code>; legacy <code>RSA-PSS</code> is verification-only, <code>pq-dilithium</code> is deprecated)</td><td><code>ring-Ed25519</code></td></tr>
 </tbody></table>
 </div>
-<h2 id="troubleshooting-2"><a class="header" href="#troubleshooting-2">Troubleshooting</a></h2>
+<h2 id="troubleshooting-1"><a class="header" href="#troubleshooting-1">Troubleshooting</a></h2>
 <h3 id="build-errors"><a class="header" href="#build-errors">Build Errors</a></h3>
 <p><strong>"edition 2024 is required"</strong>
 Update Rust to version 1.93 or later:</p>
@@ -1910,7 +1436,7 @@ Create the key directory or run <code>jacs init</code>:</p>
 </code></pre>
 <p><strong>"Permission denied"</strong>
 Ensure you have write permissions to the data and key directories.</p>
-<h2 id="next-steps-3"><a class="header" href="#next-steps-3">Next Steps</a></h2>
+<h2 id="next-steps-4"><a class="header" href="#next-steps-4">Next Steps</a></h2>
 <ul>
 <li><a href="rust/cli.html">CLI Usage</a> - Learn CLI commands</li>
 <li><a href="rust/agent.html">Creating an Agent</a> - Create your first agent</li>
@@ -1940,7 +1466,7 @@ jacs task --help
 </tbody></table>
 </div>
 <h2 id="initialization"><a class="header" href="#initialization">Initialization</a></h2>
-<h3 id="quick-start-1"><a class="header" href="#quick-start-1">Quick Start</a></h3>
+<h3 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h3>
 <pre><code class="language-bash"># Initialize everything in one step
 jacs init
 </code></pre>
@@ -2202,7 +1728,7 @@ jacs agent verify -a ./other-agent.json --require-strict-dns
 <tr><td>5</td><td>Signature invalid</td></tr>
 </tbody></table>
 </div>
-<h2 id="next-steps-4"><a class="header" href="#next-steps-4">Next Steps</a></h2>
+<h2 id="next-steps-5"><a class="header" href="#next-steps-5">Next Steps</a></h2>
 <ul>
 <li><a href="rust/agent.html">Creating an Agent</a> - Detailed agent creation guide</li>
 <li><a href="rust/documents.html">Working with Documents</a> - Document operations in depth</li>
@@ -2446,7 +1972,7 @@ jacs agent verify --require-strict-dns
 <li><strong>Monitor signatures</strong>: Watch for unauthorized signing</li>
 <li><strong>Document services</strong>: Keep service definitions current</li>
 </ol>
-<h2 id="next-steps-5"><a class="header" href="#next-steps-5">Next Steps</a></h2>
+<h2 id="next-steps-6"><a class="header" href="#next-steps-6">Next Steps</a></h2>
 <ul>
 <li><a href="rust/documents.html">Working with Documents</a> - Create signed documents</li>
 <li><a href="rust/agreements.html">Agreements</a> - Multi-agent coordination</li>
@@ -2703,7 +2229,7 @@ jacs document create -d ./input-docs/
 # Verify all documents
 jacs document verify -d ./signed-docs/
 </code></pre>
-<h2 id="next-steps-6"><a class="header" href="#next-steps-6">Next Steps</a></h2>
+<h2 id="next-steps-7"><a class="header" href="#next-steps-7">Next Steps</a></h2>
 <ul>
 <li><a href="rust/agreements.html">Agreements</a> - Multi-agent consent</li>
 <li><a href="rust/../schemas/task.html">Task Schema</a> - Task document structure</li>
@@ -2903,7 +2429,7 @@ agreement = client.create_agreement(
 </code></pre>
 <h2 id="using-jacsclient-instance-based-api"><a class="header" href="#using-jacsclient-instance-based-api">Using JacsClient (Instance-Based API)</a></h2>
 <p>For running multiple agents in one process, use <code>JacsClient</code> instead of the module-level API:</p>
-<h3 id="python-3"><a class="header" href="#python-3">Python</a></h3>
+<h3 id="python-4"><a class="header" href="#python-4">Python</a></h3>
 <pre><code class="language-python">from jacs.client import JacsClient
 
 alice = JacsClient.ephemeral("ring-Ed25519")  # for testing
@@ -2913,7 +2439,7 @@ signed = alice.sign_message({"action": "approve"})
 # alice.agent_id, bob.agent_id are unique
 </code></pre>
 <p>See the full example: <a href="https://github.com/HumanAssisted/JACS/blob/main/examples/multi_agent_agreement.py">examples/multi_agent_agreement.py</a></p>
-<h3 id="nodejs-2"><a class="header" href="#nodejs-2">Node.js</a></h3>
+<h3 id="nodejs-3"><a class="header" href="#nodejs-3">Node.js</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
 const alice = JacsClient.ephemeral('ring-Ed25519');
@@ -2941,7 +2467,7 @@ const signed = alice.signMessage({ action: 'approve' });
 <li><strong>Set timeouts</strong>: Prevent agreements from hanging indefinitely</li>
 <li><strong>Enforce post-quantum for sensitive agreements</strong>: Use <code>minimum_strength: "post-quantum"</code> for long-term security</li>
 </ol>
-<h2 id="next-steps-7"><a class="header" href="#next-steps-7">Next Steps</a></h2>
+<h2 id="next-steps-8"><a class="header" href="#next-steps-8">Next Steps</a></h2>
 <ul>
 <li><a href="rust/dns.html">DNS Verification</a> - Verify agent identities</li>
 <li><a href="rust/../schemas/task.html">Task Schema</a> - Task-specific agreements</li>
@@ -3139,7 +2665,7 @@ delv @8.8.8.8 _v1.agent.jacs.myagent.example.com TXT
 <li><strong>Short TTL (300-600s)</strong>: Better for development or key rotation</li>
 <li><strong>Long TTL (3600-86400s)</strong>: Better for production stability</li>
 </ul>
-<h2 id="troubleshooting-3"><a class="header" href="#troubleshooting-3">Troubleshooting</a></h2>
+<h2 id="troubleshooting-2"><a class="header" href="#troubleshooting-2">Troubleshooting</a></h2>
 <h3 id="dns-record-not-found"><a class="header" href="#dns-record-not-found">"DNS record not found"</a></h3>
 <ol>
 <li>Verify the record exists:</li>
@@ -3202,7 +2728,7 @@ sleep 60
 # 5. Verify DNS is working
 jacs agent verify --require-dns
 </code></pre>
-<h2 id="next-steps-8"><a class="header" href="#next-steps-8">Next Steps</a></h2>
+<h2 id="next-steps-9"><a class="header" href="#next-steps-9">Next Steps</a></h2>
 <ul>
 <li><a href="rust/agent.html">Creating an Agent</a> - Set up agents with DNS domains</li>
 <li><a href="rust/../advanced/security.html">Security Model</a> - Deep dive into JACS security</li>
@@ -3658,7 +3184,7 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 
     Ok(())
 }</code></pre></pre>
-<h2 id="next-steps-9"><a class="header" href="#next-steps-9">Next Steps</a></h2>
+<h2 id="next-steps-10"><a class="header" href="#next-steps-10">Next Steps</a></h2>
 <ul>
 <li><a href="rust/observability.html">Observability</a> - Logging and metrics setup</li>
 <li><a href="rust/../advanced/storage.html">Storage Backends</a> - Configure different storage</li>
@@ -3686,7 +3212,7 @@ jacs = { version = "0.3", features = ["observability"] }
 </tbody></table>
 </div>
 <p>Convenience helpers for recording operations are always available (no feature flag needed).</p>
-<h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick Start</a></h2>
+<h2 id="quick-start-1"><a class="header" href="#quick-start-1">Quick Start</a></h2>
 <h3 id="default-configuration"><a class="header" href="#default-configuration">Default Configuration</a></h3>
 <p>The simplest way to enable observability:</p>
 <pre><pre class="playground"><code class="language-rust">use jacs::init_default_observability;
@@ -4096,7 +3622,7 @@ force_reset_for_tests();
     }),
 };
 <span class="boring">}</span></code></pre></pre>
-<h2 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h2>
+<h2 id="troubleshooting-3"><a class="header" href="#troubleshooting-3">Troubleshooting</a></h2>
 <h3 id="logs-not-appearing"><a class="header" href="#logs-not-appearing">Logs Not Appearing</a></h3>
 <ol>
 <li>Check that logging is enabled: <code>logs.enabled: true</code></li>
@@ -4115,7 +3641,7 @@ force_reset_for_tests();
 <li>Check sampling ratio isn't filtering all traces</li>
 <li>Ensure spans are properly instrumented</li>
 </ol>
-<h2 id="next-steps-10"><a class="header" href="#next-steps-10">Next Steps</a></h2>
+<h2 id="next-steps-11"><a class="header" href="#next-steps-11">Next Steps</a></h2>
 <ul>
 <li><a href="rust/library.html">Rust Library API</a> - Use observability in your code</li>
 <li><a href="rust/../reference/configuration.html">Configuration Reference</a> - Full config options</li>
@@ -4383,7 +3909,7 @@ npm install @hai.ai/jacs
   }
 }
 </code></pre>
-<h2 id="next-steps-11"><a class="header" href="#next-steps-11">Next Steps</a></h2>
+<h2 id="next-steps-12"><a class="header" href="#next-steps-12">Next Steps</a></h2>
 <p>Now that you have JACS installed:</p>
 <ol>
 <li><strong><a href="nodejs/basic-usage.html">Basic Usage</a></strong> - Learn core JACS operations</li>
@@ -4409,7 +3935,7 @@ const signed = await jacs.signMessage({ action: 'approve' });
 // Sync (blocks event loop, use in scripts or CLI tools)
 const signed = jacs.signMessageSync({ action: 'approve' });
 </code></pre>
-<h2 id="quick-start-3"><a class="header" href="#quick-start-3">Quick Start</a></h2>
+<h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick Start</a></h2>
 <p>Quickstart -- one call (with required <code>name</code>/<code>domain</code>) to start signing:</p>
 <pre><code class="language-javascript">const jacs = require('@hai.ai/jacs/simple');
 
@@ -4616,7 +4142,7 @@ if (result.valid) {
 console.log(result.valid, result.signerId);
 </code></pre>
 <hr />
-<h3 id="signtextpath--v0100"><a class="header" href="#signtextpath--v0100">signText(path) — v0.10.0</a></h3>
+<h3 id="signtextpath"><a class="header" href="#signtextpath">signText(path)</a></h3>
 <p>Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered. Async-first since v0.7.0 — returns <code>Promise</code>.</p>
 <p><strong>Parameters:</strong> <code>path</code> (string): file to sign in place</p>
 <p><strong>Returns:</strong> <code>Promise&lt;void&gt;</code></p>
@@ -4624,7 +4150,7 @@ console.log(result.valid, result.signerId);
 <pre><code class="language-typescript">await jacs.signText('README.md');
 </code></pre>
 <hr />
-<h3 id="verifytextpath-options--v0100"><a class="header" href="#verifytextpath-options--v0100">verifyText(path, options?) — v0.10.0</a></h3>
+<h3 id="verifytextpath-options"><a class="header" href="#verifytextpath-options">verifyText(path, options?)</a></h3>
 <p>Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -4648,7 +4174,7 @@ try {
 </code></pre>
 <p>See the <a href="nodejs/../guides/inline-text-signing.html">inline text signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="signimagepath-out-options--v0100"><a class="header" href="#signimagepath-out-options--v0100">signImage(path, out, options?) — v0.10.0</a></h3>
+<h3 id="signimagepath-out-options"><a class="header" href="#signimagepath-out-options">signImage(path, out, options?)</a></h3>
 <p>Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -4660,7 +4186,7 @@ try {
 <pre><code class="language-typescript">await jacs.signImage('photo.png', 'signed.png');
 </code></pre>
 <hr />
-<h3 id="verifyimagepath-options--v0100"><a class="header" href="#verifyimagepath-options--v0100">verifyImage(path, options?) — v0.10.0</a></h3>
+<h3 id="verifyimagepath-options"><a class="header" href="#verifyimagepath-options">verifyImage(path, options?)</a></h3>
 <p>Verify the embedded signature on an image. Same permissive / strict model as <code>verifyText</code>.</p>
 <p><strong>Parameters:</strong> as for <code>verifyText</code>.</p>
 <p><strong>Returns:</strong> <code>Promise&lt;VerifyImageResult&gt;</code> — <code>.status</code> is <code>'valid' | 'invalid' | 'missing_signature'</code>; <code>.signerId</code>, <code>.signedAt</code>, <code>.algorithm</code> populated when valid.</p>
@@ -4669,7 +4195,7 @@ console.log(v.status);  // 'valid'
 </code></pre>
 <p>See the <a href="nodejs/../guides/media-signing.html">media signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="extractmediasignaturepath-options--v0100"><a class="header" href="#extractmediasignaturepath-options--v0100">extractMediaSignature(path, options?) — v0.10.0</a></h3>
+<h3 id="extractmediasignaturepath-options"><a class="header" href="#extractmediasignaturepath-options">extractMediaSignature(path, options?)</a></h3>
 <p>Extract the embedded signature payload <strong>without verifying</strong> it.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -5201,7 +4727,7 @@ async function main() {
 
 main().catch(console.error);
 </code></pre>
-<h2 id="next-steps-12"><a class="header" href="#next-steps-12">Next Steps</a></h2>
+<h2 id="next-steps-13"><a class="header" href="#next-steps-13">Next Steps</a></h2>
 <ul>
 <li><a href="nodejs/mcp.html">MCP Integration</a> - Model Context Protocol support</li>
 <li><a href="nodejs/http.html">HTTP Server</a> - Create HTTP APIs</li>
@@ -5214,8 +4740,8 @@ main().catch(console.error);
 <li><strong>Wrap an MCP transport</strong> with signing and verification</li>
 <li><strong>Register JACS operations as MCP tools</strong> on an existing server</li>
 </ol>
-<p>If you want a full out-of-the-box server instead, prefer the Rust <code>jacs-mcp</code> binary.</p>
-<h2 id="install-3"><a class="header" href="#install-3">Install</a></h2>
+<p>If you want a full out-of-the-box server instead, install <code>jacs-cli</code> and run the built-in <code>jacs mcp</code> server.</p>
+<h2 id="install-1"><a class="header" href="#install-1">Install</a></h2>
 <pre><code class="language-bash">npm install @hai.ai/jacs @modelcontextprotocol/sdk
 </code></pre>
 <h2 id="1-wrap-a-transport"><a class="header" href="#1-wrap-a-transport">1. Wrap A Transport</a></h2>
@@ -5358,7 +4884,7 @@ const node = jacsToolNode([tool1, tool2], { client });
 
 const wrapToolCall = jacsWrapToolCall({ client });
 </code></pre>
-<h2 id="install-4"><a class="header" href="#install-4">Install</a></h2>
+<h2 id="install-2"><a class="header" href="#install-2">Install</a></h2>
 <pre><code class="language-bash">npm install @hai.ai/jacs @langchain/core
 npm install @langchain/langgraph
 </code></pre>
@@ -5405,7 +4931,7 @@ const { text, providerMetadata } = await generateText({ model, prompt: 'Hello!' 
 console.log(providerMetadata?.jacs?.text?.documentId); // JACS document ID
 </code></pre>
 <hr />
-<h2 id="quick-start-4"><a class="header" href="#quick-start-4">Quick Start</a></h2>
+<h2 id="quick-start-3"><a class="header" href="#quick-start-3">Quick Start</a></h2>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 import { withProvenance } from '@hai.ai/jacs/vercel-ai';
 import { openai } from '@ai-sdk/openai';
@@ -5520,7 +5046,7 @@ const toolProvenance = providerMetadata?.jacs?.toolResults;
   strict: true,  // Throws if signing fails
 });
 </code></pre>
-<h2 id="next-steps-13"><a class="header" href="#next-steps-13">Next Steps</a></h2>
+<h2 id="next-steps-14"><a class="header" href="#next-steps-14">Next Steps</a></h2>
 <ul>
 <li><a href="nodejs/express.html">Express Middleware</a> - Sign HTTP API responses</li>
 <li><a href="nodejs/mcp.html">MCP Integration</a> - Secure MCP transport</li>
@@ -5557,7 +5083,7 @@ app.post('/api/data', (req, res) =&gt; {
 app.listen(3000);
 </code></pre>
 <hr />
-<h2 id="quick-start-5"><a class="header" href="#quick-start-5">Quick Start</a></h2>
+<h2 id="quick-start-4"><a class="header" href="#quick-start-4">Quick Start</a></h2>
 <pre><code class="language-typescript">import express from 'express';
 import { JacsClient } from '@hai.ai/jacs/client';
 import { jacsMiddleware } from '@hai.ai/jacs/express';
@@ -5709,7 +5235,7 @@ app.use('/user', jacsMiddleware({ client: userClient }));
 </tbody></table>
 </div>
 <p>The new middleware is simpler, faster (no per-request init), and gives you <code>req.jacsClient</code> for manual operations.</p>
-<h2 id="next-steps-14"><a class="header" href="#next-steps-14">Next Steps</a></h2>
+<h2 id="next-steps-15"><a class="header" href="#next-steps-15">Next Steps</a></h2>
 <ul>
 <li><a href="nodejs/koa.html">Koa Middleware</a> - Same pattern for Koa</li>
 <li><a href="nodejs/http.html">HTTP Server</a> - Core HTTP integration concepts</li>
@@ -5719,7 +5245,7 @@ app.use('/user', jacsMiddleware({ client: userClient }));
 <div style="break-before: page; page-break-before: always;"></div><h1 id="koa-middleware"><a class="header" href="#koa-middleware">Koa Middleware</a></h1>
 <p><strong>Sign it. Prove it.</strong> -- in your Koa app.</p>
 <p>JACS provides <code>jacsKoaMiddleware</code> for Koa with the same design as the <a href="nodejs/express.html">Express middleware</a> -- verify incoming signed bodies, optionally auto-sign responses.</p>
-<h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
+<h2 id="quick-start-5"><a class="header" href="#quick-start-5">Quick Start</a></h2>
 <pre><code class="language-typescript">import Koa from 'koa';
 import bodyParser from 'koa-bodyparser';
 import { JacsClient } from '@hai.ai/jacs/client';
@@ -5806,7 +5332,7 @@ app.use(async (ctx) =&gt; {
 <tr><td>Auto-sign target</td><td><code>res.json()</code> interception</td><td><code>ctx.body</code> after <code>next()</code></td></tr>
 </tbody></table>
 </div>
-<h2 id="next-steps-15"><a class="header" href="#next-steps-15">Next Steps</a></h2>
+<h2 id="next-steps-16"><a class="header" href="#next-steps-16">Next Steps</a></h2>
 <ul>
 <li><a href="nodejs/express.html">Express Middleware</a> - Express version</li>
 <li><a href="nodejs/vercel-ai.html">Vercel AI SDK</a> - AI model provenance signing</li>
@@ -6234,7 +5760,7 @@ app.use('/api', JACSExpressMiddleware({ configPath: '...' }));
 app.use('/api', JACSExpressMiddleware({ configPath: '...' }));
 app.use('/api', express.text({ type: '*/*' }));
 </code></pre>
-<h2 id="next-steps-16"><a class="header" href="#next-steps-16">Next Steps</a></h2>
+<h2 id="next-steps-17"><a class="header" href="#next-steps-17">Next Steps</a></h2>
 <ul>
 <li><a href="nodejs/express.html">Express Middleware</a> - More Express integration patterns</li>
 <li><a href="nodejs/mcp.html">MCP Integration</a> - Model Context Protocol support</li>
@@ -6985,7 +6511,7 @@ class TestJACS(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 </code></pre>
-<h2 id="next-steps-17"><a class="header" href="#next-steps-17">Next Steps</a></h2>
+<h2 id="next-steps-18"><a class="header" href="#next-steps-18">Next Steps</a></h2>
 <p>Now that you have JACS installed:</p>
 <ol>
 <li><strong><a href="python/basic-usage.html">Basic Usage</a></strong> - Learn core JACS operations</li>
@@ -7003,7 +6529,7 @@ if __name__ == "__main__":
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="simplified-api-1"><a class="header" href="#simplified-api-1">Simplified API</a></h1>
 <p>The simplified API (<code>jacs.simple</code>) provides a streamlined, module-level interface for common JACS operations. It's designed to get you signing and verifying in under 2 minutes.</p>
-<h2 id="quick-start-7"><a class="header" href="#quick-start-7">Quick Start</a></h2>
+<h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
 <p>Zero-config -- one call to start signing:</p>
 <pre><code class="language-python">import jacs.simple as jacs
 
@@ -7153,7 +6679,7 @@ else:
 <p><strong>Parameters:</strong> <code>document</code> (str|dict), <code>key_resolution</code> (str), <code>data_directory</code> (str, optional), <code>key_directory</code> (str, optional)</p>
 <p><strong>Returns:</strong> <code>VerificationResult</code></p>
 <hr />
-<h3 id="sign_textpath--v0100"><a class="header" href="#sign_textpath--v0100">sign_text(path) — v0.10.0</a></h3>
+<h3 id="sign_textpath"><a class="header" href="#sign_textpath">sign_text(path)</a></h3>
 <p>Append a YAML-bodied JACS signature block to the end of a markdown or text file. The file content (everything before the first signature block) is preserved byte-for-byte; multi-signer files are unordered.</p>
 <p><strong>Parameters:</strong> <code>path</code> (str): file to sign in place</p>
 <p><strong>Returns:</strong> <code>None</code></p>
@@ -7161,7 +6687,7 @@ else:
 <pre><code class="language-python">jacs.sign_text("README.md")
 </code></pre>
 <hr />
-<h3 id="verify_textpath--strictfalse-key_dirnone--v0100"><a class="header" href="#verify_textpath--strictfalse-key_dirnone--v0100">verify_text(path, *, strict=False, key_dir=None) — v0.10.0</a></h3>
+<h3 id="verify_textpath--strictfalse-key_dirnone"><a class="header" href="#verify_textpath--strictfalse-key_dirnone">verify_text(path, *, strict=False, key_dir=None)</a></h3>
 <p>Verify all signature blocks in a text file. Permissive by default — missing signatures are a typed status, not an error.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -7181,7 +6707,7 @@ except MissingSignatureError:
 </code></pre>
 <p>See the <a href="python/../guides/inline-text-signing.html">inline text signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0100"><a class="header" href="#sign_imagepath--outnone-robustfalse-refuse_overwritefalse--v0100">sign_image(path, *, out=None, robust=False, refuse_overwrite=False) — v0.10.0</a></h3>
+<h3 id="sign_imagepath--outnone-robustfalse-refuse_overwritefalse"><a class="header" href="#sign_imagepath--outnone-robustfalse-refuse_overwritefalse">sign_image(path, *, out=None, robust=False, refuse_overwrite=False)</a></h3>
 <p>Embed a JACS signature inside a PNG, JPEG, or WebP image. The signature lives in a metadata chunk (PNG iTXt / JPEG APP11 / WebP XMP).</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -7194,7 +6720,7 @@ except MissingSignatureError:
 <pre><code class="language-python">jacs.sign_image("photo.png", out="signed.png")
 </code></pre>
 <hr />
-<h3 id="verify_imagepath--strictfalse-key_dirnone--v0100"><a class="header" href="#verify_imagepath--strictfalse-key_dirnone--v0100">verify_image(path, *, strict=False, key_dir=None) — v0.10.0</a></h3>
+<h3 id="verify_imagepath--strictfalse-key_dirnone"><a class="header" href="#verify_imagepath--strictfalse-key_dirnone">verify_image(path, *, strict=False, key_dir=None)</a></h3>
 <p>Verify the embedded signature on an image. Same permissive / strict model as <code>verify_text</code>.</p>
 <p><strong>Parameters:</strong> as for <code>verify_text</code>.</p>
 <p><strong>Returns:</strong> <code>VerifyImageResult</code> — <code>.status</code> is <code>'valid' | 'invalid' | 'missing_signature'</code>; <code>.signer_id</code>, <code>.signed_at</code>, <code>.algorithm</code> populated when valid.</p>
@@ -7203,7 +6729,7 @@ print(v.status)  # 'valid'
 </code></pre>
 <p>See the <a href="python/../guides/media-signing.html">media signing guide</a> for the full feature set.</p>
 <hr />
-<h3 id="extract_media_signaturepath--raw_payloadfalse--v0100"><a class="header" href="#extract_media_signaturepath--raw_payloadfalse--v0100">extract_media_signature(path, *, raw_payload=False) — v0.10.0</a></h3>
+<h3 id="extract_media_signaturepath--raw_payloadfalse"><a class="header" href="#extract_media_signaturepath--raw_payloadfalse">extract_media_signature(path, *, raw_payload=False)</a></h3>
 <p>Extract the embedded signature payload <strong>without verifying</strong> it.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
@@ -7832,7 +7358,7 @@ with open('jacs.config.json', 'w') as f:
 agent = jacs.JacsAgent()
 agent.load('./jacs.config.json')
 </code></pre>
-<h2 id="next-steps-18"><a class="header" href="#next-steps-18">Next Steps</a></h2>
+<h2 id="next-steps-19"><a class="header" href="#next-steps-19">Next Steps</a></h2>
 <ul>
 <li><a href="python/mcp.html">MCP Integration</a> - Model Context Protocol support</li>
 <li><a href="python/mcp.html">FastMCP Integration</a> - Build advanced MCP servers</li>
@@ -8495,9 +8021,9 @@ for t in threads:
 <div style="break-before: page; page-break-before: always;"></div><h1 id="go-jacsgo-installation-and-quick-start"><a class="header" href="#go-jacsgo-installation-and-quick-start">Go (<code>jacsgo</code>) Installation and Quick Start</a></h1>
 <p><code>jacsgo</code> provides Go bindings for signing and verifying JACS documents in services, APIs, and agent runtimes.</p>
 <blockquote>
-<p>Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For full MCP surface use the Rust <code>jacs-mcp</code> server; the Go MCP examples in the repo are demo code.</p>
+<p>Note: Go bindings are community-maintained. Python and Node.js currently have broader framework adapter coverage. For the full MCP surface, install <code>jacs-cli</code> and run <code>jacs mcp</code>; the Go MCP examples in the repo are demo code.</p>
 </blockquote>
-<h2 id="install-5"><a class="header" href="#install-5">Install</a></h2>
+<h2 id="install-3"><a class="header" href="#install-3">Install</a></h2>
 <pre><code class="language-bash">go get github.com/HumanAssisted/JACS/jacsgo
 </code></pre>
 <h2 id="minimal-sign--verify"><a class="header" href="#minimal-sign--verify">Minimal Sign + Verify</a></h2>
@@ -9083,7 +8609,7 @@ const doc = agent.createDocument(
 }
 </code></pre>
 <h2 id="creating-agents"><a class="header" href="#creating-agents">Creating Agents</a></h2>
-<h3 id="python-4"><a class="header" href="#python-4">Python</a></h3>
+<h3 id="python-5"><a class="header" href="#python-5">Python</a></h3>
 <pre><code class="language-python">import jacs
 import json
 
@@ -9098,7 +8624,7 @@ agent_doc = json.loads(agent_json)
 print(f"Agent ID: {agent_doc['jacsId']}")
 print(f"Agent Type: {agent_doc['jacsAgentType']}")
 </code></pre>
-<h3 id="nodejs-3"><a class="header" href="#nodejs-3">Node.js</a></h3>
+<h3 id="nodejs-4"><a class="header" href="#nodejs-4">Node.js</a></h3>
 <pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 
 const agent = new JacsAgent();
@@ -9108,7 +8634,7 @@ const agentDoc = JSON.parse(agentJson);
 console.log(`Agent ID: ${agentDoc.jacsId}`);
 console.log(`Agent Type: ${agentDoc.jacsAgentType}`);
 </code></pre>
-<h3 id="cli"><a class="header" href="#cli">CLI</a></h3>
+<h3 id="cli-1"><a class="header" href="#cli-1">CLI</a></h3>
 <pre><code class="language-bash"># Create a new agent
 jacs agent create
 
@@ -9243,7 +8769,7 @@ const isOtherValid = agent.verifyAgent('./other-agent.json');
   "jacsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 </code></pre>
-<h2 id="agreements-2"><a class="header" href="#agreements-2">Agreements</a></h2>
+<h2 id="agreements-1"><a class="header" href="#agreements-1">Agreements</a></h2>
 <p>Documents can include multi-party agreements using <code>jacsAgreement</code>:</p>
 <pre><code class="language-json">{
   "jacsAgreement": {
@@ -9562,7 +9088,7 @@ const updated = agent.updateDocument(
   }
 }
 </code></pre>
-<h2 id="agreements-3"><a class="header" href="#agreements-3">Agreements</a></h2>
+<h2 id="agreements-2"><a class="header" href="#agreements-2">Agreements</a></h2>
 <p>Tasks can include start and end agreements:</p>
 <h3 id="start-agreement"><a class="header" href="#start-agreement">Start Agreement</a></h3>
 <p>Signed when parties agree to begin work:</p>
@@ -10537,7 +10063,7 @@ trust levels that map directly to JACS's trust model:</p>
 <tr><td>Enhanced</td><td>Strict</td><td>Attestation-level evidence required</td></tr>
 </tbody></table>
 </div>
-<h2 id="when-to-use-jacs-1"><a class="header" href="#when-to-use-jacs-1">When to Use JACS</a></h2>
+<h2 id="when-to-use-jacs"><a class="header" href="#when-to-use-jacs">When to Use JACS</a></h2>
 <p>Use JACS when you need:</p>
 <ul>
 <li><strong>Agent identity</strong> that works without PKI/CA infrastructure</li>
@@ -13432,7 +12958,7 @@ def test_large_document():
 </ol>
 <h2 id="best-fit-by-runtime"><a class="header" href="#best-fit-by-runtime">Best Fit By Runtime</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Runtime</th><th>Best starting point</th><th>What it gives you</th></tr></thead><tbody>
-<tr><td>Rust</td><td><code>jacs-mcp</code></td><td>Full MCP server with document, agreement, trust, A2A, and audit tools</td></tr>
+<tr><td>Rust CLI</td><td><code>jacs mcp</code></td><td>Full MCP server with document, agreement, trust, A2A, audit, text, and image tools</td></tr>
 <tr><td>Python</td><td><code>jacs.mcp</code> or <code>jacs.adapters.mcp</code></td><td>Local SSE transport security or FastMCP tool registration</td></tr>
 <tr><td>Node.js</td><td><code>@hai.ai/jacs/mcp</code></td><td>Transport proxy or MCP tool registration for existing SDK-based servers</td></tr>
 </tbody></table>
@@ -13448,9 +12974,9 @@ def test_large_document():
 <pre><code class="language-bash">cargo install jacs-cli
 jacs mcp
 </code></pre>
-<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, and security audit tools. See <code>jacs-mcp/README.md</code> in the repo for the full tool list and client configuration examples.</p>
+<p>The MCP server is built into the <code>jacs</code> binary (stdio transport only, no HTTP). It includes document signing, agreements, trust store operations, A2A tools, security audit tools, and text/image provenance tools. The crate-level MCP README in the repo has the full contract details.</p>
 <h2 id="2-transport-security-around-your-existing-mcp-code"><a class="header" href="#2-transport-security-around-your-existing-mcp-code">2. Transport Security Around Your Existing MCP Code</a></h2>
-<h3 id="python-5"><a class="header" href="#python-5">Python</a></h3>
+<h3 id="python-6"><a class="header" href="#python-6">Python</a></h3>
 <p>Use <code>jacs.mcp</code> when you already have a FastMCP server or client and want transparent signing around the SSE transport:</p>
 <pre><code class="language-python">from fastmcp import FastMCP
 from jacs.mcp import JACSMCPServer
@@ -13469,7 +12995,7 @@ client = JACSMCPClient("http://localhost:8000/sse", "./jacs.config.json")
 <li><code>jacs_call()</code> for one-off authenticated local calls</li>
 </ul>
 <p>See <a href="integrations/../python/mcp.html">Python MCP Integration</a> for the detailed patterns.</p>
-<h3 id="nodejs-4"><a class="header" href="#nodejs-4">Node.js</a></h3>
+<h3 id="nodejs-5"><a class="header" href="#nodejs-5">Node.js</a></h3>
 <p>Use the transport proxy when you already have an MCP transport:</p>
 <pre><code class="language-typescript">import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { JacsClient } from '@hai.ai/jacs/client';
@@ -13495,7 +13021,7 @@ const secureTransport = await createJACSTransportProxyAsync(
 <p>See <a href="integrations/../nodejs/mcp.html">Node.js MCP Integration</a> for examples and tool registration.</p>
 <h2 id="3-register-jacs-operations-as-mcp-tools"><a class="header" href="#3-register-jacs-operations-as-mcp-tools">3. Register JACS Operations As MCP Tools</a></h2>
 <p>This is different from transport security. Here the model gets explicit MCP tools such as <code>jacs_sign_document</code>, <code>jacs_verify_document</code>, agreement helpers, and trust helpers.</p>
-<h3 id="python-6"><a class="header" href="#python-6">Python</a></h3>
+<h3 id="python-7"><a class="header" href="#python-7">Python</a></h3>
 <pre><code class="language-python">from fastmcp import FastMCP
 from jacs.client import JacsClient
 from jacs.adapters.mcp import (
@@ -13510,7 +13036,7 @@ register_jacs_tools(mcp, client=client)
 register_a2a_tools(mcp, client=client)
 register_trust_tools(mcp, client=client)
 </code></pre>
-<h3 id="nodejs-5"><a class="header" href="#nodejs-5">Node.js</a></h3>
+<h3 id="nodejs-6"><a class="header" href="#nodejs-6">Node.js</a></h3>
 <pre><code class="language-typescript">import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { JacsClient } from '@hai.ai/jacs/client';
 import { registerJacsTools } from '@hai.ai/jacs/mcp';
@@ -13528,8 +13054,8 @@ const client = await JacsClient.quickstart({
 registerJacsTools(server, client);
 </code></pre>
 <p>The Node tool set is intentionally smaller than the Rust MCP server. Use <code>jacs mcp</code> when you need the largest supported MCP surface.</p>
-<h3 id="provenance-mcp-tools-v0100"><a class="header" href="#provenance-mcp-tools-v0100">Provenance MCP tools (v0.10.0)</a></h3>
-<p>The MCP server exposes 5 new tools for inline text and image provenance — covering the same surface as the <a href="integrations/../guides/inline-text-signing.html"><code>sign-text</code></a> and <a href="integrations/../guides/media-signing.html"><code>sign-image</code></a> CLI verbs.</p>
+<h3 id="provenance-mcp-tools"><a class="header" href="#provenance-mcp-tools">Provenance MCP tools</a></h3>
+<p>The MCP server exposes tools for inline text and image provenance, covering the same surface as the <a href="integrations/../guides/inline-text-signing.html"><code>sign-text</code></a> and <a href="integrations/../guides/media-signing.html"><code>sign-image</code></a> CLI verbs.</p>
 <ul>
 <li><code>jacs_sign_text</code> — append a YAML-bodied signature block to a markdown / text file.</li>
 <li><code>jacs_verify_text</code> — verify all signature blocks in a file (permissive default; <code>strict</code> opt-in).</li>
@@ -13539,7 +13065,6 @@ registerJacsTools(server, client);
 </ul>
 <h2 id="example-paths-in-this-repo-2"><a class="header" href="#example-paths-in-this-repo-2">Example Paths In This Repo</a></h2>
 <ul>
-<li><code>jacs-mcp/README.md</code></li>
 <li><code>jacspy/examples/mcp/server.py</code></li>
 <li><code>jacspy/examples/mcp/client.py</code></li>
 <li><code>jacsnpm/examples/mcp.stdio.server.js</code></li>
@@ -13638,14 +13163,14 @@ console.log(result.valid);
 </tbody></table>
 </div>
 <p>That means <code>verified</code> is about <strong>JACS provenance on the Agent Card</strong>, not about a promise that every foreign key has already been resolved.</p>
-<h3 id="python-7"><a class="header" href="#python-7">Python</a></h3>
+<h3 id="python-8"><a class="header" href="#python-8">Python</a></h3>
 <pre><code class="language-python">a2a = client.get_a2a()
 assessment = a2a.assess_remote_agent(remote_card_json, policy="strict")
 
 if assessment["allowed"]:
     result = a2a.verify_wrapped_artifact(artifact, assess_trust=True)
 </code></pre>
-<h3 id="nodejs-6"><a class="header" href="#nodejs-6">Node.js</a></h3>
+<h3 id="nodejs-7"><a class="header" href="#nodejs-7">Node.js</a></h3>
 <pre><code class="language-typescript">const a2a = client.getA2A();
 const assessment = a2a.assessRemoteAgent(remoteCardJson);
 
@@ -13668,7 +13193,6 @@ if (assessment.allowed) {
 </ul>
 <h2 id="example-paths-in-this-repo-3"><a class="header" href="#example-paths-in-this-repo-3">Example Paths In This Repo</a></h2>
 <ul>
-<li><code>jacs-mcp/README.md</code></li>
 <li><code>jacspy/tests/test_a2a_server.py</code></li>
 <li><code>jacsnpm/src/a2a-server.js</code></li>
 <li><code>jacsnpm/examples/a2a-agent-example.js</code></li>
@@ -13749,7 +13273,7 @@ A: This is expected. JACS fields (<code>jacsId</code>, <code>jacsSignature</code
 <p><strong>Q: How do I verify artifacts from agents I've never seen before?</strong>
 A: Use <code>JACS_KEY_RESOLUTION</code> to configure key lookup. Set <code>JACS_KEY_RESOLUTION=local,hai</code> to check your local cache first, then the HAI key service. For offline-only verification, set <code>JACS_KEY_RESOLUTION=local</code>.</p>
 <hr />
-<h2 id="next-steps-19"><a class="header" href="#next-steps-19">Next Steps</a></h2>
+<h2 id="next-steps-20"><a class="header" href="#next-steps-20">Next Steps</a></h2>
 <ul>
 <li><strong><a href="guides/../integrations/a2a.html">A2A Interoperability Reference</a></strong> -- Full API reference, well-known documents, MCP integration</li>
 <li><strong><a href="guides/../advanced/trust-store.html">Trust Store</a></strong> -- Managing trusted agents</li>
@@ -13817,7 +13341,7 @@ app.listen(8080);
 </tbody></table>
 </div>
 <p>The Agent Card includes the <code>urn:jacs:provenance-v1</code> extension in <code>capabilities.extensions</code>, signaling to other JACS agents that your agent supports cryptographic provenance.</p>
-<h2 id="next-steps-20"><a class="header" href="#next-steps-20">Next Steps</a></h2>
+<h2 id="next-steps-21"><a class="header" href="#next-steps-21">Next Steps</a></h2>
 <ul>
 <li><strong><a href="guides/a2a-discover.html">Discover &amp; Trust Remote Agents</a></strong> -- Find other agents and assess their trustworthiness</li>
 <li><strong><a href="guides/a2a-exchange.html">Exchange Signed Artifacts</a></strong> -- Sign and verify A2A artifacts</li>
@@ -13906,7 +13430,7 @@ a2a.trustA2AAgent(remoteAgentId);
 4. Trust     -- Optionally add the agent to your local trust store
 </code></pre>
 <p>With <code>open</code> policy, all agents pass step 3. With <code>verified</code>, agents must have the JACS extension. With <code>strict</code>, agents must be explicitly added to the trust store in step 4 before they pass.</p>
-<h2 id="next-steps-21"><a class="header" href="#next-steps-21">Next Steps</a></h2>
+<h2 id="next-steps-22"><a class="header" href="#next-steps-22">Next Steps</a></h2>
 <ul>
 <li><strong><a href="guides/a2a-exchange.html">Exchange Signed Artifacts</a></strong> -- Sign and verify artifacts with trusted agents</li>
 <li><strong><a href="guides/a2a-serve.html">Serve Your Agent Card</a></strong> -- Make your agent discoverable</li>
@@ -14013,7 +13537,7 @@ console.log(`Parents valid: ${result.parentSignaturesValid}`);
 </tbody></table>
 </div>
 <p>Non-JACS receivers can safely ignore the <code>jacs*</code> fields and extract <code>payload</code> directly.</p>
-<h2 id="next-steps-22"><a class="header" href="#next-steps-22">Next Steps</a></h2>
+<h2 id="next-steps-23"><a class="header" href="#next-steps-23">Next Steps</a></h2>
 <ul>
 <li><strong><a href="guides/a2a-serve.html">Serve Your Agent Card</a></strong> -- Make your agent discoverable</li>
 <li><strong><a href="guides/a2a-discover.html">Discover &amp; Trust Remote Agents</a></strong> -- Find and assess other agents</li>
@@ -14763,7 +14287,7 @@ Agent B: Verifies A2A signature, attests review with evidence
     ↓ (cross-boundary exchange)
 Agent C: Verifies both the A2A chain and the attestation
 </code></pre>
-<h3 id="python-8"><a class="header" href="#python-8">Python</a></h3>
+<h3 id="python-9"><a class="header" href="#python-9">Python</a></h3>
 <pre><code class="language-python">from jacs.client import JacsClient
 
 # --- Agent A: Sign and send ---
@@ -14797,7 +14321,7 @@ attested_artifact = a2a_b.sign_artifact(
     parent_signatures=[signed],
 )
 </code></pre>
-<h3 id="nodejs-7"><a class="header" href="#nodejs-7">Node.js</a></h3>
+<h3 id="nodejs-8"><a class="header" href="#nodejs-8">Node.js</a></h3>
 <pre><code class="language-typescript">import { JacsClient } from '@hai.ai/jacs/client';
 
 // --- Agent A: Sign and send ---
@@ -15017,7 +14541,7 @@ otlp_config:
 event="signature_verified" | stats avg(duration_ms) as avg_verify_ms, p99(duration_ms) as p99_verify_ms by algorithm
 </code></pre>
 <p>Post-quantum algorithms (<code>pq2025</code>, <code>pq-dilithium</code>) will show higher latency than <code>ring-Ed25519</code>. Use these metrics to decide whether the security/performance tradeoff is acceptable for your workload.</p>
-<h2 id="next-steps-23"><a class="header" href="#next-steps-23">Next Steps</a></h2>
+<h2 id="next-steps-24"><a class="header" href="#next-steps-24">Next Steps</a></h2>
 <ul>
 <li><a href="guides/../rust/observability.html">Observability (Rust API)</a> -- Full API: ObservabilityConfig, LogDestination, MetricsConfig, TracingConfig</li>
 <li><a href="guides/../advanced/algorithm-guide.html">Algorithm Selection Guide</a> -- Latency implications of algorithm choice</li>
@@ -15031,53 +14555,48 @@ verifies the cryptographic signature, and compares content hashes to detect
 tampering.</p>
 <p>There are only two functions you need:</p>
 <div class="table-wrapper"><table><thead><tr><th>Action</th><th>Function</th><th>What you supply</th><th>What you get back</th></tr></thead><tbody>
-<tr><td><strong>Sign</strong></td><td><code>jacs::email::sign_email()</code></td><td>raw <code>.eml</code> bytes + your <code>EmailSigner</code></td><td><code>.eml</code> bytes with <code>jacs-signature.json</code></td></tr>
+<tr><td><strong>Sign</strong></td><td><code>jacs::email::sign_email()</code></td><td>raw <code>.eml</code> bytes + a <code>JacsSigner</code></td><td><code>.eml</code> bytes with <code>jacs-signature.json</code></td></tr>
 <tr><td><strong>Verify</strong></td><td><code>jacs::email::verify_email()</code></td><td>signed <code>.eml</code> bytes + sender's public key + verifier</td><td><code>ContentVerificationResult</code> (pass/fail per field)</td></tr>
 </tbody></table>
 </div>
 <h2 id="signing-an-email"><a class="header" href="#signing-an-email">Signing an email</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use jacs::email::{sign_email, EmailSigner};
+</span>use jacs::email::sign_email;
 
 // 1. Load raw email bytes (RFC 5322 format)
 let raw_eml = std::fs::read("outgoing.eml")?;
 
-// 2. Sign — your agent implements EmailSigner (see below)
+// 2. Sign — SimpleAgent implements JacsSigner
 let signed_eml = sign_email(&amp;raw_eml, &amp;my_agent)?;
 
 // 3. Send signed_eml — it is a valid .eml with the JACS attachment
 std::fs::write("outgoing_signed.eml", &amp;signed_eml)?;
 <span class="boring">}</span></code></pre></pre>
-<h3 id="the-emailsigner-trait"><a class="header" href="#the-emailsigner-trait">The <code>EmailSigner</code> trait</a></h3>
-<p>Your agent must implement four methods:</p>
+<h3 id="the-jacssigner-trait"><a class="header" href="#the-jacssigner-trait">The <code>JacsSigner</code> trait</a></h3>
+<p><code>sign_email</code> accepts any type that implements <code>JacsSigner</code>. <code>SimpleAgent</code> implements it out of the box.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub trait EmailSigner {
-    /// Sign raw bytes. Return the signature bytes.
-    fn sign_bytes(&amp;self, data: &amp;[u8]) -&gt; Result&lt;Vec&lt;u8&gt;, Box&lt;dyn std::error::Error&gt;&gt;;
+</span>pub trait JacsSigner {
+    /// Create a signed JACS document from the email hash payload.
+    fn sign_message(&amp;self, data: &amp;serde_json::Value) -&gt; Result&lt;SignedDocument, JacsError&gt;;
 
-    /// Your agent's JACS ID (e.g. "abc123:v1").
-    fn jacs_id(&amp;self) -&gt; &amp;str;
-
-    /// The key identifier used for signing.
-    fn key_id(&amp;self) -&gt; &amp;str;
-
-    /// The signing algorithm name. This comes from your JACS agent's
-    /// key configuration — never hardcode it.
-    fn algorithm(&amp;self) -&gt; &amp;str;
+    /// Verify a signed JACS document using the sender's public key.
+    fn verify_with_key(
+        &amp;self,
+        signed_document: &amp;str,
+        public_key: Vec&lt;u8&gt;,
+    ) -&gt; Result&lt;VerificationResult, JacsError&gt;;
 }
 <span class="boring">}</span></code></pre></pre>
-<p>The algorithm value (e.g. <code>"ed25519"</code>, <code>"pq2025"</code>, or legacy <code>"rsa-pss"</code> when verifying older mail signatures) is read from
-your JACS agent's key metadata at runtime. <code>sign_email</code> records it in the
-<code>jacs-signature.json</code> document so the verifier knows which algorithm to use.</p>
+<p>The signing algorithm is read from your JACS agent at runtime and recorded in the <code>jacs-signature.json</code> document. Do not hardcode it in email code.</p>
 <h3 id="what-sign_email-does-internally"><a class="header" href="#what-sign_email-does-internally">What <code>sign_email</code> does internally</a></h3>
 <ol>
 <li>Parses and canonicalizes the email headers and body</li>
 <li>Computes SHA-256 hashes for each header, body part, and attachment</li>
 <li>Builds the JACS email signature payload</li>
 <li>Canonicalizes the payload via RFC 8785 (JCS)</li>
-<li>Calls your <code>sign_bytes()</code> to produce the cryptographic signature</li>
+<li>Calls <code>sign_message()</code> to create a real signed JACS document</li>
 <li>Attaches the result as <code>jacs-signature.json</code></li>
 </ol>
 <p>You do not need to know any of this to use it — it is a single function call.</p>
@@ -15098,7 +14617,7 @@ another agent), <code>sign_email</code> automatically:</p>
 use jacs::simple::SimpleAgent;
 
 let signed_eml = std::fs::read("incoming_signed.eml")?;
-let sender_public_key: Vec&lt;u8&gt; = /* fetch from HAI registry or local store */;
+let sender_public_key: Vec&lt;u8&gt; = /* fetch from local trust, DNS, or another trusted source */;
 
 // Any agent can verify — the sender's public key is passed explicitly
 let (agent, _) = SimpleAgent::ephemeral(Some("ed25519"))?;
@@ -15199,8 +14718,8 @@ JSON. The algorithm is always read from the agent — never hardcoded.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>// Signing
-jacs::email::sign_email(raw_email: &amp;[u8], signer: &amp;dyn EmailSigner) -&gt; Result&lt;Vec&lt;u8&gt;, EmailError&gt;
-jacs::email::EmailSigner                  // trait your agent implements
+jacs::email::sign_email(raw_email: &amp;[u8], signer: &amp;impl JacsSigner) -&gt; Result&lt;Vec&lt;u8&gt;, EmailError&gt;
+jacs::email::JacsSigner                   // trait implemented by SimpleAgent
 
 // Verification
 jacs::email::verify_email(raw, &amp;agent, pubkey)       // one-call: crypto + content check
@@ -15307,40 +14826,55 @@ const signed = await jacs.signMessage({
 </div>
 <p>All bindings are async-first on Node (returns <code>Promise</code>); CLI is synchronous; Python and Rust are synchronous; Go is synchronous.</p>
 <h2 id="the-signature-block"><a class="header" href="#the-signature-block">The signature block</a></h2>
-<p><code>sign-text</code> appends a block of the following exact shape at the end of the file:</p>
+<p><code>sign-text</code> appends a YAML footer at the end of the file. The markers stay
+small and stable; the body is a full signed JACS document so markdown can carry
+the same <code>jacsId</code> / <code>jacsVersion</code> chain as JSON-envelope documents:</p>
 <pre><code class="language-text">-----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: ed25519
-hashAlgorithm: sha256
-canonicalization: jacs-text-v1
-signerId: agent-abc123
-publicKeyHash: sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
-signedAt: 2026-04-24T18:00:00Z
-contentHash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-signature: 9XsrVQ8...base64url...
+jacsId: 5f7e...
+jacsVersion: 7c6d...
+jacsVersionDate: "2026-05-01T12:00:00Z"
+jacsType: inline-md
+jacsLevel: artifact
+content:
+  inlineSignatureVersion: 1
+  canonicalization: jacs-text-v1
+  hashAlgorithm: sha256
+  signedContentHash: no5d...
+jacsSignature:
+  agentID: agent-abc123
+  signingAlgorithm: ring-Ed25519
+  publicKeyHash: 3b2f...
+  signature: ...
+jacsSha256: 9a8b...
 -----END JACS SIGNATURE-----
 </code></pre>
-<p>Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes <em>before</em> the first block) is preserved byte-for-byte.</p>
+<p>Multi-signer files contain multiple back-to-back blocks. The signers are unordered (matches the existing JACS agreement model) — you can reorder the blocks on disk and verification still passes. The file content (the bytes <em>before</em> the first block) is preserved byte-for-byte. When the same signer re-signs edited content, JACS replaces that signer's footer with a new version of the same inline document: <code>jacsId</code> stays the same, <code>jacsVersion</code> changes, and <code>jacsPreviousVersion</code> points to the prior version.</p>
 <h3 id="field-reference"><a class="header" href="#field-reference">Field reference</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>What it is</th></tr></thead><tbody>
-<tr><td><code>signatureBlockVersion</code></td><td>Always <code>1</code> for v0.10.0. Versioning the block lets the format evolve without breaking older verifiers.</td></tr>
-<tr><td><code>algorithm</code></td><td>Signing algorithm in use (<code>ed25519</code>, <code>pq2025</code>, etc.) — read from the agent's key metadata.</td></tr>
-<tr><td><code>hashAlgorithm</code></td><td>Hash used for the canonical pre-image (currently <code>sha256</code>).</td></tr>
-<tr><td><code>canonicalization</code></td><td>Tag identifying how the bytes are normalised before hashing (currently <code>jacs-text-v1</code>).</td></tr>
-<tr><td><code>signerId</code></td><td>Agent ID. Resolves to a public key via the local trust store, the <code>--key-dir</code> override, or DNS.</td></tr>
-<tr><td><code>publicKeyHash</code></td><td>SHA-256 of the signer's public key — defends against silent key swap.</td></tr>
-<tr><td><code>signedAt</code></td><td>RFC 3339 / ISO 8601 timestamp the signer claims. <em>This is a claim, not a notarised proof.</em></td></tr>
-<tr><td><code>contentHash</code></td><td><code>sha256:&lt;hex&gt;</code> of the canonicalised content.</td></tr>
-<tr><td><code>signature</code></td><td>Base64url-encoded signature over a domain-separated pre-image (<code>JACS-INLINE-TEXT-V1\nsha256:&lt;hash&gt;</code>).</td></tr>
+<tr><td><code>jacsId</code></td><td>Stable identity for this signer's inline markdown document across edits.</td></tr>
+<tr><td><code>jacsVersion</code></td><td>Version ID for this footer. Changes whenever the signer re-signs edited content.</td></tr>
+<tr><td><code>jacsPreviousVersion</code></td><td>Previous <code>jacsVersion</code> for same-ID updates; absent or <code>null</code> on first signature.</td></tr>
+<tr><td><code>jacsVersionDate</code></td><td>RFC 3339 / ISO 8601 timestamp the signer claims. <em>This is a claim, not a notarised proof.</em></td></tr>
+<tr><td><code>jacsType</code></td><td><code>inline-md</code> for inline markdown/text footers.</td></tr>
+<tr><td><code>content.signedContentHash</code></td><td>Base64url SHA-256 of the canonicalised markdown/text body.</td></tr>
+<tr><td><code>content.canonicalization</code></td><td>Tag identifying how the bytes are normalised before hashing (currently <code>jacs-text-v1</code>).</td></tr>
+<tr><td><code>jacsSignature.agentID</code></td><td>Agent ID. Resolves to a public key via the local trust store, the <code>--key-dir</code> override, or DNS.</td></tr>
+<tr><td><code>jacsSignature.publicKeyHash</code></td><td>SHA-256 of the signer's public key — defends against silent key swap.</td></tr>
+<tr><td><code>jacsSignature.signature</code></td><td>Normal JACS document signature over the footer document fields.</td></tr>
+<tr><td><code>jacsSha256</code></td><td>Normal JACS document hash for the signed footer.</td></tr>
 </tbody></table>
 </div>
-<p>The body is valid YAML 1.2; any YAML 1.2 parser can read it. Anchors / tags / aliases are rejected by the verifier, and the body is capped at 16 KiB. A file may contain at most 256 signature blocks.</p>
+<p>The body is valid YAML 1.2; any YAML 1.2 parser can read it, and JACS converts it back through the same <code>yaml_to_jacs</code> path used by email YAML signing. Legacy v0.10.0 mini-blocks still verify, but new writes use the full JACS footer. A file may contain at most 256 signature blocks.</p>
+<p>Generic document verification also recognizes inline-signed markdown/text: when
+the body has a signature footer, <code>jacs verify &lt;file&gt;</code> and
+<code>SimpleAgent::verify()</code> dispatch to the inline verifier instead of treating the
+input as JSON. When the MIME type is known, callers should pass
+<code>text/markdown</code> or <code>text/plain</code> and use the same inline verification path.</p>
 <h2 id="canonicalization-jacs-text-v1"><a class="header" href="#canonicalization-jacs-text-v1">Canonicalization (<code>jacs-text-v1</code>)</a></h2>
-<p>The bytes hashed by <code>contentHash</code> are derived from the file content (everything before the first signature block) by:</p>
+<p>The bytes hashed by <code>content.signedContentHash</code> are derived from the file content (everything before the first signature block) by:</p>
 <ol>
 <li>Normalising line endings to <code>\n</code> (CRLF / CR collapsed to LF).</li>
-<li>Stripping trailing whitespace from each line.</li>
-<li>Removing trailing blank lines at end of file.</li>
+<li>Stripping trailing spaces, tabs, and blank lines at the end of the content.</li>
 </ol>
 <p>The file <em>on disk</em> is NOT modified by canonicalization — the original bytes are preserved. Canonicalization only affects the hash input.</p>
 <h2 id="permissive-vs-strict-verification"><a class="header" href="#permissive-vs-strict-verification">Permissive vs strict verification</a></h2>
@@ -15369,16 +14903,18 @@ jacs verify-text README.md
 <p>After both signers, the on-disk file is:</p>
 <pre><code class="language-markdown">This README documents the v1 release.
 -----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: ed25519
+jacsId: ...
+jacsType: inline-md
 ... (agent-a)
-signature: ...
+jacsSignature:
+  signature: ...
 -----END JACS SIGNATURE-----
 -----BEGIN JACS SIGNATURE-----
-signatureBlockVersion: 1
-algorithm: pq2025
+jacsId: ...
+jacsType: inline-md
 ... (agent-b)
-signature: ...
+jacsSignature:
+  signature: ...
 -----END JACS SIGNATURE-----
 </code></pre>
 <p>You can swap the order of the two blocks on disk and <code>jacs verify-text</code> still reports both as valid — multi-signer is unordered.</p>
@@ -15394,7 +14930,7 @@ signature: ...
 <li><strong>Use a zero-width space prefix</strong> — the literal string differs by one byte.</li>
 <li><strong>Use inline emphasis</strong> — wrap the marker in backticks or asterisks.</li>
 </ol>
-<p>There is intentionally <strong>no</strong> <code>--force-overwrite-markers</code> escape hatch in v0.10.0. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.</p>
+<p>There is intentionally <strong>no</strong> <code>--force-overwrite-markers</code> escape hatch. Its semantics under the first-marker-splits-content parser are ambiguous — easier to fix the input file than to ship a footgun.</p>
 <h2 id="caps-and-rejected-inputs"><a class="header" href="#caps-and-rejected-inputs">Caps and rejected inputs</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Limit</th><th>Cause failure</th></tr></thead><tbody>
 <tr><td>Block body &gt; 16 KiB</td><td><code>Err(ErrorKind::PayloadTooLarge)</code> (Rust) / equivalents in bindings</td></tr>
@@ -15438,7 +14974,7 @@ signature: ...
 </code></pre>
 <p>Wrapped in a JACS signed document, the same shape is what <code>verify-image</code> reads to confirm signer identity, claimed timestamp, and pixel-content integrity.</p>
 <h2 id="inline-text-vs-media--why-the-asymmetry"><a class="header" href="#inline-text-vs-media--why-the-asymmetry">Inline text vs media — why the asymmetry</a></h2>
-<p>Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. The two formats share the cryptographic core (domain-separated pre-image, hash algorithm, canonicalization tag) but differ in serialisation. Don't try to unify them.</p>
+<p>Inline text uses YAML because humans skim it next to the markdown. Image payloads are read by tooling, not humans — JSON is what every JACS binding already canonicalises and signs. Both paths now carry full signed JACS documents; text renders that document as YAML between footer markers, while images embed the signed document JSON in the media container.</p>
 <h2 id="robust-mode---robust--opt-in-lsb-fallback"><a class="header" href="#robust-mode---robust--opt-in-lsb-fallback">Robust mode (<code>--robust</code>) — opt-in LSB fallback</a></h2>
 <p>The default mode embeds in metadata chunks, which survives most pipelines but does <em>not</em> survive a deliberate "strip all metadata" pass. Robust mode adds an LSB (least-significant-bit) embedding in the pixel data so a stripped image still verifies.</p>
 <div class="table-wrapper"><table><thead><tr><th>Format</th><th>Robust support</th></tr></thead><tbody>
@@ -15486,7 +15022,7 @@ jacs sign-image photo.png --out signed.png --refuse-overwrite
 <tr><td>Embedded payload &gt; 64 KiB</td><td><code>Err(ErrorKind::PayloadTooLarge)</code></td></tr>
 <tr><td>Unknown format (extension or magic)</td><td><code>Err(ErrorKind::UnsupportedFormat)</code></td></tr>
 <tr><td><code>--refuse-overwrite</code> + already-signed input</td><td><code>Err(ErrorKind::AlreadySigned)</code></td></tr>
-<tr><td>Robust mode requested for WebP</td><td><code>Err(ErrorKind::RobustNotSupported)</code> (v0.10.0)</td></tr>
+<tr><td>Robust mode requested for WebP</td><td><code>Err(ErrorKind::RobustNotSupported)</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="clean-room-provenance"><a class="header" href="#clean-room-provenance">Clean-room provenance</a></h2>
@@ -16360,7 +15896,7 @@ async function main() {
 
 main().catch(console.error);
 </code></pre>
-<h2 id="agreements-4"><a class="header" href="#agreements-4">Agreements</a></h2>
+<h2 id="agreements-3"><a class="header" href="#agreements-3">Agreements</a></h2>
 <h3 id="creating-multi-party-agreements"><a class="header" href="#creating-multi-party-agreements">Creating Multi-Party Agreements</a></h3>
 <pre><code class="language-javascript">import { JacsAgent } from '@hai.ai/jacs';
 import fs from 'fs';
@@ -17062,7 +16598,7 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 </code></pre>
-<h2 id="agreements-5"><a class="header" href="#agreements-5">Agreements</a></h2>
+<h2 id="agreements-4"><a class="header" href="#agreements-4">Agreements</a></h2>
 <h3 id="creating-multi-party-agreements-1"><a class="header" href="#creating-multi-party-agreements-1">Creating Multi-Party Agreements</a></h3>
 <pre><code class="language-python">import jacs
 import json
@@ -17514,7 +17050,7 @@ if __name__ == "__main__":
 <p>This page is now a curated index of examples that still line up with the current APIs. The old monolithic example chapter mixed outdated agent APIs with supported workflows.</p>
 <h2 id="mcp"><a class="header" href="#mcp">MCP</a></h2>
 <ul>
-<li><code>jacs-mcp/README.md</code>
+<li><code>jacs mcp</code>
 <ul>
 <li>Best starting point for the full Rust MCP server</li>
 </ul>
@@ -18808,7 +18344,7 @@ returned by <code>verify_attestation()</code> and <code>verify_attestation_full(
 <li>Network: Optional (for remote evidence resolution)</li>
 <li>Use for: Audit trails, compliance, trust decisions</li>
 </ul>
-<h2 id="troubleshooting-5"><a class="header" href="#troubleshooting-5">Troubleshooting</a></h2>
+<h2 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h2>
 <h3 id="valid-is-false-but-crypto-shows-all-true"><a class="header" href="#valid-is-false-but-crypto-shows-all-true">"valid is false but crypto shows all true"</a></h3>
 <p>The <code>valid</code> field aggregates all sub-checks. If <code>crypto</code> passes but evidence
 or chain checks fail, <code>valid</code> will be <code>false</code>. Check the <code>evidence</code> and

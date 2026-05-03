@@ -60,6 +60,50 @@ pub(crate) fn build_agent_document(
     Ok(agent_json)
 }
 
+fn normalize_mime_type(mime_type: &str) -> String {
+    mime_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn is_inline_text_mime(mime_type: &str) -> bool {
+    matches!(
+        mime_type,
+        "text/plain" | "text/markdown" | "text/x-markdown"
+    )
+}
+
+fn is_json_mime(mime_type: &str) -> bool {
+    mime_type == "application/json" || mime_type.ends_with("+json")
+}
+
+fn looks_like_inline_text_signature(content: &str) -> bool {
+    content.contains(crate::inline::BEGIN_MARKER)
+}
+
+fn should_auto_dispatch_inline_text(content: &str) -> bool {
+    let trimmed = content.trim_start();
+    looks_like_inline_text_signature(content)
+        && !trimmed.starts_with('{')
+        && !trimmed.starts_with('[')
+}
+
+fn inline_status_to_json(
+    status: &crate::inline::SignatureStatus,
+) -> (&'static str, Option<String>) {
+    match status {
+        crate::inline::SignatureStatus::Valid => ("valid", None),
+        crate::inline::SignatureStatus::InvalidSignature => ("invalid_signature", None),
+        crate::inline::SignatureStatus::HashMismatch => ("hash_mismatch", None),
+        crate::inline::SignatureStatus::KeyNotFound => ("key_not_found", None),
+        crate::inline::SignatureStatus::UnsupportedAlgorithm => ("unsupported_algorithm", None),
+        crate::inline::SignatureStatus::Malformed(detail) => ("malformed", Some(detail.clone())),
+    }
+}
+
 /// Write .gitignore and .dockerignore in the key directory to prevent
 /// accidental exposure of private keys and password files.
 pub(crate) fn write_key_directory_ignore_files(key_dir: &Path) {
@@ -71,17 +115,23 @@ pub(crate) fn write_key_directory_ignore_files(key_dir: &Path) {
         *.key.enc\n";
 
     let gitignore_path = key_dir.join(".gitignore");
-    if !gitignore_path.exists() {
-        if let Err(e) = std::fs::write(&gitignore_path, ignore_content) {
-            warn!("Could not write {}: {}", gitignore_path.display(), e);
-        }
+    if let Err(e) = crate::secure_io::write_new_file_allow_resolved_parent(
+        &gitignore_path,
+        ignore_content.as_bytes(),
+        0o644,
+    ) && e.kind() != std::io::ErrorKind::AlreadyExists
+    {
+        warn!("Could not write {}: {}", gitignore_path.display(), e);
     }
 
     let dockerignore_path = key_dir.join(".dockerignore");
-    if !dockerignore_path.exists() {
-        if let Err(e) = std::fs::write(&dockerignore_path, ignore_content) {
-            warn!("Could not write {}: {}", dockerignore_path.display(), e);
-        }
+    if let Err(e) = crate::secure_io::write_new_file_allow_resolved_parent(
+        &dockerignore_path,
+        ignore_content.as_bytes(),
+        0o644,
+    ) && e.kind() != std::io::ErrorKind::AlreadyExists
+    {
+        warn!("Could not write {}: {}", dockerignore_path.display(), e);
     }
 }
 
@@ -586,13 +636,16 @@ impl SimpleAgent {
         // and only update the agent ID. Log differences between existing values
         // and params so the caller knows. If no config exists, create one fresh.
         let config_path = Path::new(&params.config_path);
-        let config_str = if config_path.exists() {
+        let config_entry_exists = std::fs::symlink_metadata(config_path).is_ok();
+        let config_str = if config_entry_exists {
             let existing_str =
-                fs::read_to_string(config_path).map_err(|e| JacsError::Internal {
-                    message: format!(
-                        "Failed to read existing config '{}': {}",
-                        params.config_path, e
-                    ),
+                crate::secure_io::read_to_string_no_follow(config_path).map_err(|e| {
+                    JacsError::Internal {
+                        message: format!(
+                            "Failed to read existing config '{}': {}",
+                            params.config_path, e
+                        ),
+                    }
                 })?;
             let mut existing: serde_json::Value =
                 serde_json::from_str(&existing_str).map_err(|e| JacsError::Internal {
@@ -659,7 +712,13 @@ impl SimpleAgent {
                 serde_json::to_string_pretty(&signed_config).map_err(|e| JacsError::Internal {
                     message: format!("Failed to serialize updated config: {}", e),
                 })?;
-            fs::write(config_path, &updated_str).map_err(|e| JacsError::Internal {
+            crate::secure_io::write_atomic_replace_no_symlink(
+                config_path,
+                updated_str.as_bytes(),
+                0o644,
+                true,
+            )
+            .map_err(|e| JacsError::Internal {
                 message: format!("Failed to write config to '{}': {}", params.config_path, e),
             })?;
             info!(
@@ -717,9 +776,11 @@ impl SimpleAgent {
                     })?;
                 }
             }
-            fs::write(config_path, &new_str).map_err(|e| JacsError::Internal {
-                message: format!("Failed to write config to '{}': {}", params.config_path, e),
-            })?;
+            crate::secure_io::write_new_file(config_path, new_str.as_bytes(), 0o644).map_err(
+                |e| JacsError::Internal {
+                    message: format!("Failed to write config to '{}': {}", params.config_path, e),
+                },
+            )?;
             info!(
                 "Created new config '{}' for agent {}",
                 params.config_path, lookup_id
@@ -1228,7 +1289,10 @@ impl SimpleAgent {
 
     /// Verifies a signed document and extracts its content.
     ///
-    /// This function auto-detects whether the document contains a message or file.
+    /// This function auto-detects whether the input is a signed JSON JACS
+    /// document or an inline-signed text/markdown body. Inline text dispatch is
+    /// marker-based so callers that receive `text/markdown` bytes do not
+    /// accidentally run the JSON verifier and miss the footer signature.
     ///
     /// # Arguments
     ///
@@ -1254,6 +1318,41 @@ impl SimpleAgent {
     #[must_use = "verification result must be checked"]
     pub fn verify(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
         debug!("verify() called");
+        if should_auto_dispatch_inline_text(signed_document) {
+            return self.verify_inline_text_document(signed_document, None, None);
+        }
+
+        self.verify_json_document(signed_document)
+    }
+
+    /// Verifies content using an explicit MIME type.
+    ///
+    /// `application/json` uses normal signed-JACS-document verification.
+    /// `text/plain`, `text/markdown`, and `text/x-markdown` use inline text
+    /// verification, which checks both the embedded JACS footer signature/hash
+    /// and the footer's `content.signedContentHash` against the current
+    /// canonical text body.
+    #[must_use = "verification result must be checked"]
+    pub fn verify_with_mime(
+        &self,
+        content: &str,
+        mime_type: &str,
+    ) -> Result<VerificationResult, JacsError> {
+        debug!("verify_with_mime() called mime_type={}", mime_type);
+        let normalized_mime = normalize_mime_type(mime_type);
+        if is_inline_text_mime(&normalized_mime) {
+            return self.verify_inline_text_document(content, Some(mime_type), None);
+        }
+        if is_json_mime(&normalized_mime) {
+            return self.verify_json_document(content);
+        }
+        if should_auto_dispatch_inline_text(content) {
+            return self.verify_inline_text_document(content, Some(mime_type), None);
+        }
+        self.verify_json_document(content)
+    }
+
+    fn verify_json_document(&self, signed_document: &str) -> Result<VerificationResult, JacsError> {
         Self::validate_json_input(signed_document)?;
 
         let mut agent = self.agent.lock().map_err(|e| JacsError::Internal {
@@ -1283,6 +1382,148 @@ impl SimpleAgent {
         }
 
         self.build_verification_result(&jacs_doc.value, errors, "Document verified")
+    }
+
+    fn verify_inline_text_document(
+        &self,
+        framed: &str,
+        mime_type: Option<&str>,
+        key_dir: Option<PathBuf>,
+    ) -> Result<VerificationResult, JacsError> {
+        let opts = crate::inline::VerifyOptions {
+            strict: self.strict,
+            key_dir,
+        };
+        let key_dir_owned = opts.key_dir.clone();
+        let resolver = super::advanced::DefaultKeyResolver::new(self, key_dir_owned.as_deref());
+
+        match crate::inline::verify_inline(framed, &resolver, opts) {
+            Ok(result) => self.build_inline_verification_result(result, mime_type),
+            Err(crate::inline::InlineVerifyError::MissingSignature) => {
+                Err(JacsError::MissingSignature("inline text".to_string()))
+            }
+            Err(crate::inline::InlineVerifyError::Malformed(s)) => Err(JacsError::ValidationError(
+                format!("malformed signature block: {}", s),
+            )),
+        }
+    }
+
+    fn build_inline_verification_result(
+        &self,
+        result: crate::inline::VerifyTextResult,
+        mime_type: Option<&str>,
+    ) -> Result<VerificationResult, JacsError> {
+        match result {
+            crate::inline::VerifyTextResult::MissingSignature => {
+                if self.strict {
+                    return Err(JacsError::MissingSignature("inline text".to_string()));
+                }
+                Ok(VerificationResult {
+                    valid: false,
+                    data: json!({
+                        "verificationType": "inline-text",
+                        "mimeType": mime_type.unwrap_or("text/plain"),
+                        "status": "missing_signature",
+                    }),
+                    signer_id: String::new(),
+                    signer_name: None,
+                    timestamp: String::new(),
+                    attachments: vec![],
+                    errors: vec!["missing_signature".to_string()],
+                })
+            }
+            crate::inline::VerifyTextResult::Malformed(detail) => {
+                if self.strict {
+                    return Err(JacsError::ValidationError(format!(
+                        "malformed signature block: {}",
+                        detail
+                    )));
+                }
+                Ok(VerificationResult {
+                    valid: false,
+                    data: json!({
+                        "verificationType": "inline-text",
+                        "mimeType": mime_type.unwrap_or("text/plain"),
+                        "status": "malformed",
+                        "error": detail,
+                    }),
+                    signer_id: String::new(),
+                    signer_name: None,
+                    timestamp: String::new(),
+                    attachments: vec![],
+                    errors: vec!["malformed".to_string()],
+                })
+            }
+            crate::inline::VerifyTextResult::Signed { signatures } => {
+                let entries: Vec<Value> = signatures
+                    .iter()
+                    .map(|entry| {
+                        let (status, error) = inline_status_to_json(&entry.status);
+                        let mut value = json!({
+                            "signerId": entry.signer_id,
+                            "algorithm": entry.algorithm,
+                            "timestamp": entry.timestamp,
+                            "status": status,
+                        });
+                        if let Some(error) = error {
+                            value["error"] = Value::String(error);
+                        }
+                        value
+                    })
+                    .collect();
+                let errors: Vec<String> = signatures
+                    .iter()
+                    .filter_map(|entry| {
+                        let (status, error) = inline_status_to_json(&entry.status);
+                        if status == "valid" {
+                            None
+                        } else {
+                            Some(match error {
+                                Some(detail) => {
+                                    format!("{}: {} ({})", entry.signer_id, status, detail)
+                                }
+                                None => format!("{}: {}", entry.signer_id, status),
+                            })
+                        }
+                    })
+                    .collect();
+                let valid = !signatures.is_empty() && errors.is_empty();
+
+                if self.strict && !valid {
+                    return Err(JacsError::SignatureVerificationFailed {
+                        reason: errors.join("; "),
+                    });
+                }
+
+                let signer_id = signatures
+                    .iter()
+                    .find(|entry| entry.status == crate::inline::SignatureStatus::Valid)
+                    .or_else(|| signatures.first())
+                    .map(|entry| entry.signer_id.clone())
+                    .unwrap_or_default();
+                let timestamp = signatures
+                    .iter()
+                    .find(|entry| entry.status == crate::inline::SignatureStatus::Valid)
+                    .or_else(|| signatures.first())
+                    .map(|entry| entry.timestamp.clone())
+                    .unwrap_or_default();
+
+                Ok(VerificationResult {
+                    valid,
+                    data: json!({
+                        "verificationType": "inline-text",
+                        "mimeType": mime_type.unwrap_or("text/plain"),
+                        "status": "signed",
+                        "signatures": entries,
+                    }),
+                    signer_id,
+                    signer_name: None,
+                    timestamp,
+                    attachments: vec![],
+                    errors,
+                })
+            }
+        }
     }
 
     /// Verifies a signed JACS document using a provided public key.

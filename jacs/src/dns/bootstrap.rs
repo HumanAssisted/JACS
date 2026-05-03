@@ -108,6 +108,46 @@ pub fn record_owner(domain: &str) -> String {
     format!("_v1.agent.jacs.{}.", domain.trim_end_matches('.'))
 }
 
+/// Reject DNS owner names that exceed RFC 1035 limits before they reach the
+/// resolver. Defense-in-depth for RUSTSEC-2026-0119 (hickory-proto O(n²) name
+/// compression in BinEncoder): bounding the encoder input also bounds the
+/// worst-case CPU cost. The real fix is hickory-resolver 0.26 (separate PR).
+fn validate_dns_owner(owner: &str) -> Result<(), JacsError> {
+    // RFC 1035: full domain name <= 255 octets on the wire (253 in
+    // dotted-string form before the implicit trailing dot).
+    const MAX_DOMAIN_BYTES: usize = 253;
+    const MAX_LABEL_BYTES: usize = 63;
+
+    let trimmed = owner.trim_end_matches('.');
+    if trimmed.len() > MAX_DOMAIN_BYTES {
+        return Err(JacsError::DnsRecordInvalid {
+            domain: owner.to_string(),
+            reason: format!(
+                "Domain exceeds {} bytes (RFC 1035 limit; rejected to bound encoder cost)",
+                MAX_DOMAIN_BYTES
+            ),
+        });
+    }
+    for label in trimmed.split('.') {
+        if label.is_empty() {
+            return Err(JacsError::DnsRecordInvalid {
+                domain: owner.to_string(),
+                reason: "Empty DNS label".to_string(),
+            });
+        }
+        if label.len() > MAX_LABEL_BYTES {
+            return Err(JacsError::DnsRecordInvalid {
+                domain: owner.to_string(),
+                reason: format!(
+                    "DNS label exceeds {} bytes (RFC 1035 limit)",
+                    MAX_LABEL_BYTES
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
 pub fn build_dns_record(
     domain: &str,
     ttl: u32,
@@ -207,6 +247,7 @@ pub fn find_jacs_txt_record(records: Vec<String>, domain: &str) -> Result<String
 pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+    validate_dns_owner(owner)?;
     ensure_network_access(NetworkCapability::DnsLookup)?;
     let mut opts = ResolverOpts::default();
     opts.validate = true;
@@ -241,6 +282,7 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
 pub fn resolve_txt_insecure(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+    validate_dns_owner(owner)?;
     ensure_network_access(NetworkCapability::DnsLookup)?;
     let mut opts = ResolverOpts::default();
     opts.validate = false; // allow unsigned answers
@@ -723,6 +765,45 @@ pub fn tld_requirement_text() -> &'static str {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    #[test]
+    fn validate_dns_owner_accepts_normal_domain() {
+        assert!(validate_dns_owner("_v1.agent.jacs.example.com.").is_ok());
+        assert!(validate_dns_owner("example.com").is_ok());
+    }
+
+    #[test]
+    fn validate_dns_owner_rejects_oversized_domain() {
+        let label = "a".repeat(63);
+        // Build a name with enough labels to exceed 253 bytes
+        let oversized = format!("{0}.{0}.{0}.{0}.{0}", label);
+        assert!(oversized.len() > 253);
+        let err = validate_dns_owner(&oversized).unwrap_err().to_string();
+        assert!(
+            err.contains("exceeds 253 bytes"),
+            "expected length-bound error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_dns_owner_rejects_oversized_label() {
+        let label = "a".repeat(64);
+        let bad = format!("{label}.example.com");
+        let err = validate_dns_owner(&bad).unwrap_err().to_string();
+        assert!(
+            err.contains("label exceeds 63 bytes"),
+            "expected label-bound error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_dns_owner_rejects_empty_label() {
+        let err = validate_dns_owner("foo..bar").unwrap_err().to_string();
+        assert!(
+            err.contains("Empty DNS label"),
+            "expected empty-label error, got: {err}"
+        );
+    }
 
     #[test]
     fn test_verify_agent_dns_invalid_json() {

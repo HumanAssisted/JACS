@@ -82,6 +82,7 @@ pub mod rate_limit;
 pub mod replay;
 pub mod schema;
 pub mod search;
+pub(crate) mod secure_io;
 pub mod shared;
 pub mod shutdown;
 pub mod simple;

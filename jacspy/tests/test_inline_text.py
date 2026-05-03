@@ -40,7 +40,7 @@ def test_sign_text_file_content_preserved_no_wrapper(tmp_path, jacs_agent):
 
 
 def test_sign_text_block_body_is_yaml(tmp_path, jacs_agent):
-    """C3: block body between markers is valid YAML with required fields."""
+    """C3: block body between markers is a full signed JACS document in YAML."""
     yaml = pytest.importorskip("yaml")
 
     path = tmp_path / "x.md"
@@ -55,10 +55,13 @@ def test_sign_text_block_body_is_yaml(tmp_path, jacs_agent):
     body = content[start:end]
     parsed = yaml.safe_load(body)
 
-    assert "signer" in parsed
-    assert "algorithm" in parsed
-    assert "signedContentHash" in parsed
-    assert "signature" in parsed
+    assert parsed["jacsType"] == "inline-md"
+    assert parsed["jacsId"]
+    assert parsed["jacsVersion"]
+    assert parsed["jacsSignature"]["agentID"]
+    assert parsed["jacsSignature"]["signature"]
+    assert parsed["content"]["inlineSignatureVersion"] == 1
+    assert parsed["content"]["signedContentHash"]
 
 
 # ---------------------------------------------------------------------------

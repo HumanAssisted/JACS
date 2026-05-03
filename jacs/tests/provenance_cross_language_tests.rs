@@ -317,7 +317,7 @@ fn unsigned_images_permissive_and_strict_consistent() {
 // ---------------------------------------------------------------------------
 //
 // Computes sha256(normalise(content)) of the committed unsigned.md AND
-// extracts the first signature block's `signedContentHash` from
+// extracts the first signature block's `content.signedContentHash` from
 // rust_signed_ed25519.md. They must be byte-for-byte identical, otherwise
 // some part of the canonicalisation contract drifted.
 
@@ -350,7 +350,7 @@ fn all_bindings_share_canonical_content_hash() {
         "unsigned.md drifted from FIXTURE_MARKDOWN"
     );
 
-    // 2. Extract signedContentHash from the first signature block.
+    // 2. Extract content.signedContentHash from the first full-JACS footer.
     let signed = fs::read_to_string(&signed_path).expect("read signed");
     let begin = signed
         .find("-----BEGIN JACS SIGNATURE-----\n")
@@ -360,11 +360,12 @@ fn all_bindings_share_canonical_content_hash() {
         .find("\n-----END JACS SIGNATURE-----")
         .expect("END marker");
     let body = &signed[body_start..end];
-    let parsed: Value = serde_yaml_ng::from_str(body).expect("yaml body parses");
+    let json = jacs::convert::yaml_to_jacs(body).expect("yaml body parses as JACS");
+    let parsed: Value = serde_json::from_str(&json).expect("JACS JSON parses");
     let block_hash = parsed
-        .get("signedContentHash")
+        .pointer("/content/signedContentHash")
         .and_then(|v| v.as_str())
-        .expect("signedContentHash present");
+        .expect("content.signedContentHash present");
 
     assert_eq!(
         computed_hash, block_hash,
