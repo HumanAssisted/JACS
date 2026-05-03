@@ -75,7 +75,7 @@ regex = "1.11.1"
 mime_guess = "2.0.5"
 flate2 = "1.1.1"
 encoding_rs = "0.8.35"
-difference = "2.0.0"
+similar = "2.6"
 rpassword = "7.3.1"
 validator = "0.20.0"
 uuid = { version = "1.16.0", features = ["v4", "v7", "js"] }

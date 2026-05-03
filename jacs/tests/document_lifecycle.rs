@@ -1241,9 +1241,17 @@ mod fs_helpers {
     fn get_or_create_cached_agent() -> &'static CachedAgent {
         CACHED_AGENT.get_or_init(|| {
             let tmp = TempDir::new().expect("create agent tempdir");
-            let data_dir = tmp.path().join("jacs_data");
-            let key_dir = tmp.path().join("jacs_keys");
-            let config_path = tmp.path().join("jacs.config.json");
+            // Canonicalize: macOS TempDir lives under /var/folders/... where
+            // /var is a symlink to /private/var. The secure-IO writer rejects
+            // symlinks anywhere in the parent path. Linux /tmp has no symlink,
+            // so this is a no-op there.
+            let tmp_root = tmp
+                .path()
+                .canonicalize()
+                .expect("canonicalize tempdir path");
+            let data_dir = tmp_root.join("jacs_data");
+            let key_dir = tmp_root.join("jacs_keys");
+            let config_path = tmp_root.join("jacs.config.json");
 
             let params = CreateAgentParams::builder()
                 .name("lifecycle-test-agent")
@@ -1346,9 +1354,14 @@ mod sqlite_helpers {
     fn get_or_create_cached_agent() -> &'static CachedAgent {
         CACHED_AGENT.get_or_init(|| {
             let tmp = TempDir::new().expect("create sqlite agent tempdir");
-            let data_dir = tmp.path().join("jacs_data");
-            let key_dir = tmp.path().join("jacs_keys");
-            let config_path = tmp.path().join("jacs.config.json");
+            // Canonicalize: see fs cached agent above for rationale.
+            let tmp_root = tmp
+                .path()
+                .canonicalize()
+                .expect("canonicalize tempdir path");
+            let data_dir = tmp_root.join("jacs_data");
+            let key_dir = tmp_root.join("jacs_keys");
+            let config_path = tmp_root.join("jacs.config.json");
 
             let params = CreateAgentParams::builder()
                 .name("sqlite-lifecycle-test-agent")

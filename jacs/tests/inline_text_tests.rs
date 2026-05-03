@@ -63,7 +63,11 @@ fn sign_text_file_single_signer() {
 
 #[test]
 fn sign_text_file_block_body_is_yaml() {
-    use jacs::inline::SignatureBlockYaml;
+    // v0.10.1+ writes a full JACS YAML document inside the BEGIN/END markers
+    // (with $schema, jacsId, jacsVersion, jacsSignature, content.*). The
+    // legacy SignatureBlockYaml mini-schema is only kept for verifying older
+    // files. Assert the body round-trips through the YAML→JACS converter and
+    // exposes the required JACS fields.
     let agent = ephemeral_ed25519();
     let (_d, path) = write_temp_file("hello\n");
     sign_text_file(&agent, path.to_str().unwrap(), SignTextOptions::default()).unwrap();
@@ -74,8 +78,28 @@ fn sign_text_file_block_body_is_yaml() {
     let body_start = begin + "-----BEGIN JACS SIGNATURE-----\n".len();
     let end = written.find("\n-----END JACS SIGNATURE-----").expect("end");
     let body = &written[body_start..end];
-    let _: SignatureBlockYaml =
-        serde_yaml_ng::from_str(body).expect("body must be valid YAML matching schema");
+    let json = jacs::convert::yaml_to_jacs(body).expect("body must be valid YAML");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("yaml_to_jacs must produce JSON");
+    assert!(
+        value.get("jacsId").and_then(|v| v.as_str()).is_some(),
+        "block body must include jacsId"
+    );
+    assert!(
+        value.get("jacsVersion").and_then(|v| v.as_str()).is_some(),
+        "block body must include jacsVersion"
+    );
+    assert!(
+        value.get("jacsSignature").is_some(),
+        "block body must include jacsSignature"
+    );
+    assert!(
+        value
+            .pointer("/content/inlineSignatureVersion")
+            .and_then(|v| v.as_u64())
+            .is_some(),
+        "block body must include content.inlineSignatureVersion"
+    );
 }
 
 #[test]

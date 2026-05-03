@@ -72,14 +72,13 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-audit and run audit
-        run: |
-          cargo install cargo-audit --locked --version 0.22.1
-          cargo audit --ignore RUSTSEC-2023-0071
-
-      - name: License check (cargo-deny)
+      - name: Security audit + license check (cargo-deny)
         run: |
           cargo install cargo-deny --locked
+          # Advisory ignores (with reason strings) live in deny.toml under
+          # [advisories.ignore]. Single source of truth for both license and
+          # advisory policy; reviewable in PRs.
+          cargo deny check advisories
           cargo deny check licenses
 
       - name: Validate schema $id fields match file paths
@@ -255,11 +254,12 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-audit and run audit (Linux)
+      - name: Security audit (cargo-deny, Linux)
         if: runner.os == 'Linux'
         run: |
-          cargo install cargo-audit --locked --version 0.22.1
-          cargo audit --ignore RUSTSEC-2023-0071
+          cargo install cargo-deny --locked
+          # Same advisory ignores as the hygiene job; policy in deny.toml.
+          cargo deny check advisories
 
       - name: Run full jacs tests
         run: |
@@ -315,10 +315,11 @@ jobs:
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-audit and run audit
+      - name: Security audit (cargo-deny)
         run: |
-          cargo install cargo-audit --locked --version 0.22.1
-          cargo audit --ignore RUSTSEC-2023-0071
+          cargo install cargo-deny --locked
+          # Same advisory ignores as the hygiene job; policy in deny.toml.
+          cargo deny check advisories
 
       - name: Run nightly full Rust tests
         run: |

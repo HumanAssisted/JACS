@@ -1361,23 +1361,24 @@ impl DocumentService for SqliteDocumentService {
             JacsError::DocumentError(format!("Failed to serialize document: {}", e))
         })?;
 
-        let changeset = difference::Changeset::new(&json_a, &json_b, "\n");
+        let diff = similar::TextDiff::from_lines(&json_a, &json_b);
         let mut additions = 0usize;
         let mut deletions = 0usize;
         let mut diff_lines = Vec::new();
 
-        for diff in &changeset.diffs {
-            match diff {
-                difference::Difference::Add(x) => {
+        for change in diff.iter_all_changes() {
+            let value = change.value().trim_end_matches('\n');
+            match change.tag() {
+                similar::ChangeTag::Insert => {
                     additions += 1;
-                    diff_lines.push(format!("+ {}", x));
+                    diff_lines.push(format!("+ {}", value));
                 }
-                difference::Difference::Rem(x) => {
+                similar::ChangeTag::Delete => {
                     deletions += 1;
-                    diff_lines.push(format!("- {}", x));
+                    diff_lines.push(format!("- {}", value));
                 }
-                difference::Difference::Same(x) => {
-                    diff_lines.push(format!("  {}", x));
+                similar::ChangeTag::Equal => {
+                    diff_lines.push(format!("  {}", value));
                 }
             }
         }

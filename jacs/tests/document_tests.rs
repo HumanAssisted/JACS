@@ -332,6 +332,10 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
 #[serial(jacs_env)]
 fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     // cargo test   --test document_tests -- --nocapture
+    // Note: this test used to load DOCTESTFILECONFIG (RSA-signed by the legacy
+    // ddf35096-... agent) directly. Update is now owner-gated, and the legacy
+    // RSA agent can no longer sign (RUSTSEC-2023-0071). So we create a fresh
+    // Ed25519-owned document, then update + verify against the same agent.
     let mut agent = load_test_agent_one_ed25519();
 
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {
@@ -350,30 +354,32 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
         }
     };
 
-    let document_string = match load_local_document(&DOCTESTFILECONFIG.to_string()) {
+    let raw_source = match load_local_document(
+        &raw_fixture("favorite-fruit.json")
+            .to_string_lossy()
+            .to_string(),
+    ) {
         Ok(content) => content,
         Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading local document: {}",
+            "Error loading raw source for test_load_custom_schema_and_custom_document_and_update_and_verify_signature: {}",
             e
         ),
     };
 
-    let document = match agent.load_document(&document_string) {
+    let document = match agent.create_document_and_load(&raw_source, None, None) {
         Ok(doc) => doc,
         Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading document: {}",
+            "Error creating fresh Ed25519-owned document in test_load_custom_schema_and_custom_document_and_update_and_verify_signature: {}",
             e
         ),
     };
 
     let document_key = document.getkey();
-    let modified_document_string = match load_local_document(&TESTFILE_MODIFIED.to_string()) {
-        Ok(content) => content,
-        Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading modified document: {}",
-            e
-        ),
-    };
+
+    let mut modified_value = document.getvalue().clone();
+    modified_value["favorite-snack"] = serde_json::json!("mango");
+    let modified_document_string =
+        serde_json::to_string(&modified_value).expect("re-serialize modified document for update");
 
     let new_document = match agent.update_document(
         &document_key,

@@ -174,7 +174,8 @@ pub static AGENTTWO: &str =
 
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
-    let mut agent = load_test_agent_one();
+    // Ed25519 agent: RSA private-key signing is disabled (RUSTSEC-2023-0071).
+    let mut agent = load_test_agent_one_ed25519();
     let mut document_string =
         load_local_document(&raw_fixture("embed-xml.json").to_string_lossy().to_string()).unwrap();
     let mut document = agent
