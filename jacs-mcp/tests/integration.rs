@@ -24,9 +24,11 @@ use support::{
 static STDIO_TEST_LOCK: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
 static CWD_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(30);
-const MCP_LIST_TIMEOUT: Duration = Duration::from_secs(30);
-const MCP_CALL_TIMEOUT: Duration = Duration::from_secs(30);
+// The stdio child can take longer to complete the rmcp handshake on contended
+// CI runners after full-tool schemas and storage backends have been loaded.
+const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(90);
+const MCP_LIST_TIMEOUT: Duration = Duration::from_secs(90);
+const MCP_CALL_TIMEOUT: Duration = Duration::from_secs(90);
 
 type McpClient = RunningService<RoleClient, ()>;
 
@@ -55,7 +57,14 @@ impl RmcpSession {
                 .env("JACS_CONFIG", &config)
                 .env("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD)
                 .env("JACS_MAX_IAT_SKEW_SECONDS", "0")
-                .env("RUST_LOG", "warn");
+                .env("RUST_LOG", "warn")
+                .env_remove("JACS_KEY_DIRECTORY")
+                .env_remove("JACS_DATA_DIRECTORY")
+                .env_remove("JACS_AGENT_ID_AND_VERSION")
+                .env_remove("JACS_AGENT_KEY_ALGORITHM")
+                .env_remove("JACS_AGENT_PRIVATE_KEY_FILENAME")
+                .env_remove("JACS_AGENT_PUBLIC_KEY_FILENAME")
+                .env_remove("JACS_DEFAULT_STORAGE");
 
             for (k, v) in extra_env {
                 cmd.env(k, v);

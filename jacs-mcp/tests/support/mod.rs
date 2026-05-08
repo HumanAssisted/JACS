@@ -110,7 +110,10 @@ fn prepare_temp_workspace_with_fixture(
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let base = std::env::temp_dir().join(format!("jacs_mcp_ws_{}_{}", std::process::id(), ts));
+    let temp_root = std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let base = temp_root.join(format!("jacs_mcp_ws_{}_{}", std::process::id(), ts));
     let data_dir = base.join("jacs_data");
     let keys_dir = base.join("jacs_keys");
     fs::create_dir_all(data_dir.join("agent")).expect("mkdir data/agent");
