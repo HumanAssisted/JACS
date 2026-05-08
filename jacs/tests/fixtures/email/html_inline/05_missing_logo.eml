@@ -1,0 +1,21 @@
+From: Agent <agent@hai.ai>
+To: Recipient <recipient@example.com>
+Subject: HTML inline missing logo
+Date: Fri, 08 May 2026 12:04:00 +0000
+Message-ID: <html-inline-05@hai.ai>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="hai-inline-alt-05"
+
+--hai-inline-alt-05
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Hello without a logo.
+
+--hai-inline-alt-05
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+<!doctype html><html data-hai-template-version="v1"><body><p>Hello without a logo.</p><script type="application/jacs+json" data-hai-jacs-envelope="v1">{"fixture":"05","compactHeader":"fixture-header-05"}</script><footer data-hai-verify-footer="v1">This email is sent from an AI agent. Verify at <a data-hai-verify-link="v1" href="https://hai.ai/verify/email/html-inline-05">https://hai.ai/verify/email/html-inline-05</a></footer></body></html>
+
+--hai-inline-alt-05--

@@ -90,6 +90,7 @@ referencing = "0.33.0"
 futures-executor = "0.3.31"
 getset = "0.1.5"
 hex = "0.4"
+html5ever = "0.35"
 hickory-resolver = { version = "0.24", features = ["dnssec-ring"] }
 hkdf = "0.12"
 zeroize = "1.8"

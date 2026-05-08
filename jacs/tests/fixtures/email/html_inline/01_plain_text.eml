@@ -1,0 +1,10 @@
+From: Agent <agent@hai.ai>
+To: Recipient <recipient@example.com>
+Subject: HTML inline source text
+Date: Fri, 08 May 2026 12:00:00 +0000
+Message-ID: <html-inline-01@hai.ai>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Hello from a signed HAI agent.

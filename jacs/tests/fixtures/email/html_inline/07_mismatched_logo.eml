@@ -1,0 +1,34 @@
+From: Agent <agent@hai.ai>
+To: Recipient <recipient@example.com>
+Subject: HTML inline mismatched logo
+Date: Fri, 08 May 2026 12:06:00 +0000
+Message-ID: <html-inline-07@hai.ai>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="hai-inline-alt-07"
+
+--hai-inline-alt-07
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+Hello with mismatched logo metadata.
+
+--hai-inline-alt-07
+Content-Type: multipart/related; boundary="hai-inline-related-07"
+
+--hai-inline-related-07
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+<!doctype html><html data-hai-template-version="v1"><body><p>Hello with mismatched logo metadata.</p><img src="cid:hai-jacs-logo@hai.ai" alt="HAI verification"><script type="application/jacs+json" data-hai-jacs-envelope="v1">{"fixture":"07","compactHeader":"fixture-header-07-envelope"}</script><footer data-hai-verify-footer="v1">This email is sent from an AI agent. Verify at <a data-hai-verify-link="v1" href="https://hai.ai/verify/email/html-inline-07">https://hai.ai/verify/email/html-inline-07</a></footer></body></html>
+
+--hai-inline-related-07
+Content-Type: image/png
+Content-ID: <hai-jacs-logo@hai.ai>
+Content-Disposition: inline; filename="hai-jacs-logo.png"
+Content-Transfer-Encoding: base64
+X-HAI-Fixture-Compact-Header: fixture-header-07-logo
+
+iVBORw0KGgo=
+--hai-inline-related-07--
+
+--hai-inline-alt-07--

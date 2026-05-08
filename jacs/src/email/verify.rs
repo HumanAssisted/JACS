@@ -14,6 +14,11 @@ use super::canonicalize::{
     compute_header_entry, compute_mime_headers_hash, extract_email_parts,
 };
 use super::error::{EmailError, check_email_size};
+use super::result::{EmailVerificationReason, SignedEmailVerificationResult, VerificationMode};
+use super::transport::{
+    SignedEmailTransport, detect_signed_email_transport, extract_inline_logo_part,
+    extract_jacs_header_from_logo_png, extract_topmost_inline_jacs_envelope,
+};
 use super::types::{
     ChainEntry, ContentVerificationResult, FieldResult, FieldStatus, JacsEmailSignatureDocument,
     ParsedEmailParts, SignedHeaderEntry,
@@ -76,9 +81,58 @@ pub fn verify_email_document_named(
         jacs_str.to_string()
     };
 
-    // Verify the JACS document using the provided public key
+    let doc = verify_jacs_email_document_json(&jacs_json, verifier, public_key)?;
+    let parts = extract_email_parts(&email_without_jacs)?;
+    Ok((doc, parts))
+}
+
+/// Extract and verify the JACS email signature document from a raw email.
+///
+/// Uses the default attachment filename ([`DEFAULT_JACS_SIGNATURE_FILENAME`]).
+/// For a custom filename, use [`verify_email_document_named`].
+pub fn verify_email_document(
+    raw_email: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
+    verify_email_document_named(
+        raw_email,
+        verifier,
+        public_key,
+        DEFAULT_JACS_SIGNATURE_FILENAME,
+    )
+}
+
+fn verify_html_inline_email_document(
+    raw_email: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
+    check_email_size(raw_email)?;
+
+    let envelope = extract_topmost_inline_jacs_envelope(raw_email)?;
+    let envelope_value: serde_json::Value = serde_json::from_str(&envelope).map_err(|e| {
+        EmailError::InvalidJacsDocument(format!("failed to parse inline JACS envelope: {e}"))
+    })?;
+    let jacs_envelope = envelope_value.get("jacsEnvelope").ok_or_else(|| {
+        EmailError::InvalidJacsDocument("inline JACS envelope missing jacsEnvelope".to_string())
+    })?;
+    let jacs_json = serde_json::to_string(jacs_envelope).map_err(|e| {
+        EmailError::InvalidJacsDocument(format!("failed to serialize inline JACS envelope: {e}"))
+    })?;
+
+    let doc = verify_jacs_email_document_json(&jacs_json, verifier, public_key)?;
+    let parts = extract_email_parts(raw_email)?;
+    Ok((doc, parts))
+}
+
+fn verify_jacs_email_document_json(
+    jacs_json: &str,
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+) -> Result<JacsEmailSignatureDocument, EmailError> {
     let result = verifier
-        .verify_with_key(&jacs_json, public_key.to_vec())
+        .verify_with_key(jacs_json, public_key.to_vec())
         .map_err(|e| {
             EmailError::SignatureVerificationFailed(format!(
                 "JACS document verification failed: {e}"
@@ -92,12 +146,10 @@ pub fn verify_email_document_named(
         )));
     }
 
-    // Parse the JACS document to extract the email payload
-    let jacs_value: serde_json::Value = serde_json::from_str(&jacs_json).map_err(|e| {
+    let jacs_value: serde_json::Value = serde_json::from_str(jacs_json).map_err(|e| {
         EmailError::InvalidJacsDocument(format!("failed to parse JACS document: {e}"))
     })?;
 
-    // Extract the email signature payload from the content field
     let content = jacs_value.get("content").ok_or_else(|| {
         EmailError::InvalidJacsDocument("JACS document missing 'content' field".to_string())
     })?;
@@ -109,7 +161,6 @@ pub fn verify_email_document_named(
             ))
         })?;
 
-    // Extract signer identity
     let signer_id = jacs_value
         .get("jacsSignature")
         .and_then(|sig| sig.get("agentID"))
@@ -136,8 +187,7 @@ pub fn verify_email_document_named(
         .unwrap_or("")
         .to_string();
 
-    // Build JacsEmailSignatureDocument from the JACS document fields
-    let doc = JacsEmailSignatureDocument {
+    Ok(JacsEmailSignatureDocument {
         version: "2.0".to_string(),
         document_type: "email_signature".to_string(),
         payload,
@@ -153,27 +203,7 @@ pub fn verify_email_document_named(
             signature: String::new(),
             signed_at: created_at,
         },
-    };
-
-    let parts = extract_email_parts(&email_without_jacs)?;
-    Ok((doc, parts))
-}
-
-/// Extract and verify the JACS email signature document from a raw email.
-///
-/// Uses the default attachment filename ([`DEFAULT_JACS_SIGNATURE_FILENAME`]).
-/// For a custom filename, use [`verify_email_document_named`].
-pub fn verify_email_document(
-    raw_email: &[u8],
-    verifier: &impl super::JacsSigner,
-    public_key: &[u8],
-) -> Result<(JacsEmailSignatureDocument, ParsedEmailParts), EmailError> {
-    verify_email_document_named(
-        raw_email,
-        verifier,
-        public_key,
-        DEFAULT_JACS_SIGNATURE_FILENAME,
-    )
+    })
 }
 
 /// Verify a JACS-signed email with a custom attachment filename.
@@ -204,6 +234,112 @@ pub fn verify_email(
         public_key,
         DEFAULT_JACS_SIGNATURE_FILENAME,
     )
+}
+
+/// Detect the signed email transport and verify it through one entrypoint.
+///
+/// Attachment-backed messages delegate to the existing verifier. HTML-inline
+/// verification is added incrementally by the inline transport tasks.
+pub fn verify_signed_email(
+    raw_eml: &[u8],
+    verifier: &impl super::JacsSigner,
+    public_key: &[u8],
+    _mode: VerificationMode,
+) -> Result<SignedEmailVerificationResult, EmailError> {
+    match detect_signed_email_transport(raw_eml)? {
+        SignedEmailTransport::AttachmentJacs => {
+            let result = verify_email(raw_eml, verifier, public_key)?;
+            if result.valid {
+                Ok(SignedEmailVerificationResult::verified(
+                    SignedEmailTransport::AttachmentJacs,
+                ))
+            } else {
+                Ok(SignedEmailVerificationResult::failed(
+                    SignedEmailTransport::AttachmentJacs,
+                    EmailVerificationReason::CanonicalPreimageHashMismatch,
+                ))
+            }
+        }
+        SignedEmailTransport::HtmlInline => {
+            let envelope = match extract_topmost_inline_jacs_envelope(raw_eml) {
+                Ok(envelope) => envelope,
+                Err(_) => {
+                    return Ok(SignedEmailVerificationResult::failed(
+                        SignedEmailTransport::HtmlInline,
+                        EmailVerificationReason::MissingInlineJacsEnvelope,
+                    ));
+                }
+            };
+            let expected_logo_header = match expected_logo_header_from_inline_envelope(&envelope) {
+                Some(header) => header,
+                None => {
+                    return Ok(SignedEmailVerificationResult::failed(
+                        SignedEmailTransport::HtmlInline,
+                        EmailVerificationReason::MissingInlineJacsEnvelope,
+                    ));
+                }
+            };
+
+            let logo = match extract_inline_logo_part(raw_eml) {
+                Ok(logo) => logo,
+                Err(_) => {
+                    return Ok(SignedEmailVerificationResult::non_crypto_transport_failure(
+                        _mode,
+                        SignedEmailTransport::HtmlInline,
+                        EmailVerificationReason::MissingSignedLogo,
+                    ));
+                }
+            };
+
+            let actual_logo_header = match extract_jacs_header_from_logo_png(&logo.content) {
+                Ok(Some(header)) => header,
+                Ok(None) | Err(_) => {
+                    return Ok(SignedEmailVerificationResult::non_crypto_transport_failure(
+                        _mode,
+                        SignedEmailTransport::HtmlInline,
+                        EmailVerificationReason::LogoSignatureExtractFailed,
+                    ));
+                }
+            };
+
+            if actual_logo_header != expected_logo_header {
+                return Ok(SignedEmailVerificationResult::failed(
+                    SignedEmailTransport::HtmlInline,
+                    EmailVerificationReason::LogoSignatureMismatch,
+                ));
+            }
+
+            let (doc, parts) = verify_html_inline_email_document(raw_eml, verifier, public_key)?;
+            let result = verify_html_inline_email_content(&doc, &parts);
+            if result.valid {
+                Ok(SignedEmailVerificationResult::verified(
+                    SignedEmailTransport::HtmlInline,
+                ))
+            } else {
+                Ok(SignedEmailVerificationResult::failed(
+                    SignedEmailTransport::HtmlInline,
+                    EmailVerificationReason::CanonicalPreimageHashMismatch,
+                ))
+            }
+        }
+    }
+}
+
+fn expected_logo_header_from_inline_envelope(envelope: &str) -> Option<String> {
+    let trimmed = envelope.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    serde_json::from_str::<serde_json::Value>(trimmed)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("compactHeader")
+                .and_then(|header| header.as_str())
+                .map(str::to_string)
+        })
+        .or_else(|| Some(trimmed.to_string()))
 }
 
 /// Verify a JACS-signed email whose signature attachment is in YAML format.
@@ -417,6 +553,22 @@ pub fn verify_email_content(
         field_results,
         chain,
     }
+}
+
+/// Verify content for HTML-inline signed email.
+///
+/// Inline transport signs user-authored content, not transport artifacts. This
+/// wrapper removes the inline logo MIME artifact before delegating to the
+/// existing content verifier so user attachments remain covered.
+pub fn verify_html_inline_email_content(
+    doc: &JacsEmailSignatureDocument,
+    parts: &ParsedEmailParts,
+) -> ContentVerificationResult {
+    let mut parts_without_artifacts = parts.clone();
+    parts_without_artifacts
+        .attachments
+        .retain(|att| !super::transport::is_inline_logo_attachment_artifact(att));
+    verify_email_content(doc, &parts_without_artifacts)
 }
 
 /// Build the parent chain by walking parent_signature_hash links.
@@ -770,7 +922,9 @@ fn verify_attachments(
 mod tests {
     use super::*;
     use crate::email::canonicalize::extract_email_parts;
-    use crate::email::sign::{sign_email, sign_email_named};
+    use crate::email::sign::{
+        build_html_inline_email_signature_payload, sign_email, sign_email_named,
+    };
     use crate::email::types::*;
     use crate::simple::SimpleAgent;
 
@@ -1053,6 +1207,144 @@ mod tests {
             result.field_results
         );
     }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_preserves_attachment_roundtrip() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-entrypoint-attachment");
+        let pubkey = get_pubkey(&agent);
+        let email = simple_text_email();
+        let signed = sign_email(&email, &agent).unwrap();
+
+        let result =
+            verify_signed_email(&signed, &agent, &pubkey, VerificationMode::Strict).unwrap();
+
+        assert_eq!(
+            result.status,
+            crate::email::EmailVerificationStatus::Verified
+        );
+        assert_eq!(result.transport, SignedEmailTransport::AttachmentJacs);
+        assert!(result.reasons.is_empty());
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_reports_missing_inline_envelope() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-missing-envelope");
+        let pubkey = get_pubkey(&agent);
+        let raw = include_str!("../../tests/fixtures/email/html_inline/03_generated_html.eml")
+            .replace(
+                "data-hai-jacs-envelope=\"v1\"",
+                "data-hai-jacs-envelope-missing=\"v1\"",
+            );
+
+        let result =
+            verify_signed_email(raw.as_bytes(), &agent, &pubkey, VerificationMode::Strict).unwrap();
+
+        assert_eq!(result.status, crate::email::EmailVerificationStatus::Failed);
+        assert_eq!(result.transport, SignedEmailTransport::HtmlInline);
+        assert_eq!(
+            result.reasons,
+            vec![EmailVerificationReason::MissingInlineJacsEnvelope]
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_reports_logo_extract_failure_by_mode() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-logo-extract");
+        let pubkey = get_pubkey(&agent);
+        let raw = html_inline_email_with_logo_header("fixture-header", None);
+
+        let strict = verify_signed_email(&raw, &agent, &pubkey, VerificationMode::Strict).unwrap();
+        let degraded =
+            verify_signed_email(&raw, &agent, &pubkey, VerificationMode::Degraded).unwrap();
+
+        assert_eq!(strict.status, crate::email::EmailVerificationStatus::Failed);
+        assert_eq!(
+            degraded.status,
+            crate::email::EmailVerificationStatus::PartiallyVerified
+        );
+        assert_eq!(
+            strict.reasons,
+            vec![EmailVerificationReason::LogoSignatureExtractFailed]
+        );
+        assert_eq!(
+            degraded.reasons,
+            vec![EmailVerificationReason::LogoSignatureExtractFailed]
+        );
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_reports_logo_signature_mismatch_in_all_modes() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-logo-mismatch");
+        let pubkey = get_pubkey(&agent);
+        let raw = html_inline_email_with_logo_header(
+            "fixture-header-envelope",
+            Some("fixture-header-logo"),
+        );
+
+        for mode in [VerificationMode::Strict, VerificationMode::Degraded] {
+            let result = verify_signed_email(&raw, &agent, &pubkey, mode).unwrap();
+
+            assert_eq!(result.status, crate::email::EmailVerificationStatus::Failed);
+            assert_eq!(result.transport, SignedEmailTransport::HtmlInline);
+            assert_eq!(
+                result.reasons,
+                vec![EmailVerificationReason::LogoSignatureMismatch]
+            );
+        }
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_accepts_html_inline_roundtrip() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-roundtrip");
+        let pubkey = get_pubkey(&agent);
+        let raw = signed_html_inline_email(&agent);
+
+        let result = verify_signed_email(&raw, &agent, &pubkey, VerificationMode::Strict).unwrap();
+
+        assert_eq!(
+            result.status,
+            crate::email::EmailVerificationStatus::Verified
+        );
+        assert_eq!(result.transport, SignedEmailTransport::HtmlInline);
+        assert!(result.reasons.is_empty());
+    }
+
+    #[test]
+    #[serial(jacs_env)]
+    fn verify_signed_email_rejects_html_inline_text_tamper() {
+        let _lock = EMAIL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let (agent, _tmp, _env_guard) = create_test_agent("verify-inline-text-tamper");
+        let pubkey = get_pubkey(&agent);
+        let raw = signed_html_inline_email(&agent);
+        let tampered = String::from_utf8(raw)
+            .unwrap()
+            .replace("Hello from a signed HAI agent.\r\n", "Tampered body.\r\n");
+
+        let result = verify_signed_email(
+            tampered.as_bytes(),
+            &agent,
+            &pubkey,
+            VerificationMode::Strict,
+        )
+        .unwrap();
+
+        assert_eq!(result.status, crate::email::EmailVerificationStatus::Failed);
+        assert_eq!(
+            result.reasons,
+            vec![EmailVerificationReason::CanonicalPreimageHashMismatch]
+        );
+    }
+
     #[test]
     #[serial(jacs_env)]
     fn sign_tamper_from_verify_shows_fail() {
@@ -1077,6 +1369,163 @@ mod tests {
         assert_eq!(from_result.status, FieldStatus::Fail);
         assert!(from_result.original_value.is_some());
         assert!(from_result.current_value.is_some());
+    }
+
+    fn html_inline_email_with_logo_header(
+        envelope_header: &str,
+        logo_header: Option<&str>,
+    ) -> Vec<u8> {
+        let envelope = serde_json::json!({ "compactHeader": envelope_header }).to_string();
+        html_inline_email_with_envelope(&envelope, logo_header)
+    }
+
+    fn signed_html_inline_email(agent: &SimpleAgent) -> Vec<u8> {
+        use sha2::Digest as _;
+
+        let placeholder = html_inline_email_with_envelope("{}", None);
+        let payload = build_html_inline_email_signature_payload(&placeholder).unwrap();
+        let signed_doc = agent
+            .sign_message(&serde_json::to_value(payload).unwrap())
+            .expect("sign inline payload");
+        let signed_doc_json = signed_doc.raw;
+        let compact_header = format!(
+            "sha256:{}",
+            hex::encode(sha2::Sha256::digest(signed_doc_json.as_bytes()))
+        );
+        let signed_doc_value: serde_json::Value =
+            serde_json::from_str(&signed_doc_json).expect("signed doc json value");
+        let envelope = serde_json::json!({
+            "compactHeader": compact_header,
+            "jacsEnvelope": signed_doc_value,
+        })
+        .to_string();
+
+        html_inline_email_with_envelope(&envelope, Some(&compact_header))
+    }
+
+    fn html_inline_email_with_envelope(envelope: &str, logo_header: Option<&str>) -> Vec<u8> {
+        use base64::Engine as _;
+
+        let base_logo = make_fixture_png();
+        let logo_bytes = match logo_header {
+            Some(header) => {
+                crate::email::transport::embed_jacs_header_in_logo_png(&base_logo, header)
+                    .expect("embed logo header")
+                    .bytes
+            }
+            None => base_logo,
+        };
+        let logo_b64 = base64::engine::general_purpose::STANDARD.encode(logo_bytes);
+
+        format!(
+            concat!(
+                "From: Agent <agent@hai.ai>\r\n",
+                "To: Recipient <recipient@example.com>\r\n",
+                "Subject: HTML inline verifier fixture\r\n",
+                "Date: Fri, 08 May 2026 12:06:00 +0000\r\n",
+                "Message-ID: <html-inline-verifier@hai.ai>\r\n",
+                "MIME-Version: 1.0\r\n",
+                "Content-Type: multipart/alternative; boundary=\"hai-inline-alt-test\"\r\n",
+                "\r\n",
+                "--hai-inline-alt-test\r\n",
+                "Content-Type: text/plain; charset=utf-8\r\n",
+                "Content-Transfer-Encoding: 8bit\r\n",
+                "\r\n",
+                "Hello from a signed HAI agent.\r\n",
+                "\r\n",
+                "--hai-inline-alt-test\r\n",
+                "Content-Type: multipart/related; boundary=\"hai-inline-related-test\"\r\n",
+                "\r\n",
+                "--hai-inline-related-test\r\n",
+                "Content-Type: text/html; charset=utf-8\r\n",
+                "Content-Transfer-Encoding: 8bit\r\n",
+                "\r\n",
+                "<!doctype html><html data-hai-template-version=\"v1\"><body>",
+                "<p>Hello from a signed HAI agent.</p>",
+                "<img src=\"cid:hai-jacs-logo@hai.ai\" alt=\"HAI verification\">",
+                "<script type=\"application/jacs+json\" data-hai-jacs-envelope=\"v1\">",
+                "{}",
+                "</script>",
+                "<footer data-hai-verify-footer=\"v1\">",
+                "This email is sent from an AI agent. Verify at ",
+                "<a data-hai-verify-link=\"v1\" href=\"https://hai.ai/verify/email/test\">",
+                "https://hai.ai/verify/email/test</a></footer>",
+                "</body></html>\r\n",
+                "\r\n",
+                "--hai-inline-related-test\r\n",
+                "Content-Type: image/png\r\n",
+                "Content-ID: <hai-jacs-logo@hai.ai>\r\n",
+                "Content-Disposition: inline; filename=\"hai-jacs-logo.png\"\r\n",
+                "Content-Transfer-Encoding: base64\r\n",
+                "\r\n",
+                "{}\r\n",
+                "--hai-inline-related-test--\r\n",
+                "\r\n",
+                "--hai-inline-alt-test--\r\n"
+            ),
+            envelope, logo_b64
+        )
+        .into_bytes()
+    }
+
+    fn make_fixture_png() -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(64, 64, image::Rgba([32, 64, 128, 255]));
+        let mut buf = Vec::new();
+        let mut cur = std::io::Cursor::new(&mut buf);
+        img.write_to(&mut cur, image::ImageFormat::Png)
+            .expect("png encode");
+        buf
+    }
+
+    #[test]
+    fn verify_html_inline_email_content_detects_attachment_tamper() {
+        let raw = html_inline_with_user_attachment_email();
+        let payload = build_html_inline_email_signature_payload(&raw).unwrap();
+        let doc = jacs_email_doc_for_payload(payload);
+        let parts = extract_email_parts(&raw).unwrap();
+
+        let valid = verify_html_inline_email_content(&doc, &parts);
+
+        assert!(valid.valid, "expected original inline content to verify");
+
+        let tampered_raw = String::from_utf8(raw)
+            .unwrap()
+            .replace("Tm90ZXMK", "QmFkCg==")
+            .into_bytes();
+        let tampered_parts = extract_email_parts(&tampered_raw).unwrap();
+        let tampered = verify_html_inline_email_content(&doc, &tampered_parts);
+
+        assert!(!tampered.valid);
+        let attachment_result = tampered
+            .field_results
+            .iter()
+            .find(|result| result.field == "attachments[0]")
+            .unwrap();
+        assert_eq!(attachment_result.status, FieldStatus::Fail);
+    }
+
+    fn html_inline_with_user_attachment_email() -> Vec<u8> {
+        b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Inline Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <inline-test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: multipart/alternative; boundary=\"altbound\"\r\n\r\n--altbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody text\r\n--altbound\r\nContent-Type: multipart/related; boundary=\"relbound\"\r\n\r\n--relbound\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!doctype html><html data-hai-template-version=\"v1\"><body><p>Body text</p><img src=\"cid:hai-jacs-logo@hai.ai\"><script type=\"application/jacs+json\" data-hai-jacs-envelope=\"v1\">header</script><footer data-hai-verify-footer=\"v1\">footer</footer></body></html>\r\n--relbound\r\nContent-Type: image/png\r\nContent-ID: <hai-jacs-logo@hai.ai>\r\nContent-Disposition: inline; filename=\"hai-jacs-logo.png\"\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--relbound--\r\n--altbound--\r\n--mixbound\r\nContent-Type: text/plain; name=\"notes.txt\"\r\nContent-Disposition: attachment; filename=\"notes.txt\"\r\nContent-Transfer-Encoding: base64\r\n\r\nTm90ZXMK\r\n--mixbound--\r\n".to_vec()
+    }
+
+    fn jacs_email_doc_for_payload(payload: EmailSignaturePayload) -> JacsEmailSignatureDocument {
+        JacsEmailSignatureDocument {
+            version: "2.0".to_string(),
+            document_type: "email_signature".to_string(),
+            payload,
+            metadata: JacsEmailMetadata {
+                issuer: "test-agent".to_string(),
+                document_id: "test-doc".to_string(),
+                created_at: "2026-05-08T00:00:00Z".to_string(),
+                hash: "sha256:test".to_string(),
+            },
+            signature: JacsEmailSignature {
+                key_id: "test-key".to_string(),
+                algorithm: "ed25519".to_string(),
+                signature: "test".to_string(),
+                signed_at: "2026-05-08T00:00:00Z".to_string(),
+            },
+        }
     }
 
     // -- Forwarding chain tests --
