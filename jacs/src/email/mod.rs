@@ -68,7 +68,7 @@ pub use verify::{
     normalize_algorithm, verify_email, verify_email_content, verify_email_document,
     verify_email_document_named, verify_email_html, verify_email_html_named, verify_email_named,
     verify_email_yaml, verify_email_yaml_named, verify_html_inline_email_content,
-    verify_signed_email,
+    verify_html_inline_email_document, verify_signed_email,
 };
 
 // Attachment operations (needed by HAI API to peek at doc before full verify).

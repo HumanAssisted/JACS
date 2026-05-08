@@ -104,7 +104,7 @@ pub fn verify_email_document(
     )
 }
 
-fn verify_html_inline_email_document(
+pub fn verify_html_inline_email_document(
     raw_email: &[u8],
     verifier: &impl super::JacsSigner,
     public_key: &[u8],

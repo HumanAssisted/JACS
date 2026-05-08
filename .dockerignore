@@ -1,1 +1,45 @@
+# Rust build artifacts — root + any nested workspace target/ (e.g. jacs/examples/observability/target)
 target
+**/target
+
+# Node deps + build outputs
+node_modules
+**/node_modules
+dist
+**/dist
+
+# Python build / cache / venv
+__pycache__
+**/__pycache__
+*.pyc
+.venv
+**/.venv
+.pytest_cache
+**/.pytest_cache
+.ruff_cache
+**/.ruff_cache
+
+# Stray macOS TMPDIR test data leaked into the source tree
+# (paths like JACS/jacs/var/folders/nh/<hash>/T/...). Don't ship these.
+var/folders
+**/var/folders
+
+# Local jacs runtime data + private keys — these are dev-only, never go in
+# images. agent-runtime/signer-service get their JACS keys via K8s Secrets.
+jacs_data
+**/jacs_data
+jacs_keys
+**/jacs_keys
+
+# Git + GitHub tooling
+.git
+.github
+.githooks
+
+# IDE / editor cruft
+.idea
+.vscode
+.cursor
+.DS_Store
+*.swp
+*~

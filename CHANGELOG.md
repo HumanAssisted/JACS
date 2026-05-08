@@ -5,6 +5,7 @@
 - Added JACS email transport detection and typed verification results for migration from attachment-backed signatures to HTML-inline signed email.
 - Added HTML-inline email helpers for PNG logo header embedding/extraction, topmost hidden-envelope parsing, artifact stripping, HTML equivalence normalization, and inline pre-image payload construction.
 - Added `verify_signed_email` and `verify_html_inline_email_content` entrypoints so callers can route attachment and HTML-inline email through one JACS-owned verification surface during migration.
+- Exposed `verify_html_inline_email_document` for HAI API callers that need verified inline document bytes plus parsed MIME parts for field-level forensics.
 
 ### Fixed
 
