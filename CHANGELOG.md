@@ -6,6 +6,10 @@
 - Added HTML-inline email helpers for PNG logo header embedding/extraction, topmost hidden-envelope parsing, artifact stripping, HTML equivalence normalization, and inline pre-image payload construction.
 - Added `verify_signed_email` and `verify_html_inline_email_content` entrypoints so callers can route attachment and HTML-inline email through one JACS-owned verification surface during migration.
 
+### Fixed
+
+- HTML-inline email verification now reports generated-HTML presentation tamper as `html_equivalence_failed`, returning `Failed` in strict mode and `PartiallyVerified` in degraded mode after the signed text body, headers, and user attachments verify.
+
 ## 0.10.2
 
 Released 2026-05-07
