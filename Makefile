@@ -9,6 +9,7 @@
         release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage release-everything release-delete-tags \
         retry-jacs retry-jacspy retry-jacsnpm retry-cli retry-everything \
         bump-patch bump-minor bump-major \
+        seal-changelog check-changelog-sealed \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
         install-githooks regen-cross-lang-fixtures \
         help
@@ -201,6 +202,17 @@ bump-minor:
 
 bump-major:
 	./scripts/bump-version.sh major
+
+# Flip "(unreleased)" -> "Released YYYY-MM-DD" in CHANGELOG.md for the
+# current $(JACS_VERSION). Idempotent. Run before tagging a release; commit
+# the result so the tag captures the sealed changelog.
+seal-changelog:
+	@./scripts/seal-changelog.sh seal $(JACS_VERSION)
+
+# Strict gate: fails if CHANGELOG.md ## $(JACS_VERSION) still says "(unreleased)".
+# Wired as a prereq on release-* targets to prevent shipping unsealed notes.
+check-changelog-sealed:
+	@./scripts/seal-changelog.sh check $(JACS_VERSION)
 
 # Show all detected versions
 versions:
@@ -416,25 +428,25 @@ check-version-cli:
 	@echo "✓ Tag cli/v$(JACS_VERSION) is available"
 
 # Tag and push to trigger crates.io release via GitHub CI
-release-jacs: check-version-jacs
+release-jacs: check-version-jacs check-changelog-sealed
 	git tag crate/v$(JACS_VERSION)
 	git push origin crate/v$(JACS_VERSION)
 	@echo "Tagged crate/v$(JACS_VERSION) - GitHub CI will publish to crates.io"
 
 # Tag and push to trigger PyPI release via GitHub CI
-release-jacspy: check-version-jacspy
+release-jacspy: check-version-jacspy check-changelog-sealed
 	git tag pypi/v$(JACSPY_VERSION)
 	git push origin pypi/v$(JACSPY_VERSION)
 	@echo "Tagged pypi/v$(JACSPY_VERSION) - GitHub CI will publish to PyPI"
 
 # Tag and push to trigger npm release via GitHub CI
-release-jacsnpm: check-version-jacsnpm
+release-jacsnpm: check-version-jacsnpm check-changelog-sealed
 	git tag npm/v$(JACSNPM_VERSION)
 	git push origin npm/v$(JACSNPM_VERSION)
 	@echo "Tagged npm/v$(JACSNPM_VERSION) - GitHub CI will publish to npm"
 
 # Tag and push to trigger CLI binary release via GitHub CI
-release-cli: check-version-cli
+release-cli: check-version-cli check-changelog-sealed
 	git tag cli/v$(JACS_VERSION)
 	git push origin cli/v$(JACS_VERSION)
 	@echo "Tagged cli/v$(JACS_VERSION) - GitHub CI will publish GitHub release binaries"
@@ -456,7 +468,7 @@ release-jacs-storage:
 
 # Release everything via GitHub CI: main packages (crates.io / PyPI / npm),
 # CLI binaries, and storage backend crates. Verifies all versions match first.
-release-everything: check-versions release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage
+release-everything: check-versions check-changelog-sealed release-jacs release-jacspy release-jacsnpm release-cli release-jacs-storage
 	@echo "All release tags, including CLI binaries and storage crates, pushed for v$(JACS_VERSION)."
 
 # Delete release tags for current versions (use with caution - for fixing failed releases)
@@ -589,6 +601,8 @@ help:
 	@echo "  make bump-patch      Bump patch version (0.9.6 -> 0.9.7) across all files"
 	@echo "  make bump-minor      Bump minor version (0.9.6 -> 0.10.0) across all files"
 	@echo "  make bump-major      Bump major version (0.9.6 -> 1.0.0) across all files"
+	@echo "  make seal-changelog  Flip CHANGELOG.md (unreleased) -> Released YYYY-MM-DD for current version"
+	@echo "  make check-changelog-sealed  Fail if current version still marked (unreleased)"
 	@echo ""
 	@echo "VERSION INFO:"
 	@echo "  make versions        Show all detected versions from source files"

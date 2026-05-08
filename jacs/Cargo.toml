@@ -1,6 +1,6 @@
 [package]
 name = "jacs"
-version = "0.10.1"
+version = "0.10.2"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -95,7 +95,7 @@ hkdf = "0.12"
 zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 serde_yaml_ng = "0.10"
-jacs-media = { version = "0.10.1", path = "../jacs-media" }
+jacs-media = { version = "0.10.2", path = "../jacs-media" }
 tempfile = "3"
 
 
