@@ -17,7 +17,7 @@ use jacs_mcp::{
 use rmcp::{
     RoleClient, ServiceExt,
     handler::server::wrapper::Parameters,
-    model::CallToolRequestParam,
+    model::CallToolRequestParams,
     service::RunningService,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
@@ -75,10 +75,10 @@ impl Session {
     async fn call(&self, name: &str, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let resp = tokio::time::timeout(
             TIMEOUT,
-            self.client.call_tool(CallToolRequestParam {
-                name: name.to_string().into(),
-                arguments: args.as_object().cloned(),
-            }),
+            self.client.call_tool(
+                CallToolRequestParams::new(name.to_string())
+                    .with_arguments(args.as_object().cloned().unwrap_or_default()),
+            ),
         )
         .await
         .map_err(|_| anyhow::anyhow!("call timeout: {}", name))??;

@@ -4756,23 +4756,17 @@ fn extract_media_error_envelope(message: &str, error: String) -> String {
 // the active profile before delegating to the router.
 impl ServerHandler for JacsMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: Default::default(),
-            capabilities: ServerCapabilities {
-                tools: Some(ToolsCapability {
-                    list_changed: Some(false),
-                }),
-                ..Default::default()
-            },
-            server_info: Implementation {
-                name: "jacs-mcp".to_string(),
-                title: Some("JACS MCP Server".to_string()),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                icons: None,
-                website_url: Some("https://humanassisted.github.io/JACS/".to_string()),
-            },
-            instructions: Some(
-                "This MCP server provides data provenance and cryptographic signing for \
+        let mut info = ServerInfo::default();
+        let mut capabilities = ServerCapabilities::default();
+        capabilities.tools = Some(ToolsCapability {
+            list_changed: Some(false),
+        });
+        info.capabilities = capabilities;
+        info.server_info = Implementation::new("jacs-mcp", env!("CARGO_PKG_VERSION"))
+            .with_title("JACS MCP Server")
+            .with_website_url("https://humanassisted.github.io/JACS/");
+        info.instructions = Some(
+            "This MCP server provides data provenance and cryptographic signing for \
                  agent state files and agent-to-agent messaging. \
                  \
                  Agent state tools: jacs_sign_state (sign files), jacs_verify_state \
@@ -4824,9 +4818,9 @@ impl ServerHandler for JacsMcpServer {
                  jacs_verify_text (verify inline JACS signatures), jacs_sign_image \
                  (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image \
                  (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
-                    .to_string(),
-            ),
-        }
+                .to_string(),
+        );
+        info
     }
 
     /// Return only the tools that belong to the active runtime profile.
@@ -4835,7 +4829,7 @@ impl ServerHandler for JacsMcpServer {
     /// expose ALL compiled-in tools regardless of the profile.
     async fn list_tools(
         &self,
-        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::ListToolsResult, rmcp::model::ErrorData> {
         Ok(rmcp::model::ListToolsResult {
@@ -4851,7 +4845,7 @@ impl ServerHandler for JacsMcpServer {
     /// rather than being silently executed.
     async fn call_tool(
         &self,
-        request: rmcp::model::CallToolRequestParam,
+        request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::model::ErrorData> {
         // Check that the requested tool is in the active profile.

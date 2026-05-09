@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use rmcp::{
     RoleClient, ServiceExt,
-    model::CallToolRequestParam,
+    model::CallToolRequestParams,
     service::RunningService,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
@@ -102,10 +102,10 @@ impl RmcpSession {
     ) -> anyhow::Result<serde_json::Value> {
         let response = tokio::time::timeout(
             MCP_CALL_TIMEOUT,
-            self.client.call_tool(CallToolRequestParam {
-                name: name.to_string().into(),
-                arguments: arguments.as_object().cloned(),
-            }),
+            self.client.call_tool(
+                CallToolRequestParams::new(name.to_string())
+                    .with_arguments(arguments.as_object().cloned().unwrap_or_default()),
+            ),
         )
         .await
         .map_err(|_| anyhow::anyhow!("timed out calling MCP tool '{}'", name))??;

@@ -203,7 +203,8 @@ pub fn run_server_with_fixture(extra_env: &[(&str, &str)]) -> (std::process::Out
 
 pub fn assert_server_reaches_initialized_request(output: &std::process::Output, context: &str) {
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let reached_initialized_request = stderr.contains("connection closed: initialized request");
+    let reached_initialized_request = stderr.contains("connection closed: initialized request")
+        || stderr.contains("connection closed: initialize request");
     assert!(
         reached_initialized_request,
         "Expected server to reach initialized-request state ({context}).\n\

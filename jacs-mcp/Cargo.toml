@@ -43,7 +43,7 @@ full-tools = ["core-tools", "agreement-tools", "messaging-tools",
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-rmcp = { version = "0.12", features = ["client", "server", "transport-io", "transport-child-process", "macros"], optional = true }
+rmcp = { version = "1.6", features = ["client", "server", "transport-io", "transport-child-process", "macros"], optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"], optional = true }
 jacs = { version = "0.10.2", path = "../jacs", default-features = true }
 jacs-binding-core = { version = "0.10.2", path = "../binding-core", features = ["a2a"] }
