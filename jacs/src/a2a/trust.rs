@@ -822,11 +822,12 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(jacs_env)]
+    #[serial_test::serial(jacs_env, home_env)]
     fn test_strict_policy_rejects_unverified_a2a_card_bookmark() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
+        let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
         unsafe {
-            std::env::set_var("JACS_TRUST_STORE_DIR", temp_dir.path());
+            std::env::set_var("JACS_TRUST_STORE_DIR", &trust_store_dir);
         }
 
         let agent_id = "550e8400-e29b-41d4-a716-446655440040";

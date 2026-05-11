@@ -865,6 +865,7 @@ mod tests {
     struct TrustTestGuard {
         _temp_dir: TempDir,
         original_home: Option<String>,
+        original_trust_store_dir: Option<String>,
     }
 
     impl TrustTestGuard {
@@ -876,6 +877,7 @@ mod tests {
         fn new() -> Self {
             // Save original HOME before modifying
             let original_home = env::var("HOME").ok();
+            let original_trust_store_dir = env::var("JACS_TRUST_STORE_DIR").ok();
 
             let temp_dir = TempDir::new().expect("Failed to create temp directory for test");
             let temp_home = temp_dir
@@ -893,11 +895,13 @@ mod tests {
             // behavior could occur from concurrent env access.
             unsafe {
                 env::set_var("HOME", temp_home.to_str().unwrap());
+                env::remove_var("JACS_TRUST_STORE_DIR");
             }
 
             Self {
                 _temp_dir: temp_dir,
                 original_home,
+                original_trust_store_dir,
             }
         }
     }
@@ -910,6 +914,10 @@ mod tests {
                 match &self.original_home {
                     Some(home) => env::set_var("HOME", home),
                     None => env::remove_var("HOME"),
+                }
+                match &self.original_trust_store_dir {
+                    Some(dir) => env::set_var("JACS_TRUST_STORE_DIR", dir),
+                    None => env::remove_var("JACS_TRUST_STORE_DIR"),
                 }
             }
         }

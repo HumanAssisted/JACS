@@ -87,6 +87,16 @@ pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsEr
     };
 
     let signature = agent.sign_string(&canonical)?;
+    let signing_algorithm = agent
+        .get_key_algorithm()
+        .cloned()
+        .or_else(|| {
+            agent
+                .config
+                .as_ref()
+                .and_then(|config| config.jacs_agent_key_algorithm().clone())
+        })
+        .unwrap_or_else(|| "ring-Ed25519".to_string());
 
     let data: Value = serde_json::from_str(&canonical)
         .map_err(|e| format!("sign_response: failed to re-parse canonical JSON: {e}"))?;
@@ -105,6 +115,7 @@ pub fn sign_response(agent: &mut Agent, payload: &Value) -> Result<Value, JacsEr
             "agentID": jacs_id,
             "date": now,
             "signature": signature,
+            "signingAlgorithm": signing_algorithm,
         },
     });
 
