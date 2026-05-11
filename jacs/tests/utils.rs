@@ -269,6 +269,7 @@ pub fn set_min_test_env_vars() {
         env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-ed25519.public.pem");
         env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
         env::set_var("JACS_DATA_DIRECTORY", "tests/fixtures");
+        env::set_var("JACS_SCHEMA_DIRECTORY", "tests/fixtures");
         // Fixture signatures are historical; disable iat skew enforcement in fixture-based tests.
         env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");
         // Enable filesystem schema loading for tests that use custom schemas

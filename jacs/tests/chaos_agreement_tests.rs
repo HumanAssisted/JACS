@@ -8,6 +8,8 @@ use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::agreement::{Agreement, AgreementOptions};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
+use jacs::agent::loaders::FileLoader;
+use jacs::crypt::hash::hash_public_key;
 use serde_json::Value;
 use serial_test::serial;
 
@@ -15,6 +17,29 @@ mod utils;
 use utils::{
     create_owned_config_fixture_document, load_test_agent_one_ed25519, load_test_agent_two_ed25519,
 };
+
+fn cache_public_keys(agent: &jacs::agent::Agent, agent_two: &jacs::agent::Agent) {
+    let agent_one_public_key = agent.get_public_key().unwrap();
+    let agent_one_public_key_hash = hash_public_key(&agent_one_public_key);
+    let agent_two_public_key = agent_two.get_public_key().unwrap();
+    let agent_two_public_key_hash = hash_public_key(&agent_two_public_key);
+    for receiver in [agent, agent_two] {
+        receiver
+            .fs_save_remote_public_key(
+                &agent_one_public_key_hash,
+                &agent_one_public_key,
+                b"ring-Ed25519",
+            )
+            .expect("cache agent one public key");
+        receiver
+            .fs_save_remote_public_key(
+                &agent_two_public_key_hash,
+                &agent_two_public_key,
+                b"ring-Ed25519",
+            )
+            .expect("cache agent two public key");
+    }
+}
 
 /// Helper: set up 2-agent agreement with options, both agents sign, return the
 /// fully-signed document key (from agent_two's perspective).
@@ -24,6 +49,7 @@ fn setup_fully_signed_agreement(
     options: &AgreementOptions,
 ) -> (String, String) {
     let agentids = vec![agent.get_id().unwrap(), agent_two.get_id().unwrap()];
+    cache_public_keys(agent, agent_two);
 
     let document_key = create_owned_config_fixture_document(agent);
 
@@ -353,6 +379,7 @@ fn test_sign_agreement_in_memory_without_save() {
     // This proves the in-memory state is consistent enough for retry
     let signed_str = serde_json::to_string_pretty(&signed_doc.value).unwrap();
     let mut agent_two_retry = load_test_agent_two_ed25519();
+    cache_public_keys(&agent, &agent_two_retry);
     let _ = agent_two_retry.load_document(&signed_str).unwrap();
     let result =
         agent_two_retry.sign_agreement(&signed_key, Some(AGENT_AGREEMENT_FIELDNAME.to_string()));

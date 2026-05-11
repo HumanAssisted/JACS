@@ -1,11 +1,12 @@
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
+use jacs::agent::loaders::FileLoader;
+use jacs::crypt::hash::hash_public_key;
 mod utils;
-use utils::DOCTESTFILECONFIG;
-use utils::TESTFILE_MODIFIED;
 
 use utils::{
-    load_local_document, load_test_agent_one_ed25519, load_test_agent_two_ed25519, raw_fixture,
+    create_owned_config_fixture_document, load_local_document, load_test_agent_one_ed25519,
+    load_test_agent_two_ed25519, raw_fixture, set_min_test_env_vars,
 };
 // use color_eyre::eyre::Result;
 use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
@@ -96,21 +97,10 @@ fn test_load_custom_schema_and_custom_document() {
         }
     }
 
-    let document_string = match load_local_document(&DOCTESTFILECONFIG.to_string()) {
-        Ok(content) => content,
-        Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document loading local document: {}",
-            e
-        ),
-    };
-
-    let document = match agent.load_document(&document_string) {
-        Ok(doc) => doc,
-        Err(e) => panic!(
-            "Error in test_load_custom_schema_and_custom_document loading document: {}",
-            e
-        ),
-    };
+    let document_key = create_owned_config_fixture_document(&mut agent);
+    let document = agent
+        .get_document(&document_key)
+        .expect("fresh Ed25519-owned custom fixture should be loaded");
 
     info!("loaded valid {}", document.getkey());
 
@@ -256,6 +246,7 @@ fn test_load_custom_schema_and_new_custom_document() {
 #[serial(jacs_env)]
 fn test_load_custom_schema_and_new_custom_document_agent_two() {
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Test case started");
+    set_min_test_env_vars();
     let mut agent = load_test_agent_two_ed25519();
     info!("test_load_custom_schema_and_new_custom_document_agent_two: Agent loaded");
 
@@ -271,9 +262,8 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
                 "test_load_custom_schema_and_new_custom_document_agent_two: Error loading schemas: {}",
                 e
             );
-            assert!(
-                false,
-                "test_load_custom_schema_and_new_custom_document_agent_two: Failed to load schemas"
+            panic!(
+                "test_load_custom_schema_and_new_custom_document_agent_two: Failed to load schemas: {e}"
             );
         }
     };
@@ -474,15 +464,26 @@ fn test_update_document_rejects_non_owner_editor() {
     let mut owner = load_test_agent_one_ed25519();
     let mut non_owner = load_test_agent_two_ed25519();
 
-    let original_document_string = load_local_document(&DOCTESTFILECONFIG.to_string())
-        .expect("Failed to load source document fixture");
+    let original_key = create_owned_config_fixture_document(&mut owner);
     let original_document = owner
-        .load_document(&original_document_string)
+        .get_document(&original_key)
         .expect("Owner should load source document");
     let original_key = original_document.getkey();
+    let owner_public_key = owner.get_public_key().expect("owner public key");
+    let owner_public_key_hash = hash_public_key(&owner_public_key);
+    non_owner
+        .fs_save_remote_public_key(&owner_public_key_hash, &owner_public_key, b"ring-Ed25519")
+        .expect("cache owner public key");
+    let original_document_string =
+        serde_json::to_string_pretty(original_document.getvalue()).expect("serialize original");
+    non_owner
+        .load_document(&original_document_string)
+        .expect("non-owner should load source document before update attempt");
 
-    let modified_document_string = load_local_document(&TESTFILE_MODIFIED.to_string())
-        .expect("Failed to load modified document fixture");
+    let mut modified_value = original_document.getvalue().clone();
+    modified_value["favorite-snack"] = serde_json::json!("mango");
+    let modified_document_string =
+        serde_json::to_string(&modified_value).expect("serialize modified document");
     let result = non_owner.update_document(&original_key, &modified_document_string, None, None);
 
     assert!(

@@ -863,20 +863,6 @@ fn test_sign_verify_roundtrip_ed25519() {
 }
 
 // =============================================================================
-// Integration: Sign-then-verify roundtrip with Ed25519
-// =============================================================================
-
-#[test]
-fn test_sign_verify_roundtrip_ed25519() {
-    let (agent, _info) =
-        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
-    let signed = agent
-        .sign_message(&json!({"roundtrip": "ed25519"}))
-        .unwrap();
-    assert!(agent.verify(&signed.raw).unwrap().valid);
-}
-
-// =============================================================================
 // Contract lock: exactly 19 narrow public methods on SimpleAgent
 // =============================================================================
 

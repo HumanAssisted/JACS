@@ -1011,6 +1011,7 @@ impl Agent {
             return None;
         }
         let agent_id = parts[0];
+        let current_version = parts[1];
 
         // Build the agent directory path from config
         let data_dir = self
@@ -1028,8 +1029,31 @@ impl Agent {
         }
 
         let prefix = format!("{}:", agent_id);
-        let mut latest_id: Option<String> = None;
-        let mut latest_date: Option<String> = None;
+        let mut direct_child: Option<(String, Option<String>, Option<std::time::SystemTime>)> =
+            None;
+        let mut latest_id: Option<(String, Option<String>, Option<std::time::SystemTime>)> = None;
+
+        fn candidate_is_newer(
+            candidate: &(String, Option<String>, Option<std::time::SystemTime>),
+            current: Option<&(String, Option<String>, Option<std::time::SystemTime>)>,
+        ) -> bool {
+            let Some(current) = current else {
+                return true;
+            };
+
+            match (candidate.1.as_deref(), current.1.as_deref()) {
+                (Some(candidate_date), Some(current_date)) if candidate_date != current_date => {
+                    candidate_date > current_date
+                }
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                _ => match (candidate.2, current.2) {
+                    (Some(candidate_mtime), Some(current_mtime)) => candidate_mtime > current_mtime,
+                    (Some(_), None) => true,
+                    _ => false,
+                },
+            }
+        }
 
         if let Ok(entries) = std::fs::read_dir(&agent_dir) {
             for entry in entries.flatten() {
@@ -1037,43 +1061,48 @@ impl Agent {
                     if name.starts_with(&prefix) && name.ends_with(".json") {
                         // Extract lookup_id from filename (strip .json)
                         let lookup = name.trim_end_matches(".json");
+                        if lookup == current_lookup_id {
+                            continue;
+                        }
 
-                        // Prefer jacsVersionDate from the document content for reliable ordering
-                        // (file mtime is unreliable across platforms and copy tools)
+                        let modified = entry.metadata().and_then(|m| m.modified()).ok();
+                        let mut version_date: Option<String> = None;
+                        let mut previous_version: Option<String> = None;
+
                         if let Ok(content) = std::fs::read_to_string(entry.path()) {
                             if let Ok(doc) = serde_json::from_str::<Value>(&content) {
                                 if let Some(date_str) = doc["jacsVersionDate"].as_str() {
-                                    if latest_date.is_none()
-                                        || date_str > latest_date.as_deref().unwrap_or("")
-                                    {
-                                        latest_date = Some(date_str.to_string());
-                                        latest_id = Some(lookup.to_string());
-                                    }
-                                    continue;
+                                    version_date = Some(date_str.to_string());
+                                }
+                                if let Some(previous) =
+                                    doc[JACS_PREVIOUS_VERSION_FIELDNAME].as_str()
+                                {
+                                    previous_version = Some(previous.to_string());
                                 }
                             }
                         }
 
-                        // Fallback to mtime if jacsVersionDate is not available
-                        if let Ok(metadata) = entry.metadata() {
-                            if let Ok(mtime) = metadata.modified() {
-                                // Only use mtime if we haven't found any jacsVersionDate-based entry
-                                if latest_date.is_none() {
-                                    let mtime_str = format!("{:?}", mtime);
-                                    if latest_id.is_none() {
-                                        latest_id = Some(lookup.to_string());
-                                    }
-                                    let _ = mtime_str; // suppress unused warning
-                                }
-                            }
+                        let candidate = (lookup.to_string(), version_date, modified);
+                        if previous_version.as_deref() == Some(current_version)
+                            && candidate_is_newer(&candidate, direct_child.as_ref())
+                        {
+                            direct_child = Some(candidate.clone());
+                        }
+                        if candidate_is_newer(&candidate, latest_id.as_ref()) {
+                            latest_id = Some(candidate);
                         }
                     }
                 }
             }
         }
 
-        // Only return if we found something different from the current
-        latest_id.filter(|id| id != current_lookup_id)
+        // Prefer the direct child in the rotation chain. This avoids timestamp
+        // collisions when a crash-recovery test rotates and reloads within the
+        // same second, while still falling back to the newest visible version.
+        direct_child
+            .or(latest_id)
+            .map(|(lookup, _, _)| lookup)
+            .filter(|id| id != current_lookup_id)
     }
 
     /// Verify signed config integrity (tamper detection).
@@ -1126,13 +1155,43 @@ impl Agent {
             .and_then(|sig| sig.get("signingAlgorithm"))
             .and_then(|v| v.as_str())
             .map(std::string::ToString::to_string);
+        let signature_metadata = config_json.get(AGENT_SIGNATURE_FIELDNAME).ok_or_else(|| {
+            JacsError::ConfigError("Config signature is missing jacsSignature metadata".to_string())
+        })?;
         let fields = extract_signature_fields(config_json, AGENT_SIGNATURE_FIELDNAME);
-        let (payload, _) = build_signature_content(
-            config_json,
-            fields,
-            AGENT_SIGNATURE_FIELDNAME,
-            SignatureContentMode::CanonicalV2,
-        )?;
+        let payload = match signature_metadata
+            .get(SIGNATURE_CONTENT_VERSION_FIELDNAME)
+            .and_then(Value::as_str)
+        {
+            Some(SIGNATURE_CONTENT_VERSION_V2) => {
+                let metadata_fields = fields.ok_or_else(|| {
+                    JacsError::ConfigError(
+                        "Config v2 signature is missing jacsSignature.fields".to_string(),
+                    )
+                })?;
+                build_signature_content_v2(
+                    config_json,
+                    metadata_fields,
+                    AGENT_SIGNATURE_FIELDNAME,
+                    signature_metadata,
+                )?
+            }
+            Some(other) => {
+                return Err(JacsError::ConfigError(format!(
+                    "Unsupported config signature content version '{}'.",
+                    other
+                )));
+            }
+            None => {
+                let (payload, _) = build_signature_content(
+                    config_json,
+                    fields,
+                    AGENT_SIGNATURE_FIELDNAME,
+                    SignatureContentMode::CanonicalV2,
+                )?;
+                payload
+            }
+        };
         self.verify_string(&payload, signature, public_key.to_vec(), algorithm)?;
         Ok(())
     }

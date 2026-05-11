@@ -10,12 +10,13 @@ use serial_test::serial;
 
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
+use jacs::agent::loaders::FileLoader;
+use jacs::crypt::hash::hash_public_key;
 use serde_json::Value;
 mod utils;
-use utils::DOCTESTFILE;
 use utils::{
-    load_local_document, load_test_agent_one, load_test_agent_one_ed25519,
-    load_test_agent_two_ed25519, raw_fixture,
+    create_owned_config_fixture_document, load_test_agent_one_ed25519, load_test_agent_two_ed25519,
+    raw_fixture,
 };
 // use color_eyre::eyre::Result;
 use chrono::{Duration, Utc};
@@ -24,7 +25,7 @@ use chrono::{Duration, Utc};
 #[serial(jacs_env)]
 fn test_hai_fields_custom_schema_and_custom_document() {
     // cargo test   --test task_tests test_hai_fields_custom_schema_and_custom_document -- --nocapture
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let schema_path = raw_fixture("custom.schema.json")
         .to_string_lossy()
         .to_string();
@@ -32,9 +33,7 @@ fn test_hai_fields_custom_schema_and_custom_document() {
     agent
         .load_custom_schemas(&schemas)
         .expect("Failed to load custom schemas");
-    let document_string = load_local_document(&DOCTESTFILE.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     println!("loaded valid {}", document_key);
     let document_copy = agent.get_document(&document_key).unwrap();
     agent
@@ -89,6 +88,27 @@ fn test_create_task_with_actions() {
     let mut agentids: Vec<String> = Vec::new();
     agentids.push(agent.get_id().expect("REASON"));
     agentids.push(agent_two.get_id().expect("REASON"));
+
+    let agent_one_public_key = agent.get_public_key().unwrap();
+    let agent_one_public_key_hash = hash_public_key(&agent_one_public_key);
+    let agent_two_public_key = agent_two.get_public_key().unwrap();
+    let agent_two_public_key_hash = hash_public_key(&agent_two_public_key);
+    for receiver in [&agent, &agent_two] {
+        receiver
+            .fs_save_remote_public_key(
+                &agent_one_public_key_hash,
+                &agent_one_public_key,
+                b"ring-Ed25519",
+            )
+            .expect("cache agent one public key");
+        receiver
+            .fs_save_remote_public_key(
+                &agent_two_public_key_hash,
+                &agent_two_public_key,
+                b"ring-Ed25519",
+            )
+            .expect("cache agent two public key");
+    }
 
     let unsigned_doc = agent
         .create_agreement(
