@@ -408,7 +408,7 @@ class JACSA2AIntegration:
     JACS_EXTENSION_URI = "urn:jacs:provenance-v1"
 
     # Algorithms actually supported by the JACS cryptographic stack.
-    SUPPORTED_ALGORITHMS = ["ring-Ed25519", "RSA-PSS", "pq2025"]
+    SUPPORTED_ALGORITHMS = ["ring-Ed25519", "pq2025"]
 
     VALID_TRUST_POLICIES = ("open", "verified", "strict")
 

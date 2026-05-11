@@ -595,18 +595,14 @@ agent_id = result.get('agentId')  # Who signed the response
 <h3 id="supported-algorithms"><a class="header" href="#supported-algorithms">Supported Algorithms</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Type</th><th>Security Level</th></tr></thead><tbody>
 <tr><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>High (recommended)</td></tr>
-<tr><td><code>RSA-PSS</code></td><td>RSA</td><td>Legacy verification only</td></tr>
-<tr><td><code>pq-dilithium</code></td><td>Post-Quantum</td><td>Quantum-resistant</td></tr>
-<tr><td><code>pq2025</code></td><td>Composite</td><td>Transitional</td></tr>
+<tr><td><code>pq2025</code></td><td>Post-Quantum</td><td>FIPS-204 ML-DSA-87</td></tr>
 </tbody></table>
 </div>
 <h3 id="algorithm-selection"><a class="header" href="#algorithm-selection">Algorithm Selection</a></h3>
 <p>Choose based on requirements:</p>
 <ul>
 <li><strong>General Use</strong>: <code>ring-Ed25519</code> - fast, secure, small signatures</li>
-<li><strong>Legacy Systems</strong>: Verify older <code>RSA-PSS</code> artifacts, but use <code>ring-Ed25519</code> or <code>pq2025</code> for new keys</li>
-<li><strong>Future-Proofing</strong>: <code>pq-dilithium</code> - quantum-resistant</li>
-<li><strong>Transition</strong>: <code>pq2025</code> - hybrid classical/post-quantum</li>
+<li><strong>Future-Proofing</strong>: <code>pq2025</code> - FIPS-204 post-quantum signatures</li>
 </ul>
 <h2 id="security-best-practices"><a class="header" href="#security-best-practices">Security Best Practices</a></h2>
 <h3 id="1-key-storage"><a class="header" href="#1-key-storage">1. Key Storage</a></h3>

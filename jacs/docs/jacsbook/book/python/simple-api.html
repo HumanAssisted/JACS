@@ -209,7 +209,7 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 <li><code>name</code> (str, required): Agent name used for first-time creation.</li>
 <li><code>domain</code> (str, required): Agent domain used for DNS/public-key verification workflows.</li>
 <li><code>description</code> (str, optional): Human-readable description.</li>
-<li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Supported choices for new agents: <code>"ring-Ed25519"</code>, <code>"pq2025"</code>. <code>RSA-PSS</code> is legacy verification-only.</li>
+<li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Supported choices: <code>"ring-Ed25519"</code>, <code>"pq2025"</code>.</li>
 <li><code>config_path</code> (str, optional): Config path (default: <code>"./jacs.config.json"</code>).</li>
 </ul>
 <p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>

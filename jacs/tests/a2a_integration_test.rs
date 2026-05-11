@@ -328,15 +328,12 @@ fn test_well_known_endpoints_generation() {
 }
 
 #[test]
-fn test_rsa_a2a_key_generation_is_disabled() {
-    let err = create_jwk_keys(Some("rsa"), Some("rsa"))
-        .err()
-        .expect("RSA dual-key generation should be blocked");
-    assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
-    );
+fn test_ed25519_a2a_key_generation_succeeds() {
+    let keys = create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519"))
+        .expect("Ed25519 dual-key generation should succeed");
+    assert_eq!(keys.jacs_algorithm, "ring-Ed25519");
+    assert_eq!(keys.a2a_algorithm, "ring-Ed25519");
+    assert_eq!(keys.a2a_public_key.len(), 32);
 }
 
 #[test]
@@ -367,7 +364,6 @@ fn test_create_extension_descriptor() {
         .map(|v| v.as_str().unwrap())
         .collect();
     assert!(alg_strings.contains(&"ring-Ed25519"));
-    assert!(alg_strings.contains(&"RSA-PSS"));
     assert!(alg_strings.contains(&"pq2025"));
 
     // Verify PQ algorithms are real

@@ -20,7 +20,7 @@ var (
 type CreateAgentOptions struct {
 	// Password for encrypting the private key. Required unless JACS_PRIVATE_KEY_PASSWORD is set.
 	Password string
-	// Algorithm is the signing algorithm: "pq2025" (default), "ring-Ed25519", or "RSA-PSS".
+		// Algorithm is the signing algorithm: "pq2025" (default) or "ring-Ed25519".
 	Algorithm string
 	// DataDirectory is the directory for agent data (default: "./jacs_data").
 	DataDirectory string

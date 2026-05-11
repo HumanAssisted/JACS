@@ -21,7 +21,7 @@ fn crate_root_exports_server_and_config_helpers() -> anyhow::Result<()> {
     let parsed: serde_json::Value = serde_json::from_str(&agent_json)?;
     assert_eq!(
         parsed["jacsId"].as_str(),
-        Some("ddf35096-d212-4ca9-a299-feda597d5525")
+        Some("22dbef6c-b85e-40e5-b82e-f95a4259339a")
     );
 
     cleanup_workspace(&workspace);
@@ -41,7 +41,7 @@ fn load_agent_from_config_env_uses_jacs_config() -> anyhow::Result<()> {
 
     assert_eq!(
         parsed["jacsId"].as_str(),
-        Some("ddf35096-d212-4ca9-a299-feda597d5525")
+        Some("22dbef6c-b85e-40e5-b82e-f95a4259339a")
     );
 
     cleanup_workspace(&workspace);

@@ -320,7 +320,6 @@ mod tests {
             .map(|v| v.as_str().unwrap())
             .collect();
         assert!(alg_strings.contains(&"ring-Ed25519"));
-        assert!(alg_strings.contains(&"RSA-PSS"));
         assert!(alg_strings.contains(&"pq2025"));
     }
 

@@ -290,37 +290,6 @@ fn jwk_to_verifier(jwk: &Jwk) -> Result<(Vec<u8>, &'static str), String> {
                 .map_err(|e| format!("Failed to decode Ed25519 JWK x coordinate: {}", e))?;
             Ok((public_key, "ring-Ed25519"))
         }
-        "RSA" => {
-            use rsa::pkcs8::{EncodePublicKey, LineEnding};
-            use rsa::{BigUint, RsaPublicKey};
-
-            let modulus = jwk
-                .n
-                .as_deref()
-                .ok_or_else(|| "RSA JWK is missing 'n'".to_string())?;
-            let exponent = jwk
-                .e
-                .as_deref()
-                .ok_or_else(|| "RSA JWK is missing 'e'".to_string())?;
-
-            let n = BigUint::from_bytes_be(
-                &URL_SAFE_NO_PAD
-                    .decode(modulus)
-                    .map_err(|e| format!("Failed to decode RSA modulus: {}", e))?,
-            );
-            let e = BigUint::from_bytes_be(
-                &URL_SAFE_NO_PAD
-                    .decode(exponent)
-                    .map_err(|e| format!("Failed to decode RSA exponent: {}", e))?,
-            );
-
-            let public_key = RsaPublicKey::new(n, e)
-                .map_err(|e| format!("Invalid RSA public key in JWKS: {}", e))?;
-            let pem = public_key
-                .to_public_key_pem(LineEnding::CRLF)
-                .map_err(|e| format!("Failed to encode RSA key from JWKS: {}", e))?;
-            Ok((pem.into_bytes(), "rsa"))
-        }
         other => Err(format!("Unsupported JWKS key type '{}'", other)),
     }
 }

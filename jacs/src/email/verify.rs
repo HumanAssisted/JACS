@@ -30,7 +30,6 @@ use super::types::{
 /// Lowercases, strips "ring-" prefix and "-sha256"/"-sha384"/"-sha512" suffixes.
 /// Examples:
 /// - `"Ring-Ed25519"` → `"ed25519"`
-/// - `"rsa-pss-sha256"` → `"rsa-pss"`
 /// - `"PQ2025"` → `"pq2025"`
 pub fn normalize_algorithm(algorithm: &str) -> String {
     let mut s = algorithm.to_lowercase();
@@ -2268,10 +2267,6 @@ mod tests {
         assert_eq!(normalize_algorithm("ed25519"), "ed25519");
         assert_eq!(normalize_algorithm("ring-ed25519"), "ed25519");
         assert_eq!(normalize_algorithm("Ring-Ed25519"), "ed25519");
-        assert_eq!(normalize_algorithm("rsa-pss"), "rsa-pss");
-        assert_eq!(normalize_algorithm("rsa-pss-sha256"), "rsa-pss");
-        assert_eq!(normalize_algorithm("RSA-PSS-SHA256"), "rsa-pss");
-        assert_eq!(normalize_algorithm("rsa-pss-sha384"), "rsa-pss");
         assert_eq!(normalize_algorithm("pq2025"), "pq2025");
         assert_eq!(normalize_algorithm("PQ2025"), "pq2025");
         assert_eq!(normalize_algorithm("ml-dsa-87"), "ml-dsa-87");

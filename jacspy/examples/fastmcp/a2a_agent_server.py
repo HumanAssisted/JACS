@@ -176,7 +176,7 @@ def get_well_known_document(path: str) -> Dict[str, Any]:
             "jacsId": jacs.get_agent_id(),
             "jacsVersion": jacs.get_agent_version(),
             "jacsAgentType": "ai",
-            "keyAlgorithm": "RSA-PSS"
+            "keyAlgorithm": "ring-Ed25519"
         }
         
         well_known_docs = a2a_integration.generate_well_known_documents(

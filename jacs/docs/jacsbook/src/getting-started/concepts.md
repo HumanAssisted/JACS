@@ -20,7 +20,7 @@ An **Agent** is the fundamental entity in JACS - an autonomous participant that 
 **Key Properties:**
 - **jacsId**: Permanent UUID identifying the agent
 - **jacsVersion**: UUID that changes with each update
-- **Cryptographic Keys**: Ed25519, RSA, or post-quantum key pairs
+- **Cryptographic Keys**: Ed25519 or post-quantum key pairs
 - **Services**: Capabilities the agent offers
 - **Contacts**: How to reach the agent
 
@@ -215,10 +215,9 @@ JACS uses industry-standard cryptographic primitives for security.
 
 **Current Standards**
 - **ring-Ed25519**: Fast elliptic curve signatures using the ring library (recommended)
-- **RSA-PSS**: Legacy RSA verification for older artifacts; not used for new key generation
 
 **Post-Quantum**
-- **pq-dilithium**: NIST-standardized post-quantum signatures
+- **pq2025**: ML-DSA-87 signatures for FIPS-204 post-quantum readiness
 
 ### Signature Process
 1. **Content Extraction**: Specific fields are extracted for signing

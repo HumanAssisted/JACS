@@ -47,7 +47,7 @@ Create a persistent agent with keys on disk. If `./jacs.config.json` already exi
 - `name` (str, required): Agent name used for first-time creation.
 - `domain` (str, required): Agent domain used for DNS/public-key verification workflows.
 - `description` (str, optional): Human-readable description.
-- `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. Supported choices for new agents: `"ring-Ed25519"`, `"pq2025"`. `RSA-PSS` is legacy verification-only.
+- `algorithm` (str, optional): Signing algorithm. Default: `"pq2025"`. Supported choices: `"ring-Ed25519"`, `"pq2025"`.
 - `config_path` (str, optional): Config path (default: `"./jacs.config.json"`).
 
 **Returns:** `AgentInfo` dataclass

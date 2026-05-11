@@ -387,7 +387,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         jacsId: 'agent-123',
         jacsVersion: 'v1',
         jacsAgentType: 'ai',
-        keyAlgorithm: 'RSA-PSS'
+        keyAlgorithm: 'ring-Ed25519'
       };
 
       const documents = a2aIntegration.generateWellKnownDocuments(
@@ -414,14 +414,14 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       // Verify JACS descriptor - hash is now crypto-based, not mocked
       const jacsDesc = documents['/.well-known/jacs-agent.json'];
       expect(jacsDesc.agentId).to.equal('agent-123');
-      expect(jacsDesc.keyAlgorithm).to.equal('RSA-PSS');
+      expect(jacsDesc.keyAlgorithm).to.equal('ring-Ed25519');
       expect(jacsDesc.publicKeyHash).to.be.a('string');
       expect(jacsDesc.publicKeyHash).to.have.length(64); // SHA-256 hex is 64 chars
 
       // Verify public key document
       const pubkeyDoc = documents['/.well-known/jacs-pubkey.json'];
       expect(pubkeyDoc.publicKey).to.equal('bW9jay1wdWJsaWMta2V5');
-      expect(pubkeyDoc.algorithm).to.equal('RSA-PSS');
+      expect(pubkeyDoc.algorithm).to.equal('ring-Ed25519');
 
       // Verify JWKS is present for A2A verifiers
       const jwksDoc = documents['/.well-known/jwks.json'];

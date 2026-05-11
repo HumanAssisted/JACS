@@ -39,7 +39,6 @@ fn setup_agreement_doc(
 #[serial(jacs_env)]
 fn test_algorithm_strength_classification() {
     assert_eq!(algorithm_strength("ring-Ed25519"), "classical");
-    assert_eq!(algorithm_strength("RSA-PSS"), "classical");
     assert_eq!(algorithm_strength("pq2025"), "post-quantum");
     assert_eq!(algorithm_strength("unknown-algo"), "classical");
 }

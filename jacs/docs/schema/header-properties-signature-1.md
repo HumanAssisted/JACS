@@ -16,19 +16,20 @@ SACRED CRYPTOGRAPHIC COMMITMENT: A signature is a permanent, irreversible crypto
 
 # jacsSignature Properties
 
-| Property                              | Type      | Required | Nullable       | Defined by                                                                                                                                                |
-| :------------------------------------ | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [agentID](#agentid)                   | `string`  | Required | cannot be null | [Signature](signature-properties-agentid.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentID")                   |
-| [agentVersion](#agentversion)         | `string`  | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentVersion")         |
-| [date](#date)                         | `string`  | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/date")                         |
-| [iat](#iat)                           | `integer` | Required | cannot be null | [Signature](signature-properties-iat.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/iat")                           |
-| [jti](#jti)                           | `string`  | Required | cannot be null | [Signature](signature-properties-jti.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jti")                           |
-| [signature](#signature)               | `string`  | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")               |
-| [publicKeyHash](#publickeyhash)       | `string`  | Required | cannot be null | [Signature](signature-properties-publickeyhash.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash")       |
-| [signingAlgorithm](#signingalgorithm) | `string`  | Required | cannot be null | [Signature](signature-properties-signingalgorithm.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm") |
-| [response](#response)                 | `string`  | Optional | cannot be null | [Signature](signature-properties-response.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/response")                 |
-| [responseType](#responsetype)         | `string`  | Optional | cannot be null | [Signature](signature-properties-responsetype.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/responseType")         |
-| [fields](#fields)                     | `array`   | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields")                     |
+| Property                                            | Type      | Required | Nullable       | Defined by                                                                                                                                                              |
+| :-------------------------------------------------- | :-------- | :------- | :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [agentID](#agentid)                                 | `string`  | Required | cannot be null | [Signature](signature-properties-agentid.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentID")                                 |
+| [agentVersion](#agentversion)                       | `string`  | Required | cannot be null | [Signature](signature-properties-agentversion.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/agentVersion")                       |
+| [date](#date)                                       | `string`  | Required | cannot be null | [Signature](signature-properties-date.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/date")                                       |
+| [iat](#iat)                                         | `integer` | Required | cannot be null | [Signature](signature-properties-iat.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/iat")                                         |
+| [jti](#jti)                                         | `string`  | Required | cannot be null | [Signature](signature-properties-jti.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/jti")                                         |
+| [signature](#signature)                             | `string`  | Required | cannot be null | [Signature](signature-properties-signature.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signature")                             |
+| [publicKeyHash](#publickeyhash)                     | `string`  | Required | cannot be null | [Signature](signature-properties-publickeyhash.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/publicKeyHash")                     |
+| [signingAlgorithm](#signingalgorithm)               | `string`  | Optional | cannot be null | [Signature](signature-properties-signingalgorithm.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signingAlgorithm")               |
+| [response](#response)                               | `string`  | Optional | cannot be null | [Signature](signature-properties-response.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/response")                               |
+| [responseType](#responsetype)                       | `string`  | Optional | cannot be null | [Signature](signature-properties-responsetype.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/responseType")                       |
+| [fields](#fields)                                   | `array`   | Required | cannot be null | [Signature](signature-properties-fields.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/fields")                                   |
+| [signatureContentVersion](#signaturecontentversion) | `string`  | Optional | cannot be null | [Signature](signature-properties-signaturecontentversion.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signatureContentVersion") |
 
 ## agentID
 
@@ -182,7 +183,7 @@ The cryptographic algorithm used to create this signature. MUST be verified expl
 
 `signingAlgorithm`
 
-* is required
+* is optional
 
 * Type: `string`
 
@@ -200,7 +201,6 @@ The cryptographic algorithm used to create this signature. MUST be verified expl
 
 | Value            | Explanation |
 | :--------------- | :---------- |
-| `"RSA-PSS"`      |             |
 | `"ring-Ed25519"` |             |
 | `"pq2025"`       |             |
 
@@ -267,3 +267,29 @@ fields fields from document which were used to generate signature.
 ### fields Type
 
 `string[]`
+
+## signatureContentVersion
+
+Canonical signature preimage version. New signatures use jacs-signature-v2, which binds signed field names and signature metadata.
+
+`signatureContentVersion`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Signature](signature-properties-signaturecontentversion.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/properties/signatureContentVersion")
+
+### signatureContentVersion Type
+
+`string`
+
+### signatureContentVersion Constraints
+
+**enum**: the value of this property must be equal to one of the following values:
+
+| Value                 | Explanation |
+| :-------------------- | :---------- |
+| `"jacs-signature-v2"` |             |

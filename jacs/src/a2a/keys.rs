@@ -1,5 +1,5 @@
 //! Key management for A2A integration.
-//! Handles dual key generation for JACS plus interoperable A2A keys.
+//! Handles dual key generation for JACS plus interoperable Ed25519 A2A keys.
 
 use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose};
@@ -15,9 +15,9 @@ pub struct Jwk {
     pub alg: String,
     pub use_: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub n: Option<String>, // RSA modulus
+    pub n: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub e: Option<String>, // RSA exponent
+    pub e: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub x: Option<String>, // ECDSA x coordinate
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -36,7 +36,7 @@ pub struct DualKeyPair {
     pub a2a_algorithm: String,
 }
 
-/// Create dual keys for both JACS (PQC) and A2A (RSA/ECDSA) compatibility
+/// Create dual keys for both JACS (PQC) and A2A compatibility.
 /// These keys are ephemeral (in-memory only) - they are NOT persisted to disk
 pub fn create_jwk_keys(
     jacs_algorithm: Option<&str>,
@@ -54,10 +54,6 @@ pub fn create_jwk_keys(
     // Generate keys directly in memory without file persistence
     let (jacs_private, jacs_public) = match jacs_alg {
         "pq2025" => crate::crypt::pq2025::generate_keys()?,
-        "rsa" => {
-            crate::crypt::ensure_private_key_operation_allowed("rsa", "A2A key generation")?;
-            crate::crypt::rsawrapper::generate_keys()?
-        }
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
         "ecdsa" | "es256" => {
             return Err(JacsError::CryptoError(
@@ -75,10 +71,6 @@ pub fn create_jwk_keys(
     };
 
     let (a2a_private, a2a_public) = match a2a_alg {
-        "rsa" => {
-            crate::crypt::ensure_private_key_operation_allowed("rsa", "A2A key generation")?;
-            crate::crypt::rsawrapper::generate_keys()?
-        }
         "ring-Ed25519" => crate::crypt::ringwrapper::generate_keys()?,
         "ecdsa" | "es256" => {
             return Err(JacsError::CryptoError(
@@ -103,47 +95,7 @@ pub fn create_jwk_keys(
     })
 }
 
-/// Export RSA public key as JWK
-pub fn export_rsa_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsError> {
-    use rsa::traits::PublicKeyParts;
-    use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
-
-    // Parse PEM-encoded RSA public key
-    let pem_str =
-        std::str::from_utf8(public_key).map_err(|e| JacsError::CryptoError(e.to_string()))?;
-    let pem = pem::parse(pem_str).map_err(|e| JacsError::CryptoError(e.to_string()))?;
-
-    // Try PKCS#1 first; if it fails, fall back to PKCS#8 SubjectPublicKeyInfo
-    let rsa_key = match RsaPublicKey::from_pkcs1_der(pem.contents()) {
-        Ok(k) => k,
-        Err(_) => RsaPublicKey::from_public_key_der(pem.contents())
-            .map_err(|e| JacsError::CryptoError(e.to_string()))?,
-    };
-
-    // Extract modulus and exponent
-    let n = rsa_key.n();
-    let e = rsa_key.e();
-
-    // Convert to base64url
-    let n_bytes = n.to_bytes_be();
-    let e_bytes = e.to_bytes_be();
-
-    let jwk = Jwk {
-        kty: "RSA".to_string(),
-        kid: key_id.to_string(),
-        alg: "RS256".to_string(),
-        use_: "sig".to_string(),
-        n: Some(general_purpose::URL_SAFE_NO_PAD.encode(&n_bytes)),
-        e: Some(general_purpose::URL_SAFE_NO_PAD.encode(&e_bytes)),
-        x: None,
-        y: None,
-        crv: None,
-    };
-
-    Ok(jwk)
-}
-
-/// Export ECDSA public key as JWK
+/// Export Ed25519 public key as JWK
 pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, JacsError> {
     let key_bytes = match public_key.len() {
         32 => public_key.to_vec(),
@@ -172,7 +124,6 @@ pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Jac
 /// Export a public key as JWK based on algorithm
 pub fn export_as_jwk(public_key: &[u8], algorithm: &str, key_id: &str) -> Result<Jwk, JacsError> {
     match algorithm {
-        "rsa" => export_rsa_as_jwk(public_key, key_id),
         "ring-Ed25519" => export_ed25519_as_jwk(public_key, key_id),
         "ecdsa" | "es256" => Err(JacsError::CryptoError(
             "ECDSA JWK export is not yet implemented in this build".to_string(),
@@ -201,7 +152,6 @@ pub fn sign_jws(
     // Create JWS header
     let header = json!({
         "alg": match algorithm {
-            "rsa" => "RS256",
             "ring-Ed25519" => "EdDSA",
             "ecdsa" | "es256" => return Err(JacsError::CryptoError("ECDSA JWS signing is not yet implemented in this build".to_string()).into()),
             _ => return Err(JacsError::CryptoError(format!("Unsupported JWS algorithm: {}", algorithm)).into()),
@@ -219,11 +169,6 @@ pub fn sign_jws(
 
     // Sign directly using the crypto wrappers
     let signature = match algorithm {
-        "rsa" => {
-            let sig_b64 =
-                crate::crypt::rsawrapper::sign_string(private_key.to_vec(), &signing_input)?;
-            general_purpose::STANDARD.decode(&sig_b64)?
-        }
         "ring-Ed25519" => {
             let sig_b64 =
                 crate::crypt::ringwrapper::sign_string(private_key.to_vec(), &signing_input)?;
@@ -259,7 +204,7 @@ pub fn sign_jws(
 ///
 /// * `jws` - JWS compact serialization string
 /// * `public_key` - The public key bytes for verification
-/// * `algorithm` - The key algorithm (e.g., "rsa", "ring-Ed25519")
+/// * `algorithm` - The key algorithm (for example, "ring-Ed25519")
 ///
 /// # Returns
 ///
@@ -287,7 +232,6 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
 
     // Verify algorithm matches
     let expected_alg = match algorithm {
-        "rsa" => "RS256",
         "ring-Ed25519" => "EdDSA",
         _ => {
             return Err(JacsError::CryptoError(format!(
@@ -319,13 +263,6 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
 
     // Verify the signature
     match algorithm {
-        "rsa" => {
-            crate::crypt::rsawrapper::verify_string(
-                public_key.to_vec(),
-                &signing_input,
-                &signature_standard_b64,
-            )?;
-        }
         "ring-Ed25519" => {
             crate::crypt::ringwrapper::verify_string(
                 public_key.to_vec(),
@@ -357,15 +294,15 @@ mod tests {
     #[test]
     fn test_create_jwk_set() {
         let jwk = Jwk {
-            kty: "RSA".to_string(),
+            kty: "OKP".to_string(),
             kid: "test-key".to_string(),
-            alg: "RS256".to_string(),
+            alg: "EdDSA".to_string(),
             use_: "sig".to_string(),
-            n: Some("test_n".to_string()),
-            e: Some("AQAB".to_string()),
-            x: None,
+            n: None,
+            e: None,
+            x: Some("test_x".to_string()),
             y: None,
-            crv: None,
+            crv: Some("Ed25519".to_string()),
         };
 
         let jwk_set = create_jwk_set(vec![jwk]);

@@ -7,12 +7,8 @@ pub mod kem;
 pub mod pq2025;
 pub mod private_key;
 pub mod ringwrapper;
-pub mod rsawrapper; // ML-DSA signatures // ML-KEM encryption
 
-use constants::{
-    ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE,
-    RSA_MIN_KEY_LENGTH, RSA_NON_ASCII_RATIO,
-};
+use constants::{ED25519_NON_ASCII_RATIO, ED25519_PUBLIC_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE};
 
 use crate::agent::Agent;
 use crate::error::JacsError;
@@ -53,14 +49,13 @@ fn armor_pem_block(data: &[u8], block_type: &str) -> String {
 /// Convert raw public-key bytes into canonical PEM text for external APIs.
 ///
 /// Internally, JACS stores public keys as raw algorithm-specific bytes for
-/// Ed25519 and pq2025, while RSA keys may already be PEM text. This helper
-/// preserves existing PEM blocks and otherwise ASCII-armors the exact bytes
-/// without lossy decoding.
+/// Ed25519 and pq2025. This helper preserves existing PEM blocks and otherwise
+/// ASCII-armors the exact bytes without lossy decoding.
 #[must_use = "public key PEM must be used"]
 pub fn normalize_public_key_pem(public_key: &[u8]) -> String {
     if let Ok(text) = std::str::from_utf8(public_key) {
         let trimmed = text.trim();
-        if trimmed.contains("BEGIN PUBLIC KEY") || trimmed.contains("BEGIN RSA PUBLIC KEY") {
+        if trimmed.contains("BEGIN PUBLIC KEY") {
             let mut normalized = trimmed.replace("\r\n", "\n").replace('\r', "\n");
             if !normalized.ends_with('\n') {
                 normalized.push('\n');
@@ -87,8 +82,6 @@ use crate::keystore::{KeySpec, KeyStore};
 
 #[derive(Debug, AsRefStr, Display, EnumString, Clone)]
 pub enum CryptoSigningAlgorithm {
-    #[strum(serialize = "RSA-PSS")]
-    RsaPss,
     #[strum(serialize = "ring-Ed25519")]
     RingEd25519,
     #[strum(serialize = "pq2025")]
@@ -97,7 +90,7 @@ pub enum CryptoSigningAlgorithm {
 
 /// Returns the list of verification algorithms actually implemented in JACS.
 pub fn supported_verification_algorithms() -> Vec<&'static str> {
-    vec!["ring-Ed25519", "RSA-PSS", "pq2025"]
+    vec!["ring-Ed25519", "pq2025"]
 }
 
 /// Returns the list of algorithms still permitted for new private-key use.
@@ -117,7 +110,7 @@ fn rsa_private_key_operations_disabled(algorithm: &str) -> bool {
     )
 }
 
-/// Reject new RSA private-key operations while preserving verification support.
+/// Reject RSA private-key operations.
 pub fn ensure_private_key_operation_allowed(
     algorithm: &str,
     operation: &str,
@@ -125,9 +118,7 @@ pub fn ensure_private_key_operation_allowed(
     if rsa_private_key_operations_disabled(algorithm) {
         let allowed = supported_private_key_algorithms().join(", ");
         return Err(JacsError::CryptoError(format!(
-            "RSA private-key {} is disabled due to RUSTSEC-2023-0071 \
-             (Marvin timing sidechannel). Use one of [{}] for new signing keys. \
-             RSA verification remains supported for existing artifacts.",
+            "RSA private-key {} is not supported by this JACS build. Use one of [{}].",
             operation, allowed
         )));
     }
@@ -143,9 +134,8 @@ pub const JACS_AGENT_PUBLIC_KEY_FILENAME: &str = "JACS_AGENT_PUBLIC_KEY_FILENAME
 /// Prefer using the explicit `signingAlgorithm` field from the signature document.
 /// This function should only be used as a fallback for legacy documents.
 ///
-/// Each algorithm has unique characteristics in their public keys:
+/// Each supported algorithm has unique characteristics in its public keys:
 /// - Ed25519: Fixed length of 32 bytes, contains non-ASCII characters
-/// - RSA-PSS: Typically longer (512+ bytes), mostly ASCII-compatible and starts with specific ASN.1 DER encoding
 /// - Pq2025 (ML-DSA-87): 2592-byte public keys
 pub fn detect_algorithm_from_public_key(
     public_key: &[u8],
@@ -167,18 +157,6 @@ pub fn detect_algorithm_from_public_key(
         return Ok(CryptoSigningAlgorithm::RingEd25519);
     }
 
-    // RSA keys are typically longer, mostly ASCII-compatible, and often start with specific ASN.1 DER encoding
-    if public_key.len() > RSA_MIN_KEY_LENGTH
-        && public_key.starts_with(&[0x30])
-        && non_ascii_ratio < RSA_NON_ASCII_RATIO
-    {
-        debug!(
-            algorithm = "RSA-PSS",
-            "Detected RSA-PSS from public key format"
-        );
-        return Ok(CryptoSigningAlgorithm::RsaPss);
-    }
-
     // ML-DSA-87 (Pq2025) has exactly 2592 byte public keys
     if public_key.len() == ML_DSA_87_PUBLIC_KEY_SIZE {
         debug!(
@@ -189,7 +167,7 @@ pub fn detect_algorithm_from_public_key(
     }
 
     // If we have a high proportion of non-ASCII characters but don't match other criteria,
-    // it's more likely to be Ed25519 than RSA.
+    // it's more likely to be Ed25519.
     if non_ascii_ratio > ED25519_NON_ASCII_RATIO {
         debug!(
             algorithm = "RingEd25519",
@@ -361,7 +339,7 @@ impl KeyManager for Agent {
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
             format!(
                 "Document signing failed: unknown signing algorithm '{}'. \
-                Supported algorithms: ring-Ed25519, RSA-PSS, pq2025.",
+                Supported algorithms: ring-Ed25519, pq2025.",
                 key_algorithm
             )
         })?;
@@ -461,7 +439,7 @@ impl KeyManager for Agent {
         let _algo = CryptoSigningAlgorithm::from_str(&key_algorithm).map_err(|_| {
             format!(
                 "Batch signing failed: unknown signing algorithm '{}'. \
-                Supported algorithms: ring-Ed25519, RSA-PSS, pq2025.",
+                Supported algorithms: ring-Ed25519, pq2025.",
                 key_algorithm
             )
         })?;
@@ -565,26 +543,26 @@ impl KeyManager for Agent {
                 })?
             }
             None => {
-                warn!(
-                    "SECURITY: signingAlgorithm not provided for verification. \
-                    Auto-detection is deprecated and may be removed in a future version. \
-                    Set JACS_REQUIRE_EXPLICIT_ALGORITHM=true to enforce explicit algorithms."
-                );
-
-                // Check if strict mode is enabled
-                let strict =
-                    crate::storage::jenv::get_env_var("JACS_REQUIRE_EXPLICIT_ALGORITHM", false)
-                        .ok()
-                        .flatten()
-                        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
-                        .unwrap_or(false);
-                if strict {
+                let allow_legacy_detection = crate::storage::jenv::get_env_var(
+                    "JACS_ALLOW_LEGACY_ALGORITHM_DETECTION",
+                    false,
+                )
+                .ok()
+                .flatten()
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false);
+                if !allow_legacy_detection {
                     return Err(
                         "Signature verification requires explicit signingAlgorithm field. \
-                        Re-sign the document to include the signingAlgorithm field."
+                        Re-sign the document to include the signingAlgorithm field, or set \
+                        JACS_ALLOW_LEGACY_ALGORITHM_DETECTION=true to verify legacy documents."
                             .into(),
                     );
                 }
+                warn!(
+                    "SECURITY: signingAlgorithm not provided for verification. \
+                    Legacy auto-detection is enabled by JACS_ALLOW_LEGACY_ALGORITHM_DETECTION."
+                );
 
                 // Try to auto-detect the algorithm type from the public key
                 match detect_algorithm_from_public_key(&public_key) {
@@ -616,9 +594,6 @@ impl KeyManager for Agent {
 
         let algo_str = algo.to_string();
         let result = match algo {
-            CryptoSigningAlgorithm::RsaPss => {
-                rsawrapper::verify_string(public_key, data, signature_base64)
-            }
             CryptoSigningAlgorithm::RingEd25519 => {
                 ringwrapper::verify_string(public_key, data, signature_base64)
             }

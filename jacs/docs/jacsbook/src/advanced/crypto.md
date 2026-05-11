@@ -7,11 +7,7 @@ JACS supports multiple cryptographic algorithms for digital signatures, providin
 | Algorithm | Config Value | Type | Key Size | Signature Size | Recommended Use |
 |-----------|--------------|------|----------|----------------|-----------------|
 | Ed25519 | `ring-Ed25519` | Elliptic Curve | 32 bytes | 64 bytes | General purpose (default) |
-| RSA-PSS | `RSA-PSS` | RSA | 2048-4096 bits | 256-512 bytes | Legacy verification only |
-| Dilithium | `pq-dilithium` | Lattice-based | ~1.3 KB | ~2.4 KB | Post-quantum |
-| PQ2025 | `pq2025` | Hybrid | ~1.3 KB | ~2.5 KB | Transitional |
-
-`RSA-PSS` remains documented because JACS still verifies historical RSA-signed artifacts. New RSA key generation, signing, and rotation are intentionally unsupported.
+| PQ2025 | `pq2025` | ML-DSA-87 | 2,592 bytes | 4,627 bytes | Post-quantum compliance |
 
 ## Ed25519 (ring-Ed25519)
 
@@ -57,54 +53,24 @@ signature = agent.sign_string("Hello, World!")
 print(f"Signature (64 bytes): {len(signature)} characters base64")
 ```
 
-## RSA-PSS (Legacy Verification Only)
-
-Industry-standard RSA with Probabilistic Signature Scheme padding.
+## PQ2025
 
 ### Overview
 
-RSA-PSS support exists so JACS can verify older artifacts that were already signed with RSA. JACS no longer supports creating new RSA signing keys or rotating agents into RSA.
+PQ2025 uses ML-DSA-87, the FIPS-204 post-quantum signature algorithm currently supported by JACS.
 
 ### Characteristics
 
-- **Speed**: Slower than Ed25519
-- **Key Size**: 2048-4096 bits
-- **Signature Size**: Same as key size (256-512 bytes)
-- **Security Level**: ~112-128 bits (2048-bit key)
-
-### Use Cases
-
-- Verifying historical RSA-signed documents
-- Interoperating with legacy systems while migrating them to Ed25519 or pq2025
-- Reading old configs or agent records that still declare `RSA-PSS`
-
-### Considerations
-
-- Larger signatures increase document size
-- Slower than Ed25519
-- Larger keys needed for equivalent security
-- New RSA signing operations are disabled due to `RUSTSEC-2023-0071`
-
-## Dilithium (pq-dilithium)
-
-NIST-standardized post-quantum digital signature algorithm.
-
-### Overview
-
-Dilithium is a lattice-based signature scheme selected by NIST for post-quantum cryptography standardization. It provides security against both classical and quantum computers.
-
-### Characteristics
-
-- **Speed**: Moderate (faster than RSA, slower than Ed25519)
-- **Key Size**: ~1.3 KB public key, ~2.5 KB private key
-- **Signature Size**: ~2.4 KB
+- **Speed**: Moderate (slower than Ed25519)
+- **Key Size**: 2,592-byte public keys
+- **Signature Size**: 4,627 bytes
 - **Security Level**: NIST Level 3 (quantum-resistant)
 
 ### Configuration
 
 ```json
 {
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 ```
 
@@ -117,45 +83,9 @@ Dilithium is a lattice-based signature scheme selected by NIST for post-quantum 
 
 ### Considerations
 
-- Larger signatures and keys than classical algorithms
-- Newer algorithm (less battle-tested)
+- Larger signatures and keys than Ed25519
+- Use for compliance or long-lived signatures where post-quantum readiness matters
 - May be required for future compliance
-
-## PQ2025 (Hybrid)
-
-Transitional hybrid scheme combining classical and post-quantum algorithms.
-
-### Overview
-
-PQ2025 combines Ed25519 with Dilithium, providing security even if one algorithm is broken. This approach is recommended by security researchers during the quantum transition period.
-
-### Characteristics
-
-- **Speed**: Slower (two signatures computed)
-- **Key Size**: Combined Ed25519 + Dilithium
-- **Signature Size**: ~2.5 KB (combined)
-- **Security Level**: Max of both algorithms
-
-### Configuration
-
-```json
-{
-  "jacs_agent_key_algorithm": "pq2025"
-}
-```
-
-### Use Cases
-
-- Transitioning to post-quantum
-- Maximum security requirements
-- Uncertainty about algorithm security
-- Long-lived documents
-
-### Considerations
-
-- Largest signatures
-- Slowest signing/verification
-- Best for paranoid security requirements
 
 ## Algorithm Selection Guide
 
@@ -165,10 +95,9 @@ PQ2025 combines Ed25519 with Dilithium, providing security even if one algorithm
 |-------------|----------------------|
 | Best performance | `ring-Ed25519` |
 | Smallest signatures | `ring-Ed25519` |
-| Legacy compatibility | Verify historical `RSA-PSS` artifacts, but create new keys with `ring-Ed25519` |
-| Quantum resistance | `pq-dilithium` |
+| Quantum resistance | `pq2025` |
 | Maximum security | `pq2025` |
-| General purpose | `ring-Ed25519` |
+| General purpose | `pq2025` |
 
 ### By Use Case
 
@@ -183,7 +112,7 @@ Fast signing is critical for real-time communication.
 **Legal/Financial Documents**:
 ```json
 {
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 ```
 Long-term validity requires quantum resistance.
@@ -191,10 +120,10 @@ Long-term validity requires quantum resistance.
 **Enterprise Integration**:
 ```json
 {
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 ```
-Use Ed25519 for new agents and keep RSA-PSS only for verifying older infrastructure outputs.
+Use `pq2025` where cross-organization retention or compliance expectations favor post-quantum signatures.
 
 **High-Security**:
 ```json
@@ -220,9 +149,7 @@ jacs_keys/
 | Algorithm | Private Key Format | Public Key Format |
 |-----------|-------------------|-------------------|
 | ring-Ed25519 | PEM (PKCS#8) | PEM (SPKI) |
-| RSA-PSS | PEM (PKCS#8) | PEM (SPKI) |
-| pq-dilithium | PEM (custom) | PEM (custom) |
-| pq2025 | PEM (combined) | PEM (combined) |
+| pq2025 | Raw ML-DSA-87 bytes | Raw ML-DSA-87 bytes |
 
 ## Signature Structure
 
@@ -265,7 +192,7 @@ To migrate to a new algorithm:
 1. **Generate New Keys**
    ```json
    {
-     "jacs_agent_key_algorithm": "pq-dilithium"
+     "jacs_agent_key_algorithm": "pq2025"
    }
    ```
 
@@ -284,7 +211,7 @@ To migrate to a new algorithm:
    ```json
    {
      "jacs_agent_id_and_version": "agent-id:new-version",
-     "jacs_agent_key_algorithm": "pq-dilithium"
+     "jacs_agent_key_algorithm": "pq2025"
    }
    ```
 
@@ -299,8 +226,6 @@ Approximate performance (varies by hardware):
 | Algorithm | Sign (ops/sec) | Verify (ops/sec) | Key Gen (ms) |
 |-----------|---------------|------------------|--------------|
 | ring-Ed25519 | ~50,000 | ~20,000 | <1 |
-| RSA-PSS (2048) | ~1,000 | ~30,000 | ~100 |
-| pq-dilithium | ~5,000 | ~10,000 | ~1 |
 | pq2025 | ~4,000 | ~8,000 | ~2 |
 
 ## Security Considerations

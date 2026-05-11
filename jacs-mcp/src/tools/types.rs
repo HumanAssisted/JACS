@@ -480,7 +480,7 @@ pub struct CreateAgreementParams {
     )]
     pub quorum: Option<u32>,
     #[schemars(
-        description = "Only allow these signing algorithms. Values: 'RSA-PSS', 'ring-Ed25519', 'pq2025'"
+        description = "Only allow these signing algorithms. Values: 'ring-Ed25519', 'pq2025'"
     )]
     pub required_algorithms: Option<Vec<String>>,
     #[schemars(description = "Minimum crypto strength: 'classical' or 'post-quantum'")]

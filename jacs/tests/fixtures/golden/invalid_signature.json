@@ -29,7 +29,7 @@
     ],
     "publicKeyHash": "0000000000000000000000000000000000000000000000000000000000000000",
     "signature": "INVALID_CORRUPTED_SIGNATURE_FOR_TESTING_AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNNOOOOPPPPQQQQRRRRSSSSTTTTUUUUVVVVWWWWXXXXYYYYZZZZ",
-    "signingAlgorithm": "RSA-PSS"
+    "signingAlgorithm": "ring-Ed25519"
   },
   "_golden_fixture_note": "This fixture intentionally has an invalid signature. Verification should fail with a signature error."
 }

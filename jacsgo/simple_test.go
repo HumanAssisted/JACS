@@ -27,7 +27,7 @@ func withLoadedAgent(t *testing.T, fn func(t *testing.T, info *AgentInfo)) {
 
 	resetSimpleState()
 
-	tmpDir := t.TempDir()
+	tmpDir := canonicalTempDir(t)
 	originalCwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("failed to get cwd: %v", err)
@@ -56,8 +56,7 @@ func withLoadedAgent(t *testing.T, fn func(t *testing.T, info *AgentInfo)) {
 
 	info, err := Create("go-test-agent", &CreateAgentOptions{
 		Password: testPrivateKeyPassword,
-		// RSA-PSS private-key signing is disabled (RUSTSEC-2023-0071);
-		// use Ed25519 for all test-generated agents.
+		// Use Ed25519 for fast test-generated agents.
 		Algorithm:     "ring-Ed25519",
 		DataDirectory: "jacs_data",
 		KeyDirectory:  "jacs_keys",

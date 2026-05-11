@@ -800,8 +800,8 @@ class JacsClient:
         version, and re-signs the config file.
 
         Args:
-            algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS",
-                      "pq2025"). If None, keeps the current algorithm.
+            algorithm: Optional new algorithm ("ring-Ed25519", "pq2025"). If
+                      None, keeps the current algorithm.
 
         Returns:
             dict with keys: jacs_id, old_version, new_version,

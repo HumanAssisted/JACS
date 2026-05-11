@@ -166,7 +166,7 @@ async function main() {
         agentVersion: exampleAgentData.jacsVersion,
         date: new Date().toISOString(),
         signature: 'mock-signature-base64',
-        signingAlgorithm: 'RSA-PSS',
+        signingAlgorithm: 'ring-Ed25519',
         publicKeyHash: 'mock-public-key-hash',
         fields: Object.keys(doc).filter(k => k !== 'jacsSignature')
       },

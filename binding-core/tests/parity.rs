@@ -499,7 +499,11 @@ fn test_parity_sign_file_pq2025() {
 
 fn parity_sign_file(algo: &str) {
     let tmp = tempfile::TempDir::new().unwrap();
-    let file_path = tmp.path().join("parity_test_file.txt");
+    let file_path = tmp
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("parity_test_file.txt");
     std::fs::write(&file_path, b"parity test content").unwrap();
 
     let wrapper = ephemeral(algo);
@@ -566,9 +570,10 @@ fn test_parity_verification_result_structure() {
 #[test]
 fn test_parity_create_with_params() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let data_dir = tmp.path().join("data");
-    let key_dir = tmp.path().join("keys");
-    let config_path = tmp.path().join("config.json");
+    let tmp_path = tmp.path().canonicalize().unwrap();
+    let data_dir = tmp_path.join("data");
+    let key_dir = tmp_path.join("keys");
+    let config_path = tmp_path.join("config.json");
 
     // Set password env var for the signing step (SimpleAgent reads it for key decryption)
     unsafe {

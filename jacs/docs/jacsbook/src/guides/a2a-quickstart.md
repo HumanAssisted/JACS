@@ -68,7 +68,7 @@ Receiving agents that don't understand JACS will ignore the extra fields. Receiv
 JACS generates two key pairs per agent:
 
 - **Post-quantum (ML-DSA-87)** for JACS document signatures -- future-proof
-- **Traditional (RSA/ECDSA)** for JWS Agent Card signatures -- A2A ecosystem compatibility
+- **Ed25519 (`EdDSA`)** for JWS Agent Card signatures -- A2A ecosystem compatibility
 
 This means your agent is compatible with both the current A2A ecosystem and quantum-resistant verification.
 

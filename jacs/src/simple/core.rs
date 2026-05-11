@@ -495,7 +495,6 @@ impl SimpleAgent {
             // matching ephemeral() and quickstart() behaviour.
             match params.algorithm.as_str() {
                 "ed25519" => "ring-Ed25519".to_string(),
-                "rsa-pss" => "RSA-PSS".to_string(),
                 other => other.to_string(),
             }
         };
@@ -949,7 +948,6 @@ impl SimpleAgent {
         // Map user-friendly names to internal algorithm strings
         let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
-            "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
             other => other,
         };
@@ -1757,7 +1755,7 @@ impl SimpleAgent {
     ///
     /// This returns the raw public key bytes as stored in the agent's internal
     /// state. The format depends on the algorithm (e.g., raw 32 bytes for
-    /// Ed25519, PEM for RSA-PSS). These bytes are the same format expected by
+    /// Ed25519). These bytes are the same format expected by
     /// [`verify_with_key()`](Self::verify_with_key) and
     /// [`verify_document_signature()`](crate::agent::document::DocumentTraits::verify_document_signature).
     #[must_use = "public key data must be used"]
@@ -1771,8 +1769,8 @@ impl SimpleAgent {
         })
     }
 
-    /// Returns the agent's configured key algorithm, e.g. `"ring-Ed25519"`,
-    /// `"pq2025"`, `"RSA-PSS"`. This is the same value that was passed to
+    /// Returns the agent's configured key algorithm, e.g. `"ring-Ed25519"` or
+    /// `"pq2025"`. This is the same value that was passed to
     /// `SimpleAgent::ephemeral` or set on the loaded agent's config. Useful
     /// for deriving the algorithm tag on inline-text signature blocks
     /// without the heuristic-based `detect_algorithm_from_public_key` path.

@@ -377,7 +377,7 @@ impl JacsAgent {
     /// and re-signs the config file. Optionally changes the signing algorithm.
     ///
     /// Args:
-    ///     algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS", "pq2025").
+    ///     algorithm: Optional new algorithm ("ring-Ed25519", "pq2025").
     ///               If None, keeps the current algorithm.
     ///
     /// Returns:
@@ -936,7 +936,7 @@ impl SimpleAgent {
     /// Args:
     ///     name: Human-readable name for the agent
     ///     purpose: Optional description of the agent's purpose
-    ///     key_algorithm: Signing algorithm ("ed25519", "rsa-pss", or "pq2025")
+    ///     key_algorithm: Signing algorithm ("ed25519" or "pq2025")
     ///
     /// Returns:
     ///     Tuple of (SimpleAgent instance, dict with agent_id, name, public_key_path, config_path)
@@ -975,7 +975,7 @@ impl SimpleAgent {
     /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
     ///
     /// Args:
-    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "pq2025"
+    ///     algorithm: Signing algorithm ("ed25519", "pq2025"). Default: "pq2025"
     ///
     /// Returns:
     ///     Tuple of (SimpleAgent instance, dict with agent_id, name, algorithm, version)
@@ -1248,7 +1248,7 @@ impl SimpleAgent {
     /// and re-signs the config file. Optionally changes the signing algorithm.
     ///
     /// Args:
-    ///     algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS", "pq2025").
+    ///     algorithm: Optional new algorithm ("ring-Ed25519", "pq2025").
     ///               If None, keeps the current algorithm.
     ///
     /// Returns:

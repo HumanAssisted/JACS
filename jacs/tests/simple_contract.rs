@@ -41,7 +41,6 @@ fn ephemeral_default() -> (SimpleAgent, jacs::simple::AgentInfo) {
 fn internal_algorithm(friendly: &str) -> &str {
     match friendly {
         "ed25519" => "ring-Ed25519",
-        "rsa-pss" | "rsa" => "RSA-PSS",
         "pq2025" => "pq2025",
         other => other,
     }
@@ -395,15 +394,16 @@ fn test_ephemeral_ed25519() {
 }
 
 #[test]
-fn test_ephemeral_rsa_is_disabled() {
-    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-        .err()
-        .expect("ephemeral rsa-pss should be blocked");
+fn test_ephemeral_ed25519_signs_and_verifies() {
+    let (agent, info) =
+        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
     assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
+        info.algorithm.contains("Ed25519"),
+        "ed25519 alias should select ring-Ed25519, got: {}",
+        info.algorithm
     );
+    let signed = agent.sign_message(&json!({"curve": "ed25519"})).unwrap();
+    assert!(agent.verify(&signed.raw).unwrap().valid);
 }
 
 // =============================================================================
@@ -707,14 +707,13 @@ fn test_get_public_key_pem_returns_pem_format() {
 }
 
 #[test]
-fn test_get_public_key_pem_rsa_creation_is_disabled() {
-    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-        .err()
-        .expect("ephemeral rsa-pss should be blocked");
+fn test_get_public_key_pem_ed25519() {
+    let (agent, _info) =
+        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
+    let pem = agent.get_public_key_pem().expect("public key pem");
     assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
+        pem.contains("BEGIN PUBLIC KEY"),
+        "PEM should contain standard PEM markers"
     );
 }
 
@@ -864,19 +863,17 @@ fn test_sign_verify_roundtrip_ed25519() {
 }
 
 // =============================================================================
-// Integration: Sign-then-verify roundtrip with RSA
+// Integration: Sign-then-verify roundtrip with Ed25519
 // =============================================================================
 
 #[test]
-fn test_sign_verify_roundtrip_rsa_is_disabled() {
-    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-        .err()
-        .expect("ephemeral rsa-pss should be blocked");
-    assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
-    );
+fn test_sign_verify_roundtrip_ed25519() {
+    let (agent, _info) =
+        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
+    let signed = agent
+        .sign_message(&json!({"roundtrip": "ed25519"}))
+        .unwrap();
+    assert!(agent.verify(&signed.raw).unwrap().valid);
 }
 
 // =============================================================================

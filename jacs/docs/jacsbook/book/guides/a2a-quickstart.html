@@ -229,7 +229,7 @@ signed = client.sign_artifact(your_existing_artifact, "task")
 <p>JACS generates two key pairs per agent:</p>
 <ul>
 <li><strong>Post-quantum (ML-DSA-87)</strong> for JACS document signatures -- future-proof</li>
-<li><strong>Traditional (RSA/ECDSA)</strong> for JWS Agent Card signatures -- A2A ecosystem compatibility</li>
+<li><strong>Ed25519 (<code>EdDSA</code>)</strong> for JWS Agent Card signatures -- A2A ecosystem compatibility</li>
 </ul>
 <p>This means your agent is compatible with both the current A2A ecosystem and quantum-resistant verification.</p>
 <hr />

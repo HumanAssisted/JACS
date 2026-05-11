@@ -445,45 +445,6 @@ fn build_jwk_set_from_public_key_bytes(
         }));
     }
 
-    if normalized_algorithm.contains("rsa") || normalized_algorithm.is_empty() {
-        use rsa::traits::PublicKeyParts;
-        use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
-
-        let rsa_key = if let Ok(key) = RsaPublicKey::from_pkcs1_der(public_key) {
-            key
-        } else if let Ok(key) = RsaPublicKey::from_public_key_der(public_key) {
-            key
-        } else if let Ok(pem) = std::str::from_utf8(public_key) {
-            match RsaPublicKey::from_public_key_pem(pem) {
-                Ok(key) => key,
-                Err(e) if normalized_algorithm.contains("rsa") => {
-                    return Err(BindingCoreError::invalid_argument(format!(
-                        "Failed to parse RSA public key for JWK export: {}",
-                        e
-                    )));
-                }
-                Err(_) => return Ok(json!({ "keys": [] })),
-            }
-        } else if normalized_algorithm.contains("rsa") {
-            return Err(BindingCoreError::invalid_argument(
-                "Failed to parse RSA public key for JWK export.",
-            ));
-        } else {
-            return Ok(json!({ "keys": [] }));
-        };
-
-        return Ok(json!({
-            "keys": [{
-                "kty": "RSA",
-                "kid": key_id,
-                "alg": "RS256",
-                "use": "sig",
-                "n": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.n().to_bytes_be()),
-                "e": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.e().to_bytes_be()),
-            }]
-        }));
-    }
-
     Ok(json!({ "keys": [] }))
 }
 
@@ -743,7 +704,6 @@ fn binding_inline_algorithm_tag<T: std::fmt::Display>(algo: T) -> String {
     match s.as_str() {
         "ring-Ed25519" | "ed25519" | "Ed25519" => "ed25519".to_string(),
         "pq2025" | "ML-DSA-87" | "ml-dsa-87" => "pq2025".to_string(),
-        "RSA-PSS" | "rsa-pss" => "rsa-pss".to_string(),
         _ => s.to_lowercase(),
     }
 }
@@ -1648,7 +1608,6 @@ impl AgentWrapper {
         // Map user-friendly names to internal algorithm strings
         let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
-            "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
             other => other,
         };
@@ -2676,7 +2635,10 @@ pub fn verify_document_standalone(
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_nanos())
                     .unwrap_or(0);
-                let cache_root = std::env::temp_dir().join(format!(
+                let temp_root = std::env::temp_dir()
+                    .canonicalize()
+                    .unwrap_or_else(|_| std::env::temp_dir());
+                let cache_root = temp_root.join(format!(
                     "jacs_standalone_keycache_{}_{}",
                     std::process::id(),
                     nonce
@@ -2726,7 +2688,10 @@ pub fn verify_document_standalone(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let config_path = std::env::temp_dir().join(format!(
+    let temp_root = std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let config_path = temp_root.join(format!(
         "jacs_standalone_verify_config_{}_{}_{}.json",
         std::process::id(),
         thread_id,

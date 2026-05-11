@@ -456,7 +456,7 @@ jacs mcp
 <ul>
 <li><strong>jacsId</strong>: Permanent UUID identifying the agent</li>
 <li><strong>jacsVersion</strong>: UUID that changes with each update</li>
-<li><strong>Cryptographic Keys</strong>: Ed25519, RSA, or post-quantum key pairs</li>
+<li><strong>Cryptographic Keys</strong>: Ed25519 or post-quantum key pairs</li>
 <li><strong>Services</strong>: Capabilities the agent offers</li>
 <li><strong>Contacts</strong>: How to reach the agent</li>
 </ul>
@@ -643,11 +643,10 @@ jacs mcp
 <p><strong>Current Standards</strong></p>
 <ul>
 <li><strong>ring-Ed25519</strong>: Fast elliptic curve signatures using the ring library (recommended)</li>
-<li><strong>RSA-PSS</strong>: Legacy RSA verification for older artifacts; not used for new key generation</li>
 </ul>
 <p><strong>Post-Quantum</strong></p>
 <ul>
-<li><strong>pq-dilithium</strong>: NIST-standardized post-quantum signatures</li>
+<li><strong>pq2025</strong>: ML-DSA-87 signatures for FIPS-204 post-quantum readiness</li>
 </ul>
 <h3 id="signature-process"><a class="header" href="#signature-process">Signature Process</a></h3>
 <ol>
@@ -1268,7 +1267,7 @@ cd jacspy &amp;&amp; maturin develop --release
 <h3 id="private-key-decryption-failed"><a class="header" href="#private-key-decryption-failed">Private key decryption failed</a></h3>
 <p>Wrong or missing password. Check <code>JACS_PRIVATE_KEY_PASSWORD</code>. For CLI, you may also set <code>JACS_PASSWORD_FILE</code> to a file that contains only the password, or use <code>jacs keychain set</code> to store the password in the OS keychain. Set exactly one explicit source; if both env var and password file are set, CLI fails by design. The OS keychain is only consulted when neither env var nor password file is present.</p>
 <h3 id="algorithm-detection-failed"><a class="header" href="#algorithm-detection-failed">Algorithm detection failed</a></h3>
-<p>Set the <code>signingAlgorithm</code> field in your config, or pass it explicitly to <code>quickstart(...)</code> / <code>create(...)</code>. Valid values for new keys: <code>pq2025</code>, <code>ring-Ed25519</code>. <code>RSA-PSS</code> is legacy verification-only.</p>
+<p>Set the <code>signingAlgorithm</code> field in your config, or pass it explicitly to <code>quickstart(...)</code> / <code>create(...)</code>. Valid values: <code>pq2025</code>, <code>ring-Ed25519</code>.</p>
 <h2 id="runtime-issues"><a class="header" href="#runtime-issues">Runtime Issues</a></h2>
 <h3 id="agent-creation-fails"><a class="header" href="#agent-creation-fails">Agent creation fails</a></h3>
 <p>Ensure the data and key directories exist and are writable. By default these are <code>./jacs_data</code> and <code>./jacs_keys</code>.</p>
@@ -1379,7 +1378,7 @@ jacs = { version = "0.3", features = ["otlp-logs", "otlp-metrics", "otlp-tracing
 <h3 id="webassembly-notes"><a class="header" href="#webassembly-notes">WebAssembly Notes</a></h3>
 <p>When targeting WebAssembly, some features are unavailable:</p>
 <ul>
-<li>Post-quantum cryptographic algorithms (<code>pq2025</code>, legacy <code>pq-dilithium</code>)</li>
+<li>Post-quantum cryptographic algorithms (<code>pq2025</code>)</li>
 <li>File system storage backend</li>
 <li>HTTP-based remote operations</li>
 </ul>
@@ -1410,7 +1409,7 @@ jacs agent create --create-keys true
 <tr><td><code>JACS_DATA_DIRECTORY</code></td><td>Directory for document storage</td><td><code>./jacs_data</code></td></tr>
 <tr><td><code>JACS_KEY_DIRECTORY</code></td><td>Directory for cryptographic keys</td><td><code>./jacs_keys</code></td></tr>
 <tr><td><code>JACS_DEFAULT_STORAGE</code></td><td>Storage backend (<code>fs</code>, <code>memory</code>)</td><td><code>fs</code></td></tr>
-<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>pq2025</code>; legacy <code>RSA-PSS</code> is verification-only, <code>pq-dilithium</code> is deprecated)</td><td><code>ring-Ed25519</code></td></tr>
+<tr><td><code>JACS_AGENT_KEY_ALGORITHM</code></td><td>Key algorithm (<code>ring-Ed25519</code>, <code>pq2025</code>)</td><td><code>ring-Ed25519</code></td></tr>
 </tbody></table>
 </div>
 <h2 id="troubleshooting-1"><a class="header" href="#troubleshooting-1">Troubleshooting</a></h2>
@@ -1871,12 +1870,10 @@ jacs agent create --create-keys true
 <p>JACS supports multiple cryptographic algorithms:</p>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Description</th><th>Recommended For</th></tr></thead><tbody>
 <tr><td><code>ring-Ed25519</code></td><td>Fast elliptic curve signatures</td><td>General use (default)</td></tr>
-<tr><td><code>RSA-PSS</code></td><td>Traditional RSA signatures</td><td>Legacy verification only</td></tr>
 <tr><td><code>pq2025</code></td><td>Post-quantum ML-DSA-87 signatures</td><td>Future-proof security</td></tr>
-<tr><td><code>pq-dilithium</code></td><td>Legacy post-quantum signatures</td><td>Backward compatibility only (deprecated)</td></tr>
 </tbody></table>
 </div>
-<p>Create new agents with <code>ring-Ed25519</code> or <code>pq2025</code>. <code>RSA-PSS</code> is accepted only so older agents and documents can still be verified.</p>
+<p>Create new agents with <code>ring-Ed25519</code> or <code>pq2025</code>.</p>
 <h3 id="configure-key-algorithm"><a class="header" href="#configure-key-algorithm">Configure Key Algorithm</a></h3>
 <p>In <code>jacs.config.json</code>:</p>
 <pre><code class="language-json">{
@@ -2412,11 +2409,11 @@ agreement = client.create_agreement(
 agreement = client.create_agreement(
     document=proposal,
     agent_ids=agent_ids,
-    required_algorithms=["pq2025", "pq-dilithium"],
+    required_algorithms=["pq2025"],
     minimum_strength="post-quantum"
 )
 </code></pre>
-<p>An agent using Ed25519, or a legacy RSA-PSS agent, will be rejected when trying to sign this agreement.</p>
+<p>An agent using Ed25519 will be rejected when trying to sign this agreement.</p>
 <h3 id="combined-options"><a class="header" href="#combined-options">Combined Options</a></h3>
 <pre><code class="language-python">agreement = client.create_agreement(
     document={"proposal": "Deploy model v2"},
@@ -3799,22 +3796,13 @@ export JACS_DEFAULT_STORAGE="fs"
 </code></pre>
 <p><strong>Pros</strong>: Fast, secure, small signatures
 <strong>Cons</strong>: Requires elliptic curve support</p>
-<h3 id="legacy-rsa-pss-verification"><a class="header" href="#legacy-rsa-pss-verification">Legacy RSA-PSS Verification</a></h3>
-<p>JACS can still verify older artifacts whose metadata says <code>RSA-PSS</code>, but new Node-managed agents should use <code>ring-Ed25519</code> or <code>pq2025</code>.</p>
-<h3 id="pq-dilithium-post-quantum"><a class="header" href="#pq-dilithium-post-quantum">pq-dilithium (Post-Quantum)</a></h3>
-<pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium"
-}
-</code></pre>
-<p><strong>Pros</strong>: Quantum-resistant
-<strong>Cons</strong>: Experimental, large signatures</p>
-<h3 id="pq2025-post-quantum-hybrid"><a class="header" href="#pq2025-post-quantum-hybrid">pq2025 (Post-Quantum Hybrid)</a></h3>
+<h3 id="pq2025-post-quantum"><a class="header" href="#pq2025-post-quantum">pq2025 (Post-Quantum)</a></h3>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
-<p><strong>Pros</strong>: Combines ML-DSA-87 with hybrid approach
-<strong>Cons</strong>: Newest algorithm, largest signatures</p>
+<p><strong>Pros</strong>: FIPS-204 ML-DSA-87 post-quantum signatures
+<strong>Cons</strong>: Larger signatures than Ed25519</p>
 <h2 id="development-setup"><a class="header" href="#development-setup">Development Setup</a></h2>
 <h3 id="project-structure"><a class="header" href="#project-structure">Project Structure</a></h3>
 <pre><code>my-jacs-project/
@@ -4002,7 +3990,7 @@ const signed = await jacs.signMessage({ action: 'approve', amount: 100 });
 <p>Create a persistent agent with keys on disk. If <code>./jacs.config.json</code> already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If <code>JACS_PRIVATE_KEY_PASSWORD</code> is unset, Node quickstart auto-generates a secure password in-process (<code>JACS_SAVE_PASSWORD_FILE=true</code> persists it to <code>./jacs_keys/.jacs_password</code>). Call this once before <code>signMessage()</code> or <code>verify()</code>.</p>
 <p><strong>Parameters:</strong></p>
 <ul>
-<li><code>options</code> (object, required fields): <code>{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }</code>. Default algorithm: <code>"pq2025"</code>. Supported choices for new agents: <code>"ring-Ed25519"</code>, <code>"pq2025"</code>. <code>RSA-PSS</code> is legacy verification-only.</li>
+<li><code>options</code> (object, required fields): <code>{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }</code>. Default algorithm: <code>"pq2025"</code>. Supported choices: <code>"ring-Ed25519"</code>, <code>"pq2025"</code>.</li>
 </ul>
 <p><strong>Returns:</strong> <code>Promise&lt;AgentInfo&gt;</code> (async) or <code>AgentInfo</code> (sync)</p>
 <pre><code class="language-javascript">const info = await jacs.quickstart({
@@ -6296,22 +6284,13 @@ export JACS_DEFAULT_STORAGE="fs"
 </code></pre>
 <p><strong>Pros</strong>: Fast, secure, small signatures
 <strong>Cons</strong>: Requires elliptic curve support</p>
-<h3 id="legacy-rsa-pss-verification-1"><a class="header" href="#legacy-rsa-pss-verification-1">Legacy RSA-PSS Verification</a></h3>
-<p>JACS can still verify older artifacts whose metadata says <code>RSA-PSS</code>, but new Python-managed agents should use <code>ring-Ed25519</code> or <code>pq2025</code>.</p>
-<h3 id="pq-dilithium-post-quantum-1"><a class="header" href="#pq-dilithium-post-quantum-1">pq-dilithium (Post-Quantum)</a></h3>
-<pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium"
-}
-</code></pre>
-<p><strong>Pros</strong>: Quantum-resistant
-<strong>Cons</strong>: Experimental, large signatures</p>
-<h3 id="pq2025-post-quantum-hybrid-1"><a class="header" href="#pq2025-post-quantum-hybrid-1">pq2025 (Post-Quantum Hybrid)</a></h3>
+<h3 id="pq2025-post-quantum-1"><a class="header" href="#pq2025-post-quantum-1">pq2025 (Post-Quantum)</a></h3>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
-<p><strong>Pros</strong>: Combines ML-DSA-87 with hybrid approach
-<strong>Cons</strong>: Newest algorithm, largest signatures</p>
+<p><strong>Pros</strong>: FIPS-204 ML-DSA-87 post-quantum signatures
+<strong>Cons</strong>: Larger signatures than Ed25519</p>
 <h2 id="development-setup-1"><a class="header" href="#development-setup-1">Development Setup</a></h2>
 <h3 id="project-structure-1"><a class="header" href="#project-structure-1">Project Structure</a></h3>
 <pre><code>my-jacs-project/
@@ -6562,7 +6541,7 @@ signed = jacs.sign_message({"action": "approve", "amount": 100})
 <li><code>name</code> (str, required): Agent name used for first-time creation.</li>
 <li><code>domain</code> (str, required): Agent domain used for DNS/public-key verification workflows.</li>
 <li><code>description</code> (str, optional): Human-readable description.</li>
-<li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Supported choices for new agents: <code>"ring-Ed25519"</code>, <code>"pq2025"</code>. <code>RSA-PSS</code> is legacy verification-only.</li>
+<li><code>algorithm</code> (str, optional): Signing algorithm. Default: <code>"pq2025"</code>. Supported choices: <code>"ring-Ed25519"</code>, <code>"pq2025"</code>.</li>
 <li><code>config_path</code> (str, optional): Config path (default: <code>"./jacs.config.json"</code>).</li>
 </ul>
 <p><strong>Returns:</strong> <code>AgentInfo</code> dataclass</p>
@@ -7941,7 +7920,7 @@ payload = result.get('payload')
 <h3 id="configuration-options"><a class="header" href="#configuration-options">Configuration Options</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>jacs_agent_id_and_version</code></td><td>string</td><td>Agent ID and version in format <code>"id:version"</code></td></tr>
-<tr><td><code>jacs_agent_key_algorithm</code></td><td>string</td><td>Signing algorithm for new agents: <code>"ring-Ed25519"</code> or <code>"pq2025"</code>. Legacy values like <code>"RSA-PSS"</code> and <code>"pq-dilithium"</code> may appear when verifying older material.</td></tr>
+<tr><td><code>jacs_agent_key_algorithm</code></td><td>string</td><td>Signing algorithm: <code>"ring-Ed25519"</code> or <code>"pq2025"</code>.</td></tr>
 <tr><td><code>jacs_agent_private_key_filename</code></td><td>string</td><td>Private key filename</td></tr>
 <tr><td><code>jacs_agent_public_key_filename</code></td><td>string</td><td>Public key filename</td></tr>
 <tr><td><code>jacs_data_directory</code></td><td>string</td><td>Directory for data storage</td></tr>
@@ -8318,11 +8297,10 @@ const doc = agent.createDocument(
     "enum": ["human", "human-org", "hybrid", "ai"]
   },
   "jacs_agent_key_algorithm": {
-    "enum": ["RSA-PSS", "ring-Ed25519", "pq-dilithium", "pq2025"]
+    "enum": ["ring-Ed25519", "pq2025"]
   }
 }
 </code></pre>
-<p><code>RSA-PSS</code> remains in the schema for backward compatibility with stored configs and legacy documents, but new signing key creation uses <code>ring-Ed25519</code> or <code>pq2025</code>.</p>
 <h2 id="schema-reference"><a class="header" href="#schema-reference">Schema Reference</a></h2>
 <p>For detailed documentation on specific schemas:</p>
 <ul>
@@ -8743,7 +8721,7 @@ const isOtherValid = agent.verifyAgent('./other-agent.json');
 <tr><td><code>date</code></td><td>string (date-time)</td><td>Yes</td><td>Signing timestamp</td></tr>
 <tr><td><code>signature</code></td><td>string</td><td>Yes</td><td>Base64-encoded signature</td></tr>
 <tr><td><code>publicKeyHash</code></td><td>string</td><td>Yes</td><td>Hash of public key used</td></tr>
-<tr><td><code>signingAlgorithm</code></td><td>string</td><td>Yes</td><td>Algorithm used (<code>ring-Ed25519</code>, <code>pq2025</code>; legacy documents may also carry <code>RSA-PSS</code> or deprecated <code>pq-dilithium</code>)</td></tr>
+<tr><td><code>signingAlgorithm</code></td><td>string</td><td>Yes</td><td>Algorithm used (<code>ring-Ed25519</code> or <code>pq2025</code>)</td></tr>
 <tr><td><code>fields</code></td><td>array</td><td>Yes</td><td>Fields included in signature</td></tr>
 <tr><td><code>response</code></td><td>string</td><td>No</td><td>Text response with signature</td></tr>
 <tr><td><code>responseType</code></td><td>string</td><td>No</td><td>agree, disagree, or reject</td></tr>
@@ -9850,9 +9828,7 @@ let prev = get_previous_message_id(&amp;message);
 <p>Specifies the cryptographic algorithm for signing:</p>
 <div class="table-wrapper"><table><thead><tr><th>Value</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>ring-Ed25519</code></td><td>Ed25519 signatures (recommended)</td></tr>
-<tr><td><code>RSA-PSS</code></td><td>Legacy RSA-PSS compatibility for verifying existing artifacts</td></tr>
-<tr><td><code>pq-dilithium</code></td><td>Post-quantum Dilithium</td></tr>
-<tr><td><code>pq2025</code></td><td>Post-quantum composite</td></tr>
+<tr><td><code>pq2025</code></td><td>FIPS-204 ML-DSA-87 post-quantum signatures</td></tr>
 </tbody></table>
 </div>
 <pre><code class="language-json">{
@@ -10501,18 +10477,14 @@ agent_id = result.get('agentId')  # Who signed the response
 <h3 id="supported-algorithms-1"><a class="header" href="#supported-algorithms-1">Supported Algorithms</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Type</th><th>Security Level</th></tr></thead><tbody>
 <tr><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>High (recommended)</td></tr>
-<tr><td><code>RSA-PSS</code></td><td>RSA</td><td>Legacy verification only</td></tr>
-<tr><td><code>pq-dilithium</code></td><td>Post-Quantum</td><td>Quantum-resistant</td></tr>
-<tr><td><code>pq2025</code></td><td>Composite</td><td>Transitional</td></tr>
+<tr><td><code>pq2025</code></td><td>Post-Quantum</td><td>FIPS-204 ML-DSA-87</td></tr>
 </tbody></table>
 </div>
 <h3 id="algorithm-selection"><a class="header" href="#algorithm-selection">Algorithm Selection</a></h3>
 <p>Choose based on requirements:</p>
 <ul>
 <li><strong>General Use</strong>: <code>ring-Ed25519</code> - fast, secure, small signatures</li>
-<li><strong>Legacy Systems</strong>: Verify older <code>RSA-PSS</code> artifacts, but use <code>ring-Ed25519</code> or <code>pq2025</code> for new keys</li>
-<li><strong>Future-Proofing</strong>: <code>pq-dilithium</code> - quantum-resistant</li>
-<li><strong>Transition</strong>: <code>pq2025</code> - hybrid classical/post-quantum</li>
+<li><strong>Future-Proofing</strong>: <code>pq2025</code> - FIPS-204 post-quantum signatures</li>
 </ul>
 <h2 id="security-best-practices"><a class="header" href="#security-best-practices">Security Best Practices</a></h2>
 <h3 id="1-key-storage"><a class="header" href="#1-key-storage">1. Key Storage</a></h3>
@@ -11062,12 +11034,9 @@ Test signing with new key</li>
 <h2 id="supported-algorithms-2"><a class="header" href="#supported-algorithms-2">Supported Algorithms</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Type</th><th>Key Size</th><th>Signature Size</th><th>Recommended Use</th></tr></thead><tbody>
 <tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>Elliptic Curve</td><td>32 bytes</td><td>64 bytes</td><td>General purpose (default)</td></tr>
-<tr><td>RSA-PSS</td><td><code>RSA-PSS</code></td><td>RSA</td><td>2048-4096 bits</td><td>256-512 bytes</td><td>Legacy verification only</td></tr>
-<tr><td>Dilithium</td><td><code>pq-dilithium</code></td><td>Lattice-based</td><td>~1.3 KB</td><td>~2.4 KB</td><td>Post-quantum</td></tr>
-<tr><td>PQ2025</td><td><code>pq2025</code></td><td>Hybrid</td><td>~1.3 KB</td><td>~2.5 KB</td><td>Transitional</td></tr>
+<tr><td>PQ2025</td><td><code>pq2025</code></td><td>ML-DSA-87</td><td>2,592 bytes</td><td>4,627 bytes</td><td>Post-quantum compliance</td></tr>
 </tbody></table>
 </div>
-<p><code>RSA-PSS</code> remains documented because JACS still verifies historical RSA-signed artifacts. New RSA key generation, signing, and rotation are intentionally unsupported.</p>
 <h2 id="ed25519-ring-ed25519"><a class="header" href="#ed25519-ring-ed25519">Ed25519 (ring-Ed25519)</a></h2>
 <p>The recommended algorithm for most use cases.</p>
 <h3 id="overview-7"><a class="header" href="#overview-7">Overview</a></h3>
@@ -11102,97 +11071,42 @@ agent.load('./jacs.config.json')  # Using ring-Ed25519
 signature = agent.sign_string("Hello, World!")
 print(f"Signature (64 bytes): {len(signature)} characters base64")
 </code></pre>
-<h2 id="rsa-pss-legacy-verification-only"><a class="header" href="#rsa-pss-legacy-verification-only">RSA-PSS (Legacy Verification Only)</a></h2>
-<p>Industry-standard RSA with Probabilistic Signature Scheme padding.</p>
+<h2 id="pq2025"><a class="header" href="#pq2025">PQ2025</a></h2>
 <h3 id="overview-8"><a class="header" href="#overview-8">Overview</a></h3>
-<p>RSA-PSS support exists so JACS can verify older artifacts that were already signed with RSA. JACS no longer supports creating new RSA signing keys or rotating agents into RSA.</p>
+<p>PQ2025 uses ML-DSA-87, the FIPS-204 post-quantum signature algorithm currently supported by JACS.</p>
 <h3 id="characteristics-1"><a class="header" href="#characteristics-1">Characteristics</a></h3>
 <ul>
-<li><strong>Speed</strong>: Slower than Ed25519</li>
-<li><strong>Key Size</strong>: 2048-4096 bits</li>
-<li><strong>Signature Size</strong>: Same as key size (256-512 bytes)</li>
-<li><strong>Security Level</strong>: ~112-128 bits (2048-bit key)</li>
-</ul>
-<h3 id="use-cases-2"><a class="header" href="#use-cases-2">Use Cases</a></h3>
-<ul>
-<li>Verifying historical RSA-signed documents</li>
-<li>Interoperating with legacy systems while migrating them to Ed25519 or pq2025</li>
-<li>Reading old configs or agent records that still declare <code>RSA-PSS</code></li>
-</ul>
-<h3 id="considerations"><a class="header" href="#considerations">Considerations</a></h3>
-<ul>
-<li>Larger signatures increase document size</li>
-<li>Slower than Ed25519</li>
-<li>Larger keys needed for equivalent security</li>
-<li>New RSA signing operations are disabled due to <code>RUSTSEC-2023-0071</code></li>
-</ul>
-<h2 id="dilithium-pq-dilithium"><a class="header" href="#dilithium-pq-dilithium">Dilithium (pq-dilithium)</a></h2>
-<p>NIST-standardized post-quantum digital signature algorithm.</p>
-<h3 id="overview-9"><a class="header" href="#overview-9">Overview</a></h3>
-<p>Dilithium is a lattice-based signature scheme selected by NIST for post-quantum cryptography standardization. It provides security against both classical and quantum computers.</p>
-<h3 id="characteristics-2"><a class="header" href="#characteristics-2">Characteristics</a></h3>
-<ul>
-<li><strong>Speed</strong>: Moderate (faster than RSA, slower than Ed25519)</li>
-<li><strong>Key Size</strong>: ~1.3 KB public key, ~2.5 KB private key</li>
-<li><strong>Signature Size</strong>: ~2.4 KB</li>
+<li><strong>Speed</strong>: Moderate (slower than Ed25519)</li>
+<li><strong>Key Size</strong>: 2,592-byte public keys</li>
+<li><strong>Signature Size</strong>: 4,627 bytes</li>
 <li><strong>Security Level</strong>: NIST Level 3 (quantum-resistant)</li>
 </ul>
 <h3 id="configuration-7"><a class="header" href="#configuration-7">Configuration</a></h3>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
-<h3 id="use-cases-3"><a class="header" href="#use-cases-3">Use Cases</a></h3>
+<h3 id="use-cases-2"><a class="header" href="#use-cases-2">Use Cases</a></h3>
 <ul>
 <li>Long-term document security</li>
 <li>Protection against future quantum attacks</li>
 <li>High-security applications</li>
 <li>Government/defense requirements</li>
 </ul>
-<h3 id="considerations-1"><a class="header" href="#considerations-1">Considerations</a></h3>
+<h3 id="considerations"><a class="header" href="#considerations">Considerations</a></h3>
 <ul>
-<li>Larger signatures and keys than classical algorithms</li>
-<li>Newer algorithm (less battle-tested)</li>
+<li>Larger signatures and keys than Ed25519</li>
+<li>Use for compliance or long-lived signatures where post-quantum readiness matters</li>
 <li>May be required for future compliance</li>
-</ul>
-<h2 id="pq2025-hybrid"><a class="header" href="#pq2025-hybrid">PQ2025 (Hybrid)</a></h2>
-<p>Transitional hybrid scheme combining classical and post-quantum algorithms.</p>
-<h3 id="overview-10"><a class="header" href="#overview-10">Overview</a></h3>
-<p>PQ2025 combines Ed25519 with Dilithium, providing security even if one algorithm is broken. This approach is recommended by security researchers during the quantum transition period.</p>
-<h3 id="characteristics-3"><a class="header" href="#characteristics-3">Characteristics</a></h3>
-<ul>
-<li><strong>Speed</strong>: Slower (two signatures computed)</li>
-<li><strong>Key Size</strong>: Combined Ed25519 + Dilithium</li>
-<li><strong>Signature Size</strong>: ~2.5 KB (combined)</li>
-<li><strong>Security Level</strong>: Max of both algorithms</li>
-</ul>
-<h3 id="configuration-8"><a class="header" href="#configuration-8">Configuration</a></h3>
-<pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq2025"
-}
-</code></pre>
-<h3 id="use-cases-4"><a class="header" href="#use-cases-4">Use Cases</a></h3>
-<ul>
-<li>Transitioning to post-quantum</li>
-<li>Maximum security requirements</li>
-<li>Uncertainty about algorithm security</li>
-<li>Long-lived documents</li>
-</ul>
-<h3 id="considerations-2"><a class="header" href="#considerations-2">Considerations</a></h3>
-<ul>
-<li>Largest signatures</li>
-<li>Slowest signing/verification</li>
-<li>Best for paranoid security requirements</li>
 </ul>
 <h2 id="algorithm-selection-guide"><a class="header" href="#algorithm-selection-guide">Algorithm Selection Guide</a></h2>
 <h3 id="decision-matrix"><a class="header" href="#decision-matrix">Decision Matrix</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Requirement</th><th>Recommended Algorithm</th></tr></thead><tbody>
 <tr><td>Best performance</td><td><code>ring-Ed25519</code></td></tr>
 <tr><td>Smallest signatures</td><td><code>ring-Ed25519</code></td></tr>
-<tr><td>Legacy compatibility</td><td>Verify historical <code>RSA-PSS</code> artifacts, but create new keys with <code>ring-Ed25519</code></td></tr>
-<tr><td>Quantum resistance</td><td><code>pq-dilithium</code></td></tr>
+<tr><td>Quantum resistance</td><td><code>pq2025</code></td></tr>
 <tr><td>Maximum security</td><td><code>pq2025</code></td></tr>
-<tr><td>General purpose</td><td><code>ring-Ed25519</code></td></tr>
+<tr><td>General purpose</td><td><code>pq2025</code></td></tr>
 </tbody></table>
 </div>
 <h3 id="by-use-case"><a class="header" href="#by-use-case">By Use Case</a></h3>
@@ -11204,16 +11118,16 @@ print(f"Signature (64 bytes): {len(signature)} characters base64")
 <p>Fast signing is critical for real-time communication.</p>
 <p><strong>Legal/Financial Documents</strong>:</p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
 <p>Long-term validity requires quantum resistance.</p>
 <p><strong>Enterprise Integration</strong>:</p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "ring-Ed25519"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
-<p>Use Ed25519 for new agents and keep RSA-PSS only for verifying older infrastructure outputs.</p>
+<p>Use <code>pq2025</code> where cross-organization retention or compliance expectations favor post-quantum signatures.</p>
 <p><strong>High-Security</strong>:</p>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq2025"
@@ -11230,9 +11144,7 @@ jacs_keys/
 <h3 id="key-formats"><a class="header" href="#key-formats">Key Formats</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Private Key Format</th><th>Public Key Format</th></tr></thead><tbody>
 <tr><td>ring-Ed25519</td><td>PEM (PKCS#8)</td><td>PEM (SPKI)</td></tr>
-<tr><td>RSA-PSS</td><td>PEM (PKCS#8)</td><td>PEM (SPKI)</td></tr>
-<tr><td>pq-dilithium</td><td>PEM (custom)</td><td>PEM (custom)</td></tr>
-<tr><td>pq2025</td><td>PEM (combined)</td><td>PEM (combined)</td></tr>
+<tr><td>pq2025</td><td>Raw ML-DSA-87 bytes</td><td>Raw ML-DSA-87 bytes</td></tr>
 </tbody></table>
 </div>
 <h2 id="signature-structure-1"><a class="header" href="#signature-structure-1">Signature Structure</a></h2>
@@ -11267,7 +11179,7 @@ jacs_keys/
 <li>
 <p><strong>Generate New Keys</strong></p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
 </li>
@@ -11286,7 +11198,7 @@ new_agent = agent.update_agent(json.dumps({
 <p><strong>Update Configuration</strong></p>
 <pre><code class="language-json">{
   "jacs_agent_id_and_version": "agent-id:new-version",
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
 </li>
@@ -11302,8 +11214,6 @@ new_agent = agent.update_agent(json.dumps({
 <p>Approximate performance (varies by hardware):</p>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Sign (ops/sec)</th><th>Verify (ops/sec)</th><th>Key Gen (ms)</th></tr></thead><tbody>
 <tr><td>ring-Ed25519</td><td>~50,000</td><td>~20,000</td><td>&lt;1</td></tr>
-<tr><td>RSA-PSS (2048)</td><td>~1,000</td><td>~30,000</td><td>~100</td></tr>
-<tr><td>pq-dilithium</td><td>~5,000</td><td>~10,000</td><td>~1</td></tr>
 <tr><td>pq2025</td><td>~4,000</td><td>~8,000</td><td>~2</td></tr>
 </tbody></table>
 </div>
@@ -11340,18 +11250,14 @@ new_agent = agent.update_agent(json.dumps({
 <h2 id="supported-algorithms-3"><a class="header" href="#supported-algorithms-3">Supported Algorithms</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Public Key</th><th>Signature</th><th>Best For</th></tr></thead><tbody>
 <tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>32 bytes</td><td>64 bytes</td><td>Speed, small signatures</td></tr>
-<tr><td>RSA-PSS</td><td><code>RSA-PSS</code></td><td>~550 bytes (4096-bit)</td><td>~512 bytes</td><td>Legacy verification only</td></tr>
 <tr><td>ML-DSA-87</td><td><code>pq2025</code></td><td>2,592 bytes</td><td>4,627 bytes</td><td>Post-quantum compliance (FIPS-204)</td></tr>
-<tr><td>Dilithium</td><td><code>pq-dilithium</code></td><td>&gt;1,000 bytes</td><td>~3,293-4,644 bytes</td><td><strong>Deprecated</strong> -- use <code>pq2025</code></td></tr>
 </tbody></table>
 </div>
-<p><code>RSA-PSS</code> is kept only so JACS can load and verify older artifacts. New RSA key generation, signing, and rotation are disabled.</p>
 <h2 id="how-to-choose"><a class="header" href="#how-to-choose">How to Choose</a></h2>
 <pre><code>Do you need FIPS/NIST post-quantum compliance?
   ├── Yes → pq2025
   └── No
-       ├── Need a compact classical algorithm for new keys? → ring-Ed25519
-       └── Need to verify historical RSA artifacts? → Keep RSA-PSS verification enabled, but create new keys with ring-Ed25519 or pq2025
+       └── Need a compact classical algorithm for new keys? → ring-Ed25519
 </code></pre>
 <p><strong>Default recommendation for new projects: <code>pq2025</code></strong></p>
 <p>Ed25519 is well-understood and widely deployed, but it is not quantum-resistant. If you don't have a specific reason to stay classical, start with <code>pq2025</code> so you don't have to migrate later.</p>
@@ -11366,9 +11272,9 @@ new_agent = agent.update_agent(json.dumps({
 <p>JACS supports ML-DSA-87 (FIPS-204) for post-quantum digital signatures. When your compliance team asks about quantum readiness, JACS already has the answer.</p>
 <p>The tradeoff is size: ML-DSA-87 public keys are 2,592 bytes and signatures are 4,627 bytes -- roughly 80x larger than Ed25519. For most applications this is negligible, but if you're signing millions of small messages and bandwidth matters, consider Ed25519.</p>
 <h2 id="cross-algorithm-verification"><a class="header" href="#cross-algorithm-verification">Cross-Algorithm Verification</a></h2>
-<p>JACS verification works across algorithms. An agreement can contain signatures from legacy RSA, Ed25519, and ML-DSA agents and all verify correctly. This heterogeneous verification is important for cross-organization scenarios where different parties chose different algorithms over time.</p>
+<p>JACS verification works across supported algorithms. An agreement can contain signatures from Ed25519 and ML-DSA agents and all verify correctly. This heterogeneous verification is important for cross-organization scenarios where different parties choose different supported algorithms.</p>
 <p>Each agent uses one algorithm (chosen at creation time), but can <strong>verify</strong> signatures from all supported algorithms.</p>
-<h2 id="configuration-9"><a class="header" href="#configuration-9">Configuration</a></h2>
+<h2 id="configuration-8"><a class="header" href="#configuration-8">Configuration</a></h2>
 <p>Set the algorithm in your <code>jacs.config.json</code>:</p>
 <pre><code class="language-json">{
   "jacs_agent_key_algorithm": "pq2025"
@@ -11378,7 +11284,6 @@ new_agent = agent.update_agent(json.dumps({
 <pre><code class="language-bash">export JACS_AGENT_KEY_ALGORITHM=pq2025
 </code></pre>
 <p>Valid values for new keys: <code>ring-Ed25519</code>, <code>pq2025</code></p>
-<p>Legacy compatibility note: <code>RSA-PSS</code> may still appear in stored configs and signed documents so older material can be verified, but it is not supported for creating or rotating new signing keys.</p>
 <p>In Python and Node.js, pass the algorithm to <code>quickstart(...)</code>:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
 client = JacsClient.quickstart(
@@ -11398,7 +11303,7 @@ const client = await JacsClient.quickstart({
 <ul>
 <li>Each agent uses one algorithm, chosen at creation time. You cannot change an agent's algorithm after creation.</li>
 <li>Algorithm negotiation between agents is planned but not yet implemented.</li>
-<li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). Use <code>pq2025</code> for new agents and verification hints.</li>
+<li>Use <code>pq2025</code> for ML-DSA-87 post-quantum signatures and verification hints.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="storage-backends-3"><a class="header" href="#storage-backends-3">Storage Backends</a></h1>
 <p>JACS has two storage layers today:</p>
@@ -11505,7 +11410,7 @@ export AWS_REGION="us-west-2"
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="custom-schemas"><a class="header" href="#custom-schemas">Custom Schemas</a></h1>
 <p>JACS allows you to define custom document schemas that extend the base header schema, enabling type-safe, validated documents for your specific use cases.</p>
-<h2 id="overview-11"><a class="header" href="#overview-11">Overview</a></h2>
+<h2 id="overview-9"><a class="header" href="#overview-9">Overview</a></h2>
 <p>Custom schemas:</p>
 <ul>
 <li>Inherit all JACS header fields (jacsId, jacsVersion, jacsSignature, etc.)</li>
@@ -13253,7 +13158,7 @@ signed = client.sign_artifact(your_existing_artifact, "task")
 <p>JACS generates two key pairs per agent:</p>
 <ul>
 <li><strong>Post-quantum (ML-DSA-87)</strong> for JACS document signatures -- future-proof</li>
-<li><strong>Traditional (RSA/ECDSA)</strong> for JWS Agent Card signatures -- A2A ecosystem compatibility</li>
+<li><strong>Ed25519 (<code>EdDSA</code>)</strong> for JWS Agent Card signatures -- A2A ecosystem compatibility</li>
 </ul>
 <p>This means your agent is compatible with both the current A2A ecosystem and quantum-resistant verification.</p>
 <hr />
@@ -14022,7 +13927,7 @@ mod tests {
         // Build a minimal JWT (header.payload.signature)
         let header = base64::Engine::encode(
             &amp;base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            b"{\"alg\":\"RS256\"}",
+            b"{\"alg\":\"EdDSA\"}",
         );
         let payload = base64::Engine::encode(
             &amp;base64::engine::general_purpose::URL_SAFE_NO_PAD,
@@ -14540,7 +14445,7 @@ otlp_config:
 <pre><code>event="document_signed" | stats avg(duration_ms) as avg_sign_ms, p99(duration_ms) as p99_sign_ms by algorithm
 event="signature_verified" | stats avg(duration_ms) as avg_verify_ms, p99(duration_ms) as p99_verify_ms by algorithm
 </code></pre>
-<p>Post-quantum algorithms (<code>pq2025</code>, <code>pq-dilithium</code>) will show higher latency than <code>ring-Ed25519</code>. Use these metrics to decide whether the security/performance tradeoff is acceptable for your workload.</p>
+<p>Post-quantum signing with <code>pq2025</code> will show higher latency than <code>ring-Ed25519</code>. Use these metrics to decide whether the security/performance tradeoff is acceptable for your workload.</p>
 <h2 id="next-steps-24"><a class="header" href="#next-steps-24">Next Steps</a></h2>
 <ul>
 <li><a href="guides/../rust/observability.html">Observability (Rust API)</a> -- Full API: ObservabilityConfig, LogDestination, MetricsConfig, TracingConfig</li>
@@ -17568,7 +17473,7 @@ jacs document verify -f document.json -s schema.json
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="configuration-reference"><a class="header" href="#configuration-reference">Configuration Reference</a></h1>
 <p>This is the comprehensive configuration guide covering zero-config quickstart, storage backends, observability, and environment variables. For the raw schema field list, see <a href="reference/../schemas/configuration.html">Config File Schema</a>.</p>
-<h2 id="overview-12"><a class="header" href="#overview-12">Overview</a></h2>
+<h2 id="overview-10"><a class="header" href="#overview-10">Overview</a></h2>
 <h3 id="key-resolution-for-verifiers"><a class="header" href="#key-resolution-for-verifiers">Key resolution for verifiers</a></h3>
 <p>When verifying signed documents, JACS resolves the signer’s public key using a configurable order of sources. Set <strong><code>JACS_KEY_RESOLUTION</code></strong> (environment variable or in config) to a comma-separated list of sources: <code>local</code> (local key cache by <code>publicKeyHash</code>), <code>dns</code> (DNS TXT fingerprint validation), <code>hai</code> (HAI key service). Example: <code>JACS_KEY_RESOLUTION=local,hai</code> or <code>local,dns,hai</code>. The first source that yields verifiable key material is used. Use <code>verify_standalone()</code> with explicit <code>keyResolution</code> for one-off verification without loading a full config.</p>
 <h2 id="zero-config-path"><a class="header" href="#zero-config-path">Zero-Config Path</a></h2>
@@ -18113,7 +18018,6 @@ jacs document create -f unsigned-doc.json
 <p><strong>Solution:</strong></p>
 <ul>
 <li>Use a supported algorithm for new keys: <code>ring-Ed25519</code>, <code>pq2025</code></li>
-<li>Legacy note: JACS can still verify older <code>RSA-PSS</code> and <code>pq-dilithium</code> artifacts</li>
 </ul>
 <h2 id="dns-verification-errors"><a class="header" href="#dns-verification-errors">DNS Verification Errors</a></h2>
 <h3 id="dnssec-validation-failed-1"><a class="header" href="#dnssec-validation-failed-1">DNSSEC Validation Failed</a></h3>
@@ -18882,7 +18786,7 @@ aws s3 sync ./jacs_data/ s3://my-jacs-bucket/data/
 <li>
 <p><strong>Create New Agent with New Algorithm:</strong></p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
 <pre><code class="language-bash">jacs agent create --create-keys true -f new-agent.json
@@ -18891,7 +18795,7 @@ aws s3 sync ./jacs_data/ s3://my-jacs-bucket/data/
 <li>
 <p><strong>Update Configuration:</strong></p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_agent_id_and_version": "new-agent-id:new-version"
 }
 </code></pre>

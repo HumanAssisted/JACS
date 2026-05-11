@@ -27,7 +27,6 @@ export const JACS_EXTENSION_URI = 'urn:jacs:provenance-v1';
 
 export const JACS_ALGORITHMS: readonly string[] = [
   'ring-Ed25519',
-  'RSA-PSS',
   'pq2025',
 ] as const;
 

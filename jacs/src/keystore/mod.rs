@@ -112,7 +112,7 @@ pub enum KeyBackend {
 
 #[derive(Debug, Clone, Default)]
 pub struct KeySpec {
-    pub algorithm: String,      // "RSA-PSS", "ring-Ed25519", "pq2025"
+    pub algorithm: String,      // "ring-Ed25519", "pq2025"
     pub key_id: Option<String>, // Remote key identifier / ARN / URL
 }
 
@@ -319,17 +319,15 @@ impl KeyStore for FsEncryptedStore {
         );
         crate::crypt::ensure_private_key_operation_allowed(&spec.algorithm, "key generation")?;
         let algo = match spec.algorithm.as_str() {
-            "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => return Err(JacsError::CryptoError(format!(
-                "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'RSA-PSS', 'pq2025'. \
+                "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'pq2025'. \
                 Check your JACS_AGENT_KEY_ALGORITHM environment variable or config file.",
                 other
             )).into()),
         };
         let (priv_key, pub_key) = match algo {
-            CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::generate_keys()?,
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
             CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
@@ -456,7 +454,6 @@ impl KeyStore for FsEncryptedStore {
     ) -> Result<Vec<u8>, JacsError> {
         crate::crypt::ensure_private_key_operation_allowed(algorithm, "signing")?;
         let algo = match algorithm {
-            "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
@@ -476,9 +473,6 @@ impl KeyStore for FsEncryptedStore {
             )
         })?;
         let sig_b64 = match algo {
-            CryptoSigningAlgorithm::RsaPss => {
-                crypt::rsawrapper::sign_string(private_key.to_vec(), data)?
-            }
             CryptoSigningAlgorithm::RingEd25519 => {
                 crypt::ringwrapper::sign_string(private_key.to_vec(), &data.to_string())?
             }
@@ -642,19 +636,17 @@ impl KeyStore for InMemoryKeyStore {
     fn generate(&self, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
         crate::crypt::ensure_private_key_operation_allowed(&spec.algorithm, "key generation")?;
         let algo = match spec.algorithm.as_str() {
-            "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
                 return Err(JacsError::CryptoError(format!(
-                    "Unsupported key algorithm: '{}'. Supported: 'ring-Ed25519', 'RSA-PSS', 'pq2025'.",
+                    "Unsupported key algorithm: '{}'. Supported: 'ring-Ed25519', 'pq2025'.",
                     other
                 ))
                 .into());
             }
         };
         let (priv_key, pub_key) = match algo {
-            CryptoSigningAlgorithm::RsaPss => crypt::rsawrapper::generate_keys()?,
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
             CryptoSigningAlgorithm::Pq2025 => crypt::pq2025::generate_keys()?,
         };
@@ -700,7 +692,6 @@ impl KeyStore for InMemoryKeyStore {
     ) -> Result<Vec<u8>, JacsError> {
         crate::crypt::ensure_private_key_operation_allowed(algorithm, "signing")?;
         let algo = match algorithm {
-            "RSA-PSS" => CryptoSigningAlgorithm::RsaPss,
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
@@ -720,9 +711,6 @@ impl KeyStore for InMemoryKeyStore {
             )
         })?;
         let sig_b64 = match algo {
-            CryptoSigningAlgorithm::RsaPss => {
-                crypt::rsawrapper::sign_string(private_key.to_vec(), data)?
-            }
             CryptoSigningAlgorithm::RingEd25519 => {
                 crypt::ringwrapper::sign_string(private_key.to_vec(), &data.to_string())?
             }

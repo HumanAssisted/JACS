@@ -356,7 +356,7 @@ otlp_config:
 <pre><code>event="document_signed" | stats avg(duration_ms) as avg_sign_ms, p99(duration_ms) as p99_sign_ms by algorithm
 event="signature_verified" | stats avg(duration_ms) as avg_verify_ms, p99(duration_ms) as p99_verify_ms by algorithm
 </code></pre>
-<p>Post-quantum algorithms (<code>pq2025</code>, <code>pq-dilithium</code>) will show higher latency than <code>ring-Ed25519</code>. Use these metrics to decide whether the security/performance tradeoff is acceptable for your workload.</p>
+<p>Post-quantum signing with <code>pq2025</code> will show higher latency than <code>ring-Ed25519</code>. Use these metrics to decide whether the security/performance tradeoff is acceptable for your workload.</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
 <ul>
 <li><a href="../rust/observability.html">Observability (Rust API)</a> -- Full API: ObservabilityConfig, LogDestination, MetricsConfig, TracingConfig</li>

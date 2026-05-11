@@ -179,18 +179,14 @@
 <h2 id="supported-algorithms"><a class="header" href="#supported-algorithms">Supported Algorithms</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Algorithm</th><th>Config Value</th><th>Public Key</th><th>Signature</th><th>Best For</th></tr></thead><tbody>
 <tr><td>Ed25519</td><td><code>ring-Ed25519</code></td><td>32 bytes</td><td>64 bytes</td><td>Speed, small signatures</td></tr>
-<tr><td>RSA-PSS</td><td><code>RSA-PSS</code></td><td>~550 bytes (4096-bit)</td><td>~512 bytes</td><td>Legacy verification only</td></tr>
 <tr><td>ML-DSA-87</td><td><code>pq2025</code></td><td>2,592 bytes</td><td>4,627 bytes</td><td>Post-quantum compliance (FIPS-204)</td></tr>
-<tr><td>Dilithium</td><td><code>pq-dilithium</code></td><td>&gt;1,000 bytes</td><td>~3,293-4,644 bytes</td><td><strong>Deprecated</strong> -- use <code>pq2025</code></td></tr>
 </tbody></table>
 </div>
-<p><code>RSA-PSS</code> is kept only so JACS can load and verify older artifacts. New RSA key generation, signing, and rotation are disabled.</p>
 <h2 id="how-to-choose"><a class="header" href="#how-to-choose">How to Choose</a></h2>
 <pre><code>Do you need FIPS/NIST post-quantum compliance?
   ├── Yes → pq2025
   └── No
-       ├── Need a compact classical algorithm for new keys? → ring-Ed25519
-       └── Need to verify historical RSA artifacts? → Keep RSA-PSS verification enabled, but create new keys with ring-Ed25519 or pq2025
+       └── Need a compact classical algorithm for new keys? → ring-Ed25519
 </code></pre>
 <p><strong>Default recommendation for new projects: <code>pq2025</code></strong></p>
 <p>Ed25519 is well-understood and widely deployed, but it is not quantum-resistant. If you don't have a specific reason to stay classical, start with <code>pq2025</code> so you don't have to migrate later.</p>
@@ -205,7 +201,7 @@
 <p>JACS supports ML-DSA-87 (FIPS-204) for post-quantum digital signatures. When your compliance team asks about quantum readiness, JACS already has the answer.</p>
 <p>The tradeoff is size: ML-DSA-87 public keys are 2,592 bytes and signatures are 4,627 bytes -- roughly 80x larger than Ed25519. For most applications this is negligible, but if you're signing millions of small messages and bandwidth matters, consider Ed25519.</p>
 <h2 id="cross-algorithm-verification"><a class="header" href="#cross-algorithm-verification">Cross-Algorithm Verification</a></h2>
-<p>JACS verification works across algorithms. An agreement can contain signatures from legacy RSA, Ed25519, and ML-DSA agents and all verify correctly. This heterogeneous verification is important for cross-organization scenarios where different parties chose different algorithms over time.</p>
+<p>JACS verification works across supported algorithms. An agreement can contain signatures from Ed25519 and ML-DSA agents and all verify correctly. This heterogeneous verification is important for cross-organization scenarios where different parties choose different supported algorithms.</p>
 <p>Each agent uses one algorithm (chosen at creation time), but can <strong>verify</strong> signatures from all supported algorithms.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>Set the algorithm in your <code>jacs.config.json</code>:</p>
@@ -217,7 +213,6 @@
 <pre><code class="language-bash">export JACS_AGENT_KEY_ALGORITHM=pq2025
 </code></pre>
 <p>Valid values for new keys: <code>ring-Ed25519</code>, <code>pq2025</code></p>
-<p>Legacy compatibility note: <code>RSA-PSS</code> may still appear in stored configs and signed documents so older material can be verified, but it is not supported for creating or rotating new signing keys.</p>
 <p>In Python and Node.js, pass the algorithm to <code>quickstart(...)</code>:</p>
 <pre><code class="language-python">from jacs.client import JacsClient
 client = JacsClient.quickstart(
@@ -237,7 +232,7 @@ const client = await JacsClient.quickstart({
 <ul>
 <li>Each agent uses one algorithm, chosen at creation time. You cannot change an agent's algorithm after creation.</li>
 <li>Algorithm negotiation between agents is planned but not yet implemented.</li>
-<li><code>pq-dilithium</code> is deprecated in favor of <code>pq2025</code> (ML-DSA-87). Use <code>pq2025</code> for new agents and verification hints.</li>
+<li>Use <code>pq2025</code> for ML-DSA-87 post-quantum signatures and verification hints.</li>
 </ul>
 
                     </main>

@@ -6,7 +6,6 @@
 //!
 //! All tests are `#[serial]` because `quickstart()` mutates CWD and env vars.
 
-use jacs::simple::SimpleAgent;
 use jacs_binding_core::verify_document_standalone;
 use serde_json::{Value, json};
 use serial_test::serial;
@@ -298,12 +297,12 @@ fn generate_pq2025_fixture() {
 
 #[test]
 #[serial]
-fn generate_rsa_pss_fixture() {
+fn generate_ed25519_curve_fixture() {
     if !should_update_fixtures() {
         eprintln!("Skipping fixture regeneration (set UPDATE_CROSS_LANG_FIXTURES=1 to update)");
         return;
     }
-    generate_fixture("RSA-PSS", "rsa_pss");
+    generate_fixture("ring-Ed25519", "ed25519_curve");
 }
 
 #[test]
@@ -321,15 +320,15 @@ fn verify_pq2025_fixture_standalone() {
 
 #[test]
 #[serial]
-fn verify_rsa_pss_fixture_standalone() {
+fn verify_ed25519_curve_fixture_standalone() {
     let out = fixtures_dir();
-    let signed_path = out.join("rsa_pss_signed.json");
+    let signed_path = out.join("ed25519_curve_signed.json");
     if !signed_path.exists() {
         eprintln!(
-            "Skipping RSA-PSS fixture verification (fixture not generated yet; \
-             set UPDATE_CROSS_LANG_FIXTURES=1 and run generate_rsa_pss_fixture first)"
+            "Skipping Ed25519 curve fixture verification (fixture not generated yet; \
+             set UPDATE_CROSS_LANG_FIXTURES=1 and run generate_ed25519_curve_fixture first)"
         );
         return;
     }
-    verify_fixture("rsa_pss");
+    verify_fixture("ed25519_curve");
 }

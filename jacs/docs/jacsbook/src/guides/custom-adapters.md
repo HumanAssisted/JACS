@@ -206,7 +206,7 @@ mod tests {
         // Build a minimal JWT (header.payload.signature)
         let header = base64::Engine::encode(
             &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            b"{\"alg\":\"RS256\"}",
+            b"{\"alg\":\"EdDSA\"}",
         );
         let payload = base64::Engine::encode(
             &base64::engine::general_purpose::URL_SAFE_NO_PAD,

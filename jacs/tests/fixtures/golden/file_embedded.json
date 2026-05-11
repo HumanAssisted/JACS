@@ -40,7 +40,7 @@
     ],
     "publicKeyHash": "REGENERATE_WITH_ACTUAL_AGENT",
     "signature": "REGENERATE_WITH_ACTUAL_AGENT",
-    "signingAlgorithm": "RSA-PSS"
+    "signingAlgorithm": "ring-Ed25519"
   },
   "_golden_fixture_note": "This fixture must be regenerated with a real agent. The embedded content is base64-encoded 'hello world'. Run: cargo test generate_golden_fixtures -- --ignored"
 }

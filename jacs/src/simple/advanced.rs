@@ -805,7 +805,6 @@ pub fn quickstart(
     // Use create_with_params for full control
     let algo = match algorithm.unwrap_or("pq2025") {
         "ed25519" => "ring-Ed25519",
-        "rsa-pss" => "RSA-PSS",
         "pq2025" => "pq2025",
         other => other,
     };
@@ -937,13 +936,8 @@ impl<'a> crate::inline::KeyResolver for DefaultKeyResolver<'a> {
         // 1. Self key — short-circuit if the signer is the loaded agent.
         //
         // Returns the RAW public-key bytes (32-byte for Ed25519, 2592-byte
-        // for ML-DSA-87, PEM string bytes for RSA-PSS). This matches the
-        // contract of the low-level crypt primitives:
-        // `ringwrapper::verify_string` / `pq2025::verify_string` /
-        // `rsawrapper::verify_string` all accept the bytes the algorithm
-        // natively expects, NOT a PEM-armored form. The publicKeyHash check
-        // in the verifier first calls `normalize_public_key_pem` which is
-        // tolerant of both raw and PEM input.
+        // for ML-DSA-87). This matches the contract of the low-level crypt
+        // primitives, which expect the bytes the algorithm natively uses.
         if let Ok(my_id) = self.agent.get_agent_id()
             && my_id == signer_id
         {
@@ -1164,15 +1158,11 @@ fn pem_matches_dns_digest(
 /// Build a `ResolvedKey` from key bytes that may be a PEM file (on-disk in
 /// `--key-dir` or in a trust-store agent doc) or a raw key blob. We try
 /// `pem::parse` first; if that yields valid PEM, the contents go to the
-/// downstream crypt primitive (which accepts PEM for RSA-PSS) and the raw
-/// bytes go to ed25519/pq2025 primitives. The publicKeyHash check uses
+/// downstream ed25519/pq2025 primitives. The publicKeyHash check uses
 /// `normalize_public_key_pem` which tolerates both.
 fn resolved_from_pem_or_raw(pem_bytes: &[u8]) -> Option<crate::inline::ResolvedKey> {
     // Try to extract the inner key bytes from the PEM block. For Ed25519 and
-    // pq2025, the PEM body IS the raw bytes (after base64 decode); for
-    // RSA-PSS, the body is DER and the verify primitive needs the PEM bytes
-    // back — so we keep the original PEM bytes for RSA but raw bytes for
-    // others.
+    // pq2025, the PEM body IS the raw bytes after base64 decode.
     let inner = match pem::parse(pem_bytes) {
         Ok(block) => block.into_contents(),
         Err(_) => pem_bytes.to_vec(),
@@ -1181,12 +1171,8 @@ fn resolved_from_pem_or_raw(pem_bytes: &[u8]) -> Option<crate::inline::ResolvedK
         .ok()
         .map(inline_algorithm_tag)
         .unwrap_or_else(|| "ed25519".to_string());
-    let key_bytes = match algorithm.as_str() {
-        "rsa-pss" => pem_bytes.to_vec(),
-        _ => inner,
-    };
     Some(crate::inline::ResolvedKey {
-        public_key_pem: key_bytes,
+        public_key_pem: inner,
         algorithm,
     })
 }
@@ -1199,7 +1185,6 @@ fn inline_algorithm_tag<T: std::fmt::Display>(algo: T) -> String {
     match s.as_str() {
         "ring-Ed25519" | "ed25519" | "Ed25519" => "ed25519".to_string(),
         "pq2025" | "ML-DSA-87" | "ml-dsa-87" => "pq2025".to_string(),
-        "RSA-PSS" | "rsa-pss" => "rsa-pss".to_string(),
         _ => s.to_lowercase(),
     }
 }
@@ -1841,11 +1826,10 @@ pub fn verify_image(
     // Verify cryptographic signature. Same-agent path uses agent.verify;
     // cross-agent path uses verify_with_key with the resolved key bytes.
     //
-    // We pass `resolved.public_key_pem` directly (the resolver returns RAW
-    // bytes for ed25519/pq2025 and PEM bytes for RSA-PSS) because
+    // We pass `resolved.public_key_pem` directly because
     // `verify_document_signature` re-hashes its `public_key` argument with
     // `hash_public_key()` and compares to the embedded `jacsSignature.publicKeyHash`,
-    // which was computed at sign time over the same RAW (or PEM-for-RSA) form.
+    // which was computed at sign time over the same raw key form.
     // Re-armoring through `normalize_public_key_pem` would silently break that
     // comparison for ed25519/pq2025 cross-agent verification.
     let my_id = agent.get_agent_id().ok();

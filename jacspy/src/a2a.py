@@ -253,7 +253,7 @@ class JACSA2AIntegration:
             "capabilities": {
                 "documentSigning": {
                     "description": "Sign documents with JACS signatures",
-                    "algorithms": ["ring-Ed25519", "RSA-PSS", "pq2025"],
+                    "algorithms": ["ring-Ed25519", "pq2025"],
                     "formats": ["jacs-v1", "jws-detached"]
                 },
                 "documentVerification": {
@@ -565,8 +565,6 @@ class JACSA2AIntegration:
     def _infer_jws_alg(key_algorithm: str) -> Optional[str]:
         if "ring-ed25519" in key_algorithm or "ed25519" in key_algorithm:
             return "EdDSA"
-        if "rsa" in key_algorithm:
-            return "RS256"
         if "ecdsa" in key_algorithm or "es256" in key_algorithm:
             return "ES256"
         return None

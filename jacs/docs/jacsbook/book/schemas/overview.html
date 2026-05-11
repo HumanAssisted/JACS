@@ -409,11 +409,10 @@ const doc = agent.createDocument(
     "enum": ["human", "human-org", "hybrid", "ai"]
   },
   "jacs_agent_key_algorithm": {
-    "enum": ["RSA-PSS", "ring-Ed25519", "pq-dilithium", "pq2025"]
+    "enum": ["ring-Ed25519", "pq2025"]
   }
 }
 </code></pre>
-<p><code>RSA-PSS</code> remains in the schema for backward compatibility with stored configs and legacy documents, but new signing key creation uses <code>ring-Ed25519</code> or <code>pq2025</code>.</p>
 <h2 id="schema-reference"><a class="header" href="#schema-reference">Schema Reference</a></h2>
 <p>For detailed documentation on specific schemas:</p>
 <ul>

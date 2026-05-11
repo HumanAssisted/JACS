@@ -1,5 +1,13 @@
 ## Unreleased
 
+### Security
+
+- Added `jacs-signature-v2` signature-content binding so new signatures cover the placement key, signed field names and values, and signature metadata; legacy unsigned-version documents verify only through the warning-emitting legacy path.
+- Removed RSA/RSA-PSS from supported JACS key creation, signing, A2A/JWS examples, bindings, fixtures, generated docs, and default algorithm lists; tests that previously exercised RSA now cover Ed25519 instead.
+- Switched new encrypted private-key writes to an Argon2id + AES-256-GCM JSON envelope while keeping legacy PBKDF2 raw envelopes decrypt-only.
+- Upgraded Hickory DNS dependencies to `0.26.1` with `dnssec-ring`.
+- Split `jacs-surrealdb` out of the default workspace so the default dependency graph and `cargo audit` path no longer pull the SurrealDB transitive RSA dependency.
+
 ### Added
 
 - Added JACS email transport detection and typed verification results for migration from attachment-backed signatures to HTML-inline signed email.

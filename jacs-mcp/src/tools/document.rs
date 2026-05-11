@@ -92,7 +92,7 @@ pub struct CreateAgentProgrammaticParams {
 
     /// Cryptographic algorithm. Default: "pq2025" (ML-DSA-87, FIPS-204).
     #[schemars(
-        description = "Cryptographic algorithm: 'pq2025' (default, post-quantum), 'ring-Ed25519', or 'RSA-PSS'"
+        description = "Cryptographic algorithm: 'pq2025' (default, post-quantum) or 'ring-Ed25519'"
     )]
     pub algorithm: Option<String>,
 

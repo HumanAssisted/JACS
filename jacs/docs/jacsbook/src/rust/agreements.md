@@ -227,12 +227,12 @@ Enforce that only specific cryptographic algorithms can be used:
 agreement = client.create_agreement(
     document=proposal,
     agent_ids=agent_ids,
-    required_algorithms=["pq2025", "pq-dilithium"],
+    required_algorithms=["pq2025"],
     minimum_strength="post-quantum"
 )
 ```
 
-An agent using Ed25519, or a legacy RSA-PSS agent, will be rejected when trying to sign this agreement.
+An agent using Ed25519 will be rejected when trying to sign this agreement.
 
 ### Combined Options
 

@@ -47,7 +47,7 @@ pub struct ReencryptKeyResult {
 pub struct RotateKeysParams {
     /// Signing algorithm for the new keys. If omitted, keeps the current algorithm.
     #[schemars(
-        description = "Signing algorithm for the new keys (ring-Ed25519, RSA-PSS, pq2025). If omitted, keeps the current algorithm."
+        description = "Signing algorithm for the new keys (ring-Ed25519, pq2025). If omitted, keeps the current algorithm."
     )]
     pub algorithm: Option<String>,
 }

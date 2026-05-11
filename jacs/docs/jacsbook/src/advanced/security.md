@@ -531,18 +531,14 @@ agent_id = result.get('agentId')  # Who signed the response
 | Algorithm | Type | Security Level |
 |-----------|------|----------------|
 | `ring-Ed25519` | Elliptic Curve | High (recommended) |
-| `RSA-PSS` | RSA | Legacy verification only |
-| `pq-dilithium` | Post-Quantum | Quantum-resistant |
-| `pq2025` | Composite | Transitional |
+| `pq2025` | Post-Quantum | FIPS-204 ML-DSA-87 |
 
 ### Algorithm Selection
 
 Choose based on requirements:
 
 - **General Use**: `ring-Ed25519` - fast, secure, small signatures
-- **Legacy Systems**: Verify older `RSA-PSS` artifacts, but use `ring-Ed25519` or `pq2025` for new keys
-- **Future-Proofing**: `pq-dilithium` - quantum-resistant
-- **Transition**: `pq2025` - hybrid classical/post-quantum
+- **Future-Proofing**: `pq2025` - FIPS-204 post-quantum signatures
 
 ## Security Best Practices
 

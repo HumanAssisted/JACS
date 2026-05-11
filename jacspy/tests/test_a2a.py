@@ -391,7 +391,7 @@ class TestJACSA2AIntegration:
             "jacsId": "agent-123",
             "jacsVersion": "v1",
             "jacsAgentType": "ai",
-            "keyAlgorithm": "RSA-PSS"
+            "keyAlgorithm": "ring-Ed25519"
         }
 
         documents = a2a_integration.generate_well_known_documents(
@@ -416,7 +416,7 @@ class TestJACSA2AIntegration:
         # Verify JACS descriptor
         jacs_desc = documents["/.well-known/jacs-agent.json"]
         assert jacs_desc["agentId"] == "agent-123"
-        assert jacs_desc["keyAlgorithm"] == "RSA-PSS"
+        assert jacs_desc["keyAlgorithm"] == "ring-Ed25519"
         expected_hash = hashlib.sha256(
             base64.b64decode("bW9jay1wdWJsaWMta2V5")
         ).hexdigest()
@@ -425,7 +425,7 @@ class TestJACSA2AIntegration:
         # Verify public key document
         pubkey_doc = documents["/.well-known/jacs-pubkey.json"]
         assert pubkey_doc["publicKey"] == "bW9jay1wdWJsaWMta2V5"
-        assert pubkey_doc["algorithm"] == "RSA-PSS"
+        assert pubkey_doc["algorithm"] == "ring-Ed25519"
 
         # Verify JWKS is present for A2A verifiers
         jwks_doc = documents["/.well-known/jwks.json"]

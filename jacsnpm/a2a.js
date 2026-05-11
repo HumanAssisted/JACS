@@ -20,7 +20,6 @@ exports.A2A_PROTOCOL_VERSION = '0.4.0';
 exports.JACS_EXTENSION_URI = 'urn:jacs:provenance-v1';
 exports.JACS_ALGORITHMS = [
     'ring-Ed25519',
-    'RSA-PSS',
     'pq2025',
 ];
 exports.TRUST_POLICIES = {

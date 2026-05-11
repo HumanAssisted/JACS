@@ -1123,10 +1123,7 @@ fn unsupported_format_clean_error() {
 /// PEM-armored before passing to `agent.verify_with_key`, which broke the
 /// publicKeyHash re-hash for ed25519/pq2025).
 ///
-/// Variants: ed25519 + pq2025. (RSA-PSS cross-agent: ephemeral RSA signing is
-/// blocked at runtime — an RSA-PSS variant of this test would require checked-in
-/// signed PNG fixtures and is deferred per Issue 014's "RSA-PSS via fixture if
-/// practical" note.)
+/// Variants: ed25519 + pq2025.
 #[test]
 fn verify_image_cross_agent_path_ed25519() {
     let agent_a = ephemeral_ed25519();

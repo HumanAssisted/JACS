@@ -14,11 +14,39 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit, OsRng},
 };
+use argon2::{Algorithm, Argon2, Params, Version};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use tracing::warn;
 use zeroize::Zeroize;
+
+const ENCRYPTED_PRIVATE_KEY_VERSION_V2: u8 = 2;
+const ARGON2ID_MEMORY_COST_KIB: u32 = 19_456;
+const ARGON2ID_TIME_COST: u32 = 2;
+const ARGON2ID_PARALLELISM: u32 = 1;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct KdfEnvelope {
+    name: String,
+    version: u32,
+    m_cost_kib: u32,
+    t_cost: u32,
+    p_cost: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EncryptedPrivateKeyEnvelope {
+    jacs_encrypted_private_key_version: u8,
+    cipher: String,
+    kdf: KdfEnvelope,
+    salt: String,
+    nonce: String,
+    ciphertext: String,
+}
 
 /// Common weak passwords that should be rejected regardless of calculated entropy.
 const WEAK_PASSWORDS: &[&str] = &[
@@ -304,6 +332,128 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZ
     derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS)
 }
 
+fn default_argon2id_kdf() -> KdfEnvelope {
+    KdfEnvelope {
+        name: "Argon2id".to_string(),
+        version: 19,
+        m_cost_kib: ARGON2ID_MEMORY_COST_KIB,
+        t_cost: ARGON2ID_TIME_COST,
+        p_cost: ARGON2ID_PARALLELISM,
+    }
+}
+
+fn derive_argon2id_key(
+    password: &str,
+    salt: &[u8],
+    kdf: &KdfEnvelope,
+) -> Result<[u8; AES_256_KEY_SIZE], JacsError> {
+    if kdf.name != "Argon2id" || kdf.version != 19 {
+        return Err(JacsError::CryptoError(format!(
+            "Unsupported private key KDF '{}'/version {}.",
+            kdf.name, kdf.version
+        )));
+    }
+    let params = Params::new(
+        kdf.m_cost_kib,
+        kdf.t_cost,
+        kdf.p_cost,
+        Some(AES_256_KEY_SIZE),
+    )
+    .map_err(|e| JacsError::CryptoError(format!("Invalid Argon2id parameters: {}", e)))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut key = [0u8; AES_256_KEY_SIZE];
+    argon2
+        .hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|e| JacsError::CryptoError(format!("Argon2id key derivation failed: {}", e)))?;
+    Ok(key)
+}
+
+fn encrypt_v2_envelope(data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
+    let mut salt = [0u8; PBKDF2_SALT_SIZE];
+    rand::rng().fill(&mut salt[..]);
+    let kdf = default_argon2id_kdf();
+    let mut key = derive_argon2id_key(password, &salt, &kdf)?;
+    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
+    let cipher = Aes256Gcm::new(cipher_key);
+    key.zeroize();
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let encrypted = cipher
+        .encrypt(&nonce, data)
+        .map_err(|e| format!("AES-GCM encryption failed: {}", e))?;
+    let envelope = EncryptedPrivateKeyEnvelope {
+        jacs_encrypted_private_key_version: ENCRYPTED_PRIVATE_KEY_VERSION_V2,
+        cipher: "AES-256-GCM".to_string(),
+        kdf,
+        salt: URL_SAFE_NO_PAD.encode(salt),
+        nonce: URL_SAFE_NO_PAD.encode(nonce.as_slice()),
+        ciphertext: URL_SAFE_NO_PAD.encode(encrypted),
+    };
+    serde_json::to_vec(&envelope).map_err(|e| {
+        JacsError::CryptoError(format!("Failed to serialize encrypted key envelope: {}", e))
+    })
+}
+
+fn decrypt_v2_envelope(
+    encrypted_data: &[u8],
+    password: &str,
+) -> Result<Option<Vec<u8>>, JacsError> {
+    let first_non_ws = encrypted_data
+        .iter()
+        .copied()
+        .find(|b| !b.is_ascii_whitespace());
+    if first_non_ws != Some(b'{') {
+        return Ok(None);
+    }
+    let envelope: EncryptedPrivateKeyEnvelope =
+        serde_json::from_slice(encrypted_data).map_err(|e| {
+            JacsError::CryptoError(format!(
+                "Invalid encrypted private key envelope JSON: {}",
+                e
+            ))
+        })?;
+    if envelope.jacs_encrypted_private_key_version != ENCRYPTED_PRIVATE_KEY_VERSION_V2 {
+        return Err(JacsError::CryptoError(format!(
+            "Unsupported encrypted private key envelope version {}.",
+            envelope.jacs_encrypted_private_key_version
+        )));
+    }
+    if envelope.cipher != "AES-256-GCM" {
+        return Err(JacsError::CryptoError(format!(
+            "Unsupported encrypted private key cipher '{}'.",
+            envelope.cipher
+        )));
+    }
+    let salt = URL_SAFE_NO_PAD
+        .decode(envelope.salt.as_bytes())
+        .map_err(|e| JacsError::CryptoError(format!("Invalid envelope salt: {}", e)))?;
+    let nonce = URL_SAFE_NO_PAD
+        .decode(envelope.nonce.as_bytes())
+        .map_err(|e| JacsError::CryptoError(format!("Invalid envelope nonce: {}", e)))?;
+    let ciphertext = URL_SAFE_NO_PAD
+        .decode(envelope.ciphertext.as_bytes())
+        .map_err(|e| JacsError::CryptoError(format!("Invalid envelope ciphertext: {}", e)))?;
+    if nonce.len() != AES_GCM_NONCE_SIZE {
+        return Err(JacsError::CryptoError(format!(
+            "Invalid envelope nonce length: expected {}, got {}.",
+            AES_GCM_NONCE_SIZE,
+            nonce.len()
+        )));
+    }
+    let mut key = derive_argon2id_key(password, &salt, &envelope.kdf)?;
+    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
+    let cipher = Aes256Gcm::new(cipher_key);
+    key.zeroize();
+    let plaintext = cipher
+        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
+        .map_err(|_| {
+            JacsError::CryptoError(
+                "Private key decryption failed: incorrect password or corrupted key file."
+                    .to_string(),
+            )
+        })?;
+    Ok(Some(plaintext))
+}
+
 /// Resolve the private key password from all available sources.
 ///
 /// Resolution order (highest priority first):
@@ -354,34 +504,28 @@ pub fn resolve_private_key_password(
     if let Ok(Some(path_str)) = get_env_var("JACS_PASSWORD_FILE", false) {
         let path = std::path::Path::new(path_str.trim());
         if path.exists() {
-            if let Ok(contents) = std::fs::read_to_string(path) {
-                let pw = contents.trim_end_matches(|c| c == '\n' || c == '\r');
-                if !pw.is_empty() {
-                    tracing::debug!("Using password from JACS_PASSWORD_FILE");
-                    return Ok(pw.to_string());
-                }
-            }
+            let pw = crate::cli_utils::read_password_file_checked(path)
+                .map_err(JacsError::ConfigError)?;
+            tracing::debug!("Using password from JACS_PASSWORD_FILE");
+            return Ok(pw);
         }
     }
     // Legacy fallback: ./jacs_keys/.jacs_password
     let legacy_path = std::path::Path::new("./jacs_keys/.jacs_password");
     if legacy_path.exists() {
-        if let Ok(contents) = std::fs::read_to_string(legacy_path) {
-            let pw = contents.trim_end_matches(|c| c == '\n' || c == '\r');
-            if !pw.is_empty() {
-                tracing::debug!("Using password from legacy .jacs_password file");
-                // Warn about migration opportunity when keychain is available
-                if !is_keychain_disabled() && crate::keystore::keychain::is_available() {
-                    tracing::warn!(
-                        "A plaintext .jacs_password file was found at '{}'. \
-                         Consider migrating to the OS keychain with `jacs keychain set` \
-                         and then deleting the password file.",
-                        legacy_path.display()
-                    );
-                }
-                return Ok(pw.to_string());
-            }
+        let pw = crate::cli_utils::read_password_file_checked(legacy_path)
+            .map_err(JacsError::ConfigError)?;
+        tracing::debug!("Using password from legacy .jacs_password file");
+        // Warn about migration opportunity when keychain is available
+        if !is_keychain_disabled() && crate::keystore::keychain::is_available() {
+            tracing::warn!(
+                "A plaintext .jacs_password file was found at '{}'. \
+                 Consider migrating to the OS keychain with `jacs keychain set` \
+                 and then deleting the password file.",
+                legacy_path.display()
+            );
         }
+        return Ok(pw);
     }
 
     // 3. Try OS keychain keyed by agent_id (if not disabled and agent_id provided)
@@ -439,32 +583,7 @@ pub fn encrypt_private_key_with_password(
 ) -> Result<Vec<u8>, JacsError> {
     // Validate password strength
     validate_password(password)?;
-
-    // Generate a random salt
-    let mut salt = [0u8; PBKDF2_SALT_SIZE];
-    rand::rng().fill(&mut salt[..]);
-
-    // Derive key using PBKDF2-HMAC-SHA256
-    let key = derive_key_from_password(&password, &salt);
-
-    // Create cipher instance
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-
-    // Generate a random nonce
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-
-    // Encrypt private key
-    let encrypted_data = cipher
-        .encrypt(&nonce, private_key)
-        .map_err(|e| format!("AES-GCM encryption failed: {}", e))?;
-
-    // Combine the salt, nonce, and encrypted data into one Vec to return
-    let mut encrypted_key_with_salt_and_nonce = salt.to_vec();
-    encrypted_key_with_salt_and_nonce.extend_from_slice(nonce.as_slice());
-    encrypted_key_with_salt_and_nonce.extend_from_slice(&encrypted_data);
-
-    Ok(encrypted_key_with_salt_and_nonce)
+    encrypt_v2_envelope(private_key, password)
 }
 
 /// Decrypt a private key with a password using AES-256-GCM.
@@ -534,6 +653,11 @@ pub fn decrypt_private_key_secure_with_password(
     encrypted_key_with_salt_and_nonce: &[u8],
     password: &str,
 ) -> Result<ZeroizingVec, JacsError> {
+    if let Some(decrypted_data) = decrypt_v2_envelope(encrypted_key_with_salt_and_nonce, password)?
+    {
+        return Ok(ZeroizingVec::new(decrypted_data));
+    }
+
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
             "Encrypted private key file is corrupted or truncated: expected at least {} bytes, got {} bytes. \
@@ -593,6 +717,10 @@ pub fn decrypt_private_key_secure_with_password(
 /// This is useful for re-encryption workflows where both old and new passwords
 /// are provided as parameters.
 pub fn decrypt_with_password(encrypted_data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
+    if let Some(decrypted) = decrypt_v2_envelope(encrypted_data, password)? {
+        return Ok(decrypted);
+    }
+
     if encrypted_data.len() < MIN_ENCRYPTED_HEADER_SIZE {
         return Err(JacsError::CryptoError(format!(
             "Encrypted data too short: expected at least {} bytes, got {} bytes.",
@@ -632,23 +760,7 @@ pub fn decrypt_with_password(encrypted_data: &[u8], password: &str) -> Result<Ve
 /// Encrypt data with an explicit password (no env var dependency).
 pub fn encrypt_with_password(data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
     validate_password(password)?;
-
-    let mut salt = [0u8; PBKDF2_SALT_SIZE];
-    rand::rng().fill(&mut salt[..]);
-
-    let key = derive_key_from_password(password, &salt);
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-
-    let encrypted = cipher
-        .encrypt(&nonce, data)
-        .map_err(|e| format!("AES-GCM encryption failed: {}", e))?;
-
-    let mut result = salt.to_vec();
-    result.extend_from_slice(nonce.as_slice());
-    result.extend_from_slice(&encrypted);
-    Ok(result)
+    encrypt_v2_envelope(data, password)
 }
 
 /// Re-encrypt a private key from one password to another.

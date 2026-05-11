@@ -341,15 +341,14 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_agent_rsa_ephemeral_is_disabled() {
-        let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-            .err()
-            .expect("RSA ephemeral should be blocked");
-        assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
-        );
+    fn test_simple_agent_ed25519_ephemeral_signs() {
+        let (agent, info) =
+            SimpleAgent::ephemeral(Some("ed25519")).expect("Ed25519 ephemeral should be supported");
+        assert!(info.algorithm.contains("Ed25519"));
+        let signed = agent
+            .sign_message(&serde_json::json!({"ok": true}))
+            .unwrap();
+        assert!(agent.verify(&signed.raw).unwrap().valid);
     }
 
     #[test]

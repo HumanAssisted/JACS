@@ -332,10 +332,8 @@ fn test_load_custom_schema_and_new_custom_document_agent_two() {
 #[serial(jacs_env)]
 fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature() {
     // cargo test   --test document_tests -- --nocapture
-    // Note: this test used to load DOCTESTFILECONFIG (RSA-signed by the legacy
-    // ddf35096-... agent) directly. Update is now owner-gated, and the legacy
-    // RSA agent can no longer sign (RUSTSEC-2023-0071). So we create a fresh
-    // Ed25519-owned document, then update + verify against the same agent.
+    // Create a fresh Ed25519-owned document, then update and verify against
+    // the same active signing key.
     let mut agent = load_test_agent_one_ed25519();
 
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {

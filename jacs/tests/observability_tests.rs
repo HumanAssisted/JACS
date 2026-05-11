@@ -324,7 +324,7 @@ fn test_otlp_destination() {
 
     // Generate some telemetry
     record_agent_operation("otlp_test", "agent_otlp", true, 250);
-    record_signature_verification("agent_otlp", true, "RSA");
+    record_signature_verification("agent_otlp", true, "ring-Ed25519");
 
     let mut tags = HashMap::new();
     tags.insert("protocol".to_string(), "otlp".to_string());
@@ -576,7 +576,7 @@ fn test_convenience_functions() {
     record_document_validation("doc_conv_789", "v2.0", true);
     record_document_validation("doc_conv_abc", "v2.0", false);
     record_signature_verification("agent_conv_123", true, "Ed25519");
-    record_signature_verification("agent_conv_456", false, "RSA");
+    record_signature_verification("agent_conv_456", false, "ring-Ed25519");
 
     // Wait for metrics to be exported
     std::thread::sleep(std::time::Duration::from_millis(2000));
@@ -671,7 +671,7 @@ fn test_logs_to_scratch_file() {
     record_document_validation("doc_scratch_789", "v2.1", true);
     record_document_validation("doc_scratch_abc", "v2.1", false);
     record_signature_verification("agent_scratch_123", true, "Ed25519");
-    record_signature_verification("agent_scratch_456", false, "RSA");
+    record_signature_verification("agent_scratch_456", false, "ring-Ed25519");
 
     // Also use direct tracing calls to ensure they work
     tracing::info!("Direct tracing info log for scratch test");
@@ -780,7 +780,7 @@ fn main() {
     record_document_validation("doc_isolated_789", "v3.0", true);
     record_document_validation("doc_isolated_abc", "v3.0", false);
     record_signature_verification("agent_isolated_123", true, "Ed25519");
-    record_signature_verification("agent_isolated_456", false, "RSA");
+    record_signature_verification("agent_isolated_456", false, "ring-Ed25519");
     
     tracing::info!("Isolated test info log");
     tracing::warn!("Isolated test warn log");

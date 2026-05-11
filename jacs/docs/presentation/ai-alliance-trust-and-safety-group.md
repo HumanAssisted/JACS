@@ -12,12 +12,10 @@
 
 JACS provides middleware applicable to http, email, mpc (json-rpc), a2a,
 
-- **Cryptographic Security**: RSA, Ed25519, and post-quantum algorithms
+- **Cryptographic Security**: Ed25519 and post-quantum algorithms
 - **JSON Schema Validation**: Enforced document structure
 - **Multi-Agent Agreements**: Formats that allow for multiple signatures
 - **Full Audit Trail**: Complete versioning and modification history
 - **Multiple Languages**: Rust, Node.js, and Python implementations
 - **MCP Integration**: Native Model Context Protocol support
 - **Observabile**: Meta data available as OpenTelemetry
-
- 

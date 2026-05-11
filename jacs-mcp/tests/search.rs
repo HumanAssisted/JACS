@@ -24,7 +24,7 @@ use rmcp::{
 
 mod support;
 // Search calls jacs_sign_state which signs new JACS documents — use
-// Ed25519 fixture (RSA signing is disabled by RUSTSEC-2023-0071).
+// Ed25519 fixture for private-key signing tests.
 use support::{TEST_PASSWORD, prepare_temp_workspace_ed25519 as prepare_temp_workspace};
 
 static STDIO_LOCK: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
@@ -240,10 +240,21 @@ async fn jacs_search_pagination_works() -> anyhow::Result<()> {
 }
 
 fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
-    let tmp = tempfile::TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let parent = std::path::Path::new("target").join("mcp-search-tests");
+    fs::create_dir_all(&parent).expect("create mcp search temp parent");
+    let tmp = tempfile::Builder::new()
+        .prefix("search-")
+        .tempdir_in(&parent)
+        .expect("create tempdir");
+    let cwd = std::env::current_dir().expect("current dir");
+    let tmp_root = tmp
+        .path()
+        .strip_prefix(&cwd)
+        .unwrap_or(tmp.path())
+        .to_path_buf();
+    let data_dir = tmp_root.join("jacs_data");
+    let key_dir = tmp_root.join("jacs_keys");
+    let config_path = tmp_root.join("jacs.config.json");
 
     let params = CreateAgentParams::builder()
         .name("mcp-search-sqlite")
@@ -262,6 +273,8 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
         serde_json::from_str(&fs::read_to_string(&config_path).expect("read generated config"))
             .expect("parse generated config");
     config_json["jacs_default_storage"] = serde_json::Value::String("rusqlite".to_string());
+    config_json["jacs_data_directory"] = serde_json::Value::String("jacs_data".to_string());
+    config_json["jacs_key_directory"] = serde_json::Value::String("jacs_keys".to_string());
     fs::write(
         &config_path,
         serde_json::to_string_pretty(&config_json).expect("serialize config"),
@@ -271,8 +284,9 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", TEST_PASSWORD);
         // Ensure env vars match the config so load_by_config doesn't use stale values
-        std::env::set_var("JACS_DATA_DIRECTORY", data_dir.to_str().unwrap());
-        std::env::set_var("JACS_KEY_DIRECTORY", key_dir.to_str().unwrap());
+        std::env::set_var("JACS_DATA_DIRECTORY", "jacs_data");
+        std::env::set_var("JACS_KEY_DIRECTORY", "jacs_keys");
+        std::env::set_var("JACS_KEY_RESOLUTION", "local");
     }
 
     let wrapper = AgentWrapper::new();
@@ -292,17 +306,24 @@ fn jacs_search_uses_document_service_backend_method() {
             .enable_all()
             .build()
             .expect("create runtime");
-        let result = rt.block_on(async {
+        rt.block_on(async {
             let (agent, _tmp) = sqlite_ready_agent();
             let docs = DocumentServiceWrapper::from_agent_wrapper(&agent)
                 .expect("document service should be available");
+            let needle = format!(
+                "mcpsqlitesearch{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock")
+                    .as_nanos()
+            );
             docs.create_json(
-                r#"{"content":"mcpsqlitesearch needle","category":"keep"}"#,
+                &format!(r#"{{"content":"{needle}","category":"keep"}}"#),
                 None,
             )
             .expect("create keep doc");
             docs.create_json(
-                r#"{"content":"mcpsqlitesearch needle","category":"drop"}"#,
+                &format!(r#"{{"content":"{needle}","category":"drop"}}"#),
                 None,
             )
             .expect("create drop doc");
@@ -310,7 +331,7 @@ fn jacs_search_uses_document_service_backend_method() {
             let server = JacsMcpServer::new(agent);
             let raw = server
                 .jacs_search(Parameters(SearchParams {
-                    query: "needle".to_string(),
+                    query: needle,
                     jacs_type: None,
                     agent_id: None,
                     field_filter: Some(SearchFieldFilter {

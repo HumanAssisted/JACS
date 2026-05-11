@@ -74,6 +74,9 @@ pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
 pub const JACS_PREVIOUS_VERSION_FIELDNAME: &str = "jacsPreviousVersion";
+pub const SIGNATURE_CONTENT_VERSION_FIELDNAME: &str = "signatureContentVersion";
+pub const SIGNATURE_CONTENT_VERSION_V2: &str = "jacs-signature-v2";
+pub const SIGNATURE_CONTENT_DOMAIN_V2: &str = "jacs.signature.v2";
 
 // these fields are ignored when hashing
 pub const JACS_IGNORE_FIELDS: [&str; 7] = [
@@ -224,6 +227,58 @@ pub(crate) fn build_signature_content(
         content, accepted_fields, _mode
     );
     Ok((content, accepted_fields))
+}
+
+pub(crate) fn build_signature_content_v2(
+    json_value: &Value,
+    fields: Vec<String>,
+    placement_key: &str,
+    signature_metadata: &Value,
+) -> Result<String, JacsError> {
+    let mut metadata = signature_metadata.clone();
+    let metadata_obj =
+        metadata
+            .as_object_mut()
+            .ok_or_else(|| JacsError::SignatureVerificationFailed {
+                reason: format!(
+                    "Signature metadata at '{}' must be a JSON object.",
+                    placement_key
+                ),
+            })?;
+    metadata_obj.remove("signature");
+
+    let mut field_entries = Vec::with_capacity(fields.len());
+    for key in fields {
+        if key == placement_key || JACS_IGNORE_FIELDS.contains(&key.as_str()) {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: format!(
+                    "Field names for signature must not include reserved key '{}'.",
+                    key
+                ),
+            });
+        }
+        let value = json_value
+            .get(&key)
+            .ok_or_else(|| JacsError::SignatureVerificationFailed {
+                reason: format!(
+                    "Signed field '{}' is missing while building v2 signature payload.",
+                    key
+                ),
+            })?;
+        field_entries.push(json!({
+            "name": key,
+            "value": value
+        }));
+    }
+
+    let payload = json!({
+        "domain": SIGNATURE_CONTENT_DOMAIN_V2,
+        "placementKey": placement_key,
+        "fields": field_entries,
+        "signatureMetadata": metadata
+    });
+
+    canonicalize_json(&payload)
 }
 
 // Just use Vec<u8> directly since it already implements the needed traits
@@ -1723,12 +1778,55 @@ impl Agent {
             "\n\n\n standard sig {}  \n agreement special sig \n{:?} \nchosen signature_base64\n {} \n\n\n",
             standard_signature, provided_signature, signature_base64
         );
-        let (document_values_string, _) = build_signature_content(
-            json_value,
-            resolved_fields.clone(),
-            signature_key_from,
-            SignatureContentMode::CanonicalV2,
-        )?;
+        let signature_content_version = json_value[signature_key_from]
+            .get(SIGNATURE_CONTENT_VERSION_FIELDNAME)
+            .and_then(Value::as_str);
+        let document_values_string = match signature_content_version {
+            Some(SIGNATURE_CONTENT_VERSION_V2) => {
+                let metadata_fields = extract_signature_fields(json_value, signature_key_from)
+                    .ok_or_else(|| JacsError::SignatureVerificationFailed {
+                        reason: format!(
+                            "Missing '{}.fields' for v2 signature verification.",
+                            signature_key_from
+                        ),
+                    })?;
+                if let Some(explicit_fields) = &resolved_fields
+                    && explicit_fields != &metadata_fields
+                {
+                    return Err(JacsError::SignatureVerificationFailed {
+                        reason: format!(
+                            "Explicit verification fields do not match signed '{}.fields' metadata.",
+                            signature_key_from
+                        ),
+                    });
+                }
+                build_signature_content_v2(
+                    json_value,
+                    metadata_fields,
+                    signature_key_from,
+                    &json_value[signature_key_from],
+                )?
+            }
+            Some(other) => {
+                return Err(JacsError::SignatureVerificationFailed {
+                    reason: format!("Unsupported signature content version '{}'.", other),
+                });
+            }
+            None => {
+                warn!(
+                    event = "legacy_signature_content_verified",
+                    signature_key_from,
+                    "Verifying legacy v1 signature content without authenticated metadata"
+                );
+                let (payload, _) = build_signature_content(
+                    json_value,
+                    resolved_fields.clone(),
+                    signature_key_from,
+                    SignatureContentMode::CanonicalV2,
+                )?;
+                payload
+            }
+        };
         debug!(
             "signature_verification_procedure canonical payload:\n{}",
             document_values_string
@@ -1831,17 +1929,10 @@ impl Agent {
         placement_key: &str,
     ) -> Result<Value, JacsError> {
         debug!("placement_key:\n{}", placement_key);
-        let (document_values_string, accepted_fields) =
+        let (_, accepted_fields) =
             Agent::get_values_as_string(json_value, fields.map(|s| s.to_vec()), placement_key)?;
-        debug!(
-            "signing_procedure document_values_string:\n\n{}\n\n",
-            document_values_string
-        );
-        let signature = self.sign_string(&document_values_string)?;
-        debug!("signing_procedure created signature :\n{}", signature);
-        let binding = String::new();
-        let agent_id = self.id.as_ref().unwrap_or(&binding);
-        let agent_version = self.version.as_ref().unwrap_or(&binding);
+        let agent_id = self.id.clone().unwrap_or_default();
+        let agent_version = self.version.clone().unwrap_or_default();
         let date = time_utils::now_rfc3339();
         let iat = time_utils::now_timestamp();
         let jti = Uuid::now_v7().to_string();
@@ -1856,7 +1947,7 @@ impl Agent {
         })?;
         let signing_algorithm = config.get_key_algorithm()?;
 
-        let serialized_fields = match to_value(accepted_fields) {
+        let serialized_fields = match to_value(&accepted_fields) {
             Ok(value) => value,
             Err(err) => return Err(err.into()),
         };
@@ -1865,18 +1956,32 @@ impl Agent {
         debug!("hash {:?} ", public_key_hash);
         //TODO fields must never include sha256 at top level
         // error
-        let signature_document = json!({
+        let mut signature_document = json!({
             // based on v1
             "agentID": agent_id,
             "agentVersion": agent_version,
             "date": date,
             "iat": iat,
             "jti": jti,
-            "signature":signature,
+            "signature":"",
             "signingAlgorithm":signing_algorithm,
             "publicKeyHash": public_key_hash,
-            "fields": serialized_fields
+            "fields": serialized_fields,
+            SIGNATURE_CONTENT_VERSION_FIELDNAME: SIGNATURE_CONTENT_VERSION_V2
         });
+        let document_values_string = build_signature_content_v2(
+            json_value,
+            accepted_fields,
+            placement_key,
+            &signature_document,
+        )?;
+        debug!(
+            "signing_procedure v2 document_values_string:\n\n{}\n\n",
+            document_values_string
+        );
+        let signature = self.sign_string(&document_values_string)?;
+        debug!("signing_procedure created signature :\n{}", signature);
+        signature_document["signature"] = json!(signature);
         // TODO add sha256 of public key
         // validate signature schema
         self.schema.validate_signature(&signature_document)?;
@@ -2108,10 +2213,10 @@ impl Agent {
             Some(algo) => {
                 // Validate the algorithm against the known set
                 match algo {
-                    "RSA-PSS" | "ring-Ed25519" | "pq2025" => {}
+                    "ring-Ed25519" | "pq2025" => {}
                     other => {
                         return Err(format!(
-                            "Invalid algorithm '{}'. Supported: RSA-PSS, ring-Ed25519, pq2025",
+                            "Invalid algorithm '{}'. Supported: ring-Ed25519, pq2025",
                             other
                         )
                         .into());
@@ -2294,10 +2399,6 @@ impl Agent {
             .is_ok(),
             "pq2025" => {
                 crate::crypt::pq2025::verify_string(old_public_key_bytes.to_vec(), msg, sig_b64)
-                    .is_ok()
-            }
-            "RSA-PSS" => {
-                crate::crypt::rsawrapper::verify_string(old_public_key_bytes.to_vec(), msg, sig_b64)
                     .is_ok()
             }
             _ => {
@@ -2545,7 +2646,7 @@ impl Agent {
     ///   - `data`: The string data that was signed
     ///   - `signature`: The base64-encoded signature
     ///   - `public_key`: The public key bytes for verification
-    ///   - `algorithm`: Optional algorithm hint (e.g., "ring-Ed25519", "RSA-PSS")
+    ///   - `algorithm`: Optional algorithm hint (e.g., "ring-Ed25519", "pq2025")
     ///
     /// # Returns
     ///

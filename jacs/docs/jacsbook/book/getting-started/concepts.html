@@ -191,7 +191,7 @@
 <ul>
 <li><strong>jacsId</strong>: Permanent UUID identifying the agent</li>
 <li><strong>jacsVersion</strong>: UUID that changes with each update</li>
-<li><strong>Cryptographic Keys</strong>: Ed25519, RSA, or post-quantum key pairs</li>
+<li><strong>Cryptographic Keys</strong>: Ed25519 or post-quantum key pairs</li>
 <li><strong>Services</strong>: Capabilities the agent offers</li>
 <li><strong>Contacts</strong>: How to reach the agent</li>
 </ul>
@@ -378,11 +378,10 @@
 <p><strong>Current Standards</strong></p>
 <ul>
 <li><strong>ring-Ed25519</strong>: Fast elliptic curve signatures using the ring library (recommended)</li>
-<li><strong>RSA-PSS</strong>: Legacy RSA verification for older artifacts; not used for new key generation</li>
 </ul>
 <p><strong>Post-Quantum</strong></p>
 <ul>
-<li><strong>pq-dilithium</strong>: NIST-standardized post-quantum signatures</li>
+<li><strong>pq2025</strong>: ML-DSA-87 signatures for FIPS-204 post-quantum readiness</li>
 </ul>
 <h3 id="signature-process"><a class="header" href="#signature-process">Signature Process</a></h3>
 <ol>

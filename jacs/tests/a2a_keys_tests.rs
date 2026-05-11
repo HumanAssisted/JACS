@@ -2,13 +2,11 @@
 use jacs::a2a::keys::create_jwk_keys;
 
 #[test]
-fn test_create_dual_keys_rejects_rsa() {
-    let err = create_jwk_keys(Some("rsa"), Some("rsa"))
-        .err()
-        .expect("RSA dual-key generation should be blocked");
-    assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
-    );
+fn test_create_dual_keys_ed25519() {
+    let keys = create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519"))
+        .expect("Ed25519 dual-key generation should succeed");
+    assert_eq!(keys.jacs_algorithm, "ring-Ed25519");
+    assert_eq!(keys.a2a_algorithm, "ring-Ed25519");
+    assert_eq!(keys.jacs_public_key.len(), 32);
+    assert_eq!(keys.a2a_public_key.len(), 32);
 }

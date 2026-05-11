@@ -4,7 +4,8 @@
 //! enabling P2P key exchange and verification without a central authority.
 
 use crate::agent::{
-    AGENT_SIGNATURE_FIELDNAME, SignatureContentMode, build_signature_content,
+    AGENT_SIGNATURE_FIELDNAME, SIGNATURE_CONTENT_VERSION_FIELDNAME, SIGNATURE_CONTENT_VERSION_V2,
+    SignatureContentMode, build_signature_content, build_signature_content_v2,
     extract_signature_fields,
 };
 use crate::crypt::hash::hash_public_key;
@@ -195,7 +196,6 @@ pub fn trust_agent_with_key(
 
     // Get the public key bytes.
     //
-    // For text-format keys (RSA-PSS PEM), the string bytes ARE the key bytes.
     // For binary keys wrapped in PEM armor (Ed25519, pq2025), we need to
     // extract the base64 body and decode to get the original raw bytes.
     // We try both representations and use whichever matches the expected hash.
@@ -203,7 +203,6 @@ pub fn trust_agent_with_key(
         Some(pem) => {
             let text_bytes = pem.as_bytes().to_vec();
             if hash_public_key(&text_bytes) == public_key_hash {
-                // Native PEM key (RSA-PSS) — text bytes match the signing hash.
                 text_bytes
             } else if pem.trim().starts_with("-----BEGIN") {
                 // PEM-armored binary key — decode base64 to get raw bytes.
@@ -740,27 +739,31 @@ fn verify_agent_self_signature(
             JacsError::SignatureVerificationFailed {
                 reason: format!(
                     "Unknown signing algorithm '{}'. Supported algorithms are: \
-                'ring-Ed25519', 'RSA-PSS', 'pq2025'. \
+                'ring-Ed25519', 'pq2025'. \
                 The agent document may have been signed with an unsupported algorithm version.",
                     a
                 ),
             }
         })?,
         None => {
-            // Check if strict mode is enabled
-            let strict =
-                crate::storage::jenv::get_env_var("JACS_REQUIRE_EXPLICIT_ALGORITHM", false)
+            let allow_legacy_detection =
+                crate::storage::jenv::get_env_var("JACS_ALLOW_LEGACY_ALGORITHM_DETECTION", false)
                     .ok()
                     .flatten()
                     .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
                     .unwrap_or(false);
-            if strict {
+            if !allow_legacy_detection {
                 return Err(JacsError::SignatureVerificationFailed {
                     reason: "Signature missing signingAlgorithm field. \
-                        Strict algorithm enforcement is enabled (JACS_REQUIRE_EXPLICIT_ALGORITHM=true). \
-                        Re-sign the agent document to include the signingAlgorithm field.".to_string(),
+                        Re-sign the agent document to include the signingAlgorithm field, or set \
+                        JACS_ALLOW_LEGACY_ALGORITHM_DETECTION=true to verify legacy documents."
+                        .to_string(),
                 });
             }
+            warn!(
+                "SECURITY: signingAlgorithm not provided for agent self-signature verification. \
+                Legacy auto-detection is enabled by JACS_ALLOW_LEGACY_ALGORITHM_DETECTION."
+            );
 
             // Try to detect from the public key
             detect_algorithm_from_public_key(public_key_bytes).map_err(|e| {
@@ -779,11 +782,6 @@ fn verify_agent_self_signature(
 
     let verify_with_payload = |payload: &str| -> Result<(), JacsError> {
         match algo {
-            CryptoSigningAlgorithm::RsaPss => crate::crypt::rsawrapper::verify_string(
-                public_key_bytes.to_vec(),
-                payload,
-                &signature_b64,
-            ),
             CryptoSigningAlgorithm::RingEd25519 => crate::crypt::ringwrapper::verify_string(
                 public_key_bytes.to_vec(),
                 payload,
@@ -797,12 +795,41 @@ fn verify_agent_self_signature(
         }
     };
 
-    let (canonical_payload, _) = build_signature_content(
-        agent_value,
-        signature_fields.clone(),
-        AGENT_SIGNATURE_FIELDNAME,
-        SignatureContentMode::CanonicalV2,
-    )?;
+    let signature_content_version = agent_value
+        .get_path(&["jacsSignature", SIGNATURE_CONTENT_VERSION_FIELDNAME])
+        .and_then(Value::as_str);
+    let canonical_payload = match signature_content_version {
+        Some(SIGNATURE_CONTENT_VERSION_V2) => {
+            let fields =
+                signature_fields.ok_or_else(|| JacsError::SignatureVerificationFailed {
+                    reason: "Missing jacsSignature.fields for v2 agent signature.".to_string(),
+                })?;
+            build_signature_content_v2(
+                agent_value,
+                fields,
+                AGENT_SIGNATURE_FIELDNAME,
+                &agent_value[AGENT_SIGNATURE_FIELDNAME],
+            )?
+        }
+        Some(other) => {
+            return Err(JacsError::SignatureVerificationFailed {
+                reason: format!("Unsupported signature content version '{}'.", other),
+            });
+        }
+        None => {
+            warn!(
+                event = "legacy_agent_signature_content_verified",
+                "Verifying legacy v1 agent signature content without authenticated metadata"
+            );
+            let (payload, _) = build_signature_content(
+                agent_value,
+                signature_fields.clone(),
+                AGENT_SIGNATURE_FIELDNAME,
+                SignatureContentMode::CanonicalV2,
+            )?;
+            payload
+        }
+    };
 
     verify_with_payload(&canonical_payload).map_err(|e| {
         JacsError::SignatureVerificationFailed {

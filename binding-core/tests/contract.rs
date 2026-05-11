@@ -217,15 +217,16 @@ fn test_create_agent_pq2025() {
 }
 
 #[test]
-fn test_create_agent_rsa_is_disabled() {
+fn test_create_agent_ed25519_alias_succeeds() {
     let wrapper = AgentWrapper::new();
-    let err = wrapper
-        .ephemeral(Some("rsa-pss"))
-        .expect_err("ephemeral(rsa-pss) should be blocked");
+    let info_json = wrapper
+        .ephemeral(Some("ed25519"))
+        .expect("ephemeral(ed25519) should succeed");
+    let info: Value = serde_json::from_str(&info_json).unwrap();
     assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
+        info["algorithm"].as_str().unwrap_or("").contains("Ed25519"),
+        "ed25519 alias should select ring-Ed25519, got: {}",
+        info["algorithm"]
     );
 }
 
@@ -431,7 +432,7 @@ fn test_diagnostics_standalone_returns_valid_json() {
 // =============================================================================
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_ed25519() {
+fn test_full_roundtrip_create_sign_verify_ed25519_alias() {
     let wrapper = create_ephemeral_wrapper();
 
     // Sign a document
@@ -453,16 +454,25 @@ fn test_full_roundtrip_create_sign_verify_ed25519() {
 }
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_rsa_is_disabled() {
+fn test_full_roundtrip_create_sign_verify_ed25519() {
     let wrapper = AgentWrapper::new();
-    let err = wrapper
-        .ephemeral(Some("rsa-pss"))
-        .expect_err("ephemeral(rsa-pss) should be blocked");
-    assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
-    );
+    wrapper
+        .ephemeral(Some("ed25519"))
+        .expect("ephemeral(ed25519) should succeed");
+    let signed = wrapper
+        .create_document(
+            &serde_json::json!({"curve": "ed25519"}).to_string(),
+            None,
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("create_document should succeed");
+    let valid = wrapper
+        .verify_signature(&signed, None)
+        .expect("verify_signature should succeed");
+    assert!(valid, "ed25519 roundtrip document should verify");
 }
 
 #[cfg(feature = "pq-tests")]

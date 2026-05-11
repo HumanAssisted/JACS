@@ -141,7 +141,7 @@ fn test_12factor_env_vars_only() {
     );
     assert_eq!(
         config.jacs_agent_key_algorithm().as_deref(),
-        Some("RSA-PSS"),
+        Some("ring-Ed25519"),
         "Algorithm should come from env var"
     );
 

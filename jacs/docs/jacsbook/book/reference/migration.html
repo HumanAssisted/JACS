@@ -465,7 +465,7 @@ aws s3 sync ./jacs_data/ s3://my-jacs-bucket/data/
 <li>
 <p><strong>Create New Agent with New Algorithm:</strong></p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium"
+  "jacs_agent_key_algorithm": "pq2025"
 }
 </code></pre>
 <pre><code class="language-bash">jacs agent create --create-keys true -f new-agent.json
@@ -474,7 +474,7 @@ aws s3 sync ./jacs_data/ s3://my-jacs-bucket/data/
 <li>
 <p><strong>Update Configuration:</strong></p>
 <pre><code class="language-json">{
-  "jacs_agent_key_algorithm": "pq-dilithium",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_agent_id_and_version": "new-agent-id:new-version"
 }
 </code></pre>

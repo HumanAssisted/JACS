@@ -284,12 +284,10 @@ Many fields have enumerated valid values:
     "enum": ["human", "human-org", "hybrid", "ai"]
   },
   "jacs_agent_key_algorithm": {
-    "enum": ["RSA-PSS", "ring-Ed25519", "pq-dilithium", "pq2025"]
+    "enum": ["ring-Ed25519", "pq2025"]
   }
 }
 ```
-
-`RSA-PSS` remains in the schema for backward compatibility with stored configs and legacy documents, but new signing key creation uses `ring-Ed25519` or `pq2025`.
 
 ## Schema Reference
 

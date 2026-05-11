@@ -23,7 +23,7 @@ const EXAMPLE_CONFIG: &str = r#"{
     "jacs_key_directory": "./example_keys",
     "jacs_agent_private_key_filename": "example.private.pem.enc",
     "jacs_agent_public_key_filename": "example.public.pem",
-    "jacs_agent_key_algorithm": "RSA-PSS",
+    "jacs_agent_key_algorithm": "ring-Ed25519",
     "jacs_agent_schema_version": "v1",
     "jacs_header_schema_version": "v1",
     "jacs_signature_schema_version": "v1",
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 4: Generate dual keys for A2A compatibility
     println!("\n4. Generating dual keys for A2A...");
     setup_key_env_vars();
-    let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa"))?;
+    let dual_keys = create_jwk_keys(Some("pq2025"), Some("ring-Ed25519"))?;
     println!(
         "   JACS key generated: {} ({} bytes)",
         dual_keys.jacs_algorithm,

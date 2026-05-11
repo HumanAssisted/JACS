@@ -71,7 +71,7 @@ fn test_actual_log_output() {
     record_document_validation("doc_binary_789", "v4.0", true);
     record_document_validation("doc_binary_abc", "v4.0", false);
     record_signature_verification("agent_binary_123", true, "Ed25519");
-    record_signature_verification("agent_binary_456", false, "RSA");
+    record_signature_verification("agent_binary_456", false, "ring-Ed25519");
 
     // Direct tracing calls
     tracing::info!("Binary test direct info log");

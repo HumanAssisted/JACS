@@ -23,7 +23,7 @@ use tracing_subscriber::fmt::MakeWriter;
 
 mod support;
 // Memory save/update/forget sign new JACS documents — use Ed25519 fixture
-// (RSA private-key signing is disabled by RUSTSEC-2023-0071).
+// backed by the Ed25519 fixture.
 use jacs_mcp::tools::types::MemorySaveParams;
 use support::{
     ENV_LOCK, ScopedEnvVar, TEST_PASSWORD, cleanup_workspace,

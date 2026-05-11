@@ -43,9 +43,7 @@ Specifies the cryptographic algorithm for signing:
 | Value | Description |
 |-------|-------------|
 | `ring-Ed25519` | Ed25519 signatures (recommended) |
-| `RSA-PSS` | Legacy RSA-PSS compatibility for verifying existing artifacts |
-| `pq-dilithium` | Post-quantum Dilithium |
-| `pq2025` | Post-quantum composite |
+| `pq2025` | FIPS-204 ML-DSA-87 post-quantum signatures |
 
 ```json
 {

@@ -348,7 +348,7 @@ For increased security, you may want to migrate to post-quantum algorithms.
 1. **Create New Agent with New Algorithm:**
    ```json
    {
-     "jacs_agent_key_algorithm": "pq-dilithium"
+     "jacs_agent_key_algorithm": "pq2025"
    }
    ```
 
@@ -359,7 +359,7 @@ For increased security, you may want to migrate to post-quantum algorithms.
 2. **Update Configuration:**
    ```json
    {
-     "jacs_agent_key_algorithm": "pq-dilithium",
+     "jacs_agent_key_algorithm": "pq2025",
      "jacs_agent_id_and_version": "new-agent-id:new-version"
    }
    ```

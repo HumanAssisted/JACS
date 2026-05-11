@@ -364,7 +364,7 @@
             ]
           },
           "algorithm": {
-            "description": "Cryptographic algorithm: 'pq2025' (default, post-quantum), 'ring-Ed25519', or 'RSA-PSS'",
+            "description": "Cryptographic algorithm: 'pq2025' (default, post-quantum) or 'ring-Ed25519'",
             "type": [
               "string",
               "null"
@@ -457,7 +457,7 @@
             ]
           },
           "required_algorithms": {
-            "description": "Only allow these signing algorithms. Values: 'RSA-PSS', 'ring-Ed25519', 'pq2025'",
+            "description": "Only allow these signing algorithms. Values: 'ring-Ed25519', 'pq2025'",
             "items": {
               "type": "string"
             },
@@ -998,7 +998,7 @@
         "description": "Parameters for rotating the agent's cryptographic keys.",
         "properties": {
           "algorithm": {
-            "description": "Signing algorithm for the new keys (ring-Ed25519, RSA-PSS, pq2025). If omitted, keeps the current algorithm.",
+            "description": "Signing algorithm for the new keys (ring-Ed25519, pq2025). If omitted, keeps the current algorithm.",
             "type": [
               "string",
               "null"

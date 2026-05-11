@@ -3,9 +3,10 @@
 use jacs::agent::Agent;
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
-use jacs::agent::loaders::FileLoader;
 use jacs::config::Config;
+use jacs::create_minimal_blank_agent;
 use log::debug;
+use secrecy::ExposeSecret;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -168,13 +169,10 @@ pub static DOCTESTFILE: &str = "tests/fixtures/documents/f89b737d-9fb6-417e-b4b8
 pub static DOCTESTFILECONFIG: &str = "tests/fixtures/documents/f89b737d-9fb6-417e-b4b8-e89150d69624:913ce948-3765-4bd4-9163-ccdbc7e11e8e.json";
 
 pub static AGENTONE: &str =
-    "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
-pub static AGENTTWO: &str =
-    "0f6bb6e8-f27c-4cf7-bb2e-01b647860680:a55739af-a3c8-4b4a-9f24-200313ee4229";
+    "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a";
 
 #[cfg(test)]
 pub fn generate_new_docs_with_attachments(save: bool) {
-    // Ed25519 agent: RSA private-key signing is disabled (RUSTSEC-2023-0071).
     let mut agent = load_test_agent_one_ed25519();
     let mut document_string =
         load_local_document(&raw_fixture("embed-xml.json").to_string_lossy().to_string()).unwrap();
@@ -264,9 +262,12 @@ pub fn set_min_test_env_vars() {
         env::set_var("JACS_USE_SECURITY", "false");
         env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD_LEGACY);
         env::set_var("JACS_KEY_DIRECTORY", "tests/fixtures/keys");
-        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "agent-one.private.pem");
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-one.public.pem");
-        env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+        env::set_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "agent-ed25519.private.pem.enc",
+        );
+        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-ed25519.public.pem");
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
         env::set_var("JACS_DATA_DIRECTORY", "tests/fixtures");
         // Fixture signatures are historical; disable iat skew enforcement in fixture-based tests.
         env::set_var("JACS_MAX_IAT_SKEW_SECONDS", "0");
@@ -304,45 +305,7 @@ pub fn load_test_agent_one() -> Agent {
 
 #[cfg(test)]
 pub fn load_test_agent_two() -> Agent {
-    set_min_test_env_vars();
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-
-    debug!("load_test_agent_two: function called");
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
-    debug!("load_test_agent_two: agent instantiated");
-
-    // let _ = agent.fs_preload_keys(
-    //     &"agent-two.private.pem".to_string(),
-    //     &"agent-two.public.pem".to_string(),
-    //     Some("RSA-PSS".to_string()),
-    // );
-
-    // created agent two with agent one keys
-    let _ = agent.fs_preload_keys(
-        &"agent-one.private.pem".to_string(),
-        &"agent-one.public.pem".to_string(),
-        Some("RSA-PSS".to_string()),
-    );
-
-    debug!("load_test_agent_two: keys preloaded");
-    let result = agent.load_by_id(AGENTTWO.to_string());
-    match result {
-        Ok(_) => {
-            debug!(
-                "AGENT TWO LOADED {} {} ",
-                agent.get_id().unwrap(),
-                agent.get_version().unwrap()
-            );
-        }
-        Err(e) => {
-            eprintln!("Error loading agent: {}", e);
-            panic!("Agent loading failed");
-        }
-    }
-    agent
+    load_test_agent_two_ed25519()
 }
 
 #[cfg(test)]
@@ -433,9 +396,15 @@ pub fn set_test_env_vars() {
         env::set_var("JACS_USE_SECURITY", "false");
         env::set_var("JACS_DATA_DIRECTORY", ".");
         env::set_var("JACS_KEY_DIRECTORY", &keys_dir);
-        env::set_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "rsa_pss_private.pem");
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "rsa_pss_public.pem");
-        env::set_var("JACS_AGENT_KEY_ALGORITHM", "RSA-PSS");
+        env::set_var(
+            "JACS_AGENT_PRIVATE_KEY_FILENAME",
+            "test-ring-Ed25519-private.pem.enc",
+        );
+        env::set_var(
+            "JACS_AGENT_PUBLIC_KEY_FILENAME",
+            "test-ring-Ed25519-public.pem",
+        );
+        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
         env::set_var(PASSWORD_ENV_VAR, TEST_PASSWORD);
         env::set_var(
             "JACS_AGENT_ID_AND_VERSION",
@@ -642,25 +611,7 @@ pub fn create_ring_test_agent() -> Result<Agent, Box<dyn Error>> {
     Ok(agent)
 }
 
-/// Drop-in replacement for `load_test_agent_one()` for tests that need to
-/// **sign** documents. RSA private-key signing is disabled (RUSTSEC-2023-0071),
-/// so any test that previously relied on the RSA-PSS `agent-one.private.pem.enc`
-/// fixture for signing now needs an Ed25519 agent.
-///
-/// Points at the static `agent-ed25519.{private.pem.enc,public.pem}` fixture in
-/// `jacs/tests/fixtures/keys/` and loads the matching agent JSON via
-/// `load_by_id()`. No per-call temp directories are created — the fixture is
-/// shared across parallel test threads safely because every caller writes the
-/// same env-var values (`set_min_test_env_vars()` plus the three Ed25519
-/// overrides below).
-///
-/// `verify_payload` resolves public keys by hash from
-/// `tests/fixtures/public_keys/<hash>.{pem,enc_type}`; the Ed25519
-/// fixture's hash file (`7872a5e1…`) is committed alongside the RSA ones so
-/// the Local resolver chain finds it.
-///
-/// Read-only / verify-only tests can keep using `load_test_agent_one()` because
-/// RSA verification is still supported.
+/// Loads the committed Ed25519 fixture agent.
 #[cfg(test)]
 pub fn load_test_agent_one_ed25519() -> Agent {
     set_min_test_env_vars();
@@ -698,34 +649,62 @@ pub fn load_test_agent_one_ed25519() -> Agent {
 }
 
 #[cfg(test)]
-pub fn load_test_agent_two_ed25519() -> Agent {
-    let mut agent = load_test_agent_two();
-    unsafe {
-        env::set_var(
-            "JACS_AGENT_PRIVATE_KEY_FILENAME",
-            "agent-ed25519.private.pem.enc",
-        );
-        env::set_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "agent-ed25519.public.pem");
-        env::set_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519");
-    }
+#[derive(Clone)]
+struct Ed25519GeneratedFixture {
+    agent_json: String,
+    private_key: Vec<u8>,
+    public_key: Vec<u8>,
+}
 
-    let key_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/keys");
-    let encrypted_private_key =
-        fs::read(key_dir.join("agent-ed25519.private.pem.enc")).expect("read Ed25519 private key");
-    let private_key = jacs::crypt::aes_encrypt::decrypt_private_key_secure(&encrypted_private_key)
-        .expect("decrypt Ed25519 private key")
-        .as_slice()
-        .to_vec();
-    let public_key =
-        fs::read(key_dir.join("agent-ed25519.public.pem")).expect("read Ed25519 public key");
+#[cfg(test)]
+fn generated_agent_two_ed25519() -> Ed25519GeneratedFixture {
+    static AGENT_TWO: OnceLock<Ed25519GeneratedFixture> = OnceLock::new();
+    AGENT_TWO
+        .get_or_init(|| {
+            let mut agent =
+                Agent::ephemeral("ring-Ed25519").expect("create generated Ed25519 fixture agent");
+            let agent_json = create_minimal_blank_agent(
+                "ai".to_string(),
+                Some("Agent Two".to_string()),
+                None,
+                None,
+            )
+            .expect("create generated Ed25519 fixture JSON");
+            agent
+                .create_agent_and_load(&agent_json, true, Some("ring-Ed25519"))
+                .expect("sign generated Ed25519 fixture agent");
+            let agent_json = serde_json::to_string(
+                agent
+                    .get_value()
+                    .expect("generated Ed25519 fixture agent value"),
+            )
+            .expect("serialize generated Ed25519 fixture agent");
+            let private_key = agent
+                .get_private_key()
+                .expect("generated Ed25519 fixture private key")
+                .expose_secret()
+                .clone();
+            let public_key = agent
+                .get_public_key()
+                .expect("generated Ed25519 fixture public key")
+                .clone();
+            Ed25519GeneratedFixture {
+                agent_json,
+                private_key,
+                public_key,
+            }
+        })
+        .clone()
+}
+
+#[cfg(test)]
+pub fn load_test_agent_two_ed25519() -> Agent {
+    let generated = generated_agent_two_ed25519();
+    let mut agent = Agent::ephemeral("ring-Ed25519").expect("create Ed25519 test agent");
+    agent.set_keys_raw(generated.private_key, generated.public_key, "ring-Ed25519");
     agent
-        .set_keys(private_key, public_key, "ring-Ed25519")
-        .expect("second fixture agent should use Ed25519 signing keys");
-    if let Some(config) = agent.config.as_mut() {
-        config
-            .set_key_algorithm("ring-Ed25519".to_string())
-            .expect("second fixture config should accept ring-Ed25519");
-    }
+        .load(&generated.agent_json)
+        .expect("generated Ed25519 fixture agent should load");
     agent
 }
 

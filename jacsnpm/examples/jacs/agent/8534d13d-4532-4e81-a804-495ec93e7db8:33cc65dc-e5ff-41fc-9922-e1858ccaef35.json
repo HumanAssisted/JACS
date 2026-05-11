@@ -31,7 +31,7 @@
     ],
     "publicKeyHash": "7dce67f161967cdb737a5f351bc3eb4f0ee25515e40933aa1885500ceac98705",
     "signature": "FaxMDuiHac2EtrOna8Kukh0LqeXpnZ9eBFiS9+LVwEeGZdrLo/aIyfBLTtCnzXqEf4u7g1cy9ATOthOWERZp70qn/23wZ1/chp+go6er2bXW7e0CnQv7P38fMdwnJnPmTXKHKCWYMMauvCCicK6VXTuaLS2oLVhmaOsgaN2UuPpNLY+LHVjCmc8pceHNhPx9ysiNBqPSrw0DZl2ndVncmfE4qeRuBOSLzLAujDDRWQ5Bx7TDFP6g4oPxOSRwEOz4u0JXtLXx1qz8qmoJ8clurE5j37sRa3XkwWwSr1sL0BiRZ3TGxFnb71loQPybsumz0haaMNtzJRAv0Qml3uXTVbfRURH6v2M3AbvP33g0bLhagrjY/rmSIotaAbrwRFVnAsvxdT+ea6uqmfrqQg6PlMBUawcbX+N4VCmcAP5L/LQS4F0ysMJSSd7WgrA5w+tm6lu5+bOtFzl43lNCkr5PSPuSSAWRZvC9G3KWUYGrPdjV/Pxj5cWc2yzkpzFnSir+hQScvHa8CftqGL0gdzM11VCl8Vl5tsycObWSHVQiJoweyg6Q6ov3qPxtWAuyDsHCU845y4syJvFXS01wGy2LE5DRKqzzy2w8UNpAtXVLN+vD66BPPwAjwLSNOD33e0WXu1kbF4mtPTRF4spOOl74Xp1WLfDs1coKGAza+btxyuk=",
-    "signingAlgorithm": "RSA-PSS"
+    "signingAlgorithm": "ring-Ed25519"
   },
   "jacsType": "agent",
   "jacsVersion": "33cc65dc-e5ff-41fc-9922-e1858ccaef35",

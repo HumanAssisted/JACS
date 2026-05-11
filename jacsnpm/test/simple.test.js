@@ -120,7 +120,7 @@ function seedPublicKeyCache(agentDir, agentJson, publicKeyPem) {
   const agent = JSON.parse(agentJson);
   const signature = agent.jacsSignature || {};
   const keyHash = signature.publicKeyHash;
-  const signingAlgorithm = signature.signingAlgorithm || 'RSA-PSS';
+  const signingAlgorithm = signature.signingAlgorithm || 'ring-Ed25519';
   const publicKeysDir = path.join(agentDir, 'jacs_data', 'public_keys');
 
   // Replicate Rust's hash_public_key: decode UTF-8, trim, remove \r, SHA-256 hex.
