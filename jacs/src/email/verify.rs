@@ -16,9 +16,10 @@ use super::canonicalize::{
 use super::error::{EmailError, check_email_size};
 use super::result::{EmailVerificationReason, SignedEmailVerificationResult, VerificationMode};
 use super::transport::{
-    SignedEmailTransport, detect_signed_email_transport, extract_inline_logo_part,
-    extract_jacs_header_from_logo_png, extract_topmost_inline_jacs_envelope,
-    html_bodies_equivalent, strip_inline_signature_artifacts_from_html,
+    SignedEmailTransport, detect_signed_email_transport, escape_html_text,
+    extract_inline_logo_part, extract_jacs_header_from_logo_png,
+    extract_topmost_inline_jacs_envelope, html_bodies_equivalent,
+    strip_inline_signature_artifacts_from_html,
 };
 use super::types::{
     ChainEntry, ContentVerificationResult, FieldResult, FieldStatus, JacsEmailSignatureDocument,
@@ -386,13 +387,6 @@ fn render_expected_html_inline_body_without_artifacts(plain_text: &str) -> Strin
     format!(
         r#"<html data-hai-template-version="v1"><body><main data-hai-message-body="v1">{body}</main></body></html>"#
     )
-}
-
-fn escape_html_text(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 /// Verify a JACS-signed email whose signature attachment is in YAML format.

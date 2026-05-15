@@ -93,10 +93,10 @@ pub use transport::{
     HAI_LOGO_CONTENT_ID_HEADER, HAI_LOGO_CONTENT_TYPE, HAI_LOGO_FILENAME,
     HAI_LOGO_VERIFY_LINK_MARKER, HAI_VERIFY_FOOTER_MARKER, HAI_VERIFY_LINK_MARKER, InlineLogoPart,
     SignedEmailTransport, SignedLogoPng, StrippedInlineEmailArtifacts,
-    detect_signed_email_transport, embed_jacs_header_in_logo_png, extract_inline_logo_part,
-    extract_jacs_header_from_logo_png, extract_topmost_inline_jacs_envelope,
-    extract_topmost_inline_jacs_envelope_from_html, html_bodies_equivalent,
-    normalize_html_for_equivalence, remove_inline_signature_artifacts,
+    detect_signed_email_transport, embed_jacs_header_in_logo_png, escape_html_attr,
+    escape_html_text, extract_inline_logo_part, extract_jacs_header_from_logo_png,
+    extract_topmost_inline_jacs_envelope, extract_topmost_inline_jacs_envelope_from_html,
+    html_bodies_equivalent, normalize_html_for_equivalence, remove_inline_signature_artifacts,
     strip_inline_signature_artifacts_from_html,
 };
 

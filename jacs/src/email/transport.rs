@@ -24,6 +24,21 @@ pub const HAI_LOGO_CONTENT_TYPE: &str = "image/png";
 pub const HAI_LOGO_FILENAME: &str = "hai-jacs-logo.png";
 pub const HAI_HIDDEN_ENVELOPE_MAX_BYTES: usize = 8 * 1024;
 
+/// Escape plain text for insertion into HAI-owned HTML email text nodes.
+pub fn escape_html_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Escape plain text for insertion into HAI-owned HTML email attribute values.
+pub fn escape_html_attr(value: &str) -> String {
+    escape_html_text(value)
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SignedEmailTransport {
@@ -465,6 +480,22 @@ fn normalize_content_id(content_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn escapes_html_text_nodes_without_treating_text_as_html() {
+        assert_eq!(
+            escape_html_text("<script>alert('x' & \"y\")</script>"),
+            "&lt;script&gt;alert('x' &amp; \"y\")&lt;/script&gt;"
+        );
+    }
+
+    #[test]
+    fn escapes_html_attribute_values() {
+        assert_eq!(
+            escape_html_attr("https://hai.ai/?q=<x>&quote=\"yes\"&single='yes'"),
+            "https://hai.ai/?q=&lt;x&gt;&amp;quote=&quot;yes&quot;&amp;single=&#39;yes&#39;"
+        );
+    }
 
     #[test]
     fn detects_attachment_transport() {
