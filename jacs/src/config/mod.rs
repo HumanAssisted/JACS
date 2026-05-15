@@ -376,22 +376,22 @@ env_default!(default_algorithm, "JACS_AGENT_KEY_ALGORITHM", "pq2025");
 /// fall back to legacy `JACS_USE_SECURITY` with a deprecation warning.
 fn default_security() -> Option<String> {
     // Preferred new name
-    if let Ok(Some(val)) = get_env_var("JACS_ENABLE_FILESYSTEM_QUARANTINE", false) {
-        if !val.is_empty() {
-            return Some(val);
-        }
+    if let Ok(Some(val)) = get_env_var("JACS_ENABLE_FILESYSTEM_QUARANTINE", false)
+        && !val.is_empty()
+    {
+        return Some(val);
     }
     // Legacy name (backwards compatible)
-    if let Ok(Some(val)) = get_env_var("JACS_USE_SECURITY", false) {
-        if !val.is_empty() {
-            eprintln!(
-                "DEPRECATION WARNING: JACS_USE_SECURITY is deprecated. \
+    if let Ok(Some(val)) = get_env_var("JACS_USE_SECURITY", false)
+        && !val.is_empty()
+    {
+        eprintln!(
+            "DEPRECATION WARNING: JACS_USE_SECURITY is deprecated. \
                 Use JACS_ENABLE_FILESYSTEM_QUARANTINE instead. \
                 This env var only controls filesystem quarantine of executable files, \
                 not cryptographic verification."
-            );
-            return Some(val);
-        }
+        );
+        return Some(val);
     }
     Some("false".to_string())
 }
@@ -747,10 +747,7 @@ impl Config {
     }
 
     fn env_opt_bool(key: &str) -> Option<bool> {
-        match Self::env_opt(key) {
-            Some(val) => Some(val.to_lowercase() == "true" || val == "1"),
-            None => None,
-        }
+        Self::env_opt(key).map(|val| val.to_lowercase() == "true" || val == "1")
     }
 
     fn apply_string_override(target: &mut Option<String>, key: &str) {

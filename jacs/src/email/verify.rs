@@ -370,10 +370,10 @@ fn html_inline_presentation_equivalent(parts: &ParsedEmailParts) -> bool {
 fn user_text_from_inline_text_body(text_body: &str) -> String {
     let trimmed = text_body.trim_end_matches(['\r', '\n']);
     for separator in ["\r\n\r\n", "\n\n"] {
-        if let Some((head, tail)) = trimmed.rsplit_once(separator) {
-            if tail.starts_with("This email is sent from an AI agent. Verify at ") {
-                return head.to_string();
-            }
+        if let Some((head, tail)) = trimmed.rsplit_once(separator)
+            && tail.starts_with("This email is sent from an AI agent. Verify at ")
+        {
+            return head.to_string();
         }
     }
     trimmed.to_string()
@@ -825,13 +825,13 @@ fn extract_addr_specs(header_value: &str) -> Vec<String> {
     let synthetic = format!("From: {}\r\n\r\n", header_value);
     let message = mail_parser::MessageParser::default().parse(synthetic.as_bytes());
 
-    if let Some(msg) = message {
-        if let Some(from) = msg.from() {
-            return from
-                .iter()
-                .filter_map(|addr| addr.address().map(|a| a.to_lowercase()))
-                .collect();
-        }
+    if let Some(msg) = message
+        && let Some(from) = msg.from()
+    {
+        return from
+            .iter()
+            .filter_map(|addr| addr.address().map(|a| a.to_lowercase()))
+            .collect();
     }
 
     // Fallback: if mail_parser couldn't extract addresses, try manual extraction
@@ -842,13 +842,13 @@ fn extract_addr_specs(header_value: &str) -> Vec<String> {
             if trimmed.is_empty() {
                 return None;
             }
-            if let Some(start) = trimmed.rfind('<') {
-                if let Some(end) = trimmed[start..].find('>') {
-                    let spec = &trimmed[start + 1..start + end];
-                    let spec = spec.trim();
-                    if !spec.is_empty() {
-                        return Some(spec.to_lowercase());
-                    }
+            if let Some(start) = trimmed.rfind('<')
+                && let Some(end) = trimmed[start..].find('>')
+            {
+                let spec = &trimmed[start + 1..start + end];
+                let spec = spec.trim();
+                if !spec.is_empty() {
+                    return Some(spec.to_lowercase());
                 }
             }
             Some(trimmed.to_lowercase())

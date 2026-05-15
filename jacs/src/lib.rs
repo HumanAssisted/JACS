@@ -226,14 +226,14 @@ fn prepare_agent_for_agent_path(agent: &mut Agent, filepath: &str) {
                 config_path.display()
             );
             agent.config = Some(config);
-            if let Some(root) = config_path.parent() {
-                if let Err(e) = agent.set_storage_root(root.to_path_buf()) {
-                    debug!(
-                        "[load_path_agent] Failed to re-root storage to '{}': {}",
-                        root.display(),
-                        e
-                    );
-                }
+            if let Some(root) = config_path.parent()
+                && let Err(e) = agent.set_storage_root(root.to_path_buf())
+            {
+                debug!(
+                    "[load_path_agent] Failed to re-root storage to '{}': {}",
+                    root.display(),
+                    e
+                );
             }
         }
         Err(e) => {
@@ -399,9 +399,7 @@ pub fn create_task(
 
     // create document
     let embed = None;
-    let docresult = agent
-        .create_document_and_load(&task.to_string(), None, embed)
-        .map_err(Into::into);
+    let docresult = agent.create_document_and_load(&task.to_string(), None, embed);
 
     save_document(agent, docresult, None, None, None, None)?;
 

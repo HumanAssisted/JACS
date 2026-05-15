@@ -1,7 +1,5 @@
 #[cfg(feature = "otlp-tracing")]
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
-#[cfg(feature = "otlp-tracing")]
-use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::{Arc, Mutex};
 use tracing::warn;
 

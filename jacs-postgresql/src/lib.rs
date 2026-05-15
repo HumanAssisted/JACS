@@ -714,10 +714,10 @@ impl SearchProvider for PostgresStorage {
                 0.0
             };
 
-            if let Some(min_score) = query.min_score {
-                if score < min_score {
-                    continue;
-                }
+            if let Some(min_score) = query.min_score
+                && score < min_score
+            {
+                continue;
             }
 
             results.push(SearchHit {

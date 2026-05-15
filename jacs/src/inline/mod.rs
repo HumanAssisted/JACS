@@ -458,7 +458,7 @@ fn normalise_content(content: &str) -> String {
     let lf_only: String = content.chars().filter(|&c| c != '\r').collect();
     // Trim trailing whitespace (spaces, tabs, newlines).
     lf_only
-        .trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\n' || c == '\r')
+        .trim_end_matches([' ', '\t', '\n', '\r'])
         .to_string()
 }
 

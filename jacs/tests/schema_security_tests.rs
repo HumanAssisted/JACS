@@ -63,7 +63,7 @@ fn resolve_schema_rejects_prefix_overlap_outside_allowed_directory() {
         "schema path with shared prefix should be rejected: {}",
         outside_rel
     );
-    let err = result.err().expect("error expected").to_string();
+    let err = result.expect_err("error expected").to_string();
     assert!(
         err.contains("outside allowed directories"),
         "unexpected error: {}",

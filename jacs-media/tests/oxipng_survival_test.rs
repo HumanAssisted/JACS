@@ -36,9 +36,11 @@ fn png_signature_survives_oxipng_default_optimisation() {
     // Run through oxipng with defaults (no chunk stripping). PRD §5.1: this
     // is the "expected to survive" case — oxipng leaves safe-to-copy chunks
     // (iTXt) alone.
-    let mut opts = oxipng::Options::default();
-    opts.strip = oxipng::StripChunks::None;
-    opts.idat_recoding = false;
+    let opts = oxipng::Options {
+        strip: oxipng::StripChunks::None,
+        idat_recoding: false,
+        ..Default::default()
+    };
 
     let optimised = oxipng::optimize_from_memory(&signed, &opts).expect("oxipng optimize");
 
@@ -61,9 +63,11 @@ fn png_signature_lost_through_oxipng_strip_all() {
     let payload = "lost-through-strip-all";
     let signed = embed_signature(&png, payload, false, false).expect("embed");
 
-    let mut opts = oxipng::Options::default();
-    opts.strip = oxipng::StripChunks::All;
-    opts.idat_recoding = false;
+    let opts = oxipng::Options {
+        strip: oxipng::StripChunks::All,
+        idat_recoding: false,
+        ..Default::default()
+    };
 
     let stripped = oxipng::optimize_from_memory(&signed, &opts).expect("oxipng optimize");
 

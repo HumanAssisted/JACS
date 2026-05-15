@@ -5,14 +5,14 @@ repos:
         name: cargo fmt
         entry: cargo fmt --all
         language: system
-        types: [rust]
+        always_run: true
         pass_filenames: false
 
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy --all-targets --all-features -- -D warnings
+        entry: bash -c 'cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features && cargo clippy --all-targets --all-features -- -D warnings'
         language: system
-        types: [rust]
+        always_run: true
         pass_filenames: false
 
       - id: json-format

@@ -321,11 +321,13 @@ impl KeyStore for FsEncryptedStore {
         let algo = match spec.algorithm.as_str() {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
-            other => return Err(JacsError::CryptoError(format!(
-                "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'pq2025'. \
+            other => {
+                return Err(JacsError::CryptoError(format!(
+                    "Unsupported key algorithm: '{}'. Supported algorithms are: 'ring-Ed25519', 'pq2025'. \
                 Check your JACS_AGENT_KEY_ALGORITHM environment variable or config file.",
-                other
-            )).into()),
+                    other
+                )));
+            }
         };
         let (priv_key, pub_key) = match algo {
             CryptoSigningAlgorithm::RingEd25519 => crypt::ringwrapper::generate_keys()?,
@@ -376,7 +378,7 @@ impl KeyStore for FsEncryptedStore {
         // This prevents other users on shared systems from reading private keys
         set_secure_permissions(&final_priv_path, false)?;
         set_secure_permissions(&pub_path, false)?;
-        set_secure_permissions(&key_dir, true)?;
+        set_secure_permissions(key_dir, true)?;
 
         // Protect key directory from accidental git commits / Docker inclusion
         let key_dir_path = std::path::Path::new(key_dir.trim_start_matches("./"));
@@ -457,9 +459,10 @@ impl KeyStore for FsEncryptedStore {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
-                return Err(
-                    JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into(),
-                );
+                return Err(JacsError::CryptoError(format!(
+                    "Unsupported algorithm: {}",
+                    other
+                )));
             }
         };
         // SECURITY: Reject non-UTF8 messages instead of silently signing empty string
@@ -480,9 +483,9 @@ impl KeyStore for FsEncryptedStore {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
-        Ok(STANDARD
+        STANDARD
             .decode(sig_b64)
-            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))
     }
 
     fn rotate(&self, old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
@@ -642,8 +645,7 @@ impl KeyStore for InMemoryKeyStore {
                 return Err(JacsError::CryptoError(format!(
                     "Unsupported key algorithm: '{}'. Supported: 'ring-Ed25519', 'pq2025'.",
                     other
-                ))
-                .into());
+                )));
             }
         };
         let (priv_key, pub_key) = match algo {
@@ -695,9 +697,10 @@ impl KeyStore for InMemoryKeyStore {
             "ring-Ed25519" => CryptoSigningAlgorithm::RingEd25519,
             "pq2025" => CryptoSigningAlgorithm::Pq2025,
             other => {
-                return Err(
-                    JacsError::CryptoError(format!("Unsupported algorithm: {}", other)).into(),
-                );
+                return Err(JacsError::CryptoError(format!(
+                    "Unsupported algorithm: {}",
+                    other
+                )));
             }
         };
         // SECURITY: Reject non-UTF8 messages instead of silently signing empty string
@@ -718,9 +721,9 @@ impl KeyStore for InMemoryKeyStore {
                 crypt::pq2025::sign_string(private_key.to_vec(), &data.to_string())?
             }
         };
-        Ok(STANDARD
+        STANDARD
             .decode(sig_b64)
-            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?)
+            .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))
     }
 
     fn rotate(&self, _old_version: &str, spec: &KeySpec) -> Result<(Vec<u8>, Vec<u8>), JacsError> {
@@ -1271,7 +1274,7 @@ mod tests {
     fn test_fs_encrypted_rotate_generates_new_keys() {
         let _lock = FS_TEST_MUTEX.lock().unwrap();
         let (dir_name, paths) = setup_fs_test_dir("newkeys");
-        let key_dir = format!("{}/keys", dir_name);
+        let _key_dir = format!("{}/keys", dir_name);
 
         let store = FsEncryptedStore::new(paths);
         let spec = KeySpec {

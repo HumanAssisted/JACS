@@ -4,6 +4,7 @@ use napi::{JsBuffer, JsObject, JsString, JsUnknown};
 use serde_json::{Map as JsonMap, Value};
 
 /// Converts a JavaScript value into a serde_json::Value.
+#[allow(clippy::only_used_in_recursion)]
 pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
     let value_type = value.get_type()?;
     if value_type == napi::ValueType::Null || value_type == napi::ValueType::Undefined {
@@ -69,7 +70,7 @@ pub fn js_value_to_value(env: Env, value: JsUnknown) -> Result<Value> {
 
     Err(Error::new(
         Status::InvalidArg,
-        format!("Unsupported JavaScript type for JSON conversion"),
+        "Unsupported JavaScript type for JSON conversion".to_string(),
     ))
 }
 
@@ -100,7 +101,9 @@ pub fn value_to_js_value(env: Env, value: &Value) -> Result<JsUnknown> {
                 let js_item = value_to_js_value(env, item)?;
                 array.set(i as u32, js_item)?;
             }
-            Ok(unsafe { std::mem::transmute(array) })
+            Ok(unsafe {
+                std::mem::transmute::<napi::bindgen_prelude::Array, napi::JsUnknown>(array)
+            })
         }
         Value::Object(o) => {
             // Check if this is a specially encoded type

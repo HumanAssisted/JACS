@@ -21,7 +21,7 @@ fn verify_registry_registration_rejects_non_https_api_url() {
     }
 
     assert!(result.is_err(), "non-HTTPS URL must be rejected");
-    let err = result.err().expect("expected policy error");
+    let err = result.expect_err("expected policy error");
     let err_msg = err.to_string();
     assert!(
         err_msg.contains("must use HTTPS"),
@@ -51,7 +51,7 @@ fn verify_registry_registration_allows_localhost_http_for_testing() {
         result.is_err(),
         "localhost test URL should still fail without a server"
     );
-    let err = result.err().expect("expected connection error");
+    let err = result.expect_err("expected connection error");
     let err_msg = err.to_string();
     assert!(
         !err_msg.contains("must use HTTPS"),

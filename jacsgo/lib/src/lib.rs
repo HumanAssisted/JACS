@@ -1,3 +1,8 @@
+// All functions in this CGo FFI crate are `extern "C"` and inherently work
+// with raw pointers across the C ABI boundary.  Marking every one `unsafe fn`
+// would break the Go callers; a crate-level allow is the appropriate fix.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use ::jacs as jacs_core;
 use jacs_core::agent::document::DocumentTraits;
 use jacs_core::agent::payloads::PayloadTraits;
@@ -99,7 +104,7 @@ pub extern "C" fn jacs_agent_sign_string(
         Err(_) => return ptr::null_mut(),
     };
 
-    match agent.sign_string(&data_str.to_string()) {
+    match agent.sign_string(data_str) {
         Ok(signature) => match CString::new(signature) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
@@ -151,8 +156,8 @@ pub extern "C" fn jacs_agent_verify_string(
     };
 
     match agent.verify_string(
-        &data_str.to_string(),
-        &signature_str.to_string(),
+        data_str,
+        signature_str,
         public_key_vec,
         Some(enc_type_str.to_string()),
     ) {
@@ -260,7 +265,7 @@ pub extern "C" fn jacs_agent_create_agreement(
 
     match jacs_core::shared::document_add_agreement(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         agentids,
         None,
         None,
@@ -303,7 +308,7 @@ pub extern "C" fn jacs_agent_sign_agreement(
 
     match jacs_core::shared::document_sign_agreement(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         None,
         None,
         None,
@@ -343,7 +348,7 @@ pub extern "C" fn jacs_agent_check_agreement(
 
     match jacs_core::shared::document_check_agreement(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         None,
         c_string_to_option(agreement_fieldname),
     ) {
@@ -386,7 +391,7 @@ pub extern "C" fn jacs_agent_verify_agent(
         }
     }
 
-    if let Err(_) = agent.verify_self_signature() {
+    if agent.verify_self_signature().is_err() {
         return -5;
     }
 
@@ -432,7 +437,7 @@ pub extern "C" fn jacs_agent_create_document(
 
     match jacs_core::shared::document_create(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         c_string_to_option(custom_schema),
         c_string_to_option(outputfilename),
         no_save != 0,
@@ -468,7 +473,7 @@ pub extern "C" fn jacs_agent_verify_document(
         Err(_) => return -3,
     };
 
-    let doc = match agent.load_document(&doc_str.to_string()) {
+    let doc = match agent.load_document(doc_str) {
         Ok(doc) => doc,
         Err(_) => return -4,
     };
@@ -476,7 +481,7 @@ pub extern "C" fn jacs_agent_verify_document(
     let document_key = doc.getkey();
     let value = doc.getvalue();
 
-    if let Err(_) = agent.verify_hash(value) {
+    if agent.verify_hash(value).is_err() {
         return -5;
     }
 
@@ -539,7 +544,7 @@ pub extern "C" fn jacs_agent_verify_document_by_id(
     let document_key = loaded_doc.getkey();
     let value = loaded_doc.getvalue();
 
-    if let Err(_) = agent.verify_hash(value) {
+    if agent.verify_hash(value).is_err() {
         return -9;
     }
 
@@ -1265,7 +1270,7 @@ pub extern "C" fn jacs_sign_string(data: *const c_char) -> *mut c_char {
         Err(_) => return ptr::null_mut(),
     };
 
-    match agent.sign_string(&data_str.to_string()) {
+    match agent.sign_string(data_str) {
         Ok(signature) => match CString::new(signature) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
@@ -1286,7 +1291,7 @@ pub extern "C" fn jacs_hash_string(data: *const c_char) -> *mut c_char {
         Err(_) => return ptr::null_mut(),
     };
 
-    let hash = core_hash_string(&data_str.to_string());
+    let hash = core_hash_string(data_str);
 
     match CString::new(hash) {
         Ok(c_string) => c_string.into_raw(),
@@ -1334,8 +1339,8 @@ pub extern "C" fn jacs_verify_string(
     };
 
     match agent.verify_string(
-        &data_str.to_string(),
-        &signature_str.to_string(),
+        data_str,
+        signature_str,
         public_key_vec,
         Some(enc_type_str.to_string()),
     ) {
@@ -1379,15 +1384,18 @@ pub extern "C" fn jacs_sign_agent(
     };
 
     // Proceed with signature verification
-    if let Err(_) = agent.signature_verification_procedure(
-        &external_agent,
-        None,
-        &AGENT_SIGNATURE_FIELDNAME.to_string(),
-        public_key_vec,
-        Some(enc_type_str.to_string()),
-        None,
-        None,
-    ) {
+    if agent
+        .signature_verification_procedure(
+            &external_agent,
+            None,
+            AGENT_SIGNATURE_FIELDNAME,
+            public_key_vec,
+            Some(enc_type_str.to_string()),
+            None,
+            None,
+        )
+        .is_err()
+    {
         return ptr::null_mut();
     }
 
@@ -1395,7 +1403,7 @@ pub extern "C" fn jacs_sign_agent(
     let registration_signature = match agent.signing_procedure(
         &external_agent,
         None,
-        &AGENT_REGISTRATION_SIGNATURE_FIELDNAME.to_string(),
+        AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
     ) {
         Ok(sig) => sig,
         Err(_) => return ptr::null_mut(),
@@ -1514,7 +1522,7 @@ pub extern "C" fn jacs_verify_agent(agentfile: *const c_char) -> c_int {
         }
     }
 
-    if let Err(_) = agent.verify_self_signature() {
+    if agent.verify_self_signature().is_err() {
         return -4;
     }
 
@@ -1541,7 +1549,7 @@ pub extern "C" fn jacs_update_agent(new_agent_string: *const c_char) -> *mut c_c
         Err(_) => return ptr::null_mut(),
     };
 
-    match agent.update_self(&agent_str.to_string()) {
+    match agent.update_self(agent_str) {
         Ok(updated) => match CString::new(updated) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
@@ -1567,7 +1575,7 @@ pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int 
         Err(_) => return -3,
     };
 
-    let doc = match agent.load_document(&doc_str.to_string()) {
+    let doc = match agent.load_document(doc_str) {
         Ok(doc) => doc,
         Err(_) => return -4,
     };
@@ -1575,7 +1583,7 @@ pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int 
     let document_key = doc.getkey();
     let value = doc.getvalue();
 
-    if let Err(_) = agent.verify_hash(value) {
+    if agent.verify_hash(value).is_err() {
         return -5;
     }
 
@@ -1652,10 +1660,7 @@ pub extern "C" fn jacs_update_document(
 
     let attachments = if !attachments_json.is_null() {
         match unsafe { CStr::from_ptr(attachments_json) }.to_str() {
-            Ok(s) => match serde_json::from_str::<Vec<String>>(s) {
-                Ok(vec) => Some(vec),
-                Err(_) => None,
-            },
+            Ok(s) => serde_json::from_str::<Vec<String>>(s).ok(),
             Err(_) => None,
         }
     } else {
@@ -1669,12 +1674,7 @@ pub extern "C" fn jacs_update_document(
         Err(_) => return ptr::null_mut(),
     };
 
-    match agent.update_document(
-        &key_str.to_string(),
-        &doc_str.to_string(),
-        attachments,
-        embed_opt,
-    ) {
+    match agent.update_document(key_str, doc_str, attachments, embed_opt) {
         Ok(doc) => match CString::new(doc.to_string()) {
             Ok(c_string) => c_string.into_raw(),
             Err(_) => ptr::null_mut(),
@@ -1717,7 +1717,7 @@ pub extern "C" fn jacs_create_document(
 
     match jacs_core::shared::document_create(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         c_string_to_option(custom_schema),
         c_string_to_option(outputfilename),
         no_save != 0,
@@ -1767,7 +1767,7 @@ pub extern "C" fn jacs_create_agreement(
 
     match jacs_core::shared::document_add_agreement(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         agentids,
         None,
         None,
@@ -1808,7 +1808,7 @@ pub extern "C" fn jacs_sign_agreement(
 
     match jacs_core::shared::document_sign_agreement(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         None,
         None,
         None,
@@ -1846,7 +1846,7 @@ pub extern "C" fn jacs_check_agreement(
 
     match jacs_core::shared::document_check_agreement(
         &mut agent,
-        &doc_str.to_string(),
+        doc_str,
         None,
         c_string_to_option(agreement_fieldname),
     ) {
@@ -1970,7 +1970,7 @@ pub extern "C" fn jacs_verify_signature(
         Err(_) => return -3,
     };
 
-    let doc = match agent.load_document(&doc_str.to_string()) {
+    let doc = match agent.load_document(doc_str) {
         Ok(doc) => doc,
         Err(_) => return -4,
     };

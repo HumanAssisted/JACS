@@ -15,10 +15,11 @@ use crate::tools::{ClassifiedTool, ToolFamily, all_classified_tools};
 use rmcp::model::Tool;
 
 /// Runtime tool profile for filtering which tools are registered.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Profile {
     /// Core tools only (default). Includes the 7 standard families:
     /// state, document, trust, audit, memory, search, key.
+    #[default]
     Core,
 
     /// All compiled-in tools. Includes core + advanced families:
@@ -46,10 +47,10 @@ impl Profile {
             return Self::parse(p);
         }
 
-        if let Ok(env_val) = std::env::var("JACS_MCP_PROFILE") {
-            if !env_val.trim().is_empty() {
-                return Self::parse(&env_val);
-            }
+        if let Ok(env_val) = std::env::var("JACS_MCP_PROFILE")
+            && !env_val.trim().is_empty()
+        {
+            return Self::parse(&env_val);
         }
 
         Profile::Core
@@ -81,12 +82,6 @@ impl Profile {
             Profile::Core => "core",
             Profile::Full => "full",
         }
-    }
-}
-
-impl Default for Profile {
-    fn default() -> Self {
-        Profile::Core
     }
 }
 

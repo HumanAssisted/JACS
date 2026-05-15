@@ -560,10 +560,10 @@ impl JacsError {
             let parts: Vec<&str> = message.split(": ").collect();
             if parts.len() > 1 {
                 // Return the last non-empty segment
-                if let Some(last) = parts.last() {
-                    if !last.is_empty() {
-                        return last.to_string();
-                    }
+                if let Some(last) = parts.last()
+                    && !last.is_empty()
+                {
+                    return last.to_string();
                 }
             }
         }

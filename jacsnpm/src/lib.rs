@@ -215,6 +215,7 @@ impl JacsAgent {
     /// Create a new empty JacsAgent instance.
     /// Call `load()` to initialize it with a configuration.
     #[napi(constructor)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         JacsAgent {
             inner: Arc::new(AgentWrapper::new()),
@@ -367,6 +368,7 @@ impl JacsAgent {
 
     /// Create an agreement with extended options (sync, blocks event loop).
     #[napi(js_name = "createAgreementWithOptionsSync")]
+    #[allow(clippy::too_many_arguments)]
     pub fn create_agreement_with_options_sync(
         &self,
         document_string: String,
@@ -701,6 +703,7 @@ impl JacsAgent {
         js_name = "createAgreementWithOptions",
         ts_return_type = "Promise<string>"
     )]
+    #[allow(clippy::too_many_arguments)]
     pub fn create_agreement_with_options_async(
         &self,
         document_string: String,
@@ -2019,6 +2022,7 @@ pub fn hash_string(data: String) -> Result<String> {
 
 /// Create a JACS configuration object. Sync-only (minimal CPU).
 #[napi]
+#[allow(clippy::too_many_arguments)]
 pub fn create_config(
     jacs_use_security: Option<String>,
     jacs_data_directory: Option<String>,
@@ -2046,6 +2050,7 @@ pub fn create_config(
 
 /// Create a JACS agent programmatically (sync, blocks event loop).
 #[napi(js_name = "createAgentSync")]
+#[allow(clippy::too_many_arguments)]
 pub fn create_agent_sync(
     name: String,
     password: String,
@@ -2075,6 +2080,7 @@ pub fn create_agent_sync(
 
 /// Create a JACS agent programmatically (async, returns Promise).
 #[napi(js_name = "createAgent", ts_return_type = "Promise<string>")]
+#[allow(clippy::too_many_arguments)]
 pub fn create_agent_async(
     name: String,
     password: String,

@@ -39,21 +39,16 @@ use url::Url;
 ///
 /// The default policy is `Verified`, requiring agents to have valid JACS
 /// provenance signatures.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum A2ATrustPolicy {
     /// Accept any A2A agent, even those without JACS signatures.
     Open,
     /// Only accept agents that have valid JACS signatures and declare
     /// the JACS provenance extension. This is the default.
+    #[default]
     Verified,
     /// Only accept agents that are explicitly in the local trust store.
     Strict,
-}
-
-impl Default for A2ATrustPolicy {
-    fn default() -> Self {
-        A2ATrustPolicy::Verified
-    }
 }
 
 impl fmt::Display for A2ATrustPolicy {
@@ -210,25 +205,24 @@ fn fetch_jwks(card: &AgentCard) -> Result<Vec<Jwk>, String> {
         .ok()
         .as_deref()
         .is_some_and(|origin| origin == "https://local-jwks.invalid")
+        && let Ok(jwks_json) = std::env::var("JACS_TEST_JWKS_JSON")
     {
-        if let Ok(jwks_json) = std::env::var("JACS_TEST_JWKS_JSON") {
-            let value = serde_json::from_str::<serde_json::Value>(&jwks_json).map_err(|e| {
-                format!(
-                    "Failed to parse test JWKS JSON from JACS_TEST_JWKS_JSON: {}",
-                    e
-                )
-            })?;
-            let keys_value = value
-                .get("keys")
-                .ok_or_else(|| "Test JWKS JSON did not include a 'keys' array".to_string())?
-                .clone();
-            return serde_json::from_value::<Vec<Jwk>>(keys_value).map_err(|e| {
-                format!(
-                    "Failed to decode test JWKS keys from JACS_TEST_JWKS_JSON: {}",
-                    e
-                )
-            });
-        }
+        let value = serde_json::from_str::<serde_json::Value>(&jwks_json).map_err(|e| {
+            format!(
+                "Failed to parse test JWKS JSON from JACS_TEST_JWKS_JSON: {}",
+                e
+            )
+        })?;
+        let keys_value = value
+            .get("keys")
+            .ok_or_else(|| "Test JWKS JSON did not include a 'keys' array".to_string())?
+            .clone();
+        return serde_json::from_value::<Vec<Jwk>>(keys_value).map_err(|e| {
+            format!(
+                "Failed to decode test JWKS keys from JACS_TEST_JWKS_JSON: {}",
+                e
+            )
+        });
     }
 
     ensure_network_access(NetworkCapability::JwksFetch).map_err(|e| e.to_string())?;

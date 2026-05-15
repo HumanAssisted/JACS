@@ -51,10 +51,9 @@ fn test_create_task_with_actions() {
     // cargo test   --test task_tests test_create_task_with_actions -- --nocapture
     let mut agent = load_test_agent_one_ed25519();
     let mut agent_two = load_test_agent_two_ed25519();
-    let mut actions: Vec<Value> = Vec::new();
     let start_in_a_week = Utc::now() + Duration::weeks(1);
     let action = create_minimal_action("go to mars", " how to go to mars", None, None);
-    actions.push(action);
+    let actions: Vec<Value> = vec![action];
     let mut task =
         create_minimal_task(Some(actions), None, Some(start_in_a_week), None).expect("reason");
     let action = create_minimal_action("terraform mars", " how to terraform mars", None, None);
@@ -69,10 +68,8 @@ fn test_create_task_with_actions() {
     let attachments = vec![raw_fixture("mobius.jpeg").to_string_lossy().to_string()];
     // create a message
     let content = json!("lets goooo");
-    let mut to: Vec<String> = Vec::new();
-    let mut from: Vec<String> = Vec::new();
-    to.push("me@hai.ai".to_string());
-    from.push(agent.get_id().expect("REASON"));
+    let to: Vec<String> = vec!["me@hai.ai".to_string()];
+    let from: Vec<String> = vec![agent.get_id().expect("REASON")];
     let _message = create_message(
         &mut agent,
         content,
@@ -85,9 +82,10 @@ fn test_create_task_with_actions() {
     .expect("REASON");
 
     // add agreement to completionAgreement
-    let mut agentids: Vec<String> = Vec::new();
-    agentids.push(agent.get_id().expect("REASON"));
-    agentids.push(agent_two.get_id().expect("REASON"));
+    let agentids: Vec<String> = vec![
+        agent.get_id().expect("REASON"),
+        agent_two.get_id().expect("REASON"),
+    ];
 
     let agent_one_public_key = agent.get_public_key().unwrap();
     let agent_one_public_key_hash = hash_public_key(&agent_one_public_key);
@@ -114,8 +112,8 @@ fn test_create_task_with_actions() {
         .create_agreement(
             &task_doc_key,
             &agentids,
-            Some(&"Is this done?".to_string()),
-            Some(&"want to know if this is done".to_string()),
+            Some("Is this done?"),
+            Some("want to know if this is done"),
             Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
         )
         .expect("create_agreement");
@@ -124,8 +122,8 @@ fn test_create_task_with_actions() {
         .create_agreement(
             &unsigned_doc.getkey(),
             &agentids,
-            Some(&"can we start?".to_string()),
-            Some(&"want to know if this is started".to_string()),
+            Some("can we start?"),
+            Some("want to know if this is started"),
             Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
         )
         .expect("create_agreement");
@@ -170,25 +168,18 @@ fn test_create_task_with_actions() {
         Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
     );
 
-    match result {
-        Err(err) => {
-            println!(
-                "agent {} check failed {}",
-                TASK_START_AGREEMENT_FIELDNAME, err
-            );
-            assert!(false)
-        }
-        Ok(_) => assert!(true),
+    if let Err(err) = result {
+        panic!(
+            "agent {} check failed: {}",
+            TASK_START_AGREEMENT_FIELDNAME, err
+        );
     }
 }
 
 fn print_fields(agent: &Agent, value: Value) {
     let extracted_fields_result = agent.schema.extract_hai_fields(&value, "base");
     match extracted_fields_result {
-        Err(error) => {
-            println!(" ERROR {}", error);
-            assert!(false);
-        }
+        Err(error) => panic!("extract_hai_fields base failed: {}", error),
         Ok(extracted_fields) => println!(
             "BASE {}\n {}",
             get_field_count(&extracted_fields),
@@ -198,10 +189,7 @@ fn print_fields(agent: &Agent, value: Value) {
 
     let extracted_fields_result = agent.schema.extract_hai_fields(&value, "meta");
     match extracted_fields_result {
-        Err(error) => {
-            println!(" ERROR {}", error);
-            assert!(false);
-        }
+        Err(error) => panic!("extract_hai_fields meta failed: {}", error),
         Ok(extracted_fields) => println!(
             "meta  {}\n{}",
             get_field_count(&extracted_fields),
@@ -211,10 +199,7 @@ fn print_fields(agent: &Agent, value: Value) {
 
     let extracted_fields_result = agent.schema.extract_hai_fields(&value, "agent");
     match extracted_fields_result {
-        Err(error) => {
-            println!(" ERROR {}", error);
-            assert!(false);
-        }
+        Err(error) => panic!("extract_hai_fields agent failed: {}", error),
         Ok(extracted_fields) => println!(
             "Agent {}\n{}",
             get_field_count(&extracted_fields),

@@ -953,10 +953,10 @@ impl SearchProvider for DuckDbStorage {
                 (count as f64 / (count as f64 + 1.0)).min(1.0)
             };
 
-            if let Some(min_score) = query.min_score {
-                if score < min_score {
-                    continue;
-                }
+            if let Some(min_score) = query.min_score
+                && score < min_score
+            {
+                continue;
             }
 
             results.push(SearchHit {
@@ -1090,7 +1090,7 @@ mod tests {
         let storage = setup();
         let caps = storage.capabilities();
         // DuckDB LIKE is substring match — fulltext must be false
-        assert_eq!(caps.fulltext, false);
+        assert!(!caps.fulltext);
         assert!(!caps.vector);
         assert!(!caps.hybrid);
         assert!(caps.field_filter);

@@ -282,7 +282,7 @@ fn read_password_file(path: &Path) -> BindingResult<Option<String>> {
             e
         ))
     })?;
-    let password = contents.trim_end_matches(|c| c == '\n' || c == '\r').trim();
+    let password = contents.trim_end_matches(['\n', '\r']).trim();
     if password.is_empty() {
         return Ok(None);
     }
@@ -926,7 +926,7 @@ impl AgentWrapper {
                 .signature_verification_procedure(
                     &external_agent,
                     None,
-                    &AGENT_SIGNATURE_FIELDNAME.to_string(),
+                    AGENT_SIGNATURE_FIELDNAME,
                     public_key,
                     Some(public_key_enc_type),
                     None,
@@ -943,7 +943,7 @@ impl AgentWrapper {
                 .signing_procedure(
                     &external_agent,
                     None,
-                    &AGENT_REGISTRATION_SIGNATURE_FIELDNAME.to_string(),
+                    AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
                 )
                 .map_err(|e| {
                     BindingCoreError::signing_failed(format!("Signing procedure failed: {}", e))
@@ -979,8 +979,8 @@ impl AgentWrapper {
 
         agent
             .verify_string(
-                &data.to_string(),
-                &signature_base64.to_string(),
+                data,
+                signature_base64,
                 public_key,
                 Some(public_key_enc_type),
             )
@@ -998,7 +998,7 @@ impl AgentWrapper {
     pub fn sign_string(&self, data: &str) -> BindingResult<String> {
         self.with_private_key_password(|| {
             let mut agent = self.lock()?;
-            agent.sign_string(&data.to_string()).map_err(|e| {
+            agent.sign_string(data).map_err(|e| {
                 BindingCoreError::signing_failed(format!("Failed to sign string: {}", e))
             })
         })
@@ -1175,6 +1175,7 @@ impl AgentWrapper {
     /// - `quorum`: minimum number of signatures required (M-of-N)
     /// - `required_algorithms`: only accept signatures from these algorithms
     /// - `minimum_strength`: "classical" or "post-quantum"
+    #[allow(clippy::too_many_arguments)]
     pub fn create_agreement_with_options(
         &self,
         document_string: &str,
@@ -2613,7 +2614,7 @@ pub fn verify_document_standalone(
     //   <prefix>_metadata.json + <prefix>_public_key.pem
     // rather than public_keys/{hash}.pem.
     // Build a deterministic temp cache when local key files are missing.
-    let local_requested = key_resolution.map_or(true, |kr| {
+    let local_requested = key_resolution.is_none_or(|kr| {
         kr.split(',')
             .any(|part| part.trim().eq_ignore_ascii_case("local"))
     });
@@ -2845,7 +2846,7 @@ pub fn verify_document_standalone(
 
 /// Hash a string using the JACS hash function (SHA-256).
 pub fn hash_string(data: &str) -> String {
-    jacs_hash_string(&data.to_string())
+    jacs_hash_string(data)
 }
 
 /// Hash a base64-encoded public key using Rust-owned public-key hashing rules.
@@ -3129,6 +3130,7 @@ pub fn quickstart_private_key_password(
 }
 
 /// Create a JACS configuration JSON string.
+#[allow(clippy::too_many_arguments)]
 pub fn create_config(
     jacs_use_security: Option<String>,
     jacs_data_directory: Option<String>,
@@ -3216,11 +3218,11 @@ pub fn get_trusted_agent(agent_id: &str) -> BindingResult<String> {
 pub fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> BindingResult<String> {
     use jacs::audit::{AuditOptions, audit as jacs_audit};
 
-    let mut opts = AuditOptions::default();
-    opts.config_path = config_path.map(String::from);
-    if let Some(n) = recent_n {
-        opts.recent_verify_count = Some(n);
-    }
+    let opts = AuditOptions {
+        config_path: config_path.map(String::from),
+        recent_verify_count: recent_n.or(AuditOptions::default().recent_verify_count),
+        ..Default::default()
+    };
     let result =
         jacs_audit(opts).map_err(|e| BindingCoreError::generic(format!("Audit failed: {}", e)))?;
     serde_json::to_string_pretty(&result).map_err(|e| {
@@ -3235,6 +3237,7 @@ pub fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> BindingResult<
 /// Create a JACS agent programmatically (non-interactive).
 ///
 /// Accepts all creation parameters and returns a JSON string containing agent info.
+#[allow(clippy::too_many_arguments)]
 pub fn create_agent_programmatic(
     name: &str,
     password: &str,

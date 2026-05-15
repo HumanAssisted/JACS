@@ -125,17 +125,16 @@ fn html_metadata_extraction_from_signed_doc() {
             );
 
             // Check for agent ID if signature exists
-            if let Some(sigs) = value.get("jacsSignature").and_then(|v| v.as_array()) {
-                if let Some(first_sig) = sigs.first() {
-                    if let Some(agent_id) = first_sig.get("agentID").and_then(|v| v.as_str()) {
-                        assert!(
-                            visible_html.contains(agent_id),
-                            "Agent ID '{}' should be visible in HTML for {}",
-                            agent_id,
-                            path.file_name().unwrap().to_string_lossy()
-                        );
-                    }
-                }
+            if let Some(sigs) = value.get("jacsSignature").and_then(|v| v.as_array())
+                && let Some(first_sig) = sigs.first()
+                && let Some(agent_id) = first_sig.get("agentID").and_then(|v| v.as_str())
+            {
+                assert!(
+                    visible_html.contains(agent_id),
+                    "Agent ID '{}' should be visible in HTML for {}",
+                    agent_id,
+                    path.file_name().unwrap().to_string_lossy()
+                );
             }
 
             // Check for timestamp if present

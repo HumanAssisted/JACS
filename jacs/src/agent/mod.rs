@@ -149,8 +149,7 @@ fn validate_signature_temporal_claims(
                 "Invalid '{}.iat': timestamp must be non-negative.",
                 signature_key_from
             ),
-        }
-        .into());
+        });
     }
 
     let jti = signature
@@ -170,8 +169,7 @@ fn validate_signature_temporal_claims(
                 "Invalid '{}.jti': nonce cannot be empty.",
                 signature_key_from
             ),
-        }
-        .into());
+        });
     }
 
     time_utils::validate_signature_iat(iat)?;
@@ -968,18 +966,18 @@ impl Agent {
         {
             // Journal still present — warn_if_config_tampered didn't fully repair.
             // Re-attempt with the correct version info.
-            if let Some(json) = &config_raw_json {
-                if let Some(journal) = crate::keystore::RotationJournal::load(&journal_path) {
-                    match self.attempt_rotation_recovery(json, path, &journal) {
-                        Ok(()) => {
-                            info!("Config repaired after journal-based version recovery.");
-                            if let Err(e) = journal.complete() {
-                                warn!("Failed to delete rotation journal: {}", e);
-                            }
+            if let Some(json) = &config_raw_json
+                && let Some(journal) = crate::keystore::RotationJournal::load(&journal_path)
+            {
+                match self.attempt_rotation_recovery(json, path, &journal) {
+                    Ok(()) => {
+                        info!("Config repaired after journal-based version recovery.");
+                        if let Err(e) = journal.complete() {
+                            warn!("Failed to delete rotation journal: {}", e);
                         }
-                        Err(e) => {
-                            warn!("Config repair after journal recovery failed: {}", e);
-                        }
+                    }
+                    Err(e) => {
+                        warn!("Config repair after journal recovery failed: {}", e);
                     }
                 }
             }
@@ -1057,40 +1055,39 @@ impl Agent {
 
         if let Ok(entries) = std::fs::read_dir(&agent_dir) {
             for entry in entries.flatten() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.starts_with(&prefix) && name.ends_with(".json") {
-                        // Extract lookup_id from filename (strip .json)
-                        let lookup = name.trim_end_matches(".json");
-                        if lookup == current_lookup_id {
-                            continue;
-                        }
+                if let Some(name) = entry.file_name().to_str()
+                    && name.starts_with(&prefix)
+                    && name.ends_with(".json")
+                {
+                    // Extract lookup_id from filename (strip .json)
+                    let lookup = name.trim_end_matches(".json");
+                    if lookup == current_lookup_id {
+                        continue;
+                    }
 
-                        let modified = entry.metadata().and_then(|m| m.modified()).ok();
-                        let mut version_date: Option<String> = None;
-                        let mut previous_version: Option<String> = None;
+                    let modified = entry.metadata().and_then(|m| m.modified()).ok();
+                    let mut version_date: Option<String> = None;
+                    let mut previous_version: Option<String> = None;
 
-                        if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                            if let Ok(doc) = serde_json::from_str::<Value>(&content) {
-                                if let Some(date_str) = doc["jacsVersionDate"].as_str() {
-                                    version_date = Some(date_str.to_string());
-                                }
-                                if let Some(previous) =
-                                    doc[JACS_PREVIOUS_VERSION_FIELDNAME].as_str()
-                                {
-                                    previous_version = Some(previous.to_string());
-                                }
-                            }
+                    if let Ok(content) = std::fs::read_to_string(entry.path())
+                        && let Ok(doc) = serde_json::from_str::<Value>(&content)
+                    {
+                        if let Some(date_str) = doc["jacsVersionDate"].as_str() {
+                            version_date = Some(date_str.to_string());
                         }
+                        if let Some(previous) = doc[JACS_PREVIOUS_VERSION_FIELDNAME].as_str() {
+                            previous_version = Some(previous.to_string());
+                        }
+                    }
 
-                        let candidate = (lookup.to_string(), version_date, modified);
-                        if previous_version.as_deref() == Some(current_version)
-                            && candidate_is_newer(&candidate, direct_child.as_ref())
-                        {
-                            direct_child = Some(candidate.clone());
-                        }
-                        if candidate_is_newer(&candidate, latest_id.as_ref()) {
-                            latest_id = Some(candidate);
-                        }
+                    let candidate = (lookup.to_string(), version_date, modified);
+                    if previous_version.as_deref() == Some(current_version)
+                        && candidate_is_newer(&candidate, direct_child.as_ref())
+                    {
+                        direct_child = Some(candidate.clone());
+                    }
+                    if candidate_is_newer(&candidate, latest_id.as_ref()) {
+                        latest_id = Some(candidate);
                     }
                 }
             }
@@ -1316,47 +1313,45 @@ impl Agent {
         raw_json: &Option<Value>,
         config_path: Option<&str>,
     ) {
-        if is_signed {
-            if let Some(json) = raw_json {
-                if let Err(e) = self.verify_config(json) {
-                    // Check for rotation journal to distinguish crash-during-rotation
-                    // from actual config tampering.
-                    if let Some(config_p) = config_path {
-                        let key_dir = self
-                            .config
-                            .as_ref()
-                            .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
-                            .unwrap_or_else(|| "./jacs_keys".to_string());
-                        let journal_path = crate::keystore::RotationJournal::journal_path(&key_dir);
-                        if let Some(journal) = crate::keystore::RotationJournal::load(&journal_path)
-                        {
-                            info!(
-                                "Detected incomplete rotation (journal stage: {}). Auto-repairing config.",
-                                journal.stage
-                            );
-                            match self.attempt_rotation_recovery(json, config_p, &journal) {
-                                Ok(()) => {
-                                    info!("Config auto-repaired after incomplete rotation.");
-                                    if let Err(del_err) = journal.complete() {
-                                        warn!("Failed to delete rotation journal: {}", del_err);
-                                    }
-                                    return;
-                                }
-                                Err(repair_err) => {
-                                    warn!(
-                                        "Auto-repair refused or failed: {}. Manual repair may be needed (jacs agent repair).",
-                                        repair_err
-                                    );
-                                }
+        if is_signed
+            && let Some(json) = raw_json
+            && let Err(e) = self.verify_config(json)
+        {
+            // Check for rotation journal to distinguish crash-during-rotation
+            // from actual config tampering.
+            if let Some(config_p) = config_path {
+                let key_dir = self
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.jacs_key_directory().as_deref().map(String::from))
+                    .unwrap_or_else(|| "./jacs_keys".to_string());
+                let journal_path = crate::keystore::RotationJournal::journal_path(&key_dir);
+                if let Some(journal) = crate::keystore::RotationJournal::load(&journal_path) {
+                    info!(
+                        "Detected incomplete rotation (journal stage: {}). Auto-repairing config.",
+                        journal.stage
+                    );
+                    match self.attempt_rotation_recovery(json, config_p, &journal) {
+                        Ok(()) => {
+                            info!("Config auto-repaired after incomplete rotation.");
+                            if let Err(del_err) = journal.complete() {
+                                warn!("Failed to delete rotation journal: {}", del_err);
                             }
+                            return;
+                        }
+                        Err(repair_err) => {
+                            warn!(
+                                "Auto-repair refused or failed: {}. Manual repair may be needed (jacs agent repair).",
+                                repair_err
+                            );
                         }
                     }
-                    warn!(
-                        "Signed config failed verification: {}. Loading anyway (graceful migration).",
-                        e
-                    );
                 }
             }
+            warn!(
+                "Signed config failed verification: {}. Loading anyway (graceful migration).",
+                e
+            );
         }
     }
 
@@ -1372,13 +1367,13 @@ impl Agent {
         let mut config_value = config_json.clone();
 
         // Update jacs_agent_id_and_version to match current agent state
-        if let (Some(id), Some(ver)) = (self.id.as_ref(), self.version.as_ref()) {
-            if let Some(obj) = config_value.as_object_mut() {
-                obj.insert(
-                    "jacs_agent_id_and_version".to_string(),
-                    json!(format!("{}:{}", id, ver)),
-                );
-            }
+        if let (Some(id), Some(ver)) = (self.id.as_ref(), self.version.as_ref())
+            && let Some(obj) = config_value.as_object_mut()
+        {
+            obj.insert(
+                "jacs_agent_id_and_version".to_string(),
+                json!(format!("{}:{}", id, ver)),
+            );
         }
 
         // Re-sign config
@@ -1519,7 +1514,7 @@ impl Agent {
                         "Private key for agent '{}': Call fs_load_keys() or fs_preload_keys() first, or ensure keys are generated during agent creation.",
                         agent_id
                     ),
-                }.into())
+                })
             }
         }
     }
@@ -1551,8 +1546,7 @@ impl Agent {
                     "Agent load failed at schema validation step: {}. \
                     Ensure the agent JSON conforms to the JACS agent schema.",
                     e
-                ))
-                .into());
+                )));
             }
         }
 
@@ -1734,8 +1728,7 @@ impl Agent {
                     return Err(JacsError::VerificationClaimFailed {
                         claim: verification_claim.unwrap_or_default(),
                         reason: "Verified agents must have jacsAgentDomain set".to_string(),
-                    }
-                    .into());
+                    });
                 }
                 // For verified claims: validate=true, strict=true, required=true
                 (true, true, true)
@@ -1759,7 +1752,7 @@ impl Agent {
                 };
                 if let Err(e) = verify_pubkey_via_dns_or_embedded(
                     &public_key,
-                    &agent_id_for_dns,
+                    agent_id_for_dns,
                     Some(domain),
                     embedded.map(|s| s.as_str()),
                     strict,
@@ -1798,7 +1791,7 @@ impl Agent {
             let agent_id_for_registry = maybe_agent_id.or(self.id.as_deref()).unwrap_or_default();
             let pk_hash = pubkey_digest_hex(&public_key);
 
-            match verify_registry_registration_sync(&agent_id_for_registry, &pk_hash) {
+            match verify_registry_registration_sync(agent_id_for_registry, &pk_hash) {
                 Ok(registration) => {
                     info!(
                         "Registry verification successful for agent '{}': verified at {:?}",
@@ -2006,10 +1999,7 @@ impl Agent {
         })?;
         let signing_algorithm = config.get_key_algorithm()?;
 
-        let serialized_fields = match to_value(&accepted_fields) {
-            Ok(value) => value,
-            Err(err) => return Err(err.into()),
-        };
+        let serialized_fields = to_value(&accepted_fields)?;
         let public_key = self.get_public_key()?;
         let public_key_hash = hash_public_key(&public_key);
         debug!("hash {:?} ", public_key_hash);
@@ -2141,8 +2131,7 @@ impl Agent {
             return Err(JacsError::AgentError(format!(
                 "The id/versions do not match for old and new agent:  . {:?}{:?}",
                 new_doc_orginal_id, new_doc_orginal_version
-            ))
-            .into());
+            )));
         }
 
         // Prevent verification claim downgrade
@@ -2172,8 +2161,7 @@ impl Agent {
                     "Cannot downgrade from '{}' to '{}'. Create a new agent instead.",
                     original_claim, new_claim
                 ),
-            }
-            .into());
+            });
         }
 
         // validate schema
@@ -2339,10 +2327,10 @@ impl Agent {
         }
 
         // Update config's algorithm in memory if override was provided
-        if algorithm_override.is_some() {
-            if let Some(ref mut config) = self.config {
-                config.set_key_algorithm(key_algorithm.clone())?;
-            }
+        if algorithm_override.is_some()
+            && let Some(ref mut config) = self.config
+        {
+            config.set_key_algorithm(key_algorithm.clone())?;
         }
 
         // Build new version document
@@ -2565,16 +2553,15 @@ impl Agent {
         }
 
         // Save public key hash — skip for ephemeral (no filesystem)
-        if !self.ephemeral {
-            if let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm)
-            {
-                let public_key_hash = hash_public_key(public_key);
-                let _ = self.fs_save_remote_public_key(
-                    &public_key_hash,
-                    public_key,
-                    key_algorithm.as_bytes(),
-                );
-            }
+        if !self.ephemeral
+            && let (Some(public_key), Some(key_algorithm)) = (&self.public_key, &self.key_algorithm)
+        {
+            let public_key_hash = hash_public_key(public_key);
+            let _ = self.fs_save_remote_public_key(
+                &public_key_hash,
+                public_key,
+                key_algorithm.as_bytes(),
+            );
         }
 
         // schema.create will call this "document" otherwise

@@ -124,8 +124,7 @@ mod attestation_cross_lang {
         let original_cwd = std::env::current_dir().expect("get cwd");
         let _password_guard = EnvVarGuard::set(PASSWORD_ENV_VAR, CROSS_LANG_TEST_PASSWORD);
 
-        // SAFETY: serial test
-        unsafe { std::env::set_current_dir(&tmp).expect("cd to temp") };
+        std::env::set_current_dir(&tmp).expect("cd to temp");
 
         let (agent, _info) = jacs::simple::advanced::quickstart(
             "attestation-cross-lang-agent",
@@ -166,8 +165,7 @@ mod attestation_cross_lang {
         let pub_key_bytes = fs::read(&pub_key_path).expect("read public key");
 
         // Restore CWD
-        // SAFETY: serial test
-        unsafe { std::env::set_current_dir(&original_cwd).expect("restore cwd") };
+        std::env::set_current_dir(&original_cwd).expect("restore cwd");
 
         // Write fixtures
         let out = fixtures_dir();

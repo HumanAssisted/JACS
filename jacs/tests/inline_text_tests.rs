@@ -374,8 +374,7 @@ fn canonical_content_hash_b64url(content: &str) -> String {
     use base64::Engine;
     use sha2::{Digest, Sha256};
     let lf_only: String = content.chars().filter(|&c| c != '\r').collect();
-    let trimmed =
-        lf_only.trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\n' || c == '\r');
+    let trimmed = lf_only.trim_end_matches([' ', '\t', '\n', '\r']);
     let mut hasher = Sha256::new();
     hasher.update(trimmed.as_bytes());
     let raw = hasher.finalize();

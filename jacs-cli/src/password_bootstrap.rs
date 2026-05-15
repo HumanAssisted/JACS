@@ -49,7 +49,7 @@ fn read_password_from_file(path: &Path, source_name: &str) -> Result<String, Str
 
     let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {} '{}': {}", source_name, path.display(), e))?;
-    let password = raw.trim_end_matches(|c| c == '\n' || c == '\r');
+    let password = raw.trim_end_matches(['\n', '\r']);
     if password.is_empty() {
         return Err(format!(
             "{} '{}' is empty. {}",

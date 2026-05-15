@@ -401,21 +401,22 @@ fn check_secrets_and_keys(config: &Config, result: &mut AuditResult) {
     if config
         .jacs_agent_id_and_version()
         .as_deref()
-        .map_or(false, |s| !s.is_empty())
+        .is_some_and(|s| !s.is_empty())
+        && key_path.exists()
+        && priv_path.exists()
+        && !pub_path.exists()
     {
-        if key_path.exists() && priv_path.exists() && !pub_path.exists() {
-            result.risks.push(AuditRisk {
-                category: RiskCategory::Secrets,
-                severity: RiskSeverity::Medium,
-                message: "Public key file missing but private key present.".to_string(),
-                details: Some({
-                    let mut d = HashMap::new();
-                    d.insert("path".to_string(), pub_path.to_string_lossy().to_string());
-                    d
-                }),
-            });
-            keys_ok = false;
-        }
+        result.risks.push(AuditRisk {
+            category: RiskCategory::Secrets,
+            severity: RiskSeverity::Medium,
+            message: "Public key file missing but private key present.".to_string(),
+            details: Some({
+                let mut d = HashMap::new();
+                d.insert("path".to_string(), pub_path.to_string_lossy().to_string());
+                d
+            }),
+        });
+        keys_ok = false;
     }
 
     result.health_checks.push(
@@ -499,36 +500,32 @@ fn check_trust_store(result: &mut AuditResult) {
     let keys_dir = trust_dir.join("keys");
     let mut missing_keys = 0;
     for agent_id in &agents {
-        if let Ok(json) = crate::trust::get_trusted_agent(agent_id) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
-                if let Some(hash) = v
-                    .get("jacsSignature")
-                    .and_then(|s| s.get("publicKeyHash"))
-                    .and_then(|h| h.as_str())
-                {
-                    let key_file = keys_dir.join(format!("{}.pem", hash));
-                    if !key_file.exists() {
-                        missing_keys += 1;
-                        result.risks.push(AuditRisk {
-                            category: RiskCategory::Trust,
-                            severity: RiskSeverity::Medium,
-                            message: format!("Trusted agent {} has no key file in cache", agent_id),
-                            details: Some({
-                                let mut d = HashMap::new();
-                                d.insert("agent_id".to_string(), agent_id.clone());
-                                d.insert("public_key_hash".to_string(), hash.to_string());
-                                d
-                            }),
-                        });
-                    }
-                }
+        if let Ok(json) = crate::trust::get_trusted_agent(agent_id)
+            && let Ok(v) = serde_json::from_str::<serde_json::Value>(&json)
+            && let Some(hash) = v
+                .get("jacsSignature")
+                .and_then(|s| s.get("publicKeyHash"))
+                .and_then(|h| h.as_str())
+        {
+            let key_file = keys_dir.join(format!("{}.pem", hash));
+            if !key_file.exists() {
+                missing_keys += 1;
+                result.risks.push(AuditRisk {
+                    category: RiskCategory::Trust,
+                    severity: RiskSeverity::Medium,
+                    message: format!("Trusted agent {} has no key file in cache", agent_id),
+                    details: Some({
+                        let mut d = HashMap::new();
+                        d.insert("agent_id".to_string(), agent_id.clone());
+                        d.insert("public_key_hash".to_string(), hash.to_string());
+                        d
+                    }),
+                });
             }
         }
     }
 
-    let status = if missing_keys > 0 {
-        HealthStatus::Degraded
-    } else if agents.is_empty() {
+    let status = if missing_keys > 0 || agents.is_empty() {
         HealthStatus::Degraded
     } else {
         HealthStatus::Healthy
@@ -674,24 +671,26 @@ fn check_quarantine_and_failed(config: &Config, result: &mut AuditResult) {
     let mut quarantine_entries = Vec::new();
     let mut failed_entries = Vec::new();
 
-    if quarantine_dir.exists() && quarantine_dir.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&quarantine_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !name.starts_with('.') {
-                    quarantine_entries.push(name);
-                }
+    if quarantine_dir.exists()
+        && quarantine_dir.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&quarantine_dir)
+    {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with('.') {
+                quarantine_entries.push(name);
             }
         }
     }
 
-    if failed_dir.exists() && failed_dir.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&failed_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !name.starts_with('.') {
-                    failed_entries.push(name);
-                }
+    if failed_dir.exists()
+        && failed_dir.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&failed_dir)
+    {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with('.') {
+                failed_entries.push(name);
             }
         }
     }
@@ -1137,8 +1136,10 @@ mod tests {
 
     #[test]
     fn audit_with_invalid_data_directory_reports_risk() {
-        let mut opts = AuditOptions::default();
-        opts.data_directory = Some("/nonexistent_jacs_audit_test_path_12345".to_string());
+        let opts = AuditOptions {
+            data_directory: Some("/nonexistent_jacs_audit_test_path_12345".to_string()),
+            ..Default::default()
+        };
         let result = audit(opts).unwrap();
         let dir_risk = result.risks.iter().any(|r| {
             r.category == RiskCategory::Directories && r.message.contains("does not exist")

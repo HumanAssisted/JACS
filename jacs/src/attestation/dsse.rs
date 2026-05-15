@@ -72,12 +72,12 @@ pub fn export_dsse(attestation_value: &Value) -> Result<Value, JacsError> {
         .and_then(|v| v.as_array_mut())
     {
         for ev in evidence_arr.iter_mut() {
-            if ev.get("sensitivity").and_then(|s| s.as_str()) == Some("confidential") {
-                if let Some(obj) = ev.as_object_mut() {
-                    obj.remove("embeddedData");
-                    obj.insert("embeddedData".to_string(), json!("[REDACTED]"));
-                    obj.insert("embedded".to_string(), json!(false));
-                }
+            if ev.get("sensitivity").and_then(|s| s.as_str()) == Some("confidential")
+                && let Some(obj) = ev.as_object_mut()
+            {
+                obj.remove("embeddedData");
+                obj.insert("embeddedData".to_string(), json!("[REDACTED]"));
+                obj.insert("embedded".to_string(), json!(false));
             }
         }
     }
@@ -138,7 +138,6 @@ fn build_dsse_signatures(doc: &Value) -> Result<Vec<Value>, JacsError> {
 mod tests {
     use super::*;
     use crate::agent::Agent;
-    use crate::agent::document::DocumentTraits;
     use crate::attestation::AttestationTraits;
     use crate::attestation::types::*;
     use serde_json::json;
@@ -293,7 +292,7 @@ mod tests {
         let sigs = envelope["signatures"]
             .as_array()
             .expect("signatures should be array");
-        assert!(sigs.len() >= 1, "should have at least one signature");
+        assert!(!sigs.is_empty(), "should have at least one signature");
         assert!(
             sigs[0].get("keyid").is_some(),
             "signature should have keyid field"
@@ -386,9 +385,8 @@ mod tests {
             "[REDACTED]",
             "Confidential evidence embeddedData must be redacted in DSSE export"
         );
-        assert_eq!(
-            evidence["embedded"].as_bool().unwrap(),
-            false,
+        assert!(
+            !evidence["embedded"].as_bool().unwrap(),
             "Confidential evidence embedded flag must be false after redaction"
         );
     }

@@ -69,8 +69,7 @@ fn test_load_only_recent() {
         if id == "85175625-e190-40a8-8e58-06451e281809"
             && version != "4223ba44-1a68-48d6-b0ed-de70006eb3e1"
         {
-            assert!(false, "test_load_only_recent failed");
-            println!("doc {}  ", key);
+            panic!("test_load_only_recent failed: doc {}", key);
         }
     }
 }
@@ -86,13 +85,9 @@ fn test_load_custom_schema_and_custom_document() {
             info!("Schemas loaded successfully in test_load_custom_schema_and_custom_document.")
         }
         Err(e) => {
-            error!(
-                "Error in test_load_custom_schema_and_custom_document loading schemas: {}",
+            panic!(
+                "Failed to load schemas in test_load_custom_schema_and_custom_document: {}",
                 e
-            );
-            assert!(
-                false,
-                "Failed to load schemas in test_load_custom_schema_and_custom_document"
             );
         }
     }
@@ -123,8 +118,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
-            error!("Error loading schemas: {}", e);
-            assert!(false, "Failed to load schemas");
+            panic!("Failed to load schemas: {}", e);
         }
     };
     info!("Custom schemas loaded, proceeding to create and load document.");
@@ -170,7 +164,7 @@ fn test_load_custom_schema_and_custom_invalid_document() {
         }
         Err(error) => {
             info!("Document validation failed as expected: {}", error);
-            assert!(true);
+            // Expected: invalid document should fail validation
         }
     }
     info!("Document validation completed.");
@@ -196,8 +190,7 @@ fn test_load_custom_schema_and_new_custom_document() {
     match agent.load_custom_schemas(&[get_raw_schema_path()]) {
         Ok(_) => info!("Schemas loaded successfully."),
         Err(e) => {
-            error!("Error loading schemas: {}", e);
-            assert!(false, "Failed to load schemas");
+            panic!("Failed to load schemas: {}", e);
         }
     };
 
@@ -331,13 +324,9 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
             "Schemas loaded successfully in test_load_custom_schema_and_custom_document_and_update_and_verify_signature."
         ),
         Err(e) => {
-            error!(
-                "Error in test_load_custom_schema_and_custom_document_and_update_and_verify_signature loading schemas: {}",
+            panic!(
+                "Failed to load schemas in test_load_custom_schema_and_custom_document_and_update_and_verify_signature: {}",
                 e
-            );
-            assert!(
-                false,
-                "Failed to load schemas in test_load_custom_schema_and_custom_document_and_update_and_verify_signature"
             );
         }
     };
@@ -406,7 +395,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
 
     match agent.verify_document_signature(
         &new_document_key,
-        Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
+        Some(DOCUMENT_AGENT_SIGNATURE_FIELDNAME),
         None,
         None,
         None,
@@ -443,7 +432,7 @@ fn test_load_custom_schema_and_custom_document_and_update_and_verify_signature()
 
     match agent.verify_document_signature(
         &copy_newdocument_key,
-        Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
+        Some(DOCUMENT_AGENT_SIGNATURE_FIELDNAME),
         None,
         Some(agent_one_public_key),
         None,
@@ -491,8 +480,7 @@ fn test_update_document_rejects_non_owner_editor() {
         "A different agent identity should not be allowed to update the owner's document"
     );
     let err = result
-        .err()
-        .expect("result was asserted as error")
+        .expect_err("result was asserted as error")
         .to_string();
     assert!(
         err.contains("cannot be updated by"),

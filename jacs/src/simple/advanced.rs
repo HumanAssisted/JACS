@@ -344,13 +344,13 @@ pub fn rotate_with_mutex(
             }
 
             // If algorithm was overridden, update the config field
-            if algorithm.is_some() {
-                if let Some(obj) = config_value.as_object_mut() {
-                    obj.insert(
-                        "jacs_agent_key_algorithm".to_string(),
-                        json!(effective_algorithm),
-                    );
-                }
+            if algorithm.is_some()
+                && let Some(obj) = config_value.as_object_mut()
+            {
+                obj.insert(
+                    "jacs_agent_key_algorithm".to_string(),
+                    json!(effective_algorithm),
+                );
             }
 
             let signed_config = if config_value.get("jacsSignature").is_some() {

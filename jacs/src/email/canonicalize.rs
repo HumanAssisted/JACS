@@ -49,9 +49,9 @@ pub fn extract_email_parts(raw_email: &[u8]) -> Result<ParsedEmailParts, EmailEr
     let mut jacs_attachments = Vec::new();
 
     for part in message.parts.iter() {
-        let is_attachment = part.content_disposition().map_or(false, |d| {
-            d.ctype() == "attachment" || d.ctype() == "inline"
-        });
+        let is_attachment = part
+            .content_disposition()
+            .is_some_and(|d| d.ctype() == "attachment" || d.ctype() == "inline");
 
         let filename = part
             .attachment_name()
@@ -193,7 +193,7 @@ fn extract_body_part(
 
         let is_attachment = part
             .content_disposition()
-            .map_or(false, |d| d.ctype() == "attachment");
+            .is_some_and(|d| d.ctype() == "attachment");
         if type_str == target_type && !is_attachment {
             let content = part.contents().to_vec();
             let content_type_full = ct.map(|ct| {
@@ -206,7 +206,7 @@ fn extract_body_part(
                 s
             });
             let cte = part.content_transfer_encoding().map(|s| s.to_string());
-            let cd = part.content_disposition().map(|d| format!("{}", d.ctype()));
+            let cd = part.content_disposition().map(|d| d.ctype().to_string());
 
             return Some(ParsedBodyPart {
                 content,
@@ -417,12 +417,12 @@ pub(crate) fn canonicalize_body(content: &[u8]) -> Vec<u8> {
     for line in &lines {
         let line = line.trim_end_matches('\r');
         // Strip trailing WSP (SP, TAB) per line
-        let trimmed = line.trim_end_matches(|c: char| c == ' ' || c == '\t');
+        let trimmed = line.trim_end_matches([' ', '\t']);
         result_lines.push(trimmed.to_string());
     }
 
     // Strip trailing blank lines
-    while result_lines.last().map_or(false, |l| l.is_empty()) {
+    while result_lines.last().is_some_and(|l| l.is_empty()) {
         result_lines.pop();
     }
 

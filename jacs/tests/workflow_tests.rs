@@ -374,7 +374,7 @@ fn test_full_lifecycle_conversation_commitment_todo() {
     );
 
     // All documents have distinct jacsId values.
-    let all_ids = vec![
+    let all_ids = [
         msg1_value["jacsId"].as_str().unwrap(),
         msg2_value["jacsId"].as_str().unwrap(),
         msg3_value["jacsId"].as_str().unwrap(),

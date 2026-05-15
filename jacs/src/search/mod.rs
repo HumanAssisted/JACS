@@ -471,7 +471,7 @@ mod tests {
 
     #[test]
     fn search_method_has_all_five_variants() {
-        let methods = vec![
+        let methods = [
             SearchMethod::FullText,
             SearchMethod::Vector,
             SearchMethod::Hybrid,

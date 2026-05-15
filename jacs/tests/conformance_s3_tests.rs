@@ -13,7 +13,6 @@ mod conformance;
 
 use jacs::storage::MultiStorage;
 use serial_test::serial;
-use std::path::PathBuf;
 use testcontainers::GenericImage;
 use testcontainers::ImageExt;
 use testcontainers::core::{IntoContainerPort, WaitFor};
@@ -25,7 +24,7 @@ fn setup_minio_env(host_port: u16) {
     unsafe {
         std::env::set_var("AWS_ACCESS_KEY_ID", "minioadmin");
         std::env::set_var("AWS_SECRET_ACCESS_KEY", "minioadmin");
-        std::env::set_var("AWS_ENDPOINT", &format!("http://127.0.0.1:{}", host_port));
+        std::env::set_var("AWS_ENDPOINT", format!("http://127.0.0.1:{}", host_port));
         std::env::set_var("AWS_ALLOW_HTTP", "true");
         std::env::set_var("AWS_REGION", "us-east-1");
         std::env::set_var("JACS_ENABLE_AWS_BUCKET_NAME", "jacs-test");
@@ -59,11 +58,11 @@ async fn create_bucket(host_port: u16) {
 
 async fn create_s3_storage() -> MultiStorage {
     let minio = GenericImage::new("minio/minio", "latest")
+        .with_wait_for(WaitFor::message_on_stderr("API:"))
         .with_exposed_port(9000.tcp())
         .with_env_var("MINIO_ROOT_USER", "minioadmin")
         .with_env_var("MINIO_ROOT_PASSWORD", "minioadmin")
         .with_cmd(vec!["server", "/data"])
-        .with_wait_for(WaitFor::message_on_stderr("API:"))
         .start()
         .await
         .expect("Failed to start MinIO container");
@@ -77,7 +76,7 @@ async fn create_s3_storage() -> MultiStorage {
     create_bucket(host_port).await;
 
     let tempdir = tempfile::tempdir().expect("Failed to create temp dir");
-    let storage = MultiStorage::_new("aws".to_string(), tempdir.into_path())
+    let storage = MultiStorage::_new("aws".to_string(), tempdir.keep())
         .expect("Failed to create S3 MultiStorage");
 
     // Leak the container handle to keep it alive for the test duration

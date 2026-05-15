@@ -347,10 +347,9 @@ pub fn list_trusted_agents() -> Result<Vec<String>, JacsError> {
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| n.ends_with(".meta.json"))
             && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            && is_trusted(stem)
         {
-            if is_trusted(stem) {
-                agents.push(stem.to_string());
-            }
+            agents.push(stem.to_string());
         }
     }
 

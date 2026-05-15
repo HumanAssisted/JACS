@@ -502,11 +502,7 @@ pub fn create_agent(
     header_version: &str,
     signature_version: &str,
 ) -> Result<Agent, Box<dyn Error>> {
-    let agent = Agent::new(
-        &agent_version.to_string(),
-        &header_version.to_string(),
-        &signature_version.to_string(),
-    )?;
+    let agent = Agent::new(agent_version, header_version, signature_version)?;
     Ok(agent)
 }
 

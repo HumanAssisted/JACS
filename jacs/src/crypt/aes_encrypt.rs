@@ -243,7 +243,7 @@ fn validate_password(password: &str) -> Result<(), JacsError> {
             MIN_PASSWORD_LENGTH,
             trimmed.len(),
             MIN_PASSWORD_LENGTH
-        )).into());
+        )));
     }
 
     // Check against common weak passwords (case-insensitive)
@@ -285,10 +285,11 @@ fn validate_password(password: &str) -> Result<(), JacsError> {
         };
         return Err(JacsError::CryptoError(format!(
             "Password entropy too low ({:.1} bits, minimum is {:.0} bits). {}\n\nRequirements: {}",
-            entropy, MIN_ENTROPY_BITS, suggestion,
+            entropy,
+            MIN_ENTROPY_BITS,
+            suggestion,
             "use at least 8 characters with mixed character types (uppercase, lowercase, digits, symbols)."
-        ))
-        .into());
+        )));
     }
 
     // Single character class passwords are allowed if they have sufficient entropy
@@ -302,7 +303,7 @@ fn validate_password(password: &str) -> Result<(), JacsError> {
             "Password uses only {} character class(es) with insufficient length. Use at least 2 character types (uppercase, lowercase, digits, symbols) or use a longer password.\n\n{}",
             char_classes,
             password_requirements()
-        )).into());
+        )));
     }
 
     Ok(())
@@ -529,13 +530,12 @@ pub fn resolve_private_key_password(
     }
 
     // 3. Try OS keychain keyed by agent_id (if not disabled and agent_id provided)
-    if !is_keychain_disabled() {
-        if let Some(id) = agent_id {
-            if let Ok(Some(pw)) = crate::keystore::keychain::get_password(id) {
-                tracing::debug!("Using password from OS keychain for agent {}", id);
-                return Ok(pw);
-            }
-        }
+    if !is_keychain_disabled()
+        && let Some(id) = agent_id
+        && let Ok(Some(pw)) = crate::keystore::keychain::get_password(id)
+    {
+        tracing::debug!("Using password from OS keychain for agent {}", id);
+        return Ok(pw);
     }
 
     // 4. Fail with helpful message
@@ -665,7 +665,7 @@ pub fn decrypt_private_key_secure_with_password(
             Try regenerating your keys with 'jacs keygen' or restore from a backup.",
             MIN_ENCRYPTED_HEADER_SIZE,
             encrypted_key_with_salt_and_nonce.len()
-        )).into());
+        )));
     }
 
     // Split the data into salt, nonce, and encrypted key
@@ -678,7 +678,7 @@ pub fn decrypt_private_key_secure_with_password(
     let nonce_slice = Nonce::from_slice(nonce);
 
     // Attempt with current iterations (600k)
-    let mut key = derive_key_from_password(&password, salt);
+    let mut key = derive_key_from_password(password, salt);
     let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
     let cipher = Aes256Gcm::new(cipher_key);
     key.zeroize();
@@ -688,7 +688,7 @@ pub fn decrypt_private_key_secure_with_password(
     }
 
     // Fall back to legacy iterations (100k) for pre-0.6.0 encrypted keys
-    let mut legacy_key = derive_key_with_iterations(&password, salt, PBKDF2_ITERATIONS_LEGACY);
+    let mut legacy_key = derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS_LEGACY);
     let legacy_cipher_key = Key::<Aes256Gcm>::from_slice(&legacy_key);
     let legacy_cipher = Aes256Gcm::new(legacy_cipher_key);
     legacy_key.zeroize();
@@ -726,8 +726,7 @@ pub fn decrypt_with_password(encrypted_data: &[u8], password: &str) -> Result<Ve
             "Encrypted data too short: expected at least {} bytes, got {} bytes.",
             MIN_ENCRYPTED_HEADER_SIZE,
             encrypted_data.len()
-        ))
-        .into());
+        )));
     }
 
     let (salt, rest) = encrypted_data.split_at(PBKDF2_SALT_SIZE);
@@ -791,6 +790,7 @@ pub fn reencrypt_private_key(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use serial_test::serial;

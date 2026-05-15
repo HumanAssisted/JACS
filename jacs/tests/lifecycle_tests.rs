@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tempfile::TempDir;
 
 mod utils;
-use utils::{create_agent_v1, raw_fixture, set_min_test_env_vars};
+use utils::{create_agent_v1, raw_fixture};
 
 // =============================================================================
 // Test Helpers
@@ -357,7 +357,7 @@ fn test_multiple_documents_signing() {
 
         let doc = agent
             .create_document_and_load(&doc_json.to_string(), None, None)
-            .expect(&format!("Failed to create document {}", i));
+            .unwrap_or_else(|_| panic!("Failed to create document {}", i));
 
         doc_keys.push(doc.getkey());
     }

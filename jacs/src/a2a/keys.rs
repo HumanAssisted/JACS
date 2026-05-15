@@ -58,15 +58,13 @@ pub fn create_jwk_keys(
         "ecdsa" | "es256" => {
             return Err(JacsError::CryptoError(
                 "ECDSA key generation for A2A is not yet implemented in this build".to_string(),
-            )
-            .into());
+            ));
         }
         _ => {
             return Err(JacsError::CryptoError(format!(
                 "Unsupported JACS algorithm: {}",
                 jacs_alg
-            ))
-            .into());
+            )));
         }
     };
 
@@ -75,13 +73,13 @@ pub fn create_jwk_keys(
         "ecdsa" | "es256" => {
             return Err(JacsError::CryptoError(
                 "ECDSA key generation for A2A is not yet implemented in this build".to_string(),
-            )
-            .into());
+            ));
         }
         _ => {
-            return Err(
-                JacsError::CryptoError(format!("Unsupported A2A algorithm: {}", a2a_alg)).into(),
-            );
+            return Err(JacsError::CryptoError(format!(
+                "Unsupported A2A algorithm: {}",
+                a2a_alg
+            )));
         }
     };
 
@@ -103,8 +101,7 @@ pub fn export_ed25519_as_jwk(public_key: &[u8], key_id: &str) -> Result<Jwk, Jac
             return Err(JacsError::CryptoError(format!(
                 "Ed25519 public key must be 32 bytes, got {} bytes",
                 public_key.len()
-            ))
-            .into());
+            )));
         }
     };
 
@@ -127,9 +124,11 @@ pub fn export_as_jwk(public_key: &[u8], algorithm: &str, key_id: &str) -> Result
         "ring-Ed25519" => export_ed25519_as_jwk(public_key, key_id),
         "ecdsa" | "es256" => Err(JacsError::CryptoError(
             "ECDSA JWK export is not yet implemented in this build".to_string(),
-        )
-        .into()),
-        _ => Err(JacsError::CryptoError(format!("Cannot export {} key as JWK", algorithm)).into()),
+        )),
+        _ => Err(JacsError::CryptoError(format!(
+            "Cannot export {} key as JWK",
+            algorithm
+        ))),
     }
 }
 
@@ -153,8 +152,8 @@ pub fn sign_jws(
     let header = json!({
         "alg": match algorithm {
             "ring-Ed25519" => "EdDSA",
-            "ecdsa" | "es256" => return Err(JacsError::CryptoError("ECDSA JWS signing is not yet implemented in this build".to_string()).into()),
-            _ => return Err(JacsError::CryptoError(format!("Unsupported JWS algorithm: {}", algorithm)).into()),
+            "ecdsa" | "es256" => return Err(JacsError::CryptoError("ECDSA JWS signing is not yet implemented in this build".to_string())),
+            _ => return Err(JacsError::CryptoError(format!("Unsupported JWS algorithm: {}", algorithm))),
         },
         "typ": "JWT",
         "kid": key_id
@@ -177,13 +176,13 @@ pub fn sign_jws(
         "ecdsa" | "es256" => {
             return Err(JacsError::CryptoError(
                 "ECDSA JWS signing is not yet implemented in this build".to_string(),
-            )
-            .into());
+            ));
         }
         _ => {
-            return Err(
-                JacsError::CryptoError(format!("Unsupported algorithm: {}", algorithm)).into(),
-            );
+            return Err(JacsError::CryptoError(format!(
+                "Unsupported algorithm: {}",
+                algorithm
+            )));
         }
     };
 
@@ -215,8 +214,7 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
         return Err(JacsError::CryptoError(format!(
             "Invalid JWS format: expected 3 parts, got {}",
             parts.len()
-        ))
-        .into());
+        )));
     }
 
     let header_b64 = parts[0];
@@ -237,18 +235,16 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
             return Err(JacsError::CryptoError(format!(
                 "Unsupported JWS verification algorithm: {}",
                 algorithm
-            ))
-            .into());
+            )));
         }
     };
-    if let Some(header_alg) = header.get("alg").and_then(|v| v.as_str()) {
-        if header_alg != expected_alg {
-            return Err(JacsError::CryptoError(format!(
-                "JWS algorithm mismatch: header says '{}', expected '{}'",
-                header_alg, expected_alg
-            ))
-            .into());
-        }
+    if let Some(header_alg) = header.get("alg").and_then(|v| v.as_str())
+        && header_alg != expected_alg
+    {
+        return Err(JacsError::CryptoError(format!(
+            "JWS algorithm mismatch: header says '{}', expected '{}'",
+            header_alg, expected_alg
+        )));
     }
 
     // Reconstruct signing input
@@ -274,8 +270,7 @@ pub fn verify_jws(jws: &str, public_key: &[u8], algorithm: &str) -> Result<Vec<u
             return Err(JacsError::CryptoError(format!(
                 "Unsupported verification algorithm: {}",
                 algorithm
-            ))
-            .into());
+            )));
         }
     }
 

@@ -11,7 +11,7 @@ fn default_features_register_core_tools() {
 
     // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5)
     //     + inline(2) + media(3) = 34
-    let expected_core_count = 34;
+    let _expected_core_count = 34;
 
     // With default features only core tools are registered.
     // If full-tools is also enabled, advanced tools appear too.

@@ -417,8 +417,7 @@ impl DocumentTraits for Agent {
                     return Err(JacsError::HashMismatch {
                         expected: expected_hash.to_string(),
                         got: actual_hash,
-                    }
-                    .into());
+                    });
                 }
             }
         }
@@ -600,12 +599,12 @@ impl DocumentTraits for Agent {
 
     fn get_document(&self, document_key: &str) -> Result<JACSDocument, JacsError> {
         // Use storage to retrieve the document
-        Ok(self.storage.get_document(document_key)?)
+        self.storage.get_document(document_key)
     }
 
     fn remove_document(&mut self, document_key: &str) -> Result<JACSDocument, JacsError> {
         // Use storage to remove and archive the document
-        Ok(self.storage.remove_document(document_key)?)
+        self.storage.remove_document(document_key)
     }
 
     // used to see if key is already in index
@@ -664,8 +663,7 @@ impl DocumentTraits for Agent {
             return Err(JacsError::DocumentError(format!(
                 "Document '{}' is owned by '{}' and cannot be updated by '{}'",
                 document_key, original_signer_id, editor_id
-            ))
-            .into());
+            )));
         }
         let jacs_level = new_document
             .get_str("jacsLevel")
@@ -674,8 +672,7 @@ impl DocumentTraits for Agent {
             return Err(JacsError::DocumentError(format!(
                 "JACS docs of type {} are not editable",
                 jacs_level
-            ))
-            .into());
+            )));
         };
 
         let mut files_array: Vec<Value> = new_document
@@ -717,8 +714,7 @@ impl DocumentTraits for Agent {
                     "The id/versions do not match found for key: {}. {:?}{:?}",
                     document_key, new_doc_orginal_id, new_doc_orginal_version
                 ),
-            }
-            .into());
+            });
         }
 
         //TODO  show diff

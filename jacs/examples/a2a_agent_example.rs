@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("Document processing failed - invalid format or signature".to_string()),
     )?;
 
-    let agent_value = agent.create_agent_and_load(&agent_json, true, None)?;
+    let _agent_value = agent.create_agent_and_load(&agent_json, true, None)?;
     println!("   Agent created with ID: {}", agent.get_id()?);
     println!(
         "   Using algorithm: {}",

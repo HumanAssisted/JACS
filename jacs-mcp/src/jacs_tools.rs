@@ -87,19 +87,18 @@ fn configured_state_roots(data_directory: Option<&str>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
 
     // Prefer explicit data directory from loaded agent
-    if let Some(dir) = data_directory {
-        if !dir.trim().is_empty() {
-            roots.push(PathBuf::from(dir));
-        }
+    if let Some(dir) = data_directory
+        && !dir.trim().is_empty()
+    {
+        roots.push(PathBuf::from(dir));
     }
 
     // Fall back to env var
-    if roots.is_empty() {
-        if let Ok(root) = std::env::var("JACS_DATA_DIRECTORY")
-            && !root.trim().is_empty()
-        {
-            roots.push(PathBuf::from(root));
-        }
+    if roots.is_empty()
+        && let Ok(root) = std::env::var("JACS_DATA_DIRECTORY")
+        && !root.trim().is_empty()
+    {
+        roots.push(PathBuf::from(root));
     }
 
     // Default fallback
@@ -565,19 +564,19 @@ impl JacsMcpServer {
             doc["jacsAgentStateDescription"] = serde_json::json!(desc);
         }
 
-        if let Some(framework) = &params.framework {
-            if let Err(e) = agentstate_crud::set_agentstate_framework(&mut doc, framework) {
-                let result = SignStateResult {
-                    success: false,
-                    jacs_document_id: None,
-                    state_type: params.state_type,
-                    name: params.name,
-                    message: "Failed to set framework".to_string(),
-                    error: Some(e),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
+        if let Some(framework) = &params.framework
+            && let Err(e) = agentstate_crud::set_agentstate_framework(&mut doc, framework)
+        {
+            let result = SignStateResult {
+                success: false,
+                jacs_document_id: None,
+                state_type: params.state_type,
+                name: params.name,
+                message: "Failed to set framework".to_string(),
+                error: Some(e),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         if let Some(tags) = &params.tags {
@@ -1653,10 +1652,10 @@ impl JacsMcpServer {
                 .map(String::from);
 
             // Apply filters.
-            if let Some(ref filter_action) = params.action {
-                if action != *filter_action {
-                    continue;
-                }
+            if let Some(ref filter_action) = params.action
+                && action != *filter_action
+            {
+                continue;
             }
             if let Some(ref filter_target) = params.target {
                 match target.as_deref() {
@@ -1664,15 +1663,15 @@ impl JacsMcpServer {
                     _ => continue,
                 }
             }
-            if let Some(ref start) = params.start_time {
-                if timestamp.as_str() < start.as_str() {
-                    continue;
-                }
+            if let Some(ref start) = params.start_time
+                && timestamp.as_str() < start.as_str()
+            {
+                continue;
             }
-            if let Some(ref end) = params.end_time {
-                if timestamp.as_str() > end.as_str() {
-                    continue;
-                }
+            if let Some(ref end) = params.end_time
+                && timestamp.as_str() > end.as_str()
+            {
+                continue;
             }
 
             matched.push((
@@ -1775,10 +1774,10 @@ impl JacsMcpServer {
             }
 
             // Apply optional action filter.
-            if let Some(ref filter_action) = params.action {
-                if action != filter_action.as_str() {
-                    continue;
-                }
+            if let Some(ref filter_action) = params.action
+                && action != filter_action.as_str()
+            {
+                continue;
             }
 
             entries.push(content);
@@ -3566,18 +3565,18 @@ impl JacsMcpServer {
             doc["jacsAgentStateDescription"] = serde_json::json!(desc);
         }
 
-        if let Some(framework) = &params.framework {
-            if let Err(e) = agentstate_crud::set_agentstate_framework(&mut doc, framework) {
-                let result = MemorySaveResult {
-                    success: false,
-                    jacs_document_id: None,
-                    name: params.name,
-                    message: "Failed to set framework".to_string(),
-                    error: Some(e),
-                };
-                return serde_json::to_string_pretty(&result)
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-            }
+        if let Some(framework) = &params.framework
+            && let Err(e) = agentstate_crud::set_agentstate_framework(&mut doc, framework)
+        {
+            let result = MemorySaveResult {
+                success: false,
+                jacs_document_id: None,
+                name: params.name,
+                message: "Failed to set framework".to_string(),
+                error: Some(e),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
         }
 
         if let Some(tags) = &params.tags {
@@ -4273,10 +4272,10 @@ impl JacsMcpServer {
         };
         // Override signer_id from header (the wrapper outcome doesn't carry it).
         let mut value = serde_json::to_value(&result).unwrap_or_else(|_| serde_json::json!({}));
-        if let Some(sid) = signer_id {
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert("signer_id".to_string(), serde_json::Value::String(sid));
-            }
+        if let Some(sid) = signer_id
+            && let Some(obj) = value.as_object_mut()
+        {
+            obj.insert("signer_id".to_string(), serde_json::Value::String(sid));
         }
         serde_json::to_string_pretty(&value).unwrap_or_else(|e| format!("Error: {}", e))
     }

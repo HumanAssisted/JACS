@@ -336,8 +336,7 @@ fn all_bindings_share_canonical_content_hash() {
     // 1. Compute canonical content hash from unsigned.md.
     let unsigned = fs::read_to_string(&unsigned_path).expect("read unsigned");
     let lf_only: String = unsigned.chars().filter(|&c| c != '\r').collect();
-    let trimmed =
-        lf_only.trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\n' || c == '\r');
+    let trimmed = lf_only.trim_end_matches([' ', '\t', '\n', '\r']);
     let mut hasher = Sha256::new();
     hasher.update(trimmed.as_bytes());
     let computed_hash = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize());

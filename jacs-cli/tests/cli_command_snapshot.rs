@@ -133,7 +133,7 @@ fn test_cli_feature_gated_commands_in_fixture() {
     //
     // When the keychain feature IS enabled at compile time, the commands
     // will also appear in the Clap tree and be caught by the main test above.
-    let mut expected = vec![
+    let mut expected = [
         "keychain set",
         "keychain get",
         "keychain delete",

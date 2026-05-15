@@ -39,13 +39,13 @@ pub fn add_todo_item(
     if description.is_empty() {
         return Err("Item description cannot be empty".to_string());
     }
-    if let Some(p) = priority {
-        if !ALLOWED_PRIORITIES.contains(&p) {
-            return Err(format!(
-                "Invalid priority: '{}'. Must be one of: {:?}",
-                p, ALLOWED_PRIORITIES
-            ));
-        }
+    if let Some(p) = priority
+        && !ALLOWED_PRIORITIES.contains(&p)
+    {
+        return Err(format!(
+            "Invalid priority: '{}'. Must be one of: {:?}",
+            p, ALLOWED_PRIORITIES
+        ));
     }
 
     let item_id = Uuid::new_v4().to_string();

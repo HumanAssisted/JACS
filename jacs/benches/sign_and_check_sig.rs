@@ -1,5 +1,6 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use jacs::simple::SimpleAgent;
+use std::hint::black_box;
 
 use rand::distr::Alphanumeric;
 use rand::prelude::*;
@@ -55,10 +56,9 @@ fn benchmark_pq2025(c: &mut Criterion) {
         for document in &documents {
             let data: serde_json::Value = serde_json::from_str(document).unwrap();
             b.iter(|| {
-                black_box({
-                    let signed = agent.sign_message(&data).unwrap();
-                    agent.verify(&signed.raw).unwrap();
-                });
+                let signed = agent.sign_message(&data).unwrap();
+                let result = agent.verify(&signed.raw).unwrap();
+                black_box(result)
             })
         }
     });
@@ -72,10 +72,9 @@ fn benchmark_ed25519(c: &mut Criterion) {
         for document in &documents {
             let data: serde_json::Value = serde_json::from_str(document).unwrap();
             b.iter(|| {
-                black_box({
-                    let signed = agent.sign_message(&data).unwrap();
-                    agent.verify(&signed.raw).unwrap();
-                });
+                let signed = agent.sign_message(&data).unwrap();
+                let result = agent.verify(&signed.raw).unwrap();
+                black_box(result)
             })
         }
     });

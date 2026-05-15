@@ -1007,163 +1007,159 @@ pub fn build_cli() -> Command {
     );
 
     // Inline text + media verbs (Task 08, PRD §3.1 / §3.2 / §4.1 / §4.2).
-    let cmd = cmd
-        .subcommand(
-            Command::new("sign-text")
-                .about("Sign a text/markdown file in place with an inline JACS signature")
-                .arg(
-                    Arg::new("file")
-                        .help("Path to the text file to sign in place")
-                        .required(true)
-                        .value_parser(value_parser!(String)),
-                )
-                .arg(
-                    Arg::new("no-backup")
-                        .long("no-backup")
-                        .action(ArgAction::SetTrue)
-                        .help("Skip the automatic <path>.bak backup"),
-                )
-                .arg(
-                    Arg::new("json")
-                        .long("json")
-                        .action(ArgAction::SetTrue)
-                        .help("Output result as JSON"),
-                ),
-        )
-        .subcommand(
-            Command::new("verify-text")
-                .about("Verify inline JACS signatures in a text/markdown file")
-                .arg(
-                    Arg::new("file")
-                        .help("Path to the signed text file")
-                        .required(true)
-                        .value_parser(value_parser!(String)),
-                )
-                .arg(
-                    Arg::new("key-dir")
-                        .long("key-dir")
-                        .value_parser(value_parser!(String))
-                        .help("Directory containing signer public keys (.public.pem)"),
-                )
-                .arg(
-                    Arg::new("json")
-                        .long("json")
-                        .action(ArgAction::SetTrue)
-                        .help("Output result as JSON"),
-                )
-                .arg(
-                    Arg::new("strict")
-                        .long("strict")
-                        .action(ArgAction::SetTrue)
-                        .help(
-                            "Treat 'no JACS signature found' as a hard failure (exits 1 instead of 2)",
-                        ),
-                ),
-        )
-        .subcommand(
-            Command::new("sign-image")
-                .about("Sign an image (PNG, JPEG, WebP) by embedding a JACS signature")
-                .arg(
-                    Arg::new("input")
-                        .help("Path to the input image")
-                        .required(true)
-                        .value_parser(value_parser!(String)),
-                )
-                .arg(
-                    Arg::new("out")
-                        .long("out")
-                        .required(true)
-                        .value_parser(value_parser!(String))
-                        .help("Output image path"),
-                )
-                .arg(
-                    Arg::new("robust")
-                        .long("robust")
-                        .action(ArgAction::SetTrue)
-                        .help("Enable LSB fallback encoding (modifies pixel data; PNG/JPEG only)"),
-                )
-                .arg(
-                    Arg::new("format")
-                        .long("format")
-                        .value_parser(["png", "jpeg", "webp"])
-                        .help("Force a specific format (auto-detected by default)"),
-                )
-                .arg(
-                    Arg::new("refuse-overwrite")
-                        .long("refuse-overwrite")
-                        .action(ArgAction::SetTrue)
-                        .help("Refuse to overwrite an existing JACS signature on the input"),
-                )
-                .arg(
-                    Arg::new("json")
-                        .long("json")
-                        .action(ArgAction::SetTrue)
-                        .help("Output result as JSON"),
-                ),
-        )
-        .subcommand(
-            Command::new("verify-image")
-                .about("Verify an embedded JACS signature in an image")
-                .arg(
-                    Arg::new("file")
-                        .help("Path to the signed image")
-                        .required(true)
-                        .value_parser(value_parser!(String)),
-                )
-                .arg(
-                    Arg::new("key-dir")
-                        .long("key-dir")
-                        .value_parser(value_parser!(String))
-                        .help("Directory containing signer public keys (.public.pem)"),
-                )
-                .arg(
-                    Arg::new("json")
-                        .long("json")
-                        .action(ArgAction::SetTrue)
-                        .help("Output result as JSON"),
-                )
-                .arg(
-                    Arg::new("strict")
-                        .long("strict")
-                        .action(ArgAction::SetTrue)
-                        .help(
-                            "Treat 'no JACS signature found' as a hard failure (exits 1 instead of 2)",
-                        ),
-                )
-                .arg(
-                    Arg::new("robust")
-                        .long("robust")
-                        .action(ArgAction::SetTrue)
-                        .help("Scan LSB channel for the robust-mode payload (default off)"),
-                ),
-        )
-        .subcommand(
-            Command::new("extract-media-signature")
-                .about("Extract the embedded JACS signature payload from an image")
-                .arg(
-                    Arg::new("file")
-                        .help("Path to the image to extract from")
-                        .required(true)
-                        .value_parser(value_parser!(String)),
-                )
-                .arg(
-                    Arg::new("raw-payload")
-                        .long("raw-payload")
-                        .action(ArgAction::SetTrue)
-                        .help(
-                            "Print the raw base64url wire form instead of the decoded JSON",
-                        ),
-                )
-                .arg(
-                    Arg::new("robust")
-                        .long("robust")
-                        .action(ArgAction::SetTrue)
-                        .help(
-                            "Scan the LSB channel as a fallback if the metadata channel has \
-                             no payload (R-011; mirrors verify-image --robust)",
-                        ),
-                ),
-        );
 
-    cmd
+    cmd.subcommand(
+        Command::new("sign-text")
+            .about("Sign a text/markdown file in place with an inline JACS signature")
+            .arg(
+                Arg::new("file")
+                    .help("Path to the text file to sign in place")
+                    .required(true)
+                    .value_parser(value_parser!(String)),
+            )
+            .arg(
+                Arg::new("no-backup")
+                    .long("no-backup")
+                    .action(ArgAction::SetTrue)
+                    .help("Skip the automatic <path>.bak backup"),
+            )
+            .arg(
+                Arg::new("json")
+                    .long("json")
+                    .action(ArgAction::SetTrue)
+                    .help("Output result as JSON"),
+            ),
+    )
+    .subcommand(
+        Command::new("verify-text")
+            .about("Verify inline JACS signatures in a text/markdown file")
+            .arg(
+                Arg::new("file")
+                    .help("Path to the signed text file")
+                    .required(true)
+                    .value_parser(value_parser!(String)),
+            )
+            .arg(
+                Arg::new("key-dir")
+                    .long("key-dir")
+                    .value_parser(value_parser!(String))
+                    .help("Directory containing signer public keys (.public.pem)"),
+            )
+            .arg(
+                Arg::new("json")
+                    .long("json")
+                    .action(ArgAction::SetTrue)
+                    .help("Output result as JSON"),
+            )
+            .arg(
+                Arg::new("strict")
+                    .long("strict")
+                    .action(ArgAction::SetTrue)
+                    .help(
+                        "Treat 'no JACS signature found' as a hard failure (exits 1 instead of 2)",
+                    ),
+            ),
+    )
+    .subcommand(
+        Command::new("sign-image")
+            .about("Sign an image (PNG, JPEG, WebP) by embedding a JACS signature")
+            .arg(
+                Arg::new("input")
+                    .help("Path to the input image")
+                    .required(true)
+                    .value_parser(value_parser!(String)),
+            )
+            .arg(
+                Arg::new("out")
+                    .long("out")
+                    .required(true)
+                    .value_parser(value_parser!(String))
+                    .help("Output image path"),
+            )
+            .arg(
+                Arg::new("robust")
+                    .long("robust")
+                    .action(ArgAction::SetTrue)
+                    .help("Enable LSB fallback encoding (modifies pixel data; PNG/JPEG only)"),
+            )
+            .arg(
+                Arg::new("format")
+                    .long("format")
+                    .value_parser(["png", "jpeg", "webp"])
+                    .help("Force a specific format (auto-detected by default)"),
+            )
+            .arg(
+                Arg::new("refuse-overwrite")
+                    .long("refuse-overwrite")
+                    .action(ArgAction::SetTrue)
+                    .help("Refuse to overwrite an existing JACS signature on the input"),
+            )
+            .arg(
+                Arg::new("json")
+                    .long("json")
+                    .action(ArgAction::SetTrue)
+                    .help("Output result as JSON"),
+            ),
+    )
+    .subcommand(
+        Command::new("verify-image")
+            .about("Verify an embedded JACS signature in an image")
+            .arg(
+                Arg::new("file")
+                    .help("Path to the signed image")
+                    .required(true)
+                    .value_parser(value_parser!(String)),
+            )
+            .arg(
+                Arg::new("key-dir")
+                    .long("key-dir")
+                    .value_parser(value_parser!(String))
+                    .help("Directory containing signer public keys (.public.pem)"),
+            )
+            .arg(
+                Arg::new("json")
+                    .long("json")
+                    .action(ArgAction::SetTrue)
+                    .help("Output result as JSON"),
+            )
+            .arg(
+                Arg::new("strict")
+                    .long("strict")
+                    .action(ArgAction::SetTrue)
+                    .help(
+                        "Treat 'no JACS signature found' as a hard failure (exits 1 instead of 2)",
+                    ),
+            )
+            .arg(
+                Arg::new("robust")
+                    .long("robust")
+                    .action(ArgAction::SetTrue)
+                    .help("Scan LSB channel for the robust-mode payload (default off)"),
+            ),
+    )
+    .subcommand(
+        Command::new("extract-media-signature")
+            .about("Extract the embedded JACS signature payload from an image")
+            .arg(
+                Arg::new("file")
+                    .help("Path to the image to extract from")
+                    .required(true)
+                    .value_parser(value_parser!(String)),
+            )
+            .arg(
+                Arg::new("raw-payload")
+                    .long("raw-payload")
+                    .action(ArgAction::SetTrue)
+                    .help("Print the raw base64url wire form instead of the decoded JSON"),
+            )
+            .arg(
+                Arg::new("robust")
+                    .long("robust")
+                    .action(ArgAction::SetTrue)
+                    .help(
+                        "Scan the LSB channel as a fallback if the metadata channel has \
+                             no payload (R-011; mirrors verify-image --robust)",
+                    ),
+            ),
+    )
 }

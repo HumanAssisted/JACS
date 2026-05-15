@@ -50,7 +50,7 @@ pub fn read_password_file_checked(path: &Path) -> Result<String, String> {
 
     let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read password file '{}': {}", path.display(), e))?;
-    let password = raw.trim_end_matches(|c| c == '\n' || c == '\r');
+    let password = raw.trim_end_matches(['\n', '\r']);
     if password.is_empty() {
         return Err(format!("Password file '{}' is empty.", path.display()));
     }

@@ -43,22 +43,13 @@ impl Default for CreateOptions {
 ///
 /// JACS "update" creates a successor version linked to the prior version
 /// (new signature, new version ID). It never mutates in place.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateOptions {
     /// Optional path to a custom JSON schema for validation.
     pub custom_schema: Option<String>,
 
     /// Optional new visibility for the updated version.
     pub visibility: Option<DocumentVisibility>,
-}
-
-impl Default for UpdateOptions {
-    fn default() -> Self {
-        Self {
-            custom_schema: None,
-            visibility: None,
-        }
-    }
 }
 
 // =============================================================================
@@ -164,11 +155,13 @@ pub struct DocumentDiff {
 ///   Examples: agreement documents, review docs, partner-visible artifacts.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DocumentVisibility {
     /// Fully public — can be shared, listed, and returned to any caller.
     Public,
 
     /// Private to the owning agent.
+    #[default]
     Private,
 
     /// Restricted to explicitly named agent IDs or roles.
@@ -181,12 +174,6 @@ pub enum DocumentVisibility {
     /// simpler at call sites and the serde output is identical: both serialize to
     /// `{"restricted":["agent-a","agent-b"]}` with `#[serde(rename_all = "lowercase")]`.
     Restricted(Vec<String>),
-}
-
-impl Default for DocumentVisibility {
-    fn default() -> Self {
-        DocumentVisibility::Private
-    }
 }
 
 impl DocumentVisibility {

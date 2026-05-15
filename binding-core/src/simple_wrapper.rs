@@ -828,8 +828,8 @@ mod tests {
             r#"{"backup": false, "allowDuplicate": true, "unsafeBakMode": 384}"#,
         )
         .expect("parse should succeed");
-        assert_eq!(opts.backup, false);
-        assert_eq!(opts.allow_duplicate, true);
+        assert!(!opts.backup);
+        assert!(opts.allow_duplicate);
         assert_eq!(opts.unsafe_bak_mode, Some(384));
     }
 
@@ -881,8 +881,8 @@ mod tests {
     #[test]
     fn parse_extract_options_default_has_no_robust_scan_or_raw() {
         let parsed = parse_extract_options("{}").expect("ok");
-        assert_eq!(parsed.raw_payload, false);
-        assert_eq!(parsed.scan_robust, false);
+        assert!(!parsed.raw_payload);
+        assert!(!parsed.scan_robust);
     }
 
     #[test]

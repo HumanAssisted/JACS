@@ -18,9 +18,10 @@ fn test_create_agreement() {
     // cargo test   --test agreement_test -- --nocapture test_create_agreement
     let mut agent = load_test_agent_one_ed25519();
     let agent_two = load_test_agent_two_ed25519();
-    let mut agentids: Vec<String> = Vec::new();
-    agentids.push(agent.get_id().expect("REASON"));
-    agentids.push(agent_two.get_id().expect("REASON"));
+    let agentids: Vec<String> = vec![
+        agent.get_id().expect("REASON"),
+        agent_two.get_id().expect("REASON"),
+    ];
 
     let document_key = create_owned_config_fixture_document(&mut agent);
     // agent one creates agreement document
@@ -122,10 +123,10 @@ fn test_add_and_remove_agents() {
         &doc_v3.getkey(),
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     );
-    match result {
-        Err(_) => assert!(true),
-        Ok(_) => assert!(false),
-    }
+    assert!(
+        result.is_err(),
+        "check_agreement should fail for incomplete agreement"
+    );
 }
 
 #[test]
@@ -154,9 +155,10 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
     //     String::from_utf8(key_vec2).unwrap()
     // );
 
-    let mut agentids: Vec<String> = Vec::new();
-    agentids.push(agent.get_id().expect("REASON"));
-    agentids.push(agent_two.get_id().expect("REASON"));
+    let agentids: Vec<String> = vec![
+        agent.get_id().expect("REASON"),
+        agent_two.get_id().expect("REASON"),
+    ];
 
     let agent_one_public_key = agent.get_public_key().unwrap();
     let agent_one_public_key_hash = hash_public_key(&agent_one_public_key);
@@ -254,12 +256,8 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
         &both_signed_document.getkey(),
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     );
-    match result {
-        Err(err) => {
-            println!("{}", err);
-            assert!(false)
-        }
-        Ok(_) => assert!(true),
+    if let Err(err) = result {
+        panic!("agent_two check_agreement failed: {}", err);
     }
 
     let both_signed_document_string =
@@ -271,12 +269,8 @@ fn test_sign_agreement() -> Result<(), Box<dyn std::error::Error>> {
         &agent_one_both_signed_document_key,
         Some(AGENT_AGREEMENT_FIELDNAME.to_string()),
     );
-    match result {
-        Err(err) => {
-            println!("{}", err);
-            assert!(false)
-        }
-        Ok(_) => assert!(true),
+    if let Err(err) = result {
+        panic!("agent_one check_agreement failed: {}", err);
     }
     let (question, context) = agent
         .agreement_get_question_and_context(

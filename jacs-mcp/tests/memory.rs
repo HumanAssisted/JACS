@@ -163,6 +163,7 @@ async fn jacs_memory_save_creates_private_memory() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[allow(clippy::await_holding_lock)]
 async fn jacs_memory_save_emits_local_storage_trace() -> anyhow::Result<()> {
     let _env_guard = ENV_LOCK.lock().unwrap();
     let (config, base) = prepare_temp_workspace();

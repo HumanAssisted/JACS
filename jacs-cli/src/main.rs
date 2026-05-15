@@ -291,18 +291,15 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 let agent =
                     SimpleAgent::load(config_path, None).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to load agent: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load agent: {}",
+                            e
+                        )))
                     })?;
 
                 let result = jacs::simple::advanced::rotate(&agent, algorithm).map_err(
                     |e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Key rotation failed: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!("Key rotation failed: {}", e)))
                     },
                 )?;
 
@@ -323,10 +320,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 let config =
                     jacs::config::Config::from_file(config_p).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to load config: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load config: {}",
+                            e
+                        )))
                     })?;
 
                 let key_dir = config
@@ -412,10 +409,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 let config =
                     jacs::config::Config::from_file(config_p).map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to load config: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to load config: {}",
+                            e
+                        )))
                     })?;
 
                 let key_dir = config
@@ -432,10 +429,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     // Loading the agent triggers warn_if_config_tampered -> auto-repair
                     let _agent =
                         SimpleAgent::load(Some(config_p), None).map_err(|e| -> Box<dyn Error> {
-                            Box::new(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Repair failed: {}", e),
-                            ))
+                            Box::new(std::io::Error::other(format!("Repair failed: {}", e)))
                         })?;
                     // Check if journal was cleaned up
                     if RotationJournal::load(&journal_path).is_none() {
@@ -619,10 +613,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 // Load the agent first to find the key file
                 let agent = SimpleAgent::load(None, None).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Failed to load agent: {}", e),
-                    ))
+                    Box::new(std::io::Error::other(format!(
+                        "Failed to load agent: {}",
+                        e
+                    )))
                 })?;
 
                 println!("Re-encrypting private key.\n");
@@ -630,10 +624,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Get old password
                 println!("Enter current password:");
                 let old_password = read_password().map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Error reading password: {}", e),
-                    ))
+                    Box::new(std::io::Error::other(format!(
+                        "Error reading password: {}",
+                        e
+                    )))
                 })?;
 
                 if old_password.is_empty() {
@@ -645,18 +639,18 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 println!("\n{}", password_requirements());
                 println!("\nEnter new password:");
                 let new_password = read_password().map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Error reading password: {}", e),
-                    ))
+                    Box::new(std::io::Error::other(format!(
+                        "Error reading password: {}",
+                        e
+                    )))
                 })?;
 
                 println!("Confirm new password:");
                 let new_password_confirm = read_password().map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Error reading password: {}", e),
-                    ))
+                    Box::new(std::io::Error::other(format!(
+                        "Error reading password: {}",
+                        e
+                    )))
                 })?;
 
                 if new_password != new_password_confirm {
@@ -666,10 +660,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
                 jacs::simple::advanced::reencrypt_key(&agent, &old_password, &new_password)
                     .map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Re-encryption failed: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Re-encryption failed: {}",
+                            e
+                        )))
                     })?;
 
                 println!("Private key re-encrypted successfully.");
@@ -955,20 +949,20 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Export the Agent Card for display
                 let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
                     |e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to export Agent Card: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to export Agent Card: {}",
+                            e
+                        )))
                     },
                 )?;
 
                 // Generate well-known documents via public API
                 let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
                     .map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to generate well-known documents: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to generate well-known documents: {}",
+                            e
+                        )))
                     })?;
 
                 // Build a lookup map: path -> JSON body
@@ -1060,20 +1054,20 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 // Export the Agent Card
                 let agent_card = jacs::a2a::simple::export_agent_card(&agent).map_err(
                     |e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to export Agent Card: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to export Agent Card: {}",
+                            e
+                        )))
                     },
                 )?;
 
                 // Generate well-known documents
                 let documents = jacs::a2a::simple::generate_well_known_documents(&agent, None)
                     .map_err(|e| -> Box<dyn Error> {
-                        Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to generate well-known documents: {}", e),
-                        ))
+                        Box::new(std::io::Error::other(format!(
+                            "Failed to generate well-known documents: {}",
+                            e
+                        )))
                     })?;
 
                 // Build route map
@@ -1211,10 +1205,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                     .map_err(|e| format!("Invalid JSON input: {}", e))?;
 
                 let signed = agent.sign_message(&value).map_err(|e| -> Box<dyn Error> {
-                    Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Signing failed: {}", e),
-                    ))
+                    Box::new(std::io::Error::other(format!("Signing failed: {}", e)))
                 })?;
 
                 println!("{}", signed.raw);

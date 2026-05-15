@@ -27,17 +27,6 @@ pub const STRICT_TLS_DEFAULT: bool = true;
 /// Additional domains can be added via the `JACS_SCHEMA_ALLOWED_DOMAINS` environment variable.
 pub const DEFAULT_ALLOWED_SCHEMA_DOMAINS: &[&str] = &["hai.ai", "schema.hai.ai", "jacs.sh"];
 
-/// Check if a URL is allowed for schema fetching.
-///
-/// A URL is allowed if its host matches one of the allowed domains (either from
-/// `DEFAULT_ALLOWED_SCHEMA_DOMAINS` or from the `JACS_SCHEMA_ALLOWED_DOMAINS` env var).
-///
-/// # Arguments
-/// * `url` - The URL to check
-///
-/// # Returns
-/// * `Ok(())` if the URL is allowed
-/// * `Err(JacsError)` if the URL is blocked
 /// Default maximum document size in bytes (10MB).
 pub const DEFAULT_MAX_DOCUMENT_SIZE: usize = 10 * 1024 * 1024;
 
@@ -626,28 +615,6 @@ fn check_filesystem_schema_access(
     Ok(candidate)
 }
 
-/// Resolves a schema from various sources based on the provided path.
-///
-/// # Arguments
-/// * `rawpath` - The path or URL to the schema. Can be:
-///   - A key in DEFAULT_SCHEMA_STRINGS
-///   - A <https://hai.ai> URL (will be converted to embedded schema)
-///   - A remote URL (will attempt fetch, subject to domain allowlist)
-///   - A local filesystem path (requires `JACS_ALLOW_FILESYSTEM_SCHEMAS=true`)
-///
-/// # Resolution Order
-/// 1. Removes leading slash if present
-/// 2. Checks DEFAULT_SCHEMA_STRINGS for direct match
-/// 3. For URLs:
-///    - hai.ai URLs: Converts to embedded schema lookup
-///    - Other URLs: Checks domain allowlist, then attempts remote fetch
-/// 4. Checks local filesystem (if enabled via `JACS_ALLOW_FILESYSTEM_SCHEMAS`)
-///
-/// # Security Considerations
-/// - Remote URLs are restricted to allowed domains (see `DEFAULT_ALLOWED_SCHEMA_DOMAINS`)
-/// - Filesystem access is disabled by default (opt-in via `JACS_ALLOW_FILESYSTEM_SCHEMAS`)
-/// - Path traversal (`..`) is blocked for filesystem paths
-/// - TLS certificate validation is enabled by default (can be relaxed for development)
 /// Resolve a schema without an agent config context.
 ///
 /// Equivalent to `resolve_schema_with_config(rawpath, None)`.
@@ -798,9 +765,9 @@ impl Drop for SchemaAccessHookGuard {
 }
 
 #[cfg(test)]
-static SCHEMA_ACCESS_TEST_HOOK: OnceLock<
-    std::sync::Mutex<Option<(String, Arc<dyn Fn() + Send + Sync + 'static>)>>,
-> = OnceLock::new();
+type SchemaTestHook = std::sync::Mutex<Option<(String, Arc<dyn Fn() + Send + Sync + 'static>)>>;
+#[cfg(test)]
+static SCHEMA_ACCESS_TEST_HOOK: OnceLock<SchemaTestHook> = OnceLock::new();
 
 fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
     if let Ok(mut cache) = schema_cache().write() {

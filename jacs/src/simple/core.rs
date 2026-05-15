@@ -653,13 +653,13 @@ impl SimpleAgent {
 
             // Log differences between existing config and params
             let check = |field: &str, existing_val: Option<&str>, param_val: &str| {
-                if let Some(ev) = existing_val {
-                    if ev != param_val {
-                        warn!(
-                            "Config '{}' differs: existing='{}', param='{}'. Keeping existing value.",
-                            field, ev, param_val
-                        );
-                    }
+                if let Some(ev) = existing_val
+                    && ev != param_val
+                {
+                    warn!(
+                        "Config '{}' differs: existing='{}', param='{}'. Keeping existing value.",
+                        field, ev, param_val
+                    );
                 }
             };
             check(
@@ -767,13 +767,13 @@ impl SimpleAgent {
                     message: format!("Failed to serialize config: {}", e),
                 })?;
             // Create parent directories if needed
-            if let Some(parent) = config_path.parent() {
-                if !parent.as_os_str().is_empty() {
-                    fs::create_dir_all(parent).map_err(|e| JacsError::DirectoryCreateFailed {
-                        path: parent.to_string_lossy().to_string(),
-                        reason: e.to_string(),
-                    })?;
-                }
+            if let Some(parent) = config_path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent).map_err(|e| JacsError::DirectoryCreateFailed {
+                    path: parent.to_string_lossy().to_string(),
+                    reason: e.to_string(),
+                })?;
             }
             crate::secure_io::write_new_file(config_path, new_str.as_bytes(), 0o644).map_err(
                 |e| JacsError::Internal {
@@ -814,18 +814,18 @@ impl SimpleAgent {
 
         // Handle DNS record generation if domain is set
         let mut dns_record = String::new();
-        if !params.domain.is_empty() {
-            if let Ok(pk) = agent.get_public_key() {
-                let digest = crate::dns::bootstrap::pubkey_digest_b64(&pk);
-                let rr = crate::dns::bootstrap::build_dns_record(
-                    &params.domain,
-                    3600,
-                    &agent_id,
-                    &digest,
-                    crate::dns::bootstrap::DigestEncoding::Base64,
-                );
-                dns_record = crate::dns::bootstrap::emit_plain_bind(&rr);
-            }
+        if !params.domain.is_empty()
+            && let Ok(pk) = agent.get_public_key()
+        {
+            let digest = crate::dns::bootstrap::pubkey_digest_b64(&pk);
+            let rr = crate::dns::bootstrap::build_dns_record(
+                &params.domain,
+                3600,
+                &agent_id,
+                &digest,
+                crate::dns::bootstrap::DigestEncoding::Base64,
+            );
+            dns_record = crate::dns::bootstrap::emit_plain_bind(&rr);
         }
 
         let private_key_path = format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);

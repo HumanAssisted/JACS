@@ -554,10 +554,10 @@ fn test_verify_rejects_tampered_document() {
     let result = agent.verify(&tampered);
     // In non-strict mode, verify returns Ok with valid=false
     // In strict mode or load failure, it may return Err
-    match result {
-        Ok(vr) => assert!(!vr.valid, "tampered document should not verify as valid"),
-        Err(_) => {} // Also acceptable — strict mode or load rejection
+    if let Ok(vr) = result {
+        assert!(!vr.valid, "tampered document should not verify as valid");
     }
+    // Err is also acceptable — strict mode or load rejection
 }
 
 #[test]
@@ -602,10 +602,10 @@ fn test_verify_with_key_wrong_key() {
 
     let result = agent_a.verify_with_key(&signed.raw, wrong_key);
     // Should either return Ok(valid=false) or Err
-    match result {
-        Ok(vr) => assert!(!vr.valid, "wrong key should not verify as valid"),
-        Err(_) => {} // Also acceptable
+    if let Ok(vr) = result {
+        assert!(!vr.valid, "wrong key should not verify as valid");
     }
+    // Err is also acceptable
 }
 
 // =============================================================================

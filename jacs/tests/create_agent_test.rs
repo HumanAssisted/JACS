@@ -10,13 +10,9 @@ fn test_validate_agent_creation() {
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, true, None);
 
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
+    if let Err(error) = &result {
+        panic!("Expected Ok, got error: {}", error);
+    }
     // agent.save();
 
     println!("New Agent Created\n\n\n {} ", agent);
@@ -25,13 +21,9 @@ fn test_validate_agent_creation() {
         read_raw_fixture("mysecondagent.new.json").expect("Failed to read second agent fixture");
     let result = agent.create_agent_and_load(&json_data, false, None);
 
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
+    if let Err(error) = &result {
+        panic!("Expected Ok, got error: {}", error);
+    }
 
     println!("New Agent2 Created\n\n\n {} ", agent);
     // let _ = agent.save();
@@ -44,13 +36,9 @@ fn test_validate_single_agent_creation() {
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, true, None);
 
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
+    if let Err(error) = &result {
+        panic!("Expected Ok, got error: {}", error);
+    }
 
     println!("New Agent Created\n\n\n {} ", agent);
 }
@@ -62,13 +50,9 @@ fn test_validate_agent_creation_save_and_load() {
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");
     let result = agent.create_agent_and_load(&json_data, true, None);
 
-    let _ = match result {
-        Ok(_) => Ok(result),
-        Err(error) => Err({
-            println!("{}", error);
-            assert!(false);
-        }),
-    };
+    if let Err(error) = &result {
+        panic!("Expected Ok, got error: {}", error);
+    }
 
     println!(
         "test_validate_agent_creation_save_and_load Agent Created\n\n\n {} ",

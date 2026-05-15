@@ -5,7 +5,7 @@
 //! 2. Export JACS extension descriptor
 //! 3. Sign with JWS for A2A compatibility
 
-use jacs::a2a::{agent_card::*, extension::*, keys::*, *};
+use jacs::a2a::{agent_card::*, *};
 use serde_json::json;
 use std::collections::HashMap;
 

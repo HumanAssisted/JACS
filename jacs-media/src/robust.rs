@@ -106,8 +106,7 @@ fn embed_bits_rgba(
     if total_bits > cap_bits {
         return Err(capacity_exceeded(bits.len(), cap_bits));
     }
-    let mut idx_bit = 0usize;
-    'outer: for pixel in img.pixels_mut() {
+    'outer: for (idx_bit, pixel) in img.pixels_mut().enumerate() {
         if idx_bit >= total_bits {
             break 'outer;
         }
@@ -118,7 +117,6 @@ fn embed_bits_rgba(
             LsbTarget::Blue => &mut pixel[2],
         };
         *target_byte = (*target_byte & 0xfe) | bit;
-        idx_bit += 1;
     }
     Ok(())
 }
@@ -127,8 +125,7 @@ fn extract_bits_rgba(img: &image::RgbaImage, target: LsbTarget) -> Vec<u8> {
     let total_bits = pixel_bit_count_png(img, target);
     let total_bytes = total_bits / 8;
     let mut out = vec![0u8; total_bytes];
-    let mut idx_bit = 0usize;
-    for pixel in img.pixels() {
+    for (idx_bit, pixel) in img.pixels().enumerate() {
         if idx_bit >= total_bytes * 8 {
             break;
         }
@@ -140,7 +137,6 @@ fn extract_bits_rgba(img: &image::RgbaImage, target: LsbTarget) -> Vec<u8> {
         let byte_idx = idx_bit / 8;
         let bit_in_byte = 7 - (idx_bit % 8);
         out[byte_idx] |= bit << bit_in_byte;
-        idx_bit += 1;
     }
     out
 }
@@ -151,8 +147,7 @@ fn embed_bits_rgb(img: &mut image::RgbImage, bits: &[u8]) -> Result<(), MediaErr
     if total_bits > cap_bits {
         return Err(capacity_exceeded(bits.len(), cap_bits));
     }
-    let mut idx_bit = 0usize;
-    'outer: for pixel in img.pixels_mut() {
+    'outer: for (idx_bit, pixel) in img.pixels_mut().enumerate() {
         if idx_bit >= total_bits {
             break 'outer;
         }
@@ -160,7 +155,6 @@ fn embed_bits_rgb(img: &mut image::RgbImage, bits: &[u8]) -> Result<(), MediaErr
         let bit = (byte >> (7 - (idx_bit % 8))) & 1;
         let target_byte = &mut pixel[2];
         *target_byte = (*target_byte & 0xfe) | bit;
-        idx_bit += 1;
     }
     Ok(())
 }
@@ -169,8 +163,7 @@ fn extract_bits_rgb(img: &image::RgbImage) -> Vec<u8> {
     let total_bits = pixel_bit_count_jpeg(img);
     let total_bytes = total_bits / 8;
     let mut out = vec![0u8; total_bytes];
-    let mut idx_bit = 0usize;
-    for pixel in img.pixels() {
+    for (idx_bit, pixel) in img.pixels().enumerate() {
         if idx_bit >= total_bytes * 8 {
             break;
         }
@@ -178,7 +171,6 @@ fn extract_bits_rgb(img: &image::RgbImage) -> Vec<u8> {
         let byte_idx = idx_bit / 8;
         let bit_in_byte = 7 - (idx_bit % 8);
         out[byte_idx] |= bit << bit_in_byte;
-        idx_bit += 1;
     }
     out
 }

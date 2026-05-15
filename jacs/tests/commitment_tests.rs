@@ -141,8 +141,7 @@ fn test_commitment_invalid_date_format() {
     // validator implementation. If it rejects, great. If not, we at least
     // verified the field is present.
     if result.is_err() {
-        // Schema correctly rejected the invalid date format
-        assert!(true);
+        // Schema correctly rejected the invalid date format -- expected
     } else {
         // Validator is lenient on format -- just verify the field is present
         let validated = result.unwrap();
@@ -243,9 +242,10 @@ fn test_commitment_with_agreement() {
     let doc_key = loaded.getkey();
 
     // Create an agreement with two agent IDs
-    let mut agentids: Vec<String> = Vec::new();
-    agentids.push(agent.get_id().expect("agent one id"));
-    agentids.push(agent_two.get_id().expect("agent two id"));
+    let agentids: Vec<String> = vec![
+        agent.get_id().expect("agent one id"),
+        agent_two.get_id().expect("agent two id"),
+    ];
 
     let agreement_doc = agent
         .create_agreement(

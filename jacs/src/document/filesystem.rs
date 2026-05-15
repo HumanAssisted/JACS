@@ -379,20 +379,20 @@ impl DocumentService for FilesystemDocumentService {
                 let summary = Self::summarize(&doc);
 
                 // Apply filters
-                if let Some(ref jacs_type) = filter.jacs_type {
-                    if &summary.jacs_type != jacs_type {
-                        continue;
-                    }
+                if let Some(ref jacs_type) = filter.jacs_type
+                    && &summary.jacs_type != jacs_type
+                {
+                    continue;
                 }
-                if let Some(ref agent_id) = filter.agent_id {
-                    if &summary.agent_id != agent_id {
-                        continue;
-                    }
+                if let Some(ref agent_id) = filter.agent_id
+                    && &summary.agent_id != agent_id
+                {
+                    continue;
                 }
-                if let Some(ref visibility) = filter.visibility {
-                    if &summary.visibility != visibility {
-                        continue;
-                    }
+                if let Some(ref visibility) = filter.visibility
+                    && &summary.visibility != visibility
+                {
+                    continue;
                 }
 
                 summaries.push(summary);
@@ -489,10 +489,10 @@ impl DocumentService for FilesystemDocumentService {
                 let mut matched_fields = Vec::new();
 
                 // Filter by jacs_type if specified
-                if let Some(ref jacs_type) = query.jacs_type {
-                    if &doc.jacs_type != jacs_type {
-                        continue;
-                    }
+                if let Some(ref jacs_type) = query.jacs_type
+                    && &doc.jacs_type != jacs_type
+                {
+                    continue;
                 }
 
                 // Filter by agent_id if specified

@@ -98,7 +98,7 @@ fn read_no_follow_with_policy(
     {
         let parent = OpenedParent::open(path, policy)?;
         run_parent_open_test_hook(path);
-        return parent.read_no_follow();
+        parent.read_no_follow()
     }
 
     #[cfg(not(unix))]
@@ -123,7 +123,7 @@ fn write_new_file_with_policy(
     #[cfg(unix)]
     {
         let parent = OpenedParent::open(path, policy)?;
-        return parent.create_new(bytes, mode);
+        parent.create_new(bytes, mode)
     }
 
     #[cfg(not(unix))]
@@ -153,7 +153,7 @@ fn write_atomic_replace_no_symlink_with_policy(
     {
         let parent = OpenedParent::open(path, policy)?;
         run_parent_open_test_hook(path);
-        return parent.atomic_replace(bytes, mode, require_existing_regular);
+        parent.atomic_replace(bytes, mode, require_existing_regular)
     }
 
     #[cfg(not(unix))]
@@ -601,14 +601,15 @@ impl Drop for ParentOpenHookGuard {
 }
 
 #[cfg(test)]
-static PARENT_OPEN_TEST_HOOK: std::sync::OnceLock<
-    std::sync::Mutex<
-        Option<(
-            std::path::PathBuf,
-            std::sync::Arc<dyn Fn() + Send + Sync + 'static>,
-        )>,
-    >,
-> = std::sync::OnceLock::new();
+type ParentOpenTestHookInner = std::sync::Mutex<
+    Option<(
+        std::path::PathBuf,
+        std::sync::Arc<dyn Fn() + Send + Sync + 'static>,
+    )>,
+>;
+#[cfg(test)]
+static PARENT_OPEN_TEST_HOOK: std::sync::OnceLock<ParentOpenTestHookInner> =
+    std::sync::OnceLock::new();
 
 #[cfg(test)]
 mod tests {

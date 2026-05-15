@@ -1,13 +1,10 @@
-use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
 use jacs::schema::agentstate_crud::{
     create_agentstate_with_content, create_agentstate_with_file, create_minimal_agentstate,
     set_agentstate_framework, set_agentstate_origin, set_agentstate_tags,
     verify_agentstate_file_hash,
 };
-use serde_json::Value;
 use std::fs;
-use std::io::Write;
 
 mod utils;
 use utils::load_test_agent_one_ed25519;
@@ -162,7 +159,7 @@ fn test_agentstate_with_tags() {
 /// Step 0.10: Test that missing required name is rejected by schema validation.
 #[test]
 fn test_agentstate_missing_required_name() {
-    let mut agent = load_test_agent_one_ed25519();
+    let agent = load_test_agent_one_ed25519();
     // Create a doc without jacsAgentStateName
     let raw = serde_json::json!({
         "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",
@@ -178,7 +175,7 @@ fn test_agentstate_missing_required_name() {
 /// Step 0.11: Test that missing required state type is rejected by schema validation.
 #[test]
 fn test_agentstate_missing_required_type() {
-    let mut agent = load_test_agent_one_ed25519();
+    let agent = load_test_agent_one_ed25519();
     // Create a doc without jacsAgentStateType
     let raw = serde_json::json!({
         "$schema": "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json",

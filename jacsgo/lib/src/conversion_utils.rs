@@ -42,14 +42,12 @@ pub fn encode_binary_data(data: &[u8]) -> Value {
 
 /// Decode binary data from cross-language format
 pub fn decode_binary_data(value: &Value) -> Option<Vec<u8>> {
-    if let Value::Object(obj) = value {
-        if let (Some(Value::String(type_str)), Some(Value::String(data))) =
+    if let Value::Object(obj) = value
+        && let (Some(Value::String(type_str)), Some(Value::String(data))) =
             (obj.get("__type__"), obj.get("data"))
-        {
-            if type_str == "bytes" {
-                return general_purpose::STANDARD.decode(data).ok();
-            }
-        }
+        && type_str == "bytes"
+    {
+        return general_purpose::STANDARD.decode(data).ok();
     }
     None
 }

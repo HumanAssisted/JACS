@@ -225,17 +225,16 @@ fn test_tampered_signature_identified() {
         && let Some(signatures) = agreement.get_mut("signatures")
         && let Some(sig_array) = signatures.as_array_mut()
         && !sig_array.is_empty()
+        && let Some(sig_str) = sig_array[0].get("signature").and_then(|v| v.as_str())
     {
-        if let Some(sig_str) = sig_array[0].get("signature").and_then(|v| v.as_str()) {
-            let mut tampered_sig = sig_str.to_string();
-            if tampered_sig.len() > 10 {
-                // Flip a character in the base64 signature
-                let bytes = unsafe { tampered_sig.as_bytes_mut() };
-                bytes[10] = if bytes[10] == b'A' { b'B' } else { b'A' };
-                tampered = true;
-            }
-            sig_array[0]["signature"] = Value::String(tampered_sig);
+        let mut tampered_sig = sig_str.to_string();
+        if tampered_sig.len() > 10 {
+            // Flip a character in the base64 signature
+            let bytes = unsafe { tampered_sig.as_bytes_mut() };
+            bytes[10] = if bytes[10] == b'A' { b'B' } else { b'A' };
+            tampered = true;
         }
+        sig_array[0]["signature"] = Value::String(tampered_sig);
     }
     assert!(tampered, "Should have been able to tamper with a signature");
 

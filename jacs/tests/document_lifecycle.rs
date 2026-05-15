@@ -1277,7 +1277,7 @@ mod fs_helpers {
 
     // Thread-local to hold per-test TempDir alive during filesystem tests.
     thread_local! {
-        pub static FS_TMP: RefCell<Option<TempDir>> = RefCell::new(None);
+        pub static FS_TMP: RefCell<Option<TempDir>> = const { RefCell::new(None) };
     }
 
     pub struct FsBackend;
@@ -1436,7 +1436,7 @@ mod error_parity {
         let debug = format!("{:?}", err);
         // Debug format is "VariantName(..." or "VariantName { ..."
         debug
-            .split(|c: char| c == '(' || c == '{' || c == ' ')
+            .split(['(', '{', ' '])
             .next()
             .unwrap_or("Unknown")
             .to_string()

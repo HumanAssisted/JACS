@@ -69,13 +69,14 @@ pub fn resolve(raw: &str, kind: PathKind) -> Result<PathBuf, JacsError> {
     // canonical path stays inside base_dir, refuse if any segment is a
     // symlink). Only applies when the file already exists; non-existent
     // outputs cannot be symlinks yet.
-    if candidate.exists() && !follow_symlinks_allowed() {
-        if let Err(e) = reject_symlinks(&candidate) {
-            return Err(JacsError::ValidationError(format!(
-                "MCP path policy rejected '{}': {}",
-                raw, e
-            )));
-        }
+    if candidate.exists()
+        && !follow_symlinks_allowed()
+        && let Err(e) = reject_symlinks(&candidate)
+    {
+        return Err(JacsError::ValidationError(format!(
+            "MCP path policy rejected '{}': {}",
+            raw, e
+        )));
     }
 
     // Canonical-path confinement. We canonicalise the deepest existing
