@@ -33,11 +33,11 @@ pub fn canonicalize_json(value: &serde_json::Value) -> String {
 
 /// Build the JACS `Authorization` header value.
 ///
-/// Format: `"JACS {jacs_id}:{unix_timestamp}:{base64_signature}"`
+/// Format: `"JACS {jacs_id}:{unix_timestamp}:{nonce}:{base64_signature}"`
 ///
-/// The signed message is `"{jacs_id}:{unix_timestamp}"` where `jacs_id` is the
-/// agent's lookup ID (`{id}:{version}`) and the timestamp is seconds since the
-/// Unix epoch.
+/// The signed message is `"{jacs_id}:{unix_timestamp}:{nonce}"` where `jacs_id`
+/// is the agent's lookup ID (`{id}:{version}`), the timestamp is seconds since
+/// the Unix epoch, and the nonce is fresh per request.
 ///
 /// This matches the format used by all four HAI SDK language implementations
 /// (Rust, Python, Node, Go).
@@ -47,9 +47,10 @@ pub fn build_auth_header(agent: &mut Agent) -> Result<String, JacsError> {
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("build_auth_header: system clock error: {}", e))?
         .as_secs();
-    let message = format!("{jacs_id}:{ts}");
+    let nonce = Uuid::new_v4().simple().to_string();
+    let message = format!("{jacs_id}:{ts}:{nonce}");
     let signature = agent.sign_string(&message)?;
-    Ok(format!("JACS {jacs_id}:{ts}:{signature}"))
+    Ok(format!("JACS {jacs_id}:{ts}:{nonce}:{signature}"))
 }
 
 /// Build and sign a JACS response envelope.
@@ -319,22 +320,27 @@ mod tests {
     }
 
     #[test]
-    fn auth_header_has_three_colon_separated_parts() {
+    fn auth_header_has_nonce_colon_separated_parts() {
         let mut agent = make_test_agent();
         let header = build_auth_header(&mut agent).expect("build_auth_header failed");
         // Strip the "JACS " prefix
         let payload = header
             .strip_prefix("JACS ")
             .expect("Missing 'JACS ' prefix");
-        // The payload is {id}:{version}:{timestamp}:{signature}
-        // where jacs_id = {id}:{version}, so there are 3 colons total.
-        let parts: Vec<&str> = payload.splitn(4, ':').collect();
+        // The payload is {id}:{version}:{timestamp}:{nonce}:{signature}
+        // where jacs_id = {id}:{version}, so there are 4 colons total.
+        let parts: Vec<&str> = payload.splitn(5, ':').collect();
         assert_eq!(
             parts.len(),
-            4,
-            "Expected 4 colon-separated parts (id:version:timestamp:sig), got {}: {:?}",
+            5,
+            "Expected 5 colon-separated parts (id:version:timestamp:nonce:sig), got {}: {:?}",
             parts.len(),
             parts
+        );
+        assert_eq!(parts[3].len(), 32, "Nonce should be UUIDv4 hex");
+        assert!(
+            parts[3].chars().all(|c| c.is_ascii_hexdigit()),
+            "Nonce should be hex"
         );
     }
 
@@ -346,7 +352,7 @@ mod tests {
             .strip_prefix("JACS ")
             .expect("Missing 'JACS ' prefix");
         // jacs_id is "uuid:version", so third part is the timestamp
-        let parts: Vec<&str> = payload.splitn(4, ':').collect();
+        let parts: Vec<&str> = payload.splitn(5, ':').collect();
         let ts: u64 = parts[2].parse().expect("Timestamp should be a u64");
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -365,8 +371,8 @@ mod tests {
         let payload = header
             .strip_prefix("JACS ")
             .expect("Missing 'JACS ' prefix");
-        let parts: Vec<&str> = payload.splitn(4, ':').collect();
-        let sig = parts[3];
+        let parts: Vec<&str> = payload.splitn(5, ':').collect();
+        let sig = parts[4];
         assert!(!sig.is_empty(), "Signature must not be empty");
         // Verify it is valid base64
         use base64::{Engine as _, engine::general_purpose::STANDARD};

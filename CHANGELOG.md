@@ -7,6 +7,7 @@
 - Switched new encrypted private-key writes to an Argon2id + AES-256-GCM JSON envelope while keeping legacy PBKDF2 raw envelopes decrypt-only.
 - Upgraded Hickory DNS dependencies to `0.26.1` with `dnssec-ring`.
 - Split `jacs-surrealdb` out of the default workspace so the default dependency graph and `cargo audit` path no longer pull the SurrealDB transitive RSA dependency.
+- Added per-request nonces to JACS Authorization headers emitted by `build_auth_header`, matching replay-protected HAI API credentials.
 
 ### Added
 
