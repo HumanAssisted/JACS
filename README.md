@@ -1,8 +1,8 @@
 # JACS
 
-**Open source cryptographic provenance for AI agents and the artifacts they create.**
+**Portable cryptographic signatures for AI agents, services, and the artifacts they exchange.**
 
-JACS gives an agent a verifiable identity, signs the work it produces, and lets other tools, agents, or people verify who signed what without a central server.
+JACS signs canonical JSON and common artifact formats, then lets Rust, Python, Node.js, Go, CLI, MCP clients, and other systems verify who signed what without a central server. Its schemas define verifiable JSON document formats so data can move between libraries, languages, and use cases without losing integrity.
 
 `cargo install jacs-cli` | `brew install jacs`
 
@@ -19,7 +19,9 @@ JACS gives an agent a verifiable identity, signs the work it produces, and lets 
 | Capability | What it means |
 |-----------|---------------|
 | **Agent identity** | Generate and manage a persistent cryptographic identity for an agent. Post-quantum ready (`pq2025` / ML-DSA-87) by default. |
-| **Artifact provenance** | Sign JSON, files, Markdown/text, images, and Rust email payloads so consumers can detect tampering and identify the signer. |
+| **Portable signatures** | Sign in one surface and verify in another across Rust, Python, Node.js, Go, CLI, and MCP integrations. |
+| **Schema-backed JSON** | Create verifiable JSON documents with declared schemas, content hashes, signer identity, signing algorithm, and signature metadata. |
+| **Artifact provenance** | Sign files, Markdown/text, images, and Rust email payloads so consumers can detect tampering and identify the signer. |
 | **Local trust** | Verify other agents with local keys, DNS anchors, and explicit trust policies (`open`, `verified`, `strict`). |
 | **Developer integration** | Use the CLI, built-in MCP server, Rust crate, Python package, Node package, or Go bindings. |
 
