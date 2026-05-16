@@ -1,9 +1,5 @@
 # README
 
-## What These Schemas Are
-
-These schemas are the JSON document contracts that make JACS signatures portable. A JACS document carries a `$schema`, canonical content hash, signer identity, algorithm metadata, and cryptographic signature; verification checks the bytes and, when a schema is supplied, the document shape. Treat these as verifiable interoperability formats, not just generated reference pages.
-
 ## Top-level Schemas
 
 * [A2A Verification Result](./a2a-verification-result.md "Cross-language schema for A2A artifact verification results") – `https://hai.ai/schemas/a2a-verification-result.schema.json`

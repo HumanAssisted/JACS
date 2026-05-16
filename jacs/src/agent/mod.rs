@@ -172,7 +172,14 @@ fn validate_signature_temporal_claims(
         });
     }
 
-    time_utils::validate_signature_iat(iat)?;
+    // Intentionally NO iat-skew check here. JACS document signatures are
+    // archival: a signed document is valid for the working life of the
+    // signing key, with no time-of-day freshness requirement. HTTP/API
+    // payload replay protection lives in `crate::replay` and is gated on
+    // `JACS_PAYLOAD_MAX_REPLAY_SECONDS`. Future work: cross-check `iat`
+    // against the signing key's rotation timeline so signatures produced
+    // by a key that has since been rotated out are rejected.
+    let _ = iat;
     Ok(())
 }
 

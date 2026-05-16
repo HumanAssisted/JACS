@@ -2,6 +2,23 @@
 //!
 //! This module provides centralized timestamp handling functions used throughout
 //! the crate for consistent time formatting, parsing, and validation.
+//!
+//! ## Signature freshness policy
+//!
+//! JACS document and agent-identity signatures **have no age check**. A
+//! signed JACS document is valid for the working life of its signing key,
+//! independent of wall-clock time. This is a deliberate design choice:
+//! provenance and identity signatures are archival.
+//!
+//! The single exception is HTTP / RPC payload envelopes, where replay
+//! protection lives in `crate::replay` and is controlled by
+//! `JACS_PAYLOAD_MAX_REPLAY_SECONDS` (default 300s). That module is the
+//! only place in the codebase that enforces signature freshness, and it
+//! applies only to short-lived payloads — never to documents.
+//!
+//! Future work: cross-check `iat` against the signing key's rotation
+//! timeline so signatures produced by a key that has since been rotated
+//! out are rejected.
 
 use crate::error::JacsError;
 use chrono::{DateTime, Utc};
@@ -9,31 +26,6 @@ use chrono::{DateTime, Utc};
 /// Maximum clock drift tolerance for signature timestamps (in seconds).
 /// Signatures dated more than this many seconds in the future are rejected.
 pub const MAX_FUTURE_TIMESTAMP_SECONDS: i64 = 300;
-
-/// Maximum skew tolerance for `iat` (issued-at) signature claims in seconds.
-/// Default: 0 (disabled) so that long-lived JACS documents remain verifiable.
-/// Set `JACS_MAX_IAT_SKEW_SECONDS` to a positive value (e.g., 300) when JACS
-/// is used for auth in HTTP servers, MCP transports, or any context where
-/// replay-attack prevention requires temporal freshness guarantees.
-pub const MAX_IAT_SKEW_SECONDS: i64 = 0;
-
-/// Returns the effective `iat` skew window in seconds.
-///
-/// Set `JACS_MAX_IAT_SKEW_SECONDS` to override:
-/// - Positive value: enforce that window
-/// - `0` or negative: disable `iat` skew checks
-pub fn max_iat_skew_seconds() -> i64 {
-    std::env::var("JACS_MAX_IAT_SKEW_SECONDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(MAX_IAT_SKEW_SECONDS)
-}
-
-/// Default maximum signature age (in seconds).
-/// Default: 0 (no expiration). JACS documents are designed to be idempotent and eternal.
-/// Set `JACS_MAX_SIGNATURE_AGE_SECONDS` to a positive value to enable expiration
-/// (e.g., 7776000 for 90 days).
-pub const MAX_SIGNATURE_AGE_SECONDS: i64 = 0;
 
 /// Returns the current UTC timestamp in RFC 3339 format.
 ///
@@ -70,31 +62,6 @@ pub fn now_utc() -> DateTime<Utc> {
 #[must_use]
 pub fn now_timestamp() -> i64 {
     Utc::now().timestamp()
-}
-
-/// Validates an issued-at (`iat`) Unix timestamp.
-///
-/// The timestamp must be within ±`MAX_IAT_SKEW_SECONDS` of current system time.
-/// This is used to limit replay windows for signed envelopes.
-pub fn validate_signature_iat(iat: i64) -> Result<(), JacsError> {
-    let max_skew_seconds = max_iat_skew_seconds();
-    if max_skew_seconds <= 0 {
-        return Ok(());
-    }
-
-    let now = now_timestamp();
-    let skew = (now - iat).abs();
-
-    if skew > max_skew_seconds {
-        return Err(JacsError::SignatureVerificationFailed {
-            reason: format!(
-                "Signature iat skew is {} seconds, exceeding maximum allowed {} seconds.",
-                skew, max_skew_seconds
-            ),
-        });
-    }
-
-    Ok(())
 }
 
 /// Parses an RFC 3339 timestamp string into a `DateTime<Utc>`.
@@ -215,47 +182,25 @@ pub fn validate_timestamp_not_expired(
     Ok(())
 }
 
-/// Returns the effective maximum signature age in seconds.
-///
-/// Checks `JACS_MAX_SIGNATURE_AGE_SECONDS` environment variable first,
-/// falls back to the compiled-in default (0 = no expiration).
-/// Set to a positive value to enable expiration (e.g., 7776000 for 90 days).
-pub fn max_signature_age() -> i64 {
-    std::env::var("JACS_MAX_SIGNATURE_AGE_SECONDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(MAX_SIGNATURE_AGE_SECONDS)
-}
-
 /// Validates a signature timestamp.
 ///
-/// This combines both future and expiration checks.
+/// Rejects timestamps more than `MAX_FUTURE_TIMESTAMP_SECONDS` in the
+/// future, since a future-dated signature is either a clock-skew bug or
+/// a forgery. There is **no** maximum-age check: JACS document and
+/// agent-identity signatures are archival and valid for the working life
+/// of their signing key. Replay protection for HTTP / RPC payloads is
+/// handled separately in `crate::replay`.
 ///
 /// # Arguments
 ///
 /// * `timestamp_str` - RFC 3339 formatted timestamp string
-///
-/// # Returns
-///
-/// `Ok(())` if the timestamp is valid, or a `JacsError` describing the issue.
-///
-/// # Validation Rules
-///
-/// 1. The timestamp must be a valid RFC 3339 / ISO 8601 format
-/// 2. The timestamp must not be more than `MAX_FUTURE_TIMESTAMP_SECONDS` in the future
-///    (allows for small clock drift between systems)
-/// 3. If signature age limit > 0 (default: disabled), the timestamp must not be older than that.
-///    Set `JACS_MAX_SIGNATURE_AGE_SECONDS` to a positive value to enable (e.g., 7776000 for 90 days).
 pub fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError> {
-    // Parse the timestamp (validates format)
     let signature_time =
         parse_rfc3339(timestamp_str).map_err(|_| JacsError::SignatureVerificationFailed {
             reason: format!("Invalid signature timestamp format '{}'", timestamp_str),
         })?;
 
     let now = Utc::now();
-
-    // Check for future timestamps (with clock drift tolerance)
     let future_limit = now + chrono::Duration::seconds(MAX_FUTURE_TIMESTAMP_SECONDS);
     if signature_time > future_limit {
         return Err(JacsError::SignatureVerificationFailed {
@@ -265,24 +210,6 @@ pub fn validate_signature_timestamp(timestamp_str: &str) -> Result<(), JacsError
                 timestamp_str, MAX_FUTURE_TIMESTAMP_SECONDS
             ),
         });
-    }
-
-    // Check for expired signatures (if expiration is enabled)
-    let age_limit = max_signature_age();
-    if age_limit > 0 {
-        let expiry_limit = now - chrono::Duration::seconds(age_limit);
-        if signature_time < expiry_limit {
-            return Err(JacsError::SignatureVerificationFailed {
-                reason: format!(
-                    "Signature timestamp {} is too old (max age {} seconds / {} days). \
-                    The agent document may need to be re-signed. \
-                    Set JACS_MAX_SIGNATURE_AGE_SECONDS=0 to disable expiration.",
-                    timestamp_str,
-                    age_limit,
-                    age_limit / 86400
-                ),
-            });
-        }
     }
 
     Ok(())
@@ -322,25 +249,6 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Invalid RFC 3339 timestamp"));
-    }
-
-    #[test]
-    fn test_validate_signature_iat_recent() {
-        let now = now_timestamp();
-        let result = validate_signature_iat(now - 10);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_signature_iat_disabled_by_default() {
-        // With MAX_IAT_SKEW_SECONDS=0, iat skew checks are disabled.
-        // Documents are eternal — only API callers enforce freshness.
-        let now = now_timestamp();
-        let result = validate_signature_iat(now - 86400); // 1 day old
-        assert!(
-            result.is_ok(),
-            "iat skew check should be disabled by default"
-        );
     }
 
     #[test]

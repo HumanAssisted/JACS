@@ -725,7 +725,12 @@ fn verify_agent_self_signature(
             reason: "Invalid jacsSignature.jti: nonce cannot be empty.".to_string(),
         });
     }
-    time_utils::validate_signature_iat(iat)?;
+    // Intentionally NO iat-skew check here. Agent self-signatures are
+    // archival identity proofs, not freshness claims. See the note in
+    // `agent::mod::validate_signature_temporal_claims` for the boundary
+    // between document/identity verification (no time check) and HTTP
+    // payload replay protection (handled in `crate::replay`).
+    let _ = iat;
 
     // Extract signature components
     let signature_b64 = agent_value.get_path_str_required(&["jacsSignature", "signature"])?;
@@ -968,24 +973,6 @@ mod tests {
             result.is_ok(),
             "Old timestamp should be valid by default (no expiration): {:?}",
             result
-        );
-    }
-
-    #[test]
-    #[serial(home_env)]
-    fn test_old_timestamp_rejected_when_expiry_enabled() {
-        // When expiration is explicitly enabled, old timestamps should be rejected
-        unsafe {
-            env::set_var("JACS_MAX_SIGNATURE_AGE_SECONDS", "7776000");
-        } // 90 days
-        let old = (now_utc() - chrono::Duration::days(365)).to_rfc3339();
-        let result = validate_signature_timestamp(&old);
-        unsafe {
-            env::remove_var("JACS_MAX_SIGNATURE_AGE_SECONDS");
-        }
-        assert!(
-            result.is_err(),
-            "Year-old timestamp should be rejected when 90-day expiry is enabled"
         );
     }
 
