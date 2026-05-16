@@ -65,6 +65,19 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def disable_iat_skew_for_long_lived_fixtures(monkeypatch):
+    """The committed provenance fixtures are intentionally long-lived
+    (regenerated only on demand via ``UPDATE_PROVENANCE_FIXTURES=1``), so
+    the session-wide ``JACS_MAX_IAT_SKEW_SECONDS=7200`` enforced by the
+    jacspy conftest would mark them ``invalid_signature`` purely on age.
+
+    Rust's matching test suite runs with the default (``0`` = disabled);
+    align with that so cross-language verdicts stay comparable.
+    """
+    monkeypatch.setenv("JACS_MAX_IAT_SKEW_SECONDS", "0")
+
+
 @pytest.fixture(scope="module")
 def fixture_metadata():
     return _read_metadata()
