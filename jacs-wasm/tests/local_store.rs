@@ -125,25 +125,42 @@ fn secret_leak_walk_after_typical_flow() {
     init_jacs_wasm();
     reset_browser_storage();
 
-    // Realistic flow: create ephemeral pq2025 agent, sign a doc, persist
+    // Realistic flow: create ephemeral ed25519 agent, sign a doc, persist
     // an *encrypted* material blob + the signed doc; nothing else gets
-    // written to localStorage. Then walk every key.
+    // written to localStorage. Then walk every key and assert no raw
+    // private-key bytes (or base64 thereof) leak.
     let password = "leak-walk-password-42";
     let agent = create_ephemeral("ed25519").expect("create ephemeral");
     let signed = agent
         .sign_message_json(r#"{"hello":"world"}"#)
         .expect("sign");
 
-    // We don't have an `exportEncryptedMaterial` path on the wasm
-    // handle in V1; the storage of an encrypted blob is the caller's
-    // responsibility. Synthesize a representative encrypted-blob shape
-    // (V2 JSON envelope w/ ciphertext) so the leak walk has something
-    // to inspect, and persist the signed doc.
-    let encrypted_material = r#"{"jacsEncryptedPrivateKeyVersion":2,"cipher":"AES-256-GCM","ciphertext":"deadbeef","salt":"aaaa","nonce":"bbbb"}"#;
+    // Build a representative AgentMaterial-shaped envelope; the
+    // strengthened `save_encrypted_agent` rejects anything that
+    // isn't shaped like a real envelope (Issue 004 / Task 029).
+    let raw_private_key = [0x42u8; 32];
+    let raw_private_key_b64 = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(raw_private_key)
+    };
+    let encrypted_material = r#"{
+        "config": {},
+        "agent": {},
+        "public_key": [1,2,3],
+        "encrypted_private_key": {
+            "jacsEncryptedPrivateKeyVersion": 2,
+            "cipher": "AES-256-GCM",
+            "ciphertext": "deadbeef",
+            "salt": "aaaa",
+            "nonce": "bbbb"
+        },
+        "algorithm": "ed25519"
+    }"#;
     save_encrypted_agent("agent-1", encrypted_material).expect("save material");
     save_document("doc-1", &signed).expect("save doc");
 
-    // Walk every JS-facing key and assert no banned substring appears.
+    // Walk every JS-facing key and assert no banned substring appears —
+    // password literal, PEM marker, raw key base64.
     let keys = list_keys(None).expect("list");
     assert!(!keys.is_empty(), "expected at least the two keys we wrote");
     for key in &keys {
@@ -153,12 +170,20 @@ fn secret_leak_walk_after_typical_flow() {
                 !v.contains("BEGIN PRIVATE KEY"),
                 "key {key} leaked PEM private key"
             );
+            assert!(
+                !v.contains(&raw_private_key_b64),
+                "key {key} leaked base64 raw private key"
+            );
         }
         if let Some(v) = load_encrypted_agent(key).expect("load encrypted") {
             assert!(!v.contains(password), "encrypted key {key} leaked password");
             assert!(
                 !v.contains("BEGIN PRIVATE KEY"),
                 "encrypted key {key} leaked PEM private key"
+            );
+            assert!(
+                !v.contains(&raw_private_key_b64),
+                "encrypted key {key} leaked base64 raw private key"
             );
         }
     }
@@ -175,6 +200,10 @@ fn secret_leak_walk_after_typical_flow() {
                     !value.contains("BEGIN PRIVATE KEY"),
                     "leaked PEM marker under {raw_key}"
                 );
+                assert!(
+                    !value.contains(&raw_private_key_b64),
+                    "leaked base64 raw key under {raw_key}"
+                );
             }
         }
     }
@@ -182,6 +211,36 @@ fn secret_leak_walk_after_typical_flow() {
     // Use the JsCast import so unused-import lint doesn't fire on
     // builds that take a different code path.
     let _: web_sys::Storage = JsCast::unchecked_into(JsValue::from(raw_storage()));
+}
+
+#[wasm_bindgen_test]
+fn save_encrypted_agent_rejects_raw_private_key_dressed_as_envelope() {
+    // Browser-side guarantee: if a caller mistakenly submits an
+    // AgentMaterial whose `encrypted_private_key` is a base64 raw 32-
+    // byte key (44 chars), `save_encrypted_agent` must refuse before
+    // anything touches `window.localStorage`.
+    init_jacs_wasm();
+    reset_browser_storage();
+    let raw_b64 = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode([0x42u8; 32])
+    };
+    let payload = format!(
+        r#"{{"config":{{}},"agent":{{}},"public_key":[1,2,3],"encrypted_private_key":"{raw_b64}","algorithm":"ed25519"}}"#
+    );
+    let err = save_encrypted_agent("k", &payload).expect_err("must refuse raw key");
+    drop(err);
+    // Nothing was persisted.
+    assert_eq!(load_encrypted_agent("k").expect("load"), None);
+}
+
+#[wasm_bindgen_test]
+fn rejects_nested_password_field() {
+    init_jacs_wasm();
+    reset_browser_storage();
+    let payload = r#"{"outer":{"inner":{"password":"hunter2"}}}"#;
+    let err = save_document("k", payload).expect_err("must refuse");
+    drop(err);
 }
 
 use wasm_bindgen::JsValue;

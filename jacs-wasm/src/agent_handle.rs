@@ -19,11 +19,97 @@ use jacs_core::{
     AgentMaterial, CoreAgent, CoreError, SigningAlgorithm, UnlockSecret, VerificationOutcome,
 };
 use secrecy::SecretBox;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
 use crate::init_jacs_wasm;
+
+// ---------------------------------------------------------------------------
+// Per-handle metrics + debug logging (Issue 006 / Task 031 — PRD §10.2)
+// ---------------------------------------------------------------------------
+
+/// Snapshot of per-handle counters + last-call durations. Wire shape
+/// returned by `CoreAgentHandle.metrics()` (PRD §10.2). All durations
+/// are in milliseconds; zero before the first call.
+#[derive(Debug, Default, Clone, Serialize)]
+struct HandleMetrics {
+    #[serde(rename = "signCount")]
+    sign_count: u64,
+    #[serde(rename = "verifyCount")]
+    verify_count: u64,
+    #[serde(rename = "lastSignDurationMs")]
+    last_sign_duration_ms: f64,
+    #[serde(rename = "lastVerifyDurationMs")]
+    last_verify_duration_ms: f64,
+}
+
+/// Read `globalThis.JACS_WASM_DEBUG`. Returns `true` only if the
+/// property is set to JS-truthy `true`. Off by default (PRD §10.2 —
+/// "Off by default").
+fn debug_enabled() -> bool {
+    // Reading from globalThis is the canonical way to expose a runtime
+    // flag in the browser without env vars. The check is cheap (single
+    // Reflect::get); we still gate behind the flag to keep the hot path
+    // free of `console.debug` allocations when the flag is off.
+    #[cfg(target_arch = "wasm32")]
+    {
+        let global = js_sys::global();
+        match js_sys::Reflect::get(&global, &JsValue::from_str("JACS_WASM_DEBUG")) {
+            Ok(v) => v.as_bool().unwrap_or(false),
+            Err(_) => false,
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Native tests use the `JACS_WASM_DEBUG` env var as a
+        // stand-in so the metric / log path is unit-testable.
+        std::env::var("JACS_WASM_DEBUG")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    }
+}
+
+/// Emit a `console.debug` line — no-op when `debug_enabled()` is false.
+fn debug_log(line: &str) {
+    if !debug_enabled() {
+        return;
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::console::debug_1(&JsValue::from_str(line));
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        eprintln!("[jacs-wasm debug] {}", line);
+    }
+}
+
+/// Cheap monotonic timer source. Uses `performance.now()` in the
+/// browser, falls back to `std::time::Instant` natively.
+fn now_ms() -> f64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Try `performance.now()` first; if there is no `window`
+        // (e.g. running inside a Worker without performance), fall
+        // back to `Date.now()`.
+        if let Some(perf) = web_sys::window().and_then(|w| w.performance()) {
+            return perf.now();
+        }
+        js_sys::Date::now()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Native: emulate `performance.now()` with a monotonic Instant
+        // measured against a process-local epoch so subtraction yields
+        // ms with sub-ms resolution.
+        use std::sync::OnceLock;
+        use std::time::Instant;
+        static EPOCH: OnceLock<Instant> = OnceLock::new();
+        let epoch = EPOCH.get_or_init(Instant::now);
+        epoch.elapsed().as_secs_f64() * 1000.0
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Error mapping — one helper so every method goes through the same path.
@@ -67,13 +153,20 @@ fn parse_algorithm(raw: &str) -> Result<SigningAlgorithm, JsError> {
 pub struct CoreAgentHandle {
     inner: Arc<Mutex<CoreAgent>>,
     verifier_override: Option<(Vec<u8>, SigningAlgorithm)>,
+    metrics: Arc<Mutex<HandleMetrics>>,
 }
 
 #[wasm_bindgen]
 impl CoreAgentHandle {
     /// Sign a JSON payload, returning the signed document as a JSON string.
+    ///
+    /// Increments `signCount` + records `lastSignDurationMs` on the
+    /// handle's metrics, and (when `globalThis.JACS_WASM_DEBUG` is
+    /// truthy) emits a `console.debug` line bracketing the call.
     #[wasm_bindgen(js_name = signMessageJson)]
     pub fn sign_message_json(&self, data_json: &str) -> Result<String, JsError> {
+        debug_log("signMessageJson: start");
+        let started_at = now_ms();
         let payload: Value = serde_json::from_str(data_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid input JSON: {}",
@@ -85,12 +178,23 @@ impl CoreAgentHandle {
             .lock()
             .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
         let signed = agent.sign_message(&payload).map_err(map_core_err)?;
-        serde_json::to_string(&signed).map_err(|e| {
+        let out = serde_json::to_string(&signed).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "serialize signed doc: {}",
                 e
             )))
-        })
+        });
+        // Record metrics regardless of serialize outcome — the sign
+        // succeeded, that's what the counter measures. Drop the agent
+        // lock first so the metrics lock can't deadlock against it.
+        drop(agent);
+        let elapsed = now_ms() - started_at;
+        if let Ok(mut m) = self.metrics.lock() {
+            m.sign_count = m.sign_count.saturating_add(1);
+            m.last_sign_duration_ms = elapsed;
+        }
+        debug_log(&format!("signMessageJson: done in {:.3}ms", elapsed));
+        out
     }
 
     /// Verify a signed JACS document. Returns a JSON string of
@@ -104,6 +208,8 @@ impl CoreAgentHandle {
     /// (cleared, ephemeral) key.
     #[wasm_bindgen(js_name = verifyJson)]
     pub fn verify_json(&self, signed_json: &str) -> Result<String, JsError> {
+        debug_log("verifyJson: start");
+        let started_at = now_ms();
         let signed: Value = serde_json::from_str(signed_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid signed JSON: {}",
@@ -121,7 +227,14 @@ impl CoreAgentHandle {
                 agent.verify(&signed).map_err(map_core_err)?
             }
         };
-        outcome_to_json(&outcome)
+        let out = outcome_to_json(&outcome);
+        let elapsed = now_ms() - started_at;
+        if let Ok(mut m) = self.metrics.lock() {
+            m.verify_count = m.verify_count.saturating_add(1);
+            m.last_verify_duration_ms = elapsed;
+        }
+        debug_log(&format!("verifyJson: done in {:.3}ms", elapsed));
+        out
     }
 
     /// Static verify path — does not require the handle to be unlocked.
@@ -134,6 +247,8 @@ impl CoreAgentHandle {
         public_key_base64: &str,
         algorithm: &str,
     ) -> Result<String, JsError> {
+        debug_log("verifyWithKeyJson: start");
+        let started_at = now_ms();
         let signed: Value = serde_json::from_str(signed_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid signed JSON: {}",
@@ -151,7 +266,14 @@ impl CoreAgentHandle {
         let algo = parse_algorithm(algorithm)?;
         let outcome =
             CoreAgent::verify_with_key(&signed, &public_key, algo).map_err(map_core_err)?;
-        outcome_to_json(&outcome)
+        let out = outcome_to_json(&outcome);
+        let elapsed = now_ms() - started_at;
+        if let Ok(mut m) = self.metrics.lock() {
+            m.verify_count = m.verify_count.saturating_add(1);
+            m.last_verify_duration_ms = elapsed;
+        }
+        debug_log(&format!("verifyWithKeyJson: done in {:.3}ms", elapsed));
+        out
     }
 
     /// Return the agent JSON as a string. Always non-empty.
@@ -214,12 +336,31 @@ impl CoreAgentHandle {
     /// `verifyJson` and `verifyWithKeyJson` continue to work.
     #[wasm_bindgen(js_name = clearSecrets)]
     pub fn clear_secrets(&self) -> Result<(), JsError> {
+        debug_log("clearSecrets: zeroing in-memory key");
         let mut agent = self
             .inner
             .lock()
             .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
         agent.clear_secrets();
         Ok(())
+    }
+
+    /// In-memory metrics snapshot for this handle. Returns the JSON
+    /// form of `{ signCount, verifyCount, lastSignDurationMs,
+    /// lastVerifyDurationMs }` (PRD §10.2). Counters are per-handle —
+    /// independent handles do not share state.
+    #[wasm_bindgen(js_name = metrics)]
+    pub fn metrics_json(&self) -> Result<String, JsError> {
+        let snapshot = match self.metrics.lock() {
+            Ok(m) => m.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        };
+        serde_json::to_string(&snapshot).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize metrics: {}",
+                e
+            )))
+        })
     }
 
     // =====================================================================
@@ -392,6 +533,7 @@ pub fn create_ephemeral(algorithm: &str) -> Result<CoreAgentHandle, JsError> {
     Ok(CoreAgentHandle {
         inner: Arc::new(Mutex::new(agent)),
         verifier_override: None,
+        metrics: Arc::new(Mutex::new(HandleMetrics::default())),
     })
 }
 
@@ -414,6 +556,7 @@ pub fn import_encrypted_agent(
     Ok(CoreAgentHandle {
         inner: Arc::new(Mutex::new(agent)),
         verifier_override: None,
+        metrics: Arc::new(Mutex::new(HandleMetrics::default())),
     })
 }
 
@@ -454,6 +597,7 @@ pub fn import_encrypted_agent_files(
     Ok(CoreAgentHandle {
         inner: Arc::new(Mutex::new(agent)),
         verifier_override: None,
+        metrics: Arc::new(Mutex::new(HandleMetrics::default())),
     })
 }
 
@@ -509,6 +653,7 @@ pub fn create_verifier(
     Ok(CoreAgentHandle {
         inner: Arc::new(Mutex::new(agent)),
         verifier_override: Some((public_key, algo)),
+        metrics: Arc::new(Mutex::new(HandleMetrics::default())),
     })
 }
 

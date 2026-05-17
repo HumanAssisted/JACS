@@ -16,7 +16,8 @@ async function main(): Promise<void> {
     write("initJacsWasm...");
     await initJacsWasm();
     write("createEphemeral ed25519...");
-    const agent = createEphemeral("ed25519");
+    // PRD §4.3: constructors return Promise<CoreAgentHandle>.
+    const agent = await createEphemeral("ed25519");
     write(`pk len: ${agent.getPublicKeyBase64().length}`);
 
     const message = JSON.stringify({ hello: "world" });
