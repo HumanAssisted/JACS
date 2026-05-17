@@ -90,7 +90,7 @@ referencing = "0.33.0"
 futures-executor = "0.3.31"
 getset = "0.1.5"
 hex = "0.4"
-hickory-resolver = { version = "0.24", features = ["dnssec-ring"] }
+hickory-resolver = { version = "0.26", features = ["dnssec-ring"] }
 hkdf = "0.12"
 zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
@@ -140,6 +140,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 crate-type = ["cdylib", "rlib"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread"] }
 ring = "0.17.9"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 walkdir = "2.5.0"

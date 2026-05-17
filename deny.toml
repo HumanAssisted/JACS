@@ -117,21 +117,4 @@ ignore = [
     # use bincode directly. Re-evaluate when surrealdb upgrades or when we
     # drop the optional surrealdb storage backend (jacs-surrealdb).
     { id = "RUSTSEC-2025-0141", reason = "transitive via surrealdb-core/surrealmx; no direct usage in JACS code; track surrealdb upstream" },
-
-    # hickory-proto 0.24.x O(n²) name-compression CPU exhaustion during
-    # message encoding. JACS uses hickory-resolver only as a DNS *client*
-    # doing TXT lookups for jacs.* records (jacs/src/dns/bootstrap.rs).
-    # The reachable input is the `jacs_agent_domain` field carried in a
-    # JACS document, which IS attacker-supplied during verify. Mitigations
-    # in place:
-    #   1. validate_dns_owner() in dns/bootstrap.rs rejects domains
-    #      exceeding RFC 1035 limits (253 bytes total, 63 per label) BEFORE
-    #      they reach hickory's encoder. This bounds n at ~127 labels for a
-    #      worst-case name, capping encoder CPU at O(n²) ≈ ~16k ops/query.
-    #   2. ensure_network_access() gates DNS lookups behind explicit
-    #      capability grants — disabling DNS lookups disables the path.
-    # Real fix: upgrade hickory-resolver to 0.26.x (separate PR — 0.26 is
-    # async-only and reshapes the Resolver builder API). Track upstream:
-    # https://github.com/hickory-dns/hickory-dns/security/advisories/GHSA-q2qq-hmj6-3wpp
-    { id = "RUSTSEC-2026-0119", reason = "client-side use; bounded by validate_dns_owner() pre-check (RFC 1035 limits) and DNS network capability gate; pending hickory 0.26 upgrade" },
 ]

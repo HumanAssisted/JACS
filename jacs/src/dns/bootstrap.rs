@@ -247,33 +247,48 @@ pub fn find_jacs_txt_record(records: Vec<String>, domain: &str) -> Result<String
 pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+    use hickory_resolver::net::runtime::TokioRuntimeProvider;
+    use hickory_resolver::proto::rr::RData;
     validate_dns_owner(owner)?;
     ensure_network_access(NetworkCapability::DnsLookup)?;
     let mut opts = ResolverOpts::default();
     opts.validate = true;
-    let resolver =
-        Resolver::new(ResolverConfig::default(), opts).map_err(|e| JacsError::DnsLookupFailed {
-            domain: owner.to_string(),
-            reason: format!("Resolver init failed: {e}"),
-        })?;
-    let resp = resolver
-        .txt_lookup(owner)
-        .map_err(|e| JacsError::DnsLookupFailed {
-            domain: owner.to_string(),
-            reason: format!("DNS lookup failed: {e}"),
+    let rt = tokio::runtime::Runtime::new().map_err(|e| JacsError::DnsLookupFailed {
+        domain: owner.to_string(),
+        reason: format!("Tokio runtime init failed: {e}"),
+    })?;
+    let resp = rt
+        .block_on(async {
+            let resolver =
+                Resolver::builder_with_config(ResolverConfig::default(), TokioRuntimeProvider::default())
+                    .with_options(opts)
+                    .build()
+                    .map_err(|e| JacsError::DnsLookupFailed {
+                        domain: owner.to_string(),
+                        reason: format!("Resolver init failed: {e}"),
+                    })?;
+            resolver
+                .txt_lookup(owner)
+                .await
+                .map_err(|e| JacsError::DnsLookupFailed {
+                    domain: owner.to_string(),
+                    reason: format!("DNS lookup failed: {e}"),
+                })
         })?;
     let mut records = Vec::new();
-    for rr in resp.iter() {
-        let mut record = String::new();
-        for part in rr.txt_data() {
-            record.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
-                JacsError::DnsRecordInvalid {
-                    domain: owner.to_string(),
-                    reason: format!("UTF-8 decode failed: {e}"),
-                }
-            })?);
+    for rec in resp.answers() {
+        if let RData::TXT(txt) = &rec.data {
+            let mut s = String::new();
+            for part in txt.txt_data.iter() {
+                s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
+                    JacsError::DnsRecordInvalid {
+                        domain: owner.to_string(),
+                        reason: format!("UTF-8 decode failed: {e}"),
+                    }
+                })?);
+            }
+            records.push(s);
         }
-        records.push(record);
     }
     find_jacs_txt_record(records, owner)
 }
@@ -282,33 +297,48 @@ pub fn resolve_txt_dnssec(owner: &str) -> Result<String, JacsError> {
 pub fn resolve_txt_insecure(owner: &str) -> Result<String, JacsError> {
     use hickory_resolver::Resolver;
     use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+    use hickory_resolver::net::runtime::TokioRuntimeProvider;
+    use hickory_resolver::proto::rr::RData;
     validate_dns_owner(owner)?;
     ensure_network_access(NetworkCapability::DnsLookup)?;
     let mut opts = ResolverOpts::default();
     opts.validate = false; // allow unsigned answers
-    let resolver =
-        Resolver::new(ResolverConfig::default(), opts).map_err(|e| JacsError::DnsLookupFailed {
-            domain: owner.to_string(),
-            reason: format!("Resolver init failed: {e}"),
-        })?;
-    let resp = resolver
-        .txt_lookup(owner)
-        .map_err(|e| JacsError::DnsLookupFailed {
-            domain: owner.to_string(),
-            reason: format!("DNS lookup failed: {e}"),
+    let rt = tokio::runtime::Runtime::new().map_err(|e| JacsError::DnsLookupFailed {
+        domain: owner.to_string(),
+        reason: format!("Tokio runtime init failed: {e}"),
+    })?;
+    let resp = rt
+        .block_on(async {
+            let resolver =
+                Resolver::builder_with_config(ResolverConfig::default(), TokioRuntimeProvider::default())
+                    .with_options(opts)
+                    .build()
+                    .map_err(|e| JacsError::DnsLookupFailed {
+                        domain: owner.to_string(),
+                        reason: format!("Resolver init failed: {e}"),
+                    })?;
+            resolver
+                .txt_lookup(owner)
+                .await
+                .map_err(|e| JacsError::DnsLookupFailed {
+                    domain: owner.to_string(),
+                    reason: format!("DNS lookup failed: {e}"),
+                })
         })?;
     let mut records = Vec::new();
-    for rr in resp.iter() {
-        let mut record = String::new();
-        for part in rr.txt_data() {
-            record.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
-                JacsError::DnsRecordInvalid {
-                    domain: owner.to_string(),
-                    reason: format!("UTF-8 decode failed: {e}"),
-                }
-            })?);
+    for rec in resp.answers() {
+        if let RData::TXT(txt) = &rec.data {
+            let mut s = String::new();
+            for part in txt.txt_data.iter() {
+                s.push_str(&String::from_utf8(part.to_vec()).map_err(|e| {
+                    JacsError::DnsRecordInvalid {
+                        domain: owner.to_string(),
+                        reason: format!("UTF-8 decode failed: {e}"),
+                    }
+                })?);
+            }
+            records.push(s);
         }
-        records.push(record);
     }
     find_jacs_txt_record(records, owner)
 }
