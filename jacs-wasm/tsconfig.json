@@ -1,0 +1,39 @@
+{
+  // IDE / `tsc --noEmit` type-check config. The actual build is done
+  // by `scripts/finalize-pkg.sh` which stages `index.ts` + `worker/*.ts`
+  // *into* `pkg/` so the relative `./jacs_wasm.js` imports resolve
+  // against the wasm-bindgen output. This config achieves the same
+  // resolution by pointing `paths` at `pkg/jacs_wasm.d.ts` and is
+  // used only for editor IntelliSense + a `tsc --noEmit` smoke check.
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "lib": ["ES2020", "DOM", "DOM.Iterable", "WebWorker"],
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "declaration": false,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "./jacs_wasm.js": ["./pkg/jacs_wasm"],
+      "../jacs_wasm.js": ["./pkg/jacs_wasm"]
+    }
+  },
+  "include": [
+    "index.ts",
+    "worker/**/*.ts",
+    "pkg/jacs_wasm.d.ts",
+    "pkg/jacs_wasm_bg.wasm.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "examples"
+  ]
+}

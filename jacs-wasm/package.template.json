@@ -1,0 +1,47 @@
+{
+  "name": "@jacs/wasm",
+  "type": "module",
+  "main": "jacs_wasm.js",
+  "module": "jacs_wasm.js",
+  "types": "jacs_wasm.d.ts",
+  "sideEffects": false,
+  "files": [
+    "jacs_wasm.js",
+    "jacs_wasm.d.ts",
+    "jacs_wasm_bg.wasm",
+    "jacs_wasm_bg.wasm.d.ts",
+    "index.js",
+    "index.d.ts",
+    "worker/index.js",
+    "worker/index.d.ts",
+    "worker/jacs-worker.js",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "types": "./index.d.ts"
+    },
+    "./worker": {
+      "import": "./worker/index.js",
+      "types": "./worker/index.d.ts"
+    },
+    "./pkg/*": "./*"
+  },
+  "homepage": "https://humanassisted.github.io/JACS",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HumanAssisted/JACS"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "jacs",
+    "wasm",
+    "signing",
+    "agents",
+    "cryptography",
+    "ed25519",
+    "pq2025",
+    "post-quantum"
+  ]
+}
