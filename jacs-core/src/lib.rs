@@ -14,11 +14,13 @@ pub mod errors;
 pub mod material;
 pub mod schema;
 pub mod sign;
+pub mod verify;
 
 pub use agent::CoreAgent;
 pub use errors::CoreError;
 pub use material::{AgentMaterial, UnlockSecret};
 pub use sign::{DetachedSigner, Ed25519DalekSigner, Pq2025Signer, SigningAlgorithm};
+pub use verify::VerificationOutcome;
 
 /// Test helper: generate a fresh Ed25519 signer for fixture builders. Kept
 /// inside the crate (not feature-gated) because integration tests under

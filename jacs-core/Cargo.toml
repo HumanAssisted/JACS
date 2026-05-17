@@ -73,10 +73,14 @@ ed25519-dalek = { version = "2", default-features = false, features = ["alloc", 
 # `SecretBox` for `UnlockSecret::RawPrivateKey`. Pure-Rust, wasm-friendly,
 # already a transitive dep of native jacs. See PRD §4.2.
 secrecy = "0.10.3"
-# Stable identifiers for ephemeral CoreAgents. UUID v4 needs the `js`
-# feature on wasm32 so it picks up `getrandom`'s browser RNG path
-# instead of trying to read `/dev/urandom`.
-uuid = { version = "1", features = ["v4", "js"] }
+# Stable identifiers — UUID v4 for ephemeral agent IDs, UUID v7 for
+# signature jti. The `js` feature is required on wasm32 so uuid uses
+# `getrandom`'s browser RNG path instead of `/dev/urandom`.
+uuid = { version = "1", features = ["v4", "v7", "js"] }
+# RFC3339 timestamps for `jacsSignature.date`. `default-features = false`
+# strips `clock` (native time), but we re-enable it on every target with
+# the `now` feature (the WASM build pulls Date.now via `wasmbind`).
+chrono = { version = "0.4", default-features = false, features = ["std", "now", "serde", "wasmbind"] }
 
 [dev-dependencies]
 serde_json = "1.0"
