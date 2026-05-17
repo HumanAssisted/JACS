@@ -11,5 +11,6 @@ pub mod canonical;
 pub mod envelope;
 pub mod errors;
 pub mod schema;
+pub mod sign;
 
 pub use errors::CoreError;
