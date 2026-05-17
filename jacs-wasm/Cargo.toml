@@ -26,9 +26,17 @@ serde-wasm-bindgen = "0.6"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 console_error_panic_hook = "0.1"
+# Public-key + signature wire form is base64 (PRD §4.3 `publicKeyBase64`).
+base64 = "0.22"
+# For the eventual JS-side raw-key unlock constructor; CoreAgent::
+# from_encrypted_material accepts `UnlockSecret::RawPrivateKey(SecretBox)`.
+secrecy = "0.10.3"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+# Native sanity tests decode the base64 outputs to check raw byte
+# lengths (e.g. Ed25519 public key is 32 bytes).
+base64 = "0.22"
 
 # Browser RNG wiring — mirrors jacs-core's target-specific block so the wasm
 # build of jacs-wasm satisfies the same compile_error gates getrandom emits

@@ -1,0 +1,382 @@
+//! `CoreAgentHandle` — the wasm-bindgen wrapper around `jacs_core::CoreAgent`.
+//!
+//! Exports the constructors and instance methods promised by PRD §4.3 with
+//! the exact JS-facing camelCase names (`createEphemeral`,
+//! `importEncryptedAgent`, `signMessageJson`, `verifyJson`,
+//! `verifyWithKeyJson`, `exportAgent`, `getPublicKeyBase64`, `algorithm`,
+//! `isUnlocked`, `clearSecrets`).
+//!
+//! Every fallible operation returns a `JsError` carrying a JSON payload
+//! shaped `{ code, message, details? }` (the wire shape jacs-core uses for
+//! `CoreError`). Browser callers can `try { … } catch (e) { e.code }` and
+//! pattern-match on the stable code discriminator.
+
+use std::sync::{Arc, Mutex};
+
+use base64::Engine as _;
+use jacs_core::{
+    AgentMaterial, CoreAgent, CoreError, SigningAlgorithm, UnlockSecret, VerificationOutcome,
+};
+use secrecy::SecretBox;
+use serde_json::Value;
+use wasm_bindgen::prelude::*;
+
+use crate::init_jacs_wasm;
+
+// ---------------------------------------------------------------------------
+// Error mapping — one helper so every method goes through the same path.
+// ---------------------------------------------------------------------------
+
+/// Convert a `CoreError` into a `JsError` whose message is the JSON form
+/// `{ code, message, details? }`. JS callers do
+/// `JSON.parse(err.message).code` to dispatch.
+fn map_core_err(err: CoreError) -> JsError {
+    let payload = serde_json::to_string(&err)
+        .unwrap_or_else(|_| format!("{{\"code\":\"{}\",\"message\":\"{}\"}}", err.code(), err));
+    JsError::new(&payload)
+}
+
+/// Convert a JS algorithm string into the canonical enum, returning a
+/// `JsError` with code `UnsupportedAlgorithm` on miss.
+fn parse_algorithm(raw: &str) -> Result<SigningAlgorithm, JsError> {
+    SigningAlgorithm::from_wire_str(raw).ok_or_else(|| {
+        map_core_err(CoreError::UnsupportedAlgorithm(format!(
+            "unknown signing algorithm '{}' (expected one of: ed25519, pq2025)",
+            raw
+        )))
+    })
+}
+
+// ---------------------------------------------------------------------------
+// CoreAgentHandle
+// ---------------------------------------------------------------------------
+
+/// JS handle for a `jacs_core::CoreAgent`. Cloneable via `Arc` so wasm-
+/// bindgen can hand multiple references to JS without giving up
+/// `&mut self` semantics on the inner agent.
+///
+/// `verifier_override` is `Some` only for handles produced by
+/// `create_verifier`. Verifier handles report the override key from
+/// `getPublicKeyBase64` and use it to satisfy `verifyJson` (which would
+/// otherwise read the inner `CoreAgent`'s ephemeral key). The static
+/// `verifyWithKeyJson` is unaffected — it takes the key as an explicit
+/// argument.
+#[wasm_bindgen]
+pub struct CoreAgentHandle {
+    inner: Arc<Mutex<CoreAgent>>,
+    verifier_override: Option<(Vec<u8>, SigningAlgorithm)>,
+}
+
+#[wasm_bindgen]
+impl CoreAgentHandle {
+    /// Sign a JSON payload, returning the signed document as a JSON string.
+    #[wasm_bindgen(js_name = signMessageJson)]
+    pub fn sign_message_json(&self, data_json: &str) -> Result<String, JsError> {
+        let payload: Value = serde_json::from_str(data_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid input JSON: {}",
+                e
+            )))
+        })?;
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let signed = agent.sign_message(&payload).map_err(map_core_err)?;
+        serde_json::to_string(&signed).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize signed doc: {}",
+                e
+            )))
+        })
+    }
+
+    /// Verify a signed JACS document. Returns a JSON string of
+    /// `VerificationOutcome` (`{ valid, signer_id, timestamp, data,
+    /// errors }`). A cryptographic failure does **not** throw — it
+    /// returns `valid: false` with the error in `errors[]`. A
+    /// missing-field / algorithm-mismatch failure throws.
+    ///
+    /// On verifier-override handles (those built via `createVerifier`)
+    /// this consults the override key instead of the inner agent's
+    /// (cleared, ephemeral) key.
+    #[wasm_bindgen(js_name = verifyJson)]
+    pub fn verify_json(&self, signed_json: &str) -> Result<String, JsError> {
+        let signed: Value = serde_json::from_str(signed_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid signed JSON: {}",
+                e
+            )))
+        })?;
+        let outcome = match &self.verifier_override {
+            Some((pk, algo)) => {
+                CoreAgent::verify_with_key(&signed, pk, *algo).map_err(map_core_err)?
+            }
+            None => {
+                let agent = self.inner.lock().map_err(|_| {
+                    map_core_err(CoreError::AgreementFailed("agent lock poisoned".into()))
+                })?;
+                agent.verify(&signed).map_err(map_core_err)?
+            }
+        };
+        outcome_to_json(&outcome)
+    }
+
+    /// Static verify path — does not require the handle to be unlocked.
+    /// `public_key_base64` is the standard base64 encoding (no URL
+    /// alphabet, padding included) of the raw public-key bytes.
+    #[wasm_bindgen(js_name = verifyWithKeyJson)]
+    pub fn verify_with_key_json(
+        &self,
+        signed_json: &str,
+        public_key_base64: &str,
+        algorithm: &str,
+    ) -> Result<String, JsError> {
+        let signed: Value = serde_json::from_str(signed_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid signed JSON: {}",
+                e
+            )))
+        })?;
+        let public_key = base64::engine::general_purpose::STANDARD
+            .decode(public_key_base64)
+            .map_err(|e| {
+                map_core_err(CoreError::MalformedKey(format!(
+                    "invalid base64 public key: {}",
+                    e
+                )))
+            })?;
+        let algo = parse_algorithm(algorithm)?;
+        let outcome =
+            CoreAgent::verify_with_key(&signed, &public_key, algo).map_err(map_core_err)?;
+        outcome_to_json(&outcome)
+    }
+
+    /// Return the agent JSON as a string. Always non-empty.
+    #[wasm_bindgen(js_name = exportAgent)]
+    pub fn export_agent(&self) -> Result<String, JsError> {
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        serde_json::to_string(&agent.export_agent()).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize agent: {}",
+                e
+            )))
+        })
+    }
+
+    /// Standard base64 encoding of the raw public-key bytes. For verifier
+    /// handles (built via `createVerifier`) returns the override key the
+    /// caller passed in, not the inner ephemeral agent's key.
+    #[wasm_bindgen(js_name = getPublicKeyBase64)]
+    pub fn get_public_key_base64(&self) -> Result<String, JsError> {
+        if let Some((pk, _)) = &self.verifier_override {
+            return Ok(base64::engine::general_purpose::STANDARD.encode(pk));
+        }
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(agent.public_key()))
+    }
+
+    /// The signing algorithm tag, as one of `"ed25519"` / `"pq2025"`. For
+    /// verifier handles returns the override algorithm the caller passed
+    /// to `createVerifier`.
+    #[wasm_bindgen]
+    pub fn algorithm(&self) -> Result<String, JsError> {
+        if let Some((_, algo)) = &self.verifier_override {
+            return Ok(algo.as_str().to_string());
+        }
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        Ok(agent.algorithm().as_str().to_string())
+    }
+
+    /// Whether the agent currently holds an unlocked private key.
+    #[wasm_bindgen(js_name = isUnlocked)]
+    pub fn is_unlocked(&self) -> Result<bool, JsError> {
+        let agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        Ok(agent.is_unlocked())
+    }
+
+    /// Drop the unlocked private key. Idempotent. Subsequent
+    /// `signMessageJson` calls throw `JacsWasmError { code: "Locked" }`;
+    /// `verifyJson` and `verifyWithKeyJson` continue to work.
+    #[wasm_bindgen(js_name = clearSecrets)]
+    pub fn clear_secrets(&self) -> Result<(), JsError> {
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        agent.clear_secrets();
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Constructors — wasm-bindgen exports as free functions, mapped to the JS
+// names in PRD §4.3.
+// ---------------------------------------------------------------------------
+
+/// Generate a fresh ephemeral agent for the given algorithm. The JS API
+/// returns a `Promise<CoreAgentHandle>` (Rust returns the handle
+/// synchronously; wasm-bindgen wraps it as a resolved Promise via the
+/// generated `.d.ts`).
+#[wasm_bindgen(js_name = createEphemeral)]
+pub fn create_ephemeral(algorithm: &str) -> Result<CoreAgentHandle, JsError> {
+    init_jacs_wasm();
+    let algo = parse_algorithm(algorithm)?;
+    let agent = CoreAgent::ephemeral(algo).map_err(map_core_err)?;
+    Ok(CoreAgentHandle {
+        inner: Arc::new(Mutex::new(agent)),
+        verifier_override: None,
+    })
+}
+
+/// Import an encrypted agent from a JSON-serialized `AgentMaterial` blob +
+/// password.
+#[wasm_bindgen(js_name = importEncryptedAgent)]
+pub fn import_encrypted_agent(
+    material_json: &str,
+    password: &str,
+) -> Result<CoreAgentHandle, JsError> {
+    init_jacs_wasm();
+    let material: AgentMaterial = serde_json::from_str(material_json).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "AgentMaterial JSON: {}",
+            e
+        )))
+    })?;
+    let agent = CoreAgent::from_encrypted_material(material, UnlockSecret::Password(password))
+        .map_err(map_core_err)?;
+    Ok(CoreAgentHandle {
+        inner: Arc::new(Mutex::new(agent)),
+        verifier_override: None,
+    })
+}
+
+/// Import an encrypted agent from four separate file-shaped buffers (used
+/// by browser file pickers that hand each file individually).
+#[wasm_bindgen(js_name = importEncryptedAgentFiles)]
+pub fn import_encrypted_agent_files(
+    config_text: &str,
+    agent_text: &str,
+    public_key_bytes: &[u8],
+    encrypted_private_key_bytes: &[u8],
+    password: &str,
+    algorithm: &str,
+) -> Result<CoreAgentHandle, JsError> {
+    init_jacs_wasm();
+    let config: Value = serde_json::from_str(config_text).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "config text: {}",
+            e
+        )))
+    })?;
+    let agent_json: Value = serde_json::from_str(agent_text).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "agent text: {}",
+            e
+        )))
+    })?;
+    let algo = parse_algorithm(algorithm)?;
+    let material = AgentMaterial {
+        config,
+        agent: agent_json,
+        public_key: public_key_bytes.to_vec(),
+        encrypted_private_key: encrypted_private_key_bytes.to_vec(),
+        algorithm: algo,
+    };
+    let agent = CoreAgent::from_encrypted_material(material, UnlockSecret::Password(password))
+        .map_err(map_core_err)?;
+    Ok(CoreAgentHandle {
+        inner: Arc::new(Mutex::new(agent)),
+        verifier_override: None,
+    })
+}
+
+/// Build a verify-only handle from a raw public key. Sign attempts on the
+/// returned handle throw `Locked`; verify methods work.
+///
+/// Internally constructs a `CoreAgent` via `from_encrypted_material` with
+/// a placeholder `UnlockSecret::RawPrivateKey` and then immediately
+/// `clear_secrets()`s it. This avoids a separate verify-only constructor
+/// on `CoreAgent` while keeping the wire contract clean. The placeholder
+/// bytes are the matching algorithm's all-zero scalar; that key is
+/// immediately wiped and never used to sign.
+#[wasm_bindgen(js_name = createVerifier)]
+pub fn create_verifier(
+    public_key_base64: &str,
+    algorithm: &str,
+) -> Result<CoreAgentHandle, JsError> {
+    init_jacs_wasm();
+    let algo = parse_algorithm(algorithm)?;
+    let public_key = base64::engine::general_purpose::STANDARD
+        .decode(public_key_base64)
+        .map_err(|e| {
+            map_core_err(CoreError::MalformedKey(format!(
+                "invalid base64 public key: {}",
+                e
+            )))
+        })?;
+    // Build a CoreAgent whose signer is then immediately cleared so the
+    // handle can only verify, never sign. We do this by routing through
+    // ephemeral() + replacing the public key after clear_secrets — but
+    // the public-key check inside `from_encrypted_material` won't allow
+    // a mismatched key. The cleanest path is: generate an ephemeral,
+    // clear secrets, then mutate the public key. Since `CoreAgent` has
+    // no public mutator for the key, we use the verify-only static path
+    // through `CoreAgent::verify_with_key` and stash the key + algorithm
+    // in a verifier-only branch.
+    //
+    // For V1 we use a simpler approach: construct an ephemeral agent of
+    // the requested algorithm (which has a different public key), then
+    // `clear_secrets()`. Any signing attempt afterwards correctly returns
+    // `Locked`. The verifying path takes the explicit `public_key` arg in
+    // every call (`verifyWithKeyJson`), so the handle's stored key is
+    // never consulted during verification — the caller passes the right
+    // one each time. JS callers should treat the verifier handle as a
+    // bag for verification context, not as a key holder.
+    //
+    // We surface the override key + algorithm via `verifier_override` so
+    // `getPublicKeyBase64`, `algorithm`, and `verifyJson` all consult
+    // them. The inner CoreAgent's ephemeral key/algo are never visible
+    // to JS on a verifier handle.
+    let mut agent = CoreAgent::ephemeral(algo).map_err(map_core_err)?;
+    agent.clear_secrets();
+    Ok(CoreAgentHandle {
+        inner: Arc::new(Mutex::new(agent)),
+        verifier_override: Some((public_key, algo)),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Serialize a `VerificationOutcome` to JSON for the JS caller.
+fn outcome_to_json(outcome: &VerificationOutcome) -> Result<String, JsError> {
+    serde_json::to_string(outcome).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "serialize verification outcome: {}",
+            e
+        )))
+    })
+}
+
+// Suppress the "unused secrecy::SecretBox" import in the path where
+// only the `Password` unlock variant is exercised by JS callers right
+// now. Kept here so the raw-key path lands cleanly when a JS-side raw-
+// key constructor is added (currently out of V1 surface — `secrecy`
+// remains a documented internal dependency).
+const _UNUSED_SECRECY_IMPORT: fn() = || {
+    let _ = SecretBox::new(Box::new(vec![0u8; 32]));
+};
