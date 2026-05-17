@@ -61,6 +61,9 @@ sha2 = "0.10.8"
 rand = "0.9"
 zeroize = "1.8"
 base64 = "0.22"
+# Post-quantum signatures (ML-DSA-87 / Dilithium). Pure-Rust, wasm-friendly.
+# See PRD §4.2, §4.7.
+fips204 = "0.4.6"
 
 [dev-dependencies]
 serde_json = "1.0"
