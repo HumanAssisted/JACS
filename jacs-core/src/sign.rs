@@ -76,6 +76,19 @@ impl SigningAlgorithm {
             SigningAlgorithm::Pq2025 => "pq2025",
         }
     }
+
+    /// Parse the wire identifier. Accepts both the jacs-core form
+    /// (`"ed25519"`, `"pq2025"`) and the native `jacs` form (`"ring-Ed25519"`)
+    /// so verification accepts signed documents from either platform. The
+    /// canonical wire form for *newly signed* documents is always the
+    /// lowercase short name; the native alias is read-only.
+    pub fn from_wire_str(raw: &str) -> Option<Self> {
+        match raw {
+            "ed25519" | "ring-Ed25519" => Some(SigningAlgorithm::Ed25519),
+            "pq2025" => Some(SigningAlgorithm::Pq2025),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for SigningAlgorithm {

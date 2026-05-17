@@ -20,9 +20,19 @@ use crate::material::{AgentMaterial, UnlockSecret};
 use crate::sign::{
     DetachedSigner, Ed25519DalekSigner, Pq2025Signer, SigningAlgorithm,
 };
+use crate::verify::{
+    VerificationOutcome, build_signature_content_v2, build_signature_metadata,
+    default_signed_fields, sha256_hex, verify_document,
+};
 use crate::{CoreError};
+use base64::Engine as _;
 use secrecy::ExposeSecret;
 use serde_json::{Value, json};
+
+/// Placement key for the JACS document signature. Mirrors
+/// `jacs::storage::JACS_SIGNATURE_FIELDNAME`. Hardcoded here because
+/// jacs-core does not depend on jacs.
+const JACS_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 
 // =========================================================================
 // CoreAgent
@@ -161,6 +171,132 @@ impl CoreAgent {
     /// taking ownership of the `CoreAgent`.
     pub fn export_agent(&self) -> Value {
         self.agent_json.clone()
+    }
+
+    // =====================================================================
+    // sign / verify
+    // =====================================================================
+
+    /// Sign a JSON payload as a JACS message and return the signed
+    /// document. Shape:
+    ///
+    /// ```json
+    /// {
+    ///   "jacsType": "message",
+    ///   "jacsLevel": "raw",
+    ///   "content": { ... },
+    ///   "jacsSignature": { ... }
+    /// }
+    /// ```
+    ///
+    /// The canonical signature payload is built per PRD §4.5 (v2 layout,
+    /// `serde_json_canonicalizer` for canonical JSON). The signer must be
+    /// unlocked; otherwise returns `CoreError::Locked`.
+    pub fn sign_message(&mut self, data: &Value) -> Result<Value, CoreError> {
+        // Build the wrapper document. The wasm layer signs documents in
+        // this exact shape so verifiers reconstruct the same canonical
+        // bytes regardless of platform.
+        let mut document = json!({
+            "jacsType": "message",
+            "jacsLevel": "raw",
+            "content": data,
+        });
+        self.sign_document_inplace(&mut document, JACS_SIGNATURE_FIELDNAME)?;
+        Ok(document)
+    }
+
+    /// Sign `document` in place, attaching the signature object under
+    /// `placement_key`. Used by `sign_message` (placement key `"jacsSignature"`)
+    /// and by `jacs-core::agreements` in Task 014.
+    ///
+    /// Returns `CoreError::Locked` if the signer has been cleared.
+    pub fn sign_document_inplace(
+        &mut self,
+        document: &mut Value,
+        placement_key: &str,
+    ) -> Result<(), CoreError> {
+        let signer = self.signer.as_ref().ok_or(CoreError::Locked)?;
+        let algorithm = self.algorithm;
+        let public_key_hash = sha256_hex(&self.public_key);
+        let agent_id = self
+            .agent_json
+            .get("jacsId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let agent_version = self
+            .agent_json
+            .get("jacsVersion")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let date = chrono::Utc::now().to_rfc3339();
+        let iat = chrono::Utc::now().timestamp();
+        let jti = uuid::Uuid::now_v7().to_string();
+        let fields = default_signed_fields(document, placement_key);
+
+        // The metadata used for the canonical payload — `signature` field
+        // is empty here; `build_signature_content_v2` strips it anyway, but
+        // making it explicit keeps the shape consistent with what the
+        // verifier reconstructs.
+        let metadata = build_signature_metadata(
+            &agent_id,
+            &agent_version,
+            &date,
+            iat,
+            &jti,
+            algorithm,
+            &public_key_hash,
+            &fields,
+        );
+
+        let canonical = build_signature_content_v2(document, &fields, placement_key, &metadata)?;
+        let sig_bytes = signer.sign(canonical.as_bytes())?;
+        let signature_b64 = base64::engine::general_purpose::STANDARD.encode(&sig_bytes);
+
+        // Build the final signature object: same shape as `metadata`, with
+        // the real signature filled in.
+        let mut sig_object = metadata;
+        sig_object["signature"] = json!(signature_b64);
+
+        document
+            .as_object_mut()
+            .ok_or_else(|| {
+                CoreError::MalformedDocument(
+                    "document must be a JSON object to attach a signature".into(),
+                )
+            })?
+            .insert(placement_key.to_string(), sig_object);
+
+        Ok(())
+    }
+
+    /// Verify a signed JACS document against this agent's public key +
+    /// algorithm. Always uses the `jacsSignature` placement key.
+    ///
+    /// Returns `CoreError::AlgorithmMismatch` if the document was signed
+    /// under a different algorithm than this agent. Returns a
+    /// `VerificationOutcome` with `valid = false` and one entry in
+    /// `errors` when the signature itself does not verify.
+    pub fn verify(&self, signed: &Value) -> Result<VerificationOutcome, CoreError> {
+        verify_document(signed, &self.public_key, self.algorithm, JACS_SIGNATURE_FIELDNAME)
+    }
+
+    /// Static verify path — does not require an unlocked agent.
+    ///
+    /// `public_key` and `algorithm` must match what the document was signed
+    /// under; otherwise the cryptographic check fails and the returned
+    /// outcome has `valid = false`. The signed document's
+    /// `signingAlgorithm` field is checked against `algorithm` and returns
+    /// `CoreError::AlgorithmMismatch` on conflict — this is a typed
+    /// failure (algorithm choice errors are different from bad
+    /// signatures).
+    pub fn verify_with_key(
+        signed: &Value,
+        public_key: &[u8],
+        algorithm: SigningAlgorithm,
+    ) -> Result<VerificationOutcome, CoreError> {
+        verify_document(signed, public_key, algorithm, JACS_SIGNATURE_FIELDNAME)
     }
 }
 
