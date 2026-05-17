@@ -70,13 +70,22 @@ fips204 = "0.4.6"
 # wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
 # §4.5.
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
+# `SecretBox` for `UnlockSecret::RawPrivateKey`. Pure-Rust, wasm-friendly,
+# already a transitive dep of native jacs. See PRD §4.2.
+secrecy = "0.10.3"
+# Stable identifiers for ephemeral CoreAgents. UUID v4 needs the `js`
+# feature on wasm32 so it picks up `getrandom`'s browser RNG path
+# instead of trying to read `/dev/urandom`.
+uuid = { version = "1", features = ["v4", "js"] }
 
 [dev-dependencies]
 serde_json = "1.0"
-# For the envelope tests' legacy-fixture synthesizer.
+# For the envelope tests' legacy-fixture synthesizer and the CoreAgent
+# raw-key unlock helper.
 aes-gcm = "0.10.3"
 base64 = "0.22"
 rand = "0.9"
+secrecy = "0.10.3"
 
 # Browser RNG wiring. Transitive deps need two flavors of `getrandom` on
 # wasm32: jsonschema → ahash brings getrandom 0.3 (needs `wasm_js`), and
