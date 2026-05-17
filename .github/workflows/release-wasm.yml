@@ -1,0 +1,161 @@
+name: Release @jacs/wasm
+
+on:
+  push:
+    tags:
+      - 'wasm-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Extract version from tag
+        id: extract
+        run: |
+          TAG="${GITHUB_REF#refs/tags/wasm-v}"
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check jacs-wasm/Cargo.toml version matches tag
+        run: |
+          CARGO_VERSION=$(grep '^version = ' jacs-wasm/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          echo "Cargo version: $CARGO_VERSION"
+          echo "Tag version:   $TAG_VERSION"
+          if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch! jacs-wasm/Cargo.toml has $CARGO_VERSION but tag is $TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Check package.template.json version matches tag (if present)
+        run: |
+          TEMPLATE=jacs-wasm/package.template.json
+          if [ ! -f "$TEMPLATE" ]; then
+            echo "::warning::$TEMPLATE not present; skipping template version check."
+            exit 0
+          fi
+          PKG_VERSION=$(node -p "require('./$TEMPLATE').version")
+          TAG_VERSION="${{ steps.extract.outputs.version }}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch! $TEMPLATE has $PKG_VERSION but tag is $TAG_VERSION"
+            exit 1
+          fi
+
+  build-and-test:
+    needs: verify-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      # Stable Rust + the wasm32-unknown-unknown target. The crate sets
+      # rust-version = 1.93 in Cargo.toml; setup-rust-toolchain will pick
+      # the right version when actions-rust-lang/setup-rust-toolchain
+      # respects rust-toolchain.toml. We pin to stable here so the
+      # release flow does not silently float onto a newer compiler.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+
+      # wasm-pack — uses the rustwasm action for a pinned binary install.
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+
+      # Chrome + chromedriver pair so the `wasm-pack test --headless
+      # --chrome` runner has a matching driver. The browser-actions
+      # setup-chrome action handles both.
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+        id: setup-chrome
+      - run: echo "CHROMEDRIVER=${{ steps.setup-chrome.outputs.chromedriver-path }}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      # ------------------------------------------------------------------
+      # Guardrails before publishing: forbidden-deps + wasm-pack tests.
+      # ------------------------------------------------------------------
+      - name: Forbidden-deps check
+        run: bash scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown
+
+      - name: wasm-pack test --headless --chrome
+        run: wasm-pack test --headless --chrome jacs-wasm
+
+      - name: wasm-pack build --target web --release
+        run: wasm-pack build --target web --release jacs-wasm
+
+      # finalize-pkg.sh rewrites jacs-wasm/pkg/package.json with the
+      # `@jacs/wasm` name + exports map + correct version. Task 020 ships
+      # this script; until then we no-op to keep the pipeline shape
+      # stable.
+      - name: Finalize pkg metadata
+        run: |
+          if [ -x jacs-wasm/scripts/finalize-pkg.sh ]; then
+            bash jacs-wasm/scripts/finalize-pkg.sh
+          else
+            echo "::warning::jacs-wasm/scripts/finalize-pkg.sh not present (Task 020 pending). pkg/package.json will be wasm-pack's default."
+          fi
+
+      - name: Validate npm pack output
+        working-directory: jacs-wasm/pkg
+        run: npm pack --dry-run
+
+  publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Rebuild pkg for publish
+        run: |
+          wasm-pack build --target web --release jacs-wasm
+          if [ -x jacs-wasm/scripts/finalize-pkg.sh ]; then
+            bash jacs-wasm/scripts/finalize-pkg.sh
+          fi
+
+      # NPM_TOKEN must be a granular access token with "Packages: Read and
+      # write" + "Bypass 2FA for automation" enabled (npm → Access Tokens
+      # → Generate New Token). Use --provenance once the package is
+      # published once with a normal token.
+      - name: Publish @jacs/wasm to npm
+        working-directory: jacs-wasm/pkg
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
