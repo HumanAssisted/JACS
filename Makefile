@@ -1,4 +1,4 @@
-.PHONY: build-jacs build-jacsbook build-jacsbook-pdf \
+.PHONY: build-jacs build-jacsbook build-jacsbook-pdf build-wasm test-wasm publish-jacs-wasm release-jacs-wasm retry-jacs-wasm \
         test test-all test-all-pq test-rust-pr test-bindings-fast test-rust-slow test-jacs test-jacs-fast test-jacs-fast-lib test-jacs-fast-bin-shard-a test-jacs-fast-bin-shard-b test-jacs-features test-jacs-pq test-jacs-cli test-jacs-cross-language test-jacs-observability \
         test-jacs-mcp test-jacs-binding-core test-jacs-binding-core-pq \
         test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
@@ -11,7 +11,7 @@
         bump-patch bump-minor bump-major \
         seal-changelog check-changelog-sealed \
         version versions check-versions check-version-jacs check-version-jacspy check-version-jacsnpm check-version-cli \
-        install-githooks regen-cross-lang-fixtures \
+        install-githooks regen-cross-lang-fixtures sync-schemas \
         help
 
 # ============================================================================
@@ -30,6 +30,20 @@ BINDING_CORE_VERSION := $(shell grep '^version' binding-core/Cargo.toml | head -
 
 # Media signing helper crate version (from jacs-media/Cargo.toml)
 JACS_MEDIA_VERSION := $(shell grep '^version' jacs-media/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+# Portable protocol crate version (from jacs-core/Cargo.toml). Published
+# first in the crates.io dependency chain. See CLAUDE.md Publish Order.
+JACS_CORE_VERSION := $(shell grep '^version' jacs-core/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+# Browser bindings crate version (from jacs-wasm/Cargo.toml). Published to
+# npm only as @jacs/wasm via release-wasm.yml (Task 021).
+JACS_WASM_RUST_VERSION := $(shell grep '^version' jacs-wasm/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+# @jacs/wasm npm package version, written into jacs-wasm/pkg/package.json
+# by finalize-pkg.sh after `wasm-pack build` (Task 020). Until the
+# template + finalize script land, this falls back to the Cargo version
+# so `check-versions` does not error out on a fresh checkout.
+JACS_WASM_NPM_VERSION := $(shell test -f jacs-wasm/package.template.json && grep '"version"' jacs-wasm/package.template.json | head -1 | sed 's/.*: *"\(.*\)".*/\1/' || echo $(JACS_WASM_RUST_VERSION))
 
 # Python bindings version (from jacspy/pyproject.toml)
 JACSPY_VERSION := $(shell grep '^version' jacspy/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
@@ -76,6 +90,43 @@ build-jacspy:
 
 build-jacsnpm:
 	cd jacsnpm && npm run build
+
+# Build the @jacs/wasm npm package via wasm-pack. PRD §4.8.
+# After wasm-pack runs, finalize-pkg.sh (Task 020) rewrites
+# pkg/package.json to set name=@jacs/wasm + the right exports map.
+build-wasm:
+	wasm-pack build --target web --release jacs-wasm
+	@if [ -x jacs-wasm/scripts/finalize-pkg.sh ]; then \
+		bash jacs-wasm/scripts/finalize-pkg.sh; \
+	else \
+		echo "NOTE: jacs-wasm/scripts/finalize-pkg.sh not present yet (Task 020). Skipping pkg metadata finalize."; \
+	fi
+
+# Run jacs-wasm tests headless in Chrome. Requires wasm-pack + a
+# matching chromedriver on PATH. PRD §3.2.
+test-wasm:
+	wasm-pack test --headless --chrome jacs-wasm
+
+# Publish the finalized @jacs/wasm npm package. Run `make build-wasm`
+# first. Triggered from CI by the `wasm-vX.Y.Z` tag handler in
+# release-wasm.yml (Task 021); local credentials required for direct
+# invocation.
+publish-jacs-wasm: build-wasm
+	cd jacs-wasm/pkg && npm publish --access public
+
+# Retag + push the wasm-vX.Y.Z release tag. Mirrors retry-jacsnpm.
+release-jacs-wasm:
+	@TAG=wasm-v$(JACS_VERSION); \
+	echo "Tagging $$TAG"; \
+	git tag -a "$$TAG" -m "Release @jacs/wasm $(JACS_VERSION)"; \
+	git push origin "$$TAG"
+
+retry-jacs-wasm:
+	@TAG=wasm-v$(JACS_VERSION); \
+	echo "Deleting + retagging $$TAG"; \
+	git tag -d "$$TAG" 2>/dev/null || true; \
+	git push origin :refs/tags/"$$TAG" 2>/dev/null || true; \
+	$(MAKE) release-jacs-wasm
 
 build-jacsbook:
 	cd jacs/docs/jacsbook && mdbook build
@@ -218,9 +269,12 @@ check-changelog-sealed:
 versions:
 	@echo "Detected versions from source files:"
 	@echo "  jacs (Cargo.toml):        $(JACS_VERSION)"
+	@echo "  jacs-core (Cargo.toml):   $(JACS_CORE_VERSION)"
 	@echo "  jacs-mcp (Cargo.toml):    $(JACS_MCP_VERSION)"
 	@echo "  binding-core (Cargo.toml):$(BINDING_CORE_VERSION)"
 	@echo "  jacs-media (Cargo.toml):  $(JACS_MEDIA_VERSION)"
+	@echo "  jacs-wasm (Cargo.toml):   $(JACS_WASM_RUST_VERSION)"
+	@echo "  jacs-wasm/package.json:   $(JACS_WASM_NPM_VERSION)"
 	@echo "  jacspy (pyproject.toml):  $(JACSPY_VERSION)"
 	@echo "  jacspy (Cargo.toml):      $(JACSPY_RUST_VERSION)"
 	@echo "  jacsnpm (package.json):   $(JACSNPM_VERSION)"
@@ -234,6 +288,9 @@ versions:
 	@if [ "$(JACS_VERSION)" = "$(JACS_MCP_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(BINDING_CORE_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACS_MEDIA_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACS_CORE_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACS_WASM_RUST_VERSION)" ] && \
+		[ "$(JACS_VERSION)" = "$(JACS_WASM_NPM_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSPY_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSPY_RUST_VERSION)" ] && \
 		[ "$(JACS_VERSION)" = "$(JACSNPM_VERSION)" ] && \
@@ -268,6 +325,18 @@ check-versions:
 	fi
 	@if [ "$(JACS_VERSION)" != "$(JACS_MEDIA_VERSION)" ]; then \
 		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-media ($(JACS_MEDIA_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(JACS_CORE_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-core ($(JACS_CORE_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(JACS_WASM_RUST_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-wasm Cargo.toml ($(JACS_WASM_RUST_VERSION))"; \
+		exit 1; \
+	fi
+	@if [ "$(JACS_VERSION)" != "$(JACS_WASM_NPM_VERSION)" ]; then \
+		echo "ERROR: jacs ($(JACS_VERSION)) != jacs-wasm package.template.json ($(JACS_WASM_NPM_VERSION))"; \
 		exit 1; \
 	fi
 	@if [ "$(JACS_VERSION)" != "$(JACSPY_VERSION)" ]; then \

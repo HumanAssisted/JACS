@@ -22,10 +22,10 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/crate/v}"
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Check Cargo.toml version matches tag (jacs-media + jacs + binding-core + jacs-mcp + jacs-cli)
+      - name: Check Cargo.toml version matches tag (jacs-core + jacs-media + jacs + binding-core + jacs-mcp + jacs-cli)
         run: |
           TAG_VERSION="${{ steps.extract.outputs.version }}"
-          for dir in jacs-media jacs binding-core jacs-mcp jacs-cli; do
+          for dir in jacs-core jacs-media jacs binding-core jacs-mcp jacs-cli; do
             CARGO_VERSION=$(grep '^version = ' $dir/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
             echo "$dir Cargo version: $CARGO_VERSION, tag: $TAG_VERSION"
             if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
@@ -33,7 +33,7 @@ jobs:
               exit 1
             fi
           done
-          echo "Version match confirmed for jacs-media, jacs, binding-core, jacs-mcp, and jacs-cli"
+          echo "Version match confirmed for jacs-core, jacs-media, jacs, binding-core, jacs-mcp, and jacs-cli"
 
   publish:
     needs: verify-version
@@ -51,8 +51,44 @@ jobs:
       - name: Pre-publish compile check (all crates)
         run: |
           echo "Checking all publishable crates compile cleanly with -D warnings..."
-          cargo check -p jacs-media -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
+          cargo check -p jacs-core -p jacs-media -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
           echo "All crates compile cleanly"
+
+      # ---------------------------------------------------------------------
+      # jacs-core — first in the chain. jacs and jacs-media both depend on
+      # the canonicalizer / sign / envelope / schema modules that live here.
+      # See CLAUDE.md "Publish Order (crates.io)" and PRD §4.9.
+      # ---------------------------------------------------------------------
+      - name: Publish jacs-core to crates.io
+        run: |
+          LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+          if [ "$LATEST" = "$VERSION" ]; then
+            echo "jacs-core $VERSION already published, skipping"
+          else
+            cd jacs-core && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 101 ]; then
+                echo "::warning::jacs-core $VERSION already exists on crates.io (exit 101), continuing"
+              else
+                exit $EXIT_CODE
+              fi
+            }
+          fi
+
+      - name: Wait for jacs-core to appear on crates.io
+        run: |
+          echo "Waiting for jacs-core $VERSION on crates.io..."
+          for i in $(seq 1 60); do
+            LATEST=$(curl -sL --retry 3 --retry-delay 5 -H 'User-Agent: jacs-ci (https://github.com/HumanAssisted/JACS)' https://crates.io/api/v1/crates/jacs-core | python3 -c "import sys,json; print(json.load(sys.stdin)['crate']['max_version'])" 2>/dev/null || echo "")
+            if [ "$LATEST" = "$VERSION" ]; then
+              echo "jacs-core $VERSION is available on crates.io"
+              exit 0
+            fi
+            echo "  attempt $i/60 — got '$LATEST', waiting 15s..."
+            sleep 15
+          done
+          echo "::error::Timed out waiting for jacs-core $VERSION on crates.io"
+          exit 1
 
       - name: Publish jacs-media to crates.io
         run: |
