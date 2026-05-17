@@ -1,0 +1,62 @@
+[
+  {
+    "data": {
+      "action": "test",
+      "value": 42
+    },
+    "name": "simple_message"
+  },
+  {
+    "data": {
+      "items": [
+        1,
+        2,
+        3
+      ],
+      "user": {
+        "name": "Alice",
+        "role": "admin"
+      }
+    },
+    "name": "nested_message"
+  },
+  {
+    "data": {},
+    "name": "empty_object"
+  },
+  {
+    "data": [],
+    "name": "empty_array"
+  },
+  {
+    "data": "hello world",
+    "name": "string_value"
+  },
+  {
+    "data": 12345,
+    "name": "numeric_value"
+  },
+  {
+    "data": true,
+    "name": "boolean_value"
+  },
+  {
+    "data": null,
+    "name": "null_value"
+  },
+  {
+    "data": {
+      "code": "ABC-123",
+      "greeting": "hello"
+    },
+    "name": "unicode_ascii_safe"
+  },
+  {
+    "data": {
+      "currency": "€",
+      "emoji": "πŸ”",
+      "math": "ℝ ⊂ β„‚"
+    },
+    "name": "unicode_symbols"
+  }
+]
