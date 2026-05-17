@@ -92,10 +92,20 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       # ------------------------------------------------------------------
-      # Guardrails before publishing: forbidden-deps + wasm-pack tests.
+      # Guardrails before publishing: forbidden-deps + tsc --noEmit +
+      # wasm-pack tests + Vite/Playwright smoke (PRD §5.5; matches the
+      # PR-blocking lane in `wasm-pr.yml`).
       # ------------------------------------------------------------------
-      - name: Forbidden-deps check
+      - name: Forbidden-deps — jacs-core
+        run: bash scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown
+
+      - name: Forbidden-deps — jacs-wasm
         run: bash scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown
+
+      - name: tsc --noEmit (source-tree)
+        run: |
+          cd jacs-wasm
+          npx --yes -p typescript@5 tsc --noEmit -p tsconfig.json
 
       - name: wasm-pack test --headless --chrome
         run: wasm-pack test --headless --chrome jacs-wasm
@@ -103,21 +113,20 @@ jobs:
       - name: wasm-pack build --target web --release
         run: wasm-pack build --target web --release jacs-wasm
 
-      # finalize-pkg.sh rewrites jacs-wasm/pkg/package.json with the
-      # `@jacs/wasm` name + exports map + correct version. Task 020 ships
-      # this script; until then we no-op to keep the pipeline shape
-      # stable.
       - name: Finalize pkg metadata
-        run: |
-          if [ -x jacs-wasm/scripts/finalize-pkg.sh ]; then
-            bash jacs-wasm/scripts/finalize-pkg.sh
-          else
-            echo "::warning::jacs-wasm/scripts/finalize-pkg.sh not present (Task 020 pending). pkg/package.json will be wasm-pack's default."
-          fi
+        run: bash jacs-wasm/scripts/finalize-pkg.sh
 
       - name: Validate npm pack output
         working-directory: jacs-wasm/pkg
         run: npm pack --dry-run
+
+      - name: Vite smoke (build + Playwright)
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npm run build
+          npx playwright test
 
   publish:
     needs: build-and-test

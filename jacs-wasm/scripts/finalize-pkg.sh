@@ -107,15 +107,19 @@ JSON
 
 if command -v tsc >/dev/null 2>&1; then
     echo "finalize-pkg: tsc -p ${STAGE_DIR}/tsconfig.json"
-    (cd "${STAGE_DIR}" && tsc -p tsconfig.json) \
-        || echo "warning: tsc reported diagnostics (output files may still be present)"
+    # tsc diagnostics MUST fail the script (Issue 007 / Task 032). The
+    # release workflow + PR workflow (Task 028) both also run a source-
+    # tree `tsc --noEmit -p jacs-wasm/tsconfig.json` as a discrete step
+    # — this is the belt-and-suspenders that also compiles the staged
+    # wrappers against the real pkg/ d.ts and emits the .js outputs.
+    (cd "${STAGE_DIR}" && tsc -p tsconfig.json)
 elif command -v npx >/dev/null 2>&1; then
     echo "finalize-pkg: npx tsc -p ${STAGE_DIR}/tsconfig.json"
-    (cd "${STAGE_DIR}" && npx --yes -p typescript@5 tsc -p tsconfig.json) \
-        || echo "warning: tsc reported diagnostics"
+    (cd "${STAGE_DIR}" && npx --yes -p typescript@5 tsc -p tsconfig.json)
 else
-    echo "warning: tsc not available; skipping TypeScript wrapper compile." >&2
-    echo "         install Node + typescript to produce index.js + worker/index.js" >&2
+    echo "error: tsc not available; cannot finalize TypeScript wrappers." >&2
+    echo "       install Node + typescript and re-run finalize-pkg.sh." >&2
+    exit 1
 fi
 
 # Copy the compiled outputs back into pkg/. Skip the staged copy of

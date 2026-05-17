@@ -1,0 +1,142 @@
+name: WASM PR validation
+
+# PR-blocking validation for `jacs-core` + `jacs-wasm` + the
+# `@jacs/wasm` npm package (Issue 003 / Task 028).
+#
+# Mirrors the publish-time checks in `release-wasm.yml` so a PR cannot
+# merge unless the browser-side surface and packaging path are green.
+
+on:
+  pull_request:
+    branches: ["main", "WASM", "v0.10.2"]
+    paths:
+      - "jacs-core/**"
+      - "jacs-wasm/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - ".github/workflows/wasm-pr.yml"
+  push:
+    branches: ["main", "WASM", "v0.10.2"]
+    paths:
+      - "jacs-core/**"
+      - "jacs-wasm/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - ".github/workflows/wasm-pr.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: jacs-wasm browser + packaging
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned toolchain matches `release-wasm.yml`. `rust-version =
+      # 1.93` in `jacs-wasm/Cargo.toml` requires this.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+
+      # Matched Chrome + chromedriver pair so the `wasm-pack test
+      # --headless --chrome` runner has a driver of the right major.
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+        id: setup-chrome
+      - run: echo "CHROMEDRIVER=${{ steps.setup-chrome.outputs.chromedriver-path }}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ------------------------------------------------------------------
+      # 1. Forbidden-deps for both wasm-portable crates.
+      # ------------------------------------------------------------------
+      - name: Forbidden-deps — jacs-core (wasm32)
+        run: bash scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown
+
+      - name: Forbidden-deps — jacs-wasm (wasm32)
+        run: bash scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown
+
+      # ------------------------------------------------------------------
+      # 2. Native cargo check (warnings = errors) on the wasm-touching
+      # set so the Rust side is clean before we spin up wasm-pack.
+      # ------------------------------------------------------------------
+      - name: cargo check (warnings = errors)
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          cargo check -p jacs -p jacs-core -p jacs-binding-core -p jacs-mcp -p jacs-cli -p jacs-wasm
+          cargo check -p jacs-core --target wasm32-unknown-unknown
+          cargo check -p jacs-wasm --target wasm32-unknown-unknown
+
+      # ------------------------------------------------------------------
+      # 3. wasm-pack test --headless --chrome
+      # ------------------------------------------------------------------
+      - name: wasm-pack test --headless --chrome (jacs-wasm)
+        run: wasm-pack test --headless --chrome jacs-wasm
+
+      # ------------------------------------------------------------------
+      # 4. wasm-pack build + finalize-pkg.sh
+      # ------------------------------------------------------------------
+      - name: wasm-pack build --target web --release
+        run: wasm-pack build --target web --release jacs-wasm
+
+      - name: Finalize pkg metadata (template merge + tsc compile)
+        run: bash jacs-wasm/scripts/finalize-pkg.sh
+
+      # ------------------------------------------------------------------
+      # 5. Source-tree TypeScript validation (release-blocking; Issue
+      # 007 / Task 032). This catches drift in `index.ts` or
+      # `jacs_wasm.d.ts` stub before the published `.d.ts` is generated.
+      # ------------------------------------------------------------------
+      - name: tsc --noEmit (source-tree)
+        run: |
+          cd jacs-wasm
+          npx --yes -p typescript@5 tsc --noEmit -p tsconfig.json
+
+      # ------------------------------------------------------------------
+      # 6. npm pack validation
+      # ------------------------------------------------------------------
+      - name: npm pack --dry-run
+        working-directory: jacs-wasm/pkg
+        run: npm pack --dry-run
+
+      # ------------------------------------------------------------------
+      # 7. Vite + Playwright smoke (PRD §5.5).
+      # ------------------------------------------------------------------
+      - name: Install vite smoke dependencies
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Vite build
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: npm run build
+
+      - name: Playwright smoke
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: npx playwright test

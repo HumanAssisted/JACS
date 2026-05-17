@@ -1,10 +1,17 @@
 {
-  // IDE / `tsc --noEmit` type-check config. The actual build is done
-  // by `scripts/finalize-pkg.sh` which stages `index.ts` + `worker/*.ts`
-  // *into* `pkg/` so the relative `./jacs_wasm.js` imports resolve
-  // against the wasm-bindgen output. This config achieves the same
-  // resolution by pointing `paths` at `pkg/jacs_wasm.d.ts` and is
-  // used only for editor IntelliSense + a `tsc --noEmit` smoke check.
+  // IDE / `tsc --noEmit` type-check config (Issue 007 / Task 032).
+  //
+  // The hand-written `index.ts` and `worker/jacs-worker.ts` import from
+  // `./jacs_wasm.js` / `../jacs_wasm.js` — names that exist in the
+  // *published* `pkg/` layout after `wasm-pack build`. To make
+  // `tsc --noEmit` work from a fresh checkout (no `pkg/` present yet),
+  // we ship a checked-in stub `jacs-wasm/jacs_wasm.d.ts` that mirrors
+  // the wasm-bindgen surface. TS resolves the `./jacs_wasm.js` /
+  // `../jacs_wasm.js` import specifiers to that stub via the standard
+  // `bundler` moduleResolution rules.
+  //
+  // The real `pkg/jacs_wasm.d.ts` is the source of truth at build /
+  // publish time — `finalize-pkg.sh` does **not** ship this stub.
   "compilerOptions": {
     "target": "ES2020",
     "module": "ES2020",
@@ -20,20 +27,17 @@
     "isolatedModules": true,
     "declaration": false,
     "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "./jacs_wasm.js": ["./pkg/jacs_wasm"],
-      "../jacs_wasm.js": ["./pkg/jacs_wasm"]
-    }
+    "baseUrl": "."
   },
   "include": [
     "index.ts",
     "worker/**/*.ts",
-    "pkg/jacs_wasm.d.ts",
-    "pkg/jacs_wasm_bg.wasm.d.ts"
+    "jacs_wasm.d.ts",
+    "tests/ts/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "examples"
+    "examples",
+    "pkg"
   ]
 }
