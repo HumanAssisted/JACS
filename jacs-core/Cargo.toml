@@ -64,6 +64,12 @@ base64 = "0.22"
 # Post-quantum signatures (ML-DSA-87 / Dilithium). Pure-Rust, wasm-friendly.
 # See PRD §4.2, §4.7.
 fips204 = "0.4.6"
+# Ed25519. Replaces `ring` in the protocol layer so jacs-core compiles for
+# wasm32. `pkcs8` reads the v1 + v2 PKCS#8 byte formats that the native
+# `ring` path emits; `zeroize` wipes the private key on drop; `rand_core`
+# wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
+# §4.5.
+ed25519-dalek = { version = "2", default-features = false, features = ["pkcs8", "zeroize", "rand_core"] }
 
 [dev-dependencies]
 serde_json = "1.0"
