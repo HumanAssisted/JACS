@@ -16,6 +16,13 @@
 
 use wasm_bindgen::prelude::*;
 
+pub mod agent_handle;
+
+pub use agent_handle::{
+    CoreAgentHandle, create_ephemeral, create_verifier, import_encrypted_agent,
+    import_encrypted_agent_files,
+};
+
 // ---------------------------------------------------------------------------
 // initJacsWasm — idempotent panic-hook installer.
 // ---------------------------------------------------------------------------
