@@ -10,7 +10,7 @@
 //! See PRD §4.2 and §4.5.
 
 use crate::CoreError;
-use ed25519_dalek::pkcs8::DecodePrivateKey;
+use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
 use ed25519_dalek::{Signer as DalekSigner, SigningKey, Verifier as DalekVerifier, VerifyingKey};
 use fips204::ml_dsa_87;
 use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
@@ -184,6 +184,17 @@ impl Pq2025Signer {
             private_key: Some(ZeroizingPq2025Private { bytes }),
             public_key,
         })
+    }
+
+    /// Export the held private-key bytes. Used by the native facade
+    /// (`jacs::crypt::pq2025::generate_keys`) to preserve the historical
+    /// `(private_bytes, public_bytes)` contract. The caller is
+    /// responsible for storing the bytes securely; the buffer is a
+    /// plain `Vec<u8>` so callers can encrypt + persist as needed.
+    /// Returns `CoreError::Locked` if the signer has been cleared.
+    pub fn export_private_bytes(&self) -> Result<Vec<u8>, CoreError> {
+        let inner = self.private_key.as_ref().ok_or(CoreError::Locked)?;
+        Ok(inner.bytes.to_vec())
     }
 
     /// Static verify entry point — does not require holding a signer.
@@ -361,6 +372,19 @@ impl Ed25519DalekSigner {
         verifying_key
             .verify(message, &sig)
             .map_err(|e| CoreError::SignatureInvalid(format!("Ed25519 verification failed: {e}")))
+    }
+
+    /// Export the held private key as PKCS#8 v2 DER bytes — the exact
+    /// shape `ring::Ed25519KeyPair::generate_pkcs8` produces, so storage
+    /// code that round-trips through this function reads + writes the
+    /// same on-disk format as the legacy ring path. Returns
+    /// `CoreError::Locked` if the signer has been cleared.
+    pub fn export_pkcs8_v2(&self) -> Result<Vec<u8>, CoreError> {
+        let key = self.signing_key.as_ref().ok_or(CoreError::Locked)?;
+        let der = key.to_pkcs8_der().map_err(|e| {
+            CoreError::EncryptionFailed(format!("Ed25519 PKCS#8 export failed: {e}"))
+        })?;
+        Ok(der.as_bytes().to_vec())
     }
 }
 
