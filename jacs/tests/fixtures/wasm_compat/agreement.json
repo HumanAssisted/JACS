@@ -1,0 +1,22 @@
+{
+  "canonical_payload": "{\"agents\":[\"agent-alpha\",\"agent-beta\"],\"context\":\"Two-party agreement fixture for jacs-core::agreements cross-compat.\",\"fixture\":\"wasm_compat::agreement\",\"subject\":\"Approve the wasm port\"}",
+  "payload": {
+    "agents": [
+      "agent-alpha",
+      "agent-beta"
+    ],
+    "context": "Two-party agreement fixture for jacs-core::agreements cross-compat.",
+    "fixture": "wasm_compat::agreement",
+    "subject": "Approve the wasm port"
+  },
+  "signatures": [
+    {
+      "signature_b64": "IxGtMDH0y49sEHKbh8xQA/60vQrNHVMoFtkQwU9QLCTZw7DRgwLTXff8u8W3nWldtwNQAhnFVGHMEuF6qxIaAw==",
+      "signer_id": "agent-alpha"
+    },
+    {
+      "signature_b64": "7dXuqHtJ8LI0jnrGDIPHs8dTWrzGIg3Oe0pVKOTYRQwUIU0z4DWGLgZbSFzbYQFefLiEKFcUnpSPl0WE0FJdDg==",
+      "signer_id": "agent-beta"
+    }
+  ]
+}
