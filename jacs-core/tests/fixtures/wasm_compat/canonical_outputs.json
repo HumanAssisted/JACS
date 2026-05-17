@@ -1,0 +1,12 @@
+{
+  "boolean_value": "true",
+  "empty_array": "[]",
+  "empty_object": "{}",
+  "nested_message": "{\"items\":[1,2,3],\"user\":{\"name\":\"Alice\",\"role\":\"admin\"}}",
+  "null_value": "null",
+  "numeric_value": "12345",
+  "simple_message": "{\"action\":\"test\",\"value\":42}",
+  "string_value": "\"hello world\"",
+  "unicode_ascii_safe": "{\"code\":\"ABC-123\",\"greeting\":\"hello\"}",
+  "unicode_symbols": "{\"currency\":\"€\",\"emoji\":\"πŸ”\",\"math\":\"ℝ ⊂ β„‚\"}"
+}
