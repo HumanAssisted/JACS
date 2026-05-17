@@ -3,6 +3,7 @@ members = [
     "jacs",
     "jacs-cli",
     "jacs-core",
+    "jacs-wasm",
     "jacs-duckdb",
     "jacs-postgresql",
     "jacs-redb",
