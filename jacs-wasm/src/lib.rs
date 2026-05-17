@@ -17,10 +17,25 @@
 use wasm_bindgen::prelude::*;
 
 pub mod agent_handle;
+pub mod local_store;
+pub mod worker;
 
 pub use agent_handle::{
-    CoreAgentHandle, create_ephemeral, create_verifier, import_encrypted_agent,
-    import_encrypted_agent_files,
+    CoreAgentHandle, create_agreement_json, create_ephemeral, create_verifier,
+    import_encrypted_agent, import_encrypted_agent_files,
+};
+
+// `local_store` (Task 017) — JS-facing free functions are exported under
+// the `localStore*` camelCase names via `#[wasm_bindgen]` attributes on
+// each function; Rust callers can use the free functions directly via
+// `jacs_wasm::local_store::*`.
+pub use local_store::{
+    LocalStoreError, clear_all as local_store_clear_all_native,
+    list_keys as local_store_list_keys_native, load_document as local_store_load_document_native,
+    load_encrypted_agent as local_store_load_encrypted_agent_native,
+    remove as local_store_remove_native, save_document as local_store_save_document_native,
+    save_encrypted_agent as local_store_save_encrypted_agent_native,
+    validate_no_plaintext_secrets,
 };
 
 // ---------------------------------------------------------------------------

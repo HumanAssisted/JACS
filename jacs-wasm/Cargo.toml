@@ -44,3 +44,17 @@ base64 = "0.22"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+# Web Storage API for `local_store` (Task 017) + Web Worker glue
+# (Task 019). Only the narrow subset we actually use is enabled to keep
+# the wasm artifact small.
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Storage",
+    "Worker",
+    "WorkerOptions",
+    "WorkerType",
+    "MessageEvent",
+    "DedicatedWorkerGlobalScope",
+] }
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
