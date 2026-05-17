@@ -246,6 +246,16 @@ versions:
 
 version: versions
 
+# Verify the embedded schema set in jacs-core/schemas mirrors jacs/schemas
+# exactly. They must stay byte-identical: jacs-core is the wasm-portable
+# copy used by the browser path, jacs/schemas is what `jacs/Cargo.toml`
+# include-ships for the native crate. See PRD §4.4 and Task 006 / Task 017
+# (cleanup will collapse to a single source of truth).
+sync-schemas:
+	@diff -r jacs/schemas jacs-core/schemas > /dev/null || \
+		(echo "ERROR: jacs/schemas and jacs-core/schemas differ. Run 'cp -r jacs/schemas/* jacs-core/schemas/' to mirror." && exit 1)
+	@echo "OK: jacs/schemas and jacs-core/schemas are in sync"
+
 # Check that all versions match (fails if they don't)
 check-versions:
 	@if [ "$(JACS_VERSION)" != "$(JACS_MCP_VERSION)" ]; then \

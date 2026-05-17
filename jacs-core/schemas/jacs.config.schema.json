@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/jacs.config.schema.json",
+  "title": "Config",
+  "description": "Jacs Configuration File",
+  "type": "object",
+  "properties": {
+    "jacs_use_security": {
+      "description": "use strict security features - false or 0 or 1 as string",
+      "type": "string"
+    },
+    "jacs_data_directory": {
+      "description": "path to store documents and agents",
+      "type": "string"
+    },
+    "jacs_key_directory": {
+      "description": "path to store keys",
+      "type": "string"
+    },
+     "jacs_agent_private_key_filename": {
+      "description": "name of private key to use. Will include .enc if password is supplied. ",
+      "type": "string"
+    },
+    "jacs_agent_public_key_filename": {
+      "description": "name of public key",
+      "type": "string"
+    },
+     "jacs_agent_key_algorithm": {
+      "description": "algorithm to use for creating and using keys",
+      "type": "string",
+      "enum": [
+            "ring-Ed25519",
+            "pq2025"
+          ]
+    },
+     "jacs_agent_schema_version": {
+      "description": "version number of the schema used to validate agent",
+      "type": "string"
+    },
+     "jacs_header_schema_version": {
+      "description": "version number of the schema used to validate headers",
+      "type": "string"
+    },
+     "jacs_signature_schema_version": {
+      "description": "version number of the schema used to validate signature",
+      "type": "string"
+    },
+     "jacs_private_key_password": {
+      "description": "DEPRECATED - DO NOT USE. Passwords in config files are a security risk. Use the JACS_PRIVATE_KEY_PASSWORD environment variable instead. This field will trigger a security warning and be ignored.",
+      "type": "string",
+      "deprecated": true
+    },
+    "jacs_default_storage": {
+      "description": "default storage to use",
+      "type": "string",
+      "enum": [
+        "fs", "aws", "hai", "memory", "database", "sqlite", "rusqlite", "surrealdb", "duckdb", "redb"
+      ]
+    },
+    "jacs_agent_domain": {
+      "description": "Optional domain used for DNSSEC-validated public key fingerprint (_v1.agent.jacs.<domain>.)",
+      "type": "string"
+    },
+    "jacs_dns_validate": {
+      "description": "If true, attempt DNS TXT fingerprint validation when a domain is present (default true if domain present).",
+      "type": "boolean"
+    },
+    "jacs_dns_strict": {
+      "description": "If true, require DNSSEC-validated TXT and disallow embedded fallback when validating.",
+      "type": "boolean"
+    },
+    "jacs_dns_required": {
+      "description": "If true, require a domain and DNS validation to be present; fail validation if missing.",
+      "type": "boolean"
+    },
+    "agent_email": {
+      "description": "Cached @hai.ai email address for this agent, persisted after registration or first email status fetch.",
+      "type": "string",
+      "format": "email"
+    },
+    "jacs_keychain_backend": {
+      "description": "OS keychain backend for password storage. 'auto' detects the platform default. 'disabled' skips keychain entirely (recommended for CI/headless).",
+      "type": "string",
+      "enum": ["auto", "macos-keychain", "linux-secret-service", "disabled"]
+    },
+    "observability": {
+      "description": "Observability configuration for logging, metrics, and tracing",
+      "type": "object",
+      "properties": {
+        "logs": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "level": {
+              "type": "string",
+              "enum": ["trace", "debug", "info", "warn", "error"]
+            },
+            "destination": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "stderr" }
+                  },
+                  "required": ["type"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "file" },
+                    "path": { "type": "string" }
+                  },
+                  "required": ["type", "path"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "otlp" },
+                    "endpoint": { "type": "string" },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  },
+                  "required": ["type", "endpoint"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "null" }
+                  },
+                  "required": ["type"]
+                }
+              ]
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["enabled", "level", "destination"]
+        },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "destination": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "prometheus" },
+                    "endpoint": { "type": "string" },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  },
+                  "required": ["type", "endpoint"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "otlp" },
+                    "endpoint": { "type": "string" },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    }
+                  },
+                  "required": ["type", "endpoint"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "file" },
+                    "path": { "type": "string" }
+                  },
+                  "required": ["type", "path"]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "stdout" }
+                  },
+                  "required": ["type"]
+                }
+              ]
+            },
+            "export_interval_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["enabled", "destination"]
+        },
+        "tracing": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "sampling": {
+              "type": "object",
+              "properties": {
+                "ratio": {
+                  "type": "number",
+                  "minimum": 0.0,
+                  "maximum": 1.0
+                },
+                "parent_based": { "type": "boolean" },
+                "rate_limit": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "resource": {
+              "type": "object",
+              "properties": {
+                "service_name": { "type": "string" },
+                "service_version": { "type": "string" },
+                "environment": { "type": "string" },
+                "attributes": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                }
+              },
+              "required": ["service_name"]
+            }
+          },
+          "required": ["enabled"]
+        }
+      },
+      "required": ["logs", "metrics"]
+    }
+  },
+  "required": [
+    "jacs_data_directory",
+    "jacs_key_directory",
+    "jacs_agent_private_key_filename",
+    "jacs_agent_public_key_filename",
+    "jacs_agent_key_algorithm",
+    "jacs_default_storage"
+  ]
+}
+

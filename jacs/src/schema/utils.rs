@@ -2,13 +2,20 @@ use crate::config::{NetworkCapability, ensure_network_access};
 use crate::error::JacsError;
 use crate::storage::MultiStorage;
 use jsonschema::Retrieve;
-use phf::phf_map;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, OnceLock, RwLock};
 use tracing::{debug, warn};
+
+// The embedded schema strings, the $id → short-name map, and the embedded
+// config schema live in `jacs-core::schema` so the wasm build sees the
+// same bytes. We re-export them here for source-compat with everything
+// that already imports `jacs::schema::utils::*` (PRD §4.4).
+pub use jacs_core::schema::{
+    CONFIG_SCHEMA_STRING, DEFAULT_SCHEMA_STRINGS, SCHEMA_SHORT_NAME,
+};
 
 /// Whether to accept invalid TLS certificates when fetching remote schemas.
 ///
@@ -204,26 +211,6 @@ pub fn should_accept_invalid_certs_for_claim(claim: Option<&str>) -> bool {
 pub fn should_accept_invalid_certs_for_claim(_claim: Option<&str>) -> bool {
     false
 }
-pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_map! {
-    "schemas/agent/v1/agent.schema.json" => include_str!("../../schemas/agent/v1/agent.schema.json"),
-    "schemas/header/v1/header.schema.json"=> include_str!("../../schemas/header/v1/header.schema.json"),
-    "schemas/components/signature/v1/signature.schema.json" => include_str!("../../schemas/components/signature/v1/signature.schema.json"),
-    "schemas/components/files/v1/files.schema.json" => include_str!("../../schemas/components/files/v1/files.schema.json"),
-    "schemas/components/agreement/v1/agreement.schema.json" => include_str!("../../schemas/components/agreement/v1/agreement.schema.json"),
-     "schemas/attestation/v1/attestation.schema.json" => include_str!("../../schemas/attestation/v1/attestation.schema.json")
-};
-
-pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
-
-    "https://hai.ai/schemas/agent/v1/agent.schema.json" => "agent" ,
-    "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json" => "agreement" ,
-    "https://hai.ai/schemas/components/files/v1/files.schema.json" => "files" ,
-    "https://hai.ai/schemas/components/signature/v1/signature.schema.json" => "signature" ,
-    "https://hai.ai/schemas/header/v1/header.schema.json" => "header" ,
-    "document" => "document" ,
-    "https://hai.ai/schemas/attestation/v1/attestation.schema.json" => "attestation" ,
-};
-
 pub fn get_short_name(jacs_document: &Value) -> Result<String, JacsError> {
     let id: String = jacs_document
         .get_str("$id")
@@ -233,8 +220,6 @@ pub fn get_short_name(jacs_document: &Value) -> Result<String, JacsError> {
         .unwrap_or(&"document")
         .to_string())
 }
-
-pub static CONFIG_SCHEMA_STRING: &str = include_str!("../../schemas/jacs.config.schema.json");
 
 // Error type for future schema resolution error handling
 #[derive(Debug)]
