@@ -1,5 +1,14 @@
 ## Unreleased
 
+### Added
+
+- New crate `jacs-core` (portable JACS protocol layer) that compiles for both native and `wasm32-unknown-unknown`. Holds the canonical-JSON serializer, embedded schema set, AES-256-GCM + Argon2id encrypted-key envelope (V2) plus the legacy PBKDF2 reader, `DetachedSigner` trait + Ed25519 (`ed25519-dalek`) and pq2025 (`fips204`) backends, `CoreAgent` sign/verify, and multi-party agreement payload helpers. No I/O — pure protocol.
+- New crate `jacs-wasm` with the browser bindings (`wasm-bindgen` wrapper around `jacs-core`). Exports `initJacsWasm`, `createEphemeral`, `importEncryptedAgent`, `importEncryptedAgentFiles`, `createVerifier`, plus the `CoreAgentHandle` methods (`signMessageJson`, `verifyJson`, `verifyWithKeyJson`, `exportAgent`, `getPublicKeyBase64`, `algorithm`, `isUnlocked`, `clearSecrets`). Published to npm as `@jacs/wasm` via the new `release-wasm.yml` workflow triggered by `wasm-vX.Y.Z` tags.
+- Cross-compat tests in `jacs/tests/wasm_compat_cross.rs` confirming that documents signed by native `jacs::Agent::signing_procedure` verify through `jacs_core::CoreAgent::verify_with_key` and vice versa.
+- `SigningAlgorithm::from_wire_str` recognises both `"ed25519"`/`"pq2025"` and the legacy native `"ring-Ed25519"` form so signed documents from either platform verify on the other.
+- `scripts/forbidden-deps.sh` extended for `jacs-wasm`; new Make targets `build-wasm`, `test-wasm`, `publish-jacs-wasm`, `release-jacs-wasm`, `retry-jacs-wasm`. `make versions` / `check-versions` now cover `jacs-core` and `jacs-wasm`.
+- Documentation: new READMEs for `jacs-core` and `jacs-wasm`; `jacsnpm/README.md` carries a callout pointing browser users to `@jacs/wasm`; `CLAUDE.md` Version Bump Checklist updated for the two new crates.
+
 ### Security
 
 - Added `jacs-signature-v2` signature-content binding so new signatures cover the placement key, signed field names and values, and signature metadata; legacy unsigned-version documents verify only through the warning-emitting legacy path.
