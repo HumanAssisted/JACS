@@ -31,7 +31,6 @@ use crate::time_utils;
 use jsonschema::{Draft, Validator};
 use loaders::FileLoader;
 use serde_json::{Value, json, to_value};
-use serde_json_canonicalizer::to_string as to_canonical_string;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -115,9 +114,9 @@ pub(crate) fn extract_signature_fields(
 }
 
 pub(crate) fn canonicalize_json(value: &Value) -> Result<String, JacsError> {
-    let canonical = to_canonical_string(value)
-        .map_err(|e| std::io::Error::other(format!("Failed to canonicalize JSON: {}", e)))?;
-    Ok(canonical)
+    // Delegate to jacs_core so the bytes signed here are identical to the
+    // bytes verified anywhere else in the workspace (PRD §4.4).
+    jacs_core::canonical::canonicalize_json_try(value).map_err(JacsError::from)
 }
 
 fn validate_signature_temporal_claims(

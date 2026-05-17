@@ -17,6 +17,9 @@ on:
       - "Cargo.lock"
       - ".githooks/pre-commit"
       - "scripts/check-secure-io.sh"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - "jacs-core/**"
       - ".github/workflows/rust.yml"
   pull_request:
     branches: ["main"]
@@ -33,6 +36,9 @@ on:
       - "Cargo.lock"
       - ".githooks/pre-commit"
       - "scripts/check-secure-io.sh"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - "jacs-core/**"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
     inputs:
@@ -68,9 +74,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.93"
+          targets: wasm32-unknown-unknown
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
+
+      - name: Forbidden-deps guard (wasm-portable crates)
+        # jacs-core (and later jacs-wasm) must never drag in native-only
+        # crates like ring, tokio, reqwest, etc. See PRD §4.7.
+        run: |
+          bash scripts/forbidden-deps.test.sh
+          bash scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown
 
       - name: Security audit + license check (cargo-deny)
         run: |

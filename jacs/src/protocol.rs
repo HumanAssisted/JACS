@@ -2,8 +2,8 @@
 //!
 //! This module provides building blocks that every JACS-aware client needs:
 //!
-//! * [`canonicalize_json`] -- deterministic JSON serialization (RFC 8785) via
-//!   `serde_json_canonicalizer`.
+//! * [`canonicalize_json`] -- deterministic JSON serialization (RFC 8785),
+//!   re-exported from [`jacs_core::canonical`].
 //! * [`build_auth_header`] -- construct the `Authorization: JACS ...` header
 //!   value used by all HAI SDK language implementations.
 //! * [`sign_response`] -- build and sign a JACS response envelope.
@@ -27,9 +27,11 @@ use uuid::Uuid;
 ///
 /// Returns `"null"` if canonicalization fails (should not happen for valid
 /// `Value` inputs).
-pub fn canonicalize_json(value: &serde_json::Value) -> String {
-    serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
-}
+///
+/// Re-exported from `jacs_core::canonical` since the protocol layer was
+/// split out for wasm support (PRD §4.4). Native callers keep their import
+/// path; the bytes are identical.
+pub use jacs_core::canonical::canonicalize_json;
 
 /// Build the JACS `Authorization` header value.
 ///

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/todo/v1/todo.schema.json",
+  "title": "Todo List",
+  "description": "A private, signed todo list belonging to a single agent. Contains inline items (goals and tasks). The entire list is one signed document. When anything changes, the list is re-signed with a new jacsVersion.",
+  "allOf": [
+    {
+      "$ref": "https://hai.ai/schemas/header/v1/header.schema.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "jacsTodoName": {
+          "type": "string",
+          "description": "Human-readable name for this todo list.",
+          "hai": "agent"
+        },
+        "jacsTodoItems": {
+          "type": "array",
+          "description": "Inline items (goals and tasks) in this list.",
+          "items": {
+            "$ref": "https://hai.ai/schemas/components/todoitem/v1/todoitem.schema.json"
+          },
+          "hai": "agent"
+        },
+        "jacsTodoArchiveRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "UUIDs of archived todo lists (previous versions or completed lists).",
+          "hai": "meta"
+        }
+      }
+    }
+  ],
+  "required": [
+    "jacsTodoName",
+    "jacsTodoItems"
+  ]
+}

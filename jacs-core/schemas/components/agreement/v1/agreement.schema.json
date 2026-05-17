@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json",
+  "title": "agreement",
+  "description": "A set of required signatures signifying an agreement.",
+  "type": "object",
+  "properties": {
+    "signatures": {
+      "type": "array",
+      "description": "Signatures of agents",
+      "items": {
+        "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
+      }
+    },
+    "agentIDs": {
+      "type": "array",
+      "description": "The agents which are required in order to sign the document",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "hai": "meta"
+    },
+    "question": {
+      "type": "string",
+      "description": "When prompting an agent, what are they agreeing to?",
+      "hai": "agent"
+    },
+    "context": {
+      "type": "string",
+      "description": "Context for the question?",
+      "hai": "agent"
+    },
+    "timeout": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 deadline after which the agreement expires and no more signatures are accepted."
+    },
+    "quorum": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum number of signatures required for the agreement to be considered complete (M-of-N). If omitted, all agents in agentIDs must sign."
+    },
+    "requiredAlgorithms": {
+      "type": "array",
+      "description": "If specified, only signatures using one of these algorithms are accepted.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "minimumStrength": {
+      "type": "string",
+      "enum": [
+        "classical",
+        "post-quantum"
+      ],
+      "description": "Minimum cryptographic strength tier required for signatures. 'classical' accepts any algorithm; 'post-quantum' requires pq2025."
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "agentIDs"
+  ]
+}

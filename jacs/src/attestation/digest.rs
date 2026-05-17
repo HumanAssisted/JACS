@@ -14,7 +14,12 @@ pub const AUTO_EMBED_THRESHOLD: usize = 64 * 1024;
 
 /// Compute a DigestSet from a serde_json Value using JCS canonicalization.
 pub fn compute_digest_set(value: &Value) -> Result<DigestSet, JacsError> {
-    let canonical = serde_json_canonicalizer::to_string(value)?;
+    // Route through jacs_core::canonical so native + wasm produce
+    // identical digests (PRD §4.4). `canonicalize_json_try` propagates
+    // the fallible error as `CoreError::MalformedDocument`, which the
+    // `From<CoreError> for JacsError` impl maps to
+    // `JacsError::DocumentMalformed`.
+    let canonical = jacs_core::canonical::canonicalize_json_try(value)?;
     let sha256 = hash_string(&canonical);
     Ok(DigestSet {
         sha256,

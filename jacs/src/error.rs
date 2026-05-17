@@ -678,6 +678,50 @@ impl From<base64::DecodeError> for JacsError {
     }
 }
 
+/// Map every `jacs_core::CoreError` variant to an existing `JacsError`
+/// variant. Per PRD §9 (no new JacsError variants), this conversion uses
+/// the closest pre-existing variant for each kind:
+///
+/// - Password / envelope / decrypt failures → `KeyDecryptionFailed`
+/// - Signature verification → `SignatureVerificationFailed`
+/// - Document structure errors → `DocumentMalformed`
+/// - Schema errors → `SchemaError`
+/// - Agreement quorum errors → `DocumentError`
+/// - Algorithm / key / encryption errors → `CryptoError`
+///
+/// `Locked` is a transient state error (agent unlocked then `clear_secrets`
+/// called); it maps to `CryptoError` so callers see a typed crypto failure
+/// instead of a generic `Internal`.
+///
+/// No `CoreError` variant ever maps to `JacsError::Internal`. That contract
+/// is checked by `tests/core_error_mapping.rs`.
+impl From<jacs_core::CoreError> for JacsError {
+    fn from(err: jacs_core::CoreError) -> Self {
+        use jacs_core::CoreError as CE;
+        let msg = err.to_string();
+        match err {
+            CE::InvalidPassword | CE::InvalidPasswordFormat(_) => {
+                JacsError::KeyDecryptionFailed { reason: msg }
+            }
+            CE::Locked => JacsError::CryptoError(msg),
+            CE::AlgorithmMismatch { .. } | CE::UnsupportedAlgorithm(_) => {
+                JacsError::CryptoError(msg)
+            }
+            CE::MalformedDocument(reason) => JacsError::DocumentMalformed {
+                field: "document".to_string(),
+                reason,
+            },
+            CE::MalformedKey(_) => JacsError::CryptoError(msg),
+            CE::MalformedEnvelope(reason) => JacsError::KeyDecryptionFailed { reason },
+            CE::SignatureInvalid(reason) => JacsError::SignatureVerificationFailed { reason },
+            CE::EncryptionFailed(_) => JacsError::CryptoError(msg),
+            CE::DecryptionFailed(reason) => JacsError::KeyDecryptionFailed { reason },
+            CE::SchemaInvalid(msg) => JacsError::SchemaError(msg),
+            CE::AgreementFailed(msg) => JacsError::DocumentError(msg),
+        }
+    }
+}
+
 #[cfg(feature = "sqlx-sqlite")]
 impl From<sqlx::Error> for JacsError {
     fn from(err: sqlx::Error) -> Self {
