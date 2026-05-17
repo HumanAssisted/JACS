@@ -8,6 +8,7 @@
 //! `docs/jacs/JACS_WASM_PRD.md` for the full split rationale.
 
 pub mod agent;
+pub mod agreements;
 pub mod canonical;
 pub mod envelope;
 pub mod errors;
