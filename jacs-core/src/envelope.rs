@@ -288,20 +288,59 @@ pub fn encrypt_private_key(private_key: &[u8], password: &str) -> Result<Vec<u8>
     encrypt_v2_envelope(private_key, password)
 }
 
+/// Test whether the input begins with a reserved 4-byte magic prefix of
+/// the shape `J[A-Z]{2}[0-9]` (e.g. `JAA1`, `JAC2`). These prefixes are
+/// reserved for future envelope formats — typically memory-hard KDF
+/// variants or post-quantum-friendly AEAD wrappers — and must be rejected
+/// early so they aren't misclassified as legacy raw-binary PBKDF2
+/// truncation noise (which would surface as a confusing `InvalidPassword`
+/// after the 100k-iteration fallback fails).
+///
+/// V2 envelopes always start with `{` (modulo whitespace), so they cannot
+/// collide with this rule. Legacy PBKDF2 envelopes start with the first
+/// byte of a random 16-byte salt; the probability that those 4 random
+/// bytes form a J/A-Z/A-Z/0-9 ASCII prefix is `1 / (256^3 * 26/256) ≈
+/// 1/170k` — small enough that mis-rejecting one in practice is
+/// vanishingly unlikely, and the failure mode (typed
+/// `UnsupportedAlgorithm` vs `InvalidPassword`) is benign either way.
+fn reserved_magic_prefix(input: &[u8]) -> Option<&str> {
+    if input.len() < 4 {
+        return None;
+    }
+    let head = &input[..4];
+    if head[0] == b'J'
+        && head[1].is_ascii_uppercase()
+        && head[2].is_ascii_uppercase()
+        && head[3].is_ascii_digit()
+    {
+        // SAFETY: just checked ASCII.
+        Some(std::str::from_utf8(head).expect("ascii prefix is valid utf8"))
+    } else {
+        None
+    }
+}
+
 /// Decrypt an encrypted private key. Sniffs the input and dispatches to
 /// either the V2 JSON envelope reader or the legacy raw-binary PBKDF2
 /// reader (with the 100k iteration fallback).
 ///
 /// Returns `CoreError::InvalidPassword` for AEAD-tag mismatches,
 /// `CoreError::MalformedEnvelope` for structural problems,
-/// `CoreError::UnsupportedAlgorithm` for unknown envelope versions or
-/// ciphers, and `CoreError::DecryptionFailed` for KDF errors.
+/// `CoreError::UnsupportedAlgorithm` for unknown envelope versions,
+/// ciphers, or reserved future magic prefixes (e.g. `JAA1`), and
+/// `CoreError::DecryptionFailed` for KDF errors.
 pub fn decrypt_private_key(
     encrypted_key_with_salt_and_nonce: &[u8],
     password: &str,
 ) -> Result<ZeroizingVec, CoreError> {
     if let Some(decrypted) = decrypt_v2_envelope(encrypted_key_with_salt_and_nonce, password)? {
         return Ok(ZeroizingVec::new(decrypted));
+    }
+
+    // Reject reserved 4-byte magic prefixes (e.g. `JAA1`) before the
+    // legacy PBKDF2 reader sees them. See `reserved_magic_prefix` doc.
+    if let Some(prefix) = reserved_magic_prefix(encrypted_key_with_salt_and_nonce) {
+        return Err(CoreError::UnsupportedAlgorithm(prefix.to_string()));
     }
 
     if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
