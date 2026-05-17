@@ -157,6 +157,80 @@ fn v2_envelope_with_wrong_version_returns_unsupported_algorithm() {
     assert!(matches!(err, CoreError::UnsupportedAlgorithm(_)), "got {err:?}");
 }
 
+// =========================================================================
+// Wave 4 / Task 008 — reserved magic-prefix rejection.
+//
+// V1 supports two envelope formats: the V2 JSON Argon2id envelope (starts
+// with `{`) and the legacy raw-binary PBKDF2 envelope (starts with the
+// first byte of a random salt). Inputs that start with an ASCII prefix
+// matching `^J[A-Z]{2}[0-9]$` (e.g. `JAA1`, `JAC2`) are reserved for
+// future envelope formats and must be rejected as `UnsupportedAlgorithm`
+// instead of being misclassified as legacy PBKDF2 truncation noise.
+// =========================================================================
+
+#[test]
+fn argon2id_fixture_still_decrypts_after_magic_guard() {
+    // V2 envelopes begin with `{`, so the magic-prefix guard must not
+    // touch them. This is the cross-compat oracle.
+    let decrypted = decrypt_private_key(FIXTURE_ARGON2ID, FIXTURE_PASSWORD)
+        .expect("Argon2id fixture must still decrypt after the magic-prefix guard");
+    assert_eq!(decrypted.as_slice(), FIXTURE_PKCS8);
+}
+
+#[test]
+fn pbkdf2_fixture_still_decrypts_after_magic_guard() {
+    // The legacy PBKDF2 fixture starts with random salt bytes, not a
+    // reserved magic prefix; the guard must let it through.
+    let decrypted = decrypt_private_key(FIXTURE_PBKDF2, FIXTURE_PASSWORD)
+        .expect("PBKDF2 fixture must still decrypt after the magic-prefix guard");
+    assert_eq!(decrypted.as_slice(), FIXTURE_PKCS8);
+}
+
+#[test]
+fn reserved_jaa1_magic_prefix_rejected() {
+    // 4-byte reserved prefix + 32 bytes of arbitrary tail. Long enough
+    // that the legacy PBKDF2 reader *would* otherwise accept it as
+    // "salt + nonce + ciphertext" and fail with InvalidPassword (an
+    // attacker-controlled mislabeling). The magic-prefix guard fires
+    // first and returns UnsupportedAlgorithm("JAA1").
+    let mut input = b"JAA1".to_vec();
+    input.extend_from_slice(&[0u8; 32]);
+    let err = decrypt_private_key(&input, "anything").expect_err("must fail");
+    match err {
+        CoreError::UnsupportedAlgorithm(prefix) => {
+            assert_eq!(prefix, "JAA1", "reserved-prefix variant must carry the prefix");
+        }
+        other => panic!("expected UnsupportedAlgorithm(JAA1), got {other:?}"),
+    }
+}
+
+#[test]
+fn reserved_jac2_magic_prefix_rejected() {
+    let mut input = b"JAC2".to_vec();
+    input.extend_from_slice(&[0u8; 32]);
+    let err = decrypt_private_key(&input, "anything").expect_err("must fail");
+    match err {
+        CoreError::UnsupportedAlgorithm(prefix) => assert_eq!(prefix, "JAC2"),
+        other => panic!("expected UnsupportedAlgorithm(JAC2), got {other:?}"),
+    }
+}
+
+#[test]
+fn short_envelope_rejected() {
+    // 1-3 byte inputs that aren't JSON (no `{`) and aren't a 4-byte
+    // reserved prefix must still fail cleanly as MalformedEnvelope, not
+    // panic.
+    for input in [&[0u8][..], &[0u8, 0u8][..], &[0u8, 0u8, 0u8][..]] {
+        let err = decrypt_private_key(input, "anything")
+            .expect_err("short non-JSON input must be rejected");
+        assert!(
+            matches!(err, CoreError::MalformedEnvelope(_)),
+            "got {err:?} for input len {}",
+            input.len()
+        );
+    }
+}
+
 // Touch the no-warning unused-import lint by referencing the module.
 #[allow(unused)]
 fn _module_smoke() -> &'static str {
