@@ -1,23 +1,30 @@
-//! ML-DSA (FIPS-204) signature implementation for post-quantum security
-//! Uses ML-DSA-87 (security level 5)
+//! Native facade for ML-DSA (FIPS-204) post-quantum signatures.
+//!
+//! After Task 011 (Wave 6), the protocol-layer pq2025 code lives in
+//! [`jacs_core::sign::Pq2025Signer`]. This module is now a thin wrapper
+//! that preserves the historical native API surface (`generate_keys`,
+//! `sign_string`, `verify_string`) plus the existing `tracing` log
+//! lines (PRD §10.1 — operational surface unchanged).
 
-use super::constants::{
-    ML_DSA_87_PRIVATE_KEY_SIZE, ML_DSA_87_PUBLIC_KEY_SIZE, ML_DSA_87_SIGNATURE_SIZE,
-};
 use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
-use fips204::ml_dsa_87;
-use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
+use jacs_core::sign::{DetachedSigner, Pq2025Signer};
 use tracing::{debug, trace, warn};
 
-/// Generate ML-DSA-87 keypair
-/// Returns (private_key_bytes, public_key_bytes)
+/// Generate an ML-DSA-87 keypair.
+///
+/// Returns `(private_key_bytes, public_key_bytes)`.
 #[must_use = "generated keys must be stored securely"]
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
-    let (pk, sk) = ml_dsa_87::KG::try_keygen()
-        .map_err(|e| JacsError::CryptoError(format!("ML-DSA-87 key generation failed: {}", e)))?;
-    let sk_bytes = sk.into_bytes().to_vec();
-    let pk_bytes = pk.into_bytes().to_vec();
+    let signer = Pq2025Signer::generate()
+        .map_err(|e| JacsError::CryptoError(format!("ML-DSA-87 key generation failed: {e}")))?;
+    let pk_bytes = signer.public_key().to_vec();
+    // Pull the private bytes back out via export. We do this by re-signing
+    // a known message and re-deriving — but the simpler path is the
+    // export helper on the signer.
+    let sk_bytes = signer
+        .export_private_bytes()
+        .map_err(|e| JacsError::CryptoError(format!("ML-DSA-87 export failed: {e}")))?;
     trace!(
         sk_len = sk_bytes.len(),
         pk_len = pk_bytes.len(),
@@ -26,38 +33,34 @@ pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
     Ok((sk_bytes, pk_bytes))
 }
 
-/// Sign string data with ML-DSA-87 private key
+/// Sign string data with an ML-DSA-87 private key.
 #[must_use = "signature must be stored or transmitted"]
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, JacsError> {
     trace!(data_len = data.len(), "ML-DSA-87 signing starting");
-    // Convert Vec<u8> to fixed-size array
-    let sk_array: [u8; ML_DSA_87_PRIVATE_KEY_SIZE] =
-        secret_key.try_into().map_err(|v: Vec<u8>| {
-            format!(
-                "Invalid private key length for ML-DSA-87: expected {} bytes, got {} bytes",
-                ML_DSA_87_PRIVATE_KEY_SIZE,
-                v.len()
-            )
-        })?;
-    let sk = ml_dsa_87::PrivateKey::try_from_bytes(sk_array).map_err(|e| {
-        JacsError::CryptoError(format!(
-            "ML-DSA-87 private key deserialization failed: {}",
-            e
-        ))
+    let signer = Pq2025Signer::from_private_bytes(&secret_key).map_err(|e| {
+        // Preserve the historical message shape that existing tests
+        // (`test_sign_invalid_private_key_length_rejected`) accept.
+        let msg = e.to_string();
+        if msg.contains("expected") && msg.contains("got") {
+            JacsError::from(format!(
+                "Invalid private key length for ML-DSA-87: expected 4896 bytes, got {} bytes",
+                secret_key.len()
+            ))
+        } else {
+            JacsError::CryptoError(format!(
+                "ML-DSA-87 private key deserialization failed: {msg}"
+            ))
+        }
     })?;
-    // TODO(post-quantum-hardening): We currently sign with the empty ML-DSA
-    // context for compatibility. A future hardening pass could switch this to a
-    // fixed JACS domain-separation context (for example `b"jacs:document:v1"`)
-    // and record that context in signature metadata so verification can use it.
-    let sig = sk
-        .try_sign(data.as_bytes(), b"")
-        .map_err(|e| JacsError::CryptoError(format!("ML-DSA-87 signing failed: {}", e)))?; // empty context - returns [u8; 4627]
+    let sig = signer
+        .sign(data.as_bytes())
+        .map_err(|e| JacsError::CryptoError(format!("ML-DSA-87 signing failed: {e}")))?;
     let encoded = B64.encode(sig);
     trace!(signature_len = encoded.len(), "ML-DSA-87 signing completed");
     Ok(encoded)
 }
 
-/// Verify ML-DSA-87 signature
+/// Verify an ML-DSA-87 signature.
 #[must_use = "signature verification result must be checked"]
 pub fn verify_string(
     public_key: Vec<u8>,
@@ -69,45 +72,20 @@ pub fn verify_string(
         public_key_len = public_key.len(),
         "ML-DSA-87 verification starting"
     );
-    // Convert Vec<u8> to fixed-size array
-    let pk_array: [u8; ML_DSA_87_PUBLIC_KEY_SIZE] =
-        public_key.try_into().map_err(|v: Vec<u8>| {
-            format!(
-                "Invalid public key length for ML-DSA-87: expected {} bytes, got {} bytes",
-                ML_DSA_87_PUBLIC_KEY_SIZE,
-                v.len()
-            )
-        })?;
-    let pk = ml_dsa_87::PublicKey::try_from_bytes(pk_array).map_err(|e| {
-        JacsError::CryptoError(format!(
-            "ML-DSA-87 public key deserialization failed: {}",
-            e
-        ))
-    })?;
-
     let sig_bytes = B64
         .decode(signature_base64)
         .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?;
-    let sig_array: [u8; ML_DSA_87_SIGNATURE_SIZE] =
-        sig_bytes.try_into().map_err(|v: Vec<u8>| {
-            format!(
-                "Invalid signature length for ML-DSA-87: expected {} bytes, got {} bytes",
-                ML_DSA_87_SIGNATURE_SIZE,
-                v.len()
-            )
-        })?;
-
-    // TODO(post-quantum-hardening): If JACS introduces a non-empty ML-DSA
-    // context, verification should read the stored context from signature
-    // metadata and fall back to `b""` for legacy documents signed before the
-    // migration.
-    // verify() returns bool, not Result
-    if pk.verify(data.as_bytes(), &sig_array, b"") {
-        debug!("ML-DSA-87 signature verification succeeded");
-        Ok(())
-    } else {
-        warn!("ML-DSA-87 signature verification failed");
-        Err("ML-DSA signature verification failed".into())
+    match Pq2025Signer::verify(&public_key, data.as_bytes(), &sig_bytes) {
+        Ok(()) => {
+            debug!("ML-DSA-87 signature verification succeeded");
+            Ok(())
+        }
+        Err(e) => {
+            warn!("ML-DSA-87 signature verification failed");
+            Err(JacsError::from(format!(
+                "ML-DSA signature verification failed: {e}"
+            )))
+        }
     }
 }
 

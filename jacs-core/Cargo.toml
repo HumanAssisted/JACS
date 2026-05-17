@@ -69,7 +69,7 @@ fips204 = "0.4.6"
 # `ring` path emits; `zeroize` wipes the private key on drop; `rand_core`
 # wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
 # §4.5.
-ed25519-dalek = { version = "2", default-features = false, features = ["pkcs8", "zeroize", "rand_core"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
 
 [dev-dependencies]
 serde_json = "1.0"
