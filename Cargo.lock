@@ -3085,12 +3085,15 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "jacs-core",
+ "js-sys",
  "secrecy",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wasm-bindgen-test",
+ "web-sys",
 ]
 
 [[package]]

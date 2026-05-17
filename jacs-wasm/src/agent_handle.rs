@@ -14,10 +14,12 @@
 use std::sync::{Arc, Mutex};
 
 use base64::Engine as _;
+use jacs_core::agreements;
 use jacs_core::{
     AgentMaterial, CoreAgent, CoreError, SigningAlgorithm, UnlockSecret, VerificationOutcome,
 };
 use secrecy::SecretBox;
+use serde::Deserialize;
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
@@ -219,6 +221,158 @@ impl CoreAgentHandle {
         agent.clear_secrets();
         Ok(())
     }
+
+    // =====================================================================
+    // Agreements (Task 018)
+    // =====================================================================
+
+    /// Append this agent's signature to a multi-party `jacsAgreement`
+    /// document, returning the updated document as a JSON string.
+    ///
+    /// `agreement_json` must already contain a `jacsAgreement` skeleton
+    /// (call `jacs_core::agreements::create` or the equivalent JS helper
+    /// to build one). `role` is recorded on the signature entry for
+    /// traceability and is **not** part of the canonical bytes (so it
+    /// can be edited after signing without invalidating the signature).
+    ///
+    /// Returns `JacsWasmError { code: "Locked" }` if `clearSecrets` has
+    /// been called.
+    #[wasm_bindgen(js_name = signAgreementJson)]
+    pub fn sign_agreement_json(
+        &self,
+        agreement_json: &str,
+        role: &str,
+    ) -> Result<String, JsError> {
+        let mut document: Value = serde_json::from_str(agreement_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agreement JSON: {}",
+                e
+            )))
+        })?;
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        agreements::sign(&mut agent, &mut document, role).map_err(map_core_err)?;
+        serde_json::to_string(&document).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize agreement: {}",
+                e
+            )))
+        })
+    }
+
+    /// Verify every signature on a multi-party `jacsAgreement` document
+    /// against the supplied list of signer keys.
+    ///
+    /// `signers_json` is a JSON array of objects shaped
+    /// `{ agentId, publicKeyBase64, algorithm }`. `algorithm` is one of
+    /// `"ed25519"` / `"pq2025"`; `publicKeyBase64` is the standard
+    /// base64 encoding of the raw public-key bytes. Signers absent from
+    /// the list surface as `SignerKeyMissing` in the per-signer outcome
+    /// (the call does **not** throw — it returns a structured
+    /// `QuorumOutcome` JSON the caller can inspect).
+    ///
+    /// Does not require the handle to be unlocked.
+    #[wasm_bindgen(js_name = verifyAgreementJson)]
+    pub fn verify_agreement_json(
+        &self,
+        agreement_json: &str,
+        signers_json: &str,
+    ) -> Result<String, JsError> {
+        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agreement JSON: {}",
+                e
+            )))
+        })?;
+        let signer_specs: Vec<SignerSpec> =
+            serde_json::from_str(signers_json).map_err(|e| {
+                map_core_err(CoreError::MalformedDocument(format!(
+                    "invalid signers JSON (expected `[{{agentId, publicKeyBase64, algorithm}}]`): {}",
+                    e
+                )))
+            })?;
+
+        // Decode each spec into `(agent_id, public_key_bytes, algorithm)`
+        // so we can borrow the references shape `agreements::verify`
+        // wants. We keep the decoded bytes alive in `decoded_keys` so
+        // the borrows stay valid for the call.
+        let mut decoded: Vec<(String, Vec<u8>, SigningAlgorithm)> =
+            Vec::with_capacity(signer_specs.len());
+        for spec in signer_specs {
+            let algo = parse_algorithm(&spec.algorithm)?;
+            let pk = base64::engine::general_purpose::STANDARD
+                .decode(spec.public_key_base64.as_bytes())
+                .map_err(|e| {
+                    map_core_err(CoreError::MalformedKey(format!(
+                        "invalid base64 public key for signer '{}': {}",
+                        spec.agent_id, e
+                    )))
+                })?;
+            decoded.push((spec.agent_id, pk, algo));
+        }
+        let signers_ref: Vec<(&str, &[u8], SigningAlgorithm)> = decoded
+            .iter()
+            .map(|(id, pk, algo)| (id.as_str(), pk.as_slice(), *algo))
+            .collect();
+
+        let outcome = agreements::verify(&document, &signers_ref).map_err(map_core_err)?;
+        serde_json::to_string(&outcome).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize quorum outcome: {}",
+                e
+            )))
+        })
+    }
+}
+
+/// JS-facing shape of one entry in `verifyAgreementJson`'s `signers`
+/// array. Field names match the TypeScript surface declared in PRD §4.3
+/// (`agentId`, `publicKeyBase64`, `algorithm`).
+#[derive(Debug, Deserialize)]
+struct SignerSpec {
+    #[serde(rename = "agentId")]
+    agent_id: String,
+    #[serde(rename = "publicKeyBase64")]
+    public_key_base64: String,
+    algorithm: String,
+}
+
+/// Build an empty `jacsAgreement` skeleton on `document_json` and return
+/// the updated document JSON. Convenience entry point exposed to JS so
+/// browser callers can produce a signable agreement without re-
+/// implementing the field-name + array shape `jacs_core::agreements`
+/// expects. Not strictly required by PRD §4.3 (the agreement object can
+/// be constructed in JS by hand) — present so the TypeScript wrapper in
+/// Task 020 has a single import that does the right thing.
+#[wasm_bindgen(js_name = createAgreementJson)]
+pub fn create_agreement_json(
+    document_json: &str,
+    agent_ids_json: &str,
+    question: Option<String>,
+    context: Option<String>,
+) -> Result<String, JsError> {
+    let document: Value = serde_json::from_str(document_json).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "invalid document JSON: {}",
+            e
+        )))
+    })?;
+    let agent_ids: Vec<String> = serde_json::from_str(agent_ids_json).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "invalid agent IDs JSON (expected `[\"id1\",\"id2\"]`): {}",
+            e
+        )))
+    })?;
+    let updated = agreements::create(&document, &agent_ids, question.as_deref(), context.as_deref())
+        .map_err(map_core_err)?;
+    serde_json::to_string(&updated).map_err(|e| {
+        map_core_err(CoreError::MalformedDocument(format!(
+            "serialize agreement skeleton: {}",
+            e
+        )))
+    })
 }
 
 // ---------------------------------------------------------------------------
