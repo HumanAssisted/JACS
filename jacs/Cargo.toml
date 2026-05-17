@@ -107,6 +107,12 @@ tokio = { version = "1.0", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 jacs-binding-core = { path = "../binding-core" }
+# Direct canonicalizer access used by jacs/tests/utils.rs +
+# jacs/tests/security_hardening_tests.rs. After Task 005 moved the
+# canonicalization runtime into jacs-core (no direct dep in jacs),
+# these test files still need the raw helper for their fixture
+# synthesizers — re-add as a dev-only dependency.
+serde_json_canonicalizer = "0.3.2"
 color-eyre = "0.6"
 criterion = "0.6.0"
 mdbook = "0.4.48"
