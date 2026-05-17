@@ -55,6 +55,12 @@ web-sys = { version = "0.3", features = [
     "WorkerType",
     "MessageEvent",
     "DedicatedWorkerGlobalScope",
+    # Issue 006 / Task 031: `metrics()` measures sign/verify durations
+    # with `performance.now()`, and `JACS_WASM_DEBUG` logs via
+    # `console.debug`. These are tiny features — they do not pull in
+    # any new native-only crates (verified by `forbidden-deps.sh`).
+    "Performance",
+    "console",
 ] }
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"

@@ -1,22 +1,24 @@
 // `@jacs/wasm` main entry point. Hand-written wrapper around the
-// wasm-bindgen output. Adds:
+// wasm-bindgen output (Issues 002 / 007 / Tasks 027 / 032). The wasm-
+// bindgen functions are imported under `_*Raw` aliases; the *public*
+// names re-exported below are PRD §4.3-shaped:
 //
-// - A `localStore` object that assembles the camelCase free functions
-//   exposed by the wasm module (PRD §4.3).
-// - JSDoc + named re-exports for IDE completion.
-// - `initJacsWasm` accepts an optional `module_or_path` like the
-//   generated default; if omitted, falls back to the bundler-friendly
-//   `new URL("./jacs_wasm_bg.wasm", import.meta.url)`.
+// - All constructors are `async` and return `Promise<CoreAgentHandle>`.
+// - `importEncryptedAgentFiles` takes an *object* of files + a password
+//   (no positional `algorithm` parameter — the algorithm is derived
+//   from `publicKeyBytes.length`).
+// - A `localStore` object aggregates the camelCase free functions
+//   exposed by the wasm module.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import __wbg_init, {
   CoreAgentHandle,
   createAgreementJson,
-  createEphemeral,
-  createVerifier,
-  importEncryptedAgent,
-  importEncryptedAgentFiles,
+  createEphemeral as _createEphemeralRaw,
+  createVerifier as _createVerifierRaw,
+  importEncryptedAgent as _importEncryptedAgentRaw,
+  importEncryptedAgentFiles as _importEncryptedAgentFilesRaw,
   initJacsWasm as initJacsWasmInner,
   localStoreClearAll,
   localStoreListKeys,
@@ -36,11 +38,17 @@ let initPromise: Promise<void> | null = null;
  * import.meta.url)`).
  */
 export async function initJacsWasm(
-  module_or_path?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module,
+  module_or_path?:
+    | RequestInfo
+    | URL
+    | Response
+    | BufferSource
+    | WebAssembly.Module,
 ): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
-      const target = module_or_path ?? new URL("./jacs_wasm_bg.wasm", import.meta.url);
+      const target =
+        module_or_path ?? new URL("./jacs_wasm_bg.wasm", import.meta.url);
       await __wbg_init(target as any);
       initJacsWasmInner();
     })();
@@ -48,16 +56,7 @@ export async function initJacsWasm(
   return initPromise;
 }
 
-// Re-export the wasm-bindgen handle + constructors verbatim.
-export {
-  CoreAgentHandle,
-  createAgreementJson,
-  createEphemeral,
-  createVerifier,
-  importEncryptedAgent,
-  importEncryptedAgentFiles,
-};
-
+/** JS-facing algorithm tag. */
 export type Algorithm = "ed25519" | "pq2025";
 
 /**
@@ -71,11 +70,121 @@ export interface JacsWasmError {
   details?: unknown;
 }
 
+/** Argument shape of `importEncryptedAgentFiles`. */
+export interface EncryptedAgentFiles {
+  configText: string;
+  agentText: string;
+  publicKeyBytes: Uint8Array;
+  encryptedPrivateKeyBytes: Uint8Array;
+}
+
+// ---------------------------------------------------------------------------
+// Re-export the CoreAgentHandle type and helpers that don't need
+// reshaping. `createAgreementJson` is a free helper (matches PRD §4.3
+// for the optional skeleton-builder), and `CoreAgentHandle` is the
+// instance type returned by every constructor.
+// ---------------------------------------------------------------------------
+
+export { CoreAgentHandle, createAgreementJson };
+
+// ---------------------------------------------------------------------------
+// PRD §4.3 constructors — async wrappers that initialize wasm first
+// (idempotent) and return Promise<CoreAgentHandle>. Each one awaits
+// `initJacsWasm()` so callers can use any constructor before explicitly
+// initializing (matching the "no global agent state, init is idempotent"
+// guarantee in PRD §3.1).
+// ---------------------------------------------------------------------------
+
+/** Generate a fresh ephemeral agent for the given algorithm. */
+export async function createEphemeral(
+  algorithm: Algorithm,
+): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _createEphemeralRaw(algorithm);
+}
+
+/** Import an encrypted agent from a JSON-serialized `AgentMaterial`
+ * blob + password. */
+export async function importEncryptedAgent(
+  materialJson: string,
+  password: string,
+): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _importEncryptedAgentRaw(materialJson, password);
+}
+
+/**
+ * Import an encrypted agent from four separate file-shaped buffers
+ * (browser file pickers). The algorithm is derived from
+ * `publicKeyBytes.length` (32 → ed25519, otherwise → pq2025).
+ *
+ * PRD §4.3 declares the surface as `(files, password)` — no positional
+ * algorithm parameter — so the algorithm is inferred from the key
+ * shape. A bad / unknown size throws a `JacsWasmError` with code
+ * `UnsupportedAlgorithm` *before* dispatching to the wasm layer so the
+ * error is observable on the JS side without round-tripping through
+ * Rust.
+ */
+export async function importEncryptedAgentFiles(
+  files: EncryptedAgentFiles,
+  password: string,
+): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  const algorithm = algorithmFromPublicKeyLength(files.publicKeyBytes.length);
+  return _importEncryptedAgentFilesRaw(
+    files.configText,
+    files.agentText,
+    files.publicKeyBytes,
+    files.encryptedPrivateKeyBytes,
+    password,
+    algorithm,
+  );
+}
+
+/** Build a verify-only handle from a base64 public key. */
+export async function createVerifier(
+  publicKeyBase64: string,
+  algorithm: Algorithm,
+): Promise<CoreAgentHandle> {
+  await initJacsWasm();
+  return _createVerifierRaw(publicKeyBase64, algorithm);
+}
+
+/** Map raw public-key length to the algorithm tag. Ed25519 keys are
+ * 32 bytes; ML-DSA-87 (pq2025) public keys are 2592 bytes. Any other
+ * length is unknown.
+ *
+ * Throws a `JacsWasmError`-shaped Error before crossing the wasm
+ * boundary so callers get a typed error without a Rust round-trip.
+ *
+ * @internal exported for tests.
+ */
+export function algorithmFromPublicKeyLength(length: number): Algorithm {
+  // 32-byte ed25519 public key (raw, no SPKI wrapper).
+  if (length === 32) return "ed25519";
+  // 2592-byte ML-DSA-87 public key (pq2025).
+  if (length === 2592) return "pq2025";
+  const err: JacsWasmError = {
+    code: "UnsupportedAlgorithm",
+    message: `cannot infer signing algorithm from public-key length ${length} (expected 32 for ed25519 or 2592 for pq2025)`,
+  };
+  // `JacsWasmError` is the wire shape; throw a plain Error whose
+  // message is the JSON form so callers can parse it the same way they
+  // do every other error from this package.
+  throw Object.assign(new Error(JSON.stringify(err)), err);
+}
+
+// ---------------------------------------------------------------------------
+// localStore — wrapped around the wasm-bindgen free functions so JS
+// callers write `localStore.saveDocument(...)` per PRD §4.3.
+// ---------------------------------------------------------------------------
+
 /**
  * Persistent storage helpers. Wraps `window.localStorage` with a
  * strict policy: every key is namespaced with `jacs:` internally;
- * payloads containing PEM private blocks or top-level `password`
- * fields are refused.
+ * payloads containing PEM private blocks, top-level `password` fields,
+ * or invalid encrypted-envelope shapes are refused (Task 029 / Issue
+ * 004).
  *
  * See PRD §3.1 / §5.4. The load-bearing guarantee is the secret-leak
  * walk test exercised in CI.

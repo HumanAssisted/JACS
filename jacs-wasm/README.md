@@ -118,10 +118,15 @@ the page's JS.
   hostile third-party JS on the same origin, the keys are reachable from
   that JS. Use a hardware key, a secure-enclave-backed
   WebCrypto `CryptoKey`, or a server-side signing endpoint instead.
-- **Persist nothing plaintext.** `localStore` (below) refuses to write
-  raw private keys, PEM `BEGIN PRIVATE KEY` blocks, or top-level
-  `password` fields. Only the AES-256-GCM/Argon2id encrypted envelope
-  hits `localStorage`.
+- **Persist nothing plaintext.** `localStore` (below) refuses payloads
+  containing PEM `BEGIN PRIVATE KEY` blocks or any object key named
+  `password` / `passphrase` / `secret` (case-insensitive, walked
+  recursively). On `saveEncryptedAgent`, the payload must also parse
+  as an `AgentMaterial` JSON object whose `encrypted_private_key` is
+  either a V2 envelope (`jacsEncryptedPrivateKeyVersion: 2`) or a
+  long-enough PBKDF2 byte-blob (≥ 44 bytes after base64 decode) —
+  bare raw 32-byte private keys are refused before anything touches
+  `localStorage`.
 - **Treat `clearSecrets()` as a "logout" primitive.** Call it as soon as
   the user is done signing. It zeroes the in-memory private key;
   subsequent sign calls throw `{ code: "Locked" }`. Verification
@@ -151,6 +156,27 @@ localStore.listKeys("doc-");
 localStore.remove("doc-1");
 localStore.clearAll();                                       // only removes `jacs:`-prefixed keys
 ```
+
+## Observability (`metrics()` + `JACS_WASM_DEBUG`)
+
+The browser has no stdout, no log files, no `/metrics` endpoint —
+`@jacs/wasm` does not pretend otherwise. What it does give you:
+
+- **Per-handle metrics.** Every `CoreAgentHandle` keeps in-memory
+  counters and last-call durations. Call `agent.metrics()` to get a
+  JSON snapshot:
+  ```ts
+  JSON.parse(agent.metrics());
+  // { signCount: 3, verifyCount: 7,
+  //   lastSignDurationMs: 1.42, lastVerifyDurationMs: 0.13 }
+  ```
+  Pipe the numbers wherever you already send analytics. Counters are
+  per-handle — independent handles do not share state.
+- **Debug logging via `globalThis.JACS_WASM_DEBUG`.** Set
+  `globalThis.JACS_WASM_DEBUG = true` *before* a sign / verify /
+  clearSecrets call to emit a `console.debug` line bracketing the
+  operation. Off by default — no spam in production. The flag is
+  read every call, so flipping it at runtime takes immediate effect.
 
 ## Workers (`@jacs/wasm/worker`)
 

@@ -117,8 +117,10 @@ fn err_to_js(err: LocalStoreError) -> JsError {
 /// Refuse a payload that obviously carries plaintext secret material:
 ///
 /// 1. Any PEM private-key block (literal substring `BEGIN PRIVATE KEY`).
-/// 2. A top-level JSON object with a `"password"` property (case-
-///    insensitive on the key name).
+/// 2. A JSON value containing any object key named `password`,
+///    `passphrase`, or `secret` (case-insensitive on the key name) at
+///    **any** depth — the walk is recursive so a nested credential is
+///    refused too.
 ///
 /// This is **not** a security boundary — browser memory is JS-accessible —
 /// it is a tripwire so a caller who accidentally hands us a password or a
@@ -132,24 +134,224 @@ pub fn validate_no_plaintext_secrets(payload: &str) -> Result<(), LocalStoreErro
             PEM_PRIVATE_KEY_MARKER
         )));
     }
-    // Cheap JSON sniff: only enforce the password-key check on payloads
-    // that parse as a JSON object. We do not walk nested objects — the
-    // contract is intentionally narrow (defense-in-depth, not validation
-    // logic; nested cases are the caller's concern, but the top-level
-    // `password` field catches the most common mistake of stuffing a raw
-    // login credential into the same blob as the encrypted material).
+    // Recursive JSON walk for credential-shaped keys. We *only* walk
+    // payloads that parse as JSON; non-JSON falls through with just the
+    // PEM check above. The intent is defense-in-depth, not validation
+    // logic: a caller who serializes an object containing a `password`,
+    // `passphrase`, or `secret` field surfaces the error before anything
+    // touches localStorage.
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) {
-        if let Some(obj) = value.as_object() {
-            for (key, _) in obj {
-                if key.eq_ignore_ascii_case("password") {
-                    return Err(LocalStoreError::RefusedPayload(
-                        "payload contains a top-level 'password' field — refusing to persist a plaintext password in localStorage".into(),
-                    ));
-                }
-            }
+        if let Some(found) = find_credential_key(&value) {
+            return Err(LocalStoreError::RefusedPayload(format!(
+                "payload contains a '{}' field at JSON path '{}' — refusing to persist what looks like a plaintext credential in localStorage",
+                found.matched_key, found.json_pointer
+            )));
         }
     }
     Ok(())
+}
+
+/// JSON keys we treat as credential-shaped (case-insensitive match).
+const CREDENTIAL_KEY_NAMES: &[&str] = &["password", "passphrase", "secret"];
+
+/// Result of a credential-key walk — the key name we matched and the
+/// JSON Pointer (RFC 6901) of where we found it.
+struct CredentialMatch {
+    matched_key: String,
+    json_pointer: String,
+}
+
+/// Walk `value` recursively, returning the first object key whose name
+/// matches any of [`CREDENTIAL_KEY_NAMES`] (case-insensitive).
+fn find_credential_key(value: &serde_json::Value) -> Option<CredentialMatch> {
+    walk(value, String::new())
+}
+
+fn walk(value: &serde_json::Value, pointer: String) -> Option<CredentialMatch> {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map {
+                if CREDENTIAL_KEY_NAMES
+                    .iter()
+                    .any(|k| key.eq_ignore_ascii_case(k))
+                {
+                    return Some(CredentialMatch {
+                        matched_key: key.clone(),
+                        json_pointer: format!("{}/{}", pointer, escape_pointer_segment(key)),
+                    });
+                }
+                if let Some(found) = walk(
+                    child,
+                    format!("{}/{}", pointer, escape_pointer_segment(key)),
+                ) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        serde_json::Value::Array(arr) => {
+            for (idx, child) in arr.iter().enumerate() {
+                if let Some(found) = walk(child, format!("{}/{}", pointer, idx)) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Escape a JSON Pointer segment per RFC 6901 §4: `~` → `~0`, `/` → `~1`.
+fn escape_pointer_segment(segment: &str) -> String {
+    segment.replace('~', "~0").replace('/', "~1")
+}
+
+// ---------------------------------------------------------------------------
+// Encrypted-material shape check — load-bearing for `save_encrypted_agent`
+// (Issue 004 / Task 029). The function looks for an
+// `encrypted_private_key` field and refuses the payload unless the value
+// looks like one of the two on-disk envelopes jacs-core ships:
+//
+// 1. V2 JSON envelope: a JSON object containing
+//    `jacsEncryptedPrivateKeyVersion: 2` + ciphertext/salt/nonce fields.
+// 2. Legacy raw-binary PBKDF2 envelope: a base64 string that decodes to
+//    at least 28 bytes (16-byte salt + 12-byte nonce + ciphertext).
+//
+// Anything else — a raw 32-byte private key base64'd, a hex key, a JSON
+// blob without an envelope shape — is refused as `RefusedPayload`. The
+// goal is to make the "localStorage never receives a raw private key"
+// guarantee in PRD §3.1 enforceable.
+// ---------------------------------------------------------------------------
+
+/// Minimum length of a PBKDF2 raw-binary envelope after base64 decode:
+/// 16-byte salt + 12-byte nonce + at least 16 bytes of ciphertext / tag.
+/// In practice envelopes are much larger (private key + GCM tag) but
+/// 28 is the lower bound that rejects bare 32-byte raw key uploads.
+const MIN_PBKDF2_ENVELOPE_BYTES: usize = 16 + 12 + 16;
+
+/// Maximum length of a payload we will treat as "might be a raw key
+/// dressed up as base64". A 32-byte ed25519 key base64-encodes to 44
+/// chars; a 64-byte signed-message base64-encodes to 88. PBKDF2
+/// envelopes are always longer than 88 chars (salt + nonce + ciphertext
+/// + tag → ~ 80+ chars at minimum, plus the private key bytes).
+const MAX_RAW_KEY_BASE64_LEN: usize = 88;
+
+/// Validate that the JSON payload looks like an `AgentMaterial` blob
+/// carrying a recognized encrypted-key envelope. Returns
+/// [`LocalStoreError::RefusedPayload`] if the `encrypted_private_key`
+/// field is missing, is shaped like a raw key, or otherwise does not
+/// match a known envelope.
+///
+/// Called only from [`save_encrypted_agent`]; `save_document` keeps the
+/// lighter `validate_no_plaintext_secrets` check because signed
+/// documents do not carry key material.
+pub fn validate_encrypted_material_shape(payload: &str) -> Result<(), LocalStoreError> {
+    let value: serde_json::Value = serde_json::from_str(payload).map_err(|e| {
+        LocalStoreError::RefusedPayload(format!(
+            "expected JSON-shaped AgentMaterial blob: {}",
+            e
+        ))
+    })?;
+    let obj = value.as_object().ok_or_else(|| {
+        LocalStoreError::RefusedPayload(
+            "expected JSON object (AgentMaterial); got non-object".into(),
+        )
+    })?;
+    let enc = obj
+        .get("encrypted_private_key")
+        .ok_or_else(|| {
+            LocalStoreError::RefusedPayload(
+                "AgentMaterial missing 'encrypted_private_key' field".into(),
+            )
+        })?;
+    is_recognized_envelope(enc)
+}
+
+/// Sniff `value` and return `Ok(())` if it looks like a V2 JSON envelope
+/// or a long-enough PBKDF2 raw-binary envelope; otherwise return
+/// `RefusedPayload`.
+fn is_recognized_envelope(value: &serde_json::Value) -> Result<(), LocalStoreError> {
+    match value {
+        // V2 JSON envelope — match `{"jacsEncryptedPrivateKeyVersion": 2, ...}`.
+        serde_json::Value::Object(map) => {
+            if map.get("jacsEncryptedPrivateKeyVersion")
+                .and_then(|v| v.as_u64())
+                == Some(2)
+                && map.contains_key("ciphertext")
+                && map.contains_key("salt")
+                && map.contains_key("nonce")
+            {
+                Ok(())
+            } else {
+                Err(LocalStoreError::RefusedPayload(
+                    "'encrypted_private_key' object does not match the V2 JSON envelope shape \
+                     (need `jacsEncryptedPrivateKeyVersion: 2` + `ciphertext` + `salt` + `nonce`)"
+                        .into(),
+                ))
+            }
+        }
+        // Legacy PBKDF2 raw-binary envelope — base64 string that decodes
+        // to enough bytes for salt+nonce+ciphertext. A bare 32-byte raw
+        // key (base64 length 44) does not decode to ≥ 44 bytes, so this
+        // rejects it. A base64 of 32 raw bytes is 44 chars → decodes to
+        // 32 bytes → < MIN_PBKDF2_ENVELOPE_BYTES → refused.
+        serde_json::Value::Array(arr) => {
+            // Allow an integer-array encoding too (some serializers emit
+            // [u8] as JSON arrays). Same threshold applies.
+            if arr.len() >= MIN_PBKDF2_ENVELOPE_BYTES
+                && arr.iter().all(|v| v.as_u64().is_some_and(|n| n <= 255))
+            {
+                Ok(())
+            } else {
+                Err(LocalStoreError::RefusedPayload(format!(
+                    "'encrypted_private_key' byte-array length {} is below the {}-byte minimum for a PBKDF2 envelope (salt+nonce+ciphertext+tag)",
+                    arr.len(),
+                    MIN_PBKDF2_ENVELOPE_BYTES
+                )))
+            }
+        }
+        serde_json::Value::String(s) => {
+            // Base64-shaped string. Decode and require at least the
+            // PBKDF2 envelope minimum to rule out raw 32-byte keys.
+            use base64::Engine;
+            // Reject obvious raw-key sizes outright (44 chars = 32 raw
+            // bytes ed25519; well under MAX_RAW_KEY_BASE64_LEN). This is
+            // a cheap pre-decode check that avoids spending CPU on
+            // decoding garbage.
+            if s.len() <= MAX_RAW_KEY_BASE64_LEN {
+                return Err(LocalStoreError::RefusedPayload(format!(
+                    "'encrypted_private_key' base64 string length {} is too short to be a PBKDF2 envelope (looks like a raw key)",
+                    s.len()
+                )));
+            }
+            // Try standard base64 first, then url-safe. We only care
+            // about the byte count, not the contents.
+            let decoded_len = base64::engine::general_purpose::STANDARD
+                .decode(s.as_bytes())
+                .or_else(|_| {
+                    base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s.as_bytes())
+                })
+                .map_err(|e| {
+                    LocalStoreError::RefusedPayload(format!(
+                        "'encrypted_private_key' is not valid base64: {}",
+                        e
+                    ))
+                })?
+                .len();
+            if decoded_len >= MIN_PBKDF2_ENVELOPE_BYTES {
+                Ok(())
+            } else {
+                Err(LocalStoreError::RefusedPayload(format!(
+                    "'encrypted_private_key' base64 decodes to {} bytes — below the {}-byte minimum for a PBKDF2 envelope",
+                    decoded_len, MIN_PBKDF2_ENVELOPE_BYTES
+                )))
+            }
+        }
+        _ => Err(LocalStoreError::RefusedPayload(
+            "'encrypted_private_key' must be a V2 JSON envelope object, a PBKDF2 base64 string, or a PBKDF2 byte array"
+                .into(),
+        )),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -377,11 +579,18 @@ fn storage_key_at(s: &web_sys::Storage, index: u32) -> Result<Option<String>, Lo
 
 /// Persist an encrypted-agent material blob under `key`. Caller must have
 /// produced `material_json` via `coreAgent.exportEncryptedMaterial(...)`
-/// (or equivalent) — this helper does **not** encrypt anything itself; it
-/// only refuses to persist obvious plaintext via
-/// [`validate_no_plaintext_secrets`].
+/// (or equivalent). This helper:
+///
+/// 1. Runs the credential-key tripwire ([`validate_no_plaintext_secrets`])
+///    on the payload.
+/// 2. Requires the payload to parse as an `AgentMaterial` blob whose
+///    `encrypted_private_key` field is a recognized envelope shape
+///    ([`validate_encrypted_material_shape`]). This is the load-bearing
+///    check for the "localStorage never receives a raw private key"
+///    guarantee in PRD §3.1.
 pub fn save_encrypted_agent(key: &str, material_json: &str) -> Result<(), LocalStoreError> {
     validate_no_plaintext_secrets(material_json)?;
+    validate_encrypted_material_shape(material_json)?;
     let storage = storage_handle()?;
     storage_set_item(&storage, &namespaced(key), material_json)
 }
@@ -659,10 +868,23 @@ mod tests {
             use base64::Engine;
             base64::engine::general_purpose::STANDARD.encode(&private_key_bytes)
         };
-        // The encrypted blob — name it so the test surfaces what we
-        // expect to be safe to store (ciphertext + nonce + salt, no
-        // plaintext key material).
-        let encrypted_material = r#"{"jacsEncryptedPrivateKeyVersion":2,"cipher":"AES-256-GCM","ciphertext":"deadbeef","salt":"aaaa","nonce":"bbbb"}"#;
+        // The encrypted blob wrapped in an AgentMaterial-shaped object —
+        // matches the on-disk shape produced by jacs-core
+        // `coreAgent.exportEncryptedMaterial(...)`. The V2 JSON envelope
+        // is the value of `encrypted_private_key`.
+        let encrypted_material = r#"{
+            "config": {"agent_id": "a"},
+            "agent": {"jacsId": "a"},
+            "public_key": [1,2,3],
+            "encrypted_private_key": {
+                "jacsEncryptedPrivateKeyVersion": 2,
+                "cipher": "AES-256-GCM",
+                "ciphertext": "deadbeef",
+                "salt": "aaaa",
+                "nonce": "bbbb"
+            },
+            "algorithm": "ed25519"
+        }"#;
         save_encrypted_agent("agent-1", encrypted_material).expect("save material");
         let signed_doc = r#"{"jacsId":"abc","jacsSignature":{"signature":"sig","signingAlgorithm":"ed25519"}}"#;
         save_document("doc-1", signed_doc).expect("save doc");
@@ -688,6 +910,13 @@ mod tests {
             assert!(
                 !raw.contains(&private_key_b64),
                 "key '{}' leaked base64 raw private key",
+                key
+            );
+            // Also assert no debug-print form of the raw bytes leaked.
+            let private_key_debug = format!("{:?}", private_key_bytes);
+            assert!(
+                !raw.contains(&private_key_debug),
+                "key '{}' leaked debug-print form of raw private key",
                 key
             );
         }
@@ -728,5 +957,135 @@ mod tests {
         // check applies).
         let raw = "not json at all";
         assert!(validate_no_plaintext_secrets(raw).is_ok());
+    }
+
+    // ---------------------------------------------------------------
+    // Issue 004 / Task 029 — new negative tests for the strengthened
+    // tripwire: nested credential keys + envelope-shape enforcement on
+    // `save_encrypted_agent`. Each documents one banned shape.
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn rejects_payload_with_nested_password_field() {
+        let _guard = enter();
+        let payload = r#"{"outer":{"inner":{"password":"hunter2"}}}"#;
+        let err = save_document("k", payload).expect_err("must refuse");
+        assert_eq!(err.code(), "RefusedPayload");
+        assert!(
+            format!("{err}").contains("/outer/inner/password"),
+            "error should report the JSON pointer of the offending key, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_payload_with_passphrase_field() {
+        let _guard = enter();
+        // Synonym of `password`; PRD §3.1 calls it out as a credential.
+        let payload = r#"{"settings":{"Passphrase":"hunter2"}}"#;
+        let err = save_document("k", payload).expect_err("must refuse");
+        assert_eq!(err.code(), "RefusedPayload");
+    }
+
+    #[test]
+    fn rejects_payload_with_secret_field_in_array() {
+        let _guard = enter();
+        // Inside an array of objects; the walk descends arrays too.
+        let payload = r#"{"items":[{"id":1},{"secret":"shh"}]}"#;
+        let err = save_document("k", payload).expect_err("must refuse");
+        assert_eq!(err.code(), "RefusedPayload");
+        assert!(
+            format!("{err}").contains("/items/1/secret"),
+            "error should report array-aware JSON pointer, got: {err}"
+        );
+    }
+
+    #[test]
+    fn save_encrypted_agent_rejects_raw_private_key_in_envelope_field() {
+        // Caller has accidentally serialised an AgentMaterial whose
+        // `encrypted_private_key` value is a base64-encoded raw 32-byte
+        // key (44 base64 chars) instead of a real envelope.
+        let _guard = enter();
+        let raw_b64 = {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode([0x42u8; 32])
+        };
+        let payload = format!(
+            r#"{{"config":{{}},"agent":{{}},"public_key":[1,2,3],"encrypted_private_key":"{raw_b64}","algorithm":"ed25519"}}"#
+        );
+        let err = save_encrypted_agent("k", &payload).expect_err("must refuse raw key");
+        assert_eq!(err.code(), "RefusedPayload");
+        assert!(
+            format!("{err}").contains("too short"),
+            "error should explain why the envelope is rejected, got: {err}"
+        );
+        // Nothing was persisted.
+        assert_eq!(load_encrypted_agent("k").expect("load"), None);
+    }
+
+    #[test]
+    fn save_encrypted_agent_rejects_arbitrary_non_envelope_string() {
+        let _guard = enter();
+        let payload = r#"{"config":{},"agent":{},"public_key":[1,2,3],"encrypted_private_key":"hello world this is not a key","algorithm":"ed25519"}"#;
+        let err = save_encrypted_agent("k", payload).expect_err("must refuse");
+        assert_eq!(err.code(), "RefusedPayload");
+    }
+
+    #[test]
+    fn save_encrypted_agent_rejects_missing_envelope_field() {
+        let _guard = enter();
+        let payload = r#"{"config":{},"agent":{},"public_key":[1,2,3],"algorithm":"ed25519"}"#;
+        let err = save_encrypted_agent("k", payload).expect_err("must refuse");
+        assert_eq!(err.code(), "RefusedPayload");
+        assert!(
+            format!("{err}").contains("missing 'encrypted_private_key'"),
+            "error should explain missing field, got: {err}"
+        );
+    }
+
+    #[test]
+    fn save_encrypted_agent_accepts_v2_envelope_shape() {
+        // The canonical happy path: AgentMaterial with a V2 envelope
+        // object as `encrypted_private_key`.
+        let _guard = enter();
+        let payload = r#"{
+            "config": {},
+            "agent": {},
+            "public_key": [1,2,3],
+            "encrypted_private_key": {
+                "jacsEncryptedPrivateKeyVersion": 2,
+                "cipher": "AES-256-GCM",
+                "ciphertext": "deadbeef",
+                "salt": "saltsalt",
+                "nonce": "noncenonce"
+            },
+            "algorithm": "ed25519"
+        }"#;
+        save_encrypted_agent("k", payload).expect("happy path V2 envelope");
+        assert!(load_encrypted_agent("k").expect("load").is_some());
+    }
+
+    #[test]
+    fn save_encrypted_agent_accepts_pbkdf2_base64_long_enough_string() {
+        // A long base64 string (≥ 89 chars; decodes to ≥ 44 bytes,
+        // above MIN_PBKDF2_ENVELOPE_BYTES once we account for cipher
+        // overhead).
+        let _guard = enter();
+        let payload_bytes = vec![0u8; 96]; // 16-salt + 12-nonce + 68-ciphertext+tag = 96 bytes
+        let b64 = {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode(&payload_bytes)
+        };
+        assert!(b64.len() > MAX_RAW_KEY_BASE64_LEN);
+        let payload = format!(
+            r#"{{"config":{{}},"agent":{{}},"public_key":[1,2,3],"encrypted_private_key":"{b64}","algorithm":"ed25519"}}"#
+        );
+        save_encrypted_agent("k", &payload).expect("happy path PBKDF2 base64");
+    }
+
+    #[test]
+    fn save_encrypted_agent_rejects_non_json_payload() {
+        let _guard = enter();
+        let err = save_encrypted_agent("k", "not json").expect_err("must refuse");
+        assert_eq!(err.code(), "RefusedPayload");
     }
 }

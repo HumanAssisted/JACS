@@ -35,7 +35,7 @@ pub use local_store::{
     load_encrypted_agent as local_store_load_encrypted_agent_native,
     remove as local_store_remove_native, save_document as local_store_save_document_native,
     save_encrypted_agent as local_store_save_encrypted_agent_native,
-    validate_no_plaintext_secrets,
+    validate_encrypted_material_shape, validate_no_plaintext_secrets,
 };
 
 // ---------------------------------------------------------------------------
