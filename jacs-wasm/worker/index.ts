@@ -44,6 +44,14 @@ let nextRequestId = 1;
 const pending: Map<number, PendingCall> = new Map();
 let worker: Worker | null = null;
 
+/** Fan a fatal error out to every pending call and clear the table. */
+function failAllPending(error: JacsWorkerError): void {
+  for (const [, slot] of pending) {
+    slot.reject(error);
+  }
+  pending.clear();
+}
+
 /** Open (or reuse) the shared worker. */
 function ensureWorker(workerUrl?: URL | string): Worker {
   if (worker) return worker;
@@ -53,7 +61,22 @@ function ensureWorker(workerUrl?: URL | string): Worker {
     const reply = event.data;
     if (!reply || typeof reply.id !== "number") return;
     const slot = pending.get(reply.id);
-    if (!slot) return;
+    if (!slot) {
+      // Unmatched reply. If the worker reported ok:false with no
+      // matching pending id, treat it as a fatal protocol error and
+      // fan it out to every in-flight call — otherwise callers whose
+      // request triggered the bootstrap/dispatch failure would hang
+      // forever (Issue 011).
+      if (reply.ok === false) {
+        failAllPending(
+          reply.error ?? {
+            code: "WorkerProtocolError",
+            message: `worker replied ok:false for unknown id ${reply.id}`,
+          },
+        );
+      }
+      return;
+    }
     pending.delete(reply.id);
     if (reply.ok) {
       slot.resolve(reply.result);
@@ -70,14 +93,10 @@ function ensureWorker(workerUrl?: URL | string): Worker {
     // Fan a worker-level error out to *every* pending call. A worker
     // that died can't reply to any of them; better to fail loudly than
     // to hang forever.
-    const fail = {
+    failAllPending({
       code: "WorkerCrashed",
       message: event.message ?? "worker crashed",
-    } satisfies JacsWorkerError;
-    for (const [, slot] of pending) {
-      slot.reject(fail);
-    }
-    pending.clear();
+    });
   });
   worker = w;
   return w;
@@ -104,10 +123,10 @@ export function terminateWorker(): void {
     worker.terminate();
     worker = null;
   }
-  for (const [, slot] of pending) {
-    slot.reject({ code: "WorkerTerminated", message: "worker was terminated by the caller" });
-  }
-  pending.clear();
+  failAllPending({
+    code: "WorkerTerminated",
+    message: "worker was terminated by the caller",
+  });
 }
 
 // ---------------------------------------------------------------------------

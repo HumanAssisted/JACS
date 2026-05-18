@@ -15,10 +15,13 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
 # Set up a minimal fake pkg/ that mirrors what wasm-pack would emit:
-# a stub package.json (with auto-generated `name`) plus a placeholder
-# `jacs_wasm.d.ts` so the staged tsc compile has *something* to chew on
-# (we don't actually verify the TS output here — that's exercised by
-# the real build in CI).
+# a stub package.json (with auto-generated `name`) plus a `jacs_wasm.d.ts`
+# that mirrors the full wasm-bindgen public surface so the staged tsc
+# compile can resolve every symbol the hand-written `index.ts` /
+# `worker/jacs-worker.ts` imports. We re-use the checked-in source-tree
+# stub `jacs-wasm/jacs_wasm.d.ts` (already maintained by Task 032 for the
+# `tsc --noEmit -p tsconfig.json` smoke) so this fixture cannot drift
+# behind the wrapper imports again (Issue 008).
 mkdir -p "${WORK_DIR}/pkg/worker"
 cat > "${WORK_DIR}/pkg/package.json" <<JSON
 {
@@ -28,10 +31,10 @@ cat > "${WORK_DIR}/pkg/package.json" <<JSON
   "types": "jacs_wasm.d.ts"
 }
 JSON
-cat > "${WORK_DIR}/pkg/jacs_wasm.d.ts" <<TS
-// stub
-export declare function initJacsWasm(): void;
-TS
+# Copy the maintained, full-surface stub instead of writing an inline
+# placeholder — keeps the fixture and the source-tree `tsc --noEmit` in
+# lockstep on every wasm-bindgen surface change.
+cp "${JACS_WASM_DIR}/jacs_wasm.d.ts" "${WORK_DIR}/pkg/jacs_wasm.d.ts"
 touch "${WORK_DIR}/pkg/jacs_wasm.js" "${WORK_DIR}/pkg/jacs_wasm_bg.wasm" "${WORK_DIR}/pkg/jacs_wasm_bg.wasm.d.ts"
 
 # Symlink the test pkg/ into the real JACS_WASM_DIR location so
@@ -77,6 +80,18 @@ expect(pkg.get("version") == cargo_version, f"version={pkg.get('version')!r}, ex
 expect(pkg.get("type") == "module", f"type={pkg.get('type')!r}, expected module")
 expect(pkg.get("sideEffects") is False, f"sideEffects={pkg.get('sideEffects')!r}, expected false")
 
+# Issue 009 — top-level main/module/types must point at the hand-written
+# wrapper (index.js / index.d.ts), not the raw wasm-bindgen output
+# (jacs_wasm.js / jacs_wasm.d.ts). Consumers and tools that read the
+# legacy fields instead of the `exports` map otherwise bypass the
+# PRD §4.3 surface (initJacsWasm, async constructors, localStore, etc.).
+expect(pkg.get("main") == "index.js",
+       f"main={pkg.get('main')!r}, expected 'index.js' (Issue 009)")
+expect(pkg.get("module") == "index.js",
+       f"module={pkg.get('module')!r}, expected 'index.js' (Issue 009)")
+expect(pkg.get("types") == "index.d.ts",
+       f"types={pkg.get('types')!r}, expected 'index.d.ts' (Issue 009)")
+
 files = pkg.get("files", [])
 for required in ["jacs_wasm.js", "jacs_wasm.d.ts", "jacs_wasm_bg.wasm",
                  "index.js", "index.d.ts",
@@ -89,6 +104,10 @@ expect("./worker" in exports, f"exports missing './worker'; got {sorted(exports)
 expect(exports.get(".", {}).get("import") == "./index.js", f"./ import wrong: {exports.get('.')}")
 expect(exports.get("./worker", {}).get("import") == "./worker/index.js",
        f"./worker import wrong: {exports.get('./worker')}")
+# Raw wasm-bindgen escape hatch under `./pkg/*` (Issue 009 — deliberate
+# subpath so a consumer who needs the unwrapped surface can opt in).
+expect("./pkg/*" in exports,
+       f"exports missing './pkg/*' raw-wasm-bindgen escape hatch; got {sorted(exports)}")
 
 keywords = pkg.get("keywords", [])
 for required in ["jacs", "wasm", "signing", "agents"]:

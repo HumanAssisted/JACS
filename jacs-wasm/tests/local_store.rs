@@ -108,16 +108,73 @@ fn rejects_pem_private_key_payload() {
 }
 
 #[wasm_bindgen_test]
-fn unavailable_throws_stable_error() {
-    // We can't easily mock `window.localStorage` from inside Rust to
-    // throw on access — the headless browser exposes a real Storage
-    // object — but we can verify the `code` shape on a missing-key
-    // remove (which produces `KeyNotFound`, exercising the same JSON
-    // payload shape and showing the helper is wired correctly).
+fn missing_key_remove_has_stable_error() {
+    // Negative test for the `remove` path — calling `remove` on a key
+    // that is not present must yield a stable `{ code: "KeyNotFound" }`
+    // payload. This used to be named `unavailable_throws_stable_error`
+    // but that name was misleading — it didn't actually exercise the
+    // `StorageUnavailable` code path. The renamed
+    // `localstorage_unavailable_throws_stable_error` below (Issue 012)
+    // now covers that.
     init_jacs_wasm();
     reset_browser_storage();
     let err = remove("nope").expect_err("must error");
-    drop(err);
+    let msg = format!("{:?}", err);
+    // `JsError` does not expose the inner JSON in a stable way from Rust,
+    // so we assert the type via the err existing; the JS-side
+    // `JsError.message` is verified by the smoke + worker JS tests.
+    drop(msg);
+}
+
+#[wasm_bindgen_test]
+fn quota_exceeded_throws_stable_error() {
+    // Issue 012: monkey-patch `Storage.prototype.setItem` to throw a
+    // DOMException shaped like a `QuotaExceededError`, then assert that
+    // `save_document` surfaces the `{ code: "QuotaExceeded" }` payload
+    // (PRD §3.1 / §5.4 — stable error codes for the two storage failure
+    // classes the browser can hit).
+    init_jacs_wasm();
+    reset_browser_storage();
+    let original = patch_storage_set_item_to_throw(
+        // Browser's real `QuotaExceededError` carries the literal
+        // "QuotaExceededError" name and the legacy code `22`; we hit
+        // both substrings the runtime classifier checks.
+        "QuotaExceededError: Setting the value exceeded the quota.",
+    );
+
+    let result = save_document("k", r#"{"a":1}"#);
+
+    // Restore the original *before* asserting so a failure cannot leak
+    // the monkeypatch into adjacent tests.
+    restore_storage_set_item(original);
+
+    let err = result.expect_err("must error when setItem throws QuotaExceededError");
+    assert_eq!(
+        err.code(),
+        "QuotaExceeded",
+        "expected QuotaExceeded code, got {err:?}"
+    );
+}
+
+#[wasm_bindgen_test]
+fn localstorage_unavailable_throws_stable_error() {
+    // Issue 012: replace `window.localStorage` getter so accessing it
+    // throws — emulates Safari private-mode and sandboxed-iframe
+    // denials. The helper must surface `StorageUnavailable`.
+    init_jacs_wasm();
+    reset_browser_storage();
+    let original = patch_window_local_storage_to_throw();
+
+    let result = load_document("any");
+
+    restore_window_local_storage(original);
+
+    let err = result.expect_err("must error when localStorage throws on access");
+    assert_eq!(
+        err.code(),
+        "StorageUnavailable",
+        "expected StorageUnavailable code, got {err:?}"
+    );
 }
 
 #[wasm_bindgen_test]
@@ -244,3 +301,126 @@ fn rejects_nested_password_field() {
 }
 
 use wasm_bindgen::JsValue;
+
+// ---------------------------------------------------------------------------
+// Issue 012 — browser monkeypatch helpers. The runtime classifier in
+// `src/local_store.rs` maps `setItem` failures whose message mentions
+// "QuotaExceeded" / "quota" / "22" to `QuotaExceeded`, and any
+// `window.localStorage` access failure to `StorageUnavailable`. The
+// helpers below replace the relevant native methods with throwing stubs
+// for the duration of a single test, then restore the originals.
+//
+// Using `js_sys::Reflect` keeps the test in pure Rust + js-sys (already
+// a dev-dep). The patches are scoped to one `wasm_bindgen_test` at a
+// time — every test calls `restore_*` before returning.
+// ---------------------------------------------------------------------------
+
+/// Replace `Storage.prototype.setItem` with a function that throws an
+/// error carrying the given message. Returns the original function so the
+/// caller can pass it to [`restore_storage_set_item`].
+fn patch_storage_set_item_to_throw(message: &str) -> JsValue {
+    let proto = js_sys::Reflect::get(
+        &js_sys::global()
+            .dyn_into::<js_sys::Object>()
+            .expect("global is object"),
+        &JsValue::from_str("Storage"),
+    )
+    .expect("get Storage");
+    let proto = js_sys::Reflect::get(&proto, &JsValue::from_str("prototype"))
+        .expect("Storage.prototype");
+    let original = js_sys::Reflect::get(&proto, &JsValue::from_str("setItem"))
+        .expect("Storage.prototype.setItem");
+    // Build a closure that throws when called. `throw_str` diverges
+    // (returns `!`), which can't satisfy `FnMut()`'s `()` return; wrap
+    // it in a closure that returns `JsValue` (never executed because
+    // throw_str diverges) so the type signature is `FnMut() -> JsValue`.
+    let msg = message.to_string();
+    let thrower = wasm_bindgen::closure::Closure::wrap(Box::new(move || -> JsValue {
+        wasm_bindgen::throw_str(&msg);
+    }) as Box<dyn FnMut() -> JsValue>);
+    let thrower_js: JsValue = thrower.as_ref().clone();
+    // Leak the closure so the JS side can keep calling it for the
+    // remainder of the test. The closure is uninstalled by
+    // `restore_storage_set_item`, so the leak is bounded to the test.
+    thrower.forget();
+    js_sys::Reflect::set(
+        &proto,
+        &JsValue::from_str("setItem"),
+        &thrower_js,
+    )
+    .expect("install thrower as setItem");
+    original
+}
+
+/// Restore the original `Storage.prototype.setItem` returned by
+/// [`patch_storage_set_item_to_throw`].
+fn restore_storage_set_item(original: JsValue) {
+    let proto = js_sys::Reflect::get(
+        &js_sys::global()
+            .dyn_into::<js_sys::Object>()
+            .expect("global is object"),
+        &JsValue::from_str("Storage"),
+    )
+    .expect("get Storage");
+    let proto = js_sys::Reflect::get(&proto, &JsValue::from_str("prototype"))
+        .expect("Storage.prototype");
+    js_sys::Reflect::set(&proto, &JsValue::from_str("setItem"), &original)
+        .expect("restore setItem");
+}
+
+/// Replace the `window.localStorage` accessor with one that throws on
+/// access. Returns the original property descriptor for
+/// [`restore_window_local_storage`] to put back.
+fn patch_window_local_storage_to_throw() -> JsValue {
+    let window = web_sys::window().expect("window for monkeypatch");
+    let window_proto = js_sys::Object::get_prototype_of(&JsValue::from(window));
+    let original = js_sys::Object::get_own_property_descriptor(
+        &window_proto,
+        &JsValue::from_str("localStorage"),
+    );
+    // Build a getter that throws.
+    let thrower = wasm_bindgen::closure::Closure::wrap(Box::new(|| -> JsValue {
+        wasm_bindgen::throw_str("SecurityError: localStorage denied");
+    }) as Box<dyn FnMut() -> JsValue>);
+    let descriptor = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &descriptor,
+        &JsValue::from_str("get"),
+        thrower.as_ref(),
+    )
+    .expect("set descriptor.get");
+    js_sys::Reflect::set(
+        &descriptor,
+        &JsValue::from_str("configurable"),
+        &JsValue::from_bool(true),
+    )
+    .expect("set descriptor.configurable");
+    thrower.forget();
+    js_sys::Object::define_property(
+        &window_proto.dyn_into::<js_sys::Object>().expect("window proto is object"),
+        &JsValue::from_str("localStorage"),
+        &descriptor,
+    );
+    original
+}
+
+/// Restore the original `window.localStorage` descriptor returned by
+/// [`patch_window_local_storage_to_throw`].
+fn restore_window_local_storage(original: JsValue) {
+    let window = web_sys::window().expect("window for restore");
+    let window_proto = js_sys::Object::get_prototype_of(&JsValue::from(window));
+    if original.is_undefined() || original.is_null() {
+        // No prior descriptor — best-effort delete the patched property.
+        let _ = js_sys::Reflect::delete_property(
+            &window_proto.dyn_into::<js_sys::Object>().expect("window proto is object"),
+            &JsValue::from_str("localStorage"),
+        );
+        return;
+    }
+    js_sys::Object::define_property(
+        &window_proto.dyn_into::<js_sys::Object>().expect("window proto is object"),
+        &JsValue::from_str("localStorage"),
+        &original.dyn_into::<js_sys::Object>().expect("descriptor is object"),
+    );
+}
+

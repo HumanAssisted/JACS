@@ -2,9 +2,9 @@
   "name": "@jacs/wasm",
   "version": "0.10.2",
   "type": "module",
-  "main": "jacs_wasm.js",
-  "module": "jacs_wasm.js",
-  "types": "jacs_wasm.d.ts",
+  "main": "index.js",
+  "module": "index.js",
+  "types": "index.d.ts",
   "sideEffects": false,
   "files": [
     "jacs_wasm.js",

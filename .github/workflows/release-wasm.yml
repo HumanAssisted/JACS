@@ -113,12 +113,21 @@ jobs:
       - name: wasm-pack build --target web --release
         run: wasm-pack build --target web --release jacs-wasm
 
+      - name: finalize-pkg fixture (Issue 008)
+        run: bash jacs-wasm/scripts/tests/finalize-pkg.test.sh
+
       - name: Finalize pkg metadata
         run: bash jacs-wasm/scripts/finalize-pkg.sh
 
       - name: Validate npm pack output
         working-directory: jacs-wasm/pkg
         run: npm pack --dry-run
+
+      - name: package-consumption test (Issue 009)
+        run: bash jacs-wasm/scripts/tests/package-consumption.test.sh
+
+      - name: worker-bridge test (Issue 011)
+        run: node jacs-wasm/scripts/tests/worker-bridge.test.mjs
 
       - name: Vite smoke (build + Playwright)
         working-directory: jacs-wasm/examples/vite-smoke

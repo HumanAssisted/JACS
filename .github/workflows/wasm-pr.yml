@@ -104,6 +104,12 @@ jobs:
       - name: wasm-pack build --target web --release
         run: wasm-pack build --target web --release jacs-wasm
 
+      - name: finalize-pkg fixture (Issue 008)
+        # Runs the sandboxed package-finalization test against the current
+        # source-tree stub so it cannot drift behind `index.ts` /
+        # `worker/jacs-worker.ts` imports without failing the PR.
+        run: bash jacs-wasm/scripts/tests/finalize-pkg.test.sh
+
       - name: Finalize pkg metadata (template merge + tsc compile)
         run: bash jacs-wasm/scripts/finalize-pkg.sh
 
@@ -118,11 +124,26 @@ jobs:
           npx --yes -p typescript@5 tsc --noEmit -p tsconfig.json
 
       # ------------------------------------------------------------------
-      # 6. npm pack validation
+      # 6. npm pack validation + package-consumption test (Issue 009)
       # ------------------------------------------------------------------
       - name: npm pack --dry-run
         working-directory: jacs-wasm/pkg
         run: npm pack --dry-run
+
+      - name: package-consumption test (Issue 009)
+        # Packs the finalized pkg into a tarball, installs it in a
+        # fresh sandbox with no Vite alias, and asserts that `@jacs/wasm`
+        # resolves through the metadata (main / module / types /
+        # exports) to the hand-written wrapper rather than the raw
+        # wasm-bindgen module.
+        run: bash jacs-wasm/scripts/tests/package-consumption.test.sh
+
+      - name: worker-bridge test (Issue 011)
+        # Drives the finalized pkg/worker/index.js bridge against a
+        # stub Worker to prove unmatched ok:false replies + worker
+        # 'error' events fan out to every pending call instead of
+        # leaving callers pending forever.
+        run: node jacs-wasm/scripts/tests/worker-bridge.test.mjs
 
       # ------------------------------------------------------------------
       # 7. Vite + Playwright smoke (PRD §5.5).
