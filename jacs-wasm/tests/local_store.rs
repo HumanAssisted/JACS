@@ -330,13 +330,21 @@ fn patch_storage_set_item_to_throw(message: &str) -> JsValue {
         .expect("Storage.prototype");
     let original = js_sys::Reflect::get(&proto, &JsValue::from_str("setItem"))
         .expect("Storage.prototype.setItem");
-    // Build a closure that throws when called. `throw_str` diverges
-    // (returns `!`), which can't satisfy `FnMut()`'s `()` return; wrap
-    // it in a closure that returns `JsValue` (never executed because
-    // throw_str diverges) so the type signature is `FnMut() -> JsValue`.
+    // Build a closure that throws when called. Throw an Error object,
+    // not a string, because real browsers surface quota failures as
+    // DOMException/Error-like objects. This keeps the production
+    // classifier honest: it must inspect `name` / `message` / `code`.
     let msg = message.to_string();
     let thrower = wasm_bindgen::closure::Closure::wrap(Box::new(move || -> JsValue {
-        wasm_bindgen::throw_str(&msg);
+        let err = js_sys::Error::new(&msg);
+        err.set_name("QuotaExceededError");
+        js_sys::Reflect::set(
+            err.as_ref(),
+            &JsValue::from_str("code"),
+            &JsValue::from_f64(22.0),
+        )
+        .expect("set quota code");
+        wasm_bindgen::throw_val(err.into());
     }) as Box<dyn FnMut() -> JsValue>);
     let thrower_js: JsValue = thrower.as_ref().clone();
     // Leak the closure so the JS side can keep calling it for the
@@ -373,14 +381,18 @@ fn restore_storage_set_item(original: JsValue) {
 /// [`restore_window_local_storage`] to put back.
 fn patch_window_local_storage_to_throw() -> JsValue {
     let window = web_sys::window().expect("window for monkeypatch");
-    let window_proto = js_sys::Object::get_prototype_of(&JsValue::from(window));
+    let window_obj: js_sys::Object = JsValue::from(window)
+        .dyn_into()
+        .expect("window is object");
     let original = js_sys::Object::get_own_property_descriptor(
-        &window_proto,
+        &window_obj,
         &JsValue::from_str("localStorage"),
     );
     // Build a getter that throws.
     let thrower = wasm_bindgen::closure::Closure::wrap(Box::new(|| -> JsValue {
-        wasm_bindgen::throw_str("SecurityError: localStorage denied");
+        let err = js_sys::Error::new("localStorage denied");
+        err.set_name("SecurityError");
+        wasm_bindgen::throw_val(err.into());
     }) as Box<dyn FnMut() -> JsValue>);
     let descriptor = js_sys::Object::new();
     js_sys::Reflect::set(
@@ -397,7 +409,7 @@ fn patch_window_local_storage_to_throw() -> JsValue {
     .expect("set descriptor.configurable");
     thrower.forget();
     js_sys::Object::define_property(
-        &window_proto.dyn_into::<js_sys::Object>().expect("window proto is object"),
+        &window_obj,
         &JsValue::from_str("localStorage"),
         &descriptor,
     );
@@ -408,19 +420,20 @@ fn patch_window_local_storage_to_throw() -> JsValue {
 /// [`patch_window_local_storage_to_throw`].
 fn restore_window_local_storage(original: JsValue) {
     let window = web_sys::window().expect("window for restore");
-    let window_proto = js_sys::Object::get_prototype_of(&JsValue::from(window));
+    let window_obj: js_sys::Object = JsValue::from(window)
+        .dyn_into()
+        .expect("window is object");
     if original.is_undefined() || original.is_null() {
         // No prior descriptor — best-effort delete the patched property.
         let _ = js_sys::Reflect::delete_property(
-            &window_proto.dyn_into::<js_sys::Object>().expect("window proto is object"),
+            &window_obj,
             &JsValue::from_str("localStorage"),
         );
         return;
     }
     js_sys::Object::define_property(
-        &window_proto.dyn_into::<js_sys::Object>().expect("window proto is object"),
+        &window_obj,
         &JsValue::from_str("localStorage"),
         &original.dyn_into::<js_sys::Object>().expect("descriptor is object"),
     );
 }
-

@@ -368,7 +368,7 @@ fn storage_handle() -> Result<web_sys::Storage, LocalStoreError> {
         .map_err(|js_err| {
             LocalStoreError::StorageUnavailable(format!(
                 "accessing localStorage threw: {}",
-                js_err.as_string().unwrap_or_else(|| "<unknown>".into())
+                js_error_summary(&js_err, "<unknown localStorage access failure>")
             ))
         })?
         .ok_or_else(|| {
@@ -487,14 +487,12 @@ fn storage_set_item(
     value: &str,
 ) -> Result<(), LocalStoreError> {
     s.set_item(key, value).map_err(|js_err| {
-        let message = js_err
-            .as_string()
-            .unwrap_or_else(|| "<unknown setItem failure>".into());
+        let message = js_error_summary(&js_err, "<unknown setItem failure>");
         // QuotaExceededError surfaces with that name in the message on
         // every browser we target. If the message mentions quota / 22 /
         // QuotaExceededError, classify as `QuotaExceeded`; otherwise
         // surface as a generic `StorageUnavailable`.
-        if message.contains("QuotaExceeded") || message.contains("quota") || message.contains("22") {
+        if is_quota_exceeded_error(&message) {
             LocalStoreError::QuotaExceeded(message)
         } else {
             LocalStoreError::StorageUnavailable(message)
@@ -516,11 +514,10 @@ fn storage_get_item(
     key: &str,
 ) -> Result<Option<String>, LocalStoreError> {
     s.get_item(key).map_err(|js_err| {
-        LocalStoreError::StorageUnavailable(
-            js_err
-                .as_string()
-                .unwrap_or_else(|| "<unknown getItem failure>".into()),
-        )
+        LocalStoreError::StorageUnavailable(js_error_summary(
+            &js_err,
+            "<unknown getItem failure>",
+        ))
     })
 }
 
@@ -532,11 +529,10 @@ fn storage_remove_item(s: &NativeStorage, key: &str) -> Result<(), LocalStoreErr
 #[cfg(target_arch = "wasm32")]
 fn storage_remove_item(s: &web_sys::Storage, key: &str) -> Result<(), LocalStoreError> {
     s.remove_item(key).map_err(|js_err| {
-        LocalStoreError::StorageUnavailable(
-            js_err
-                .as_string()
-                .unwrap_or_else(|| "<unknown removeItem failure>".into()),
-        )
+        LocalStoreError::StorageUnavailable(js_error_summary(
+            &js_err,
+            "<unknown removeItem failure>",
+        ))
     })
 }
 
@@ -548,11 +544,10 @@ fn storage_length(s: &NativeStorage) -> Result<u32, LocalStoreError> {
 #[cfg(target_arch = "wasm32")]
 fn storage_length(s: &web_sys::Storage) -> Result<u32, LocalStoreError> {
     s.length().map_err(|js_err| {
-        LocalStoreError::StorageUnavailable(
-            js_err
-                .as_string()
-                .unwrap_or_else(|| "<unknown length failure>".into()),
-        )
+        LocalStoreError::StorageUnavailable(js_error_summary(
+            &js_err,
+            "<unknown length failure>",
+        ))
     })
 }
 
@@ -564,12 +559,66 @@ fn storage_key_at(s: &NativeStorage, index: u32) -> Result<Option<String>, Local
 #[cfg(target_arch = "wasm32")]
 fn storage_key_at(s: &web_sys::Storage, index: u32) -> Result<Option<String>, LocalStoreError> {
     s.key(index).map_err(|js_err| {
-        LocalStoreError::StorageUnavailable(
-            js_err
-                .as_string()
-                .unwrap_or_else(|| "<unknown key failure>".into()),
-        )
+        LocalStoreError::StorageUnavailable(js_error_summary(
+            &js_err,
+            "<unknown key failure>",
+        ))
     })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn js_error_summary(js_err: &JsValue, fallback: &str) -> String {
+    if let Some(message) = js_err.as_string() {
+        return message;
+    }
+
+    let name = js_string_property(js_err, "name");
+    let message = js_string_property(js_err, "message");
+    let code = js_string_property(js_err, "code").or_else(|| js_number_property(js_err, "code"));
+
+    match (name, message, code) {
+        (Some(name), Some(message), Some(code)) => {
+            format!("{name}: {message} (code {code})")
+        }
+        (Some(name), Some(message), None) => format!("{name}: {message}"),
+        (Some(name), None, Some(code)) => format!("{name} (code {code})"),
+        (Some(name), None, None) => name,
+        (None, Some(message), Some(code)) => format!("{message} (code {code})"),
+        (None, Some(message), None) => message,
+        (None, None, Some(code)) => format!("code {code}"),
+        (None, None, None) => fallback.to_string(),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn js_string_property(js_err: &JsValue, property: &str) -> Option<String> {
+    js_sys::Reflect::get(js_err, &JsValue::from_str(property))
+        .ok()
+        .and_then(|value| value.as_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn js_number_property(js_err: &JsValue, property: &str) -> Option<String> {
+    js_sys::Reflect::get(js_err, &JsValue::from_str(property))
+        .ok()
+        .and_then(|value| value.as_f64())
+        .map(|value| {
+            if value.fract() == 0.0 {
+                format!("{}", value as i64)
+            } else {
+                value.to_string()
+            }
+        })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn is_quota_exceeded_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("quota")
+        || lower.contains("quotaexceeded")
+        || lower.contains("ns_error_dom_quota_reached")
+        || message.contains("22")
 }
 
 // ---------------------------------------------------------------------------
