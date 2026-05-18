@@ -110,6 +110,12 @@ pub(crate) struct WorkerReply {
     pub error: Option<Value>,
 }
 
+fn reply_to_js_value(reply: &WorkerReply) -> Result<JsValue, JsError> {
+    reply
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsError::new(&format!("serialize reply: {}", e)))
+}
+
 /// Error payload returned in `reply.error`. Same `{ code, message }`
 /// wire contract as `CoreError` so JS callers can use a single
 /// dispatcher across the synchronous and worker APIs.
@@ -336,13 +342,12 @@ pub fn worker_handle_message(message: JsValue) -> Result<JsValue, JsError> {
                 )))
                 .unwrap_or(Value::Null)),
             };
-            return serde_wasm_bindgen::to_value(&reply)
-                .map_err(|e| JsError::new(&format!("serialize reply: {}", e)));
+            return reply_to_js_value(&reply);
         }
     };
 
     let reply = dispatch_request(request);
-    serde_wasm_bindgen::to_value(&reply).map_err(|e| JsError::new(&format!("serialize reply: {}", e)))
+    reply_to_js_value(&reply)
 }
 
 // ---------------------------------------------------------------------------
