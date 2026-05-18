@@ -41,6 +41,8 @@ mod native {
 mod web {
     use jacs_wasm::init_jacs_wasm;
     use jacs_wasm::worker::worker_handle_message;
+    use js_sys::Reflect;
+    use serde::Serialize;
     use wasm_bindgen::JsValue;
     use wasm_bindgen_test::*;
 
@@ -52,11 +54,17 @@ mod web {
             "op": op,
             "args": args,
         });
-        serde_wasm_bindgen::to_value(&envelope).expect("envelope to JsValue")
+        envelope
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .expect("envelope to JsValue")
     }
 
     fn parse_reply(js_value: JsValue) -> serde_json::Value {
         serde_wasm_bindgen::from_value(js_value).expect("reply from JsValue")
+    }
+
+    fn get_prop(value: &JsValue, key: &str) -> JsValue {
+        Reflect::get(value, &JsValue::from_str(key)).expect("property lookup")
     }
 
     #[wasm_bindgen_test]
@@ -64,6 +72,14 @@ mod web {
         init_jacs_wasm();
         let req = js_request(1, "createEphemeral", serde_json::json!({ "algorithm": "pq2025" }));
         let reply_js = worker_handle_message(req).expect("dispatch");
+        assert_eq!(get_prop(&reply_js, "ok").as_bool(), Some(true));
+        let result_js = get_prop(&reply_js, "result");
+        assert!(get_prop(&result_js, "handleId").as_f64().unwrap() > 0.0);
+        assert_eq!(
+            get_prop(&result_js, "algorithm").as_string().as_deref(),
+            Some("pq2025")
+        );
+
         let reply = parse_reply(reply_js);
         assert_eq!(reply["ok"], serde_json::Value::Bool(true));
         assert!(reply["result"]["handleId"].as_u64().unwrap() > 0);
