@@ -81,14 +81,19 @@ jobs:
         run: bash scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown
 
       # ------------------------------------------------------------------
-      # 2. Native cargo check (warnings = errors) on the wasm-touching
-      # set so the Rust side is clean before we spin up wasm-pack.
+      # 2. cargo check (warnings = errors) for the wasm-portable crates.
+      # Native check is limited to `jacs-core` (the shared portable
+      # crate); the rest of the workspace (jacs / jacs-binding-core /
+      # jacs-mcp / jacs-cli) pulls in keyring → libdbus-sys on Linux and
+      # is already covered by the main Rust PR workflow which installs
+      # the required system deps. wasm32 checks run on both portable
+      # crates so wasm-pack doesn't have to be the first failure signal.
       # ------------------------------------------------------------------
       - name: cargo check (warnings = errors)
         env:
           RUSTFLAGS: "-D warnings"
         run: |
-          cargo check -p jacs -p jacs-core -p jacs-binding-core -p jacs-mcp -p jacs-cli -p jacs-wasm
+          cargo check -p jacs-core
           cargo check -p jacs-core --target wasm32-unknown-unknown
           cargo check -p jacs-wasm --target wasm32-unknown-unknown
 
