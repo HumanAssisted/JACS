@@ -119,6 +119,23 @@ pub trait DetachedSigner: Send + Sync {
     /// - `public_key` continues to work.
     /// - `algorithm` continues to work.
     fn clear_secrets(&mut self);
+    /// Export the held private-key bytes in the same shape the matching
+    /// `from_*` constructor accepts. Used by
+    /// `CoreAgent::export_encrypted_material` to round-trip an unlocked
+    /// agent through the encrypted-envelope storage path (HAIAI_WASM
+    /// Issue 003).
+    ///
+    /// - `Ed25519` returns the PKCS#8 v2 DER bytes (what
+    ///   `Ed25519DalekSigner::export_pkcs8_v2` produces, which
+    ///   `from_pkcs8` round-trips).
+    /// - `Pq2025` returns the 4896-byte ML-DSA-87 private key (what
+    ///   `Pq2025Signer::export_private_bytes` produces, which
+    ///   `from_private_bytes` round-trips).
+    ///
+    /// Returns `CoreError::Locked` if the signer has been cleared. The
+    /// returned `Vec<u8>` MUST be treated as a secret — callers should
+    /// encrypt it immediately and zeroize any intermediate buffers.
+    fn export_private_key_bytes(&self) -> Result<Vec<u8>, CoreError>;
 }
 
 // =========================================================================
@@ -281,6 +298,14 @@ impl DetachedSigner for Pq2025Signer {
         // Drop the wrapped private key; the impl above zeroizes on drop.
         self.private_key = None;
     }
+
+    fn export_private_key_bytes(&self) -> Result<Vec<u8>, CoreError> {
+        // Delegate to the concrete method so the wire format is the
+        // 4896-byte ML-DSA-87 private key the `from_private_bytes`
+        // constructor accepts. See the trait doc for the round-trip
+        // contract.
+        self.export_private_bytes()
+    }
 }
 
 // =========================================================================
@@ -430,5 +455,12 @@ impl DetachedSigner for Ed25519DalekSigner {
         // `SigningKey` zeroizes its scalar on drop (via the `zeroize`
         // feature). Dropping the `Option` here is sufficient.
         self.signing_key = None;
+    }
+
+    fn export_private_key_bytes(&self) -> Result<Vec<u8>, CoreError> {
+        // PKCS#8 v2 DER — the shape `Ed25519DalekSigner::from_pkcs8`
+        // round-trips and what the native `ring::Ed25519KeyPair::
+        // generate_pkcs8` path emits. See trait doc.
+        self.export_pkcs8_v2()
     }
 }
