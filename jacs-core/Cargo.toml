@@ -1,0 +1,101 @@
+[package]
+name = "jacs-core"
+version = "0.10.2"
+edition = "2024"
+rust-version = "1.93"
+resolver = "3"
+description = "JACS portable protocol layer (no I/O, no native deps)"
+readme = "README.md"
+authors = ["HAI.AI <engineering@hai.io>"]
+license = "Apache-2.0"
+homepage = "https://humanassisted.github.io/JACS"
+repository = "https://github.com/HumanAssisted/JACS"
+keywords = ["cryptography", "json", "wasm", "portable", "protocol"]
+categories = ["cryptography", "no-std::no-alloc", "wasm"]
+
+# Ship the embedded JACS schema set with the crate so wasm builds resolve
+# every $ref offline. Mirrors jacs/Cargo.toml's `include = [...]` list.
+include = [
+    "src/**/*",
+    "schemas/agent/v1/agent.schema.json",
+    "schemas/header/v1/header.schema.json",
+    "schemas/components/files/v1/files.schema.json",
+    "schemas/components/signature/v1/signature.schema.json",
+    "schemas/components/agreement/v1/agreement.schema.json",
+    "schemas/components/unit/v1/unit.schema.json",
+    "schemas/components/action/v1/action.schema.json",
+    "schemas/components/service/v1/service.schema.json",
+    "schemas/components/tool/v1/tool.schema.json",
+    "schemas/components/contact/v1/contact.schema.json",
+    "schemas/components/component/v1/component.schema.json",
+    "schemas/message/v1/message.schema.json",
+    "schemas/node/v1/node.schema.json",
+    "schemas/program/v1/program.schema.json",
+    "schemas/eval/v1/eval.schema.json",
+    "schemas/task/v1/task.schema.json",
+    "schemas/components/embedding/v1/embedding.schema.json",
+    "schemas/agentstate/v1/agentstate.schema.json",
+    "schemas/commitment/v1/commitment.schema.json",
+    "schemas/todo/v1/todo.schema.json",
+    "schemas/components/todoitem/v1/todoitem.schema.json",
+    "schemas/attestation/v1/attestation.schema.json",
+    "schemas/jacs.config.schema.json",
+    "Cargo.toml",
+]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_json_canonicalizer = "0.3.2"
+thiserror = "2"
+# Embedded $ref resolution for jsonschema. `default-features = false` keeps
+# `resolve-http` and `resolve-file` (both native-only) out of the wasm tree.
+jsonschema = { version = "0.29", default-features = false }
+phf = { version = "0.11.3", features = ["macros"] }
+# Encrypted private-key envelope (V2 Argon2id + legacy PBKDF2 — both
+# pure-Rust and wasm-friendly per WASM_FINDINGS). See PRD §4.6.
+aes-gcm = "0.10.3"
+argon2 = "0.5"
+pbkdf2 = "0.12"
+sha2 = "0.10.8"
+rand = "0.9"
+zeroize = "1.8"
+base64 = "0.22"
+# Post-quantum signatures (ML-DSA-87 / Dilithium). Pure-Rust, wasm-friendly.
+# See PRD §4.2, §4.7.
+fips204 = "0.4.6"
+# Ed25519. Replaces `ring` in the protocol layer so jacs-core compiles for
+# wasm32. `pkcs8` reads the v1 + v2 PKCS#8 byte formats that the native
+# `ring` path emits; `zeroize` wipes the private key on drop; `rand_core`
+# wires the existing rand 0.9 source for `SigningKey::generate`. See PRD
+# §4.5.
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "pkcs8", "zeroize", "rand_core"] }
+# `SecretBox` for `UnlockSecret::RawPrivateKey`. Pure-Rust, wasm-friendly,
+# already a transitive dep of native jacs. See PRD §4.2.
+secrecy = "0.10.3"
+# Stable identifiers — UUID v4 for ephemeral agent IDs, UUID v7 for
+# signature jti. The `js` feature is required on wasm32 so uuid uses
+# `getrandom`'s browser RNG path instead of `/dev/urandom`.
+uuid = { version = "1", features = ["v4", "v7", "js"] }
+# RFC3339 timestamps for `jacsSignature.date`. `default-features = false`
+# strips `clock` (native time), but we re-enable it on every target with
+# the `now` feature (the WASM build pulls Date.now via `wasmbind`).
+chrono = { version = "0.4", default-features = false, features = ["std", "now", "serde", "wasmbind"] }
+
+[dev-dependencies]
+serde_json = "1.0"
+# For the envelope tests' legacy-fixture synthesizer and the CoreAgent
+# raw-key unlock helper.
+aes-gcm = "0.10.3"
+base64 = "0.22"
+rand = "0.9"
+secrecy = "0.10.3"
+
+# Browser RNG wiring. Transitive deps need two flavors of `getrandom` on
+# wasm32: jsonschema → ahash brings getrandom 0.3 (needs `wasm_js`), and
+# aes-gcm / rand → getrandom 0.2 (needs `js`). Both must be enabled or
+# wasm32 compilation hits the `compile_error!` in getrandom's lib.rs. See
+# PRD §4.7.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }

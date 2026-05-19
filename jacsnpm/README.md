@@ -8,6 +8,11 @@ npm install @hai.ai/jacs
 
 Prebuilt native bindings are included. A normal install does not require compiling Rust.
 
+> **Building for the browser?** Use [`@jacs/wasm`](https://www.npmjs.com/package/@jacs/wasm)
+> instead. `jacsnpm` ships a `.node` native module that does not load in a
+> browser context; `@jacs/wasm` is the WebAssembly build with the same
+> JACS protocol surface (sign / verify / agreements / localStorage).
+
 [Full documentation](https://humanassisted.github.io/JACS/) | [Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)
 
 ## Quick start

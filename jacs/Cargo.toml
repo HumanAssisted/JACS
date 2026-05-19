@@ -60,7 +60,6 @@ pem = "3.0.5"
 rand = "0.9.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_json_canonicalizer = "0.3.2"
 signature = "2.2.0"
 moka = { version = "0.12", features = ["sync"] }
 url = "2.5.4"
@@ -97,6 +96,7 @@ zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 serde_yaml_ng = "0.10"
 jacs-media = { version = "0.10.2", path = "../jacs-media" }
+jacs-core = { version = "0.10.2", path = "../jacs-core" }
 tempfile = "3"
 
 
@@ -122,6 +122,12 @@ tokio = { version = "1.0", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 jacs-binding-core = { path = "../binding-core" }
+# Direct canonicalizer access used by jacs/tests/utils.rs +
+# jacs/tests/security_hardening_tests.rs. After Task 005 moved the
+# canonicalization runtime into jacs-core (no direct dep in jacs),
+# these test files still need the raw helper for their fixture
+# synthesizers — re-add as a dev-only dependency.
+serde_json_canonicalizer = "0.3.2"
 color-eyre = "0.6"
 criterion = "0.6.0"
 mdbook = "0.4.48"

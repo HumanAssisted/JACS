@@ -17,6 +17,9 @@ on:
       - "Cargo.lock"
       - ".githooks/pre-commit"
       - "scripts/check-secure-io.sh"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - "jacs-core/**"
       - ".github/workflows/rust.yml"
   pull_request:
     branches: ["main"]
@@ -33,6 +36,9 @@ on:
       - "Cargo.lock"
       - ".githooks/pre-commit"
       - "scripts/check-secure-io.sh"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - "jacs-core/**"
       - ".github/workflows/rust.yml"
   workflow_dispatch:
     inputs:
@@ -68,9 +74,20 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.93"
+          targets: wasm32-unknown-unknown
 
       - name: Cache cargo dependencies
         uses: Swatinem/rust-cache@v2
+
+      - name: Forbidden-deps guard (wasm-portable crates)
+        # Both jacs-core and jacs-wasm must stay free of native-only
+        # crates like ring, tokio, reqwest, etc. See PRD §4.7. The full
+        # browser pipeline (wasm-pack test + Vite/Playwright) runs in
+        # `wasm-pr.yml` (Task 028).
+        run: |
+          bash scripts/forbidden-deps.test.sh
+          bash scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown
+          bash scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown
 
       - name: Security audit + license check (cargo-deny)
         run: |

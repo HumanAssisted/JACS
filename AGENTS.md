@@ -91,12 +91,13 @@ make versions        # show all detected versions from source files
 make check-versions  # fail if any main-track versions don't match
 
 # Pre-publish compile check (catches -D warnings failures before publish)
-RUSTFLAGS="-D warnings" cargo check -p jacs -p jacs-binding-core -p jacs-mcp -p jacs-cli
+RUSTFLAGS="-D warnings" cargo check -p jacs -p jacs-core -p jacs-binding-core -p jacs-mcp -p jacs-cli -p jacs-wasm
 
 # CI-triggered releases (via git tags)
-make release-jacs          # crates.io (jacs, binding-core, jacs-mcp, jacs-cli)
+make release-jacs          # crates.io (jacs-core, jacs-media, jacs, binding-core, jacs-mcp, jacs-cli)
 make release-jacspy        # PyPI
-make release-jacsnpm       # npm
+make release-jacsnpm       # npm (native bindings)
+make release-jacs-wasm     # npm @jacs/wasm (browser bindings; tag wasm-vX.Y.Z)
 make release-cli           # GitHub Release binaries
 make release-jacs-storage  # storage backend crates
 make release-everything    # all of the above
@@ -104,30 +105,40 @@ make release-everything    # all of the above
 # Retry failed releases (deletes tag, retags, pushes)
 make retry-jacspy
 make retry-jacsnpm
+make retry-jacs-wasm
 make retry-cli
 
 # Local publish (requires credentials)
 make publish-jacs          # all Rust crates in dependency order
 make publish-jacspy        # PyPI
-make publish-jacsnpm       # npm
+make publish-jacsnpm       # npm (native bindings)
+make publish-jacs-wasm     # npm @jacs/wasm (browser bindings)
+
+# Browser bindings build + test (PRD §3.2 / §4.8)
+make build-wasm            # wasm-pack build + finalize pkg metadata
+make test-wasm             # wasm-pack test --headless --chrome
 ```
 
 ### Publish Order (crates.io)
 
 Crates must be published in this order with ~30s delays between each for crates.io indexing:
 
-1. `jacs` (core library — no JACS dependencies)
-2. `jacs-binding-core` (depends on `jacs`)
-3. `jacs-mcp` (depends on `jacs` + `jacs-binding-core`)
-4. `jacs-cli` (depends on `jacs` + `jacs-mcp`)
+1. `jacs-core` (portable protocol layer — no JACS dependencies; consumed by `jacs` and `jacs-wasm`)
+2. `jacs-media` (signing helpers for media; depends on nothing in this list)
+3. `jacs` (depends on `jacs-core` and `jacs-media`)
+4. `jacs-binding-core` (depends on `jacs`)
+5. `jacs-mcp` (depends on `jacs` + `jacs-binding-core`)
+6. `jacs-cli` (depends on `jacs` + `jacs-mcp`)
 
-The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order automatically.
+The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order automatically. The browser bindings crate (`jacs-wasm`) is published separately to npm only via `release-wasm.yml`; it is not pushed to crates.io.
 
 ### JACS Repo — Cargo.toml files (package version)
 
 | File | Field |
 |------|-------|
 | `jacs/Cargo.toml` | `version` |
+| `jacs-core/Cargo.toml` | `version` |
+| `jacs-wasm/Cargo.toml` | `version` |
 | `binding-core/Cargo.toml` | `version` |
 | `jacs-media/Cargo.toml` | `version` |
 | `jacs-mcp/Cargo.toml` | `version` |
@@ -140,8 +151,10 @@ The CI workflow (`release-crate.yml`) and `make publish-jacs` handle this order 
 
 | File | Dependency |
 |------|------------|
-| `binding-core/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
+| `jacs/Cargo.toml` | `jacs-core = { version = "X.Y.Z", path = ... }` |
 | `jacs/Cargo.toml` | `jacs-media = { version = "X.Y.Z", path = ... }` |
+| `jacs-wasm/Cargo.toml` | `jacs-core = { version = "X.Y.Z", path = ... }` |
+| `binding-core/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
 | `jacs-mcp/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
 | `jacs-mcp/Cargo.toml` | `jacs-binding-core = { version = "X.Y.Z", path = ... }` |
 | `jacs-cli/Cargo.toml` | `jacs = { version = "X.Y.Z", path = ... }` |
@@ -168,6 +181,7 @@ if the tag already exists.
 |------|-------|
 | `jacspy/pyproject.toml` | `version` |
 | `jacsnpm/package.json` | `version` |
+| `jacs-wasm/package.template.json` | `version` (rewritten into `pkg/package.json` by `bash jacs-wasm/scripts/finalize-pkg.sh` — see Task 020) |
 
 ### JACS Repo — Contract / metadata
 

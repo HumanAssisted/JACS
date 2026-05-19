@@ -1,0 +1,66 @@
+[package]
+name = "jacs-wasm"
+version = "0.10.2"
+edition = "2024"
+rust-version = "1.93"
+resolver = "3"
+description = "JACS browser bindings (wasm-bindgen wrapper around jacs-core)"
+readme = "README.md"
+authors = ["HAI.AI <engineering@hai.io>"]
+license = "Apache-2.0"
+homepage = "https://humanassisted.github.io/JACS"
+repository = "https://github.com/HumanAssisted/JACS"
+keywords = ["jacs", "wasm", "signing", "agents", "cryptography"]
+categories = ["cryptography", "wasm", "web-programming"]
+
+# Need both rlib (so `cargo test` / wasm-bindgen-test can link against the
+# library) and cdylib (so wasm-pack emits a usable .wasm).
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Protocol layer — single source of truth. No `jacs` dep here.
+jacs-core = { version = "0.10.2", path = "../jacs-core" }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+console_error_panic_hook = "0.1"
+# Public-key + signature wire form is base64 (PRD §4.3 `publicKeyBase64`).
+base64 = "0.22"
+# For the eventual JS-side raw-key unlock constructor; CoreAgent::
+# from_encrypted_material accepts `UnlockSecret::RawPrivateKey(SecretBox)`.
+secrecy = "0.10.3"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+# Native sanity tests decode the base64 outputs to check raw byte
+# lengths (e.g. Ed25519 public key is 32 bytes).
+base64 = "0.22"
+
+# Browser RNG wiring — mirrors jacs-core's target-specific block so the wasm
+# build of jacs-wasm satisfies the same compile_error gates getrandom emits
+# under wasm32. See PRD §4.7.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+# Web Storage API for `local_store` (Task 017) + Web Worker glue
+# (Task 019). Only the narrow subset we actually use is enabled to keep
+# the wasm artifact small.
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Storage",
+    "Worker",
+    "WorkerOptions",
+    "WorkerType",
+    "MessageEvent",
+    "DedicatedWorkerGlobalScope",
+    # Issue 006 / Task 031: `metrics()` measures sign/verify durations
+    # with `performance.now()`, and `JACS_WASM_DEBUG` logs via
+    # `console.debug`. These are tiny features — they do not pull in
+    # any new native-only crates (verified by `forbidden-deps.sh`).
+    "Performance",
+    "console",
+] }
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"

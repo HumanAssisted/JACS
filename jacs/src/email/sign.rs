@@ -446,13 +446,12 @@ pub(crate) fn build_jacs_email_document(
 
 /// Canonical JSON per RFC 8785 (JSON Canonicalization Scheme / JCS).
 ///
-/// Uses the `serde_json_canonicalizer` crate for full compliance including:
-/// - Sorted keys
-/// - IEEE 754 number serialization
-/// - Minimal Unicode escape handling
-/// - No unnecessary whitespace
+/// Delegates to `jacs_core::canonical::canonicalize_json` — the single
+/// canonicalization primitive shared by native and wasm builds (PRD §4.4).
+/// Sorted keys, IEEE 754 number serialization, minimal Unicode escapes,
+/// no unnecessary whitespace.
 pub fn canonicalize_json_rfc8785(value: &serde_json::Value) -> String {
-    serde_json_canonicalizer::to_string(value).unwrap_or_else(|_| "null".to_string())
+    jacs_core::canonical::canonicalize_json(value)
 }
 
 // =============================================================================

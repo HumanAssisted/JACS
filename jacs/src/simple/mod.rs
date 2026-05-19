@@ -1614,7 +1614,7 @@ mod tests {
         if let Some(obj) = hash_copy.as_object_mut() {
             obj.remove(crate::agent::SHA256_FIELDNAME);
         }
-        let canonical = serde_json_canonicalizer::to_string(&hash_copy).expect("canonical hash");
+        let canonical = jacs_core::canonical::canonicalize_json(&hash_copy);
         agent_val[crate::agent::SHA256_FIELDNAME] =
             json!(crate::crypt::hash::hash_string(&canonical));
 
