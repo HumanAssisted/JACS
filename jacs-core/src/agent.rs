@@ -173,6 +173,46 @@ impl CoreAgent {
         self.agent_json.clone()
     }
 
+    /// Round-trip the unlocked agent into an `AgentMaterial` whose
+    /// `encrypted_private_key` is encrypted under `password` with the
+    /// V2 Argon2id envelope (`envelope::encrypt_private_key`).
+    ///
+    /// The result is the same shape `from_encrypted_material` accepts —
+    /// the wasm browser layer round-trips through this method to
+    /// implement `BrowserAgent.save(storageKey)` / `load(storageKey,
+    /// {password})` (HAIAI_WASM Issue 003) without any local crypto in
+    /// the wrapper.
+    ///
+    /// Returns `CoreError::Locked` if the signer has been cleared, or
+    /// the underlying `EncryptionFailed` if envelope encryption fails.
+    pub fn export_encrypted_material(
+        &self,
+        password: &str,
+    ) -> Result<AgentMaterial, CoreError> {
+        let signer = self.signer.as_ref().ok_or(CoreError::Locked)?;
+        let raw_private = signer.export_private_key_bytes()?;
+        let encrypted = crate::envelope::encrypt_private_key(&raw_private, password)?;
+        // Zeroize the intermediate plaintext as soon as we have the
+        // ciphertext — defense-in-depth even though `raw_private` will
+        // drop at scope exit anyway. Using `zeroize::Zeroize` keeps the
+        // wipe explicit + compiler-resistant.
+        use zeroize::Zeroize as _;
+        let mut raw_private = raw_private;
+        raw_private.zeroize();
+        Ok(AgentMaterial {
+            // Browser ephemeral agents don't carry a full `jacs.config.json`
+            // — emit an empty object as a placeholder. Round-trip readers
+            // (CoreAgent::from_encrypted_material) ignore `config`; the
+            // shape is preserved purely for storage-layer consumers
+            // (jacs-wasm::local_store::validate_encrypted_material_shape).
+            config: serde_json::json!({}),
+            agent: self.agent_json.clone(),
+            public_key: self.public_key.clone(),
+            encrypted_private_key: encrypted,
+            algorithm: self.algorithm,
+        })
+    }
+
     // =====================================================================
     // sign / verify
     // =====================================================================
