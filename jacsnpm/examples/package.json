@@ -18,11 +18,19 @@
         "express": "node expressmiddleware.js",
         "http:client": "node httpclient.js"
     },
+    "overrides": {
+        "ajv": "^8.18.0",
+        "express-rate-limit": "^8.2.2",
+        "fast-uri": "^3.1.2",
+        "hono": "^4.12.18",
+        "ip-address": "^10.1.1",
+        "path-to-regexp": "^8.4.0"
+    },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.26.0",
         "express": "^5.0",
         "jacsnpm": "file:../jacsnpm",
-        "koa": "^3.0.1"
+        "koa": "^3.1.2"
     },
     "devDependencies": {
         "@types/node": "^22"
