@@ -271,6 +271,61 @@ impl CoreAgent {
         Ok(())
     }
 
+    /// Sign exact `bytes` with the unlocked signer and return the raw
+    /// signature bytes. No JSON wrapping, no canonicalization, no
+    /// metadata — the caller decides what bytes are signed.
+    ///
+    /// Use this for protocol primitives where the verifier reconstructs
+    /// the exact same byte string from independent inputs (auth headers,
+    /// nonce-bound challenges, JWT-style payloads). For JACS document
+    /// signing, use `sign_message` / `sign_document_inplace` instead so
+    /// the verifier can reproduce the canonical payload from the
+    /// document's published fields.
+    ///
+    /// Returns `CoreError::Locked` if `clear_secrets` has been called.
+    pub fn sign_raw_bytes(&self, bytes: &[u8]) -> Result<Vec<u8>, CoreError> {
+        let signer = self.signer.as_ref().ok_or(CoreError::Locked)?;
+        signer.sign(bytes)
+    }
+
+    /// Static verify path for `sign_raw_bytes` output. Returns `Ok(true)`
+    /// when the signature matches, `Ok(false)` when it does not, and
+    /// `Err(CoreError::UnsupportedAlgorithm)` / `MalformedKey` /
+    /// `MalformedDocument` if the inputs are structurally invalid.
+    ///
+    /// Mirrors `verify_with_key` for document signing — the verifier
+    /// does not need an unlocked agent because it only requires the
+    /// public key bytes + algorithm.
+    pub fn verify_raw_bytes_with_key(
+        public_key: &[u8],
+        algorithm: SigningAlgorithm,
+        bytes: &[u8],
+        signature: &[u8],
+    ) -> Result<bool, CoreError> {
+        match algorithm {
+            SigningAlgorithm::Ed25519 => {
+                match Ed25519DalekSigner::verify(public_key, bytes, signature) {
+                    Ok(()) => Ok(true),
+                    // The underlying verify surface returns `CoreError::SignatureInvalid`
+                    // for a cryptographic mismatch and a structural error for
+                    // bad inputs (wrong key length, bad signature length).
+                    // Surface the structural errors as Err; map signature
+                    // mismatch to Ok(false) so callers can branch on a
+                    // valid bool without try-catching for the happy-path.
+                    Err(CoreError::SignatureInvalid(_)) => Ok(false),
+                    Err(other) => Err(other),
+                }
+            }
+            SigningAlgorithm::Pq2025 => {
+                match Pq2025Signer::verify(public_key, bytes, signature) {
+                    Ok(()) => Ok(true),
+                    Err(CoreError::SignatureInvalid(_)) => Ok(false),
+                    Err(other) => Err(other),
+                }
+            }
+        }
+    }
+
     /// Verify a signed JACS document against this agent's public key +
     /// algorithm. Always uses the `jacsSignature` placement key.
     ///
