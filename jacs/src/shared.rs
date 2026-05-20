@@ -1,7 +1,5 @@
 use crate::Agent;
 use crate::agent::AGENT_AGREEMENT_FIELDNAME;
-use crate::agent::TASK_END_AGREEMENT_FIELDNAME;
-use crate::agent::TASK_START_AGREEMENT_FIELDNAME;
 use crate::agent::agreement::Agreement;
 use crate::agent::document::DocumentTraits;
 use crate::agent::document::JACSDocument;
@@ -26,9 +24,8 @@ pub fn document_create(
     // let loading_filename_string = loading_filename.to_string();
     let export_embedded = None;
     let extract_only = None;
-    let docresult = agent
-        .create_document_and_load(document_string, attachment_links.clone(), embed)
-        .map_err(Into::into);
+    let docresult =
+        agent.create_document_and_load(document_string, attachment_links.clone(), embed);
     if !no_save {
         save_document(
             agent,
@@ -39,7 +36,7 @@ pub fn document_create(
             extract_only,
         )
     } else {
-        return Ok(docresult?.value.to_string());
+        Ok(docresult?.value.to_string())
     }
 }
 
@@ -60,7 +57,7 @@ pub fn document_load_and_save(
         let schemas = [schema_file.clone()];
         agent.load_custom_schemas(&schemas)?;
     }
-    let docresult = agent.load_document(document_string).map_err(Into::into);
+    let docresult = agent.load_document(document_string);
     if !load_only {
         save_document(
             agent,
@@ -71,149 +68,10 @@ pub fn document_load_and_save(
             extract_only,
         )
     } else {
-        return Ok(docresult?.to_string());
+        Ok(docresult?.to_string())
     }
 }
 
-// Task workflow functions for future public API
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
-fn create_task_start(
-    agent: &mut Agent,
-    document_string: &str,
-    agentids: Vec<String>,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    question: Option<String>,
-    context: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, JacsError> {
-    let _ = agent.schema.validate_task(document_string)?;
-
-    document_add_agreement(
-        agent,
-        document_string,
-        agentids,
-        custom_schema,
-        save_filename,
-        question,
-        context,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    )
-}
-
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
-fn create_task_complete(
-    agent: &mut Agent,
-    document_string: &str,
-    agentids: Vec<String>,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    question: Option<String>,
-    context: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, JacsError> {
-    let _ = agent.schema.validate_task(document_string)?;
-    document_add_agreement(
-        agent,
-        document_string,
-        agentids,
-        custom_schema,
-        save_filename,
-        question,
-        context,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    )
-}
-
-#[allow(dead_code)]
-fn agree_task_start(
-    agent: &mut Agent,
-    document_string: &str,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, JacsError> {
-    let _ = agent.schema.validate_task(document_string)?;
-    document_sign_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        save_filename,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    )
-}
-
-#[allow(dead_code)]
-fn agree_task_complete(
-    agent: &mut Agent,
-    document_string: &str,
-    custom_schema: Option<String>,
-    save_filename: Option<String>,
-    export_embedded: Option<bool>,
-    extract_only: Option<bool>,
-    load_only: bool,
-) -> Result<String, JacsError> {
-    let _ = agent.schema.validate_task(document_string)?;
-    document_sign_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        save_filename,
-        export_embedded,
-        extract_only,
-        load_only,
-        Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    )
-}
-
-#[allow(dead_code)]
-fn check_task_complete(
-    agent: &mut Agent,
-    document_string: &str,
-    custom_schema: Option<String>,
-) -> Result<String, JacsError> {
-    let _ = agent.schema.validate_task(document_string)?;
-    document_check_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        Some(TASK_END_AGREEMENT_FIELDNAME.to_string()),
-    )
-}
-
-#[allow(dead_code)]
-fn check_task_start(
-    agent: &mut Agent,
-    document_string: &str,
-    custom_schema: Option<String>,
-) -> Result<String, JacsError> {
-    let _ = agent.schema.validate_task(document_string)?;
-    document_check_agreement(
-        agent,
-        document_string,
-        custom_schema,
-        Some(TASK_START_AGREEMENT_FIELDNAME.to_string()),
-    )
-}
-
-// todo do start and end for task
 pub fn document_check_agreement(
     agent: &mut Agent,
     document_string: &str,
@@ -233,9 +91,10 @@ pub fn document_check_agreement(
     let document_key = docresult.getkey();
     let result = agent.check_agreement(&document_key, Some(agreement_fieldname_key));
     match result {
-        Err(err) => {
-            Err(JacsError::DocumentError(format!("Agreement check failed: {}", err)).into())
-        }
+        Err(err) => Err(JacsError::DocumentError(format!(
+            "Agreement check failed: {}",
+            err
+        ))),
         Ok(_) => Ok(format!(
             "both_signed_document agents requested {:?} unsigned {:?} signed {:?}",
             docresult
@@ -366,8 +225,7 @@ pub fn save_document(
                         return Err(JacsError::SchemaError(format!(
                             "document specialised schema {} validation failed {}",
                             document_key, e
-                        ))
-                        .into());
+                        )));
                     }
                 }
             }
@@ -375,8 +233,9 @@ pub fn save_document(
             agent.save_document(&document_key, save_filename, export_embedded, extract_only)?;
             Ok(format!("saved  {}", document_key))
         }
-        Err(ref e) => {
-            Err(JacsError::ValidationError(format!("Document validation failed: {}", e)).into())
-        }
+        Err(ref e) => Err(JacsError::ValidationError(format!(
+            "Document validation failed: {}",
+            e
+        ))),
     }
 }

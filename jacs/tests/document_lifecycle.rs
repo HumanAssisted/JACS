@@ -183,7 +183,7 @@ macro_rules! lifecycle_test_suite {
             let b = backend();
             let svc = b.create_service();
 
-            for kind in &["agent", "artifact", "agentstate", "message", "task", "commitment", "todo"] {
+            for kind in &["agent", "artifact", "document", "agreement"] {
                 let json = if b.needs_jacs_headers() {
                     let id = next_id("kind");
                     format!(
@@ -497,53 +497,49 @@ macro_rules! lifecycle_test_suite {
 
         $(#[$serial_attr])*
         #[test]
-        fn state_tools_map_to_document_api() {
+        fn generic_documents_map_to_document_api() {
             let b = backend();
             let svc = b.create_service();
 
-            // jacs_sign_state -> create(kind="agentstate", visibility=Private)
-            let state_json = if b.needs_jacs_headers() {
-                let id = next_id("st");
+            let document_json = if b.needs_jacs_headers() {
+                let id = next_id("doc");
                 format!(
-                    r#"{{"jacsId":"{}","jacsVersion":"v1","jacsType":"agentstate","jacsLevel":"raw","memory":"agent state data","plan":"step 1"}}"#,
+                    r#"{{"jacsId":"{}","jacsVersion":"v1","jacsType":"document","jacsLevel":"raw","content":{{"note":"important","plan":"step 1"}}}}"#,
                     id
                 )
             } else {
-                r#"{"memory":"agent state data","plan":"step 1"}"#.to_string()
+                r#"{"content":{"note":"important","plan":"step 1"}}"#.to_string()
             };
 
-            let state_doc = svc
+            let document = svc
                 .create(
-                    &state_json,
+                    &document_json,
                     CreateOptions {
-                        jacs_type: "agentstate".to_string(),
+                        jacs_type: "document".to_string(),
                         visibility: DocumentVisibility::Private,
                         ..CreateOptions::default()
                     },
                 )
-                .expect("sign_state");
-            assert_eq!(state_doc.jacs_type, "agentstate");
+                .expect("create document");
+            assert_eq!(document.jacs_type, "document");
 
-            // jacs_load_state -> get(key)
-            let loaded = svc.get(&state_doc.getkey()).expect("load_state");
-            assert_eq!(loaded.id, state_doc.id);
+            let loaded = svc.get(&document.getkey()).expect("get document");
+            assert_eq!(loaded.id, document.id);
 
-            // jacs_update_state -> update(id, new_content)
             std::thread::sleep(std::time::Duration::from_millis(20));
             let update_json = b.make_update_json(
-                &state_doc.id,
-                &state_doc.version,
-                r#""memory":"updated state","plan":"step 2""#,
+                &document.id,
+                &document.version,
+                r#""content":{"note":"updated","plan":"step 2"}"#,
             );
             let updated = svc
-                .update(&state_doc.id, &update_json, UpdateOptions::default())
-                .expect("update_state");
-            assert_eq!(updated.id, state_doc.id);
-            assert_ne!(updated.version, state_doc.version);
+                .update(&document.id, &update_json, UpdateOptions::default())
+                .expect("update document");
+            assert_eq!(updated.id, document.id);
+            assert_ne!(updated.version, document.version);
 
-            // jacs_list_state -> list(filter={kind: "agentstate"})
             svc.create(
-                &b.make_json(r#""content":"not a state doc""#),
+                &b.make_json(r#""content":"not a document type""#),
                 CreateOptions {
                     jacs_type: "artifact".to_string(),
                     ..CreateOptions::default()
@@ -551,45 +547,21 @@ macro_rules! lifecycle_test_suite {
             )
             .unwrap();
 
-            let state_list = svc
+            let documents = svc
                 .list(ListFilter {
-                    jacs_type: Some("agentstate".to_string()),
+                    jacs_type: Some("document".to_string()),
                     ..ListFilter::default()
                 })
-                .expect("list_state");
-            for s in &state_list {
-                assert_eq!(s.jacs_type, "agentstate");
+                .expect("list documents");
+            for s in &documents {
+                assert_eq!(s.jacs_type, "document");
             }
-            assert!(!state_list.is_empty());
+            assert!(!documents.is_empty());
 
-            // jacs_verify_state -> verify(key)
-            svc.verify(&state_doc.getkey()).expect("verify_state should succeed for untampered state doc");
-
-            // Also verify the updated state doc
-            svc.verify(&updated.getkey()).expect("verify_state should succeed for updated state doc");
-
-            // jacs_adopt_state -> create(kind="agentstate", source=external)
-            let adopt_json = if b.needs_jacs_headers() {
-                let id = next_id("adopt");
-                format!(
-                    r#"{{"jacsId":"{}","jacsVersion":"v1","jacsType":"agentstate","jacsLevel":"raw","memory":"adopted from external","source":"agent-xyz"}}"#,
-                    id
-                )
-            } else {
-                r#"{"memory":"adopted from external","source":"agent-xyz"}"#.to_string()
-            };
-
-            let adopted = svc
-                .create(
-                    &adopt_json,
-                    CreateOptions {
-                        jacs_type: "agentstate".to_string(),
-                        visibility: DocumentVisibility::Private,
-                        ..CreateOptions::default()
-                    },
-                )
-                .expect("adopt_state");
-            assert_eq!(adopted.jacs_type, "agentstate");
+            svc.verify(&document.getkey())
+                .expect("verify should succeed for untampered document");
+            svc.verify(&updated.getkey())
+                .expect("verify should succeed for updated document");
         }
 
         $(#[$serial_attr])*
@@ -1277,7 +1249,7 @@ mod fs_helpers {
 
     // Thread-local to hold per-test TempDir alive during filesystem tests.
     thread_local! {
-        pub static FS_TMP: RefCell<Option<TempDir>> = RefCell::new(None);
+        pub static FS_TMP: RefCell<Option<TempDir>> = const { RefCell::new(None) };
     }
 
     pub struct FsBackend;
@@ -1436,7 +1408,7 @@ mod error_parity {
         let debug = format!("{:?}", err);
         // Debug format is "VariantName(..." or "VariantName { ..."
         debug
-            .split(|c: char| c == '(' || c == '{' || c == ' ')
+            .split(['(', '{', ' '])
             .next()
             .unwrap_or("Unknown")
             .to_string()

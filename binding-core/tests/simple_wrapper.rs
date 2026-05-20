@@ -34,6 +34,10 @@ fn canonical_display(path: &Path) -> String {
         .to_string()
 }
 
+fn canonical_temp_dir(temp: &tempfile::TempDir) -> PathBuf {
+    std::fs::canonicalize(temp.path()).expect("tempdir should canonicalize")
+}
+
 fn assert_same_path(actual: &Value, expected: &Path) {
     let actual_path = actual.as_str().expect("path value should be a string");
     assert_eq!(
@@ -97,10 +101,11 @@ fn test_create_returns_wrapper_and_info_json() {
 fn test_load_roundtrips_with_create() {
     // Use unique key filenames to avoid env var pollution from parallel tests.
     let tmp = tempfile::TempDir::new().unwrap();
-    let _cwd_guard = CwdGuard::change_to(tmp.path());
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let tmp_root = canonical_temp_dir(&tmp);
+    let _cwd_guard = CwdGuard::change_to(&tmp_root);
+    let data_dir = tmp_root.join("jacs_data");
+    let key_dir = tmp_root.join("jacs_keys");
+    let config_path = tmp_root.join("jacs.config.json");
 
     let params = jacs::simple::CreateAgentParams::builder()
         .name("load-test")
@@ -136,7 +141,8 @@ fn test_load_roundtrips_with_create() {
 #[serial]
 fn test_load_with_info_returns_resolved_metadata() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let config_dir = tmp.path().join("nested");
+    let tmp_root = canonical_temp_dir(&tmp);
+    let config_dir = tmp_root.join("nested");
     let data_dir = config_dir.join("jacs_data");
     let key_dir = config_dir.join("jacs_keys");
     let config_path = config_dir.join("jacs.config.json");
@@ -154,7 +160,7 @@ fn test_load_with_info_returns_resolved_metadata() {
     let (_agent, created_info) =
         jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
 
-    let _cwd_guard = CwdGuard::change_to(tmp.path());
+    let _cwd_guard = CwdGuard::change_to(&tmp_root);
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
     }
@@ -530,9 +536,10 @@ fn test_from_agent() {
 #[serial]
 fn test_create_with_params_json() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let data_dir = tmp.path().join("data");
-    let key_dir = tmp.path().join("keys");
-    let config_path = tmp.path().join("config.json");
+    let tmp_root = canonical_temp_dir(&tmp);
+    let data_dir = tmp_root.join("data");
+    let key_dir = tmp_root.join("keys");
+    let config_path = tmp_root.join("config.json");
 
     let params_json = serde_json::json!({
         "name": "params-test",

@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         // Record operations with correct signatures
         record_agent_operation(&operation_name, "demo-agent", i % 2 == 0, duration_ms);
-        record_signature_verification("demo-agent", true, "RSA-PSS");
+        record_signature_verification("demo-agent", true, "ring-Ed25519");
         record_network_request("https://example.com/api", "GET", 200, duration_ms);
         record_memory_usage("demo-component", 1024 * (i + 1) as u64);
 

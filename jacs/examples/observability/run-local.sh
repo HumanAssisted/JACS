@@ -4,7 +4,7 @@
 mkdir -p logs metrics
 
 # Set environment variable to help with dependency resolution
-export JACS_AGENT_KEY_ALGORITHM=RSA-PSS
+export JACS_AGENT_KEY_ALGORITHM=ring-Ed25519
 
 echo "Starting JACS Observability Demo locally..."
 echo "Logs will be written to: ./logs/"

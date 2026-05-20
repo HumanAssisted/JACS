@@ -316,14 +316,14 @@ export declare class JacsClient {
      * ```typescript
      * const a2a = client.getA2A();
      * const card = a2a.exportAgentCard({ jacsId: client.agentId, ... });
-     * const signed = await a2a.signArtifact(artifact, 'task');
+     * const signed = await a2a.signArtifact(artifact, 'artifact');
      * ```
      */
     getA2A(): any;
     /**
      * Export this agent as an A2A Agent Card.
      *
-     * @param agentData - JACS agent data (jacsId, jacsName, jacsServices, etc.).
+     * @param agentData - A2A agent card data (jacsId, jacsName, skills, etc.).
      *   If not provided, a minimal card is built from the client's own info.
      */
     exportAgentCard(agentData?: Record<string, unknown>): any;
@@ -331,7 +331,7 @@ export declare class JacsClient {
      * Sign an A2A artifact with this agent's JACS provenance.
      *
      * @param artifact - The artifact payload to sign.
-     * @param artifactType - Type label (e.g., "task", "message", "result").
+     * @param artifactType - Type label (e.g., "artifact", "result").
      * @param parentSignatures - Optional parent signatures for chain of custody.
      */
     signArtifact(artifact: Record<string, unknown>, artifactType: string, parentSignatures?: Record<string, unknown>[] | null): Promise<Record<string, unknown>>;

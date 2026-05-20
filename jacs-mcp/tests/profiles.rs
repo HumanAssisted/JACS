@@ -1,84 +1,49 @@
-//! Integration tests for compile-time and runtime tool profiles (TASK_039).
-//!
-//! These tests verify that:
-//! - Feature flags control which tool families are compiled in
-//! - The `Profile` enum correctly filters tools at runtime
-//! - `JACS_MCP_PROFILE` env var and CLI flag resolution works
-//! - Core vs Full profile boundaries are correct
+//! Integration tests for compile-time and runtime tool profiles.
 
 #![cfg(feature = "mcp")]
 
 use jacs_binding_core::AgentWrapper;
 use jacs_mcp::Profile;
 
-// =========================================================================
-// Compile-time feature tests
-// =========================================================================
+#[cfg(not(feature = "full-tools"))]
+const CORE_TOOL_COUNT: usize = 19;
+#[cfg(feature = "full-tools")]
+const FULL_TOOL_COUNT: usize = 29;
 
-/// With default features (`core-tools`), exactly 34 core tools are registered.
 #[test]
 fn compile_time_default_features_yield_core_tools() {
     let tools = jacs_mcp::JacsMcpServer::tools();
 
-    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5)
-    //     + inline(2) + media(3) = 34
     #[cfg(not(feature = "full-tools"))]
     assert_eq!(
         tools.len(),
-        34,
-        "default features (core-tools) should register exactly 34 tools"
+        CORE_TOOL_COUNT,
+        "default features should register exactly {CORE_TOOL_COUNT} tools"
     );
 
-    // If full-tools is enabled, all 48 tools are registered
     #[cfg(feature = "full-tools")]
     assert_eq!(
         tools.len(),
-        48,
-        "full-tools feature should register all 48 tools"
+        FULL_TOOL_COUNT,
+        "full-tools should register all {FULL_TOOL_COUNT} current tools"
     );
 }
 
-/// Tool family features are additive: enabling one adds only its tools.
 #[test]
 fn compile_time_features_are_additive() {
     let tools = jacs_mcp::JacsMcpServer::tools();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
-    // State tools should always be present (part of core-tools default)
-    #[cfg(feature = "state-tools")]
-    {
-        assert!(names.contains(&"jacs_sign_state"));
-        assert!(names.contains(&"jacs_verify_state"));
-        assert!(names.contains(&"jacs_load_state"));
-        assert!(names.contains(&"jacs_update_state"));
-        assert!(names.contains(&"jacs_list_state"));
-        assert!(names.contains(&"jacs_adopt_state"));
-    }
+    assert!(names.contains(&"jacs_sign_document"));
+    assert!(names.contains(&"jacs_verify_document"));
+    assert!(names.contains(&"jacs_search"));
+    assert!(names.contains(&"jacs_reencrypt_key"));
 
-    // Memory tools should be present (part of core-tools default)
-    #[cfg(feature = "memory-tools")]
-    {
-        assert!(names.contains(&"jacs_memory_save"));
-        assert!(names.contains(&"jacs_memory_recall"));
-        assert!(names.contains(&"jacs_memory_list"));
-        assert!(names.contains(&"jacs_memory_forget"));
-        assert!(names.contains(&"jacs_memory_update"));
-    }
+    assert!(!names.iter().any(|name| name.contains("_state")));
+    assert!(!names.iter().any(|name| name.starts_with("jacs_message_")));
+    assert!(!names.iter().any(|name| name.starts_with("jacs_memory_")));
+    assert!(!names.iter().any(|name| name.starts_with("jacs_audit")));
 
-    // Messaging tools only present with messaging-tools feature
-    #[cfg(feature = "messaging-tools")]
-    {
-        assert!(names.contains(&"jacs_message_send"));
-        assert!(names.contains(&"jacs_message_update"));
-        assert!(names.contains(&"jacs_message_agree"));
-        assert!(names.contains(&"jacs_message_receive"));
-    }
-    #[cfg(not(feature = "messaging-tools"))]
-    {
-        assert!(!names.contains(&"jacs_message_send"));
-    }
-
-    // Agreement tools only present with agreement-tools feature
     #[cfg(feature = "agreement-tools")]
     {
         assert!(names.contains(&"jacs_create_agreement"));
@@ -90,7 +55,6 @@ fn compile_time_features_are_additive() {
         assert!(!names.contains(&"jacs_create_agreement"));
     }
 
-    // A2A tools only present with a2a-tools feature
     #[cfg(feature = "a2a-tools")]
     {
         assert!(names.contains(&"jacs_wrap_a2a_artifact"));
@@ -102,7 +66,6 @@ fn compile_time_features_are_additive() {
         assert!(!names.contains(&"jacs_wrap_a2a_artifact"));
     }
 
-    // Attestation tools only present with attestation-tools feature
     #[cfg(feature = "attestation-tools")]
     {
         assert!(names.contains(&"jacs_attest_create"));
@@ -116,46 +79,24 @@ fn compile_time_features_are_additive() {
     }
 }
 
-// =========================================================================
-// Runtime profile tests
-// =========================================================================
-
-/// `Profile::Core` filters out advanced tools even when compiled in.
 #[test]
 fn runtime_core_profile_filters_advanced_tools() {
     let server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
     let tools = server.active_tools();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
-    // Core tools present
-    assert!(names.contains(&"jacs_sign_state"));
-    assert!(names.contains(&"jacs_memory_save"));
     assert!(names.contains(&"jacs_trust_agent"));
     assert!(names.contains(&"jacs_sign_document"));
-    assert!(names.contains(&"jacs_audit"));
     assert!(names.contains(&"jacs_search"));
     assert!(names.contains(&"jacs_reencrypt_key"));
 
-    // Advanced tools filtered out
-    assert!(
-        !names.contains(&"jacs_message_send"),
-        "Core profile should not contain messaging tools"
-    );
-    assert!(
-        !names.contains(&"jacs_create_agreement"),
-        "Core profile should not contain agreement tools"
-    );
-    assert!(
-        !names.contains(&"jacs_wrap_a2a_artifact"),
-        "Core profile should not contain A2A tools"
-    );
-    assert!(
-        !names.contains(&"jacs_attest_create"),
-        "Core profile should not contain attestation tools"
-    );
+    assert!(!names.contains(&"jacs_create_agreement"));
+    assert!(!names.contains(&"jacs_wrap_a2a_artifact"));
+    assert!(!names.contains(&"jacs_attest_create"));
+    assert!(!names.iter().any(|name| name.contains("_state")));
+    assert!(!names.iter().any(|name| name.starts_with("jacs_message_")));
 }
 
-/// `Profile::Full` exposes all compiled-in tools.
 #[test]
 fn runtime_full_profile_exposes_all_tools() {
     let server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Full);
@@ -169,13 +110,11 @@ fn runtime_full_profile_exposes_all_tools() {
     );
 }
 
-/// Default profile (no explicit setting) is Core.
 #[test]
 fn runtime_default_profile_is_core() {
     assert_eq!(Profile::default(), Profile::Core);
 }
 
-/// Profile parsing is case-insensitive.
 #[test]
 fn runtime_profile_parse_case_insensitive() {
     assert_eq!(Profile::parse("full"), Profile::Full);
@@ -186,7 +125,6 @@ fn runtime_profile_parse_case_insensitive() {
     assert_eq!(Profile::parse("CORE"), Profile::Core);
 }
 
-/// Unknown profile string defaults to Core (fail-safe).
 #[test]
 fn runtime_unknown_profile_defaults_to_core() {
     assert_eq!(Profile::parse("unknown"), Profile::Core);
@@ -194,7 +132,6 @@ fn runtime_unknown_profile_defaults_to_core() {
     assert_eq!(Profile::parse("  "), Profile::Core);
 }
 
-/// CLI flag takes priority over env var.
 #[test]
 fn runtime_cli_overrides_env_var() {
     let profile = Profile::resolve(Some("core"));
@@ -204,52 +141,26 @@ fn runtime_cli_overrides_env_var() {
     assert_eq!(profile, Profile::Full);
 }
 
-/// Env var and default resolution tests.
-///
-/// Combined into a single test to avoid parallel execution races on the
-/// process-global JACS_MCP_PROFILE environment variable.
 #[test]
 fn runtime_env_var_and_default_resolution() {
-    // Test 1: Env var sets profile
     unsafe { std::env::set_var("JACS_MCP_PROFILE", "full") };
     let profile = Profile::resolve(None);
-    assert_eq!(
-        profile,
-        Profile::Full,
-        "env var 'full' should resolve to Full"
-    );
+    assert_eq!(profile, Profile::Full);
 
-    // Test 2: CLI overrides env var
     let profile = Profile::resolve(Some("core"));
-    assert_eq!(
-        profile,
-        Profile::Core,
-        "CLI 'core' should override env var 'full'"
-    );
+    assert_eq!(profile, Profile::Core);
 
-    // Test 3: When env var is removed, default to Core
     unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
     let profile = Profile::resolve(None);
-    assert_eq!(profile, Profile::Core, "no config should default to Core");
+    assert_eq!(profile, Profile::Core);
 
-    // Test 4: Empty env var defaults to Core
     unsafe { std::env::set_var("JACS_MCP_PROFILE", "") };
     let profile = Profile::resolve(None);
-    assert_eq!(
-        profile,
-        Profile::Core,
-        "empty env var should default to Core"
-    );
+    assert_eq!(profile, Profile::Core);
 
-    // Cleanup
     unsafe { std::env::remove_var("JACS_MCP_PROFILE") };
 }
 
-// =========================================================================
-// Profile interaction with server
-// =========================================================================
-
-/// `with_profile` constructor stores the profile and uses it in `active_tools()`.
 #[test]
 fn server_with_profile_stores_and_uses_profile() {
     let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
@@ -259,35 +170,22 @@ fn server_with_profile_stores_and_uses_profile() {
     assert_eq!(full_server.profile(), &Profile::Full);
 }
 
-// =========================================================================
-// Task 007: Specific profile filtering verification tests
-// =========================================================================
-
-/// Core profile must exclude agreement and messaging tool names.
 #[test]
-fn core_profile_excludes_agreement_tools() {
-    let core = Profile::Core;
-    let tools = core.tools();
+fn core_profile_excludes_advanced_and_retired_tools() {
+    let tools = Profile::Core.tools();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
     for name in &names {
-        assert!(
-            !name.starts_with("jacs_agreement")
-                && !name.starts_with("jacs_create_agreement")
-                && !name.starts_with("jacs_sign_agreement")
-                && !name.starts_with("jacs_check_agreement"),
-            "Core profile should not contain agreement tool '{}'",
-            name
-        );
-        assert!(
-            !name.starts_with("jacs_message_"),
-            "Core profile should not contain messaging tool '{}'",
-            name
-        );
+        assert!(!name.starts_with("jacs_message_"));
+        assert!(!name.starts_with("jacs_memory_"));
+        assert!(!name.starts_with("jacs_audit"));
+        assert!(!name.contains("_state"));
+        assert!(!name.starts_with("jacs_create_agreement"));
+        assert!(!name.starts_with("jacs_sign_agreement"));
+        assert!(!name.starts_with("jacs_check_agreement"));
     }
 }
 
-/// Full profile must include all compiled-in tools.
 #[test]
 fn full_profile_includes_all_tools() {
     let full = Profile::Full;
@@ -301,39 +199,21 @@ fn full_profile_includes_all_tools() {
     );
 }
 
-/// Core profile must include search and state tools.
 #[test]
-fn core_profile_includes_search_and_state_tools() {
-    let core = Profile::Core;
-    let tools = core.tools();
+fn core_profile_includes_search_and_document_tools() {
+    let tools = Profile::Core.tools();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
-    assert!(
-        names.contains(&"jacs_search"),
-        "Core profile should contain jacs_search"
-    );
-    assert!(
-        names.contains(&"jacs_sign_state"),
-        "Core profile should contain jacs_sign_state"
-    );
-    assert!(
-        names.contains(&"jacs_load_state"),
-        "Core profile should contain jacs_load_state"
-    );
+    assert!(names.contains(&"jacs_search"));
+    assert!(names.contains(&"jacs_sign_document"));
+    assert!(names.contains(&"jacs_verify_document"));
 }
 
-/// `JacsMcpServer::tools()` (static) always returns all compiled-in tools,
-/// while `active_tools()` (instance) respects the profile.
 #[test]
 fn static_tools_vs_instance_active_tools() {
     let static_tools = jacs_mcp::JacsMcpServer::tools();
     let core_server = jacs_mcp::JacsMcpServer::with_profile(AgentWrapper::new(), Profile::Core);
     let active = core_server.active_tools();
 
-    // Static tools include everything compiled in.
-    // Active tools may be a subset if profile is Core.
-    assert!(
-        active.len() <= static_tools.len(),
-        "active_tools should be a subset of tools()"
-    );
+    assert!(active.len() <= static_tools.len());
 }

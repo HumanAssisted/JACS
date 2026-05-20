@@ -15,7 +15,6 @@
 use jacs::simple::SimpleAgent;
 use proptest::prelude::*;
 use serde_json::json;
-use serial_test::serial;
 
 const TEST_PASSWORD: &str = "PropTest!P@ss2026";
 const PASSWORD_ENV: &str = "JACS_PRIVATE_KEY_PASSWORD";

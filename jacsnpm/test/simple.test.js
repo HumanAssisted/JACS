@@ -51,6 +51,10 @@ function resolveConfigRelativePath(configPath, candidate) {
     : fs.realpathSync(path.resolve(path.dirname(configPath), candidate));
 }
 
+function mkRealTempDir(prefix) {
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+}
+
 // Helper to get a fresh simple module and load it in the fixtures directory (sync)
 function loadSimpleInFixtures() {
   delete require.cache[require.resolve('../simple.js')];
@@ -120,7 +124,7 @@ function seedPublicKeyCache(agentDir, agentJson, publicKeyPem) {
   const agent = JSON.parse(agentJson);
   const signature = agent.jacsSignature || {};
   const keyHash = signature.publicKeyHash;
-  const signingAlgorithm = signature.signingAlgorithm || 'RSA-PSS';
+  const signingAlgorithm = signature.signingAlgorithm || 'ring-Ed25519';
   const publicKeysDir = path.join(agentDir, 'jacs_data', 'public_keys');
 
   // Replicate Rust's hash_public_key: decode UTF-8, trim, remove \r, SHA-256 hex.
@@ -291,7 +295,7 @@ describe('JACS Simple API', function() {
       this.timeout(30000);
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-quickstart-'));
+      const tmpDir = mkRealTempDir('jacs-simple-quickstart-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       delete process.env.JACS_PRIVATE_KEY_PASSWORD;
@@ -336,7 +340,7 @@ describe('JACS Simple API', function() {
       this.timeout(30000);
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-native-load-'));
+      const tmpDir = mkRealTempDir('jacs-simple-native-load-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
@@ -533,6 +537,7 @@ describe('JACS Simple API', function() {
 
       // Verify the raw document is valid JSON
       const doc = JSON.parse(signed.raw);
+      expect(doc.jacsType).to.equal('message');
       expect(doc).to.have.property('jacsSignature');
     });
 
@@ -616,7 +621,7 @@ describe('JACS Simple API', function() {
       this.timeout(30000);
       const modulePath = require.resolve('../simple.js');
       const password = 'TestP@ss123!#';
-      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-two-agent-'));
+      const root = mkRealTempDir('jacs-two-agent-');
       const agent1Dir = path.join(root, 'agent1');
       const agent2Dir = path.join(root, 'agent2');
       const originalCwd = process.cwd();
@@ -718,11 +723,6 @@ describe('JACS Simple API', function() {
         const agent = JSON.parse(agentDoc);
         const originalVersion = agent.jacsVersion;
 
-        // Add required field if missing (for test fixtures compatibility)
-        if (!agent.jacsContacts || agent.jacsContacts.length === 0) {
-          agent.jacsContacts = [{ contactFirstName: 'Test', contactLastName: 'Contact' }];
-        }
-
         // Modify a field with valid enum value
         agent.jacsAgentType = 'hybrid';
 
@@ -747,11 +747,6 @@ describe('JACS Simple API', function() {
         const agentDoc = freshSimple.exportAgent();
         const agent = JSON.parse(agentDoc);
 
-        // Add required field if missing (schema requires at least 1 contact)
-        if (!agent.jacsContacts || agent.jacsContacts.length === 0) {
-          agent.jacsContacts = [{ contactFirstName: 'Test', contactLastName: 'Contact' }];
-        }
-
         agent.jacsAgentType = 'human-org';
 
         const result = freshSimple.updateAgentSync(JSON.stringify(agent));
@@ -771,11 +766,6 @@ describe('JACS Simple API', function() {
         const agentDoc = freshSimple.exportAgent();
         const agent = JSON.parse(agentDoc);
         const originalVersion = agent.jacsVersion;
-
-        // Add required field if missing (schema requires at least 1 contact)
-        if (!agent.jacsContacts || agent.jacsContacts.length === 0) {
-          agent.jacsContacts = [{ contactFirstName: 'Test', contactLastName: 'Contact' }];
-        }
 
         // Modify and update
         agent.jacsAgentType = 'human';
@@ -857,7 +847,7 @@ describe('JACS Simple API', function() {
       this.timeout(30000);
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-export-agent-'));
+      const tmpDir = mkRealTempDir('jacs-simple-export-agent-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
@@ -921,7 +911,7 @@ describe('JACS Simple API', function() {
       this.timeout(30000);
       delete require.cache[require.resolve('../simple.js')];
       const freshSimple = require('../simple.js');
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-simple-verify-by-id-'));
+      const tmpDir = mkRealTempDir('jacs-simple-verify-by-id-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = TEST_PASSWORD;
@@ -937,7 +927,7 @@ describe('JACS Simple API', function() {
         const nativeAgent = new bindings.JacsAgent();
         await nativeAgent.load(path.resolve(info.configPath));
         const storedRaw = await nativeAgent.createDocument(
-          JSON.stringify({ jacsType: 'message', jacsLevel: 'raw', content: { verifyById: true } }),
+          JSON.stringify({ jacsType: 'document', jacsLevel: 'raw', content: { verifyById: true } }),
           null,
           null,
           false,

@@ -135,7 +135,7 @@ describe('JacsAgent Class', () => {
         agent.loadSync(TEST_CONFIG);
 
         const docContent = JSON.stringify({
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { message: 'test' }
         });
@@ -166,13 +166,13 @@ describe('JacsAgent Class', () => {
         agent.loadSync(TEST_CONFIG);
 
         const doc1Content = JSON.stringify({
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { value: 1 }
         });
 
         const doc2Content = JSON.stringify({
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { value: 2 }
         });
@@ -203,7 +203,7 @@ describe('JacsAgent Class', () => {
 
         // Create a document first
         const docContent = JSON.stringify({
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { action: 'approve' }
         });
@@ -223,7 +223,7 @@ describe('JacsAgent Class', () => {
 
         // Create a document first
         const docContent = JSON.stringify({
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { action: 'approve' }
         });
@@ -300,7 +300,7 @@ describe('JacsAgent Class', () => {
         await agent.load(TEST_CONFIG);
 
         const docContent = JSON.stringify({
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { message: 'async test' }
         });

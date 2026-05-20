@@ -167,7 +167,6 @@ jacs document create -f unsigned-doc.json
 
 **Solution:**
 - Use a supported algorithm for new keys: `ring-Ed25519`, `pq2025`
-- Legacy note: JACS can still verify older `RSA-PSS` and `pq-dilithium` artifacts
 
 ## DNS Verification Errors
 

@@ -251,13 +251,14 @@ impl Agreement for Agent {
         }
 
         // Validate minimum_strength
-        if let Some(ref strength) = options.minimum_strength {
-            if strength != "classical" && strength != "post-quantum" {
-                return Err(JacsError::DocumentError(format!(
-                    "Invalid minimumStrength '{}': must be 'classical' or 'post-quantum'",
-                    strength
-                )));
-            }
+        if let Some(ref strength) = options.minimum_strength
+            && strength != "classical"
+            && strength != "post-quantum"
+        {
+            return Err(JacsError::DocumentError(format!(
+                "Invalid minimumStrength '{}': must be 'classical' or 'post-quantum'",
+                strength
+            )));
         }
 
         let document = self.get_document(document_key)?;
@@ -454,21 +455,20 @@ impl Agreement for Agent {
         // --- Pre-signing checks for timeout and algorithm constraints ---
         if let Some(jacs_agreement) = value.get(&agreement_fieldname_key) {
             // Timeout check
-            if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str()) {
-                if let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str) {
-                    if Utc::now() > deadline {
-                        warn!(
-                            event = "agreement_expired",
-                            document_id = %document_key,
-                            deadline = %timeout_str,
-                            "Cannot sign expired agreement"
-                        );
-                        return Err(JacsError::DocumentError(format!(
-                            "Cannot sign: agreement has expired (deadline was {})",
-                            timeout_str
-                        )));
-                    }
-                }
+            if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str())
+                && let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str)
+                && Utc::now() > deadline
+            {
+                warn!(
+                    event = "agreement_expired",
+                    document_id = %document_key,
+                    deadline = %timeout_str,
+                    "Cannot sign expired agreement"
+                );
+                return Err(JacsError::DocumentError(format!(
+                    "Cannot sign: agreement has expired (deadline was {})",
+                    timeout_str
+                )));
             }
 
             // Algorithm constraint checks against this agent's signing algorithm
@@ -491,13 +491,12 @@ impl Agreement for Agent {
                 if let Some(strength) = jacs_agreement
                     .get("minimumStrength")
                     .and_then(|v| v.as_str())
+                    && !meets_strength_requirement(algo, strength)
                 {
-                    if !meets_strength_requirement(algo, strength) {
-                        return Err(JacsError::DocumentError(format!(
-                            "Cannot sign: agent's algorithm '{}' does not meet minimumStrength '{}'",
-                            algo, strength
-                        )));
-                    }
+                    return Err(JacsError::DocumentError(format!(
+                        "Cannot sign: agent's algorithm '{}' does not meet minimumStrength '{}'",
+                        algo, strength
+                    )));
                 }
             }
         }
@@ -731,21 +730,20 @@ impl Agreement for Agent {
             .ok_or("Agreement verification failed: document has no agreement")?;
 
         // --- Timeout check ---
-        if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str()) {
-            if let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str) {
-                if Utc::now() > deadline {
-                    warn!(
-                        event = "agreement_expired",
-                        document_id = %document_key,
-                        deadline = %timeout_str,
-                        "Agreement has expired"
-                    );
-                    return Err(JacsError::DocumentError(format!(
-                        "Agreement has expired: deadline was {}",
-                        timeout_str
-                    )));
-                }
-            }
+        if let Some(timeout_str) = jacs_agreement.get("timeout").and_then(|v| v.as_str())
+            && let Ok(deadline) = chrono::DateTime::parse_from_rfc3339(timeout_str)
+            && Utc::now() > deadline
+        {
+            warn!(
+                event = "agreement_expired",
+                document_id = %document_key,
+                deadline = %timeout_str,
+                "Agreement has expired"
+            );
+            return Err(JacsError::DocumentError(format!(
+                "Agreement has expired: deadline was {}",
+                timeout_str
+            )));
         }
 
         // --- Read quorum ---
@@ -816,21 +814,21 @@ impl Agreement for Agent {
                     .to_string();
 
                 // --- Algorithm constraint enforcement ---
-                if let Some(ref algos) = required_algorithms {
-                    if !algos.contains(&public_key_enc_type) {
-                        return Err(JacsError::DocumentError(format!(
-                            "Signature from {} uses algorithm '{}' which is not in requiredAlgorithms {:?}",
-                            agent_id_and_version, public_key_enc_type, algos
-                        )));
-                    }
+                if let Some(ref algos) = required_algorithms
+                    && !algos.contains(&public_key_enc_type)
+                {
+                    return Err(JacsError::DocumentError(format!(
+                        "Signature from {} uses algorithm '{}' which is not in requiredAlgorithms {:?}",
+                        agent_id_and_version, public_key_enc_type, algos
+                    )));
                 }
-                if let Some(strength) = minimum_strength {
-                    if !meets_strength_requirement(&public_key_enc_type, strength) {
-                        return Err(JacsError::DocumentError(format!(
-                            "Signature from {} uses algorithm '{}' which does not meet minimumStrength '{}'",
-                            agent_id_and_version, public_key_enc_type, strength
-                        )));
-                    }
+                if let Some(strength) = minimum_strength
+                    && !meets_strength_requirement(&public_key_enc_type, strength)
+                {
+                    return Err(JacsError::DocumentError(format!(
+                        "Signature from {} uses algorithm '{}' which does not meet minimumStrength '{}'",
+                        agent_id_and_version, public_key_enc_type, strength
+                    )));
                 }
 
                 let agents_signature = signature

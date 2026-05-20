@@ -11,7 +11,6 @@
 //! All tests are `#[serial]` because `quickstart()` mutates CWD and env vars.
 
 use jacs::a2a::{AgentCard, JACS_EXTENSION_URI};
-use jacs::simple::SimpleAgent;
 use serde_json::{Value, json};
 use serial_test::serial;
 use std::fs;

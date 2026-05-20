@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use rmcp::{
     RoleClient, ServiceExt,
-    model::CallToolRequestParam,
+    model::CallToolRequestParams,
     service::RunningService,
     transport::{ConfigureCommandExt, TokioChildProcess},
 };
@@ -78,10 +78,10 @@ impl Session {
     async fn call(&self, name: &str, args: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let resp = tokio::time::timeout(
             TIMEOUT,
-            self.client.call_tool(CallToolRequestParam {
-                name: name.to_string().into(),
-                arguments: args.as_object().cloned(),
-            }),
+            self.client.call_tool(
+                CallToolRequestParams::new(name.to_string())
+                    .with_arguments(args.as_object().cloned().unwrap_or_default()),
+            ),
         )
         .await
         .map_err(|_| anyhow::anyhow!("call timeout: {}", name))??;
@@ -658,9 +658,8 @@ async fn jacs_sign_image_output_path_honours_base_dir_confinement() -> anyhow::R
     // output_path tries to escape via traversal "../".
     let resp = tokio::time::timeout(
         TIMEOUT,
-        client.call_tool(CallToolRequestParam {
-            name: "jacs_sign_image".to_string().into(),
-            arguments: Some(
+        client.call_tool(
+            CallToolRequestParams::new("jacs_sign_image").with_arguments(
                 serde_json::json!({
                     "input_path": "inside.png",
                     "output_path": "../escape.png"
@@ -669,7 +668,7 @@ async fn jacs_sign_image_output_path_honours_base_dir_confinement() -> anyhow::R
                 .unwrap()
                 .clone(),
             ),
-        }),
+        ),
     )
     .await
     .map_err(|_| anyhow::anyhow!("call timeout"))??;

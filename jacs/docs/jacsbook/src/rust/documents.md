@@ -224,28 +224,20 @@ Extract from multiple documents:
 jacs document extract -d ./documents/
 ```
 
-## Document Types
+## Document Payloads
 
-### Task Documents
+### Generic Documents
 
-Tasks are specialized documents for work tracking:
-
-```bash
-jacs task create -n "Code Review" -d "Review PR #123"
-```
-
-See [Task Schema](../schemas/task.md) for details.
-
-### Message Documents
-
-Messages for agent communication:
+JACS signs arbitrary JSON payloads through the header schema:
 
 ```json
 {
-  "$schema": "https://hai.ai/schemas/message/v1/message.schema.json",
-  "jacsType": "message",
-  "jacsMessageContent": "Hello, I've completed the task.",
-  "jacsMessageReplyTo": "previous-message-uuid"
+  "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
+  "jacsType": "document",
+  "content": {
+    "subject": "Status update",
+    "body": "The requested work is complete."
+  }
 }
 ```
 
@@ -354,5 +346,4 @@ jacs document verify -d ./signed-docs/
 ## Next Steps
 
 - [Agreements](agreements.md) - Multi-agent consent
-- [Task Schema](../schemas/task.md) - Task document structure
 - [Custom Schemas](../advanced/custom-schemas.md) - Create your own schemas

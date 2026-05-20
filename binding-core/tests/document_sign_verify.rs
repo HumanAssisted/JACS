@@ -19,7 +19,7 @@ fn test_sign_document_and_verify_valid() {
     let wrapper = create_ephemeral_wrapper();
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"hello": "world"}
     });
@@ -59,7 +59,7 @@ fn test_verify_document_tampered() {
     let wrapper = create_ephemeral_wrapper();
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"data": "original"}
     });
@@ -132,7 +132,7 @@ fn test_sign_document_roundtrip() {
     let wrapper = create_ephemeral_wrapper();
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"task": "test roundtrip", "value": 42}
     });

@@ -50,7 +50,6 @@
       "hai": "base",
       "type": "string",
       "enum": [
-        "RSA-PSS",
         "ring-Ed25519",
         "pq2025"
       ]
@@ -77,6 +76,14 @@
       "items": {
         "type": "string"
       }
+    },
+    "signatureContentVersion": {
+      "type": "string",
+      "description": "Canonical signature preimage version. New signatures use jacs-signature-v2, which binds signed field names and signature metadata.",
+      "hai": "base",
+      "enum": [
+        "jacs-signature-v2"
+      ]
     }
   },
   "additionalProperties": false,
@@ -88,7 +95,6 @@
     "iat",
     "jti",
     "publicKeyHash",
-    "signingAlgorithm",
     "fields"
   ]
 }

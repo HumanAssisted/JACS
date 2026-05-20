@@ -45,25 +45,11 @@ class TestJACSA2AIntegration:
             "jacsName": "Test Agent",
             "jacsDescription": "A test agent for A2A integration",
             "jacsAgentType": "ai",
-            "jacsServices": [{
-                "name": "Test Service",
-                "serviceDescription": "A test service",
-                "successDescription": "Service completed successfully",
-                "failureDescription": "Service failed",
-                "tools": [{
-                    "url": "/api/test",
-                    "function": {
-                        "name": "test_function",
-                        "description": "A test function",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "input": {"type": "string"}
-                            },
-                            "required": ["input"]
-                        }
-                    }
-                }]
+            "skills": [{
+                "id": "test-function",
+                "name": "test_function",
+                "description": "A test function",
+                "tags": ["jacs", "test"],
             }]
         }
 
@@ -130,41 +116,28 @@ class TestJACSA2AIntegration:
         assert agent_card.skills[0].id == "verify-signature"
         assert isinstance(agent_card.skills[0].tags, list)
 
-    def test_convert_services_to_skills(self, a2a_integration):
-        """Test converting JACS services to A2A skills (v0.4.0)"""
-        services = [
+    def test_normalize_a2a_skills(self, a2a_integration):
+        """Test normalizing explicit A2A skills (v0.4.0)"""
+        raw_skills = [
             {
-                "name": "Service 1",
-                "serviceDescription": "First service",
-                "tools": [{
-                    "url": "/api/tool1",
-                    "function": {
-                        "name": "tool1",
-                        "description": "Tool 1"
-                    }
-                }, {
-                    "url": "/api/tool2",
-                    "function": {
-                        "name": "tool2",
-                        "description": "Tool 2"
-                    }
-                }]
+                "id": "tool1",
+                "name": "tool1",
+                "description": "Tool 1",
+                "tags": ["jacs", "tool1"],
             },
             {
-                "name": "Service 2",
-                "serviceDescription": "Second service without tools"
+                "name": "Tool 2",
+                "description": "Tool 2",
             }
         ]
 
-        skills = a2a_integration._convert_services_to_skills(services)
+        skills = a2a_integration._normalize_a2a_skills(raw_skills)
 
-        assert len(skills) == 3  # 2 tools from service 1 + 1 service skill from service 2
+        assert len(skills) == 2
         assert skills[0].name == "tool1"
         assert skills[0].id == "tool1"
-        assert skills[1].name == "tool2"
-        assert skills[1].id == "tool2"
-        assert skills[2].name == "Service 2"
-        assert skills[2].id == "service-2"
+        assert skills[1].name == "Tool 2"
+        assert skills[1].id == "tool-2"
 
         # All skills should have tags
         for skill in skills:
@@ -391,7 +364,7 @@ class TestJACSA2AIntegration:
             "jacsId": "agent-123",
             "jacsVersion": "v1",
             "jacsAgentType": "ai",
-            "keyAlgorithm": "RSA-PSS"
+            "keyAlgorithm": "ring-Ed25519"
         }
 
         documents = a2a_integration.generate_well_known_documents(
@@ -416,7 +389,7 @@ class TestJACSA2AIntegration:
         # Verify JACS descriptor
         jacs_desc = documents["/.well-known/jacs-agent.json"]
         assert jacs_desc["agentId"] == "agent-123"
-        assert jacs_desc["keyAlgorithm"] == "RSA-PSS"
+        assert jacs_desc["keyAlgorithm"] == "ring-Ed25519"
         expected_hash = hashlib.sha256(
             base64.b64decode("bW9jay1wdWJsaWMta2V5")
         ).hexdigest()
@@ -425,7 +398,7 @@ class TestJACSA2AIntegration:
         # Verify public key document
         pubkey_doc = documents["/.well-known/jacs-pubkey.json"]
         assert pubkey_doc["publicKey"] == "bW9jay1wdWJsaWMta2V5"
-        assert pubkey_doc["algorithm"] == "RSA-PSS"
+        assert pubkey_doc["algorithm"] == "ring-Ed25519"
 
         # Verify JWKS is present for A2A verifiers
         jwks_doc = documents["/.well-known/jwks.json"]

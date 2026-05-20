@@ -41,7 +41,7 @@ describe('JACS Integration Tests', function() {
 
         // Create document
         const content = {
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: {
             type: 'order',
@@ -79,7 +79,7 @@ describe('JACS Integration Tests', function() {
         // Create multiple documents
         for (let i = 0; i < 5; i++) {
           const content = {
-            jacsType: 'message',
+            jacsType: 'document',
             jacsLevel: 'raw',
             content: { index: i, timestamp: Date.now() }
           };
@@ -115,7 +115,7 @@ describe('JACS Integration Tests', function() {
         await agent.load(TEST_CONFIG);
 
         const content = {
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: {
             type: 'order',
@@ -162,9 +162,9 @@ describe('JACS Integration Tests', function() {
         agent.loadSync(TEST_CONFIG);
 
         const contents = [
-          { jacsType: 'message', jacsLevel: 'raw', content: { v: 1 } },
-          { jacsType: 'message', jacsLevel: 'raw', content: { v: 2 } },
-          { jacsType: 'message', jacsLevel: 'raw', content: { v: 3 } }
+          { jacsType: 'document', jacsLevel: 'raw', content: { v: 1 } },
+          { jacsType: 'document', jacsLevel: 'raw', content: { v: 2 } },
+          { jacsType: 'document', jacsLevel: 'raw', content: { v: 3 } }
         ];
 
         const hashes = contents.map(c => {
@@ -224,13 +224,13 @@ describe('JACS Integration Tests', function() {
 
         // Both should be able to sign documents
         const content1 = {
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { from: 'agent1' }
         };
 
         const content2 = {
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { from: 'agent2' }
         };
@@ -264,7 +264,7 @@ describe('JACS Integration Tests', function() {
 
         // Create valid document
         const content = {
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { original: 'data' }
         };
@@ -288,7 +288,7 @@ describe('JACS Integration Tests', function() {
 
         // Create valid document
         const content = {
-          jacsType: 'message',
+          jacsType: 'document',
           jacsLevel: 'raw',
           content: { test: 'data' }
         };

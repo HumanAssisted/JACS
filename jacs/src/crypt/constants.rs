@@ -89,19 +89,6 @@ pub const SEVERE_UNIQUENESS_PENALTY: f64 = 0.5;
 pub const MODERATE_UNIQUENESS_PENALTY: f64 = 0.75;
 
 // ============================================================================
-// RSA Constants
-// ============================================================================
-
-/// RSA key size in bits for production use.
-/// 4096 bits provides security margin beyond current recommendations.
-pub const RSA_KEY_BITS: usize = 4096;
-
-/// RSA key size in bits for test use only.
-/// 2048 bits is faster for tests while still being cryptographically valid.
-#[cfg(test)]
-pub const RSA_TEST_KEY_BITS: usize = 2048;
-
-// ============================================================================
 // Ed25519 Constants
 // ============================================================================
 
@@ -134,30 +121,9 @@ pub const ML_DSA_87_PUBLIC_KEY_SIZE: usize = 2592;
 /// ML-DSA-87 signature size in bytes.
 pub const ML_DSA_87_SIGNATURE_SIZE: usize = 4627;
 
-// ============================================================================
-// Algorithm Detection Heuristic Constants
-// ============================================================================
-
-/// Minimum key length (in bytes) to consider for RSA detection.
-pub const RSA_MIN_KEY_LENGTH: usize = 100;
-
-/// Minimum key length (in bytes) to consider for Dilithium detection.
-pub const DILITHIUM_MIN_KEY_LENGTH: usize = 1000;
-
 /// Non-ASCII ratio threshold for Ed25519 detection.
 /// Ed25519 keys typically have high non-ASCII content (>50%).
 pub const ED25519_NON_ASCII_RATIO: f32 = 0.5;
-
-/// Non-ASCII ratio threshold below which RSA is likely.
-/// RSA PEM keys are mostly ASCII (<20% non-ASCII).
-pub const RSA_NON_ASCII_RATIO: f32 = 0.2;
-
-/// Non-ASCII ratio threshold for Dilithium detection.
-/// Dilithium keys have significant non-ASCII content (>30%).
-pub const DILITHIUM_NON_ASCII_RATIO: f32 = 0.3;
-
-/// Key length threshold for distinguishing small PQ keys.
-pub const PQ_SMALL_KEY_THRESHOLD: usize = 500;
 
 // ============================================================================
 // Dilithium Signature Size Detection

@@ -204,7 +204,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run in-process backend crate tests
-        run: cargo test -p ${{ matrix.package }} --lib --tests --verbose
+        run: |
+          if [ "${{ matrix.package }}" = "jacs-surrealdb" ]; then
+            cargo test --manifest-path jacs-surrealdb/Cargo.toml --lib --tests --verbose
+          else
+            cargo test -p ${{ matrix.package }} --lib --tests --verbose
+          fi
 
   # PostgreSQL backend tests use testcontainers (requires Docker daemon)
   backend-postgresql:
@@ -280,7 +285,7 @@ jobs:
         run: |
           cargo test -p jacs-duckdb --lib --tests --verbose
           cargo test -p jacs-redb --lib --tests --verbose
-          cargo test -p jacs-surrealdb --lib --tests --verbose
+          cargo test --manifest-path jacs-surrealdb/Cargo.toml --lib --tests --verbose
 
       - name: Run jacs-postgresql tests (Linux only)
         if: runner.os == 'Linux'
@@ -338,7 +343,7 @@ jobs:
         run: |
           cargo test -p jacs-duckdb --lib --tests --verbose
           cargo test -p jacs-redb --lib --tests --verbose
-          cargo test -p jacs-surrealdb --lib --tests --verbose
+          cargo test --manifest-path jacs-surrealdb/Cargo.toml --lib --tests --verbose
 
       - name: Run jacs-postgresql tests
         run: cargo test -p jacs-postgresql --lib --tests --verbose

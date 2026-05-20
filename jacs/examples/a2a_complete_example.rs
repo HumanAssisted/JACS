@@ -23,7 +23,7 @@ const EXAMPLE_CONFIG: &str = r#"{
     "jacs_key_directory": "./example_keys",
     "jacs_agent_private_key_filename": "example.private.pem.enc",
     "jacs_agent_public_key_filename": "example.public.pem",
-    "jacs_agent_key_algorithm": "RSA-PSS",
+    "jacs_agent_key_algorithm": "ring-Ed25519",
     "jacs_agent_schema_version": "v1",
     "jacs_header_schema_version": "v1",
     "jacs_signature_schema_version": "v1",
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 4: Generate dual keys for A2A compatibility
     println!("\n4. Generating dual keys for A2A...");
     setup_key_env_vars();
-    let dual_keys = create_jwk_keys(Some("rsa"), Some("rsa"))?;
+    let dual_keys = create_jwk_keys(Some("pq2025"), Some("ring-Ed25519"))?;
     println!(
         "   JACS key generated: {} ({} bytes)",
         dual_keys.jacs_algorithm,
@@ -204,40 +204,7 @@ fn create_example_agent() -> Result<Agent, Box<dyn std::error::Error>> {
     let agent_json = json!({
         "jacsName": "Example A2A Agent",
         "jacsDescription": "A JACS agent demonstrating A2A protocol integration",
-        "jacsAgentType": "ai",
-        "jacsServices": [{
-            "name": "Document Analysis Service",
-            "serviceDescription": "Analyzes documents using advanced AI techniques",
-            "successDescription": "Document successfully analyzed with extracted entities and insights",
-            "failureDescription": "Document analysis failed due to format or processing errors",
-            "tools": [{
-                "url": "https://example-agent.com/api/analyze",
-                "function": {
-                    "name": "analyze_document",
-                    "description": "Analyze a document and extract structured information",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "document_url": {
-                                "type": "string",
-                                "description": "URL of the document to analyze"
-                            },
-                            "operations": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "List of operations to perform"
-                            }
-                        },
-                        "required": ["document_url", "operations"]
-                    }
-                }
-            }]
-        }],
-        "jacsContacts": [{
-            "type": "email",
-            "value": "admin@example-agent.com",
-            "description": "Administrator contact"
-        }]
+        "jacsAgentType": "ai"
     });
 
     agent.create_agent_and_load(&agent_json.to_string(), true, None)?;

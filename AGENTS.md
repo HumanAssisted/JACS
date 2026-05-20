@@ -1,5 +1,13 @@
 Welcome.
 
+## What JACS Is
+
+JACS is primarily a portable cryptographic signing and verification library. Its core job is to let agents, services, and tools sign data in one language or integration surface and verify it in another without a central server.
+
+The main primitive is a verifiable JSON document: canonical JSON bytes, schema-declared structure, content hash, signer identity, signing algorithm, and cryptographic signature. Rust is the core implementation; Python, Node.js, Go, CLI, and MCP bindings must preserve the same signing, verification, error, and schema contracts.
+
+Use JACS at trust boundaries: documents, tool outputs, files, text, images, email payloads, A2A artifacts, and agreements. Storage backends, MCP tools, adapters, and generated schema docs exist to make portable signatures usable across libraries, languages, and deployment contexts; they are not the core product by themselves.
+
 You may use the top level Cargo.toml to understand the repo.
 jacs/ is the directory with the core library.
 ./jacspy is the python wrapper with functionality for integrations

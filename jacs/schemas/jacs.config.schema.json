@@ -29,7 +29,6 @@
       "description": "algorithm to use for creating and using keys",
       "type": "string",
       "enum": [
-            "RSA-PSS",
             "ring-Ed25519",
             "pq2025"
           ]
@@ -247,5 +246,4 @@
     "jacs_default_storage"
   ]
 }
-
 

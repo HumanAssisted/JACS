@@ -1,6 +1,6 @@
 mod utils;
 use jacs::agent::boilerplate::BoilerPlate;
-use jacs::crypt::KeyManager;
+#[allow(deprecated)]
 use jacs::crypt::aes_encrypt::decrypt_private_key;
 use secrecy::ExposeSecret;
 use utils::{create_ring_test_agent, read_new_agent_fixture};
@@ -9,6 +9,7 @@ use utils::{create_ring_test_agent, read_new_agent_fixture};
 // anything meaningful, and is superseded by test_ring_Ed25519_create_and_verify_signature below.
 
 #[test]
+#[allow(non_snake_case, deprecated)]
 fn test_ring_Ed25519_create_and_verify_signature() {
     let mut agent = create_ring_test_agent().expect("Failed to create ring test agent");
     let json_data = read_new_agent_fixture().expect("Failed to read agent fixture");

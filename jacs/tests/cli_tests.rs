@@ -29,6 +29,12 @@ fn jacs_cli_binary() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/debug/jacs"))
 }
 
+fn test_temp_root() -> PathBuf {
+    std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir())
+}
+
 // RUST_BACKTRACE=1 cargo test   --test cli_tests -- --nocapture
 
 #[test]
@@ -626,7 +632,7 @@ fn test_verify_missing_file() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_verify_invalid_json() -> Result<(), Box<dyn Error>> {
     // Create a temp file with invalid JSON
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_invalid");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_verify_invalid");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
     let bad_file = tmp_dir.join("bad.json");
@@ -643,7 +649,7 @@ fn test_verify_invalid_json() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_verify_unsigned_json() -> Result<(), Box<dyn Error>> {
     // Create a temp file with valid JSON but no JACS signature
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_unsigned");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_verify_unsigned");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
     let unsigned_file = tmp_dir.join("unsigned.json");
@@ -678,7 +684,7 @@ fn test_quickstart_help_shows_password_bootstrap_options() -> Result<(), Box<dyn
 #[test]
 #[ignore = "Covered by jacs-cli unit tests; hangs intermittently under the cargo integration harness on macOS"]
 fn test_quickstart_uses_password_file_bootstrap() -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_quickstart_password_file");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_quickstart_password_file");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 
@@ -725,7 +731,7 @@ fn test_quickstart_uses_password_file_bootstrap() -> Result<(), Box<dyn Error>> 
 #[ignore = "Covered by jacs-cli unit tests; hangs intermittently under the cargo integration harness on macOS"]
 fn test_quickstart_warns_and_uses_env_when_password_sources_are_ambiguous()
 -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_quickstart_password_conflict");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_quickstart_password_conflict");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 
@@ -778,8 +784,8 @@ fn test_agent_verify_uses_configured_default_agent_without_agent_file() -> Resul
         .duration_since(std::time::UNIX_EPOCH)?
         .as_nanos();
     let quickstart_dir =
-        std::env::temp_dir().join(format!("jacs_cli_test_verify_default_agent_{}", unique));
-    let probe_dir = std::env::temp_dir().join(format!(
+        test_temp_root().join(format!("jacs_cli_test_verify_default_agent_{}", unique));
+    let probe_dir = test_temp_root().join(format!(
         "jacs_cli_test_verify_default_agent_probe_{}",
         unique
     ));
@@ -828,7 +834,7 @@ fn test_agent_verify_uses_configured_default_agent_without_agent_file() -> Resul
 #[test]
 fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
     // Use quickstart --sign to create a signed document, then verify it
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_roundtrip");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_verify_roundtrip");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 
@@ -877,7 +883,7 @@ fn test_verify_signed_document_roundtrip() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_json");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_verify_json");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 
@@ -921,7 +927,7 @@ fn test_verify_json_output() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_verify_tampered_document() -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_verify_tampered");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_verify_tampered");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 
@@ -978,7 +984,7 @@ fn test_a2a_help() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_jacs");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_a2a_assess_jacs");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 
@@ -1024,7 +1030,7 @@ fn test_a2a_assess_jacs_agent_verified_policy() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_assess_non_jacs_agent_rejected() -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_nojacs");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_a2a_assess_nojacs");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 
@@ -1062,7 +1068,7 @@ fn test_a2a_assess_non_jacs_agent_rejected() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_a2a_assess_json_output() -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("jacs_cli_test_a2a_assess_json");
+    let tmp_dir = test_temp_root().join("jacs_cli_test_a2a_assess_json");
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&tmp_dir)?;
 

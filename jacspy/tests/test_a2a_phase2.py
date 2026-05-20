@@ -206,7 +206,7 @@ class TestSha256Replacement:
         )
 
         docs = a2a.generate_well_known_documents(
-            card, "jws-sig", "cHVia2V5", {"jacsId": "a1", "keyAlgorithm": "RSA-PSS"}
+            card, "jws-sig", "cHVia2V5", {"jacsId": "a1", "keyAlgorithm": "ring-Ed25519"}
         )
 
         expected_hash = hashlib.sha256(base64.b64decode("cHVia2V5")).hexdigest()
@@ -245,9 +245,7 @@ class TestSha256Replacement:
 
 class TestB6Algorithms:
     def test_supported_algorithms_class_attr(self):
-        assert JACSA2AIntegration.SUPPORTED_ALGORITHMS == [
-            "ring-Ed25519", "RSA-PSS", "pq2025"
-        ]
+        assert JACSA2AIntegration.SUPPORTED_ALGORITHMS == ["ring-Ed25519", "pq2025"]
 
     def test_extension_descriptor_uses_supported_algorithms(self):
         a2a = _make_integration()

@@ -500,6 +500,7 @@ class TestParityCreateAgent:
 
     def test_create_agent_is_functional(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = os.path.realpath(tmpdir)
             data_dir = os.path.join(tmpdir, "data")
             key_dir = os.path.join(tmpdir, "keys")
             config_path = os.path.join(tmpdir, "config.json")

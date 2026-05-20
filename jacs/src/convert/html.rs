@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn html_renders_jacs_id() {
-        let json = r#"{"jacsId": "test-doc-123", "jacsType": "message"}"#;
+        let json = r#"{"jacsId": "test-doc-123", "jacsType": "document"}"#;
         let html = jacs_to_html(json).unwrap();
         assert!(
             html.contains("test-doc-123"),
@@ -462,12 +462,12 @@ mod tests {
 
     #[test]
     fn html_renders_document_type() {
-        let json = r#"{"jacsType": "message", "jacsId": "test-123"}"#;
+        let json = r#"{"jacsType": "document", "jacsId": "test-123"}"#;
         let html = jacs_to_html(json).unwrap();
         let script_pos = html.find(r#"<script type="application/json""#).unwrap();
         let visible = &html[..script_pos];
         assert!(
-            visible.contains("message"),
+            visible.contains("document"),
             "jacsType should be visible in HTML body"
         );
     }

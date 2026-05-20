@@ -20,15 +20,15 @@ fn get_config_content() -> String {
     "jacs_use_security": "true",
     "jacs_data_directory": "{}",
     "jacs_key_directory": "{}",
-    "jacs_agent_private_key_filename": "agent-one.private.pem.enc",
-    "jacs_agent_public_key_filename": "agent-one.public.pem",
-    "jacs_agent_key_algorithm": "RSA-PSS",
+    "jacs_agent_private_key_filename": "agent-ed25519.private.pem.enc",
+    "jacs_agent_public_key_filename": "agent-ed25519.public.pem",
+    "jacs_agent_key_algorithm": "ring-Ed25519",
     "jacs_agent_schema_version": "v1",
     "jacs_header_schema_version": "v1",
     "jacs_signature_schema_version": "v1",
     "jacs_private_key_password": "",
     "jacs_default_storage": "fs",
-    "jacs_agent_id_and_version": "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717"
+    "jacs_agent_id_and_version": "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a"
 }}"#,
         fixtures_dir_string(),
         fixtures_keys_dir_string()
@@ -44,26 +44,21 @@ fn setup() {
     }
 }
 
-/// Verify that the committed RSA-PSS agent fixture still loads and
-/// exposes `RSA-PSS` as its key algorithm.
-///
-/// This covers the "legacy RSA artifacts remain readable" side of the
-/// RUSTSEC-2023-0071 hardening. The `update_self` + re-sign leg of the
-/// original test moved to `test_update_ed25519_agent_and_verify_versions`
-/// because RSA private-key signing is now disabled.
+/// Verify that the committed Ed25519 agent fixture still loads and
+/// exposes `ring-Ed25519` as its key algorithm.
 ///
 /// `#[serial]` because `test_update_ed25519_agent_and_verify_versions`
 /// mutates `JACS_DATA_DIRECTORY` et al. via `create_ring_test_agent()`;
-/// running in parallel would cause this test to look for the RSA
-/// fixture under the Ed25519 scratch directory.
+/// running in parallel would cause this test to look in the wrong scratch
+/// directory.
 #[test]
 #[serial]
-fn test_rsa_fixture_load_exposes_algorithm() {
+fn test_ed25519_fixture_load_exposes_algorithm() {
     setup();
     set_min_test_env_vars();
-    log::debug!("Starting test_rsa_fixture_load_exposes_algorithm");
+    log::debug!("Starting test_ed25519_fixture_load_exposes_algorithm");
 
-    // cargo test --test agent_tests -- --nocapture test_rsa_fixture_load_exposes_algorithm
+    // cargo test --test agent_tests -- --nocapture test_ed25519_fixture_load_exposes_algorithm
 
     let config: serde_json::Value =
         serde_json::from_str(&get_config_content()).expect("Failed to parse config");
@@ -82,19 +77,18 @@ fn test_rsa_fixture_load_exposes_algorithm() {
     );
     assert_eq!(
         agent.get_key_algorithm().map(|s| s.as_str()),
-        Some("RSA-PSS"),
-        "Fixture-backed load_by_id must use RSA-PSS for agent-one keys"
+        Some("ring-Ed25519"),
+        "Fixture-backed load_by_id must use ring-Ed25519 for agent-ed25519 keys"
     );
 }
 
 /// Exercise the `update_self` + `verify_self_signature` flow: after an
 /// update, the agent gains a new `jacsVersion` and the new signature
-/// verifies. Uses an Ed25519 agent because RSA-PSS private-key signing
-/// is blocked by RUSTSEC-2023-0071.
+/// verifies with an Ed25519 agent.
 ///
 /// `#[serial]` because `create_ring_test_agent()` mutates process-wide
 /// env vars (`JACS_DATA_DIRECTORY`, etc.) that would otherwise race
-/// with `test_rsa_fixture_load_exposes_algorithm`.
+/// with `test_ed25519_fixture_load_exposes_algorithm`.
 #[test]
 #[serial]
 fn test_update_ed25519_agent_and_verify_versions() {

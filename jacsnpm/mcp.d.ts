@@ -100,7 +100,7 @@ export declare function handleJacsMcpToolCall(client: JacsClient, toolName: stri
  * Register all JACS tools on an MCP Server instance.
  *
  * Call this once during server setup to add JACS signing, verification,
- * agreements, trust, audit, and registry integration tools.
+ * agreements, trust, and registry integration tools.
  *
  * @example
  * ```typescript

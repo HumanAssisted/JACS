@@ -23,7 +23,8 @@ use super::canonicalize::{
 };
 use super::error::{EmailError, check_email_size};
 use super::types::{
-    AttachmentEntry, BodyPartEntry, EmailSignatureHeaders, EmailSignaturePayload, SignedHeaderEntry,
+    AttachmentEntry, BodyPartEntry, EmailSignatureHeaders, EmailSignaturePayload, ParsedEmailParts,
+    SignedHeaderEntry,
 };
 
 use super::JacsSigner;
@@ -79,45 +80,86 @@ fn sign_email_inner(
     // Step 1: Parse and canonicalize (from the wrapped email)
     let parts = extract_email_parts(&wrapped_email)?;
 
-    // Step 2: Build signed headers
-    let headers = build_signed_headers(&parts)?;
+    // Step 2-5: Build the attachment-mode payload.
+    let payload = build_email_signature_payload(&parts, parent_signature_hash, true, true, false)?;
 
-    // Step 3: Build body part entries
-    let body_plain = parts.body_plain.as_ref().map(|bp| {
-        let canonical = canonicalize_body(&bp.content);
-        let content_hash = compute_body_hash(&canonical);
-        let mime_headers_hash = compute_mime_headers_hash(
-            bp.content_type.as_deref(),
-            bp.content_transfer_encoding.as_deref(),
-            bp.content_disposition.as_deref(),
-        );
-        BodyPartEntry {
-            content_hash,
-            mime_headers_hash,
-        }
-    });
+    // Step 6: Create a real JACS document containing the email hash payload
+    let jacs_doc_json = build_jacs_email_document(&payload, signer)?;
 
-    let body_html = parts.body_html.as_ref().map(|bp| {
-        let canonical = canonicalize_body(&bp.content);
-        let content_hash = compute_body_hash(&canonical);
-        let mime_headers_hash = compute_mime_headers_hash(
-            bp.content_type.as_deref(),
-            bp.content_transfer_encoding.as_deref(),
-            bp.content_disposition.as_deref(),
-        );
-        BodyPartEntry {
-            content_hash,
-            mime_headers_hash,
-        }
-    });
+    // Step 7: Attach via add_jacs_attachment_named (to the wrapped email)
+    add_jacs_attachment_named(&wrapped_email, jacs_doc_json.as_bytes(), filename)
+}
 
-    // Step 4: Build attachment entries (sorted by content_hash)
-    // For forwarding, this includes the renamed jacs-signature-N.json files
-    // as regular attachments (they appear in parts.attachments after renaming)
-    let mut all_attachments = parts.attachments.clone();
-    // Also include jacs_attachments (the renamed parent signatures) as regular attachments
-    for jacs_att in &parts.jacs_attachments {
-        all_attachments.push(jacs_att.clone());
+/// Build the HTML-inline email signature payload.
+///
+/// Inline transport signs the same header scope as attachment mode, plus the
+/// text body and user attachments. Generated HTML and inline signature
+/// artifacts are excluded because they are added after the signed content is
+/// authored.
+pub fn build_html_inline_email_signature_payload(
+    raw_email: &[u8],
+) -> Result<EmailSignaturePayload, EmailError> {
+    check_email_size(raw_email)?;
+    let parts = extract_email_parts(raw_email)?;
+    build_email_signature_payload(&parts, None, false, false, true)
+}
+
+fn build_email_signature_payload(
+    parts: &ParsedEmailParts,
+    parent_signature_hash: Option<String>,
+    include_body_html: bool,
+    include_jacs_attachments: bool,
+    exclude_inline_logo: bool,
+) -> Result<EmailSignaturePayload, EmailError> {
+    let headers = build_signed_headers(parts)?;
+    let body_plain = parts.body_plain.as_ref().map(build_body_part_entry);
+    let body_html = if include_body_html {
+        parts.body_html.as_ref().map(build_body_part_entry)
+    } else {
+        None
+    };
+    let attachments =
+        build_attachment_entries(parts, include_jacs_attachments, exclude_inline_logo);
+
+    Ok(EmailSignaturePayload {
+        headers,
+        body_plain,
+        body_html,
+        attachments,
+        parent_signature_hash,
+    })
+}
+
+fn build_body_part_entry(bp: &super::types::ParsedBodyPart) -> BodyPartEntry {
+    let canonical = canonicalize_body(&bp.content);
+    let content_hash = compute_body_hash(&canonical);
+    let mime_headers_hash = compute_mime_headers_hash(
+        bp.content_type.as_deref(),
+        bp.content_transfer_encoding.as_deref(),
+        bp.content_disposition.as_deref(),
+    );
+    BodyPartEntry {
+        content_hash,
+        mime_headers_hash,
+    }
+}
+
+fn build_attachment_entries(
+    parts: &ParsedEmailParts,
+    include_jacs_attachments: bool,
+    exclude_inline_logo: bool,
+) -> Vec<AttachmentEntry> {
+    let mut all_attachments: Vec<_> = parts
+        .attachments
+        .iter()
+        .filter(|att| {
+            !(exclude_inline_logo && super::transport::is_inline_logo_attachment_artifact(att))
+        })
+        .cloned()
+        .collect();
+
+    if include_jacs_attachments {
+        all_attachments.extend(parts.jacs_attachments.iter().cloned());
     }
 
     let mut attachment_entries: Vec<AttachmentEntry> = all_attachments
@@ -138,21 +180,7 @@ fn sign_email_inner(
         })
         .collect();
     attachment_entries.sort_by(|a, b| a.content_hash.cmp(&b.content_hash));
-
-    // Step 5: Build payload
-    let payload = EmailSignaturePayload {
-        headers,
-        body_plain,
-        body_html,
-        attachments: attachment_entries,
-        parent_signature_hash,
-    };
-
-    // Step 6: Create a real JACS document containing the email hash payload
-    let jacs_doc_json = build_jacs_email_document(&payload, signer)?;
-
-    // Step 7: Attach via add_jacs_attachment_named (to the wrapped email)
-    add_jacs_attachment_named(&wrapped_email, jacs_doc_json.as_bytes(), filename)
+    attachment_entries
 }
 
 /// Prepare an email for signing, handling the forwarding case.
@@ -405,7 +433,7 @@ pub(crate) fn build_jacs_email_document(
         .map_err(|e| EmailError::InvalidJacsDocument(format!("payload serialization: {e}")))?;
 
     // Use the JacsSigner to create and sign a real JACS document.
-    // sign_message() wraps the data as:
+    // sign_message() preserves the legacy signed-message type label:
     //   { "jacsType": "message", "jacsLevel": "raw", "content": <payload> }
     // then calls create_document_and_load() which handles schema validation,
     // canonical hashing, and cryptographic signing through the agent's identity.
@@ -576,6 +604,10 @@ mod tests {
         b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody text\r\n--mixbound\r\nContent-Type: application/pdf; name=\"report.pdf\"\r\nContent-Disposition: attachment; filename=\"report.pdf\"\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--mixbound--\r\n".to_vec()
     }
 
+    fn html_inline_with_user_attachment_email() -> Vec<u8> {
+        b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Inline Test\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <inline-test@example.com>\r\nContent-Type: multipart/mixed; boundary=\"mixbound\"\r\n\r\n--mixbound\r\nContent-Type: multipart/alternative; boundary=\"altbound\"\r\n\r\n--altbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody text\r\n--altbound\r\nContent-Type: multipart/related; boundary=\"relbound\"\r\n\r\n--relbound\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<!doctype html><html data-hai-template-version=\"v1\"><body><p>Body text</p><img src=\"cid:hai-jacs-logo@hai.ai\"><script type=\"application/jacs+json\" data-hai-jacs-envelope=\"v1\">header</script><footer data-hai-verify-footer=\"v1\">footer</footer></body></html>\r\n--relbound\r\nContent-Type: image/png\r\nContent-ID: <hai-jacs-logo@hai.ai>\r\nContent-Disposition: inline; filename=\"hai-jacs-logo.png\"\r\nContent-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--relbound--\r\n--altbound--\r\n--mixbound\r\nContent-Type: text/plain; name=\"notes.txt\"\r\nContent-Disposition: attachment; filename=\"notes.txt\"\r\nContent-Transfer-Encoding: base64\r\n\r\nTm90ZXMK\r\n--mixbound--\r\n".to_vec()
+    }
+
     fn threaded_reply_email() -> Vec<u8> {
         b"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Re: Test\r\nDate: Fri, 28 Feb 2026 13:00:00 +0000\r\nMessage-ID: <reply@example.com>\r\nIn-Reply-To: <original@example.com>\r\nReferences: <original@example.com> <thread@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nReply body\r\n".to_vec()
     }
@@ -637,6 +669,86 @@ mod tests {
         assert_eq!(payload.attachments[0].filename, "report.pdf");
         assert!(payload.attachments[0].content_hash.starts_with("sha256:"));
     }
+
+    #[test]
+    fn html_inline_payload_excludes_generated_html_and_logo_artifact() {
+        let raw = include_bytes!("../../tests/fixtures/email/html_inline/03_generated_html.eml");
+
+        let payload = build_html_inline_email_signature_payload(raw).unwrap();
+
+        assert!(payload.body_plain.is_some());
+        assert!(payload.body_html.is_none());
+        assert!(payload.attachments.is_empty());
+    }
+
+    #[test]
+    fn html_inline_payload_keeps_user_attachments() {
+        let email = html_inline_with_user_attachment_email();
+
+        let payload = build_html_inline_email_signature_payload(&email).unwrap();
+
+        assert_eq!(payload.attachments.len(), 1);
+        assert_eq!(payload.attachments[0].filename, "notes.txt");
+    }
+
+    #[test]
+    fn html_inline_payload_ignores_generated_html_edits_but_not_text_edits() {
+        let raw = include_str!("../../tests/fixtures/email/html_inline/03_generated_html.eml");
+        let original = build_html_inline_email_signature_payload(raw.as_bytes()).unwrap();
+        let html_edit = raw.replace(
+            "<p>Hello from a signed HAI agent.</p>",
+            "<p>Hello from a changed HTML body.</p>",
+        );
+        let text_edit = raw.replace(
+            "Hello from a signed HAI agent.\n\n--hai-inline-alt-03",
+            "Hello from changed text.\n\n--hai-inline-alt-03",
+        );
+
+        let html_payload = build_html_inline_email_signature_payload(html_edit.as_bytes()).unwrap();
+        let text_payload = build_html_inline_email_signature_payload(text_edit.as_bytes()).unwrap();
+
+        assert_eq!(
+            original.body_plain.as_ref().unwrap().content_hash,
+            html_payload.body_plain.as_ref().unwrap().content_hash
+        );
+        assert_ne!(
+            original.body_plain.as_ref().unwrap().content_hash,
+            text_payload.body_plain.as_ref().unwrap().content_hash
+        );
+        assert!(html_payload.body_html.is_none());
+    }
+
+    #[test]
+    fn html_inline_payload_keeps_current_signed_header_scope() {
+        let raw = b"From: sender@example.com\r\nTo: recipient@example.com\r\nCc: reviewer@example.com\r\nSubject: Header Scope\r\nDate: Fri, 28 Feb 2026 12:00:00 +0000\r\nMessage-ID: <header-scope@example.com>\r\nIn-Reply-To: <parent@example.com>\r\nReferences: <root@example.com> <parent@example.com>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBody text\r\n";
+
+        let payload = build_html_inline_email_signature_payload(raw).unwrap();
+
+        assert_eq!(payload.headers.from.value, "sender@example.com");
+        assert_eq!(payload.headers.to.value, "recipient@example.com");
+        assert_eq!(payload.headers.subject.value, "Header Scope");
+        assert_eq!(
+            payload.headers.date.value,
+            "Fri, 28 Feb 2026 12:00:00 +0000"
+        );
+        assert_eq!(
+            payload.headers.message_id.value,
+            "<header-scope@example.com>"
+        );
+        assert_eq!(
+            payload.headers.cc.as_ref().unwrap().value,
+            "reviewer@example.com"
+        );
+        assert_eq!(
+            payload.headers.in_reply_to.as_ref().unwrap().value,
+            "<parent@example.com>"
+        );
+        assert_eq!(
+            payload.headers.references.as_ref().unwrap().value,
+            "<root@example.com> <parent@example.com>"
+        );
+    }
+
     #[test]
     #[serial(jacs_env)]
     fn sign_email_threaded_reply_includes_in_reply_to_and_references() {

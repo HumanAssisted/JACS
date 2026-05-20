@@ -185,16 +185,12 @@ export interface AgentData {
     jacsVersion?: string;
     jacsAgentType?: string;
     jacsAgentDomain?: string;
-    jacsServices?: Array<{
-        name?: string;
-        serviceDescription?: string;
-        tools?: Array<{
-            function?: {
-                name?: string;
-                description?: string;
-            };
-        }>;
-    }>;
+    skills?: Array<A2AAgentSkill | (Partial<A2AAgentSkillOptions> & {
+        [key: string]: unknown;
+    })>;
+    a2aSkills?: Array<A2AAgentSkill | (Partial<A2AAgentSkillOptions> & {
+        [key: string]: unknown;
+    })>;
     keyAlgorithm?: string;
     jwks?: {
         keys: unknown[];
@@ -253,6 +249,5 @@ export declare class JACSA2AIntegration {
     private _verifyWrappedArtifactInternal;
     private _buildJwks;
     _slugify(name: string): string;
-    private _deriveTags;
-    private _convertServicesToSkills;
+    private _normalizeA2ASkills;
 }

@@ -50,17 +50,15 @@ fn assert_header_value(parts: &jacs::email::ParsedEmailParts, header_name: &str,
         let raw_values = parts
             .headers
             .get(header_name)
-            .expect(&format!("header '{}' should be present", header_name));
+            .unwrap_or_else(|| panic!("header '{}' should be present", header_name));
         assert_eq!(
             raw_values.len(),
             1,
             "header '{}' should have exactly one value",
             header_name
         );
-        let canonical = canonicalize_header(header_name, &raw_values[0]).expect(&format!(
-            "canonicalize_header('{}') should succeed",
-            header_name
-        ));
+        let canonical = canonicalize_header(header_name, &raw_values[0])
+            .unwrap_or_else(|_| panic!("canonicalize_header('{}') should succeed", header_name));
         assert_eq!(
             canonical, expected_value,
             "header '{}' canonical value mismatch",
@@ -222,7 +220,7 @@ fn fixture_09_missing_optional_in_reply_to_ok() {
 
     // In-Reply-To should be absent
     assert!(
-        parts.headers.get("in-reply-to").is_none(),
+        !parts.headers.contains_key("in-reply-to"),
         "F09 should not have In-Reply-To header"
     );
     assert!(payload["headers"]["in_reply_to"].is_null());
@@ -540,7 +538,7 @@ fn fixture_25_with_inline_images() {
     assert!(parts.body_html.is_some(), "F25 should have text/html body");
     // Inline image counts as an attachment for hashing
     assert!(
-        parts.attachments.len() >= 1,
+        !parts.attachments.is_empty(),
         "F25 should have at least 1 inline image attachment"
     );
 }
@@ -600,7 +598,7 @@ fn fixture_28_embedded_images() {
 
     assert!(parts.body_html.is_some(), "F28 should have text/html body");
     assert!(
-        parts.attachments.len() >= 1,
+        !parts.attachments.is_empty(),
         "F28 should have at least 1 inline image attachment"
     );
 }

@@ -202,7 +202,7 @@ fn remove_archives_document_and_get_returns_error() {
 #[test]
 #[serial]
 fn list_returns_created_documents() {
-    let (svc, tmp, _agent) = create_test_service();
+    let (svc, _tmp, _agent) = create_test_service();
 
     svc.create(r#"{"content": "doc1"}"#, CreateOptions::default())
         .expect("create doc1");
@@ -325,7 +325,7 @@ fn search_pagination_returns_subset_with_correct_total_count() {
             &format!(r#"{{"content": "pagination doc {}"}}"#, i),
             CreateOptions::default(),
         )
-        .expect(&format!("create doc {}", i));
+        .unwrap_or_else(|_| panic!("create doc {}", i));
     }
 
     // Search with limit=2, offset=0

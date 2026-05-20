@@ -800,8 +800,8 @@ class JacsClient:
         version, and re-signs the config file.
 
         Args:
-            algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS",
-                      "pq2025"). If None, keeps the current algorithm.
+            algorithm: Optional new algorithm ("ring-Ed25519", "pq2025"). If
+                      None, keeps the current algorithm.
 
         Returns:
             dict with keys: jacs_id, old_version, new_version,
@@ -898,9 +898,9 @@ class JacsClient:
                 is injected as ``jacsAgentDomain`` so the card's
                 ``supportedInterfaces`` points to a real endpoint instead
                 of the placeholder ``agent-<id>.example.com``.
-            skills: Optional list of raw JACS service dicts.  When
-                supplied they are injected as ``jacsServices`` in the
-                agent data fed to the card builder.
+            skills: Optional list of explicit A2A skill dicts.  When
+                supplied they are injected as ``skills`` in the agent
+                data fed to the card builder.
 
         Returns:
             An :class:`A2AAgentCard` dataclass.
@@ -917,7 +917,7 @@ class JacsClient:
         if url:
             agent_data["jacsAgentDomain"] = url
         if skills:
-            agent_data["jacsServices"] = skills
+            agent_data["skills"] = skills
 
         integration = JACSA2AIntegration(self)
         return integration.export_agent_card(agent_data)
@@ -1135,7 +1135,7 @@ class JacsClient:
 
         Args:
             artifact: The A2A artifact dict to wrap and sign.
-            artifact_type: Type label (e.g. ``"task"``, ``"message"``).
+            artifact_type: Type label (e.g. ``"artifact"``, ``"result"``).
             parent_signatures: Optional parent signatures for chain of
                 custody.
 

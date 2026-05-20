@@ -240,7 +240,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
 
       const publicKeyB64 = 'dGVzdC1wdWJsaWMta2V5';
       const agentData = {
-        jacsId: 'agent-1', jacsVersion: 'v1', jacsAgentType: 'ai', keyAlgorithm: 'RSA-PSS'
+        jacsId: 'agent-1', jacsVersion: 'v1', jacsAgentType: 'ai', keyAlgorithm: 'ring-Ed25519'
       };
 
       const documents = integration.generateWellKnownDocuments(
@@ -284,7 +284,7 @@ describe('A2A Phase 2 - JacsClient Integration', () => {
   describe('JACS_ALGORITHMS (B-6 fix)', () => {
     it('should export the correct algorithm list', () => {
       expect(JACS_ALGORITHMS).to.deep.equal([
-        'ring-Ed25519', 'RSA-PSS', 'pq2025'
+        'ring-Ed25519', 'pq2025'
       ]);
     });
 

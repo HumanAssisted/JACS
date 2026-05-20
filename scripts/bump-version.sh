@@ -99,8 +99,8 @@ echo "  README.md"
 sed -i '' -E "s#^\*\*Version\*\*: [0-9]+\.[0-9]+\.[0-9]+#**Version**: ${NEW_VERSION}#" jacs/README.md
 echo "  jacs/README.md"
 
-# jacs-cli/README.md footer: "v0.9.7 | [Apache 2.0 with Common Clause](../LICENSE)"
-sed -i '' -E "s#^v[0-9]+\.[0-9]+\.[0-9]+ \| \[Apache 2\.0#v${NEW_VERSION} | [Apache 2.0#" jacs-cli/README.md
+# jacs-cli/README.md footer: "v0.9.7 | [Apache-2.0](../LICENSE-APACHE)"
+sed -i '' -E "s#^v[0-9]+\.[0-9]+\.[0-9]+ \| \[Apache-2\.0\]#v${NEW_VERSION} | [Apache-2.0]#" jacs-cli/README.md
 echo "  jacs-cli/README.md"
 
 # Fail loudly if any README footer did not update to $NEW_VERSION.
@@ -113,7 +113,7 @@ if ! grep -q "^\*\*Version\*\*: ${NEW_VERSION} " jacs/README.md; then
   echo "  ERROR: jacs/README.md footer did not update to ${NEW_VERSION}"
   README_DRIFT=1
 fi
-if ! grep -q "^v${NEW_VERSION} | \[Apache 2\.0" jacs-cli/README.md; then
+if ! grep -q "^v${NEW_VERSION} | \[Apache-2\.0\]" jacs-cli/README.md; then
   echo "  ERROR: jacs-cli/README.md footer did not update to v${NEW_VERSION}"
   README_DRIFT=1
 fi

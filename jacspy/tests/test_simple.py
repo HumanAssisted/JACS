@@ -68,7 +68,6 @@ def assert_audit_result(result: dict) -> None:
 def _pem_to_raw_key_bytes(public_key_pem: str, expected_hash: str) -> bytes:
     """Convert a public key string to the raw bytes that match the signing-time hash.
 
-    For RSA-PSS: the PEM text bytes ARE the raw key bytes (hash matches directly).
     For Ed25519/pq2025: the PEM wraps binary data; we decode the base64 body.
     """
     import base64 as b64mod
@@ -111,7 +110,7 @@ def seed_public_key_cache(agent_root: Path, agent_json: str, public_key_pem: str
     agent_data = json.loads(agent_json)
     signature = agent_data.get("jacsSignature", {})
     key_hash = signature["publicKeyHash"]
-    signing_algorithm = signature.get("signingAlgorithm", "RSA-PSS")
+    signing_algorithm = signature.get("signingAlgorithm", "ring-Ed25519")
 
     raw_bytes = None
     trust_store_dir = os.environ.get("JACS_TRUST_STORE_DIR", "").strip()
@@ -405,10 +404,6 @@ class TestUpdateAgent:
         agent = json.loads(agent_doc)
         original_version = agent.get("jacsVersion")
 
-        # Add required field if missing (schema requires at least 1 contact)
-        if "jacsContacts" not in agent or len(agent.get("jacsContacts", [])) == 0:
-            agent["jacsContacts"] = [{"contactFirstName": "Test", "contactLastName": "Contact"}]
-
         # Modify a field with valid enum value
         agent["jacsAgentType"] = "hybrid"
 
@@ -427,10 +422,6 @@ class TestUpdateAgent:
         # Get the current agent document and modify it
         agent_doc = simple.export_agent()
         agent = json.loads(agent_doc)
-
-        # Add required field if missing (schema requires at least 1 contact)
-        if "jacsContacts" not in agent or len(agent.get("jacsContacts", [])) == 0:
-            agent["jacsContacts"] = [{"contactFirstName": "Test", "contactLastName": "Contact"}]
 
         agent["jacsAgentType"] = "human-org"
 
@@ -513,6 +504,10 @@ class TestSignMessage:
         signed = simple.sign_message(data)
 
         parsed = json.loads(signed.raw)
+        if parsed["jacsType"] == "header":
+            assert parsed["jacsDocument"]["type"] == "message"
+        else:
+            assert parsed["jacsType"] == "message"
         assert "jacsSignature" in parsed
 
 
@@ -1009,4 +1004,3 @@ class TestAudit:
 
         first_health = result["health_checks"][0]
         assert f"{first_health['name']}:" in result["summary"]
-

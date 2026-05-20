@@ -222,10 +222,8 @@ impl Agent {
                     .into(),
             );
         }
-        if !signature_valid {
-            if let Err(e) = sig_result {
-                errors.push(format!("Signature verification failed: {}", e));
-            }
+        if !signature_valid && let Err(e) = sig_result {
+            errors.push(format!("Signature verification failed: {}", e));
         }
 
         let valid = hash_valid && signature_valid;
@@ -278,10 +276,8 @@ impl Agent {
         if !hash_valid {
             errors.push("Document hash verification failed".into());
         }
-        if !signature_valid {
-            if let Err(e) = &sig_result {
-                errors.push(format!("Signature verification failed: {}", e));
-            }
+        if !signature_valid && let Err(e) = &sig_result {
+            errors.push(format!("Signature verification failed: {}", e));
         }
 
         // Step 2: Evidence verification
@@ -572,7 +568,6 @@ mod tests {
     use super::*;
     use crate::attestation::AttestationTraits;
     use crate::attestation::digest::compute_digest_set_string;
-    use crate::attestation::types::*;
     use serde_json::json;
     use std::collections::HashMap;
 

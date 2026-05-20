@@ -227,7 +227,7 @@ event="document_signed" | stats avg(duration_ms) as avg_sign_ms, p99(duration_ms
 event="signature_verified" | stats avg(duration_ms) as avg_verify_ms, p99(duration_ms) as p99_verify_ms by algorithm
 ```
 
-Post-quantum algorithms (`pq2025`, `pq-dilithium`) will show higher latency than `ring-Ed25519`. Use these metrics to decide whether the security/performance tradeoff is acceptable for your workload.
+Post-quantum signing with `pq2025` will show higher latency than `ring-Ed25519`. Use these metrics to decide whether the security/performance tradeoff is acceptable for your workload.
 
 ## Next Steps
 

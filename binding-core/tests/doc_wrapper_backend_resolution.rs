@@ -80,7 +80,7 @@ fn sqlite_ready_agent() -> (AgentWrapper, tempfile::TempDir) {
         .default_storage("fs")
         .build();
 
-    let (agent, _info) =
+    let (_agent, _info) =
         SimpleAgent::create_with_params(params).expect("create_with_params should succeed");
 
     // create_with_params -> create_agent_and_load saves the public key to

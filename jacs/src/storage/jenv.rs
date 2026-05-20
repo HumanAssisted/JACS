@@ -55,7 +55,7 @@ impl std::fmt::Display for EnvError {
                         " Set this to your public key filename (e.g., 'agent.public.pem')."
                     }
                     "JACS_AGENT_KEY_ALGORITHM" => {
-                        " Set this to your key algorithm (e.g., 'ring-Ed25519', 'RSA-PSS', 'pq2025')."
+                        " Set this to your key algorithm (e.g., 'ring-Ed25519', 'pq2025')."
                     }
                     _ => "",
                 };

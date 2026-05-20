@@ -2,6 +2,8 @@
 
 Cryptographic identity, signing, and verification for agent systems.
 
+This crate is the source implementation for portable JACS signatures: it canonicalizes and signs JSON documents, verifies schema-backed envelopes, and exposes the primitives that Python, Node.js, Go, CLI, and MCP integrations build on.
+
 **[Documentation](https://humanassisted.github.io/JACS/)** | **[Quick Start](https://humanassisted.github.io/JACS/getting-started/quick-start.html)** | **[API Reference](https://docs.rs/jacs/latest/jacs/)**
 
 ```bash
@@ -18,7 +20,7 @@ cargo install jacs-cli
 
 | Capability | Rust API |
 |-----------|----------|
-| Agent identity and signed JSON | `jacs::simple` |
+| Agent identity and schema-backed signed JSON | `jacs::simple` |
 | Inline Markdown/text signatures | `jacs::text` |
 | PNG/JPEG/WebP provenance | `jacs::media` |
 | RFC 5322 email signatures | `jacs::email` |
@@ -100,4 +102,4 @@ Report vulnerabilities to security@hai.ai.
 - [Crates.io](https://crates.io/crates/jacs)
 - [Development Guide](../DEVELOPMENT.md)
 
-**Version**: 0.10.1 | [Apache-2.0](../LICENSE-APACHE)
+**Version**: 0.10.2 | [Apache-2.0](../LICENSE-APACHE)

@@ -158,10 +158,10 @@ mod tests {
 
     #[test]
     fn algorithm_mismatch_error() {
-        let err = EmailError::AlgorithmMismatch("expected ed25519, got rsa".to_string());
+        let err = EmailError::AlgorithmMismatch("expected ed25519, got pq2025".to_string());
         assert_eq!(
             err.to_string(),
-            "Algorithm mismatch: expected ed25519, got rsa"
+            "Algorithm mismatch: expected ed25519, got pq2025"
         );
     }
 

@@ -229,7 +229,7 @@ func TestConfigCreation(t *testing.T) {
 	keyDir := "./test_keys"
 	privKey := "test.private.pem"
 	pubKey := "test.public.pem"
-	keyAlg := "RSA"
+	keyAlg := "ring-Ed25519"
 	password := "test123"
 	agentID := "test-agent:v1.0.0"
 	storage := "local"
@@ -307,7 +307,7 @@ func TestErrorHandling(t *testing.T) {
 			t.Log("SignString succeeded - agent might be pre-loaded")
 		}
 
-		err = VerifyString("data", "signature", []byte("key"), "RSA")
+		err = VerifyString("data", "signature", []byte("key"), "ring-Ed25519")
 		if err == nil {
 			t.Error("Expected error verifying with invalid signature")
 		}

@@ -57,7 +57,7 @@ from jacs.client import JacsClient
 
 client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 # Wrap your existing artifact payload
-signed = client.sign_artifact(your_existing_artifact, "task")
+signed = client.sign_artifact(your_existing_artifact, "artifact")
 # Send `signed` instead of the raw artifact
 ```
 
@@ -68,7 +68,7 @@ Receiving agents that don't understand JACS will ignore the extra fields. Receiv
 JACS generates two key pairs per agent:
 
 - **Post-quantum (ML-DSA-87)** for JACS document signatures -- future-proof
-- **Traditional (RSA/ECDSA)** for JWS Agent Card signatures -- A2A ecosystem compatibility
+- **Ed25519 (`EdDSA`)** for JWS Agent Card signatures -- A2A ecosystem compatibility
 
 This means your agent is compatible with both the current A2A ecosystem and quantum-resistant verification.
 
@@ -89,7 +89,7 @@ A: The signature is cryptographically correct, but the trust policy rejected the
 A: Call `JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")` or `JacsClient(config_path=...)` before signing. The client must have a loaded agent with keys.
 
 **Q: Agent Card export returns empty skills.**
-A: Skills are derived from `jacsServices` in the agent definition. Pass `skills=[...]` to `export_agent_card()` to override, or define services when creating the agent.
+A: Skills come from A2A Agent Card data. Pass `skills=[...]` to `export_agent_card()` when exporting the card.
 
 **Q: My existing A2A client doesn't understand the JACS fields.**
 A: This is expected. JACS fields (`jacsId`, `jacsSignature`, `jacsSha256`) are additive. Non-JACS clients should ignore unknown fields per JSON convention. If a client rejects them, strip JACS fields before sending by extracting `signed["payload"]`.

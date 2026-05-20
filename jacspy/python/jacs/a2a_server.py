@@ -66,8 +66,7 @@ def jacs_a2a_routes(
 
     Args:
         client: A loaded ``JacsClient`` instance.
-        skills: Optional list of raw JACS service dicts.  When supplied,
-            they override the agent's own ``jacsServices`` for the
+        skills: Optional list of explicit A2A skill dicts for the
             exported agent card.
 
     Returns:
@@ -90,7 +89,7 @@ def jacs_a2a_routes(
         ) from e
 
     if skills:
-        agent_data["jacsServices"] = skills
+        agent_data["skills"] = skills
 
     card = integration.export_agent_card(agent_data)
     card_dict = integration.agent_card_to_dict(card)

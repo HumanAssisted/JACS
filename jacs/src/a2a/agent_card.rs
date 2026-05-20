@@ -35,7 +35,7 @@ pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, JacsError> {
     }];
 
     // Convert JACS services to A2A skills
-    let skills = convert_services_to_skills(agent_value)?;
+    let skills = default_jacs_skills();
 
     // Define security schemes as a keyed map
     let mut security_schemes = HashMap::new();
@@ -91,79 +91,24 @@ pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, JacsError> {
     })
 }
 
-/// Convert JACS services to A2A skills (v0.4.0)
-fn convert_services_to_skills(agent_value: &Value) -> Result<Vec<AgentSkill>, JacsError> {
-    let mut skills = Vec::new();
-
-    if let Some(services) = agent_value.get("jacsServices").and_then(|v| v.as_array()) {
-        for service in services {
-            // Extract service name and description
-            let service_name = service
-                .get_str("name")
-                .or_else(|| service.get_str("serviceDescription"))
-                .unwrap_or_else(|| "unnamed_service".to_string());
-
-            let service_desc = service.get_str_or("serviceDescription", "No description available");
-
-            // Convert tools to skills
-            if let Some(tools) = service.get("tools").and_then(|v| v.as_array()) {
-                for tool in tools {
-                    if let Some(function) = tool.get("function") {
-                        let fn_name = function.get_str_or("name", &service_name);
-                        let fn_desc = function.get_str_or("description", &service_desc);
-
-                        let skill = AgentSkill {
-                            id: slugify(&fn_name),
-                            name: fn_name.to_string(),
-                            description: fn_desc.to_string(),
-                            tags: derive_tags(&service_name, &fn_name),
-                            examples: None,
-                            input_modes: None,
-                            output_modes: None,
-                            security: None,
-                        };
-                        skills.push(skill);
-                    }
-                }
-            } else {
-                // Create a skill for the service itself if no tools are defined
-                let skill = AgentSkill {
-                    id: slugify(&service_name),
-                    name: service_name.to_string(),
-                    description: service_desc.to_string(),
-                    tags: derive_tags(&service_name, &service_name),
-                    examples: None,
-                    input_modes: None,
-                    output_modes: None,
-                    security: None,
-                };
-                skills.push(skill);
-            }
-        }
-    }
-
-    // If no services/skills found, add a default verification skill
-    if skills.is_empty() {
-        skills.push(AgentSkill {
-            id: "verify-signature".to_string(),
-            name: "verify_signature".to_string(),
-            description: "Verify JACS document signatures".to_string(),
-            tags: vec![
-                "jacs".to_string(),
-                "verification".to_string(),
-                "cryptography".to_string(),
-            ],
-            examples: Some(vec![
-                "Verify a signed JACS document".to_string(),
-                "Check document signature integrity".to_string(),
-            ]),
-            input_modes: Some(vec!["application/json".to_string()]),
-            output_modes: Some(vec!["application/json".to_string()]),
-            security: None,
-        });
-    }
-
-    Ok(skills)
+fn default_jacs_skills() -> Vec<AgentSkill> {
+    vec![AgentSkill {
+        id: "verify-signature".to_string(),
+        name: "verify_signature".to_string(),
+        description: "Verify JACS document signatures".to_string(),
+        tags: vec![
+            "jacs".to_string(),
+            "verification".to_string(),
+            "cryptography".to_string(),
+        ],
+        examples: Some(vec![
+            "Verify a signed JACS document".to_string(),
+            "Check document signature integrity".to_string(),
+        ]),
+        input_modes: Some(vec!["application/json".to_string()]),
+        output_modes: Some(vec!["application/json".to_string()]),
+        security: None,
+    }]
 }
 
 /// Create JACS extension for A2A capabilities (v0.4.0)
@@ -173,9 +118,9 @@ fn create_jacs_extension(agent: &Agent) -> Result<AgentExtension, JacsError> {
     let is_pqc = key_algorithm.contains("pq2025");
 
     let desc = if is_pqc {
-        "JACS cryptographic document signing (sacred, irreversible commitment) and verification with post-quantum support. Signing creates permanent, non-repudiable proof."
+        "JACS cryptographic document signing and verification with post-quantum support. Signing creates permanent, non-repudiable proof."
     } else {
-        "JACS cryptographic document signing (sacred, irreversible commitment) and verification. Signing creates permanent, non-repudiable proof."
+        "JACS cryptographic document signing and verification. Signing creates permanent, non-repudiable proof."
     };
 
     Ok(AgentExtension {
@@ -204,12 +149,12 @@ pub fn create_extension_descriptor(signing_algorithm: &str) -> Value {
         "specification": "https://jacs.sh/specs/a2a-extension",
         "signingGuidance": {
             "importance": "CRITICAL",
-            "message": "Signing a document is a sacred, irreversible act. A signature creates permanent cryptographic proof that binds the signer to the document content. Once signed, the commitment cannot be undone. The signer is accountable forever for what they sign. Only sign after careful review and full understanding of the document contents.",
+            "message": "Signing a document is a sacred, irreversible act. A signature creates permanent cryptographic proof that binds the signer to the document content. Once signed, the signature cannot be undone. The signer is accountable forever for what they sign. Only sign after careful review and full understanding of the document contents.",
             "nonRepudiation": "Signatures provide non-repudiation: the signer cannot later deny having signed the document.",
             "beforeSigning": [
                 "Read and understand the complete document content",
                 "Verify the document represents your intent",
-                "Confirm you have authority to make this commitment",
+                "Confirm you have authority to sign this document",
                 "Understand this creates a permanent, verifiable record"
             ]
         },
@@ -250,30 +195,6 @@ pub fn create_extension_descriptor(signing_algorithm: &str) -> Value {
             }
         }
     })
-}
-
-/// Convert a name to a URL-friendly slug for skill IDs.
-fn slugify(name: &str) -> String {
-    name.to_lowercase()
-        .replace([' ', '_'], "-")
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-')
-        .collect()
-}
-
-/// Derive tags from service/function context.
-fn derive_tags(service_name: &str, fn_name: &str) -> Vec<String> {
-    let mut tags = vec!["jacs".to_string()];
-
-    // Add service name as a tag if different from function name
-    let service_slug = slugify(service_name);
-    let fn_slug = slugify(fn_name);
-    if service_slug != fn_slug {
-        tags.push(service_slug);
-    }
-    tags.push(fn_slug);
-
-    tags
 }
 
 #[cfg(test)]
@@ -320,7 +241,6 @@ mod tests {
             .map(|v| v.as_str().unwrap())
             .collect();
         assert!(alg_strings.contains(&"ring-Ed25519"));
-        assert!(alg_strings.contains(&"RSA-PSS"));
         assert!(alg_strings.contains(&"pq2025"));
     }
 
@@ -336,20 +256,5 @@ mod tests {
         assert!(!pq_strings.contains(&"falcon"));
         assert!(!pq_strings.contains(&"sphincs+"));
         assert_eq!(pq_strings.len(), 1);
-    }
-
-    #[test]
-    fn test_slugify() {
-        assert_eq!(slugify("Hello World"), "hello-world");
-        assert_eq!(slugify("analyze_text"), "analyze-text");
-        assert_eq!(slugify("MyFunction123"), "myfunction123");
-    }
-
-    #[test]
-    fn test_derive_tags() {
-        let tags = derive_tags("Text Analysis", "analyze_text");
-        assert!(tags.contains(&"jacs".to_string()));
-        assert!(tags.contains(&"text-analysis".to_string()));
-        assert!(tags.contains(&"analyze-text".to_string()));
     }
 }

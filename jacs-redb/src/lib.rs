@@ -159,7 +159,7 @@ impl RedbStorage {
 
         Ok(keys
             .into_iter()
-            .filter(|k| !table.get(k.as_str()).ok().flatten().is_some())
+            .filter(|k| table.get(k.as_str()).ok().flatten().is_none())
             .collect())
     }
 }
@@ -402,10 +402,10 @@ impl DatabaseDocumentTraits for RedbStorage {
 
             let doc = Self::bytes_to_document(value_guard.value())?;
 
-            if let Some(t) = jacs_type {
-                if doc.jacs_type != t {
-                    continue;
-                }
+            if let Some(t) = jacs_type
+                && doc.jacs_type != t
+            {
+                continue;
             }
 
             if field_matches_exact(&doc.value, field_path, value) {
@@ -457,10 +457,10 @@ impl DatabaseDocumentTraits for RedbStorage {
         for key in keys {
             let doc = self.get_document(&key)?;
 
-            if let Some(t) = jacs_type {
-                if doc.jacs_type != t {
-                    continue;
-                }
+            if let Some(t) = jacs_type
+                && doc.jacs_type != t
+            {
+                continue;
             }
 
             if skipped < offset {

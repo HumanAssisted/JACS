@@ -770,7 +770,7 @@ impl FileLoader for Agent {
 pub struct PublicKeyInfo {
     /// The raw public key bytes.
     pub public_key: Vec<u8>,
-    /// The cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256").
+    /// The cryptographic algorithm (e.g., "ed25519").
     pub algorithm: String,
     /// The hash of the public key for verification.
     pub hash: String,
@@ -1134,7 +1134,7 @@ mod tests {
     fn test_public_key_info_clone() {
         let info = PublicKeyInfo {
             public_key: vec![1, 2, 3],
-            algorithm: "rsa".to_string(),
+            algorithm: "ed25519".to_string(),
             hash: "xyz789".to_string(),
         };
         let cloned = info.clone();

@@ -168,7 +168,7 @@ export declare function verifySelf(): Promise<VerificationResult>;
  */
 export declare function verifySelfSync(): VerificationResult;
 /**
- * Signs arbitrary data as a JACS message.
+ * Signs arbitrary data with the legacy signed-message type label.
  */
 export declare function signMessage(data: any): Promise<SignedDocument>;
 /**

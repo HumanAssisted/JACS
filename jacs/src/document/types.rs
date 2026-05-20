@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 /// used during document creation and signing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateOptions {
-    /// The `jacsType` to assign (e.g., `"artifact"`, `"agentstate"`, `"message"`).
+    /// The `jacsType` to assign (e.g., `"artifact"`, `"document"`).
     /// Defaults to `"artifact"`.
     pub jacs_type: String,
 
@@ -43,22 +43,13 @@ impl Default for CreateOptions {
 ///
 /// JACS "update" creates a successor version linked to the prior version
 /// (new signature, new version ID). It never mutates in place.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateOptions {
     /// Optional path to a custom JSON schema for validation.
     pub custom_schema: Option<String>,
 
     /// Optional new visibility for the updated version.
     pub visibility: Option<DocumentVisibility>,
-}
-
-impl Default for UpdateOptions {
-    fn default() -> Self {
-        Self {
-            custom_schema: None,
-            visibility: None,
-        }
-    }
 }
 
 // =============================================================================
@@ -164,11 +155,13 @@ pub struct DocumentDiff {
 ///   Examples: agreement documents, review docs, partner-visible artifacts.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DocumentVisibility {
     /// Fully public — can be shared, listed, and returned to any caller.
     Public,
 
     /// Private to the owning agent.
+    #[default]
     Private,
 
     /// Restricted to explicitly named agent IDs or roles.
@@ -181,12 +174,6 @@ pub enum DocumentVisibility {
     /// simpler at call sites and the serde output is identical: both serialize to
     /// `{"restricted":["agent-a","agent-b"]}` with `#[serde(rename_all = "lowercase")]`.
     Restricted(Vec<String>),
-}
-
-impl Default for DocumentVisibility {
-    fn default() -> Self {
-        DocumentVisibility::Private
-    }
 }
 
 impl DocumentVisibility {
@@ -240,13 +227,13 @@ mod tests {
     #[test]
     fn list_filter_supports_jacs_type_agent_id_visibility() {
         let filter = ListFilter {
-            jacs_type: Some("agentstate".to_string()),
+            jacs_type: Some("artifact".to_string()),
             agent_id: Some("agent-123".to_string()),
             visibility: Some(DocumentVisibility::Public),
             limit: Some(50),
             offset: Some(10),
         };
-        assert_eq!(filter.jacs_type.as_deref(), Some("agentstate"));
+        assert_eq!(filter.jacs_type.as_deref(), Some("artifact"));
         assert_eq!(filter.agent_id.as_deref(), Some("agent-123"));
         assert_eq!(filter.visibility, Some(DocumentVisibility::Public));
         assert_eq!(filter.limit, Some(50));

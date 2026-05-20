@@ -338,30 +338,29 @@ def main():
     agent = jacs.JacsAgent()
     agent.load('./jacs.config.json')
 
-    # Create a task document
-    task = {
-        "title": "Code Review",
-        "description": "Review pull request #123",
-        "assignee": "developer-uuid",
-        "deadline": "2024-02-01"
+    # Create a generic proposal document
+    proposal = {
+        "title": "Project Proposal",
+        "description": "Q1 development plan",
+        "budget": 50000
     }
 
-    signed_task = agent.create_document(json.dumps(task))
-    print('Task created')
+    signed_proposal = agent.create_document(json.dumps(proposal))
+    print('Document created')
 
-    # Verify the task
-    if agent.verify_document(signed_task):
-        print('Task signature valid')
+    # Verify the document
+    if agent.verify_document(signed_proposal):
+        print('Document signature valid')
 
-    # Create agreement for task acceptance
-    task_with_agreement = agent.create_agreement(
-        signed_task,
+    # Create agreement for proposal approval
+    proposal_with_agreement = agent.create_agreement(
+        signed_proposal,
         ['manager-uuid', 'developer-uuid'],
-        'Do you accept this task assignment?'
+        'Do you approve this proposal?'
     )
 
     # Sign the agreement
-    signed_agreement = agent.sign_agreement(task_with_agreement)
+    signed_agreement = agent.sign_agreement(proposal_with_agreement)
     print('Agreement signed')
 
     # Check agreement status
@@ -369,8 +368,8 @@ def main():
     print('Status:', status)
 
     # Hash some data for reference
-    task_hash = jacs.hash_string(signed_task)
-    print('Task hash:', task_hash)
+    proposal_hash = jacs.hash_string(signed_proposal)
+    print('Document hash:', proposal_hash)
 
 if __name__ == "__main__":
     main()

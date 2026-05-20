@@ -7,18 +7,14 @@
 //!
 //! Tools are organized into families and exposed via runtime profiles:
 //!
-//! **Core profile** (default) -- 7 tool families for everyday signing and verification:
-//! - `state` -- Agent state management (quickstart, load, create)
+//! **Core profile** (default) -- tool families for everyday signing and verification:
 //! - `document` -- Document CRUD (create, sign, verify, update)
 //! - `trust` -- Trust store management (add, remove, list trusted agents)
-//! - `audit` -- Security audit and diagnostics
-//! - `memory` -- Agent memory and local state
 //! - `search` -- Document search and discovery
 //! - `key` -- Key management and export
 //!
-//! **Full profile** -- Core + 4 advanced families:
+//! **Full profile** -- Core + advanced families:
 //! - `agreements` -- Multi-agent agreement signing with quorum
-//! - `messaging` -- Signed message exchange
 //! - `a2a` -- Agent-to-Agent protocol tools
 //! - `attestation` -- Evidence-based attestation and DSSE
 //!

@@ -27,17 +27,6 @@ pub const STRICT_TLS_DEFAULT: bool = true;
 /// Additional domains can be added via the `JACS_SCHEMA_ALLOWED_DOMAINS` environment variable.
 pub const DEFAULT_ALLOWED_SCHEMA_DOMAINS: &[&str] = &["hai.ai", "schema.hai.ai", "jacs.sh"];
 
-/// Check if a URL is allowed for schema fetching.
-///
-/// A URL is allowed if its host matches one of the allowed domains (either from
-/// `DEFAULT_ALLOWED_SCHEMA_DOMAINS` or from the `JACS_SCHEMA_ALLOWED_DOMAINS` env var).
-///
-/// # Arguments
-/// * `url` - The URL to check
-///
-/// # Returns
-/// * `Ok(())` if the URL is allowed
-/// * `Err(JacsError)` if the URL is blocked
 /// Default maximum document size in bytes (10MB).
 pub const DEFAULT_MAX_DOCUMENT_SIZE: usize = 10 * 1024 * 1024;
 
@@ -221,44 +210,17 @@ pub static DEFAULT_SCHEMA_STRINGS: phf::Map<&'static str, &'static str> = phf_ma
     "schemas/components/signature/v1/signature.schema.json" => include_str!("../../schemas/components/signature/v1/signature.schema.json"),
     "schemas/components/files/v1/files.schema.json" => include_str!("../../schemas/components/files/v1/files.schema.json"),
     "schemas/components/agreement/v1/agreement.schema.json" => include_str!("../../schemas/components/agreement/v1/agreement.schema.json"),
-    "schemas/components/action/v1/action.schema.json" => include_str!("../../schemas/components/action/v1/action.schema.json"),
-    "schemas/components/unit/v1/unit.schema.json" => include_str!("../../schemas/components/unit/v1/unit.schema.json"),
-    "schemas/components/tool/v1/tool.schema.json" => include_str!("../../schemas/components/tool/v1/tool.schema.json"),
-    "schemas/components/service/v1/service.schema.json" => include_str!("../../schemas/components/service/v1/service.schema.json"),
-     "schemas/components/contact/v1/contact.schema.json" => include_str!("../../schemas/components/contact/v1/contact.schema.json"),
-     "schemas/task/v1/task.schema.json" => include_str!("../../schemas/task/v1/task.schema.json"),
-     "schemas/message/v1/message.schema.json" => include_str!("../../schemas/message/v1/message.schema.json"),
-     "schemas/eval/v1/eval.schema.json" => include_str!("../../schemas/eval/v1/eval.schema.json"),
-     "schemas/program/v1/program.schema.json" => include_str!("../../schemas/program/v1/program.schema.json"),
-     "schemas/node/v1/node.schema.json" => include_str!("../../schemas/node/v1/node.schema.json"),
-     "schemas/components/embedding/v1/embedding.schema.json" => include_str!("../../schemas/components/embedding/v1/embedding.schema.json"),
-     "schemas/agentstate/v1/agentstate.schema.json" => include_str!("../../schemas/agentstate/v1/agentstate.schema.json"),
-     "schemas/commitment/v1/commitment.schema.json" => include_str!("../../schemas/commitment/v1/commitment.schema.json"),
-     "schemas/todo/v1/todo.schema.json" => include_str!("../../schemas/todo/v1/todo.schema.json"),
-     "schemas/components/todoitem/v1/todoitem.schema.json" => include_str!("../../schemas/components/todoitem/v1/todoitem.schema.json"),
      "schemas/attestation/v1/attestation.schema.json" => include_str!("../../schemas/attestation/v1/attestation.schema.json")
 };
 
 pub static SCHEMA_SHORT_NAME: phf::Map<&'static str, &'static str> = phf_map! {
 
     "https://hai.ai/schemas/agent/v1/agent.schema.json" => "agent" ,
-    "https://hai.ai/schemas/components/action/v1/action.schema.json" => "action" ,
     "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json" => "agreement" ,
-    "https://hai.ai/schemas/components/contact/v1/contact.schema.json" => "contact" ,
     "https://hai.ai/schemas/components/files/v1/files.schema.json" => "files" ,
-    "https://hai.ai/schemas/components/service/v1/service.schema.json" => "service" ,
     "https://hai.ai/schemas/components/signature/v1/signature.schema.json" => "signature" ,
-    "https://hai.ai/schemas/components/tool/v1/tool.schema.json" => "tool" ,
-    "https://hai.ai/schemas/components/unit/v1/unit.schema.json" => "unit" ,
-    "https://hai.ai/schemas/eval/v1/eval.schema.json" => "eval" ,
     "https://hai.ai/schemas/header/v1/header.schema.json" => "header" ,
-    "https://hai.ai/schemas/message/v1/message.schema.json" => "message" ,
-    "https://hai.ai/schemas/node/v1/node.schema.json" => "node" ,
-    "https://hai.ai/schemas/task/v1/task.schema.json" => "task" ,
     "document" => "document" ,
-    "https://hai.ai/schemas/agentstate/v1/agentstate.schema.json" => "agentstate" ,
-    "https://hai.ai/schemas/commitment/v1/commitment.schema.json" => "commitment" ,
-    "https://hai.ai/schemas/todo/v1/todo.schema.json" => "todo" ,
     "https://hai.ai/schemas/attestation/v1/attestation.schema.json" => "attestation" ,
 };
 
@@ -626,28 +588,6 @@ fn check_filesystem_schema_access(
     Ok(candidate)
 }
 
-/// Resolves a schema from various sources based on the provided path.
-///
-/// # Arguments
-/// * `rawpath` - The path or URL to the schema. Can be:
-///   - A key in DEFAULT_SCHEMA_STRINGS
-///   - A <https://hai.ai> URL (will be converted to embedded schema)
-///   - A remote URL (will attempt fetch, subject to domain allowlist)
-///   - A local filesystem path (requires `JACS_ALLOW_FILESYSTEM_SCHEMAS=true`)
-///
-/// # Resolution Order
-/// 1. Removes leading slash if present
-/// 2. Checks DEFAULT_SCHEMA_STRINGS for direct match
-/// 3. For URLs:
-///    - hai.ai URLs: Converts to embedded schema lookup
-///    - Other URLs: Checks domain allowlist, then attempts remote fetch
-/// 4. Checks local filesystem (if enabled via `JACS_ALLOW_FILESYSTEM_SCHEMAS`)
-///
-/// # Security Considerations
-/// - Remote URLs are restricted to allowed domains (see `DEFAULT_ALLOWED_SCHEMA_DOMAINS`)
-/// - Filesystem access is disabled by default (opt-in via `JACS_ALLOW_FILESYSTEM_SCHEMAS`)
-/// - Path traversal (`..`) is blocked for filesystem paths
-/// - TLS certificate validation is enabled by default (can be relaxed for development)
 /// Resolve a schema without an agent config context.
 ///
 /// Equivalent to `resolve_schema_with_config(rawpath, None)`.
@@ -798,9 +738,9 @@ impl Drop for SchemaAccessHookGuard {
 }
 
 #[cfg(test)]
-static SCHEMA_ACCESS_TEST_HOOK: OnceLock<
-    std::sync::Mutex<Option<(String, Arc<dyn Fn() + Send + Sync + 'static>)>>,
-> = OnceLock::new();
+type SchemaTestHook = std::sync::Mutex<Option<(String, Arc<dyn Fn() + Send + Sync + 'static>)>>;
+#[cfg(test)]
+static SCHEMA_ACCESS_TEST_HOOK: OnceLock<SchemaTestHook> = OnceLock::new();
 
 fn cache_schema(key: String, schema: Arc<Value>) -> Arc<Value> {
     if let Ok(mut cache) = schema_cache().write() {

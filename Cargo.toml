@@ -4,7 +4,6 @@ members = [
     "jacs-cli",
     "jacs-duckdb",
     "jacs-postgresql",
-    "jacs-surrealdb",
     "jacs-redb",
     "jacs-media",
     "binding-core",
@@ -13,6 +12,7 @@ members = [
     "jacs-mcp",
     "jacsgo/lib"
 ]
+exclude = ["jacs-surrealdb"]
 resolver = "3"
 
 [workspace.package]

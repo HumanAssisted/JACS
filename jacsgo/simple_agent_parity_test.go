@@ -36,6 +36,16 @@ import (
 
 const fixtureRelPath = "../binding-core/tests/fixtures/parity_inputs.json"
 
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	canonical, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("failed to canonicalize temp dir %q: %v", dir, err)
+	}
+	return canonical
+}
+
 // parityFixtures holds the deserialized parity_inputs.json.
 type parityFixtures struct {
 	SignMessageInputs  []signMessageInput  `json:"sign_message_inputs"`
@@ -56,7 +66,7 @@ type signRawBytesInput struct {
 }
 
 type expectedSignedDoc struct {
-	RequiredTopLevel       []string `json:"required_top_level"`
+	RequiredTopLevel        []string `json:"required_top_level"`
 	RequiredSignatureFields []string `json:"required_signature_fields"`
 }
 
@@ -474,7 +484,7 @@ func TestParitySignFile(t *testing.T) {
 		t.Run(algo, func(t *testing.T) {
 			agent := ephemeral(t, algo)
 
-			tmpDir := t.TempDir()
+			tmpDir := canonicalTempDir(t)
 			filePath := filepath.Join(tmpDir, "parity_test_file.txt")
 			if err := os.WriteFile(filePath, []byte("parity test content"), 0644); err != nil {
 				t.Fatalf("failed to write test file: %v", err)
@@ -646,7 +656,7 @@ func TestParityCrossAlgorithmStructure(t *testing.T) {
 func TestParityCreateWithParams(t *testing.T) {
 	skipIfLibraryMissing(t)
 
-	tmpDir := t.TempDir()
+	tmpDir := canonicalTempDir(t)
 	dataDir := filepath.Join(tmpDir, "data")
 	keyDir := filepath.Join(tmpDir, "keys")
 	configPath := filepath.Join(tmpDir, "config.json")

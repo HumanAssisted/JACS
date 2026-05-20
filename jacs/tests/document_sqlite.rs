@@ -52,9 +52,13 @@ fn create_service_with_loaded_agent(
     database_path: &str,
 ) -> (SqliteDocumentService, tempfile::TempDir, std::path::PathBuf) {
     let tmp = tempfile::TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let root = tmp
+        .path()
+        .canonicalize()
+        .unwrap_or_else(|_| tmp.path().to_path_buf());
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     let params = CreateAgentParams::builder()
         .name("sqlite-read-verify")

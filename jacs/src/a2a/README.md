@@ -56,8 +56,8 @@ Converts JACS agents to A2A Agent Card format:
 
 ### 3. Dual Key Management (`keys.rs`)
 Generates and manages two key pairs:
-- **JACS Key**: Post-quantum (Dilithium/Falcon/SPHINCS+) for documents
-- **A2A Key**: RSA (and Ed25519 via `ring-Ed25519`) for JWS Agent Card signing
+- **JACS Key**: `pq2025` or `ring-Ed25519` for documents
+- **A2A Key**: `ring-Ed25519` for JWS Agent Card signing
 
 ### 4. Extension Management (`extension.rs`)
 - Signs Agent Cards with JWS
@@ -81,7 +81,7 @@ use jacs::a2a::{agent_card::*, keys::*, extension::*, provenance::*};
 let agent_card = export_agent_card(&agent)?;
 
 // Generate dual keys
-let dual_keys = create_jwk_keys(Some("dilithium"), Some("rsa"))?;
+let dual_keys = create_jwk_keys(Some("pq2025"), Some("ring-Ed25519"))?;
 
 // Sign Agent Card with JWS
 let jws_signature = sign_agent_card_jws(

@@ -495,7 +495,6 @@ impl SimpleAgent {
             // matching ephemeral() and quickstart() behaviour.
             match params.algorithm.as_str() {
                 "ed25519" => "ring-Ed25519".to_string(),
-                "rsa-pss" => "RSA-PSS".to_string(),
                 other => other.to_string(),
             }
         };
@@ -654,13 +653,13 @@ impl SimpleAgent {
 
             // Log differences between existing config and params
             let check = |field: &str, existing_val: Option<&str>, param_val: &str| {
-                if let Some(ev) = existing_val {
-                    if ev != param_val {
-                        warn!(
-                            "Config '{}' differs: existing='{}', param='{}'. Keeping existing value.",
-                            field, ev, param_val
-                        );
-                    }
+                if let Some(ev) = existing_val
+                    && ev != param_val
+                {
+                    warn!(
+                        "Config '{}' differs: existing='{}', param='{}'. Keeping existing value.",
+                        field, ev, param_val
+                    );
                 }
             };
             check(
@@ -768,13 +767,13 @@ impl SimpleAgent {
                     message: format!("Failed to serialize config: {}", e),
                 })?;
             // Create parent directories if needed
-            if let Some(parent) = config_path.parent() {
-                if !parent.as_os_str().is_empty() {
-                    fs::create_dir_all(parent).map_err(|e| JacsError::DirectoryCreateFailed {
-                        path: parent.to_string_lossy().to_string(),
-                        reason: e.to_string(),
-                    })?;
-                }
+            if let Some(parent) = config_path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent).map_err(|e| JacsError::DirectoryCreateFailed {
+                    path: parent.to_string_lossy().to_string(),
+                    reason: e.to_string(),
+                })?;
             }
             crate::secure_io::write_new_file(config_path, new_str.as_bytes(), 0o644).map_err(
                 |e| JacsError::Internal {
@@ -815,18 +814,18 @@ impl SimpleAgent {
 
         // Handle DNS record generation if domain is set
         let mut dns_record = String::new();
-        if !params.domain.is_empty() {
-            if let Ok(pk) = agent.get_public_key() {
-                let digest = crate::dns::bootstrap::pubkey_digest_b64(&pk);
-                let rr = crate::dns::bootstrap::build_dns_record(
-                    &params.domain,
-                    3600,
-                    &agent_id,
-                    &digest,
-                    crate::dns::bootstrap::DigestEncoding::Base64,
-                );
-                dns_record = crate::dns::bootstrap::emit_plain_bind(&rr);
-            }
+        if !params.domain.is_empty()
+            && let Ok(pk) = agent.get_public_key()
+        {
+            let digest = crate::dns::bootstrap::pubkey_digest_b64(&pk);
+            let rr = crate::dns::bootstrap::build_dns_record(
+                &params.domain,
+                3600,
+                &agent_id,
+                &digest,
+                crate::dns::bootstrap::DigestEncoding::Base64,
+            );
+            dns_record = crate::dns::bootstrap::emit_plain_bind(&rr);
         }
 
         let private_key_path = format!("{}/{}", params.key_directory, DEFAULT_PRIVATE_KEY_FILENAME);
@@ -949,7 +948,6 @@ impl SimpleAgent {
         // Map user-friendly names to internal algorithm strings
         let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
-            "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
             other => other,
         };
@@ -1095,7 +1093,7 @@ impl SimpleAgent {
     pub fn sign_message(&self, data: &Value) -> Result<SignedDocument, JacsError> {
         debug!("sign_message() called");
 
-        // Wrap the data in a minimal document structure
+        // Preserve the long-standing sign_message type label for compatibility.
         let doc_content = json!({
             "jacsType": "message",
             "jacsLevel": "raw",
@@ -1757,7 +1755,7 @@ impl SimpleAgent {
     ///
     /// This returns the raw public key bytes as stored in the agent's internal
     /// state. The format depends on the algorithm (e.g., raw 32 bytes for
-    /// Ed25519, PEM for RSA-PSS). These bytes are the same format expected by
+    /// Ed25519). These bytes are the same format expected by
     /// [`verify_with_key()`](Self::verify_with_key) and
     /// [`verify_document_signature()`](crate::agent::document::DocumentTraits::verify_document_signature).
     #[must_use = "public key data must be used"]
@@ -1771,8 +1769,8 @@ impl SimpleAgent {
         })
     }
 
-    /// Returns the agent's configured key algorithm, e.g. `"ring-Ed25519"`,
-    /// `"pq2025"`, `"RSA-PSS"`. This is the same value that was passed to
+    /// Returns the agent's configured key algorithm, e.g. `"ring-Ed25519"` or
+    /// `"pq2025"`. This is the same value that was passed to
     /// `SimpleAgent::ephemeral` or set on the loaded agent's config. Useful
     /// for deriving the algorithm tag on inline-text signature blocks
     /// without the heuristic-based `detect_algorithm_from_public_key` path.

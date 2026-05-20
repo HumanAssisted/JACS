@@ -52,11 +52,11 @@
 //!
 //! // Create a public document with a specific type
 //! let opts = CreateOptions {
-//!     jacs_type: "agentstate".to_string(),
+//!     jacs_type: "artifact".to_string(),
 //!     visibility: DocumentVisibility::Public,
 //!     custom_schema: None,
 //! };
-//! let state_doc = service.create(r#"{"memory": "important"}"#, opts)?;
+//! let public_doc = service.create(r#"{"note": "important"}"#, opts)?;
 //!
 //! // Read by key (id:version)
 //! let fetched = service.get(&format!("{}:{}", doc.id, doc.version))?;
@@ -482,9 +482,7 @@ pub trait DocumentService: Send + Sync {
     /// integrity. Returns `Ok(())` on success or a verification error on
     /// failure.
     ///
-    /// This is distinct from `get()` in that it returns no document data —
-    /// it is a pure verification check intended for the `jacs_verify_state`
-    /// tool path.
+    /// This is distinct from `get()` in that it returns no document data.
     fn verify(&self, key: &str) -> Result<(), JacsError>;
 
     // === VISIBILITY ===

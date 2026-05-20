@@ -9,9 +9,9 @@ const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 const IEND_TYPE: &[u8; 4] = b"IEND";
 const ITXT_TYPE: &[u8; 4] = b"iTXt";
 
-/// Walk PNG chunks and yield (chunk_type, chunk_body) tuples.
-/// Returns Ok(chunks) or Err on structural failure.
-fn parse_chunks(bytes: &[u8]) -> Result<Vec<(&[u8], &[u8], &[u8])>, MediaError> {
+type ChunkList<'a> = Vec<(&'a [u8], &'a [u8], &'a [u8])>;
+
+fn parse_chunks(bytes: &[u8]) -> Result<ChunkList<'_>, MediaError> {
     // Each entry: (type_bytes, body_bytes, full_chunk_range for rebuild).
     if !bytes.starts_with(PNG_SIGNATURE) {
         return Err(MediaError::Parse(
@@ -96,7 +96,7 @@ fn png_crc32(type_bytes: &[u8], body: &[u8]) -> u32 {
     static TABLE: std::sync::OnceLock<[u32; 256]> = std::sync::OnceLock::new();
     let table = TABLE.get_or_init(|| {
         let mut t = [0u32; 256];
-        for n in 0..256 {
+        for (n, entry) in t.iter_mut().enumerate() {
             let mut c = n as u32;
             for _ in 0..8 {
                 if c & 1 != 0 {
@@ -105,7 +105,7 @@ fn png_crc32(type_bytes: &[u8], body: &[u8]) -> u32 {
                     c >>= 1;
                 }
             }
-            t[n] = c;
+            *entry = c;
         }
         t
     });

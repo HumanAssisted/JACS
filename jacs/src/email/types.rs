@@ -83,7 +83,7 @@ pub struct JacsEmailMetadata {
 pub struct JacsEmailSignature {
     /// Key identifier used for signing.
     pub key_id: String,
-    /// Signing algorithm (e.g., "ed25519", "rsa-pss-sha256").
+    /// Signing algorithm (e.g., "ed25519", "pq2025").
     pub algorithm: String,
     /// Base64-encoded signature bytes.
     pub signature: String,

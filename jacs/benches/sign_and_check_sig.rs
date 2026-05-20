@@ -1,13 +1,7 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use jacs::agent::Agent;
-use jacs::agent::boilerplate::BoilerPlate;
-use jacs::agent::document::DocumentTraits;
+use criterion::{Criterion, criterion_group, criterion_main};
 use jacs::simple::SimpleAgent;
-use log::debug;
-use serde_json::json;
+use std::hint::black_box;
 
-use jacs::agent::DOCUMENT_AGENT_SIGNATURE_FIELDNAME;
-use jacs::storage::jenv::set_env_var;
 use rand::distr::Alphanumeric;
 use rand::prelude::*;
 
@@ -19,54 +13,6 @@ fn configure_criterion() -> Criterion {
         .measurement_time(std::time::Duration::from_secs(10)) // Time spent measuring each sample
         .confidence_level(0.95) // Statistical confidence level
         .noise_threshold(0.05) // Noise threshold for detecting performance changes
-}
-
-fn set_enc_to_ring() {
-    set_env_var(
-        "JACS_AGENT_PRIVATE_KEY_FILENAME",
-        "test-ring-Ed25519-private.pem",
-    )
-    .expect("Failed to set private key filename");
-    set_env_var(
-        "JACS_AGENT_PUBLIC_KEY_FILENAME",
-        "test-ring-Ed25519-public.pem",
-    )
-    .expect("Failed to set public key filename");
-    set_env_var("JACS_AGENT_KEY_ALGORITHM", "ring-Ed25519").expect("Failed to set key algorithm");
-}
-
-fn set_enc_to_pq() {
-    set_env_var("JACS_AGENT_PRIVATE_KEY_FILENAME", "test-pq-private.pem")
-        .expect("Failed to set private key filename");
-    set_env_var("JACS_AGENT_PUBLIC_KEY_FILENAME", "test-pq-public.pem")
-        .expect("Failed to set public key filename");
-    set_env_var("JACS_AGENT_KEY_ALGORITHM", "pq-dilithium").expect("Failed to set key algorithm");
-}
-
-fn load_test_agent_one() -> Agent {
-    let agent_version = "v1".to_string();
-    let header_version = "v1".to_string();
-    let signature_version = "v1".to_string();
-
-    let mut agent = jacs::agent::Agent::new(&agent_version, &header_version, &signature_version)
-        .expect("Agent schema should have instantiated");
-    let agentid =
-        "0f6bb6e8-f27c-4cf7-bb2e-01b647860680:a55739af-a3c8-4b4a-9f24-200313ee4229".to_string();
-    let result = agent.load_by_id(agentid);
-    match result {
-        Ok(_) => {
-            debug!(
-                "AGENT ONE LOADED {} {} ",
-                agent.get_id().unwrap(),
-                agent.get_version().unwrap()
-            );
-        }
-        Err(e) => {
-            eprintln!("Error loading agent: {}", e);
-            panic!("Agent loading failed");
-        }
-    }
-    agent
 }
 
 /// JSON with arbitrary keys from 2-20 keys, with data of string length from 10-250. (random length )
@@ -101,59 +47,6 @@ fn generate_synthetic_data(count: usize) -> Vec<String> {
     documents
 }
 
-fn benchmark_rsa(c: &mut Criterion) {
-    let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
-    let mut agent = load_test_agent_one();
-    c.bench_function("rsa", |b| {
-        for document in &documents {
-            b.iter(|| {
-                black_box({
-                    let jacsdocument = agent
-                        .create_document_and_load(&document, None, None)
-                        .unwrap();
-                    let document_key = jacsdocument.getkey();
-                    agent
-                        .verify_document_signature(
-                            &document_key,
-                            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
-                            None,
-                            None,
-                            None,
-                        )
-                        .unwrap();
-                });
-            })
-        }
-    });
-}
-
-fn benchmark_pq(c: &mut Criterion) {
-    set_enc_to_pq();
-    let mut agent2 = load_test_agent_one();
-    let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
-    c.bench_function("pq", |b| {
-        for document in &documents {
-            b.iter(|| {
-                black_box({
-                    let jacsdocument = agent2
-                        .create_document_and_load(&document, None, None)
-                        .unwrap();
-                    let document_key = jacsdocument.getkey();
-                    agent2
-                        .verify_document_signature(
-                            &document_key,
-                            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
-                            None,
-                            None,
-                            None,
-                        )
-                        .unwrap();
-                });
-            })
-        }
-    });
-}
-
 fn benchmark_pq2025(c: &mut Criterion) {
     // Use SimpleAgent::ephemeral to create a pq2025 agent with in-memory keys
     let (agent, _info) =
@@ -163,37 +56,25 @@ fn benchmark_pq2025(c: &mut Criterion) {
         for document in &documents {
             let data: serde_json::Value = serde_json::from_str(document).unwrap();
             b.iter(|| {
-                black_box({
-                    let signed = agent.sign_message(&data).unwrap();
-                    agent.verify(&signed.raw).unwrap();
-                });
+                let signed = agent.sign_message(&data).unwrap();
+                let result = agent.verify(&signed.raw).unwrap();
+                black_box(result)
             })
         }
     });
 }
 
-fn benchmark_ring(c: &mut Criterion) {
-    set_enc_to_ring();
+fn benchmark_ed25519(c: &mut Criterion) {
+    let (agent, _info) = SimpleAgent::ephemeral(Some("ring-Ed25519"))
+        .expect("Failed to create ephemeral Ed25519 agent");
     let documents = generate_synthetic_data(BENCH_SAMPLE_SIZE);
-    let mut agent3 = load_test_agent_one();
-    c.bench_function("ring", |b| {
+    c.bench_function("ed25519", |b| {
         for document in &documents {
+            let data: serde_json::Value = serde_json::from_str(document).unwrap();
             b.iter(|| {
-                black_box({
-                    let jacsdocument = agent3
-                        .create_document_and_load(&document, None, None)
-                        .unwrap();
-                    let document_key = jacsdocument.getkey();
-                    agent3
-                        .verify_document_signature(
-                            &document_key,
-                            Some(&DOCUMENT_AGENT_SIGNATURE_FIELDNAME.to_string()),
-                            None,
-                            None,
-                            None,
-                        )
-                        .unwrap();
-                });
+                let signed = agent.sign_message(&data).unwrap();
+                let result = agent.verify(&signed.raw).unwrap();
+                black_box(result)
             })
         }
     });
@@ -202,6 +83,6 @@ fn benchmark_ring(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = configure_criterion();
-    targets = benchmark_rsa, benchmark_pq, benchmark_pq2025, benchmark_ring
+    targets = benchmark_ed25519, benchmark_pq2025
 }
 criterion_main!(benches);

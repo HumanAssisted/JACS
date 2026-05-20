@@ -6,6 +6,12 @@ RFC 5322 `.eml` file and the result is the same email with a
 verifies the cryptographic signature, and compares content hashes to detect
 tampering.
 
+JACS also exposes migration helpers for HAI's HTML-inline signed email
+transport. In that mode, the signature material travels in the HTML body and
+inline logo instead of as user-visible signature attachments. Core signing and
+verification still stay in JACS; SDKs and servers should call these helpers
+rather than reimplementing email hashing, MIME parsing, or media extraction.
+
 There are only two functions you need:
 
 | Action     | Function                       | What you supply                                     | What you get back                           |
@@ -145,6 +151,46 @@ entry per field:
 Fields checked: `from`, `to`, `cc`, `subject`, `date`, `message_id`,
 `in_reply_to`, `references`, `body_plain`, `body_html`, and all attachments.
 
+## HTML-inline signed email migration helpers
+
+The HTML-inline transport is being added for HAI email while attachment mode
+remains compatible. Use `verify_signed_email` when a caller may receive either
+transport:
+
+```rust
+use jacs::email::{verify_signed_email, VerificationMode};
+
+let result = verify_signed_email(
+    &raw_eml,
+    &verifier_agent,
+    &sender_public_key,
+    VerificationMode::Strict,
+)?;
+```
+
+The verifier detects `SignedEmailTransport::AttachmentJacs` or
+`SignedEmailTransport::HtmlInline` and returns `SignedEmailVerificationResult`
+with `Verified`, `PartiallyVerified`, or `Failed`.
+
+HTML-inline helpers include:
+
+- `build_html_inline_email_signature_payload` for the inline signed pre-image.
+  It signs the existing email header scope, the text body, and user
+  attachments. Generated HTML and signature artifacts are excluded.
+- `embed_jacs_header_in_logo_png` and `extract_jacs_header_from_logo_png` for
+  the signed inline PNG logo transport.
+- `extract_topmost_inline_jacs_envelope` for reply-safe hidden envelope
+  selection.
+- `remove_inline_signature_artifacts`,
+  `strip_inline_signature_artifacts_from_html`, and
+  `html_bodies_equivalent` for parser-based artifact removal and HTML
+  presentation checks.
+- `verify_html_inline_email_content` for content-hash verification after
+  removing inline transport artifacts while keeping user attachments signed.
+
+Attachment mode remains available through `sign_email`, `verify_email`, and
+the `verify_email_*` compatibility APIs.
+
 ## The JACS signature document
 
 The `jacs-signature.json` attachment has this structure:
@@ -194,16 +240,22 @@ All items are re-exported from `jacs::email`:
 ```rust
 // Signing
 jacs::email::sign_email(raw_email: &[u8], signer: &impl JacsSigner) -> Result<Vec<u8>, EmailError>
+jacs::email::build_html_inline_email_signature_payload(raw_email: &[u8])
 jacs::email::JacsSigner                   // trait implemented by SimpleAgent
 
 // Verification
 jacs::email::verify_email(raw, &agent, pubkey)       // one-call: crypto + content check
+jacs::email::verify_signed_email(raw, &agent, pubkey, mode)
 jacs::email::verify_email_document(raw, &agent, pk)  // step 1: crypto only
 jacs::email::verify_email_content(&doc, &parts)      // step 2: content hash comparison
+jacs::email::verify_html_inline_email_content(&doc, &parts)
 jacs::email::normalize_algorithm(...)                 // algorithm name normalization
 
 // Types
 jacs::email::ContentVerificationResult    // overall result with field_results
+jacs::email::SignedEmailVerificationResult
+jacs::email::SignedEmailTransport         // AttachmentJacs | HtmlInline
+jacs::email::VerificationMode             // Strict | Degraded
 jacs::email::FieldResult                  // per-field status
 jacs::email::FieldStatus                  // Pass | Modified | Fail | Unverifiable
 jacs::email::JacsEmailSignatureDocument   // the full signature document

@@ -102,10 +102,10 @@ pub fn get_jacs_attachment_named(raw_email: &[u8], filename: &str) -> Result<Vec
             .attachment_name()
             .or_else(|| part.content_type().and_then(|ct| ct.attribute("name")));
 
-        if let Some(name) = part_filename {
-            if name == filename {
-                return Ok(part.contents().to_vec());
-            }
+        if let Some(name) = part_filename
+            && name == filename
+        {
+            return Ok(part.contents().to_vec());
         }
     }
 
@@ -137,11 +137,11 @@ pub fn remove_jacs_attachment_named(
         let part_filename = part
             .attachment_name()
             .or_else(|| part.content_type().and_then(|ct| ct.attribute("name")));
-        if let Some(name) = part_filename {
-            if name == filename {
-                jacs_part_idx = Some(idx);
-                break;
-            }
+        if let Some(name) = part_filename
+            && name == filename
+        {
+            jacs_part_idx = Some(idx);
+            break;
         }
     }
 

@@ -376,22 +376,22 @@ env_default!(default_algorithm, "JACS_AGENT_KEY_ALGORITHM", "pq2025");
 /// fall back to legacy `JACS_USE_SECURITY` with a deprecation warning.
 fn default_security() -> Option<String> {
     // Preferred new name
-    if let Ok(Some(val)) = get_env_var("JACS_ENABLE_FILESYSTEM_QUARANTINE", false) {
-        if !val.is_empty() {
-            return Some(val);
-        }
+    if let Ok(Some(val)) = get_env_var("JACS_ENABLE_FILESYSTEM_QUARANTINE", false)
+        && !val.is_empty()
+    {
+        return Some(val);
     }
     // Legacy name (backwards compatible)
-    if let Ok(Some(val)) = get_env_var("JACS_USE_SECURITY", false) {
-        if !val.is_empty() {
-            eprintln!(
-                "DEPRECATION WARNING: JACS_USE_SECURITY is deprecated. \
+    if let Ok(Some(val)) = get_env_var("JACS_USE_SECURITY", false)
+        && !val.is_empty()
+    {
+        eprintln!(
+            "DEPRECATION WARNING: JACS_USE_SECURITY is deprecated. \
                 Use JACS_ENABLE_FILESYSTEM_QUARANTINE instead. \
                 This env var only controls filesystem quarantine of executable files, \
                 not cryptographic verification."
-            );
-            return Some(val);
-        }
+        );
+        return Some(val);
     }
     Some("false".to_string())
 }
@@ -492,7 +492,7 @@ impl ConfigBuilder {
         self
     }
 
-    /// Set the key algorithm (e.g., "RSA-PSS", "Ed25519", "pq2025").
+    /// Set the key algorithm (e.g., "ring-Ed25519", "pq2025").
     pub fn key_algorithm(mut self, algo: &str) -> Self {
         self.key_algorithm = Some(algo.to_string());
         self
@@ -700,15 +700,15 @@ impl Config {
     /// field after new keys have been generated with the overridden algorithm.
     ///
     /// Returns an error if the algorithm is not one of the supported values:
-    /// `RSA-PSS`, `ring-Ed25519`, `pq2025`.
+    /// `ring-Ed25519`, `pq2025`.
     pub fn set_key_algorithm(&mut self, algorithm: String) -> Result<(), JacsError> {
         match algorithm.as_str() {
-            "RSA-PSS" | "ring-Ed25519" | "pq2025" => {
+            "ring-Ed25519" | "pq2025" => {
                 self.jacs_agent_key_algorithm = Some(algorithm);
                 Ok(())
             }
             other => Err(JacsError::ConfigError(format!(
-                "Unsupported algorithm '{}'. Supported: RSA-PSS, ring-Ed25519, pq2025",
+                "Unsupported algorithm '{}'. Supported: ring-Ed25519, pq2025",
                 other
             ))),
         }
@@ -747,10 +747,7 @@ impl Config {
     }
 
     fn env_opt_bool(key: &str) -> Option<bool> {
-        match Self::env_opt(key) {
-            Some(val) => Some(val.to_lowercase() == "true" || val == "1"),
-            None => None,
-        }
+        Self::env_opt(key).map(|val| val.to_lowercase() == "true" || val == "1")
     }
 
     fn apply_string_override(target: &mut Option<String>, key: &str) {
@@ -1176,7 +1173,7 @@ pub fn split_id(input: &str) -> Option<(&str, &str)> {
 const CONFIG_FIELD_HELP: &[(&str, &str)] = &[
     (
         "jacs_agent_key_algorithm",
-        "Expected one of: RSA-PSS, ring-Ed25519, pq2025",
+        "Expected one of: ring-Ed25519, pq2025",
     ),
     ("jacs_default_storage", "Expected one of: fs, aws"),
     (
@@ -1187,11 +1184,11 @@ const CONFIG_FIELD_HELP: &[(&str, &str)] = &[
     ("jacs_key_directory", "Expected a valid directory path"),
     (
         "jacs_agent_private_key_filename",
-        "Expected a filename (e.g., 'rsa_pss_private.pem')",
+        "Expected a filename (e.g., 'ed25519_private.pem')",
     ),
     (
         "jacs_agent_public_key_filename",
-        "Expected a filename (e.g., 'rsa_pss_public.pem')",
+        "Expected a filename (e.g., 'ed25519_public.pem')",
     ),
     (
         "jacs_agent_id_and_version",
@@ -1276,7 +1273,7 @@ fn format_validation_error(error: &jsonschema::ValidationError, instance: &Value
     // Special handling for enum violations
     if error_str.contains("is not one of") {
         if field_name.contains("jacs_agent_key_algorithm") {
-            msg.push_str(". Valid algorithms: RSA-PSS, ring-Ed25519, pq2025");
+            msg.push_str(". Valid algorithms: ring-Ed25519, pq2025");
         } else if field_name.contains("jacs_default_storage") {
             msg.push_str(". Valid storage options: fs, aws");
         }
@@ -2007,7 +2004,7 @@ mod tests {
         let invalid_json = r#"{
   "jacs_data_directory": "/data",
   "jacs_key_directory": "/keys"
-  "jacs_agent_key_algorithm": "RSA-PSS"
+  "jacs_agent_key_algorithm": "pq2025"
 }"#;
         let result = validate_config(invalid_json);
         assert!(result.is_err());
@@ -2052,7 +2049,7 @@ mod tests {
             err
         );
         assert!(
-            err.contains("RSA-PSS") || err.contains("Valid algorithms"),
+            err.contains("ring-Ed25519") || err.contains("Valid algorithms"),
             "Error should mention valid algorithms: {}",
             err
         );
@@ -2083,7 +2080,7 @@ mod tests {
   "jacs_key_directory": "/keys",
   "jacs_agent_private_key_filename": "private.pem",
   "jacs_agent_public_key_filename": "public.pem",
-  "jacs_agent_key_algorithm": "RSA-PSS",
+  "jacs_agent_key_algorithm": "pq2025",
   "jacs_default_storage": "invalid_storage"
 }"#;
         let result = validate_config(invalid_storage);
@@ -2127,7 +2124,7 @@ mod tests {
         assert!(
             get_field_help("jacs_agent_key_algorithm")
                 .unwrap()
-                .contains("RSA-PSS")
+                .contains("ring-Ed25519")
         );
         assert!(
             get_field_help("jacs_default_storage")

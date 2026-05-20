@@ -7,14 +7,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-metrics"))]
-use opentelemetry_otlp::WithExportConfig;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "otlp-metrics"))]
-use opentelemetry::metrics::MeterProvider;
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "otlp-metrics"))]
-use opentelemetry_sdk::Resource;
-#[cfg(all(not(target_arch = "wasm32"), feature = "otlp-metrics"))]
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
 // Narrow type so signature is stable across features
@@ -59,7 +51,10 @@ pub fn init_metrics(
 
     match &config.destination {
         #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-metrics"))]
-        MetricsDestination::Otlp { endpoint, headers } => {
+        MetricsDestination::Otlp {
+            endpoint,
+            headers: _,
+        } => {
             use opentelemetry_otlp::{MetricExporter, Protocol, WithExportConfig};
             use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 

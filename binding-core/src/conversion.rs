@@ -23,10 +23,9 @@ pub const TYPE_BUFFER: &str = "buffer";
 pub fn try_decode_bytes_object(obj: &serde_json::Map<String, Value>) -> Option<Vec<u8>> {
     if let (Some(Value::String(type_str)), Some(Value::String(data))) =
         (obj.get(TYPE_MARKER_KEY), obj.get(DATA_KEY))
+        && (type_str == TYPE_BYTES || type_str == TYPE_BUFFER)
     {
-        if type_str == TYPE_BYTES || type_str == TYPE_BUFFER {
-            return general_purpose::STANDARD.decode(data).ok();
-        }
+        return general_purpose::STANDARD.decode(data).ok();
     }
     None
 }

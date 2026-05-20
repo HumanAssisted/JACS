@@ -380,7 +380,7 @@ class PublicKeyInfo:
 
     Attributes:
         public_key: Raw public key bytes (DER encoded)
-        algorithm: Cryptographic algorithm (e.g., "ed25519", "rsa-pss-sha256")
+        algorithm: Cryptographic algorithm (e.g., "ed25519", "pq2025")
         public_key_hash: SHA-256 hash of the public key
         agent_id: The agent ID this key belongs to
         version: The version of the key

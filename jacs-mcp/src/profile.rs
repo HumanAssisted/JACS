@@ -15,14 +15,15 @@ use crate::tools::{ClassifiedTool, ToolFamily, all_classified_tools};
 use rmcp::model::Tool;
 
 /// Runtime tool profile for filtering which tools are registered.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Profile {
-    /// Core tools only (default). Includes the 7 standard families:
-    /// state, document, trust, audit, memory, search, key.
+    /// Core tools only (default). Includes the standard families:
+    /// document, trust, search, key.
+    #[default]
     Core,
 
     /// All compiled-in tools. Includes core + advanced families:
-    /// agreements, messaging, a2a, attestation.
+    /// agreements, a2a, attestation.
     Full,
 }
 
@@ -46,10 +47,10 @@ impl Profile {
             return Self::parse(p);
         }
 
-        if let Ok(env_val) = std::env::var("JACS_MCP_PROFILE") {
-            if !env_val.trim().is_empty() {
-                return Self::parse(&env_val);
-            }
+        if let Ok(env_val) = std::env::var("JACS_MCP_PROFILE")
+            && !env_val.trim().is_empty()
+        {
+            return Self::parse(&env_val);
         }
 
         Profile::Core
@@ -84,12 +85,6 @@ impl Profile {
     }
 }
 
-impl Default for Profile {
-    fn default() -> Self {
-        Profile::Core
-    }
-}
-
 impl std::fmt::Display for Profile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
@@ -98,11 +93,8 @@ impl std::fmt::Display for Profile {
 
 /// Names of all core tool families for documentation/logging.
 pub const CORE_FAMILIES: &[ToolFamily] = &[
-    ToolFamily::State,
     ToolFamily::Document,
     ToolFamily::Trust,
-    ToolFamily::Audit,
-    ToolFamily::Memory,
     ToolFamily::Search,
     ToolFamily::Key,
 ];
@@ -110,7 +102,6 @@ pub const CORE_FAMILIES: &[ToolFamily] = &[
 /// Names of all advanced tool families for documentation/logging.
 pub const ADVANCED_FAMILIES: &[ToolFamily] = &[
     ToolFamily::Agreement,
-    ToolFamily::Messaging,
     ToolFamily::A2a,
     ToolFamily::Attestation,
 ];
@@ -174,18 +165,22 @@ mod tests {
 
         let tools = vec![
             ClassifiedTool {
-                tool: Tool::new("state_tool", "A state tool", serde_json::Map::new()),
-                family: ToolFamily::State,
+                tool: Tool::new("document_tool", "A document tool", serde_json::Map::new()),
+                family: ToolFamily::Document,
             },
             ClassifiedTool {
-                tool: Tool::new("messaging_tool", "A messaging tool", serde_json::Map::new()),
-                family: ToolFamily::Messaging,
+                tool: Tool::new(
+                    "agreement_tool",
+                    "An agreement tool",
+                    serde_json::Map::new(),
+                ),
+                family: ToolFamily::Agreement,
             },
         ];
 
         let core = Profile::Core.filter_tools(tools.clone());
         assert_eq!(core.len(), 1);
-        assert_eq!(core[0].name.as_ref(), "state_tool");
+        assert_eq!(core[0].name.as_ref(), "document_tool");
 
         let full = Profile::Full.filter_tools(tools);
         assert_eq!(full.len(), 2);

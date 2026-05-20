@@ -1,5 +1,18 @@
+//! Replay-attack protection for HTTP / API payload signatures.
+//!
+//! This is the **only** place in JACS that enforces signature freshness.
+//! Document signatures (`agent::*`, `trust::*`, inline media) have no
+//! age check by design: a JACS-signed document is valid for the working
+//! life of its signing key. Anything in this module applies exclusively
+//! to short-lived payload envelopes used over HTTP / RPC transports.
+//!
+//! Knob: `JACS_PAYLOAD_MAX_REPLAY_SECONDS` (default 300s / 5 min).
+//!
+//! Future work: cross-check payload `iat` against the signing key's
+//! rotation timeline so payloads produced by a rotated-out key are
+//! rejected even if their nonce is still within the replay window.
+
 use crate::error::JacsError;
-use crate::time_utils;
 use moka::sync::Cache;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -18,8 +31,7 @@ pub fn payload_replay_window_seconds() -> u64 {
 }
 
 fn effective_replay_window_seconds() -> i64 {
-    let payload_window = i64::try_from(payload_replay_window_seconds()).unwrap_or(i64::MAX);
-    time_utils::max_iat_skew_seconds().max(payload_window)
+    i64::try_from(payload_replay_window_seconds()).unwrap_or(i64::MAX)
 }
 
 // Cache seen (scope, nonce) pairs for the active replay window.
