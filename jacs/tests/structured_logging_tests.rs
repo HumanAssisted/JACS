@@ -351,7 +351,7 @@ fn test_agreement_created_event() {
         let _agreement = jacs::agreements::create(
             &agent,
             &payload,
-            &[agent_id.clone()],
+            std::slice::from_ref(&agent_id),
             Some("Do you agree?"),
             Some("Test context"),
         )

@@ -1619,10 +1619,10 @@ impl SearchProvider for SqliteDocumentService {
                 0.5
             };
 
-            if let Some(min_score) = query.min_score {
-                if score < min_score {
-                    continue;
-                }
+            if let Some(min_score) = query.min_score
+                && score < min_score
+            {
+                continue;
             }
 
             hits.push(SearchHit {

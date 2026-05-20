@@ -200,8 +200,10 @@ pub fn ensure_dir_exists(path: &PathBuf) -> Result<&PathBuf, crate::error::JacsE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial(jacs_env)]
     fn test_trust_store_dir_is_valid() {
         let path = trust_store_dir();
         // Should end with trusted_agents

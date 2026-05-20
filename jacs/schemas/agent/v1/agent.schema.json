@@ -77,48 +77,10 @@
             "timestamp"
           ]
         }
-      },
-      "jacsServices": {
-        "type": "array",
-        "minItems": 1,
-        "description": "Services the agent can perform.",
-        "items": {
-          "$ref": "https://hai.ai/schemas/components/service/v1/service.schema.json"
-        }
-      },
-      "jacsContacts": {
-        "type": "array",
-        "description": "Contact information for the agent",
-        "items": {
-          "$ref": "https://hai.ai/schemas/components/contact/v1/contact.schema.json"
-        }
       }
     }
   ],
-  "if": {
-    "properties": {
-      "jacsAgentType": {
-        "type": "string",
-        "enum": [
-          "human",
-          "human-org",
-          "hybrid"
-        ]
-      }
-    }
-  },
-  "then": {
-    "properties": {
-      "jacsContacts": {
-        "minItems": 1
-      }
-    },
-    "required": [
-      "jacsContacts"
-    ]
-  },
   "required": [
-    "jacsAgentType",
-    "jacsServices"
+    "jacsAgentType"
   ]
 }

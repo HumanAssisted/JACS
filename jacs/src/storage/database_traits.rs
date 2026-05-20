@@ -47,7 +47,7 @@ pub trait DatabaseDocumentTraits: super::StorageDocumentTraits {
     ) -> Result<Vec<JACSDocument>, JacsError>;
 
     /// Query documents where a JSONB field matches a value.
-    /// `field_path` is a top-level field name (e.g., "jacsCommitmentStatus").
+    /// `field_path` is a top-level field name (e.g., "metadata.status").
     fn query_by_field(
         &self,
         field_path: &str,

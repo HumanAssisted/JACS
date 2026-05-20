@@ -151,7 +151,6 @@ algorithm to use for creating and using keys
 
 | Value            | Explanation |
 | :--------------- | :---------- |
-| `"RSA-PSS"`      |             |
 | `"ring-Ed25519"` |             |
 | `"pq2025"`       |             |
 

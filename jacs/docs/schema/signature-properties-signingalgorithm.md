@@ -20,6 +20,5 @@ The cryptographic algorithm used to create this signature. MUST be verified expl
 
 | Value            | Explanation |
 | :--------------- | :---------- |
-| `"RSA-PSS"`      |             |
 | `"ring-Ed25519"` |             |
 | `"pq2025"`       |             |

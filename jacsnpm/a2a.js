@@ -20,7 +20,6 @@ exports.A2A_PROTOCOL_VERSION = '0.4.0';
 exports.JACS_EXTENSION_URI = 'urn:jacs:provenance-v1';
 exports.JACS_ALGORITHMS = [
     'ring-Ed25519',
-    'RSA-PSS',
     'pq2025',
 ];
 exports.TRUST_POLICIES = {
@@ -301,7 +300,7 @@ class JACSA2AIntegration {
             ? `https://${domain}/agent/${agentId}`
             : `https://agent-${agentId}.example.com`;
         const supportedInterfaces = [new A2AAgentInterface(baseUrl, 'jsonrpc')];
-        const skills = this._convertServicesToSkills(agentData.jacsServices || []);
+        const skills = this._normalizeA2ASkills(agentData.skills || agentData.a2aSkills || []);
         const securitySchemes = {
             'bearer-jwt': { type: 'http', scheme: 'Bearer', bearerFormat: 'JWT' },
             'api-key': { type: 'apiKey', in: 'header', name: 'X-API-Key' },
@@ -794,43 +793,24 @@ class JACSA2AIntegration {
             .replace(/[\s_]+/g, '-')
             .replace(/[^a-z0-9-]/g, '');
     }
-    _deriveTags(serviceName, fnName) {
-        const tags = ['jacs'];
-        const serviceSlug = this._slugify(serviceName);
-        const fnSlug = this._slugify(fnName);
-        if (serviceSlug !== fnSlug)
-            tags.push(serviceSlug);
-        tags.push(fnSlug);
-        return tags;
-    }
-    _convertServicesToSkills(services) {
+    _normalizeA2ASkills(rawSkills) {
         const skills = [];
-        for (const service of services) {
-            const serviceName = service.name || service.serviceDescription || 'unnamed_service';
-            const serviceDesc = service.serviceDescription || 'No description';
-            const tools = service.tools || [];
-            if (tools.length > 0) {
-                for (const tool of tools) {
-                    if (tool.function) {
-                        const fnName = tool.function.name || serviceName;
-                        const fnDesc = tool.function.description || serviceDesc;
-                        skills.push(new A2AAgentSkill({
-                            id: this._slugify(fnName),
-                            name: fnName,
-                            description: fnDesc,
-                            tags: this._deriveTags(serviceName, fnName),
-                        }));
-                    }
-                }
+        for (const rawSkill of rawSkills) {
+            if (rawSkill instanceof A2AAgentSkill) {
+                skills.push(rawSkill);
+                continue;
             }
-            else {
-                skills.push(new A2AAgentSkill({
-                    id: this._slugify(serviceName),
-                    name: serviceName,
-                    description: serviceDesc,
-                    tags: this._deriveTags(serviceName, serviceName),
-                }));
-            }
+            const name = String(rawSkill.name || rawSkill.id || 'unnamed');
+            skills.push(new A2AAgentSkill({
+                id: String(rawSkill.id || this._slugify(name)),
+                name,
+                description: String(rawSkill.description || ''),
+                tags: Array.isArray(rawSkill.tags) ? rawSkill.tags.map(String) : ['jacs'],
+                examples: Array.isArray(rawSkill.examples) ? rawSkill.examples.map(String) : null,
+                inputModes: Array.isArray(rawSkill.inputModes) ? rawSkill.inputModes.map(String) : null,
+                outputModes: Array.isArray(rawSkill.outputModes) ? rawSkill.outputModes.map(String) : null,
+                security: Array.isArray(rawSkill.security) ? rawSkill.security : null,
+            }));
         }
         if (skills.length === 0) {
             skills.push(new A2AAgentSkill({

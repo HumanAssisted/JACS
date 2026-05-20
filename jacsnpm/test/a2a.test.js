@@ -59,25 +59,11 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         jacsName: 'Test Agent',
         jacsDescription: 'A test agent for A2A integration',
         jacsAgentType: 'ai',
-        jacsServices: [{
-          name: 'Test Service',
-          serviceDescription: 'A test service',
-          successDescription: 'Service completed successfully',
-          failureDescription: 'Service failed',
-          tools: [{
-            url: '/api/test',
-            function: {
-              name: 'test_function',
-              description: 'A test function',
-              parameters: {
-                type: 'object',
-                properties: {
-                  input: { type: 'string' }
-                },
-                required: ['input']
-              }
-            }
-          }]
+        skills: [{
+          id: 'test-function',
+          name: 'test_function',
+          description: 'A test function',
+          tags: ['jacs', 'test'],
         }]
       };
 
@@ -142,41 +128,28 @@ describe('JACS A2A Integration (v0.4.0)', () => {
     });
   });
 
-  describe('_convertServicesToSkills', () => {
-    it('should convert multiple services with tools to skills (v0.4.0)', () => {
-      const services = [
+  describe('_normalizeA2ASkills', () => {
+    it('should normalize explicit A2A skills (v0.4.0)', () => {
+      const rawSkills = [
         {
-          name: 'Service 1',
-          serviceDescription: 'First service',
-          tools: [{
-            url: '/api/tool1',
-            function: {
-              name: 'tool1',
-              description: 'Tool 1'
-            }
-          }, {
-            url: '/api/tool2',
-            function: {
-              name: 'tool2',
-              description: 'Tool 2'
-            }
-          }]
+          id: 'tool1',
+          name: 'tool1',
+          description: 'Tool 1',
+          tags: ['jacs', 'tool1'],
         },
         {
-          name: 'Service 2',
-          serviceDescription: 'Second service without tools'
+          name: 'Tool 2',
+          description: 'Tool 2',
         }
       ];
 
-      const skills = a2aIntegration._convertServicesToSkills(services);
+      const skills = a2aIntegration._normalizeA2ASkills(rawSkills);
 
-      expect(skills).to.have.lengthOf(3); // 2 tools + 1 service
+      expect(skills).to.have.lengthOf(2);
       expect(skills[0].name).to.equal('tool1');
       expect(skills[0].id).to.equal('tool1');
-      expect(skills[1].name).to.equal('tool2');
-      expect(skills[1].id).to.equal('tool2');
-      expect(skills[2].name).to.equal('Service 2');
-      expect(skills[2].id).to.equal('service-2');
+      expect(skills[1].name).to.equal('Tool 2');
+      expect(skills[1].id).to.equal('tool-2');
 
       // All skills should have tags
       for (const skill of skills) {
@@ -387,7 +360,7 @@ describe('JACS A2A Integration (v0.4.0)', () => {
         jacsId: 'agent-123',
         jacsVersion: 'v1',
         jacsAgentType: 'ai',
-        keyAlgorithm: 'RSA-PSS'
+        keyAlgorithm: 'ring-Ed25519'
       };
 
       const documents = a2aIntegration.generateWellKnownDocuments(
@@ -414,14 +387,14 @@ describe('JACS A2A Integration (v0.4.0)', () => {
       // Verify JACS descriptor - hash is now crypto-based, not mocked
       const jacsDesc = documents['/.well-known/jacs-agent.json'];
       expect(jacsDesc.agentId).to.equal('agent-123');
-      expect(jacsDesc.keyAlgorithm).to.equal('RSA-PSS');
+      expect(jacsDesc.keyAlgorithm).to.equal('ring-Ed25519');
       expect(jacsDesc.publicKeyHash).to.be.a('string');
       expect(jacsDesc.publicKeyHash).to.have.length(64); // SHA-256 hex is 64 chars
 
       // Verify public key document
       const pubkeyDoc = documents['/.well-known/jacs-pubkey.json'];
       expect(pubkeyDoc.publicKey).to.equal('bW9jay1wdWJsaWMta2V5');
-      expect(pubkeyDoc.algorithm).to.equal('RSA-PSS');
+      expect(pubkeyDoc.algorithm).to.equal('ring-Ed25519');
 
       // Verify JWKS is present for A2A verifiers
       const jwksDoc = documents['/.well-known/jwks.json'];

@@ -150,10 +150,10 @@ fn tampered_yaml_fails_verification() {
     let result = agent.verify(&json_back);
 
     // Verification should either fail or return valid: false
-    match result {
-        Ok(vr) => assert!(!vr.valid, "Tampered document should not verify"),
-        Err(_) => {} // Error is also acceptable for tampered docs
+    if let Ok(vr) = result {
+        assert!(!vr.valid, "Tampered document should not verify");
     }
+    // Err is also acceptable for tampered docs
 }
 
 // =========================================================================
@@ -216,8 +216,8 @@ fn tampered_html_embedded_json_fails_verification() {
     let json_back = html_to_jacs(&tampered_html).expect("from html");
     let result = agent.verify(&json_back);
 
-    match result {
-        Ok(vr) => assert!(!vr.valid, "Tampered HTML document should not verify"),
-        Err(_) => {} // Error is also acceptable
+    if let Ok(vr) = result {
+        assert!(!vr.valid, "Tampered HTML document should not verify");
     }
+    // Err is also acceptable
 }

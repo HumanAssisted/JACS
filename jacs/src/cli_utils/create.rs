@@ -101,7 +101,7 @@ fn resolve_cli_password_for_config_create() -> Result<Option<String>, JacsError>
             )
         })?;
         // Preserve intentional leading/trailing spaces in passphrases; strip only line endings.
-        let password = raw.trim_end_matches(|c| c == '\n' || c == '\r').to_string();
+        let password = raw.trim_end_matches(['\n', '\r']).to_string();
         if password.is_empty() {
             return Err(format!(
                 "{} at '{}' is empty.",

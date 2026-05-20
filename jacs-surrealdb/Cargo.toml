@@ -1,19 +1,19 @@
 [package]
 name = "jacs-surrealdb"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
-rust-version.workspace = true
+rust-version = "1.93"
 description = "SurrealDB storage backend for JACS documents"
-readme.workspace = true
-authors.workspace = true
-license.workspace = true
-homepage.workspace = true
-repository.workspace = true
+readme = "../README.md"
+authors = ["HAI.AI <engineering@hai.io>"]
+license = "Apache-2.0"
+homepage = "https://humanassisted.github.io/JACS"
+repository = "https://github.com/HumanAssisted/JACS"
 keywords = ["cryptography", "json", "surrealdb", "storage"]
 categories = ["database", "data-structures"]
 
 [dependencies]
-jacs = { version = "0.10.1", path = "../jacs", default-features = false }
+jacs = { version = "0.10.2", path = "../jacs", default-features = false }
 surrealdb = { version = "3.0.2", default-features = false, features = ["kv-mem"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

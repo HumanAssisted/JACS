@@ -247,6 +247,7 @@ impl JacsAgent {
     ///     quorum: Optional minimum signatures required (M-of-N)
     ///     required_algorithms: Optional list of accepted algorithms
     ///     minimum_strength: Optional "classical" or "post-quantum"
+    #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (document_string, agentids, question=None, context=None, agreement_fieldname=None, timeout=None, quorum=None, required_algorithms=None, minimum_strength=None))]
     fn create_agreement_with_options(
         &self,
@@ -377,7 +378,7 @@ impl JacsAgent {
     /// and re-signs the config file. Optionally changes the signing algorithm.
     ///
     /// Args:
-    ///     algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS", "pq2025").
+    ///     algorithm: Optional new algorithm ("ring-Ed25519", "pq2025").
     ///               If None, keeps the current algorithm.
     ///
     /// Returns:
@@ -466,7 +467,7 @@ impl JacsAgent {
     ///
     /// Args:
     ///     artifact_json: JSON string of the artifact to wrap
-    ///     artifact_type: Type label (e.g., "artifact", "message", "task")
+    ///     artifact_type: Type label (e.g., "artifact", "result")
     ///     parent_signatures_json: Optional JSON array of parent signatures
     ///
     /// Returns:
@@ -716,6 +717,7 @@ impl JacsAgent {
     }
 
     /// Convert a YAML string to pretty-printed JSON.
+    #[allow(clippy::wrong_self_convention)]
     fn from_yaml(&self, yaml_str: &str) -> PyResult<String> {
         jacs_core::convert::yaml_to_jacs(yaml_str)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
@@ -728,6 +730,7 @@ impl JacsAgent {
     }
 
     /// Extract JSON from an HTML document produced by to_html().
+    #[allow(clippy::wrong_self_convention)]
     fn from_html(&self, html_str: &str) -> PyResult<String> {
         jacs_core::convert::html_to_jacs(html_str)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
@@ -936,7 +939,7 @@ impl SimpleAgent {
     /// Args:
     ///     name: Human-readable name for the agent
     ///     purpose: Optional description of the agent's purpose
-    ///     key_algorithm: Signing algorithm ("ed25519", "rsa-pss", or "pq2025")
+    ///     key_algorithm: Signing algorithm ("ed25519" or "pq2025")
     ///
     /// Returns:
     ///     Tuple of (SimpleAgent instance, dict with agent_id, name, public_key_path, config_path)
@@ -975,7 +978,7 @@ impl SimpleAgent {
     /// Create an ephemeral in-memory agent. No config, no files, no env vars needed.
     ///
     /// Args:
-    ///     algorithm: Signing algorithm ("ed25519", "rsa-pss", "pq2025"). Default: "pq2025"
+    ///     algorithm: Signing algorithm ("ed25519", "pq2025"). Default: "pq2025"
     ///
     /// Returns:
     ///     Tuple of (SimpleAgent instance, dict with agent_id, name, algorithm, version)
@@ -1144,6 +1147,7 @@ impl SimpleAgent {
     /// Returns:
     ///     Tuple of (SimpleAgent, dict with agent info)
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     #[pyo3(signature = (name, password, algorithm=None, data_directory=None, key_directory=None, config_path=None, agent_type=None, description=None, domain=None, default_storage=None))]
     fn create_agent(
         py: Python,
@@ -1248,7 +1252,7 @@ impl SimpleAgent {
     /// and re-signs the config file. Optionally changes the signing algorithm.
     ///
     /// Args:
-    ///     algorithm: Optional new algorithm ("ring-Ed25519", "RSA-PSS", "pq2025").
+    ///     algorithm: Optional new algorithm ("ring-Ed25519", "pq2025").
     ///               If None, keeps the current algorithm.
     ///
     /// Returns:
@@ -1400,6 +1404,7 @@ impl SimpleAgent {
     ///
     /// Returns:
     ///     Pretty-printed JSON representation
+    #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (yaml_str))]
     fn from_yaml(&self, yaml_str: &str) -> PyResult<String> {
         self.inner.from_yaml(yaml_str).to_py()
@@ -1424,6 +1429,7 @@ impl SimpleAgent {
     ///
     /// Returns:
     ///     The extracted JSON string
+    #[allow(clippy::wrong_self_convention)]
     #[pyo3(signature = (html_str))]
     fn from_html(&self, html_str: &str) -> PyResult<String> {
         self.inner.from_html(html_str).to_py()
@@ -1715,6 +1721,7 @@ fn verify_agent_dns(py: Python, agent_json: &str, domain: &str) -> PyResult<PyOb
 
 /// Create a JACS configuration JSON string.
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn create_config(
     _py: Python,
     jacs_use_security: Option<String>,

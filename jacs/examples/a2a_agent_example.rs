@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("Document processing failed - invalid format or signature".to_string()),
     )?;
 
-    let agent_value = agent.create_agent_and_load(&agent_json, true, None)?;
+    let _agent_value = agent.create_agent_and_load(&agent_json, true, None)?;
     println!("   Agent created with ID: {}", agent.get_id()?);
     println!(
         "   Using algorithm: {}",
@@ -39,9 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2: Generate dual keys for JACS and A2A
     println!("\n2. Generating dual keys...");
-    let dual_keys = create_jwk_keys(Some("dilithium"), Some("rsa"))?;
+    let dual_keys = create_jwk_keys(Some("pq2025"), Some("ring-Ed25519"))?;
     println!("   JACS key: {} (post-quantum)", dual_keys.jacs_algorithm);
-    println!("   A2A key: {} (traditional)", dual_keys.a2a_algorithm);
+    println!("   A2A key: {} (EdDSA)", dual_keys.a2a_algorithm);
 
     // Step 3: Export agent as A2A Agent Card (v0.4.0)
     println!("\n3. Exporting to A2A Agent Card...");

@@ -96,7 +96,7 @@ Pure sync functions (no NAPI call, no suffix needed):
 Create a persistent agent with keys on disk. If `./jacs.config.json` already exists, loads it. Otherwise creates a new agent, saving keys and config to disk. If `JACS_PRIVATE_KEY_PASSWORD` is unset, Node quickstart auto-generates a secure password in-process (`JACS_SAVE_PASSWORD_FILE=true` persists it to `./jacs_keys/.jacs_password`). Call this once before `signMessage()` or `verify()`.
 
 **Parameters:**
-- `options` (object, required fields): `{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }`. Default algorithm: `"pq2025"`. Supported choices for new agents: `"ring-Ed25519"`, `"pq2025"`. `RSA-PSS` is legacy verification-only.
+- `options` (object, required fields): `{ name: string, domain: string, description?: string, algorithm?: string, configPath?: string }`. Default algorithm: `"pq2025"`. Supported choices: `"ring-Ed25519"`, `"pq2025"`.
 
 **Returns:** `Promise<AgentInfo>` (async) or `AgentInfo` (sync)
 

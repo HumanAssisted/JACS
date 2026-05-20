@@ -32,7 +32,7 @@ def _make_mock_client(agent_data=None):
         if url:
             ad["jacsAgentDomain"] = url
         if skills:
-            ad["jacsServices"] = skills
+            ad["skills"] = skills
         integration = JACSA2AIntegration(client)
         return integration.export_agent_card(ad)
 
@@ -81,16 +81,10 @@ class TestExportAgentCard:
         adapter = _make_adapter()
         skills = [
             {
-                "name": "Custom Service",
-                "serviceDescription": "Does custom things",
-                "tools": [
-                    {
-                        "function": {
-                            "name": "custom_fn",
-                            "description": "A custom function",
-                        }
-                    }
-                ],
+                "id": "custom-fn",
+                "name": "custom_fn",
+                "description": "A custom function",
+                "tags": ["jacs"],
             }
         ]
         card = adapter.export_agent_card(skills=skills)

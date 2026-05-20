@@ -4,12 +4,11 @@ use crate::a2a::{A2AArtifact, A2AMessage};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::agent::loaders::fetch_remote_public_key;
 use crate::agent::{
-    AGENT_SIGNATURE_FIELDNAME, Agent, SignatureContentMode, boilerplate::BoilerPlate,
-    build_signature_content, document::DocumentTraits, extract_signature_fields,
+    AGENT_SIGNATURE_FIELDNAME, Agent, boilerplate::BoilerPlate, document::DocumentTraits,
     loaders::FileLoader,
 };
 use crate::config::{KeyResolutionSource, get_key_resolution_order};
-use crate::crypt::{KeyManager, hash::hash_public_key};
+use crate::crypt::hash::hash_public_key;
 use crate::error::JacsError;
 use crate::schema::utils::ValueExt;
 use crate::time_utils;
@@ -152,15 +151,6 @@ fn verify_with_resolved_key(
         ));
     }
 
-    let signature_fields = extract_signature_fields(wrapped_artifact, AGENT_SIGNATURE_FIELDNAME);
-    let (signable_data, _) = build_signature_content(
-        wrapped_artifact,
-        signature_fields,
-        AGENT_SIGNATURE_FIELDNAME,
-        SignatureContentMode::CanonicalV2,
-    )
-    .map_err(|e| format!("Could not build signable payload: {}", e))?;
-
     let explicit_alg = if public_key_enc_type.is_empty() {
         signature_info
             .get_str("signingAlgorithm")
@@ -170,7 +160,15 @@ fn verify_with_resolved_key(
     };
 
     agent
-        .verify_string(&signable_data, &signature, public_key, explicit_alg)
+        .signature_verification_procedure(
+            wrapped_artifact,
+            None,
+            AGENT_SIGNATURE_FIELDNAME,
+            public_key,
+            explicit_alg,
+            None,
+            Some(signature.to_string()),
+        )
         .map_err(|e| format!("Signature verification failed: {}", e))
 }
 

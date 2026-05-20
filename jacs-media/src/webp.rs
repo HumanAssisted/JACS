@@ -35,9 +35,9 @@ fn extract_signature_from_xmp_packet(packet: &str) -> Option<String> {
     Some(packet[start..start + end_offset].to_string())
 }
 
-/// Returns chunks as (fourcc, body, full_chunk). Full chunk includes the
-/// 8-byte header and padding byte (WebP chunks have an odd-length padding byte).
-fn parse_chunks(bytes: &[u8]) -> Result<(Vec<(&[u8], &[u8], &[u8])>, u32), MediaError> {
+type ChunkList<'a> = Vec<(&'a [u8], &'a [u8], &'a [u8])>;
+
+fn parse_chunks(bytes: &[u8]) -> Result<(ChunkList<'_>, u32), MediaError> {
     if bytes.len() < 12 || &bytes[..4] != RIFF || &bytes[8..12] != WEBP {
         return Err(MediaError::Parse("not a WebP RIFF container".to_string()));
     }

@@ -778,14 +778,15 @@ impl StorageDocumentTraits for MultiStorage {
         // rooted at "/"). We match on "documents/" anywhere in the path.
         let mut document_keys = Vec::new();
         for file in files {
-            if file.ends_with(".json") && !file.contains("/archive/") {
-                if let Some(pos) = file.rfind("documents/") {
-                    let after_prefix = &file[pos + "documents/".len()..];
-                    if let Some(key) = after_prefix.strip_suffix(".json") {
-                        // Reject keys with path separators to prevent traversal
-                        if !key.contains('/') && !key.contains('\\') {
-                            document_keys.push(key.to_string());
-                        }
+            if file.ends_with(".json")
+                && !file.contains("/archive/")
+                && let Some(pos) = file.rfind("documents/")
+            {
+                let after_prefix = &file[pos + "documents/".len()..];
+                if let Some(key) = after_prefix.strip_suffix(".json") {
+                    // Reject keys with path separators to prevent traversal
+                    if !key.contains('/') && !key.contains('\\') {
+                        document_keys.push(key.to_string());
                     }
                 }
             }
@@ -1099,11 +1100,11 @@ mod tests {
         let doc = JACSDocument {
             id: "rm-doc".to_string(),
             version: "v1".to_string(),
-            jacs_type: "message".to_string(),
+            jacs_type: "document".to_string(),
             value: json!({
                 "jacsId": "rm-doc",
                 "jacsVersion": "v1",
-                "jacsType": "message",
+                "jacsType": "document",
                 "jacsLevel": "raw",
                 "content": {"ok": true}
             }),

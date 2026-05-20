@@ -35,7 +35,6 @@ The tool set includes 14 tools:
 - `jacs_is_trusted`
 - `jacs_share_public_key`
 - `jacs_share_agent`
-- `jacs_audit`
 - `jacs_agent_info`
 
 ### Auto-Sign Existing Tools

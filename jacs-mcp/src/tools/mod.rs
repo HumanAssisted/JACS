@@ -11,12 +11,12 @@
 //! (the `#[tool_router]` proc macro requires all handler parameter types to
 //! exist unconditionally).
 //!
-//! The `core-tools` feature (enabled by default) registers the 7 core families
-//! (28 tools). The 4 advanced families (14 tools) require explicit opt-in:
+//! The `core-tools` feature (enabled by default) registers the core families.
+//! The advanced families require explicit opt-in:
 //!
-//! - `agreement-tools`, `messaging-tools`, `a2a-tools`, `attestation-tools`
+//! - `agreement-tools`, `a2a-tools`, `attestation-tools`
 //!
-//! The `full-tools` feature enables all 11 families (42 tools).
+//! The `full-tools` feature enables all current families.
 //!
 //! ## Runtime gating (profiles)
 //!
@@ -27,23 +27,19 @@
 pub mod a2a;
 pub mod agreements;
 pub mod attestation;
-pub mod audit;
 pub mod common;
 pub mod document;
 pub mod inline;
 pub mod key;
 pub mod media;
-pub mod memory;
-pub mod messaging;
 pub mod search;
-pub mod state;
 pub mod trust;
 pub mod types;
 
 // Re-export visibility metadata helpers for tool response annotation.
 pub use common::{annotate_response, inject_meta};
 
-// Re-export all types so callers can use `tools::SignStateParams` etc.
+// Re-export all public tool parameter/result types.
 #[allow(ambiguous_glob_reexports)]
 pub use a2a::*;
 #[allow(ambiguous_glob_reexports)]
@@ -56,8 +52,6 @@ pub use inline::*;
 pub use key::*;
 #[allow(ambiguous_glob_reexports)]
 pub use media::*;
-#[allow(ambiguous_glob_reexports)]
-pub use messaging::*;
 #[allow(ambiguous_glob_reexports)]
 pub use search::*;
 #[allow(ambiguous_glob_reexports)]
@@ -88,16 +82,12 @@ pub(crate) fn schema_map<T: JsonSchema>() -> serde_json::Map<String, serde_json:
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolFamily {
     // Core families
-    State,
     Document,
     Trust,
-    Audit,
-    Memory,
     Search,
     Key,
     // Advanced families
     Agreement,
-    Messaging,
     A2a,
     Attestation,
 }
@@ -107,13 +97,7 @@ impl ToolFamily {
     pub fn is_core(&self) -> bool {
         matches!(
             self,
-            ToolFamily::State
-                | ToolFamily::Document
-                | ToolFamily::Trust
-                | ToolFamily::Audit
-                | ToolFamily::Memory
-                | ToolFamily::Search
-                | ToolFamily::Key
+            ToolFamily::Document | ToolFamily::Trust | ToolFamily::Search | ToolFamily::Key
         )
     }
 }
@@ -133,17 +117,13 @@ pub struct ClassifiedTool {
 /// Tool families are gated by feature flags (Issue 010 / TASK_039):
 ///
 /// **Core families** (enabled by `core-tools`, the default):
-/// - `state-tools`: state management (sign, verify, load, update, list, adopt)
 /// - `document-tools`: document signing, verification, agent creation
 /// - `trust-tools`: trust store (trust, untrust, list, check, get)
-/// - `audit-tools`: security audit + audit trail (audit, log, query, export)
-/// - `memory-tools`: memory persistence (save, recall, list, forget, update)
 /// - `search-tools`: unified search
 /// - `key-tools`: key/agent management (reencrypt, export agent card, well-known, export agent)
 ///
 /// **Advanced families** (explicit opt-in):
 /// - `agreement-tools`: multi-party agreements
-/// - `messaging-tools`: signed messaging
 /// - `a2a-tools`: A2A interoperability
 /// - `attestation-tools`: attestation (create, verify, lift, DSSE export)
 pub fn all_tools() -> Vec<Tool> {
@@ -161,11 +141,6 @@ pub fn all_classified_tools() -> Vec<ClassifiedTool> {
     let mut tools = Vec::new();
 
     // Core families
-    #[cfg(feature = "state-tools")]
-    tools.extend(state::tools().into_iter().map(|t| ClassifiedTool {
-        tool: t,
-        family: ToolFamily::State,
-    }));
     #[cfg(feature = "document-tools")]
     tools.extend(document::tools().into_iter().map(|t| ClassifiedTool {
         tool: t,
@@ -190,16 +165,6 @@ pub fn all_classified_tools() -> Vec<ClassifiedTool> {
         tool: t,
         family: ToolFamily::Trust,
     }));
-    #[cfg(feature = "audit-tools")]
-    tools.extend(audit::tools().into_iter().map(|t| ClassifiedTool {
-        tool: t,
-        family: ToolFamily::Audit,
-    }));
-    #[cfg(feature = "memory-tools")]
-    tools.extend(memory::tools().into_iter().map(|t| ClassifiedTool {
-        tool: t,
-        family: ToolFamily::Memory,
-    }));
     #[cfg(feature = "search-tools")]
     tools.extend(search::tools().into_iter().map(|t| ClassifiedTool {
         tool: t,
@@ -212,11 +177,6 @@ pub fn all_classified_tools() -> Vec<ClassifiedTool> {
     }));
 
     // Advanced families
-    #[cfg(feature = "messaging-tools")]
-    tools.extend(messaging::tools().into_iter().map(|t| ClassifiedTool {
-        tool: t,
-        family: ToolFamily::Messaging,
-    }));
     #[cfg(feature = "agreement-tools")]
     tools.extend(agreements::tools().into_iter().map(|t| ClassifiedTool {
         tool: t,

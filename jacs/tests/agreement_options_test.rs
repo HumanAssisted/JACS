@@ -4,12 +4,13 @@ use jacs::agent::AGENT_AGREEMENT_FIELDNAME;
 use jacs::agent::agreement::{Agreement, AgreementOptions, algorithm_strength};
 use jacs::agent::boilerplate::BoilerPlate;
 use jacs::agent::document::DocumentTraits;
+use jacs::agent::loaders::FileLoader;
+use jacs::crypt::hash::hash_public_key;
 use serial_test::serial;
 
 mod utils;
 use utils::{
-    DOCTESTFILECONFIG, create_owned_config_fixture_document, load_local_document,
-    load_test_agent_one, load_test_agent_one_ed25519, load_test_agent_two_ed25519,
+    create_owned_config_fixture_document, load_test_agent_one_ed25519, load_test_agent_two_ed25519,
 };
 
 fn setup_agreement_doc(
@@ -39,7 +40,6 @@ fn setup_agreement_doc(
 #[serial(jacs_env)]
 fn test_algorithm_strength_classification() {
     assert_eq!(algorithm_strength("ring-Ed25519"), "classical");
-    assert_eq!(algorithm_strength("RSA-PSS"), "classical");
     assert_eq!(algorithm_strength("pq2025"), "post-quantum");
     assert_eq!(algorithm_strength("unknown-algo"), "classical");
 }
@@ -71,7 +71,7 @@ fn test_timeout_future_allows_signing() {
 #[test]
 #[serial(jacs_env)]
 fn test_timeout_expired_blocks_signing() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     // Timeout in the past
@@ -81,9 +81,7 @@ fn test_timeout_expired_blocks_signing() {
     };
 
     // Creating with a past timeout should fail
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     let result = agent.create_agreement_with_options(
         &document_key,
         &agentids,
@@ -132,7 +130,7 @@ fn test_timeout_expired_blocks_check() {
 #[test]
 #[serial(jacs_env)]
 fn test_invalid_timeout_format_rejected() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -140,9 +138,7 @@ fn test_invalid_timeout_format_rejected() {
         ..Default::default()
     };
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     let result = agent.create_agreement_with_options(
         &document_key,
         &agentids,
@@ -228,7 +224,7 @@ fn test_quorum_not_met() {
 #[test]
 #[serial(jacs_env)]
 fn test_quorum_zero_rejected() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -236,9 +232,7 @@ fn test_quorum_zero_rejected() {
         ..Default::default()
     };
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     let result = agent.create_agreement_with_options(
         &document_key,
         &agentids,
@@ -253,7 +247,7 @@ fn test_quorum_zero_rejected() {
 #[test]
 #[serial(jacs_env)]
 fn test_quorum_exceeds_agents_rejected() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -261,9 +255,7 @@ fn test_quorum_exceeds_agents_rejected() {
         ..Default::default()
     };
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     let result = agent.create_agreement_with_options(
         &document_key,
         &agentids,
@@ -390,7 +382,7 @@ fn test_minimum_strength_post_quantum_blocks_classical() {
 #[test]
 #[serial(jacs_env)]
 fn test_invalid_minimum_strength_rejected() {
-    let mut agent = load_test_agent_one();
+    let mut agent = load_test_agent_one_ed25519();
     let agentids = vec![agent.get_id().unwrap()];
 
     let options = AgreementOptions {
@@ -398,9 +390,7 @@ fn test_invalid_minimum_strength_rejected() {
         ..Default::default()
     };
 
-    let document_string = load_local_document(&DOCTESTFILECONFIG.to_string()).unwrap();
-    let document = agent.load_document(&document_string).unwrap();
-    let document_key = document.getkey();
+    let document_key = create_owned_config_fixture_document(&mut agent);
     let result = agent.create_agreement_with_options(
         &document_key,
         &agentids,
@@ -473,6 +463,24 @@ fn test_default_options_preserves_original_behavior() {
     );
 
     // Agent two signs → should pass
+    let agent_one_public_key = agent.get_public_key().unwrap();
+    let agent_one_public_key_hash = hash_public_key(&agent_one_public_key);
+    agent_two
+        .fs_save_remote_public_key(
+            &agent_one_public_key_hash,
+            &agent_one_public_key,
+            b"ring-Ed25519",
+        )
+        .expect("cache agent one public key");
+    let agent_two_public_key = agent_two.get_public_key().unwrap();
+    let agent_two_public_key_hash = hash_public_key(&agent_two_public_key);
+    agent_two
+        .fs_save_remote_public_key(
+            &agent_two_public_key_hash,
+            &agent_two_public_key,
+            b"ring-Ed25519",
+        )
+        .expect("cache agent two public key");
     let signed_doc_str = serde_json::to_string_pretty(&signed_doc.value).unwrap();
     let _ = agent_two.load_document(&signed_doc_str).unwrap();
     let both_signed = agent_two

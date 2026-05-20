@@ -41,7 +41,6 @@ fn ephemeral_default() -> (SimpleAgent, jacs::simple::AgentInfo) {
 fn internal_algorithm(friendly: &str) -> &str {
     match friendly {
         "ed25519" => "ring-Ed25519",
-        "rsa-pss" | "rsa" => "RSA-PSS",
         "pq2025" => "pq2025",
         other => other,
     }
@@ -395,15 +394,16 @@ fn test_ephemeral_ed25519() {
 }
 
 #[test]
-fn test_ephemeral_rsa_is_disabled() {
-    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-        .err()
-        .expect("ephemeral rsa-pss should be blocked");
+fn test_ephemeral_ed25519_signs_and_verifies() {
+    let (agent, info) =
+        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
     assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
+        info.algorithm.contains("Ed25519"),
+        "ed25519 alias should select ring-Ed25519, got: {}",
+        info.algorithm
     );
+    let signed = agent.sign_message(&json!({"curve": "ed25519"})).unwrap();
+    assert!(agent.verify(&signed.raw).unwrap().valid);
 }
 
 // =============================================================================
@@ -554,10 +554,10 @@ fn test_verify_rejects_tampered_document() {
     let result = agent.verify(&tampered);
     // In non-strict mode, verify returns Ok with valid=false
     // In strict mode or load failure, it may return Err
-    match result {
-        Ok(vr) => assert!(!vr.valid, "tampered document should not verify as valid"),
-        Err(_) => {} // Also acceptable — strict mode or load rejection
+    if let Ok(vr) = result {
+        assert!(!vr.valid, "tampered document should not verify as valid");
     }
+    // Err is also acceptable — strict mode or load rejection
 }
 
 #[test]
@@ -602,10 +602,10 @@ fn test_verify_with_key_wrong_key() {
 
     let result = agent_a.verify_with_key(&signed.raw, wrong_key);
     // Should either return Ok(valid=false) or Err
-    match result {
-        Ok(vr) => assert!(!vr.valid, "wrong key should not verify as valid"),
-        Err(_) => {} // Also acceptable
+    if let Ok(vr) = result {
+        assert!(!vr.valid, "wrong key should not verify as valid");
     }
+    // Err is also acceptable
 }
 
 // =============================================================================
@@ -707,14 +707,13 @@ fn test_get_public_key_pem_returns_pem_format() {
 }
 
 #[test]
-fn test_get_public_key_pem_rsa_creation_is_disabled() {
-    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-        .err()
-        .expect("ephemeral rsa-pss should be blocked");
+fn test_get_public_key_pem_ed25519() {
+    let (agent, _info) =
+        SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral ed25519 should be available");
+    let pem = agent.get_public_key_pem().expect("public key pem");
     assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
+        pem.contains("BEGIN PUBLIC KEY"),
+        "PEM should contain standard PEM markers"
     );
 }
 
@@ -860,22 +859,6 @@ fn test_sign_verify_roundtrip_ed25519() {
         result.data.get("roundtrip"),
         Some(&json!("ed25519")),
         "verified data should contain original content"
-    );
-}
-
-// =============================================================================
-// Integration: Sign-then-verify roundtrip with RSA
-// =============================================================================
-
-#[test]
-fn test_sign_verify_roundtrip_rsa_is_disabled() {
-    let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-        .err()
-        .expect("ephemeral rsa-pss should be blocked");
-    assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
     );
 }
 

@@ -170,8 +170,7 @@ Agents can specify their domain in their agent document:
 {
   "jacsId": "550e8400-e29b-41d4-a716-446655440000",
   "jacsAgentType": "ai",
-  "jacsAgentDomain": "myagent.example.com",
-  "jacsServices": [...]
+  "jacsAgentDomain": "myagent.example.com"
 }
 ```
 

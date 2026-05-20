@@ -6,15 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Once};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The known RSA-PSS agent fixture in jacs/tests/fixtures/agent/.
-/// RSA private-key *signing* is disabled (RUSTSEC-2023-0071) but RSA
-/// *verification* still works, so read-only tests (library_exports,
-/// config_loading, etc.) can keep using this fixture.
-const AGENT_ID: &str = "ddf35096-d212-4ca9-a299-feda597d5525:b57d480f-b8d4-46e7-9d7c-942f2b132717";
-
 /// Ed25519 agent fixture in jacs/tests/fixtures/agent/. Use this variant
-/// for any test that needs to *sign* new documents (audit log/export,
-/// search/memory state signing) — RSA signing is disabled by the jacs core.
+/// for tests that load fixture agents and tests that sign new documents.
 const AGENT_ID_ED25519: &str =
     "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a";
 
@@ -74,21 +67,12 @@ fn jacs_root() -> PathBuf {
 /// Returns (config_path, base_dir). Config uses relative paths so tests can
 /// verify the loader resolves them from the config path rather than the CWD.
 ///
-/// Uses the RSA-PSS fixture (`AGENT_ID` / `agent-one.*.pem`). Suitable for
-/// tests that only load/verify — any test that needs to sign new documents
-/// must use [`prepare_temp_workspace_ed25519`] instead.
 pub fn prepare_temp_workspace() -> (PathBuf, PathBuf) {
-    prepare_temp_workspace_with_fixture(
-        AGENT_ID,
-        "RSA-PSS",
-        "agent-one.private.pem.enc",
-        "agent-one.public.pem",
-    )
+    prepare_temp_workspace_ed25519()
 }
 
 /// Create a temp workspace backed by the Ed25519 agent fixture. Use this
-/// variant for any test that needs to *sign* new JACS documents — RSA
-/// private-key signing is disabled by the jacs core (RUSTSEC-2023-0071).
+/// variant for tests that need deterministic key material.
 pub fn prepare_temp_workspace_ed25519() -> (PathBuf, PathBuf) {
     prepare_temp_workspace_with_fixture(
         AGENT_ID_ED25519,
@@ -110,7 +94,10 @@ fn prepare_temp_workspace_with_fixture(
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let base = std::env::temp_dir().join(format!("jacs_mcp_ws_{}_{}", std::process::id(), ts));
+    let temp_root = std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let base = temp_root.join(format!("jacs_mcp_ws_{}_{}", std::process::id(), ts));
     let data_dir = base.join("jacs_data");
     let keys_dir = base.join("jacs_keys");
     fs::create_dir_all(data_dir.join("agent")).expect("mkdir data/agent");
@@ -200,7 +187,8 @@ pub fn run_server_with_fixture(extra_env: &[(&str, &str)]) -> (std::process::Out
 
 pub fn assert_server_reaches_initialized_request(output: &std::process::Output, context: &str) {
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let reached_initialized_request = stderr.contains("connection closed: initialized request");
+    let reached_initialized_request = stderr.contains("connection closed: initialized request")
+        || stderr.contains("connection closed: initialize request");
     assert!(
         reached_initialized_request,
         "Expected server to reach initialized-request state ({context}).\n\

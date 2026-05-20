@@ -7,7 +7,7 @@
 //! - attestation_verify_full_no_network: full-tier with embedded evidence only
 //! - attestation_lift_to_attestation: lift an existing signed document
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use jacs::attestation::types::{
     AssuranceLevel, AttestationSubject, Claim, DigestSet, EvidenceKind, EvidenceRef,
     EvidenceSensitivity, SubjectType, VerifierInfo,
@@ -15,6 +15,7 @@ use jacs::attestation::types::{
 use jacs::simple::SimpleAgent;
 use serde_json::json;
 use std::collections::HashMap;
+use std::hint::black_box;
 
 fn configure_criterion() -> Criterion {
     Criterion::default()
@@ -86,8 +87,7 @@ fn bench_attestation_create_minimal(c: &mut Criterion) {
     c.bench_function("attestation_create_minimal", |b| {
         b.iter(|| {
             black_box(
-                agent
-                    .create_attestation(&subject, &claims, &[], None, None)
+                jacs::attestation::simple::create(&agent, &subject, &claims, &[], None, None)
                     .expect("create_attestation"),
             )
         })
@@ -105,8 +105,7 @@ fn bench_attestation_create_with_evidence(c: &mut Criterion) {
     c.bench_function("attestation_create_with_evidence", |b| {
         b.iter(|| {
             black_box(
-                agent
-                    .create_attestation(&subject, &claims, &evidence, None, None)
+                jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
                     .expect("create_attestation"),
             )
         })
@@ -120,24 +119,13 @@ fn bench_attestation_verify_local(c: &mut Criterion) {
         SimpleAgent::ephemeral(Some("ed25519")).expect("Failed to create ephemeral agent");
     let subject = make_subject();
     let claims = make_claims(1);
-    let signed = agent
-        .create_attestation(&subject, &claims, &[], None, None)
+    let signed = jacs::attestation::simple::create(&agent, &subject, &claims, &[], None, None)
         .expect("create_attestation");
-
-    // Extract document key for verification
-    let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
-    let doc_key = format!(
-        "{}:{}",
-        doc["jacsId"].as_str().unwrap(),
-        doc["jacsVersion"].as_str().unwrap()
-    );
 
     c.bench_function("attestation_verify_local", |b| {
         b.iter(|| {
             black_box(
-                agent
-                    .verify_attestation(&doc_key)
-                    .expect("verify_attestation"),
+                jacs::attestation::simple::verify(&agent, &signed.raw).expect("verify_attestation"),
             )
         })
     });
@@ -152,22 +140,14 @@ fn bench_attestation_verify_full_no_network(c: &mut Criterion) {
     // Create with evidence refs (non-embedded, so full verify won't need network
     // but will still exercise the full verification path).
     let evidence = make_evidence_refs(3);
-    let signed = agent
-        .create_attestation(&subject, &claims, &evidence, None, None)
-        .expect("create_attestation");
-
-    let doc: serde_json::Value = serde_json::from_str(&signed.raw).unwrap();
-    let doc_key = format!(
-        "{}:{}",
-        doc["jacsId"].as_str().unwrap(),
-        doc["jacsVersion"].as_str().unwrap()
-    );
+    let signed =
+        jacs::attestation::simple::create(&agent, &subject, &claims, &evidence, None, None)
+            .expect("create_attestation");
 
     c.bench_function("attestation_verify_full_no_network", |b| {
         b.iter(|| {
             black_box(
-                agent
-                    .verify_attestation_full(&doc_key)
+                jacs::attestation::simple::verify_full(&agent, &signed.raw)
                     .expect("verify_attestation_full"),
             )
         })
@@ -185,8 +165,7 @@ fn bench_attestation_lift(c: &mut Criterion) {
     c.bench_function("attestation_lift_to_attestation", |b| {
         b.iter(|| {
             black_box(
-                agent
-                    .lift_to_attestation(&signed.raw, &claims)
+                jacs::attestation::simple::lift(&agent, &signed.raw, &claims)
                     .expect("lift_to_attestation"),
             )
         })

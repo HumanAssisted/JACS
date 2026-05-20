@@ -114,33 +114,11 @@ def get_agent_card() -> Dict[str, Any]:
             "jacsName": "JACS A2A Document Analysis Agent",
             "jacsDescription": "An MCP server demonstrating JACS + A2A integration for document analysis",
             "jacsAgentType": "ai",
-            "jacsServices": [{
-                "name": "Document Analysis Service",
-                "serviceDescription": "Analyzes documents using advanced AI techniques",
-                "successDescription": "Document successfully analyzed with extracted entities and insights",
-                "failureDescription": "Document analysis failed due to format or processing errors",
-                "tools": [{
-                    "url": "/tools/analyze_document",
-                    "function": {
-                        "name": "analyze_document",
-                        "description": "Analyze a document and extract structured information",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "document_url": {
-                                    "type": "string",
-                                    "description": "URL of the document to analyze"
-                                },
-                                "operations": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "List of operations to perform"
-                                }
-                            },
-                            "required": ["document_url"]
-                        }
-                    }
-                }]
+            "skills": [{
+                "id": "analyze-document",
+                "name": "analyze_document",
+                "description": "Analyze a document and extract structured information",
+                "tags": ["jacs", "documents"],
             }]
         }
         
@@ -176,7 +154,7 @@ def get_well_known_document(path: str) -> Dict[str, Any]:
             "jacsId": jacs.get_agent_id(),
             "jacsVersion": jacs.get_agent_version(),
             "jacsAgentType": "ai",
-            "keyAlgorithm": "RSA-PSS"
+            "keyAlgorithm": "ring-Ed25519"
         }
         
         well_known_docs = a2a_integration.generate_well_known_documents(

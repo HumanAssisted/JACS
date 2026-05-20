@@ -6,15 +6,23 @@
 use jacs::simple::{CreateAgentParams, SimpleAgent};
 use jacs::storage::MultiStorage;
 use serial_test::serial;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 const TEST_PASSWORD: &str = "TestP@ss123!#";
 
+fn temp_root(tmp: &TempDir) -> PathBuf {
+    tmp.path()
+        .canonicalize()
+        .unwrap_or_else(|_| tmp.path().to_path_buf())
+}
+
 /// Helper: create params pointing at a fresh tempdir.
 fn params_in_tempdir(tmp: &TempDir) -> CreateAgentParams {
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let root = temp_root(tmp);
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     CreateAgentParams::builder()
         .name("storage-test-agent")
@@ -47,7 +55,7 @@ fn create_with_params_defaults_to_filesystem_when_storage_is_none() {
     assert!(!info.agent_id.is_empty(), "agent should have an ID");
 
     // The agent document should exist on the filesystem
-    let agent_dir = tmp.path().join("jacs_data").join("agent");
+    let agent_dir = temp_root(&tmp).join("jacs_data").join("agent");
     assert!(
         agent_dir.exists(),
         "agent directory should exist on filesystem"
@@ -62,9 +70,10 @@ fn create_with_params_defaults_to_filesystem_when_storage_is_none() {
 #[serial]
 fn create_with_params_accepts_custom_memory_storage() {
     let tmp = TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let root = temp_root(&tmp);
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     let memory_storage = MultiStorage::new("memory".to_string()).expect("create memory storage");
 
@@ -95,9 +104,10 @@ fn create_with_params_accepts_custom_memory_storage() {
 #[serial]
 fn agent_with_custom_storage_can_sign_document() {
     let tmp = TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let root = temp_root(&tmp);
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     let memory_storage = MultiStorage::new("memory".to_string()).expect("create memory storage");
 
@@ -157,7 +167,7 @@ fn create_still_defaults_to_filesystem() {
     assert!(!info.agent_id.is_empty(), "agent should have an ID");
 
     // Agent data directory should exist on filesystem
-    let agent_dir = tmp.path().join("jacs_data").join("agent");
+    let agent_dir = temp_root(&tmp).join("jacs_data").join("agent");
     assert!(
         agent_dir.exists(),
         "agent directory should exist on filesystem for default storage"
@@ -168,9 +178,10 @@ fn create_still_defaults_to_filesystem() {
 #[serial]
 fn documents_stored_in_custom_backend_not_filesystem() {
     let tmp = TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let root = temp_root(&tmp);
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     let memory_storage = MultiStorage::new("memory".to_string()).expect("create memory storage");
 
@@ -238,12 +249,13 @@ fn documents_stored_in_custom_backend_not_filesystem() {
 #[serial]
 fn custom_fs_storage_with_explicit_path() {
     let tmp = TempDir::new().expect("create tempdir");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
-    let config_path = tmp.path().join("jacs.config.json");
+    let root = temp_root(&tmp);
+    let data_dir = root.join("jacs_data");
+    let key_dir = root.join("jacs_keys");
+    let config_path = root.join("jacs.config.json");
 
     // Create a filesystem storage with a specific base directory
-    let custom_data_dir = tmp.path().join("custom_data");
+    let custom_data_dir = root.join("custom_data");
     std::fs::create_dir_all(&custom_data_dir).expect("create custom data dir");
     let fs_storage = MultiStorage::_new("fs".to_string(), custom_data_dir.clone())
         .expect("create custom fs storage");

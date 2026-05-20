@@ -91,6 +91,7 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
 mod tests {
     use super::*;
     use crate::agent::document::{DocumentTraits, JACSDocument};
+    use crate::crypt::KeyManager;
     use serial_test::serial;
 
     #[test]
@@ -341,15 +342,14 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_agent_rsa_ephemeral_is_disabled() {
-        let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-            .err()
-            .expect("RSA ephemeral should be blocked");
-        assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
-        );
+    fn test_simple_agent_ed25519_ephemeral_signs() {
+        let (agent, info) =
+            SimpleAgent::ephemeral(Some("ed25519")).expect("Ed25519 ephemeral should be supported");
+        assert!(info.algorithm.contains("Ed25519"));
+        let signed = agent
+            .sign_message(&serde_json::json!({"ok": true}))
+            .unwrap();
+        assert!(agent.verify(&signed.raw).unwrap().valid);
     }
 
     #[test]
@@ -1362,14 +1362,10 @@ mod tests {
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
-        // Step 3: update metadata (change description via jacsServices)
+        // Step 3: update metadata
         let exported = agent.export_agent().expect("export original agent");
         let mut doc: Value = serde_json::from_str(&exported).expect("parse agent");
-        doc["jacsServices"] = json!([{
-            "serviceDescription": "Updated service description",
-            "successDescription": "Updated success",
-            "failureDescription": "Updated failure"
-        }]);
+        doc["description"] = json!("Updated agent description");
 
         let updated_json = advanced::update_agent(&agent, &doc.to_string())
             .expect("metadata update should succeed");
@@ -1391,10 +1387,8 @@ mod tests {
         );
         // metadata should be updated
         assert_eq!(
-            updated_doc["jacsServices"][0]["serviceDescription"]
-                .as_str()
-                .unwrap(),
-            "Updated service description"
+            updated_doc["description"].as_str().unwrap(),
+            "Updated agent description"
         );
 
         // Verify the updated agent is valid: can sign and verify
@@ -1447,11 +1441,7 @@ mod tests {
         // Step 3: update metadata
         let exported = agent.export_agent().expect("export after rotation");
         let mut doc: Value = serde_json::from_str(&exported).expect("parse");
-        doc["jacsServices"] = json!([{
-            "serviceDescription": "Post-rotation service",
-            "successDescription": "Works",
-            "failureDescription": "Fails"
-        }]);
+        doc["description"] = json!("Post-rotation metadata");
 
         let updated_json = advanced::update_agent(&agent, &doc.to_string())
             .expect("metadata update after rotation should succeed");
@@ -1481,10 +1471,8 @@ mod tests {
 
         // Metadata persisted
         assert_eq!(
-            updated_doc["jacsServices"][0]["serviceDescription"]
-                .as_str()
-                .unwrap(),
-            "Post-rotation service"
+            updated_doc["description"].as_str().unwrap(),
+            "Post-rotation metadata"
         );
     }
 
@@ -1555,7 +1543,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        let (_agent, info, _tmp, _guard) = create_persistent_test_agent("migrate-legacy-test");
+        let (agent, info, _tmp, _guard) = create_persistent_test_agent("migrate-legacy-test");
         let config_path = "./jacs.config.json";
 
         // Read config to find the agent file
@@ -1574,13 +1562,50 @@ mod tests {
         // Strip iat and jti from jacsSignature to simulate a legacy agent
         let raw = std::fs::read_to_string(&agent_file).expect("read agent file");
         let mut agent_val: Value = serde_json::from_str(&raw).expect("parse agent");
-        let sig = agent_val
-            .get_mut("jacsSignature")
-            .expect("jacsSignature exists")
-            .as_object_mut()
-            .expect("jacsSignature is object");
-        assert!(sig.remove("iat").is_some(), "iat should have existed");
-        assert!(sig.remove("jti").is_some(), "jti should have existed");
+        let legacy_fields = {
+            let sig = agent_val
+                .get_mut("jacsSignature")
+                .expect("jacsSignature exists")
+                .as_object_mut()
+                .expect("jacsSignature is object");
+            assert!(sig.remove("iat").is_some(), "iat should have existed");
+            assert!(sig.remove("jti").is_some(), "jti should have existed");
+            sig.remove(crate::agent::SIGNATURE_CONTENT_VERSION_FIELDNAME);
+            sig.get("fields")
+                .and_then(Value::as_array)
+                .expect("signature fields")
+                .iter()
+                .map(|field| field.as_str().expect("field name").to_string())
+                .collect::<Vec<_>>()
+        };
+
+        // A true legacy v1 signature does not authenticate signature metadata,
+        // so migration can patch iat/jti and then re-sign as v2. Convert this
+        // generated v2 fixture to that legacy shape instead of merely deleting
+        // v2 metadata, which would correctly invalidate the v2 signature.
+        let (legacy_payload, _) = crate::agent::build_signature_content(
+            &agent_val,
+            Some(legacy_fields),
+            crate::agent::AGENT_SIGNATURE_FIELDNAME,
+            crate::agent::SignatureContentMode::CanonicalV2,
+        )
+        .expect("legacy signature payload");
+        let legacy_signature = agent
+            .agent
+            .lock()
+            .expect("agent mutex")
+            .sign_string(&legacy_payload)
+            .expect("sign legacy payload");
+        agent_val["jacsSignature"]["signature"] = json!(legacy_signature);
+
+        let mut hash_copy = agent_val.clone();
+        if let Some(obj) = hash_copy.as_object_mut() {
+            obj.remove(crate::agent::SHA256_FIELDNAME);
+        }
+        let canonical = serde_json_canonicalizer::to_string(&hash_copy).expect("canonical hash");
+        agent_val[crate::agent::SHA256_FIELDNAME] =
+            json!(crate::crypt::hash::hash_string(&canonical));
+
         let stripped = serde_json::to_string_pretty(&agent_val).expect("serialize");
         std::fs::write(&agent_file, &stripped).expect("write stripped agent");
 

@@ -282,7 +282,7 @@ fn read_password_file(path: &Path) -> BindingResult<Option<String>> {
             e
         ))
     })?;
-    let password = contents.trim_end_matches(|c| c == '\n' || c == '\r').trim();
+    let password = contents.trim_end_matches(['\n', '\r']).trim();
     if password.is_empty() {
         return Ok(None);
     }
@@ -305,6 +305,102 @@ fn truthy_env_var(name: &str) -> bool {
 
 const DEFAULT_NETWORK_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_KEYS_BASE_URL: &str = "https://hai.ai";
+
+#[cfg(feature = "a2a")]
+fn a2a_default_skills() -> Vec<jacs::a2a::AgentSkill> {
+    vec![jacs::a2a::AgentSkill {
+        id: "verify-signature".to_string(),
+        name: "verify_signature".to_string(),
+        description: "Verify JACS document signatures".to_string(),
+        tags: vec![
+            "jacs".to_string(),
+            "verification".to_string(),
+            "cryptography".to_string(),
+        ],
+        examples: Some(vec![
+            "Verify a signed JACS document".to_string(),
+            "Check document signature integrity".to_string(),
+        ]),
+        input_modes: Some(vec!["application/json".to_string()]),
+        output_modes: Some(vec!["application/json".to_string()]),
+        security: None,
+    }]
+}
+
+#[cfg(feature = "a2a")]
+fn slugify_skill_name(name: &str) -> String {
+    name.to_lowercase()
+        .replace([' ', '_'], "-")
+        .chars()
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-')
+        .collect()
+}
+
+#[cfg(feature = "a2a")]
+fn string_array_field(skill: &Value, field: &str) -> Option<Vec<String>> {
+    skill
+        .get(field)
+        .and_then(|v| v.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                .collect::<Vec<_>>()
+        })
+        .filter(|values| !values.is_empty())
+}
+
+#[cfg(feature = "a2a")]
+fn explicit_a2a_skills(agent_value: &Value) -> Vec<jacs::a2a::AgentSkill> {
+    let raw_skills = agent_value
+        .get("skills")
+        .or_else(|| agent_value.get("a2aSkills"))
+        .and_then(|v| v.as_array());
+
+    let Some(raw_skills) = raw_skills else {
+        return a2a_default_skills();
+    };
+
+    let skills = raw_skills
+        .iter()
+        .map(|raw| {
+            let name = raw
+                .get("name")
+                .or_else(|| raw.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed");
+            jacs::a2a::AgentSkill {
+                id: raw
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| slugify_skill_name(name)),
+                name: name.to_string(),
+                description: raw
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                tags: string_array_field(raw, "tags").unwrap_or_else(|| vec!["jacs".to_string()]),
+                examples: string_array_field(raw, "examples"),
+                input_modes: string_array_field(raw, "inputModes")
+                    .or_else(|| string_array_field(raw, "input_modes")),
+                output_modes: string_array_field(raw, "outputModes")
+                    .or_else(|| string_array_field(raw, "output_modes")),
+                security: raw
+                    .get("security")
+                    .and_then(|v| v.as_array())
+                    .map(|values| values.to_vec()),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if skills.is_empty() {
+        a2a_default_skills()
+    } else {
+        skills
+    }
+}
 
 fn build_blocking_json_client(timeout_ms: u64) -> BindingResult<BlockingClient> {
     BlockingClient::builder()
@@ -441,45 +537,6 @@ fn build_jwk_set_from_public_key_bytes(
                 "kid": key_id,
                 "use": "sig",
                 "alg": "EdDSA",
-            }]
-        }));
-    }
-
-    if normalized_algorithm.contains("rsa") || normalized_algorithm.is_empty() {
-        use rsa::traits::PublicKeyParts;
-        use rsa::{RsaPublicKey, pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey};
-
-        let rsa_key = if let Ok(key) = RsaPublicKey::from_pkcs1_der(public_key) {
-            key
-        } else if let Ok(key) = RsaPublicKey::from_public_key_der(public_key) {
-            key
-        } else if let Ok(pem) = std::str::from_utf8(public_key) {
-            match RsaPublicKey::from_public_key_pem(pem) {
-                Ok(key) => key,
-                Err(e) if normalized_algorithm.contains("rsa") => {
-                    return Err(BindingCoreError::invalid_argument(format!(
-                        "Failed to parse RSA public key for JWK export: {}",
-                        e
-                    )));
-                }
-                Err(_) => return Ok(json!({ "keys": [] })),
-            }
-        } else if normalized_algorithm.contains("rsa") {
-            return Err(BindingCoreError::invalid_argument(
-                "Failed to parse RSA public key for JWK export.",
-            ));
-        } else {
-            return Ok(json!({ "keys": [] }));
-        };
-
-        return Ok(json!({
-            "keys": [{
-                "kty": "RSA",
-                "kid": key_id,
-                "alg": "RS256",
-                "use": "sig",
-                "n": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.n().to_bytes_be()),
-                "e": general_purpose::URL_SAFE_NO_PAD.encode(rsa_key.e().to_bytes_be()),
             }]
         }));
     }
@@ -743,7 +800,6 @@ fn binding_inline_algorithm_tag<T: std::fmt::Display>(algo: T) -> String {
     match s.as_str() {
         "ring-Ed25519" | "ed25519" | "Ed25519" => "ed25519".to_string(),
         "pq2025" | "ML-DSA-87" | "ml-dsa-87" => "pq2025".to_string(),
-        "RSA-PSS" | "rsa-pss" => "rsa-pss".to_string(),
         _ => s.to_lowercase(),
     }
 }
@@ -966,7 +1022,7 @@ impl AgentWrapper {
                 .signature_verification_procedure(
                     &external_agent,
                     None,
-                    &AGENT_SIGNATURE_FIELDNAME.to_string(),
+                    AGENT_SIGNATURE_FIELDNAME,
                     public_key,
                     Some(public_key_enc_type),
                     None,
@@ -983,7 +1039,7 @@ impl AgentWrapper {
                 .signing_procedure(
                     &external_agent,
                     None,
-                    &AGENT_REGISTRATION_SIGNATURE_FIELDNAME.to_string(),
+                    AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
                 )
                 .map_err(|e| {
                     BindingCoreError::signing_failed(format!("Signing procedure failed: {}", e))
@@ -1019,8 +1075,8 @@ impl AgentWrapper {
 
         agent
             .verify_string(
-                &data.to_string(),
-                &signature_base64.to_string(),
+                data,
+                signature_base64,
                 public_key,
                 Some(public_key_enc_type),
             )
@@ -1038,7 +1094,7 @@ impl AgentWrapper {
     pub fn sign_string(&self, data: &str) -> BindingResult<String> {
         self.with_private_key_password(|| {
             let mut agent = self.lock()?;
-            agent.sign_string(&data.to_string()).map_err(|e| {
+            agent.sign_string(data).map_err(|e| {
                 BindingCoreError::signing_failed(format!("Failed to sign string: {}", e))
             })
         })
@@ -1215,6 +1271,7 @@ impl AgentWrapper {
     /// - `quorum`: minimum number of signatures required (M-of-N)
     /// - `required_algorithms`: only accept signatures from these algorithms
     /// - `minimum_strength`: "classical" or "post-quantum"
+    #[allow(clippy::too_many_arguments)]
     pub fn create_agreement_with_options(
         &self,
         document_string: &str,
@@ -1648,7 +1705,6 @@ impl AgentWrapper {
         // Map user-friendly names to internal algorithm strings
         let algo = match algorithm.unwrap_or("pq2025") {
             "ed25519" => "ring-Ed25519",
-            "rsa-pss" => "RSA-PSS",
             "pq2025" => "pq2025",
             other => other,
         };
@@ -1874,9 +1930,12 @@ impl AgentWrapper {
     /// Returns the Agent Card as a JSON string.
     pub fn export_agent_card(&self) -> BindingResult<String> {
         let agent = self.lock()?;
-        let card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
+        let mut card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
             BindingCoreError::generic(format!("Failed to export agent card: {}", e))
         })?;
+        if let Some(agent_value) = agent.get_value() {
+            card.skills = explicit_a2a_skills(agent_value);
+        }
         serde_json::to_string_pretty(&card).map_err(|e| {
             BindingCoreError::serialization_failed(format!("Failed to serialize agent card: {}", e))
         })
@@ -1890,9 +1949,12 @@ impl AgentWrapper {
         a2a_algorithm: Option<&str>,
     ) -> BindingResult<String> {
         let agent = self.lock()?;
-        let card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
+        let mut card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
             BindingCoreError::generic(format!("Failed to export agent card: {}", e))
         })?;
+        if let Some(agent_value) = agent.get_value() {
+            card.skills = explicit_a2a_skills(agent_value);
+        }
 
         let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
         let dual_keys = jacs::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {
@@ -2654,7 +2716,7 @@ pub fn verify_document_standalone(
     //   <prefix>_metadata.json + <prefix>_public_key.pem
     // rather than public_keys/{hash}.pem.
     // Build a deterministic temp cache when local key files are missing.
-    let local_requested = key_resolution.map_or(true, |kr| {
+    let local_requested = key_resolution.is_none_or(|kr| {
         kr.split(',')
             .any(|part| part.trim().eq_ignore_ascii_case("local"))
     });
@@ -2676,7 +2738,10 @@ pub fn verify_document_standalone(
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_nanos())
                     .unwrap_or(0);
-                let cache_root = std::env::temp_dir().join(format!(
+                let temp_root = std::env::temp_dir()
+                    .canonicalize()
+                    .unwrap_or_else(|_| std::env::temp_dir());
+                let cache_root = temp_root.join(format!(
                     "jacs_standalone_keycache_{}_{}",
                     std::process::id(),
                     nonce
@@ -2726,7 +2791,10 @@ pub fn verify_document_standalone(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let config_path = std::env::temp_dir().join(format!(
+    let temp_root = std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let config_path = temp_root.join(format!(
         "jacs_standalone_verify_config_{}_{}_{}.json",
         std::process::id(),
         thread_id,
@@ -2880,7 +2948,7 @@ pub fn verify_document_standalone(
 
 /// Hash a string using the JACS hash function (SHA-256).
 pub fn hash_string(data: &str) -> String {
-    jacs_hash_string(&data.to_string())
+    jacs_hash_string(data)
 }
 
 /// Hash a base64-encoded public key using Rust-owned public-key hashing rules.
@@ -3164,6 +3232,7 @@ pub fn quickstart_private_key_password(
 }
 
 /// Create a JACS configuration JSON string.
+#[allow(clippy::too_many_arguments)]
 pub fn create_config(
     jacs_use_security: Option<String>,
     jacs_data_directory: Option<String>,
@@ -3251,11 +3320,11 @@ pub fn get_trusted_agent(agent_id: &str) -> BindingResult<String> {
 pub fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> BindingResult<String> {
     use jacs::audit::{AuditOptions, audit as jacs_audit};
 
-    let mut opts = AuditOptions::default();
-    opts.config_path = config_path.map(String::from);
-    if let Some(n) = recent_n {
-        opts.recent_verify_count = Some(n);
-    }
+    let opts = AuditOptions {
+        config_path: config_path.map(String::from),
+        recent_verify_count: recent_n.or(AuditOptions::default().recent_verify_count),
+        ..Default::default()
+    };
     let result =
         jacs_audit(opts).map_err(|e| BindingCoreError::generic(format!("Audit failed: {}", e)))?;
     serde_json::to_string_pretty(&result).map_err(|e| {
@@ -3270,6 +3339,7 @@ pub fn audit(config_path: Option<&str>, recent_n: Option<u32>) -> BindingResult<
 /// Create a JACS agent programmatically (non-interactive).
 ///
 /// Accepts all creation parameters and returns a JSON string containing agent info.
+#[allow(clippy::too_many_arguments)]
 pub fn create_agent_programmatic(
     name: &str,
     password: &str,

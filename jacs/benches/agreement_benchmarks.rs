@@ -4,9 +4,10 @@
 //! - Agreement creation + N-party signing for N in {2, 5, 10, 25}
 //! - Concurrent SimpleAgent instantiation and signing
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use jacs::simple::SimpleAgent;
 use serde_json::json;
+use std::hint::black_box;
 use std::sync::Arc;
 use std::thread;
 
@@ -41,26 +42,28 @@ fn bench_agreement_n_party(c: &mut Criterion) {
             let doc_str = doc_data.to_string();
 
             b.iter(|| {
-                black_box({
-                    // Agent 0 creates the agreement
-                    let agreement = agents[0]
-                        .0
-                        .create_agreement(&doc_str, &agent_ids, Some("Do you agree?"), None)
-                        .expect("create_agreement");
+                // Agent 0 creates the agreement
+                let agreement = jacs::agreements::create(
+                    &agents[0].0,
+                    &doc_str,
+                    &agent_ids,
+                    Some("Do you agree?"),
+                    None,
+                )
+                .expect("create_agreement");
 
-                    // Each agent signs in sequence
-                    let mut current_doc = agreement.raw;
-                    for (agent, _) in &agents {
-                        let signed = agent.sign_agreement(&current_doc).expect("sign_agreement");
-                        current_doc = signed.raw;
-                    }
+                // Each agent signs in sequence
+                let mut current_doc = agreement.raw;
+                for (agent, _) in &agents {
+                    let signed =
+                        jacs::agreements::sign(agent, &current_doc).expect("sign_agreement");
+                    current_doc = signed.raw;
+                }
 
-                    // Verify the final agreement
-                    agents[0]
-                        .0
-                        .check_agreement(&current_doc)
-                        .expect("check_agreement");
-                });
+                // Verify the final agreement
+                let status =
+                    jacs::agreements::check(&agents[0].0, &current_doc).expect("check_agreement");
+                black_box(status);
             });
         });
     }
@@ -84,23 +87,22 @@ fn bench_concurrent_signing(c: &mut Criterion) {
             let data = json!({"action": "benchmark", "concurrent": true});
 
             b.iter(|| {
-                black_box({
-                    let handles: Vec<_> = agents
-                        .iter()
-                        .map(|agent| {
-                            let agent = Arc::clone(agent);
-                            let data = data.clone();
-                            thread::spawn(move || {
-                                let signed = agent.sign_message(&data).unwrap();
-                                agent.verify(&signed.raw).unwrap();
-                            })
+                let handles: Vec<_> = agents
+                    .iter()
+                    .map(|agent| {
+                        let agent = Arc::clone(agent);
+                        let data = data.clone();
+                        thread::spawn(move || {
+                            let signed = agent.sign_message(&data).unwrap();
+                            agent.verify(&signed.raw).unwrap();
                         })
-                        .collect();
+                    })
+                    .collect();
 
-                    for handle in handles {
-                        handle.join().expect("thread panicked");
-                    }
-                });
+                for handle in handles {
+                    handle.join().expect("thread panicked");
+                }
+                black_box(());
             });
         });
     }

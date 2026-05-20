@@ -509,7 +509,7 @@ function verifySelfSync() {
     }
 }
 /**
- * Signs arbitrary data as a JACS message.
+ * Signs arbitrary data with the legacy signed-message type label.
  */
 async function signMessage(data) {
     const docContent = createRawDocumentPayload('message', { content: data });

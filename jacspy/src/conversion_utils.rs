@@ -5,6 +5,7 @@ use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyString};
 use serde_json::{Map as JsonMap, Value};
 
 /// Converts a Bound<'_, PyAny> into a serde_json::Value.
+#[allow(clippy::only_used_in_recursion)]
 pub fn pyany_to_value(py: Python, obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     if obj.is_none() {
         Ok(Value::Null)
@@ -142,10 +143,10 @@ pub fn value_to_pyobject(py: Python, value: &Value) -> PyResult<PyObject> {
 #[cfg(test)] // Only compile this module when running tests
 mod tests {
     use super::*; // Import items from the parent module (conversion_utils)
-    use pyo3::prelude::*;
+
+    use pyo3::IntoPyObjectExt;
     use pyo3::types::{PyBool, PyDict, PyList}; // Keep necessary type imports
     use serde_json::{Value, json};
-    // use std::ffi::CString; // No longer needed for complex number test here if removed
 
     #[test]
     fn test_pyany_to_value_conversion() {
@@ -153,58 +154,64 @@ mod tests {
             // --- Basic Types ---
             assert_eq!(pyany_to_value(py, py.None().bind(py)).unwrap(), Value::Null);
             assert_eq!(
-                pyany_to_value(py, true.to_object(py).bind(py)).unwrap(),
+                pyany_to_value(py, true.into_py_any(py).unwrap().bind(py)).unwrap(),
                 Value::Bool(true)
             );
             assert_eq!(
-                pyany_to_value(py, false.to_object(py).bind(py)).unwrap(),
+                pyany_to_value(py, false.into_py_any(py).unwrap().bind(py)).unwrap(),
                 Value::Bool(false)
             );
             assert_eq!(
-                pyany_to_value(py, 123i64.to_object(py).bind(py)).unwrap(),
+                pyany_to_value(py, 123i64.into_py_any(py).unwrap().bind(py)).unwrap(),
                 json!(123) // Use json! macro for numbers
             );
             assert_eq!(
-                pyany_to_value(py, (-456i64).to_object(py).bind(py)).unwrap(),
+                pyany_to_value(py, (-456i64).into_py_any(py).unwrap().bind(py)).unwrap(),
                 json!(-456)
             );
             assert_eq!(
-                pyany_to_value(py, 3.14f64.to_object(py).bind(py)).unwrap(),
-                json!(3.14)
+                pyany_to_value(py, 2.78f64.into_py_any(py).unwrap().bind(py)).unwrap(),
+                json!(2.78)
             );
             assert_eq!(
-                pyany_to_value(py, "hello".to_object(py).bind(py)).unwrap(),
+                pyany_to_value(py, "hello".into_py_any(py).unwrap().bind(py)).unwrap(),
                 Value::String("hello".to_string())
             );
             assert_eq!(
-                pyany_to_value(py, "".to_object(py).bind(py)).unwrap(),
+                pyany_to_value(py, "".into_py_any(py).unwrap().bind(py)).unwrap(),
                 Value::String("".to_string())
             );
 
             // --- Lists ---
-            let pylist_empty = PyList::empty_bound(py);
+            let pylist_empty = PyList::empty(py);
             assert_eq!(pyany_to_value(py, &pylist_empty).unwrap(), json!([]));
 
-            let pylist_simple = PyList::new_bound(
+            let pylist_simple = PyList::new(
                 py,
-                &[1.to_object(py), "two".to_object(py), true.to_object(py)],
-            );
+                &[
+                    1.into_py_any(py).unwrap(),
+                    "two".into_py_any(py).unwrap(),
+                    true.into_py_any(py).unwrap(),
+                ],
+            )
+            .unwrap();
             assert_eq!(
                 pyany_to_value(py, &pylist_simple).unwrap(),
                 json!([1, "two", true])
             );
 
-            let nested_pylist = PyList::new_bound(py, &[pylist_simple.to_object(py)]);
+            let pylist_simple_obj = pylist_simple.clone().into_py_any(py).unwrap();
+            let nested_pylist = PyList::new(py, &[pylist_simple_obj]).unwrap();
             assert_eq!(
                 pyany_to_value(py, &nested_pylist).unwrap(),
                 json!([[1, "two", true]])
             );
 
             // --- Dicts ---
-            let pydict_empty = PyDict::new_bound(py);
+            let pydict_empty = PyDict::new(py);
             assert_eq!(pyany_to_value(py, &pydict_empty).unwrap(), json!({}));
 
-            let pydict_simple = PyDict::new_bound(py);
+            let pydict_simple = PyDict::new(py);
             pydict_simple.set_item("a", 1).unwrap();
             pydict_simple.set_item("b", "bee").unwrap();
             pydict_simple.set_item("c", py.None()).unwrap();
@@ -213,12 +220,12 @@ mod tests {
                 json!({"a": 1, "b": "bee", "c": null})
             );
 
-            let pydict_nested = PyDict::new_bound(py);
+            let pydict_nested = PyDict::new(py);
             pydict_nested
-                .set_item("nested", pydict_simple.to_object(py))
+                .set_item("nested", pydict_simple.clone().into_py_any(py).unwrap())
                 .unwrap();
             pydict_nested
-                .set_item("list", pylist_simple.to_object(py))
+                .set_item("list", pylist_simple.into_py_any(py).unwrap())
                 .unwrap();
             assert_eq!(
                 pyany_to_value(py, &pydict_nested).unwrap(),

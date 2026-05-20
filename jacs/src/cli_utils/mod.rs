@@ -11,13 +11,31 @@ use std::path::Path;
 ///
 /// Returns the password string (with trailing newlines stripped).
 pub fn read_password_file_checked(path: &Path) -> Result<String, String> {
+    let symlink_metadata = std::fs::symlink_metadata(path).map_err(|e| {
+        format!(
+            "Failed to inspect password file '{}': {}",
+            path.display(),
+            e
+        )
+    })?;
+    if symlink_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "Password file '{}' must not be a symlink.",
+            path.display()
+        ));
+    }
+    if !symlink_metadata.is_file() {
+        return Err(format!(
+            "Password file '{}' must be a regular file.",
+            path.display()
+        ));
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let metadata = std::fs::metadata(path)
-            .map_err(|e| format!("Failed to read password file '{}': {}", path.display(), e))?;
-        let mode = metadata.permissions().mode() & 0o777;
+        let mode = symlink_metadata.permissions().mode() & 0o777;
         if mode & 0o077 != 0 {
             return Err(format!(
                 "Password file '{}' has insecure permissions (mode {:04o}). \
@@ -32,7 +50,7 @@ pub fn read_password_file_checked(path: &Path) -> Result<String, String> {
 
     let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read password file '{}': {}", path.display(), e))?;
-    let password = raw.trim_end_matches(|c| c == '\n' || c == '\r');
+    let password = raw.trim_end_matches(['\n', '\r']);
     if password.is_empty() {
         return Err(format!("Password file '{}' is empty.", path.display()));
     }

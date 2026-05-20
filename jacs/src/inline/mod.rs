@@ -143,25 +143,19 @@ pub struct ResolvedKey {
     /// |------------|------------------------------------------------------------|
     /// | `ed25519`  | RAW 32-byte Ed25519 public key (PEM body decoded)          |
     /// | `pq2025`   | RAW ML-DSA-87 public key bytes (PEM body decoded)          |
-    /// | `rsa-pss`  | Full PEM bytes (`-----BEGIN PUBLIC KEY-----` ... `-----`)  |
     ///
     /// The crypt primitives (`ringwrapper::verify_string`,
-    /// `pq2025::verify_string`, `rsawrapper::verify_string`) accept exactly
-    /// these shapes and no others. The `publicKeyHash` integrity check inside
+    /// `pq2025::verify_string`) accept exactly these shapes and no others.
+    /// The `publicKeyHash` integrity check inside
     /// `verify_single_block` re-hashes the same bytes used at sign time, so
     /// re-armoring this field would silently break verification for ed25519
     /// and pq2025 — the bug fixed by Task 13's review notes.
-    ///
-    /// Locked behaviour:
-    /// * `verify_rsa_pss_fixture_roundtrip` (RSA dispatch arm).
-    /// * `verify_*_self_signer_signs_and_self_verifies` (ed25519, pq2025).
-    /// * `verify_image_cross_agent_path` (cross-agent verify path).
     ///
     /// The field name `public_key_pem` is preserved for API compatibility;
     /// future major releases may rename it to `key_material` to match the
     /// dual-shape semantics, ideally as an enum.
     pub public_key_pem: Vec<u8>,
-    /// Lower-case algorithm tag: `"ed25519"`, `"pq2025"`, `"rsa-pss"`.
+    /// Lower-case algorithm tag: `"ed25519"` or `"pq2025"`.
     pub algorithm: String,
 }
 
@@ -464,7 +458,7 @@ fn normalise_content(content: &str) -> String {
     let lf_only: String = content.chars().filter(|&c| c != '\r').collect();
     // Trim trailing whitespace (spaces, tabs, newlines).
     lf_only
-        .trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\n' || c == '\r')
+        .trim_end_matches([' ', '\t', '\n', '\r'])
         .to_string()
 }
 
@@ -530,14 +524,12 @@ fn update_inline_jacs_document(
     Ok(updated.value)
 }
 
-/// Map the JACS-configured algorithm name (`"ring-Ed25519"`, `"pq2025"`,
-/// `"RSA-PSS"`, plus a couple of common aliases) to the lowercase tag used in
-/// the inline YAML block body.
+/// Map the JACS-configured algorithm name to the lowercase tag used in the
+/// inline YAML block body.
 fn algorithm_tag_from_config(configured: &str) -> Result<String, JacsError> {
     match configured.trim() {
         "ring-Ed25519" | "ed25519" | "Ed25519" => Ok("ed25519".to_string()),
         "pq2025" => Ok("pq2025".to_string()),
-        "RSA-PSS" | "rsa-pss" => Ok("rsa-pss".to_string()),
         other => Err(JacsError::ValidationError(format!(
             "unsupported signing algorithm for inline-text: {other}"
         ))),
@@ -795,11 +787,6 @@ fn verify_legacy_block(
             &signature_compact,
         ),
         "pq2025" => crate::crypt::pq2025::verify_string(
-            resolved.public_key_pem.clone(),
-            &preimage,
-            &signature_compact,
-        ),
-        "rsa-pss" => crate::crypt::rsawrapper::verify_string(
             resolved.public_key_pem.clone(),
             &preimage,
             &signature_compact,

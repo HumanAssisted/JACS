@@ -102,7 +102,7 @@ describe('JACS Utility Functions', () => {
         './my_keys', // jacs_key_directory
         'my-private.pem', // jacs_agent_private_key_filename
         'my-public.pem', // jacs_agent_public_key_filename
-        'RSA-PSS', // jacs_agent_key_algorithm
+        'ring-Ed25519', // jacs_agent_key_algorithm
         'secret123', // jacs_private_key_password
         'agent-123:v1', // jacs_agent_id_and_version
         'fs' // jacs_default_storage
@@ -114,7 +114,7 @@ describe('JACS Utility Functions', () => {
       expect(config.jacs_key_directory).to.equal('./my_keys');
       expect(config.jacs_agent_private_key_filename).to.equal('my-private.pem');
       expect(config.jacs_agent_public_key_filename).to.equal('my-public.pem');
-      expect(config.jacs_agent_key_algorithm).to.equal('RSA-PSS');
+      expect(config.jacs_agent_key_algorithm).to.equal('ring-Ed25519');
       expect(config.jacs_agent_id_and_version).to.equal('agent-123:v1');
       expect(config.jacs_default_storage).to.equal('fs');
     });

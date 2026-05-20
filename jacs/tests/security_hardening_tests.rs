@@ -47,6 +47,15 @@ impl Drop for EnvVarGuard {
     }
 }
 
+fn recompute_jacs_sha256(value: &mut serde_json::Value) {
+    if let Some(obj) = value.as_object_mut() {
+        obj.remove("jacsSha256");
+    }
+    let canonical = serde_json_canonicalizer::to_string(value).expect("canonicalize document");
+    let digest = jacs::crypt::hash::hash_string(&canonical);
+    value["jacsSha256"] = serde_json::json!(digest);
+}
+
 // =============================================================================
 // Finding 2: sign_detached must reject non-UTF8 messages
 // =============================================================================
@@ -131,64 +140,229 @@ mod sign_detached_non_utf8 {
 }
 
 // =============================================================================
-// Finding 5: RSA private-key operations must be disabled until upstream fix
+// Finding 5: elliptic-curve private-key operations remain supported
 // =============================================================================
 
-mod rsa_private_key_operations_disabled {
+mod elliptic_curve_private_key_operations {
     use jacs::keystore::{InMemoryKeyStore, KeySpec, KeyStore};
     use jacs::simple::SimpleAgent;
 
     #[test]
-    fn rejects_rsa_ephemeral_agent_creation() {
-        let err = SimpleAgent::ephemeral(Some("rsa-pss"))
-            .err()
-            .expect("RSA ephemeral should be blocked");
-        assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
-        );
+    fn creates_ed25519_ephemeral_agent() {
+        let (agent, info) =
+            SimpleAgent::ephemeral(Some("ed25519")).expect("Ed25519 ephemeral should be supported");
+        assert!(info.algorithm.contains("Ed25519"));
+        let signed = agent
+            .sign_message(&serde_json::json!({"curve": "ed25519"}))
+            .expect("sign");
+        assert!(agent.verify(&signed.raw).expect("verify").valid);
     }
 
     #[test]
-    fn rejects_rsa_keystore_generation() {
-        let store = InMemoryKeyStore::new("RSA-PSS");
-        let err = store
+    fn creates_ed25519_keystore_key() {
+        let store = InMemoryKeyStore::new("ring-Ed25519");
+        let (private_key, public_key) = store
             .generate(&KeySpec {
-                algorithm: "RSA-PSS".to_string(),
+                algorithm: "ring-Ed25519".to_string(),
                 key_id: None,
             })
-            .expect_err("RSA key generation should be blocked");
-        assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
-        );
+            .expect("Ed25519 key generation should work");
+        assert!(!private_key.is_empty());
+        assert_eq!(public_key.len(), 32);
     }
 
     #[cfg(feature = "a2a")]
     #[test]
-    fn rejects_rsa_a2a_key_generation_and_signing() {
-        use jacs::a2a::keys::{create_jwk_keys, sign_jws};
+    fn ed25519_a2a_key_generation_and_signing() {
+        use jacs::a2a::keys::{create_jwk_keys, sign_jws, verify_jws};
 
-        let err = create_jwk_keys(Some("rsa"), Some("rsa"))
-            .err()
-            .expect("RSA A2A key generation should be blocked");
+        let keys = create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519"))
+            .expect("Ed25519 A2A key generation should work");
+        let jws = sign_jws(
+            br#"{"sub":"test"}"#,
+            &keys.a2a_private_key,
+            "ring-Ed25519",
+            "kid",
+        )
+        .expect("Ed25519 A2A signing should work");
+        let payload = verify_jws(&jws, &keys.a2a_public_key, "ring-Ed25519")
+            .expect("Ed25519 A2A verification should work");
+        assert_eq!(payload, br#"{"sub":"test"}"#);
+    }
+}
+
+// =============================================================================
+// Signature v2: signed preimage must bind field names and signature metadata
+// =============================================================================
+
+mod signature_v2_binding {
+    use super::{EnvVarGuard, recompute_jacs_sha256};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use jacs::simple::SimpleAgent;
+    use serde_json::{Value, json};
+
+    fn signed_doc() -> (SimpleAgent, Value) {
+        let (agent, _) = SimpleAgent::ephemeral(Some("ed25519")).expect("ephemeral agent");
+        let signed = agent
+            .sign_message(&json!({
+                "amount": 100,
+                "currency": "USD",
+                "recipient": "alice"
+            }))
+            .expect("sign message");
+        let value: Value = serde_json::from_str(&signed.raw).expect("signed JSON");
+        (agent, value)
+    }
+
+    fn legacy_payload(value: &Value) -> String {
+        let fields = value
+            .pointer("/jacsSignature/fields")
+            .and_then(Value::as_array)
+            .expect("legacy fields");
+        fields
+            .iter()
+            .map(|field| {
+                let field = field.as_str().expect("field name");
+                serde_json_canonicalizer::to_string(&value[field]).expect("canonical value")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn new_signatures_emit_v2_content_version() {
+        let (_agent, value) = signed_doc();
+        assert_eq!(
+            value
+                .pointer("/jacsSignature/signatureContentVersion")
+                .and_then(|v| v.as_str()),
+            Some("jacs-signature-v2")
+        );
+    }
+
+    #[test]
+    fn rejects_field_rebinding_even_when_hash_is_recomputed() {
+        let (agent, mut value) = signed_doc();
+        let original_content = value["content"].clone();
+
+        value["shadowContent"] = original_content;
+        value["content"]["amount"] = json!(9000);
+        value["jacsSignature"]["fields"] = json!([
+            "$schema",
+            "jacsId",
+            "jacsLevel",
+            "jacsOriginalDate",
+            "jacsOriginalVersion",
+            "jacsType",
+            "jacsVersion",
+            "jacsVersionDate",
+            "shadowContent"
+        ]);
+        recompute_jacs_sha256(&mut value);
+
+        let tampered = serde_json::to_string(&value).expect("serialize tampered doc");
+        let result = agent.verify(&tampered).expect("verification result");
         assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
+            !result.valid,
+            "changing signed field names must invalidate the v2 signature"
+        );
+    }
+
+    #[test]
+    fn rejects_signature_metadata_tampering() {
+        for pointer in [
+            "/jacsSignature/signingAlgorithm",
+            "/jacsSignature/publicKeyHash",
+            "/jacsSignature/iat",
+            "/jacsSignature/jti",
+        ] {
+            let (agent, mut value) = signed_doc();
+            match pointer {
+                "/jacsSignature/signingAlgorithm" => {
+                    value["jacsSignature"]["signingAlgorithm"] = json!("pq2025")
+                }
+                "/jacsSignature/publicKeyHash" => {
+                    value["jacsSignature"]["publicKeyHash"] = json!("00")
+                }
+                "/jacsSignature/iat" => value["jacsSignature"]["iat"] = json!(123),
+                "/jacsSignature/jti" => value["jacsSignature"]["jti"] = json!("tampered"),
+                _ => unreachable!(),
+            }
+            recompute_jacs_sha256(&mut value);
+
+            let tampered = serde_json::to_string(&value).expect("serialize tampered doc");
+            let result = agent.verify(&tampered).expect("verification result");
+            assert!(
+                !result.valid,
+                "tampering {pointer} must invalidate the v2 signature"
+            );
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(jacs_env)]
+    fn missing_algorithm_fails_unless_legacy_detection_is_explicitly_enabled() {
+        let (agent, mut value) = signed_doc();
+        let _allow_guard = EnvVarGuard::unset("JACS_ALLOW_LEGACY_ALGORITHM_DETECTION");
+        value["jacsSignature"]
+            .as_object_mut()
+            .expect("signature object")
+            .remove("signatureContentVersion");
+        let signature = agent
+            .sign_raw_bytes(legacy_payload(&value).as_bytes())
+            .expect("legacy-sign payload");
+        value["jacsSignature"]["signature"] = json!(STANDARD.encode(signature));
+        value["jacsSignature"]
+            .as_object_mut()
+            .expect("signature object")
+            .remove("signingAlgorithm");
+        recompute_jacs_sha256(&mut value);
+
+        let legacy_missing_alg = serde_json::to_string(&value).expect("serialize doc");
+        let blocked = agent
+            .verify(&legacy_missing_alg)
+            .expect("verification result");
+        assert!(
+            !blocked.valid,
+            "legacy algorithm detection should be disabled by default"
         );
 
-        let (private_key, _public_key) =
-            jacs::crypt::ringwrapper::generate_keys().expect("ed25519 key generation should work");
-        let err = sign_jws(br#"{"sub":"test"}"#, &private_key, "rsa", "kid")
-            .expect_err("RSA A2A signing should be blocked");
+        let _legacy_guard = EnvVarGuard::set("JACS_ALLOW_LEGACY_ALGORITHM_DETECTION", "true");
+        let allowed = agent
+            .verify(&legacy_missing_alg)
+            .expect("verification result");
         assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
+            allowed.valid,
+            "explicit legacy algorithm detection opt-in should preserve old documents"
         );
+    }
+}
+
+// =============================================================================
+// Private key encryption v2: new writes use Argon2id JSON envelopes
+// =============================================================================
+
+mod private_key_encryption_v2 {
+    use jacs::crypt::aes_encrypt::{
+        decrypt_private_key_secure_with_password, encrypt_private_key_with_password,
+    };
+
+    #[test]
+    fn new_private_key_encryption_uses_argon2id_json_envelope() {
+        let encrypted =
+            encrypt_private_key_with_password(b"private key bytes", "Argon2id!Strong#Password123")
+                .expect("encrypt private key");
+
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&encrypted).expect("new encryption should be JSON");
+        assert_eq!(envelope["jacsEncryptedPrivateKeyVersion"], 2);
+        assert_eq!(envelope["kdf"]["name"], "Argon2id");
+        assert_eq!(envelope["cipher"], "AES-256-GCM");
+
+        let decrypted =
+            decrypt_private_key_secure_with_password(&encrypted, "Argon2id!Strong#Password123")
+                .expect("decrypt v2 envelope");
+        assert_eq!(decrypted.as_slice(), b"private key bytes");
     }
 }
 

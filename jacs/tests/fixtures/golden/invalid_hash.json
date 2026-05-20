@@ -1,6 +1,6 @@
 {
   "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
-  "jacsType": "message",
+  "jacsType": "document",
   "jacsLevel": "raw",
   "content": {
     "type": "test_message",
@@ -30,7 +30,7 @@
     ],
     "publicKeyHash": "0000000000000000000000000000000000000000000000000000000000000000",
     "signature": "PLACEHOLDER_SIGNATURE_FOR_HASH_MISMATCH_TEST",
-    "signingAlgorithm": "RSA-PSS"
+    "signingAlgorithm": "ring-Ed25519"
   },
   "_golden_fixture_note": "This fixture intentionally has a mismatched hash. The jacsSha256 does not match the actual content hash. Verification should fail with a hash mismatch error."
 }

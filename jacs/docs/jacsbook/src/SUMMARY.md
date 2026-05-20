@@ -53,11 +53,6 @@
 - [JSON Schemas](schemas/overview.md)
 - [Agent Schema](schemas/agent.md)
 - [Document Schema](schemas/document.md)
-- [Task Schema](schemas/task.md)
-- [Agent State Schema](schemas/agentstate.md)
-- [Commitment Schema](schemas/commitment.md)
-- [Todo List Schema](schemas/todo.md)
-- [Conversation Schema](schemas/conversation.md)
 - [Config File Schema](schemas/configuration.md)
 
 ## Concepts

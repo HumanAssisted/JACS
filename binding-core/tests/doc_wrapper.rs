@@ -235,12 +235,12 @@ fn test_create_json_returns_signed_document() {
 #[test]
 fn test_create_json_with_options() {
     let wrapper = mock_wrapper();
-    let options = r#"{"jacs_type": "message", "visibility": "public"}"#;
+    let options = r#"{"jacs_type": "document", "visibility": "public"}"#;
     let result = wrapper.create_json(r#"{"body": "hello"}"#, Some(options));
     assert!(result.is_ok());
 
     let doc: Value = serde_json::from_str(&result.unwrap()).unwrap();
-    assert_eq!(doc["jacsType"], "message");
+    assert_eq!(doc["jacsType"], "document");
 }
 
 #[test]

@@ -61,7 +61,7 @@ pub fn embed_signature_in_agent_card(
 ///
 /// * `agent_card` - The Agent Card to verify (must have at least one signature)
 /// * `public_key` - The public key bytes for verification
-/// * `algorithm` - The key algorithm (e.g., "rsa", "ring-Ed25519")
+/// * `algorithm` - The key algorithm (e.g., "ring-Ed25519")
 ///
 /// # Returns
 ///
@@ -376,26 +376,16 @@ mod tests {
     }
 
     #[test]
-    fn test_sign_agent_card_rsa_is_disabled() {
+    fn test_sign_agent_card_ed25519_jwk_keys() {
         let card = make_test_card();
-        let err = crate::a2a::keys::create_jwk_keys(Some("ring-Ed25519"), Some("rsa"))
-            .err()
-            .expect("RSA A2A key generation should be blocked");
-        assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
-        );
-
-        let ring_keys =
-            crate::crypt::ringwrapper::generate_keys().expect("ed25519 key generation should work");
-        let err = sign_agent_card_jws(&card, &ring_keys.0, "rsa", "rsa-key-1")
-            .expect_err("RSA A2A signing should be blocked");
-        assert!(
-            err.to_string().contains("RUSTSEC-2023-0071"),
-            "error should explain the RSA security block, got: {}",
-            err
-        );
+        let keys = crate::a2a::keys::create_jwk_keys(Some("ring-Ed25519"), Some("ring-Ed25519"))
+            .expect("Ed25519 A2A key generation should work");
+        let jws = sign_agent_card_jws(&card, &keys.a2a_private_key, "ring-Ed25519", "ec-key-1")
+            .expect("Ed25519 A2A signing should work");
+        let signed_card = embed_signature_in_agent_card(&card, &jws, Some("ec-key-1"));
+        let result = verify_agent_card_jws(&signed_card, &keys.a2a_public_key, "ring-Ed25519")
+            .expect("Ed25519 A2A verification should work");
+        assert!(result);
     }
 
     #[test]

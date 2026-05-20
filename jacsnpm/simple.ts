@@ -627,7 +627,7 @@ export function verifySelfSync(): VerificationResult {
 }
 
 /**
- * Signs arbitrary data as a JACS message.
+ * Signs arbitrary data with the legacy signed-message type label.
  */
 export async function signMessage(data: any): Promise<SignedDocument> {
   const docContent = createRawDocumentPayload('message', { content: data });
@@ -1476,4 +1476,3 @@ export function exportAttestationDsseSync(
     return JSON.parse(raw) as DsseEnvelope;
   });
 }
-

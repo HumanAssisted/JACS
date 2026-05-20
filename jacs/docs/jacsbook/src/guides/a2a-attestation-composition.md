@@ -39,7 +39,7 @@ agent_a = JacsClient.quickstart(name="scanner", domain="scanner.example.com")
 a2a_a = agent_a.get_a2a()
 signed = a2a_a.sign_artifact(
     {"scan_result": "clean", "target": "file.bin"},
-    "message",
+    "artifact",
 )
 
 # --- Agent B: Receive, verify, attest ---
@@ -61,7 +61,7 @@ attestation = agent_b.create_attestation(
 # Send the attestation onward via A2A
 attested_artifact = a2a_b.sign_artifact(
     {"attestation_id": attestation.document_id, "original_artifact": signed["jacsId"]},
-    "message",
+    "artifact",
     parent_signatures=[signed],
 )
 ```
@@ -76,7 +76,7 @@ const agentA = await JacsClient.quickstart({ name: 'scanner', domain: 'scanner.e
 const a2aA = agentA.getA2A();
 const signed = await a2aA.signArtifact(
   { scanResult: 'clean', target: 'file.bin' },
-  'message',
+  'artifact',
 );
 
 // --- Agent B: Receive, verify, attest ---

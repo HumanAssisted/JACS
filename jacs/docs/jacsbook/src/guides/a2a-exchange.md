@@ -16,7 +16,7 @@ from jacs.client import JacsClient
 client = JacsClient.quickstart(name="my-agent", domain="my-agent.example.com")
 
 # Sign an artifact
-signed = client.sign_artifact({"action": "classify", "input": "data"}, "task")
+signed = client.sign_artifact({"action": "classify", "input": "data"}, "artifact")
 
 # Verify it (with trust assessment)
 a2a = client.get_a2a()
@@ -30,12 +30,12 @@ When multiple agents process data in sequence, link artifacts into a verifiable 
 
 ```python
 # Agent A signs step 1
-step1 = client_a.sign_artifact({"step": 1, "data": "raw"}, "message")
+step1 = client_a.sign_artifact({"step": 1, "data": "raw"}, "artifact")
 
 # Agent B signs step 2, referencing step 1 as parent
 step2 = client_b.sign_artifact(
     {"step": 2, "data": "processed"},
-    "message",
+    "artifact",
     parent_signatures=[step1],
 )
 

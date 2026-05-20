@@ -382,31 +382,6 @@ jacs agent verify --no-dns              # Skip DNS entirely
 jacs agent verify --ignore-dns          # Ignore DNS validation failures
 ```
 
-## Task Management
-
-### Creating Tasks
-
-```bash
-# Simple task
-jacs task create \
-  -n "Review Contract" \
-  -d "Review the service contract and provide feedback"
-
-# Task with additional data from file
-cat > task-details.json << 'EOF'
-{
-  "priority": "high",
-  "dueDate": "2024-02-15",
-  "assignee": "legal-team"
-}
-EOF
-
-jacs task create \
-  -n "Contract Review" \
-  -d "Detailed review required" \
-  -f task-details.json
-```
-
 ## Scripting Examples
 
 ### Batch Document Processing

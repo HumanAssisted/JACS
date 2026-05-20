@@ -88,20 +88,16 @@ describe('JacsClient A2A methods', function () {
       expect(card.metadata.jacsId).to.equal(client.agentId);
     });
 
-    (available ? it : it.skip)('should include services as skills when provided', () => {
+    (available ? it : it.skip)('should include explicit skills when provided', () => {
       const client = clientModule.JacsClient.ephemeralSync('ring-Ed25519');
       const card = client.exportAgentCard({
         jacsId: client.agentId,
         jacsName: 'SkillBot',
-        jacsServices: [{
-          name: 'Summarization',
-          serviceDescription: 'Summarize text documents',
-          tools: [{
-            function: {
-              name: 'summarize',
-              description: 'Summarize a document',
-            },
-          }],
+        skills: [{
+          id: 'summarize',
+          name: 'summarize',
+          description: 'Summarize a document',
+          tags: ['jacs', 'summarization'],
         }],
       });
 

@@ -325,7 +325,7 @@ def create(
         name: Human-readable name for the agent
         password: Password for encrypting the private key.
                   If not provided, falls back to JACS_PRIVATE_KEY_PASSWORD env var.
-        algorithm: Signing algorithm ("pq2025", "ring-Ed25519", "RSA-PSS").
+        algorithm: Signing algorithm ("pq2025", "ring-Ed25519").
         data_directory: Directory for data storage (default: "./jacs_data")
         key_directory: Directory for keys (default: "./jacs_keys")
         config_path: Where to save the config (default: "./jacs.config.json")
@@ -478,7 +478,7 @@ def quickstart(
         name: Agent name for first-time quickstart creation.
         domain: Agent domain for DNS/public-key verification workflows.
         description: Optional human-readable agent description.
-        algorithm: "pq2025" (default), "ed25519", or "rsa-pss"
+        algorithm: "pq2025" (default) or "ed25519"
         strict: Enable strict verification mode
         config_path: Path to config file (default: "./jacs.config.json")
 
@@ -847,7 +847,7 @@ def sign_message(data: Any) -> SignedDocument:
     logger.debug("sign_message() called with data type=%s", type(data).__name__)
 
     try:
-        # Create a document with the data as payload
+        # Preserve the long-standing sign_message type label for compatibility.
         doc_json = json.dumps({
             "jacsDocument": {
                 "type": "message",
@@ -1249,7 +1249,7 @@ def verify_yaml(yaml_str: str) -> bool:
 def get_public_key() -> str:
     """Get the loaded agent's public key in PEM format.
 
-    For algorithms that produce PEM text keys (RSA-PSS), returns the PEM directly.
+    Returns PEM-armored output for supported public keys.
     For algorithms with binary keys (Ed25519, pq2025), returns PEM-armored output.
 
     Returns:

@@ -92,7 +92,7 @@ pub struct CreateAgentProgrammaticParams {
 
     /// Cryptographic algorithm. Default: "pq2025" (ML-DSA-87, FIPS-204).
     #[schemars(
-        description = "Cryptographic algorithm: 'pq2025' (default, post-quantum), 'ring-Ed25519', or 'RSA-PSS'"
+        description = "Cryptographic algorithm: 'pq2025' (default, post-quantum) or 'ring-Ed25519'"
     )]
     pub algorithm: Option<String>,
 
@@ -152,7 +152,7 @@ pub fn tools() -> Vec<Tool> {
             "jacs_verify_document",
             "Verify a signed JACS document given its full JSON string. Checks both the \
              content hash and cryptographic signature. Use this when you have a signed \
-             document in memory (e.g. from an approval context or message payload) and \
+             document in memory (e.g. from an approval context or signed payload) and \
              need to confirm its integrity and authenticity.",
             schema_map::<VerifyDocumentParams>(),
         ),

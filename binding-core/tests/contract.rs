@@ -78,7 +78,8 @@ fn create_ephemeral_wrapper() -> AgentWrapper {
 #[serial]
 fn test_load_with_info_returns_canonical_metadata() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let config_dir = tmp.path().join("nested");
+    let tmp_path = tmp.path().canonicalize().unwrap();
+    let config_dir = tmp_path.join("nested");
     let data_dir = config_dir.join("jacs_data");
     let key_dir = config_dir.join("jacs_keys");
     let config_path = config_dir.join("jacs.config.json");
@@ -96,7 +97,7 @@ fn test_load_with_info_returns_canonical_metadata() {
     let (_agent, created_info) =
         jacs::simple::SimpleAgent::create_with_params(params).expect("create should succeed");
 
-    let _cwd_guard = CwdGuard::change_to(tmp.path());
+    let _cwd_guard = CwdGuard::change_to(&tmp_path);
     unsafe {
         std::env::set_var("JACS_PRIVATE_KEY_PASSWORD", "TestP@ss123!#");
     }
@@ -123,9 +124,10 @@ fn test_load_with_info_returns_canonical_metadata() {
 #[serial]
 fn test_load_with_info_prefers_wrapper_password_and_restores_process_env() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let config_path = tmp.path().join("jacs.config.json");
-    let data_dir = tmp.path().join("jacs_data");
-    let key_dir = tmp.path().join("jacs_keys");
+    let tmp_path = tmp.path().canonicalize().unwrap();
+    let config_path = tmp_path.join("jacs.config.json");
+    let data_dir = tmp_path.join("jacs_data");
+    let key_dir = tmp_path.join("jacs_keys");
 
     let params = jacs::simple::CreateAgentParams::builder()
         .name("binding-password-store")
@@ -217,15 +219,16 @@ fn test_create_agent_pq2025() {
 }
 
 #[test]
-fn test_create_agent_rsa_is_disabled() {
+fn test_create_agent_ed25519_alias_succeeds() {
     let wrapper = AgentWrapper::new();
-    let err = wrapper
-        .ephemeral(Some("rsa-pss"))
-        .expect_err("ephemeral(rsa-pss) should be blocked");
+    let info_json = wrapper
+        .ephemeral(Some("ed25519"))
+        .expect("ephemeral(ed25519) should succeed");
+    let info: Value = serde_json::from_str(&info_json).unwrap();
     assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
+        info["algorithm"].as_str().unwrap_or("").contains("Ed25519"),
+        "ed25519 alias should select ring-Ed25519, got: {}",
+        info["algorithm"]
     );
 }
 
@@ -238,7 +241,7 @@ fn test_sign_message_output_has_signature_fields() {
     let wrapper = create_ephemeral_wrapper();
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"action": "test", "value": 42}
     });
@@ -272,7 +275,7 @@ fn test_verify_valid_returns_success() {
     let wrapper = create_ephemeral_wrapper();
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"hello": "verify-test"}
     });
@@ -296,7 +299,7 @@ fn test_verify_rejects_tampered() {
     let wrapper = create_ephemeral_wrapper();
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"original": true}
     });
@@ -431,12 +434,12 @@ fn test_diagnostics_standalone_returns_valid_json() {
 // =============================================================================
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_ed25519() {
+fn test_full_roundtrip_create_sign_verify_ed25519_alias() {
     let wrapper = create_ephemeral_wrapper();
 
     // Sign a document
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"roundtrip": "ed25519", "step": 1}
     });
@@ -453,16 +456,25 @@ fn test_full_roundtrip_create_sign_verify_ed25519() {
 }
 
 #[test]
-fn test_full_roundtrip_create_sign_verify_rsa_is_disabled() {
+fn test_full_roundtrip_create_sign_verify_ed25519() {
     let wrapper = AgentWrapper::new();
-    let err = wrapper
-        .ephemeral(Some("rsa-pss"))
-        .expect_err("ephemeral(rsa-pss) should be blocked");
-    assert!(
-        err.to_string().contains("RUSTSEC-2023-0071"),
-        "error should explain the RSA security block, got: {}",
-        err
-    );
+    wrapper
+        .ephemeral(Some("ed25519"))
+        .expect("ephemeral(ed25519) should succeed");
+    let signed = wrapper
+        .create_document(
+            &serde_json::json!({"curve": "ed25519"}).to_string(),
+            None,
+            None,
+            true,
+            None,
+            None,
+        )
+        .expect("create_document should succeed");
+    let valid = wrapper
+        .verify_signature(&signed, None)
+        .expect("verify_signature should succeed");
+    assert!(valid, "ed25519 roundtrip document should verify");
 }
 
 #[cfg(feature = "pq-tests")]
@@ -471,7 +483,7 @@ fn test_full_roundtrip_create_sign_verify_pq2025() {
     let wrapper = create_ephemeral_wrapper_pq();
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"roundtrip": "pq2025", "step": 1}
     });

@@ -7,7 +7,7 @@ verification across different language bindings (Rust, Python, Go, NPM).
 
 ### Valid Documents
 
-- `message_signed.json` - A simple signed message document
+- `document_signed.json` - A simple signed generic document
 - `file_embedded.json` - A signed document with an embedded file attachment
 
 ### Invalid Documents (for testing error handling)
@@ -21,14 +21,14 @@ These fixtures should be loadable and verifiable by all JACS bindings:
 
 ```rust
 // Rust
-let result = jacs::simple::verify(&std::fs::read_to_string("message_signed.json")?)?;
+let result = jacs::simple::verify(&std::fs::read_to_string("document_signed.json")?)?;
 assert!(result.valid);
 ```
 
 ```python
 # Python
 import jacs.simple as jacs
-result = jacs.verify(open("message_signed.json").read())
+result = jacs.verify(open("document_signed.json").read())
 assert result.valid
 ```
 

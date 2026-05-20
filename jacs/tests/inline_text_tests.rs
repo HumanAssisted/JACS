@@ -374,8 +374,7 @@ fn canonical_content_hash_b64url(content: &str) -> String {
     use base64::Engine;
     use sha2::{Digest, Sha256};
     let lf_only: String = content.chars().filter(|&c| c != '\r').collect();
-    let trimmed =
-        lf_only.trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\n' || c == '\r');
+    let trimmed = lf_only.trim_end_matches([' ', '\t', '\n', '\r']);
     let mut hasher = Sha256::new();
     hasher.update(trimmed.as_bytes());
     let raw = hasher.finalize();
@@ -715,81 +714,39 @@ fn sign_text_file_atomic_crash_simulation() {
     }
 }
 
-// =============================================================================
-// Issue 008 / PRD §10 ninth-pass — verify_rsa_pss_fixture_roundtrip
-// =============================================================================
-//
-// Locks the `"rsa-pss" => rsawrapper::verify_string(...)` dispatch arm in
-// `verify_single_block`. JACS forbids RSA-PSS *signing* operations at runtime
-// (RUSTSEC-2023-0071 mitigation), but RSA-PSS *verification* must continue to
-// work for legacy artifacts. This test signs a content blob with the `rsa`
-// crate directly (bypassing the JACS sign-side block), inserts the signature
-// into a hand-crafted inline block, and asserts the JACS verifier accepts it.
-
 #[test]
-fn verify_rsa_pss_fixture_roundtrip() {
+fn verify_ed25519_fixture_roundtrip() {
     use base64::Engine as _;
     use jacs::inline::{
         BEGIN_MARKER, CANONICALIZATION_TAG, CURRENT_BLOCK_VERSION, END_MARKER, KeyResolver,
-        ResolvedKey, SignatureBlockYaml, SignatureStatus, VerifyTextResult, verify_inline,
+        ResolvedKey, SignatureBlockYaml, VerifyTextResult, verify_inline,
     };
-    use rsa::pkcs8::{EncodePublicKey, LineEnding};
-    use rsa::pss::BlindedSigningKey;
-    use rsa::sha2::Sha256;
-    use rsa::{RsaPrivateKey, RsaPublicKey};
-    use sha2::Digest;
-    use signature::{RandomizedSigner, SignatureEncoding};
+    use sha2::{Digest, Sha256};
 
-    // Generate a fresh RSA-PSS keypair for the test directly via the `rsa`
-    // crate. This bypasses the JACS-runtime block on RSA private-key ops while
-    // still exercising the JACS verifier on the public side.
-    let mut rng = rsa::rand_core::OsRng;
-    let priv_key = RsaPrivateKey::new(&mut rng, 2048).expect("rsa keygen");
-    let pub_key = RsaPublicKey::from(&priv_key);
-    let pub_pem = pub_key
-        .to_public_key_pem(LineEnding::CRLF)
-        .expect("pub pem");
-    let pub_pem_bytes = pub_pem.as_bytes().to_vec();
+    let agent = ephemeral_ed25519();
+    let signer_id = agent.get_agent_id().expect("agent id");
+    let public_key = agent.get_public_key().expect("public key");
+    let content = "ed25519 fixture roundtrip body\n";
+    let content_hash_b64 = canonical_content_hash_b64url(content);
+    let preimage = format!("JACS-INLINE-TEXT-V1\nsha256:{}", content_hash_b64);
+    let signature = agent
+        .sign_raw_bytes(preimage.as_bytes())
+        .expect("sign inline fixture preimage");
+    let signature_b64 = base64::engine::general_purpose::STANDARD.encode(signature);
 
-    let content = "rsa-pss roundtrip body\n";
-
-    // Compute the same content hash JACS computes (LF-only + trailing-ws-trim).
-    let normalised: String = content.chars().filter(|&c| c != '\r').collect();
-    let trimmed = normalised
-        .trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\n' || c == '\r')
-        .to_string();
-    let content_hash_raw = {
-        let mut h = Sha256::new();
-        h.update(trimmed.as_bytes());
-        h.finalize()
-    };
-    let content_hash_b64 =
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(content_hash_raw);
-    let pre_image = format!("JACS-INLINE-TEXT-V1\nsha256:{}", content_hash_b64);
-
-    // RSA-PSS sign the pre-image directly.
-    let signing_key = BlindedSigningKey::<Sha256>::new(priv_key.clone());
-    let sig_bytes = signing_key
-        .sign_with_rng(&mut rng, pre_image.as_bytes())
-        .to_bytes();
-    let signature_b64 = base64::engine::general_purpose::STANDARD.encode(&sig_bytes);
-
-    // publicKeyHash = sha256-b64url over normalised PEM. Use jacs's normaliser
-    // so the verifier hashes the same input shape.
-    let normalised_pem = jacs::crypt::normalize_public_key_pem(&pub_pem_bytes);
-    let pkh_raw = {
-        let mut h = Sha256::new();
-        h.update(normalised_pem.as_bytes());
-        h.finalize()
-    };
-    let pkh_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pkh_raw);
-    let public_key_hash = format!("sha256-b64url:{}", pkh_b64);
+    let normalised_pem = jacs::crypt::normalize_public_key_pem(&public_key);
+    let mut hasher = Sha256::new();
+    hasher.update(normalised_pem.as_bytes());
+    let public_key_hash = format!(
+        "sha256-b64url:{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hasher.finalize())
+    );
 
     let block = SignatureBlockYaml {
         signature_block_version: CURRENT_BLOCK_VERSION,
-        signer: "rsa-pss-fixture-signer".to_string(),
+        signer: signer_id,
         public_key_hash,
-        algorithm: "rsa-pss".to_string(),
+        algorithm: "ed25519".to_string(),
         hash_algorithm: "sha256".to_string(),
         canonicalization: CANONICALIZATION_TAG.to_string(),
         timestamp: chrono::Utc::now().to_rfc3339(),
@@ -799,30 +756,29 @@ fn verify_rsa_pss_fixture_roundtrip() {
     let body = serde_yaml_ng::to_string(&block).unwrap();
     let framed = format!("{}{}\n{}{}\n", content, BEGIN_MARKER, body, END_MARKER);
 
-    // Resolver returns the PEM bytes for the rsa-pss algorithm tag.
     struct FixtureResolver {
-        pem: Vec<u8>,
+        public_key: Vec<u8>,
     }
     impl KeyResolver for FixtureResolver {
         fn resolve(&self, _signer_id: &str) -> Option<ResolvedKey> {
             Some(ResolvedKey {
-                public_key_pem: self.pem.clone(),
-                algorithm: "rsa-pss".to_string(),
+                public_key_pem: self.public_key.clone(),
+                algorithm: "ed25519".to_string(),
             })
         }
     }
-    let resolver = FixtureResolver { pem: pub_pem_bytes };
-    let result = verify_inline(&framed, &resolver, jacs::inline::VerifyOptions::default())
-        .expect("verify_inline ok");
+
+    let result = verify_inline(
+        &framed,
+        &FixtureResolver { public_key },
+        jacs::inline::VerifyOptions::default(),
+    )
+    .expect("verify_inline ok");
     match result {
         VerifyTextResult::Signed { signatures } => {
             assert_eq!(signatures.len(), 1);
-            assert_eq!(
-                signatures[0].status,
-                SignatureStatus::Valid,
-                "rsa-pss dispatch arm must verify the signature"
-            );
-            assert_eq!(signatures[0].algorithm, "rsa-pss");
+            assert_eq!(signatures[0].status, SignatureStatus::Valid);
+            assert_eq!(signatures[0].algorithm, "ed25519");
         }
         other => panic!("expected Signed; got {:?}", other),
     }

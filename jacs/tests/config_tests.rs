@@ -87,6 +87,7 @@ fn test_config_with_missing_env_vars() {
 /// Test 12-Factor config loading: env vars override config file values
 #[test]
 #[serial]
+#[allow(deprecated)]
 fn test_12factor_env_vars_override_config_file() {
     clear_test_env_vars();
 
@@ -123,6 +124,7 @@ fn test_12factor_env_vars_override_config_file() {
 /// Test 12-Factor config loading with no config file, just env vars
 #[test]
 #[serial]
+#[allow(deprecated)]
 fn test_12factor_env_vars_only() {
     clear_test_env_vars();
 
@@ -141,7 +143,7 @@ fn test_12factor_env_vars_only() {
     );
     assert_eq!(
         config.jacs_agent_key_algorithm().as_deref(),
-        Some("RSA-PSS"),
+        Some("ring-Ed25519"),
         "Algorithm should come from env var"
     );
 
@@ -151,6 +153,7 @@ fn test_12factor_env_vars_only() {
 /// Test that 12-Factor config falls back to defaults when nothing is set
 #[test]
 #[serial]
+#[allow(deprecated)]
 fn test_12factor_defaults() {
     clear_test_env_vars();
 
@@ -189,7 +192,7 @@ fn test_config_from_file_sets_config_dir() {
     let expected_parent = config_path.parent().unwrap();
     assert_eq!(
         config.config_dir(),
-        Some(expected_parent.as_ref()),
+        Some(expected_parent),
         "config_dir should be set to the parent directory of the config file"
     );
 }

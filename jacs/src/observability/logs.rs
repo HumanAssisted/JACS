@@ -57,7 +57,7 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
-use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig};
 #[cfg(all(not(target_arch = "wasm32"), feature = "otlp-logs"))]
 use opentelemetry_sdk::{Resource, logs::SdkLoggerProvider};
 
@@ -138,7 +138,7 @@ pub fn init_logs(config: &LogConfig) -> Result<Option<WorkerGuard>, crate::error
                     .with(otel_layer)
                     .try_init()
                     .map_err(|e| crate::error::JacsError::ConfigError(e.to_string()))?;
-                return Ok(None);
+                Ok(None)
             }
             #[cfg(any(target_arch = "wasm32", not(feature = "otlp-logs")))]
             {

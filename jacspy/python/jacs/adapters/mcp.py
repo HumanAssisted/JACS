@@ -105,7 +105,7 @@ def register_jacs_tools(
             tools are registered. Valid names: ``sign_document``,
             ``verify_document``, ``sign_file``, ``verify_self``,
             ``create_agreement``, ``sign_agreement``,
-            ``check_agreement``, ``audit``, ``agent_info``,
+            ``check_agreement``, ``agent_info``,
             ``share_public_key``, ``share_agent``, ``sign_text``,
             ``verify_text``, ``sign_image``, ``verify_image``,
             ``extract_media_signature``.
@@ -133,7 +133,6 @@ def register_jacs_tools(
         "create_agreement": _make_create_agreement,
         "sign_agreement": _make_sign_agreement,
         "check_agreement": _make_check_agreement,
-        "audit": _make_audit,
         "agent_info": _make_agent_info,
         "share_public_key": _make_share_public_key,
         "share_agent": _make_share_agent,
@@ -322,23 +321,6 @@ def _make_check_agreement(mcp, cl):
             return _err(str(e))
 
     return jacs_check_agreement
-
-
-def _make_audit(mcp, cl):
-    @mcp.tool(
-        name="jacs_audit",
-        description="Run a read-only JACS security audit and health checks.",
-    )
-    def jacs_audit() -> str:
-        """Run a security audit. Returns JSON with risks and health checks."""
-        try:
-            result = cl.audit()
-            return json.dumps(result) if isinstance(result, dict) else str(result)
-        except Exception as e:
-            logger.warning("jacs_audit failed: %s", e)
-            return _err(str(e))
-
-    return jacs_audit
 
 
 def _make_agent_info(mcp, cl):
@@ -623,7 +605,7 @@ def register_a2a_tools(
         description="Legacy compatibility alias for jacs_wrap_a2a_artifact.",
     )
     def jacs_wrap_a2a_artifact(
-        artifact_json: str, artifact_type: str = "message"
+        artifact_json: str, artifact_type: str = "artifact"
     ) -> str:
         """Sign an A2A artifact. artifact_json is a JSON string."""
         try:
