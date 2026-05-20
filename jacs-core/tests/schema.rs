@@ -11,21 +11,6 @@ const EXPECTED_KEYS: &[&str] = &[
     "schemas/components/signature/v1/signature.schema.json",
     "schemas/components/files/v1/files.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
-    "schemas/components/action/v1/action.schema.json",
-    "schemas/components/unit/v1/unit.schema.json",
-    "schemas/components/tool/v1/tool.schema.json",
-    "schemas/components/service/v1/service.schema.json",
-    "schemas/components/contact/v1/contact.schema.json",
-    "schemas/task/v1/task.schema.json",
-    "schemas/message/v1/message.schema.json",
-    "schemas/eval/v1/eval.schema.json",
-    "schemas/program/v1/program.schema.json",
-    "schemas/node/v1/node.schema.json",
-    "schemas/components/embedding/v1/embedding.schema.json",
-    "schemas/agentstate/v1/agentstate.schema.json",
-    "schemas/commitment/v1/commitment.schema.json",
-    "schemas/todo/v1/todo.schema.json",
-    "schemas/components/todoitem/v1/todoitem.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
 ];
 
@@ -57,18 +42,19 @@ fn config_schema_string_parses_as_json_object() {
 
 #[test]
 fn schema_short_name_returns_expected_slot_for_known_id() {
-    // SCHEMA_SHORT_NAME doesn't enumerate every embedded schema (program,
-    // embedding, todoitem, component are referenced by $ref but don't
-    // need their own slot). We only assert the document-typed entries
-    // that the native side already tracked.
+    // Keep the portable schema short-name table aligned with the native
+    // consolidated schema set from v0.10.2.
     let cases: &[(&str, &str)] = &[
         ("https://hai.ai/schemas/agent/v1/agent.schema.json", "agent"),
-        ("https://hai.ai/schemas/task/v1/task.schema.json", "task"),
         (
             "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json",
             "agreement",
         ),
         ("https://hai.ai/schemas/header/v1/header.schema.json", "header"),
+        (
+            "https://hai.ai/schemas/attestation/v1/attestation.schema.json",
+            "attestation",
+        ),
         ("document", "document"),
     ];
     for (id, expected) in cases {
