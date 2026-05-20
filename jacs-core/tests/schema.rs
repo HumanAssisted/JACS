@@ -27,8 +27,8 @@ fn default_schema_strings_present() {
             .copied()
             .unwrap_or_else(|| panic!("missing embedded schema for {key}"));
         assert!(!body.is_empty(), "schema {key} body was empty");
-        let parsed: serde_json::Value =
-            serde_json::from_str(body).unwrap_or_else(|e| panic!("schema {key} did not parse as JSON: {e}"));
+        let parsed: serde_json::Value = serde_json::from_str(body)
+            .unwrap_or_else(|e| panic!("schema {key} did not parse as JSON: {e}"));
         assert!(parsed.is_object(), "schema {key} was not a JSON object");
     }
 }
@@ -50,7 +50,10 @@ fn schema_short_name_returns_expected_slot_for_known_id() {
             "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json",
             "agreement",
         ),
-        ("https://hai.ai/schemas/header/v1/header.schema.json", "header"),
+        (
+            "https://hai.ai/schemas/header/v1/header.schema.json",
+            "header",
+        ),
         (
             "https://hai.ai/schemas/attestation/v1/attestation.schema.json",
             "attestation",
@@ -85,7 +88,10 @@ fn embedded_resolver_unknown_ref_errors() {
             .expect_err("unknown ref errors");
     assert!(matches!(err, CoreError::SchemaInvalid(_)));
     let msg = err.to_string();
-    assert!(msg.contains("does-not-exist"), "error message includes the missing path: {msg}");
+    assert!(
+        msg.contains("does-not-exist"),
+        "error message includes the missing path: {msg}"
+    );
 }
 
 #[test]
@@ -98,8 +104,11 @@ fn embedded_resolver_implements_retrieve_trait() {
     // jsonschema::Uri::from_str via the referencing crate would normally
     // be how a URI is constructed; the simplest portable path is to use
     // referencing::Uri directly via the re-export.
-    let uri: jsonschema::Uri<String> =
-        "https://hai.ai/schemas/agent/v1/agent.schema.json".parse().expect("uri parses");
-    let v = resolver.retrieve(&uri).expect("retrieve resolves known schema");
+    let uri: jsonschema::Uri<String> = "https://hai.ai/schemas/agent/v1/agent.schema.json"
+        .parse()
+        .expect("uri parses");
+    let v = resolver
+        .retrieve(&uri)
+        .expect("retrieve resolves known schema");
     assert!(v.is_object());
 }

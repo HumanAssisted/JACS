@@ -4,12 +4,9 @@
 //! legacy raw-binary PBKDF2 envelope).
 
 const FIXTURE_PASSWORD: &str = "Test#Password!2026";
-const FIXTURE_PKCS8: &[u8] =
-    include_bytes!("fixtures/wasm_compat/ed25519.pkcs8.bin");
-const FIXTURE_ARGON2ID: &[u8] =
-    include_bytes!("fixtures/wasm_compat/argon2id.encrypted.json");
-const FIXTURE_PBKDF2: &[u8] =
-    include_bytes!("fixtures/wasm_compat/pbkdf2.encrypted.bin");
+const FIXTURE_PKCS8: &[u8] = include_bytes!("fixtures/wasm_compat/ed25519.pkcs8.bin");
+const FIXTURE_ARGON2ID: &[u8] = include_bytes!("fixtures/wasm_compat/argon2id.encrypted.json");
+const FIXTURE_PBKDF2: &[u8] = include_bytes!("fixtures/wasm_compat/pbkdf2.encrypted.bin");
 
 #[test]
 fn aes_encrypt_reexport_decrypts_argon2id_v2_fixture() {
@@ -37,11 +34,9 @@ fn aes_encrypt_reexport_emits_v2_envelope() {
     // JSON envelope so writes are forward-compatible with everything
     // that reads from disk.
     let plain = b"sample-key";
-    let env = jacs::crypt::aes_encrypt::encrypt_private_key_with_password(
-        plain,
-        "Test#Password!2026",
-    )
-    .expect("encrypt");
+    let env =
+        jacs::crypt::aes_encrypt::encrypt_private_key_with_password(plain, "Test#Password!2026")
+            .expect("encrypt");
     assert_eq!(env.first(), Some(&b'{'), "writer still emits JSON envelope");
     let json: serde_json::Value = serde_json::from_slice(&env).unwrap();
     assert_eq!(json["jacsEncryptedPrivateKeyVersion"], 2);

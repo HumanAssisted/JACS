@@ -15,8 +15,8 @@ fn agreements_create_initial_shape() {
         "subject": "merge proposal",
     });
     let agent_ids = vec!["alice".to_string(), "bob".to_string()];
-    let out = agreements::create(&doc, &agent_ids, Some("Approve?"), Some("Repo merge"))
-        .expect("create");
+    let out =
+        agreements::create(&doc, &agent_ids, Some("Approve?"), Some("Repo merge")).expect("create");
 
     let agreement = out.get("jacsAgreement").expect("jacsAgreement present");
     assert!(agreement.is_object());
@@ -43,7 +43,7 @@ fn agreements_sign_appends_signer_entry() {
         .to_string();
     let mut doc = agreements::create(
         &json!({ "topic": "tea time" }),
-        &[agent_id.clone()],
+        std::slice::from_ref(&agent_id),
         None,
         None,
     )
@@ -63,7 +63,15 @@ fn agreements_sign_appends_signer_entry() {
 // Two-party sign + verify (happy path)
 // -----------------------------------------------------------------------------
 
-fn two_party_doc() -> (CoreAgent, CoreAgent, Value, String, Vec<u8>, String, Vec<u8>) {
+fn two_party_doc() -> (
+    CoreAgent,
+    CoreAgent,
+    Value,
+    String,
+    Vec<u8>,
+    String,
+    Vec<u8>,
+) {
     let mut a = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("a ephemeral");
     let mut b = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("b ephemeral");
     let id_a = a
@@ -198,7 +206,8 @@ fn agreements_single_party_sign_and_verify_ok() {
         .unwrap()
         .to_string();
     let pk = a.public_key().to_vec();
-    let mut doc = agreements::create(&json!({"x": 1}), &[id.clone()], None, None).expect("create");
+    let mut doc = agreements::create(&json!({"x": 1}), std::slice::from_ref(&id), None, None)
+        .expect("create");
     agreements::sign(&mut a, &mut doc, "solo").expect("sign");
 
     let signers: Vec<(&str, &[u8], SigningAlgorithm)> =

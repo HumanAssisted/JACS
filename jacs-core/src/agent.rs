@@ -15,16 +15,14 @@
 //!
 //! See PRD §4.2, §4.4.
 
+use crate::CoreError;
 use crate::envelope::decrypt_private_key;
 use crate::material::{AgentMaterial, UnlockSecret};
-use crate::sign::{
-    DetachedSigner, Ed25519DalekSigner, Pq2025Signer, SigningAlgorithm,
-};
+use crate::sign::{DetachedSigner, Ed25519DalekSigner, Pq2025Signer, SigningAlgorithm};
 use crate::verify::{
     VerificationOutcome, build_signature_content_v2, build_signature_metadata,
     default_signed_fields, sha256_hex, verify_document,
 };
-use crate::{CoreError};
 use base64::Engine as _;
 use secrecy::ExposeSecret;
 use serde_json::{Value, json};
@@ -84,8 +82,7 @@ impl CoreAgent {
     ) -> Result<Self, CoreError> {
         let signer: Box<dyn DetachedSigner> = match secret {
             UnlockSecret::Password(password) => {
-                let decrypted =
-                    decrypt_private_key(&material.encrypted_private_key, password)?;
+                let decrypted = decrypt_private_key(&material.encrypted_private_key, password)?;
                 build_signer(material.algorithm, decrypted.as_slice())?
             }
             UnlockSecret::RawPrivateKey(secret_box) => {
@@ -185,10 +182,7 @@ impl CoreAgent {
     ///
     /// Returns `CoreError::Locked` if the signer has been cleared, or
     /// the underlying `EncryptionFailed` if envelope encryption fails.
-    pub fn export_encrypted_material(
-        &self,
-        password: &str,
-    ) -> Result<AgentMaterial, CoreError> {
+    pub fn export_encrypted_material(&self, password: &str) -> Result<AgentMaterial, CoreError> {
         let signer = self.signer.as_ref().ok_or(CoreError::Locked)?;
         let raw_private = signer.export_private_key_bytes()?;
         let encrypted = crate::envelope::encrypt_private_key(&raw_private, password)?;
@@ -356,13 +350,11 @@ impl CoreAgent {
                     Err(other) => Err(other),
                 }
             }
-            SigningAlgorithm::Pq2025 => {
-                match Pq2025Signer::verify(public_key, bytes, signature) {
-                    Ok(()) => Ok(true),
-                    Err(CoreError::SignatureInvalid(_)) => Ok(false),
-                    Err(other) => Err(other),
-                }
-            }
+            SigningAlgorithm::Pq2025 => match Pq2025Signer::verify(public_key, bytes, signature) {
+                Ok(()) => Ok(true),
+                Err(CoreError::SignatureInvalid(_)) => Ok(false),
+                Err(other) => Err(other),
+            },
         }
     }
 
@@ -374,7 +366,12 @@ impl CoreAgent {
     /// `VerificationOutcome` with `valid = false` and one entry in
     /// `errors` when the signature itself does not verify.
     pub fn verify(&self, signed: &Value) -> Result<VerificationOutcome, CoreError> {
-        verify_document(signed, &self.public_key, self.algorithm, JACS_SIGNATURE_FIELDNAME)
+        verify_document(
+            signed,
+            &self.public_key,
+            self.algorithm,
+            JACS_SIGNATURE_FIELDNAME,
+        )
     }
 
     /// Static verify path — does not require an unlocked agent.

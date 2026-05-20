@@ -158,8 +158,13 @@ fn derive_argon2id_key(
             kdf.name, kdf.version
         )));
     }
-    let params = Params::new(kdf.m_cost_kib, kdf.t_cost, kdf.p_cost, Some(AES_256_KEY_SIZE))
-        .map_err(|e| CoreError::MalformedEnvelope(format!("invalid Argon2id parameters: {e}")))?;
+    let params = Params::new(
+        kdf.m_cost_kib,
+        kdf.t_cost,
+        kdf.p_cost,
+        Some(AES_256_KEY_SIZE),
+    )
+    .map_err(|e| CoreError::MalformedEnvelope(format!("invalid Argon2id parameters: {e}")))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut key = [0u8; AES_256_KEY_SIZE];
     argon2

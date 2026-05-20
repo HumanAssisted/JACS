@@ -18,8 +18,14 @@ fn core_agent_sign_message_produces_expected_shape() {
         .expect("sign");
 
     assert!(signed.is_object(), "signed doc is a JSON object");
-    assert_eq!(signed.get("jacsType").and_then(|v| v.as_str()), Some("message"));
-    assert_eq!(signed.get("jacsLevel").and_then(|v| v.as_str()), Some("raw"));
+    assert_eq!(
+        signed.get("jacsType").and_then(|v| v.as_str()),
+        Some("message")
+    );
+    assert_eq!(
+        signed.get("jacsLevel").and_then(|v| v.as_str()),
+        Some("raw")
+    );
     assert_eq!(
         signed.pointer("/content/hello").and_then(|v| v.as_str()),
         Some("world")
@@ -53,7 +59,9 @@ fn core_agent_sign_message_produces_expected_shape() {
         Some("jacs-signature-v2")
     );
     assert!(
-        sig.get("signature").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty()),
+        sig.get("signature")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty()),
         "signature is a non-empty string"
     );
 }

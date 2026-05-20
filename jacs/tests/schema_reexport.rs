@@ -25,7 +25,8 @@ fn jacs_schema_utils_reexport_short_name_lookup() {
 
 #[test]
 fn jacs_schema_utils_reexport_config_schema() {
-    let v: serde_json::Value = serde_json::from_str(CONFIG_SCHEMA_STRING).expect("config schema parses");
+    let v: serde_json::Value =
+        serde_json::from_str(CONFIG_SCHEMA_STRING).expect("config schema parses");
     assert!(v.is_object());
 }
 
@@ -34,9 +35,7 @@ fn jacs_and_jacs_core_default_schema_strings_are_identical() {
     // Pointer-equality on the `&'static` map — this is what `pub use`
     // gives us; it confirms there is exactly one map in the program,
     // not two copies that happen to look alike.
-    let jacs_ptr =
-        &jacs::schema::utils::DEFAULT_SCHEMA_STRINGS as *const _ as *const u8;
-    let core_ptr =
-        &jacs_core::schema::DEFAULT_SCHEMA_STRINGS as *const _ as *const u8;
+    let jacs_ptr = &jacs::schema::utils::DEFAULT_SCHEMA_STRINGS as *const _ as *const u8;
+    let core_ptr = &jacs_core::schema::DEFAULT_SCHEMA_STRINGS as *const _ as *const u8;
     assert_eq!(jacs_ptr, core_ptr, "re-export should point at the same map");
 }

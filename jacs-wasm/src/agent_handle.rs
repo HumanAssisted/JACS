@@ -379,11 +379,7 @@ impl CoreAgentHandle {
     /// Returns `JacsWasmError { code: "Locked" }` if `clearSecrets` has
     /// been called.
     #[wasm_bindgen(js_name = signAgreementJson)]
-    pub fn sign_agreement_json(
-        &self,
-        agreement_json: &str,
-        role: &str,
-    ) -> Result<String, JsError> {
+    pub fn sign_agreement_json(&self, agreement_json: &str, role: &str) -> Result<String, JsError> {
         let mut document: Value = serde_json::from_str(agreement_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid agreement JSON: {}",
@@ -427,13 +423,12 @@ impl CoreAgentHandle {
                 e
             )))
         })?;
-        let signer_specs: Vec<SignerSpec> =
-            serde_json::from_str(signers_json).map_err(|e| {
-                map_core_err(CoreError::MalformedDocument(format!(
-                    "invalid signers JSON (expected `[{{agentId, publicKeyBase64, algorithm}}]`): {}",
-                    e
-                )))
-            })?;
+        let signer_specs: Vec<SignerSpec> = serde_json::from_str(signers_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid signers JSON (expected `[{{agentId, publicKeyBase64, algorithm}}]`): {}",
+                e
+            )))
+        })?;
 
         // Decode each spec into `(agent_id, public_key_bytes, algorithm)`
         // so we can borrow the references shape `agreements::verify`
@@ -506,8 +501,13 @@ pub fn create_agreement_json(
             e
         )))
     })?;
-    let updated = agreements::create(&document, &agent_ids, question.as_deref(), context.as_deref())
-        .map_err(map_core_err)?;
+    let updated = agreements::create(
+        &document,
+        &agent_ids,
+        question.as_deref(),
+        context.as_deref(),
+    )
+    .map_err(map_core_err)?;
     serde_json::to_string(&updated).map_err(|e| {
         map_core_err(CoreError::MalformedDocument(format!(
             "serialize agreement skeleton: {}",
@@ -572,18 +572,10 @@ pub fn import_encrypted_agent_files(
     algorithm: &str,
 ) -> Result<CoreAgentHandle, JsError> {
     init_jacs_wasm();
-    let config: Value = serde_json::from_str(config_text).map_err(|e| {
-        map_core_err(CoreError::MalformedDocument(format!(
-            "config text: {}",
-            e
-        )))
-    })?;
-    let agent_json: Value = serde_json::from_str(agent_text).map_err(|e| {
-        map_core_err(CoreError::MalformedDocument(format!(
-            "agent text: {}",
-            e
-        )))
-    })?;
+    let config: Value = serde_json::from_str(config_text)
+        .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("config text: {}", e))))?;
+    let agent_json: Value = serde_json::from_str(agent_text)
+        .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("agent text: {}", e))))?;
     let algo = parse_algorithm(algorithm)?;
     let material = AgentMaterial {
         config,

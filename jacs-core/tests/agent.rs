@@ -50,7 +50,10 @@ fn agent_material_serde_roundtrip() {
     assert_eq!(restored.config, material.config);
     assert_eq!(restored.agent, material.agent);
     assert_eq!(restored.public_key, material.public_key);
-    assert_eq!(restored.encrypted_private_key, material.encrypted_private_key);
+    assert_eq!(
+        restored.encrypted_private_key,
+        material.encrypted_private_key
+    );
     assert_eq!(restored.algorithm, material.algorithm);
 }
 

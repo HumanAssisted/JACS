@@ -24,10 +24,10 @@
 //!
 //! See PRD §4.2, §4.4.
 
+use crate::CoreError;
 use crate::agent::CoreAgent;
 use crate::sign::SigningAlgorithm;
 use crate::verify::{build_signature_content_v2, verify_detached};
-use crate::CoreError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -110,9 +110,7 @@ pub fn create(
     new_doc
         .as_object_mut()
         .ok_or_else(|| {
-            CoreError::MalformedDocument(
-                "agreement target must be a JSON object".into(),
-            )
+            CoreError::MalformedDocument("agreement target must be a JSON object".into())
         })?
         .insert(JACS_AGREEMENT_FIELDNAME.into(), agreement_obj);
     Ok(new_doc)
@@ -128,11 +126,7 @@ pub fn create(
 /// exist (caller should invoke [`create`] first).
 ///
 /// Returns `CoreError::Locked` if `agent` has been cleared.
-pub fn sign(
-    agent: &mut CoreAgent,
-    document: &mut Value,
-    role: &str,
-) -> Result<(), CoreError> {
+pub fn sign(agent: &mut CoreAgent, document: &mut Value, role: &str) -> Result<(), CoreError> {
     // We want the signature to cover the agreement payload — the same
     // canonical bytes any other signer would produce — so we sign
     // through `sign_document_inplace` with the agreement placement key.
@@ -192,9 +186,7 @@ pub fn sign(
         .entry("signatures".to_string())
         .or_insert_with(|| json!([]));
     let signatures_arr = signatures_entry.as_array_mut().ok_or_else(|| {
-        CoreError::MalformedDocument(
-            "'jacsAgreement.signatures' must be an array".into(),
-        )
+        CoreError::MalformedDocument("'jacsAgreement.signatures' must be an array".into())
     })?;
     signatures_arr.push(signature_with_role);
 
@@ -225,17 +217,15 @@ pub fn verify(
     document: &Value,
     signers: &[(&str, &[u8], SigningAlgorithm)],
 ) -> Result<QuorumOutcome, CoreError> {
-    let agreement = document
-        .get(JACS_AGREEMENT_FIELDNAME)
-        .ok_or_else(|| CoreError::AgreementFailed(
-            format!("missing '{}' object", JACS_AGREEMENT_FIELDNAME)
-        ))?;
+    let agreement = document.get(JACS_AGREEMENT_FIELDNAME).ok_or_else(|| {
+        CoreError::AgreementFailed(format!("missing '{}' object", JACS_AGREEMENT_FIELDNAME))
+    })?;
     let signatures = agreement
         .get("signatures")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| CoreError::AgreementFailed(
-            "missing 'jacsAgreement.signatures' array".into()
-        ))?;
+        .ok_or_else(|| {
+            CoreError::AgreementFailed("missing 'jacsAgreement.signatures' array".into())
+        })?;
 
     let mut per_signer = Vec::with_capacity(signatures.len());
     let mut verified = 0usize;
@@ -278,26 +268,23 @@ pub fn verify(
             None => {
                 per_signer.push(SignerResult {
                     agent_id,
-                    status: SignerStatus::Invalid(
-                        "'signature' missing on signer entry".into(),
-                    ),
+                    status: SignerStatus::Invalid("'signature' missing on signer entry".into()),
                 });
                 continue;
             }
         };
-        let signature_bytes = match base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            signature_b64,
-        ) {
-            Ok(b) => b,
-            Err(e) => {
-                per_signer.push(SignerResult {
-                    agent_id,
-                    status: SignerStatus::Invalid(format!("base64 signature decode: {e}")),
-                });
-                continue;
-            }
-        };
+        let signature_bytes =
+            match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, signature_b64)
+            {
+                Ok(b) => b,
+                Err(e) => {
+                    per_signer.push(SignerResult {
+                        agent_id,
+                        status: SignerStatus::Invalid(format!("base64 signature decode: {e}")),
+                    });
+                    continue;
+                }
+            };
         let fields: Vec<String> = sig_obj
             .get("fields")
             .and_then(|v| v.as_array())

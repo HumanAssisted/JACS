@@ -45,7 +45,7 @@ use crate::agent_handle::{create_ephemeral, import_encrypted_agent};
 thread_local! {
     static HANDLE_REGISTRY: RefCell<HashMap<u32, crate::agent_handle::CoreAgentHandle>> =
         RefCell::new(HashMap::new());
-    static NEXT_HANDLE_ID: RefCell<u32> = RefCell::new(1);
+    static NEXT_HANDLE_ID: RefCell<u32> = const { RefCell::new(1) };
 }
 
 fn allocate_handle_id() -> u32 {
@@ -191,7 +191,7 @@ pub(crate) fn dispatch_request(req: WorkerRequest) -> WorkerReply {
             id: reply_id,
             ok: false,
             result: None,
-            error: Some(serde_json::to_value(err).unwrap_or_else(|_| Value::Null)),
+            error: Some(serde_json::to_value(err).unwrap_or(Value::Null)),
         },
     }
 }
@@ -206,7 +206,9 @@ fn require_u32(args: &Value, key: &str) -> Result<u32, WorkerError> {
     args.get(key)
         .and_then(|v| v.as_u64())
         .and_then(|n| u32::try_from(n).ok())
-        .ok_or_else(|| WorkerError::malformed_input(format!("missing or out-of-range '{}' field", key)))
+        .ok_or_else(|| {
+            WorkerError::malformed_input(format!("missing or out-of-range '{}' field", key))
+        })
 }
 
 fn op_create_ephemeral(args: Value) -> Result<Value, WorkerError> {
@@ -294,9 +296,9 @@ fn op_import_encrypted_agent(args: Value) -> Result<Value, WorkerError> {
 fn op_clear_secrets(args: Value) -> Result<Value, WorkerError> {
     let handle_id = require_u32(&args, "handleId")?;
     with_handle(handle_id, |handle| {
-        handle.clear_secrets().map_err(|_| {
-            WorkerError::new("AgreementFailed", "clearSecrets failed in worker")
-        })?;
+        handle
+            .clear_secrets()
+            .map_err(|_| WorkerError::new("AgreementFailed", "clearSecrets failed in worker"))?;
         Ok(json!({ "ok": true }))
     })
 }
@@ -336,11 +338,13 @@ pub fn worker_handle_message(message: JsValue) -> Result<JsValue, JsError> {
                 id: 0,
                 ok: false,
                 result: None,
-                error: Some(serde_json::to_value(WorkerError::malformed_input(format!(
-                    "invalid request envelope: {}",
-                    e
-                )))
-                .unwrap_or(Value::Null)),
+                error: Some(
+                    serde_json::to_value(WorkerError::malformed_input(format!(
+                        "invalid request envelope: {}",
+                        e
+                    )))
+                    .unwrap_or(Value::Null),
+                ),
             };
             return reply_to_js_value(&reply);
         }
@@ -369,38 +373,30 @@ mod tests {
 
     #[test]
     fn create_ephemeral_returns_handle_id_and_public_key() {
-        let reply = dispatch_request(req(
-            1,
-            "createEphemeral",
-            json!({ "algorithm": "ed25519" }),
-        ));
+        let reply = dispatch_request(req(1, "createEphemeral", json!({ "algorithm": "ed25519" })));
         assert!(reply.ok, "reply error: {:?}", reply.error);
         assert_eq!(reply.id, 1);
         let result = reply.result.expect("result present");
         assert!(result["handleId"].as_u64().unwrap() > 0);
         assert_eq!(result["algorithm"], Value::String("ed25519".into()));
-        assert!(result["publicKeyBase64"].as_str().unwrap().len() > 0);
+        assert!(!result["publicKeyBase64"].as_str().unwrap().is_empty());
     }
 
     #[test]
     fn create_ephemeral_with_unknown_algorithm_returns_unsupported_algorithm() {
-        let reply = dispatch_request(req(
-            1,
-            "createEphemeral",
-            json!({ "algorithm": "rsa" }),
-        ));
+        let reply = dispatch_request(req(1, "createEphemeral", json!({ "algorithm": "rsa" })));
         assert!(!reply.ok);
-        assert_eq!(reply.error.unwrap()["code"], Value::String("UnsupportedAlgorithm".into()));
+        assert_eq!(
+            reply.error.unwrap()["code"],
+            Value::String("UnsupportedAlgorithm".into())
+        );
     }
 
     #[test]
     fn sign_then_verify_through_dispatcher_roundtrips() {
         // 1) Create.
-        let create_reply = dispatch_request(req(
-            1,
-            "createEphemeral",
-            json!({ "algorithm": "ed25519" }),
-        ));
+        let create_reply =
+            dispatch_request(req(1, "createEphemeral", json!({ "algorithm": "ed25519" })));
         let handle_id = create_reply.result.unwrap()["handleId"].as_u64().unwrap() as u32;
 
         // 2) Sign.
@@ -464,18 +460,12 @@ mod tests {
     #[test]
     #[ignore = "JsError construction panics on native targets; covered under wasm-pack test"]
     fn clear_secrets_then_sign_returns_locked() {
-        let create_reply = dispatch_request(req(
-            1,
-            "createEphemeral",
-            json!({ "algorithm": "ed25519" }),
-        ));
+        let create_reply =
+            dispatch_request(req(1, "createEphemeral", json!({ "algorithm": "ed25519" })));
         let handle_id = create_reply.result.unwrap()["handleId"].as_u64().unwrap() as u32;
 
-        let clear_reply = dispatch_request(req(
-            2,
-            "clearSecrets",
-            json!({ "handleId": handle_id }),
-        ));
+        let clear_reply =
+            dispatch_request(req(2, "clearSecrets", json!({ "handleId": handle_id })));
         assert!(clear_reply.ok);
 
         let sign_reply = dispatch_request(req(
@@ -492,18 +482,11 @@ mod tests {
 
     #[test]
     fn drop_handle_removes_from_registry() {
-        let create_reply = dispatch_request(req(
-            1,
-            "createEphemeral",
-            json!({ "algorithm": "ed25519" }),
-        ));
+        let create_reply =
+            dispatch_request(req(1, "createEphemeral", json!({ "algorithm": "ed25519" })));
         let handle_id = create_reply.result.unwrap()["handleId"].as_u64().unwrap() as u32;
 
-        let drop_reply = dispatch_request(req(
-            2,
-            "dropHandle",
-            json!({ "handleId": handle_id }),
-        ));
+        let drop_reply = dispatch_request(req(2, "dropHandle", json!({ "handleId": handle_id })));
         assert!(drop_reply.ok);
 
         // Subsequent ops on the same id return InvalidHandle.
@@ -522,11 +505,7 @@ mod tests {
     #[test]
     fn malformed_args_return_malformed_document() {
         // sign with missing handleId.
-        let reply = dispatch_request(req(
-            1,
-            "signMessage",
-            json!({ "dataJson": "{}" }),
-        ));
+        let reply = dispatch_request(req(1, "signMessage", json!({ "dataJson": "{}" })));
         assert!(!reply.ok);
         assert_eq!(
             reply.error.unwrap()["code"],

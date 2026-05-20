@@ -75,9 +75,8 @@ impl EmbeddedSchemaResolver {
     /// Resolve a path string to a parsed `Value`. Returns
     /// `CoreError::SchemaInvalid` for unknown refs or unparsable JSON.
     pub fn resolve(path: &str) -> Result<Value, CoreError> {
-        let body = Self::lookup(path).ok_or_else(|| {
-            CoreError::SchemaInvalid(format!("unknown schema $ref '{path}'"))
-        })?;
+        let body = Self::lookup(path)
+            .ok_or_else(|| CoreError::SchemaInvalid(format!("unknown schema $ref '{path}'")))?;
         serde_json::from_str(body)
             .map_err(|e| CoreError::SchemaInvalid(format!("failed to parse schema '{path}': {e}")))
     }

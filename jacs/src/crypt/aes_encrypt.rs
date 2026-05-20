@@ -301,8 +301,7 @@ pub fn check_password_strength(password: &str) -> Result<(), JacsError> {
 fn translate_envelope_error(err: CoreError) -> JacsError {
     match err {
         CoreError::InvalidPassword => JacsError::CryptoError(
-            "Private key decryption failed: incorrect password or corrupted key file."
-                .to_string(),
+            "Private key decryption failed: incorrect password or corrupted key file.".to_string(),
         ),
         other => other.into(),
     }

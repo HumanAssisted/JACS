@@ -13,9 +13,7 @@ use tracing::{debug, warn};
 // config schema live in `jacs-core::schema` so the wasm build sees the
 // same bytes. We re-export them here for source-compat with everything
 // that already imports `jacs::schema::utils::*` (PRD §4.4).
-pub use jacs_core::schema::{
-    CONFIG_SCHEMA_STRING, DEFAULT_SCHEMA_STRINGS, SCHEMA_SHORT_NAME,
-};
+pub use jacs_core::schema::{CONFIG_SCHEMA_STRING, DEFAULT_SCHEMA_STRINGS, SCHEMA_SHORT_NAME};
 
 /// Whether to accept invalid TLS certificates when fetching remote schemas.
 ///

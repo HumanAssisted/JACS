@@ -27,14 +27,12 @@ fn algorithm_enum_serializes_to_lowercase_string() {
     init_jacs_wasm();
 
     // Round-trip Ed25519.
-    let js_ed = serde_wasm_bindgen::to_value(&SigningAlgorithm::Ed25519)
-        .expect("ed25519 to JS");
+    let js_ed = serde_wasm_bindgen::to_value(&SigningAlgorithm::Ed25519).expect("ed25519 to JS");
     let ed_str: String = serde_wasm_bindgen::from_value(js_ed).expect("ed25519 from JS");
     assert_eq!(ed_str, "ed25519");
 
     // Round-trip Pq2025.
-    let js_pq = serde_wasm_bindgen::to_value(&SigningAlgorithm::Pq2025)
-        .expect("pq2025 to JS");
+    let js_pq = serde_wasm_bindgen::to_value(&SigningAlgorithm::Pq2025).expect("pq2025 to JS");
     let pq_str: String = serde_wasm_bindgen::from_value(js_pq).expect("pq2025 from JS");
     assert_eq!(pq_str, "pq2025");
 

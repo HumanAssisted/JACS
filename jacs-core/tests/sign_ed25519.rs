@@ -11,15 +11,17 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use jacs_core::CoreError;
 use jacs_core::sign::{DetachedSigner, Ed25519DalekSigner, SigningAlgorithm};
 
-const FIXTURE_PKCS8: &[u8] = include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.pkcs8.bin");
-const FIXTURE_PUBLIC: &[u8] = include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.public.bin");
+const FIXTURE_PKCS8: &[u8] =
+    include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.pkcs8.bin");
+const FIXTURE_PUBLIC: &[u8] =
+    include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.public.bin");
 const FIXTURE_SIGNED_JSON: &str =
     include_str!("../../jacs/tests/fixtures/wasm_compat/ed25519.signed.json");
 
 #[test]
 fn ed25519_dalek_imports_ring_pkcs8() {
-    let signer = Ed25519DalekSigner::from_pkcs8(FIXTURE_PKCS8)
-        .expect("ring-generated PKCS#8 must import");
+    let signer =
+        Ed25519DalekSigner::from_pkcs8(FIXTURE_PKCS8).expect("ring-generated PKCS#8 must import");
     assert_eq!(
         signer.public_key(),
         FIXTURE_PUBLIC,
@@ -38,8 +40,9 @@ fn ed25519_dalek_signature_matches_ring_fixture() {
     let parsed: serde_json::Value =
         serde_json::from_str(FIXTURE_SIGNED_JSON).expect("fixture JSON");
     let canonical = parsed["canonical"].as_str().expect("canonical field");
-    let expected_sig =
-        B64.decode(parsed["signature_b64"].as_str().expect("sig field")).expect("base64");
+    let expected_sig = B64
+        .decode(parsed["signature_b64"].as_str().expect("sig field"))
+        .expect("base64");
     let produced_sig = signer.sign(canonical.as_bytes()).expect("sign");
     assert_eq!(
         produced_sig, expected_sig,
@@ -52,7 +55,9 @@ fn ed25519_dalek_verify_existing_signature() {
     let parsed: serde_json::Value =
         serde_json::from_str(FIXTURE_SIGNED_JSON).expect("fixture JSON");
     let canonical = parsed["canonical"].as_str().expect("canonical");
-    let sig = B64.decode(parsed["signature_b64"].as_str().expect("sig")).expect("base64");
+    let sig = B64
+        .decode(parsed["signature_b64"].as_str().expect("sig"))
+        .expect("base64");
     Ed25519DalekSigner::verify(FIXTURE_PUBLIC, canonical.as_bytes(), &sig)
         .expect("Task 001 ed25519 fixture must verify via jacs-core");
 }
@@ -78,7 +83,9 @@ fn ed25519_dalek_clear_secrets_blocks_sign() {
     let mut signer = Ed25519DalekSigner::generate().expect("keygen");
     signer.sign(b"before clear").expect("sign before clear");
     signer.clear_secrets();
-    let err = signer.sign(b"after clear").expect_err("must fail when locked");
+    let err = signer
+        .sign(b"after clear")
+        .expect_err("must fail when locked");
     assert!(matches!(err, CoreError::Locked), "got {err:?}");
     // Idempotent.
     signer.clear_secrets();
@@ -88,23 +95,22 @@ fn ed25519_dalek_clear_secrets_blocks_sign() {
 
 #[test]
 fn ed25519_dalek_malformed_pkcs8_rejected() {
-    let err = Ed25519DalekSigner::from_pkcs8(b"garbage")
-        .expect_err("garbage PKCS#8 must be rejected");
+    let err =
+        Ed25519DalekSigner::from_pkcs8(b"garbage").expect_err("garbage PKCS#8 must be rejected");
     assert!(matches!(err, CoreError::MalformedKey(_)), "got {err:?}");
 }
 
 #[test]
 fn ed25519_dalek_malformed_public_key_length_rejected() {
-    let err = Ed25519DalekSigner::verify(b"short", b"msg", &[0u8; 64])
-        .expect_err("must fail");
+    let err = Ed25519DalekSigner::verify(b"short", b"msg", &[0u8; 64]).expect_err("must fail");
     assert!(matches!(err, CoreError::MalformedKey(_)), "got {err:?}");
 }
 
 #[test]
 fn ed25519_dalek_malformed_signature_length_rejected() {
     let signer = Ed25519DalekSigner::generate().expect("keygen");
-    let err = Ed25519DalekSigner::verify(signer.public_key(), b"msg", &[0u8; 10])
-        .expect_err("must fail");
+    let err =
+        Ed25519DalekSigner::verify(signer.public_key(), b"msg", &[0u8; 10]).expect_err("must fail");
     assert!(matches!(err, CoreError::SignatureInvalid(_)), "got {err:?}");
 }
 

@@ -91,6 +91,9 @@ fn every_variant_has_distinct_code_and_serializes_cleanly() {
             "duplicate code {code} — variants must have distinct codes"
         );
         // Display string must be non-empty (used as `message`).
-        assert!(!err.to_string().is_empty(), "variant {code} had empty Display");
+        assert!(
+            !err.to_string().is_empty(),
+            "variant {code} had empty Display"
+        );
     }
 }

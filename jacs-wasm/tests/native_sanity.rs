@@ -8,9 +8,7 @@
 
 #![cfg(not(target_arch = "wasm32"))]
 
-use jacs_wasm::{
-    CoreAgentHandle, create_ephemeral, create_verifier,
-};
+use jacs_wasm::{CoreAgentHandle, create_ephemeral, create_verifier};
 use serde_json::Value;
 
 #[allow(dead_code)]
@@ -148,8 +146,8 @@ fn get_public_key_base64_decodes_to_32_bytes_for_ed25519() {
 fn metrics_starts_at_zero_and_increments_on_sign_and_verify() {
     let handle = create_ephemeral("ed25519").expect("create");
 
-    let initial: Value = serde_json::from_str(&handle.metrics_json().expect("metrics"))
-        .expect("metrics json parse");
+    let initial: Value =
+        serde_json::from_str(&handle.metrics_json().expect("metrics")).expect("metrics json parse");
     assert_eq!(initial["signCount"], Value::from(0));
     assert_eq!(initial["verifyCount"], Value::from(0));
     assert_eq!(initial["lastSignDurationMs"], Value::from(0.0));
@@ -159,8 +157,8 @@ fn metrics_starts_at_zero_and_increments_on_sign_and_verify() {
     let _ = handle.verify_json(&signed).expect("verify");
     let _ = handle.verify_json(&signed).expect("verify-2");
 
-    let after: Value = serde_json::from_str(&handle.metrics_json().expect("metrics"))
-        .expect("metrics json parse");
+    let after: Value =
+        serde_json::from_str(&handle.metrics_json().expect("metrics")).expect("metrics json parse");
     assert_eq!(after["signCount"], Value::from(1));
     assert_eq!(after["verifyCount"], Value::from(2));
     // Durations are non-negative (we can't assert > 0 reliably because
@@ -175,17 +173,11 @@ fn metrics_are_per_handle_independent() {
     let h1 = create_ephemeral("ed25519").expect("h1");
     let h2 = create_ephemeral("ed25519").expect("h2");
 
-    let _ = h1
-        .sign_message_json(r#"{"k":"a"}"#)
-        .expect("h1 sign");
-    let _ = h1
-        .sign_message_json(r#"{"k":"b"}"#)
-        .expect("h1 sign 2");
+    let _ = h1.sign_message_json(r#"{"k":"a"}"#).expect("h1 sign");
+    let _ = h1.sign_message_json(r#"{"k":"b"}"#).expect("h1 sign 2");
 
-    let m1: Value = serde_json::from_str(&h1.metrics_json().expect("m1"))
-        .expect("m1 parse");
-    let m2: Value = serde_json::from_str(&h2.metrics_json().expect("m2"))
-        .expect("m2 parse");
+    let m1: Value = serde_json::from_str(&h1.metrics_json().expect("m1")).expect("m1 parse");
+    let m2: Value = serde_json::from_str(&h2.metrics_json().expect("m2")).expect("m2 parse");
     assert_eq!(m1["signCount"], Value::from(2));
     assert_eq!(m2["signCount"], Value::from(0));
 }
@@ -205,8 +197,7 @@ fn metrics_verifier_handle_increments_verify_count() {
         .verify_with_key_json(&signed, &pk_b64, "ed25519")
         .expect("verify-with-key");
 
-    let m: Value = serde_json::from_str(&verifier.metrics_json().expect("m"))
-        .expect("m parse");
+    let m: Value = serde_json::from_str(&verifier.metrics_json().expect("m")).expect("m parse");
     assert_eq!(m["verifyCount"], Value::from(2));
     assert_eq!(m["signCount"], Value::from(0));
 

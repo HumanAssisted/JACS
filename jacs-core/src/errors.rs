@@ -139,10 +139,8 @@ impl Serialize for CoreError {
             _ => None,
         };
 
-        let mut s = serializer.serialize_struct(
-            "CoreError",
-            if details.is_some() { 3 } else { 2 },
-        )?;
+        let mut s =
+            serializer.serialize_struct("CoreError", if details.is_some() { 3 } else { 2 })?;
         s.serialize_field("code", self.code())?;
         s.serialize_field("message", &self.to_string())?;
         if let Some(d) = details {

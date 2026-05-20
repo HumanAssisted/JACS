@@ -8,11 +8,11 @@
 //! `jacs-wasm::local_store`.
 //!
 //! `UnlockSecret` is the password / raw-key choice the caller passes when
-//! constructing a `CoreAgent`. `Password` runs the encrypted envelope
-//! through the `envelope::decrypt_private_key` sniffer (V2 Argon2id JSON
-//! + legacy PBKDF2 raw binary). `RawPrivateKey` skips decryption entirely
-//! — used internally by `CoreAgent::ephemeral` and by callers who already
-//! hold the decrypted bytes.
+//! constructing a `CoreAgent`. `Password` runs the encrypted envelope through
+//! the `envelope::decrypt_private_key` sniffer (V2 Argon2id JSON plus legacy
+//! PBKDF2 raw binary). `RawPrivateKey` skips decryption entirely, used
+//! internally by `CoreAgent::ephemeral` and by callers who already hold the
+//! decrypted bytes.
 //!
 //! See PRD §4.2.
 

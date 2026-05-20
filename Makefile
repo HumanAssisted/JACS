@@ -753,3 +753,52 @@ help:
 	@echo "  CRATES_IO_TOKEN  - for crate/v* tags"
 	@echo "  PYPI_API_TOKEN   - for pypi/v* tags"
 	@echo "  NPM_TOKEN        - for npm/v* tags"
+
+# ============================================================================
+# DISK MAINTENANCE — Rust target/ + cargo cache hygiene
+# ============================================================================
+# With .cargo/config.toml's target-dir set, every cargo invocation across
+# the workspace + nested crates writes into ./target. These targets prune
+# stale artifacts and inspect usage. Recommended cadence:
+#   make disk-usage         # anytime, read-only
+#   make disk-sweep         # weekly — drops artifacts older than 14 days
+#   make disk-clean-light   # monthly — keeps release/
+#   make disk-clean-deep    # reclaim disk; forces full rebuild
+JACS_TREE := $(CURDIR)
+JACS_TARGET_DIR := $(JACS_TREE)/target
+
+.PHONY: disk-usage disk-clean-deep disk-clean-light disk-sweep install-disk-tools
+
+disk-usage: ## Show every Rust target/ in the JACS tree (read-only)
+	@find $(JACS_TREE) -type d -name target \
+	    -not -path "*/node_modules/*" -not -path "*/.venv*" \
+	    -prune -exec du -sh {} + 2>/dev/null | sort -hr
+
+disk-clean-deep: ## cargo clean the workspace (cleans every member crate)
+	@if [ -d $(JACS_TARGET_DIR) ]; then \
+	  cd $(JACS_TREE) && cargo clean --workspace; \
+	else \
+	  echo "No target dir at $(JACS_TARGET_DIR) — nothing to clean."; \
+	fi
+
+disk-clean-light: ## Drop debug/{incremental,deps,build}; keep release/
+	@if [ -d $(JACS_TARGET_DIR)/debug ]; then \
+	  rm -rf $(JACS_TARGET_DIR)/debug/incremental \
+	         $(JACS_TARGET_DIR)/debug/deps \
+	         $(JACS_TARGET_DIR)/debug/build; \
+	  echo "Cleaned $(JACS_TARGET_DIR)/debug/{incremental,deps,build}"; \
+	else \
+	  echo "No debug/ under $(JACS_TARGET_DIR) — nothing to clean."; \
+	fi
+
+disk-sweep: install-disk-tools ## Prune artifacts >14 days + autoclean cargo registry
+	@if [ -d $(JACS_TARGET_DIR) ]; then \
+	  cd $(JACS_TREE) && cargo sweep --time 14; \
+	else \
+	  echo "No target dir at $(JACS_TARGET_DIR) — nothing to sweep."; \
+	fi
+	cargo cache --autoclean
+
+install-disk-tools:
+	@command -v cargo-sweep >/dev/null 2>&1 || cargo install cargo-sweep
+	@command -v cargo-cache >/dev/null 2>&1 || cargo install cargo-cache

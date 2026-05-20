@@ -326,8 +326,8 @@ fn patch_storage_set_item_to_throw(message: &str) -> JsValue {
         &JsValue::from_str("Storage"),
     )
     .expect("get Storage");
-    let proto = js_sys::Reflect::get(&proto, &JsValue::from_str("prototype"))
-        .expect("Storage.prototype");
+    let proto =
+        js_sys::Reflect::get(&proto, &JsValue::from_str("prototype")).expect("Storage.prototype");
     let original = js_sys::Reflect::get(&proto, &JsValue::from_str("setItem"))
         .expect("Storage.prototype.setItem");
     // Build a closure that throws when called. Throw an Error object,
@@ -351,12 +351,8 @@ fn patch_storage_set_item_to_throw(message: &str) -> JsValue {
     // remainder of the test. The closure is uninstalled by
     // `restore_storage_set_item`, so the leak is bounded to the test.
     thrower.forget();
-    js_sys::Reflect::set(
-        &proto,
-        &JsValue::from_str("setItem"),
-        &thrower_js,
-    )
-    .expect("install thrower as setItem");
+    js_sys::Reflect::set(&proto, &JsValue::from_str("setItem"), &thrower_js)
+        .expect("install thrower as setItem");
     original
 }
 
@@ -370,8 +366,8 @@ fn restore_storage_set_item(original: JsValue) {
         &JsValue::from_str("Storage"),
     )
     .expect("get Storage");
-    let proto = js_sys::Reflect::get(&proto, &JsValue::from_str("prototype"))
-        .expect("Storage.prototype");
+    let proto =
+        js_sys::Reflect::get(&proto, &JsValue::from_str("prototype")).expect("Storage.prototype");
     js_sys::Reflect::set(&proto, &JsValue::from_str("setItem"), &original)
         .expect("restore setItem");
 }
@@ -381,9 +377,7 @@ fn restore_storage_set_item(original: JsValue) {
 /// [`restore_window_local_storage`] to put back.
 fn patch_window_local_storage_to_throw() -> JsValue {
     let window = web_sys::window().expect("window for monkeypatch");
-    let window_obj: js_sys::Object = JsValue::from(window)
-        .dyn_into()
-        .expect("window is object");
+    let window_obj: js_sys::Object = JsValue::from(window).dyn_into().expect("window is object");
     let original = js_sys::Object::get_own_property_descriptor(
         &window_obj,
         &JsValue::from_str("localStorage"),
@@ -395,12 +389,8 @@ fn patch_window_local_storage_to_throw() -> JsValue {
         wasm_bindgen::throw_val(err.into());
     }) as Box<dyn FnMut() -> JsValue>);
     let descriptor = js_sys::Object::new();
-    js_sys::Reflect::set(
-        &descriptor,
-        &JsValue::from_str("get"),
-        thrower.as_ref(),
-    )
-    .expect("set descriptor.get");
+    js_sys::Reflect::set(&descriptor, &JsValue::from_str("get"), thrower.as_ref())
+        .expect("set descriptor.get");
     js_sys::Reflect::set(
         &descriptor,
         &JsValue::from_str("configurable"),
@@ -408,11 +398,7 @@ fn patch_window_local_storage_to_throw() -> JsValue {
     )
     .expect("set descriptor.configurable");
     thrower.forget();
-    js_sys::Object::define_property(
-        &window_obj,
-        &JsValue::from_str("localStorage"),
-        &descriptor,
-    );
+    js_sys::Object::define_property(&window_obj, &JsValue::from_str("localStorage"), &descriptor);
     original
 }
 
@@ -420,20 +406,17 @@ fn patch_window_local_storage_to_throw() -> JsValue {
 /// [`patch_window_local_storage_to_throw`].
 fn restore_window_local_storage(original: JsValue) {
     let window = web_sys::window().expect("window for restore");
-    let window_obj: js_sys::Object = JsValue::from(window)
-        .dyn_into()
-        .expect("window is object");
+    let window_obj: js_sys::Object = JsValue::from(window).dyn_into().expect("window is object");
     if original.is_undefined() || original.is_null() {
         // No prior descriptor — best-effort delete the patched property.
-        let _ = js_sys::Reflect::delete_property(
-            &window_obj,
-            &JsValue::from_str("localStorage"),
-        );
+        let _ = js_sys::Reflect::delete_property(&window_obj, &JsValue::from_str("localStorage"));
         return;
     }
     js_sys::Object::define_property(
         &window_obj,
         &JsValue::from_str("localStorage"),
-        &original.dyn_into::<js_sys::Object>().expect("descriptor is object"),
+        &original
+            .dyn_into::<js_sys::Object>()
+            .expect("descriptor is object"),
     );
 }

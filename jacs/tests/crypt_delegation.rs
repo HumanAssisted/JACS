@@ -26,8 +26,8 @@ fn delegation_preserves_ring_output() {
         serde_json::from_str(FIXTURE_ED25519_SIGNED).expect("fixture JSON");
     let canonical = parsed["canonical"].as_str().expect("canonical").to_string();
 
-    let wrapper_sig = ringwrapper::sign_string(FIXTURE_PKCS8.to_vec(), &canonical)
-        .expect("ringwrapper sign");
+    let wrapper_sig =
+        ringwrapper::sign_string(FIXTURE_PKCS8.to_vec(), &canonical).expect("ringwrapper sign");
     let wrapper_sig_bytes = B64.decode(&wrapper_sig).expect("decode wrapper sig");
 
     let direct = Ed25519DalekSigner::from_pkcs8(FIXTURE_PKCS8).expect("direct import");
@@ -39,8 +39,9 @@ fn delegation_preserves_ring_output() {
     );
 
     // And the same bytes as the ring-era fixture.
-    let fixture_sig =
-        B64.decode(parsed["signature_b64"].as_str().expect("sig_b64")).expect("base64");
+    let fixture_sig = B64
+        .decode(parsed["signature_b64"].as_str().expect("sig_b64"))
+        .expect("base64");
     assert_eq!(
         wrapper_sig_bytes, fixture_sig,
         "ringwrapper sign_string must produce bytes identical to the ring fixture"
@@ -84,9 +85,12 @@ fn delegation_preserves_ring_generate_pkcs8_format() {
 #[test]
 fn delegation_preserves_pq2025_generate_format() {
     let (private_key, public_key) = pq2025::generate_keys().expect("generate");
-    assert_eq!(private_key.len(), 4896, "ML-DSA-87 private key is 4896 bytes");
+    assert_eq!(
+        private_key.len(),
+        4896,
+        "ML-DSA-87 private key is 4896 bytes"
+    );
     assert_eq!(public_key.len(), 2592, "ML-DSA-87 public key is 2592 bytes");
-    let sig =
-        pq2025::sign_string(private_key, &"hello".to_string()).expect("sign after generate");
+    let sig = pq2025::sign_string(private_key, &"hello".to_string()).expect("sign after generate");
     pq2025::verify_string(public_key, "hello", &sig).expect("verify after generate");
 }

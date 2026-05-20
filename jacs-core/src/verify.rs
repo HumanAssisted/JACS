@@ -9,9 +9,9 @@
 //!
 //! See PRD §4.2.
 
+use crate::CoreError;
 use crate::canonical::canonicalize_json_try;
 use crate::sign::{Ed25519DalekSigner, Pq2025Signer, SigningAlgorithm};
-use crate::CoreError;
 use serde_json::{Map, Value, json};
 
 // =========================================================================
@@ -94,14 +94,12 @@ pub fn build_signature_content_v2(
     signature_metadata: &Value,
 ) -> Result<String, CoreError> {
     let mut metadata = signature_metadata.clone();
-    let metadata_obj = metadata
-        .as_object_mut()
-        .ok_or_else(|| {
-            CoreError::MalformedDocument(format!(
-                "signature metadata at '{}' must be a JSON object",
-                placement_key
-            ))
-        })?;
+    let metadata_obj = metadata.as_object_mut().ok_or_else(|| {
+        CoreError::MalformedDocument(format!(
+            "signature metadata at '{}' must be a JSON object",
+            placement_key
+        ))
+    })?;
     metadata_obj.remove("signature");
 
     let mut field_entries = Vec::with_capacity(fields.len());
@@ -113,10 +111,7 @@ pub fn build_signature_content_v2(
             )));
         }
         let value = document.get(key).ok_or_else(|| {
-            CoreError::MalformedDocument(format!(
-                "signed field '{}' missing from document",
-                key
-            ))
+            CoreError::MalformedDocument(format!("signed field '{}' missing from document", key))
         })?;
         field_entries.push(json!({ "name": key, "value": value }));
     }
@@ -141,10 +136,7 @@ pub fn default_signed_fields(document: &Value, placement_key: &str) -> Vec<Strin
     };
     let mut fields: Vec<String> = obj
         .keys()
-        .filter(|k| {
-            k.as_str() != placement_key
-                && !JACS_IGNORE_FIELDS.contains(&k.as_str())
-        })
+        .filter(|k| k.as_str() != placement_key && !JACS_IGNORE_FIELDS.contains(&k.as_str()))
         .cloned()
         .collect();
     fields.sort();
@@ -211,13 +203,12 @@ pub fn verify_document(
                 placement_key
             ))
         })?;
-    let doc_algorithm =
-        SigningAlgorithm::from_wire_str(doc_algorithm_str).ok_or_else(|| {
-            CoreError::UnsupportedAlgorithm(format!(
-                "signed document algorithm '{}' is not recognized",
-                doc_algorithm_str
-            ))
-        })?;
+    let doc_algorithm = SigningAlgorithm::from_wire_str(doc_algorithm_str).ok_or_else(|| {
+        CoreError::UnsupportedAlgorithm(format!(
+            "signed document algorithm '{}' is not recognized",
+            doc_algorithm_str
+        ))
+    })?;
     if doc_algorithm != algorithm {
         return Err(CoreError::AlgorithmMismatch {
             expected: algorithm.to_string(),
@@ -234,11 +225,10 @@ pub fn verify_document(
                 placement_key
             ))
         })?;
-    let signature_bytes = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        signature_b64,
-    )
-    .map_err(|e| CoreError::MalformedDocument(format!("invalid base64 signature: {}", e)))?;
+    let signature_bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, signature_b64).map_err(
+            |e| CoreError::MalformedDocument(format!("invalid base64 signature: {}", e)),
+        )?;
 
     let fields = sig_obj
         .get("fields")
@@ -273,7 +263,12 @@ pub fn verify_document(
         errors: Vec::new(),
     };
 
-    match verify_detached(algorithm, public_key, canonical.as_bytes(), &signature_bytes) {
+    match verify_detached(
+        algorithm,
+        public_key,
+        canonical.as_bytes(),
+        &signature_bytes,
+    ) {
         Ok(()) => {
             outcome.valid = true;
         }
@@ -309,6 +304,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 /// This helper does not include the `signature` field — `build_signature_content_v2`
 /// strips it anyway, and `CoreAgent::sign_message` fills it in after
 /// running the signer.
+#[allow(clippy::too_many_arguments)]
 pub fn build_signature_metadata(
     agent_id: &str,
     agent_version: &str,

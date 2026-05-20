@@ -17,7 +17,8 @@ use rand::rngs::StdRng;
 
 const TEST_PASSWORD: &str = "Test#Password!2026";
 const FIXTURE_PASSWORD: &str = "Test#Password!2026"; // matches Task 001 regenerator
-const FIXTURE_PKCS8: &[u8] = include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.pkcs8.bin");
+const FIXTURE_PKCS8: &[u8] =
+    include_bytes!("../../jacs/tests/fixtures/wasm_compat/ed25519.pkcs8.bin");
 const FIXTURE_ARGON2ID: &[u8] =
     include_bytes!("../../jacs/tests/fixtures/wasm_compat/argon2id.encrypted.json");
 const FIXTURE_PBKDF2: &[u8] =
@@ -92,7 +93,10 @@ fn truncated_envelope_fails_with_malformed_envelope() {
     // Shorter than MIN_ENCRYPTED_HEADER_SIZE (28) and not JSON.
     let env: &[u8] = &[1, 2, 3, 4, 5];
     let err = decrypt_private_key(env, TEST_PASSWORD).expect_err("must fail");
-    assert!(matches!(err, CoreError::MalformedEnvelope(_)), "got {err:?}");
+    assert!(
+        matches!(err, CoreError::MalformedEnvelope(_)),
+        "got {err:?}"
+    );
 }
 
 #[test]
@@ -154,7 +158,10 @@ fn v2_envelope_with_wrong_version_returns_unsupported_algorithm() {
     });
     let bytes = serde_json::to_vec(&body).unwrap();
     let err = decrypt_private_key(&bytes, "anything").expect_err("must fail");
-    assert!(matches!(err, CoreError::UnsupportedAlgorithm(_)), "got {err:?}");
+    assert!(
+        matches!(err, CoreError::UnsupportedAlgorithm(_)),
+        "got {err:?}"
+    );
 }
 
 // =========================================================================
@@ -198,7 +205,10 @@ fn reserved_jaa1_magic_prefix_rejected() {
     let err = decrypt_private_key(&input, "anything").expect_err("must fail");
     match err {
         CoreError::UnsupportedAlgorithm(prefix) => {
-            assert_eq!(prefix, "JAA1", "reserved-prefix variant must carry the prefix");
+            assert_eq!(
+                prefix, "JAA1",
+                "reserved-prefix variant must carry the prefix"
+            );
         }
         other => panic!("expected UnsupportedAlgorithm(JAA1), got {other:?}"),
     }

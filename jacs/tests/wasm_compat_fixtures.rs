@@ -285,10 +285,7 @@ fn regenerate_wasm_compat_fixtures() {
 
 mod regen {
     use super::*;
-    use aes_gcm::{
-        Aes256Gcm, Key, KeyInit, Nonce,
-        aead::Aead,
-    };
+    use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce, aead::Aead};
     use pbkdf2::pbkdf2_hmac;
     use rand::{RngCore, SeedableRng, rngs::StdRng};
     use sha2::Sha256;
@@ -418,7 +415,9 @@ mod regen {
         let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
         let cipher = Aes256Gcm::new(cipher_key);
         let nonce = Nonce::from_slice(&nonce_bytes);
-        let ciphertext = cipher.encrypt(nonce, pkcs8.as_slice()).expect("aes encrypt");
+        let ciphertext = cipher
+            .encrypt(nonce, pkcs8.as_slice())
+            .expect("aes encrypt");
 
         let mut envelope = Vec::with_capacity(salt.len() + nonce_bytes.len() + ciphertext.len());
         envelope.extend_from_slice(&salt);

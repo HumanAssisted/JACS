@@ -32,8 +32,8 @@ mod native {
     #[test]
     fn sign_agreement_returns_updated_agreement_json() {
         let handle = create_ephemeral("ed25519").expect("ephemeral");
-        let agent_json: Value = serde_json::from_str(&handle.export_agent().expect("export"))
-            .expect("agent");
+        let agent_json: Value =
+            serde_json::from_str(&handle.export_agent().expect("export")).expect("agent");
         let agent_id = agent_json["jacsId"].as_str().expect("jacsId");
         let skeleton = create_agreement_json(
             r#"{"doc":"hello"}"#,
@@ -57,13 +57,12 @@ mod native {
     fn verify_two_party_agreement_with_keys() {
         let alice = create_ephemeral("ed25519").expect("alice");
         let bob = create_ephemeral("pq2025").expect("bob");
-        let alice_id = serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let bob_id = serde_json::from_str::<Value>(&bob.export_agent().unwrap()).unwrap()
-            ["jacsId"]
+        let alice_id =
+            serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
+        let bob_id = serde_json::from_str::<Value>(&bob.export_agent().unwrap()).unwrap()["jacsId"]
             .as_str()
             .unwrap()
             .to_string();
@@ -101,13 +100,12 @@ mod native {
     fn verify_agreement_missing_signer_key_returns_signer_key_missing() {
         let alice = create_ephemeral("ed25519").expect("alice");
         let bob = create_ephemeral("ed25519").expect("bob");
-        let alice_id = serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let bob_id = serde_json::from_str::<Value>(&bob.export_agent().unwrap()).unwrap()
-            ["jacsId"]
+        let alice_id =
+            serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
+        let bob_id = serde_json::from_str::<Value>(&bob.export_agent().unwrap()).unwrap()["jacsId"]
             .as_str()
             .unwrap()
             .to_string();
@@ -123,10 +121,8 @@ mod native {
 
         let alice_pk = alice.get_public_key_base64().unwrap();
         // Only supply Alice's key — Bob's must surface as missing.
-        let signers = serde_json::to_string(&json!([
-            signer_spec(&alice_id, &alice_pk, "ed25519"),
-        ]))
-        .unwrap();
+        let signers =
+            serde_json::to_string(&json!([signer_spec(&alice_id, &alice_pk, "ed25519"),])).unwrap();
         let outcome_json = alice.verify_agreement_json(&after_bob, &signers).unwrap();
         let outcome: Value = serde_json::from_str(&outcome_json).unwrap();
         assert_eq!(outcome["all_valid"], Value::Bool(false));
@@ -135,17 +131,20 @@ mod native {
             .iter()
             .find(|e| e["agent_id"].as_str() == Some(bob_id.as_str()))
             .unwrap();
-        assert_eq!(bob_entry["status"]["kind"], Value::String("SignerKeyMissing".into()));
+        assert_eq!(
+            bob_entry["status"]["kind"],
+            Value::String("SignerKeyMissing".into())
+        );
     }
 
     #[test]
     fn verify_agreement_tampered_returns_invalid() {
         let alice = create_ephemeral("ed25519").expect("alice");
-        let alice_id = serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let alice_id =
+            serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
         let skeleton = create_agreement_json(
             r#"{"doc":"tamper-me"}"#,
             &format!("[\"{}\"]", alice_id),
@@ -163,17 +162,18 @@ mod native {
         let tampered_str = serde_json::to_string(&signed).unwrap();
 
         let alice_pk = alice.get_public_key_base64().unwrap();
-        let signers = serde_json::to_string(&json!([
-            signer_spec(&alice_id, &alice_pk, "ed25519"),
-        ]))
-        .unwrap();
+        let signers =
+            serde_json::to_string(&json!([signer_spec(&alice_id, &alice_pk, "ed25519"),])).unwrap();
         let outcome_json = alice
             .verify_agreement_json(&tampered_str, &signers)
             .unwrap();
         let outcome: Value = serde_json::from_str(&outcome_json).unwrap();
         assert_eq!(outcome["all_valid"], Value::Bool(false));
         let per_signer = outcome["per_signer"].as_array().unwrap();
-        assert_eq!(per_signer[0]["status"]["kind"], Value::String("Invalid".into()));
+        assert_eq!(
+            per_signer[0]["status"]["kind"],
+            Value::String("Invalid".into())
+        );
     }
 
     #[test]
@@ -183,11 +183,11 @@ mod native {
         // observe the failure via `is_err()` + extracting the error
         // payload through Display.
         let handle = create_ephemeral("ed25519").expect("ephemeral");
-        let agent_id = serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let agent_id =
+            serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
         let skeleton = create_agreement_json(
             r#"{"doc":"locked"}"#,
             &format!("[\"{}\"]", agent_id),
@@ -209,18 +209,14 @@ mod native {
     #[ignore = "JsError construction panics on native targets; covered under wasm-pack test"]
     fn verify_agreement_with_invalid_signers_json_returns_malformed_document() {
         let alice = create_ephemeral("ed25519").expect("alice");
-        let agent_id = serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let skeleton = create_agreement_json(
-            r#"{"doc":"x"}"#,
-            &format!("[\"{}\"]", agent_id),
-            None,
-            None,
-        )
-        .expect("create");
+        let agent_id =
+            serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
+        let skeleton =
+            create_agreement_json(r#"{"doc":"x"}"#, &format!("[\"{}\"]", agent_id), None, None)
+                .expect("create");
         let signed = alice.sign_agreement_json(&skeleton, "approver").unwrap();
         // Pass garbage JSON for signers.
         let result = alice.verify_agreement_json(&signed, "{not an array}");
@@ -232,18 +228,14 @@ mod native {
     #[ignore = "JsError construction panics on native targets; covered under wasm-pack test"]
     fn signer_with_bad_base64_returns_malformed_key() {
         let alice = create_ephemeral("ed25519").expect("alice");
-        let agent_id = serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let skeleton = create_agreement_json(
-            r#"{"doc":"y"}"#,
-            &format!("[\"{}\"]", agent_id),
-            None,
-            None,
-        )
-        .expect("create");
+        let agent_id =
+            serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
+        let skeleton =
+            create_agreement_json(r#"{"doc":"y"}"#, &format!("[\"{}\"]", agent_id), None, None)
+                .expect("create");
         let signed = alice.sign_agreement_json(&skeleton, "approver").unwrap();
         let signers = serde_json::to_string(&json!([
             { "agentId": agent_id, "publicKeyBase64": "!!!not-base64!!!", "algorithm": "ed25519" }
@@ -273,11 +265,11 @@ mod web {
     fn sign_agreement_returns_updated_agreement_json() {
         init_jacs_wasm();
         let handle = create_ephemeral("ed25519").expect("ephemeral");
-        let agent_id = serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let agent_id =
+            serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
         let skeleton = create_agreement_json(
             r#"{"doc":"hello"}"#,
             &format!("[\"{}\"]", agent_id),
@@ -300,13 +292,12 @@ mod web {
         init_jacs_wasm();
         let alice = create_ephemeral("ed25519").expect("alice");
         let bob = create_ephemeral("pq2025").expect("bob");
-        let alice_id = serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let bob_id = serde_json::from_str::<Value>(&bob.export_agent().unwrap()).unwrap()
-            ["jacsId"]
+        let alice_id =
+            serde_json::from_str::<Value>(&alice.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
+        let bob_id = serde_json::from_str::<Value>(&bob.export_agent().unwrap()).unwrap()["jacsId"]
             .as_str()
             .unwrap()
             .to_string();
@@ -345,11 +336,11 @@ mod web {
     fn sign_agreement_after_clear_secrets_errors() {
         init_jacs_wasm();
         let handle = create_ephemeral("ed25519").expect("ephemeral");
-        let agent_id = serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap()
-            ["jacsId"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let agent_id =
+            serde_json::from_str::<Value>(&handle.export_agent().unwrap()).unwrap()["jacsId"]
+                .as_str()
+                .unwrap()
+                .to_string();
         let skeleton = create_agreement_json(
             r#"{"doc":"locked-web"}"#,
             &format!("[\"{}\"]", agent_id),

@@ -100,13 +100,9 @@ fn core_signed_doc_verifies_via_native() {
         .filter_map(|v| v.as_str().map(str::to_string))
         .collect();
 
-    let canonical = jacs_core::verify::build_signature_content_v2(
-        &signed,
-        &fields,
-        "jacsSignature",
-        &sig_obj,
-    )
-    .expect("canonical");
+    let canonical =
+        jacs_core::verify::build_signature_content_v2(&signed, &fields, "jacsSignature", &sig_obj)
+            .expect("canonical");
 
     let native = Agent::ephemeral("ring-Ed25519").expect("ephemeral");
     native

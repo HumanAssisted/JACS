@@ -105,7 +105,11 @@ impl std::error::Error for LocalStoreError {}
 /// `JSON.parse(e.message).code`.
 fn err_to_js(err: LocalStoreError) -> JsError {
     let payload = serde_json::to_string(&err).unwrap_or_else(|_| {
-        format!("{{\"code\":\"{}\",\"message\":\"{}\"}}", err.code(), err.message())
+        format!(
+            "{{\"code\":\"{}\",\"message\":\"{}\"}}",
+            err.code(),
+            err.message()
+        )
     });
     JsError::new(&payload)
 }
@@ -140,13 +144,13 @@ pub fn validate_no_plaintext_secrets(payload: &str) -> Result<(), LocalStoreErro
     // logic: a caller who serializes an object containing a `password`,
     // `passphrase`, or `secret` field surfaces the error before anything
     // touches localStorage.
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) {
-        if let Some(found) = find_credential_key(&value) {
-            return Err(LocalStoreError::RefusedPayload(format!(
-                "payload contains a '{}' field at JSON path '{}' — refusing to persist what looks like a plaintext credential in localStorage",
-                found.matched_key, found.json_pointer
-            )));
-        }
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(payload)
+        && let Some(found) = find_credential_key(&value)
+    {
+        return Err(LocalStoreError::RefusedPayload(format!(
+            "payload contains a '{}' field at JSON path '{}' — refusing to persist what looks like a plaintext credential in localStorage",
+            found.matched_key, found.json_pointer
+        )));
     }
     Ok(())
 }
@@ -247,23 +251,18 @@ const MAX_RAW_KEY_BASE64_LEN: usize = 88;
 /// documents do not carry key material.
 pub fn validate_encrypted_material_shape(payload: &str) -> Result<(), LocalStoreError> {
     let value: serde_json::Value = serde_json::from_str(payload).map_err(|e| {
-        LocalStoreError::RefusedPayload(format!(
-            "expected JSON-shaped AgentMaterial blob: {}",
-            e
-        ))
+        LocalStoreError::RefusedPayload(format!("expected JSON-shaped AgentMaterial blob: {}", e))
     })?;
     let obj = value.as_object().ok_or_else(|| {
         LocalStoreError::RefusedPayload(
             "expected JSON object (AgentMaterial); got non-object".into(),
         )
     })?;
-    let enc = obj
-        .get("encrypted_private_key")
-        .ok_or_else(|| {
-            LocalStoreError::RefusedPayload(
-                "AgentMaterial missing 'encrypted_private_key' field".into(),
-            )
-        })?;
+    let enc = obj.get("encrypted_private_key").ok_or_else(|| {
+        LocalStoreError::RefusedPayload(
+            "AgentMaterial missing 'encrypted_private_key' field".into(),
+        )
+    })?;
     is_recognized_envelope(enc)
 }
 
@@ -360,9 +359,8 @@ fn is_recognized_envelope(value: &serde_json::Value) -> Result<(), LocalStoreErr
 
 #[cfg(target_arch = "wasm32")]
 fn storage_handle() -> Result<web_sys::Storage, LocalStoreError> {
-    let window = web_sys::window().ok_or_else(|| {
-        LocalStoreError::StorageUnavailable("no global `window` object".into())
-    })?;
+    let window = web_sys::window()
+        .ok_or_else(|| LocalStoreError::StorageUnavailable("no global `window` object".into()))?;
     window
         .local_storage()
         .map_err(|js_err| {
@@ -371,9 +369,7 @@ fn storage_handle() -> Result<web_sys::Storage, LocalStoreError> {
                 js_error_summary(&js_err, "<unknown localStorage access failure>")
             ))
         })?
-        .ok_or_else(|| {
-            LocalStoreError::StorageUnavailable("localStorage is null".into())
-        })
+        .ok_or_else(|| LocalStoreError::StorageUnavailable("localStorage is null".into()))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -477,15 +473,12 @@ use native_shim::NativeStorage;
 // implementation single-sourced.
 #[cfg(not(target_arch = "wasm32"))]
 fn storage_set_item(s: &NativeStorage, key: &str, value: &str) -> Result<(), LocalStoreError> {
-    s.set_item(key, value).map_err(LocalStoreError::QuotaExceeded)
+    s.set_item(key, value)
+        .map_err(LocalStoreError::QuotaExceeded)
 }
 
 #[cfg(target_arch = "wasm32")]
-fn storage_set_item(
-    s: &web_sys::Storage,
-    key: &str,
-    value: &str,
-) -> Result<(), LocalStoreError> {
+fn storage_set_item(s: &web_sys::Storage, key: &str, value: &str) -> Result<(), LocalStoreError> {
     s.set_item(key, value).map_err(|js_err| {
         let message = js_error_summary(&js_err, "<unknown setItem failure>");
         // QuotaExceededError surfaces with that name in the message on
@@ -501,29 +494,21 @@ fn storage_set_item(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn storage_get_item(
-    s: &NativeStorage,
-    key: &str,
-) -> Result<Option<String>, LocalStoreError> {
+fn storage_get_item(s: &NativeStorage, key: &str) -> Result<Option<String>, LocalStoreError> {
     s.get_item(key).map_err(LocalStoreError::StorageUnavailable)
 }
 
 #[cfg(target_arch = "wasm32")]
-fn storage_get_item(
-    s: &web_sys::Storage,
-    key: &str,
-) -> Result<Option<String>, LocalStoreError> {
+fn storage_get_item(s: &web_sys::Storage, key: &str) -> Result<Option<String>, LocalStoreError> {
     s.get_item(key).map_err(|js_err| {
-        LocalStoreError::StorageUnavailable(js_error_summary(
-            &js_err,
-            "<unknown getItem failure>",
-        ))
+        LocalStoreError::StorageUnavailable(js_error_summary(&js_err, "<unknown getItem failure>"))
     })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn storage_remove_item(s: &NativeStorage, key: &str) -> Result<(), LocalStoreError> {
-    s.remove_item(key).map_err(LocalStoreError::StorageUnavailable)
+    s.remove_item(key)
+        .map_err(LocalStoreError::StorageUnavailable)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -544,10 +529,7 @@ fn storage_length(s: &NativeStorage) -> Result<u32, LocalStoreError> {
 #[cfg(target_arch = "wasm32")]
 fn storage_length(s: &web_sys::Storage) -> Result<u32, LocalStoreError> {
     s.length().map_err(|js_err| {
-        LocalStoreError::StorageUnavailable(js_error_summary(
-            &js_err,
-            "<unknown length failure>",
-        ))
+        LocalStoreError::StorageUnavailable(js_error_summary(&js_err, "<unknown length failure>"))
     })
 }
 
@@ -559,10 +541,7 @@ fn storage_key_at(s: &NativeStorage, index: u32) -> Result<Option<String>, Local
 #[cfg(target_arch = "wasm32")]
 fn storage_key_at(s: &web_sys::Storage, index: u32) -> Result<Option<String>, LocalStoreError> {
     s.key(index).map_err(|js_err| {
-        LocalStoreError::StorageUnavailable(js_error_summary(
-            &js_err,
-            "<unknown key failure>",
-        ))
+        LocalStoreError::StorageUnavailable(js_error_summary(&js_err, "<unknown key failure>"))
     })
 }
 
@@ -673,15 +652,15 @@ pub fn list_keys(prefix: Option<&str>) -> Result<Vec<String>, LocalStoreError> {
     let len = storage_length(&storage)?;
     let mut out = Vec::new();
     for i in 0..len {
-        if let Some(raw_key) = storage_key_at(&storage, i)? {
-            if let Some(js_key) = raw_key.strip_prefix(JACS_LOCAL_STORE_PREFIX) {
-                let matches = match prefix {
-                    Some(p) => js_key.starts_with(p),
-                    None => true,
-                };
-                if matches {
-                    out.push(js_key.to_string());
-                }
+        if let Some(raw_key) = storage_key_at(&storage, i)?
+            && let Some(js_key) = raw_key.strip_prefix(JACS_LOCAL_STORE_PREFIX)
+        {
+            let matches = match prefix {
+                Some(p) => js_key.starts_with(p),
+                None => true,
+            };
+            if matches {
+                out.push(js_key.to_string());
             }
         }
     }
@@ -714,10 +693,10 @@ pub fn clear_all() -> Result<(), LocalStoreError> {
     let len = storage_length(&storage)?;
     let mut targets: Vec<String> = Vec::new();
     for i in 0..len {
-        if let Some(raw_key) = storage_key_at(&storage, i)? {
-            if raw_key.starts_with(JACS_LOCAL_STORE_PREFIX) {
-                targets.push(raw_key);
-            }
+        if let Some(raw_key) = storage_key_at(&storage, i)?
+            && raw_key.starts_with(JACS_LOCAL_STORE_PREFIX)
+        {
+            targets.push(raw_key);
         }
     }
     for raw_key in targets {
@@ -737,10 +716,7 @@ fn namespaced(key: &str) -> String {
 // ---------------------------------------------------------------------------
 
 #[wasm_bindgen(js_name = localStoreSaveEncryptedAgent)]
-pub fn local_store_save_encrypted_agent(
-    key: &str,
-    material_json: &str,
-) -> Result<(), JsError> {
+pub fn local_store_save_encrypted_agent(key: &str, material_json: &str) -> Result<(), JsError> {
     save_encrypted_agent(key, material_json).map_err(err_to_js)
 }
 
@@ -798,7 +774,6 @@ mod tests {
 
     /// Acquire the serial-test lock + reset the shared backing map.
     /// Returns the guard; callers must bind it for its full scope.
-    #[must_use]
     fn enter() -> MutexGuard<'static, ()> {
         let g = test_lock();
         NativeStorage::shared().reset_for_tests();
@@ -935,7 +910,8 @@ mod tests {
             "algorithm": "ed25519"
         }"#;
         save_encrypted_agent("agent-1", encrypted_material).expect("save material");
-        let signed_doc = r#"{"jacsId":"abc","jacsSignature":{"signature":"sig","signingAlgorithm":"ed25519"}}"#;
+        let signed_doc =
+            r#"{"jacsId":"abc","jacsSignature":{"signature":"sig","signingAlgorithm":"ed25519"}}"#;
         save_document("doc-1", signed_doc).expect("save doc");
 
         // Walk every JS-facing key under the `jacs:` namespace and
@@ -973,20 +949,24 @@ mod tests {
         // written outside the `jacs:` namespace — none should be).
         let len = NativeStorage::shared().length().unwrap();
         for i in 0..len {
-            if let Some(raw_key) = NativeStorage::shared().key(i).unwrap() {
-                if let Some(value) = NativeStorage::shared().get_item(&raw_key).unwrap() {
-                    assert!(!value.contains(password), "leaked password under '{}'", raw_key);
-                    assert!(
-                        !value.contains(PEM_PRIVATE_KEY_MARKER),
-                        "leaked PEM marker under '{}'",
-                        raw_key
-                    );
-                    assert!(
-                        !value.contains(&private_key_b64),
-                        "leaked base64 raw key under '{}'",
-                        raw_key
-                    );
-                }
+            if let Some(raw_key) = NativeStorage::shared().key(i).unwrap()
+                && let Some(value) = NativeStorage::shared().get_item(&raw_key).unwrap()
+            {
+                assert!(
+                    !value.contains(password),
+                    "leaked password under '{}'",
+                    raw_key
+                );
+                assert!(
+                    !value.contains(PEM_PRIVATE_KEY_MARKER),
+                    "leaked PEM marker under '{}'",
+                    raw_key
+                );
+                assert!(
+                    !value.contains(&private_key_b64),
+                    "leaked base64 raw key under '{}'",
+                    raw_key
+                );
             }
         }
     }

@@ -255,7 +255,9 @@ impl Pq2025Signer {
         if pk.verify(message, &sig_arr, b"") {
             Ok(())
         } else {
-            Err(CoreError::SignatureInvalid("ML-DSA-87 verification failed".into()))
+            Err(CoreError::SignatureInvalid(
+                "ML-DSA-87 verification failed".into(),
+            ))
         }
     }
 }
@@ -280,11 +282,7 @@ impl DetachedSigner for Pq2025Signer {
     }
 
     fn sign(&self, message: &[u8]) -> Result<Vec<u8>, CoreError> {
-        let priv_bytes = self
-            .private_key
-            .as_ref()
-            .ok_or(CoreError::Locked)?
-            .bytes;
+        let priv_bytes = self.private_key.as_ref().ok_or(CoreError::Locked)?.bytes;
         let sk = ml_dsa_87::PrivateKey::try_from_bytes(priv_bytes).map_err(|e| {
             CoreError::MalformedKey(format!("ML-DSA-87 private key deserialization failed: {e}"))
         })?;
@@ -351,9 +349,8 @@ impl Ed25519DalekSigner {
     /// the optional public-key field carried inline); ed25519-dalek
     /// 2.x's `pkcs8` feature accepts both.
     pub fn from_pkcs8(pkcs8_bytes: &[u8]) -> Result<Self, CoreError> {
-        let signing_key = SigningKey::from_pkcs8_der(pkcs8_bytes).map_err(|e| {
-            CoreError::MalformedKey(format!("Ed25519 PKCS#8 decode failed: {e}"))
-        })?;
+        let signing_key = SigningKey::from_pkcs8_der(pkcs8_bytes)
+            .map_err(|e| CoreError::MalformedKey(format!("Ed25519 PKCS#8 decode failed: {e}")))?;
         let public_key = signing_key.verifying_key().to_bytes();
         Ok(Self {
             signing_key: Some(signing_key),

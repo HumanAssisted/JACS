@@ -27,7 +27,10 @@ mod native {
             "op": "createEphemeral",
             "args": { "algorithm": "ed25519" },
         });
-        assert_eq!(req["op"], serde_json::Value::String("createEphemeral".into()));
+        assert_eq!(
+            req["op"],
+            serde_json::Value::String("createEphemeral".into())
+        );
     }
 }
 
@@ -70,7 +73,11 @@ mod web {
     #[wasm_bindgen_test]
     fn worker_creates_ephemeral_pq2025() {
         init_jacs_wasm();
-        let req = js_request(1, "createEphemeral", serde_json::json!({ "algorithm": "pq2025" }));
+        let req = js_request(
+            1,
+            "createEphemeral",
+            serde_json::json!({ "algorithm": "pq2025" }),
+        );
         let reply_js = worker_handle_message(req).expect("dispatch");
         assert_eq!(get_prop(&reply_js, "ok").as_bool(), Some(true));
         let result_js = get_prop(&reply_js, "result");
@@ -113,7 +120,10 @@ mod web {
             .expect("dispatch sign"),
         );
         assert_eq!(sign_reply["ok"], serde_json::Value::Bool(true));
-        let signed = sign_reply["result"]["signedJson"].as_str().unwrap().to_string();
+        let signed = sign_reply["result"]["signedJson"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // 3) Verify.
         let verify_reply = parse_reply(

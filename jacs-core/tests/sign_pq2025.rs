@@ -27,10 +27,7 @@ fn pq2025_signer_wrong_message_rejected() {
     let sig = signer.sign(b"original message").expect("sign");
     let err = Pq2025Signer::verify(signer.public_key(), b"tampered message", &sig)
         .expect_err("must reject tampered message");
-    assert!(
-        matches!(err, CoreError::SignatureInvalid(_)),
-        "got {err:?}"
-    );
+    assert!(matches!(err, CoreError::SignatureInvalid(_)), "got {err:?}");
 }
 
 #[test]
@@ -39,7 +36,9 @@ fn pq2025_signer_clear_secrets_makes_sign_fail() {
     // Sanity: signs while unlocked.
     signer.sign(b"before clear").expect("sign before clear");
     signer.clear_secrets();
-    let err = signer.sign(b"after clear").expect_err("must fail when locked");
+    let err = signer
+        .sign(b"after clear")
+        .expect_err("must fail when locked");
     assert!(matches!(err, CoreError::Locked), "got {err:?}");
     // Idempotent.
     signer.clear_secrets();
@@ -58,9 +57,12 @@ fn pq2025_signer_algorithm_returns_pq2025() {
 fn pq2025_signer_verifies_fixture() {
     // The fixture pins (canonical, signature_b64) — verify via the
     // jacs-core path to confirm cross-compat with the native writer.
-    let parsed: serde_json::Value = serde_json::from_str(FIXTURE_SIGNED_JSON).expect("fixture JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(FIXTURE_SIGNED_JSON).expect("fixture JSON");
     let canonical = parsed["canonical"].as_str().expect("canonical field");
-    let sig_b64 = parsed["signature_b64"].as_str().expect("signature_b64 field");
+    let sig_b64 = parsed["signature_b64"]
+        .as_str()
+        .expect("signature_b64 field");
     let sig = B64.decode(sig_b64).expect("base64 signature");
     Pq2025Signer::verify(FIXTURE_PUBLIC, canonical.as_bytes(), &sig)
         .expect("Task 001 pq2025 fixture must verify via jacs-core");
@@ -85,15 +87,14 @@ fn pq2025_signer_from_private_bytes_roundtrip() {
 
 #[test]
 fn pq2025_signer_malformed_public_key_rejected() {
-    let err = Pq2025Signer::verify(b"too short", b"msg", &[0u8; 4627])
-        .expect_err("must fail");
+    let err = Pq2025Signer::verify(b"too short", b"msg", &[0u8; 4627]).expect_err("must fail");
     assert!(matches!(err, CoreError::MalformedKey(_)), "got {err:?}");
 }
 
 #[test]
 fn pq2025_signer_malformed_signature_length_rejected() {
     let signer = Pq2025Signer::generate().expect("keygen");
-    let err = Pq2025Signer::verify(signer.public_key(), b"msg", &[0u8; 100])
-        .expect_err("must fail");
+    let err =
+        Pq2025Signer::verify(signer.public_key(), b"msg", &[0u8; 100]).expect_err("must fail");
     assert!(matches!(err, CoreError::SignatureInvalid(_)), "got {err:?}");
 }

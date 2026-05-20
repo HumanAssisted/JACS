@@ -16,14 +16,12 @@ struct Sample {
 
 #[test]
 fn jacs_protocol_canonicalize_json_reexport_produces_goldens() {
-    let inputs: Vec<Sample> = serde_json::from_str(include_str!(
-        "fixtures/wasm_compat/canonical_inputs.json"
-    ))
-    .expect("canonical_inputs.json parses");
-    let outputs: std::collections::HashMap<String, String> = serde_json::from_str(include_str!(
-        "fixtures/wasm_compat/canonical_outputs.json"
-    ))
-    .expect("canonical_outputs.json parses");
+    let inputs: Vec<Sample> =
+        serde_json::from_str(include_str!("fixtures/wasm_compat/canonical_inputs.json"))
+            .expect("canonical_inputs.json parses");
+    let outputs: std::collections::HashMap<String, String> =
+        serde_json::from_str(include_str!("fixtures/wasm_compat/canonical_outputs.json"))
+            .expect("canonical_outputs.json parses");
 
     for sample in inputs {
         let actual = jacs::protocol::canonicalize_json(&sample.data);

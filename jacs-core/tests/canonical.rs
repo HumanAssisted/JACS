@@ -15,14 +15,12 @@ struct Sample {
 
 #[test]
 fn canonicalize_json_in_jacs_core_matches_goldens() {
-    let inputs: Vec<Sample> = serde_json::from_str(include_str!(
-        "fixtures/wasm_compat/canonical_inputs.json"
-    ))
-    .expect("canonical_inputs.json parses");
-    let outputs: std::collections::HashMap<String, String> = serde_json::from_str(include_str!(
-        "fixtures/wasm_compat/canonical_outputs.json"
-    ))
-    .expect("canonical_outputs.json parses");
+    let inputs: Vec<Sample> =
+        serde_json::from_str(include_str!("fixtures/wasm_compat/canonical_inputs.json"))
+            .expect("canonical_inputs.json parses");
+    let outputs: std::collections::HashMap<String, String> =
+        serde_json::from_str(include_str!("fixtures/wasm_compat/canonical_outputs.json"))
+            .expect("canonical_outputs.json parses");
 
     assert_eq!(inputs.len(), 10, "expected 10 sample inputs per PRD");
     assert_eq!(
@@ -48,6 +46,7 @@ fn canonicalize_json_in_jacs_core_matches_goldens() {
 fn canonicalize_json_try_returns_same_bytes_as_infallible() {
     let v = serde_json::json!({"b": 1, "a": 2, "nested": {"z": 3, "y": 4}});
     let infallible = jacs_core::canonical::canonicalize_json(&v);
-    let fallible = jacs_core::canonical::canonicalize_json_try(&v).expect("infallible for valid JSON");
+    let fallible =
+        jacs_core::canonical::canonicalize_json_try(&v).expect("infallible for valid JSON");
     assert_eq!(infallible, fallible);
 }
