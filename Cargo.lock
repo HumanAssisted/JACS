@@ -1620,9 +1620,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.15.0"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 dependencies = [
  "serde",
 ]
@@ -2854,7 +2854,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jacs"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2940,7 +2940,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-binding-core"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "base64",
  "jacs",
@@ -2955,7 +2955,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-cli"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -2975,7 +2975,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-core"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -3001,7 +3001,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-duckdb"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "duckdb",
  "jacs",
@@ -3013,7 +3013,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-mcp"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3037,7 +3037,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-media"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "base64",
  "image",
@@ -3051,7 +3051,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-postgresql"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "jacs",
  "serde_json",
@@ -3065,7 +3065,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-redb"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "chrono",
  "jacs",
@@ -3078,7 +3078,7 @@ dependencies = [
 
 [[package]]
 name = "jacs-wasm"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "base64",
  "console_error_panic_hook",
@@ -3098,7 +3098,7 @@ dependencies = [
 
 [[package]]
 name = "jacsgo"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "base64",
  "jacs",
@@ -3112,7 +3112,7 @@ dependencies = [
 
 [[package]]
 name = "jacsnpm"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "base64",
  "jacs",
@@ -3130,7 +3130,7 @@ dependencies = [
 
 [[package]]
 name = "jacspy"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "base64",
  "jacs",
