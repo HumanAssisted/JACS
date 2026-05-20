@@ -3,14 +3,14 @@
  * JACS LangChain.js Adapter
  *
  * Provides full JACS capabilities for LangChain.js agents: cryptographic
- * signing, verification, multi-party agreements, trust store, and audit.
+ * signing, verification, multi-party agreements, and trust store operations.
  * All `@langchain/core` and `@langchain/langgraph` imports are lazy so this
  * module can be imported without those packages installed.
  *
  * Two integration patterns:
  *
  * **A. Full JACS toolkit** — give your LangChain agent access to all JACS
- * operations (sign, verify, agreements, trust, audit):
+ * operations (sign, verify, agreements, trust):
  *
  *   `createJacsTools(options)` -- Returns an array of LangChain tools that
  *   wrap the full JacsClient API. Bind these to your agent/LLM so it can
@@ -184,7 +184,7 @@ function jacsToolNode(tools, options) {
  * Create an array of LangChain tools that expose the full JACS API.
  *
  * Returns `DynamicStructuredTool` instances for: signing, verification,
- * multi-party agreements, trust store operations, and audit. Bind these
+ * multi-party agreements and trust store operations. Bind these
  * to your LangChain agent so it can call JACS operations directly.
  *
  * @param options - JACS tool options (client required).
@@ -462,24 +462,6 @@ function createJacsTools(options) {
                 }
                 catch (err) {
                     return handleError(err, 'share agent failed');
-                }
-            },
-        }),
-        // ----- Audit -----
-        new DynamicStructuredTool({
-            name: 'jacs_audit',
-            description: 'Run a JACS security audit. Returns audit results including document integrity, ' +
-                'key status, and configuration health.',
-            schema: z.object({
-                recentN: z.number().optional().describe('Number of recent documents to audit'),
-            }),
-            func: async (input) => {
-                try {
-                    const result = await client.audit(input.recentN !== undefined ? { recentN: input.recentN } : undefined);
-                    return JSON.stringify(result);
-                }
-                catch (err) {
-                    return handleError(err, 'audit failed');
                 }
             },
         }),

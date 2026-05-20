@@ -13,19 +13,8 @@ use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
 
-pub mod action_crud;
 pub mod agent_crud;
-pub mod agentstate_crud;
-pub mod commitment_crud;
-pub mod contact_crud;
-pub mod conversation_crud;
-pub mod message_crud;
-pub mod reference_utils;
-pub mod service_crud;
 pub mod signature;
-pub mod task_crud;
-pub mod todo_crud;
-pub mod tools_crud;
 pub mod utils;
 
 use crate::agent::document::DEFAULT_JACS_DOC_LEVEL;
@@ -45,7 +34,7 @@ use std::fmt;
 ///
 /// # Arguments
 /// * `schema` - The parsed JSON schema value to compile
-/// * `schema_name` - A descriptive name for error messages (e.g., "agentschema", "taskschema")
+/// * `schema_name` - A descriptive name for error messages (e.g., "agentschema")
 ///
 /// # Returns
 /// * `Ok(Validator)` - The compiled validator ready for use
@@ -73,7 +62,7 @@ fn build_validator(schema: &Value, schema_name: &str) -> Result<Validator, JacsE
 ///
 /// # Example output
 /// ```text
-/// Schema validation failed for 'agent.schema.json' at field 'jacsServices.0.name': "name" is not of type "string" [expected string, got number (42)]
+/// Schema validation failed for 'agent.schema.json' at field 'jacsAgentType': "bot" is not one of ["human", "human-org", "hybrid", "ai"]
 /// ```
 pub fn format_schema_validation_error(
     error: &jsonschema::ValidationError,
@@ -221,20 +210,6 @@ pub struct Schema {
     signatureschema: Validator,
     jacsconfigschema: Validator,
     agreementschema: Validator,
-    serviceschema: Validator,
-    unitschema: Validator,
-    actionschema: Validator,
-    toolschema: Validator,
-    contactschema: Validator,
-    pub taskschema: Validator,
-    messageschema: Validator,
-    evalschema: Validator,
-    nodeschema: Validator,
-    programschema: Validator,
-    embeddingschema: Validator,
-    pub agentstateschema: Validator,
-    pub commitmentschema: Validator,
-    pub todoschema: Validator,
     #[cfg(feature = "attestation")]
     pub attestationschema: Validator,
 }
@@ -502,7 +477,6 @@ impl Schema {
     ) -> Result<Self, JacsError> {
         // let current_dir = env::current_dir()?;
         // TODO let the agent, header, and signature versions for verifying being flexible
-        let default_version = "v1";
         let header_path = format!("schemas/header/{}/header.schema.json", headerversion);
         let agentversion_path = format!("schemas/agent/{}/agent.schema.json", agentversion);
         let agreementversion_path = format!(
@@ -514,59 +488,8 @@ impl Schema {
             signatureversion
         );
 
-        let unit_path = format!(
-            "schemas/components/unit/{}/unit.schema.json",
-            default_version
-        );
-
-        let service_path = format!(
-            "schemas/components/service/{}/service.schema.json",
-            default_version
-        );
-
-        let action_path = format!(
-            "schemas/components/action/{}/action.schema.json",
-            default_version
-        );
-
-        let tool_path = format!(
-            "schemas/components/tool/{}/tool.schema.json",
-            default_version
-        );
-
-        let contact_path = format!(
-            "schemas/components/contact/{}/contact.schema.json",
-            default_version
-        );
-
-        let task_path = format!("schemas/task/{}/task.schema.json", default_version);
-        let node_path = format!("schemas/node/{}/node.schema.json", default_version);
-        let program_path = format!("schemas/program/{}/program.schema.json", default_version);
-
-        let message_path = format!("schemas/message/{}/message.schema.json", default_version);
-        let eval_path = format!("schemas/eval/{}/eval.schema.json", default_version);
-        let embedding_path = format!(
-            "schemas/components/embedding/{}/embedding.schema.json",
-            default_version
-        );
-
-        let agentstate_path = format!(
-            "schemas/agentstate/{}/agentstate.schema.json",
-            default_version
-        );
-
-        let commitment_path = format!(
-            "schemas/commitment/{}/commitment.schema.json",
-            default_version
-        );
-
-        let todo_path = format!("schemas/todo/{}/todo.schema.json", default_version);
-
         #[cfg(feature = "attestation")]
-        let attestation_path = format!(
-            "schemas/attestation/{}/attestation.schema.json",
-            default_version
-        );
+        let attestation_path = "schemas/attestation/v1/attestation.schema.json".to_string();
 
         // Helper to get schema with better error messages
         let get_schema = |path: &str| -> Result<&str, JacsError> {
@@ -580,20 +503,6 @@ impl Schema {
         let agentdata = get_schema(&agentversion_path)?;
         let agreementdata = get_schema(&agreementversion_path)?;
         let signaturedata = get_schema(&signatureversion_path)?;
-        let servicedata = get_schema(&service_path)?;
-        let unitdata = get_schema(&unit_path)?;
-        let actiondata = get_schema(&action_path)?;
-        let tooldata = get_schema(&tool_path)?;
-        let contactdata = get_schema(&contact_path)?;
-        let taskdata = get_schema(&task_path)?;
-        let messagedata = get_schema(&message_path)?;
-        let evaldata = get_schema(&eval_path)?;
-        let programdata = get_schema(&program_path)?;
-        let nodedata = get_schema(&node_path)?;
-        let embeddingdata = get_schema(&embedding_path)?;
-        let agentstatedata = get_schema(&agentstate_path)?;
-        let commitmentdata = get_schema(&commitment_path)?;
-        let tododata = get_schema(&todo_path)?;
 
         #[cfg(feature = "attestation")]
         let attestationdata = get_schema(&attestation_path)?;
@@ -603,20 +512,6 @@ impl Schema {
         let agreementschema_result: Value = serde_json::from_str(agreementdata)?;
         let signatureschema_result: Value = serde_json::from_str(signaturedata)?;
         let jacsconfigschema_result: Value = serde_json::from_str(CONFIG_SCHEMA_STRING)?;
-        let serviceschema_result: Value = serde_json::from_str(servicedata)?;
-        let unitschema_result: Value = serde_json::from_str(unitdata)?;
-        let actionschema_result: Value = serde_json::from_str(actiondata)?;
-        let toolschema_result: Value = serde_json::from_str(tooldata)?;
-        let contactschema_result: Value = serde_json::from_str(contactdata)?;
-        let taskschema_result: Value = serde_json::from_str(taskdata)?;
-        let messageschema_result: Value = serde_json::from_str(messagedata)?;
-        let evalschema_result: Value = serde_json::from_str(evaldata)?;
-        let nodeschema_result: Value = serde_json::from_str(nodedata)?;
-        let programschema_result: Value = serde_json::from_str(programdata)?;
-        let embeddingschema_result: Value = serde_json::from_str(embeddingdata)?;
-        let agentstateschema_result: Value = serde_json::from_str(agentstatedata)?;
-        let commitmentschema_result: Value = serde_json::from_str(commitmentdata)?;
-        let todoschema_result: Value = serde_json::from_str(tododata)?;
 
         #[cfg(feature = "attestation")]
         let attestationschema_result: Value = serde_json::from_str(attestationdata)?;
@@ -625,21 +520,7 @@ impl Schema {
         let headerschema = build_validator(&headerchema_result, &header_path)?;
         let signatureschema = build_validator(&signatureschema_result, &signatureversion_path)?;
         let jacsconfigschema = build_validator(&jacsconfigschema_result, "jacsconfigschema")?;
-        let serviceschema = build_validator(&serviceschema_result, &service_path)?;
-        let unitschema = build_validator(&unitschema_result, &unit_path)?;
-        let actionschema = build_validator(&actionschema_result, &action_path)?;
-        let toolschema = build_validator(&toolschema_result, &tool_path)?;
         let agreementschema = build_validator(&agreementschema_result, &agreementversion_path)?;
-        let evalschema = build_validator(&evalschema_result, &eval_path)?;
-        let nodeschema = build_validator(&nodeschema_result, &node_path)?;
-        let programschema = build_validator(&programschema_result, &program_path)?;
-        let embeddingschema = build_validator(&embeddingschema_result, &embedding_path)?;
-        let contactschema = build_validator(&contactschema_result, &contact_path)?;
-        let taskschema = build_validator(&taskschema_result, &task_path)?;
-        let messageschema = build_validator(&messageschema_result, &message_path)?;
-        let agentstateschema = build_validator(&agentstateschema_result, &agentstate_path)?;
-        let commitmentschema = build_validator(&commitmentschema_result, &commitment_path)?;
-        let todoschema = build_validator(&todoschema_result, &todo_path)?;
 
         #[cfg(feature = "attestation")]
         let attestationschema = build_validator(&attestationschema_result, &attestation_path)?;
@@ -651,20 +532,6 @@ impl Schema {
             signatureschema,
             jacsconfigschema,
             agreementschema,
-            serviceschema,
-            unitschema,
-            actionschema,
-            toolschema,
-            contactschema,
-            taskschema,
-            messageschema,
-            evalschema,
-            nodeschema,
-            programschema,
-            embeddingschema,
-            agentstateschema,
-            commitmentschema,
-            todoschema,
             #[cfg(feature = "attestation")]
             attestationschema,
         })
@@ -681,27 +548,6 @@ impl Schema {
         )
     }
 
-    /// basic check this conforms to a schema
-    /// validate header does not check hashes or signature
-    pub fn validate_task(&self, json: &str) -> Result<Value, JacsError> {
-        self.validate_json_with_schema(json, &self.taskschema, "task.schema.json", "Invalid JSON")
-    }
-
-    /// Validates a JSON string against the agentstate schema.
-    pub fn validate_agentstate(&self, json: &str) -> Result<Value, JacsError> {
-        self.validate_json_with_schema(
-            json,
-            &self.agentstateschema,
-            "agentstate.schema.json",
-            "Invalid JSON",
-        )
-    }
-
-    /// Validates a JSON string against the todo schema.
-    pub fn validate_todo(&self, json: &str) -> Result<Value, JacsError> {
-        self.validate_json_with_schema(json, &self.todoschema, "todo.schema.json", "Invalid JSON")
-    }
-
     /// Validates a JSON string against the attestation schema.
     #[cfg(feature = "attestation")]
     pub fn validate_attestation(&self, json: &str) -> Result<Value, JacsError> {
@@ -709,16 +555,6 @@ impl Schema {
             json,
             &self.attestationschema,
             "attestation.schema.json",
-            "Invalid JSON",
-        )
-    }
-
-    /// Validates a JSON string against the commitment schema.
-    pub fn validate_commitment(&self, json: &str) -> Result<Value, JacsError> {
-        self.validate_json_with_schema(
-            json,
-            &self.commitmentschema,
-            "commitment.schema.json",
             "Invalid JSON",
         )
     }
@@ -888,18 +724,6 @@ mod tests {
         assert!(
             err.to_string().contains("Invalid JSON for agent"),
             "expected agent-specific parse error"
-        );
-    }
-
-    #[test]
-    fn validate_task_invalid_json_has_generic_context() {
-        let schema = build_schema();
-        let err = schema
-            .validate_task("{not-json")
-            .expect_err("invalid JSON should fail");
-        assert!(
-            err.to_string().contains("Invalid JSON:"),
-            "expected generic parse error"
         );
     }
 }

@@ -182,59 +182,6 @@ pub fn build_cli() -> Command {
         )
 
         .subcommand(
-            Command::new("task")
-            .about(" work with a JACS  Agent task")
-            .subcommand(
-                Command::new("create")
-                    .about(" create a new JACS Task file, either by embedding or parsing a document")
-                    .arg(
-                        Arg::new("agent-file")
-                            .short('a')
-                            .help("Path to the agent file. Otherwise use config jacs_agent_id_and_version")
-                            .value_parser(value_parser!(String)),
-                    )
-                    .arg(
-                        Arg::new("filename")
-                            .short('f')
-                            .help("Path to input file. Must be JSON")
-                            .value_parser(value_parser!(String)),
-                    )
-                    .arg(
-                        Arg::new("name")
-                            .short('n')
-                            .required(true)
-                            .help("name of task")
-                            .value_parser(value_parser!(String)),
-                    )
-                    .arg(
-                        Arg::new("description")
-                            .short('d')
-                            .required(true)
-                            .help("description of task")
-                            .value_parser(value_parser!(String)),
-                    )
-                )
-                .subcommand(
-                    Command::new("update")
-                        .about("update an existing task document")
-                        .arg(
-                            Arg::new("filename")
-                                .short('f')
-                                .required(true)
-                                .help("Path to the updated task JSON file")
-                                .value_parser(value_parser!(String)),
-                        )
-                        .arg(
-                            Arg::new("task-key")
-                                .short('k')
-                                .required(true)
-                                .help("Task document key (id:version)")
-                                .value_parser(value_parser!(String)),
-                        )
-                )
-            )
-
-        .subcommand(
             Command::new("document")
                 .about(" work with a general JACS document")
                 .subcommand(

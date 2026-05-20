@@ -204,40 +204,7 @@ fn create_example_agent() -> Result<Agent, Box<dyn std::error::Error>> {
     let agent_json = json!({
         "jacsName": "Example A2A Agent",
         "jacsDescription": "A JACS agent demonstrating A2A protocol integration",
-        "jacsAgentType": "ai",
-        "jacsServices": [{
-            "name": "Document Analysis Service",
-            "serviceDescription": "Analyzes documents using advanced AI techniques",
-            "successDescription": "Document successfully analyzed with extracted entities and insights",
-            "failureDescription": "Document analysis failed due to format or processing errors",
-            "tools": [{
-                "url": "https://example-agent.com/api/analyze",
-                "function": {
-                    "name": "analyze_document",
-                    "description": "Analyze a document and extract structured information",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "document_url": {
-                                "type": "string",
-                                "description": "URL of the document to analyze"
-                            },
-                            "operations": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "List of operations to perform"
-                            }
-                        },
-                        "required": ["document_url", "operations"]
-                    }
-                }
-            }]
-        }],
-        "jacsContacts": [{
-            "type": "email",
-            "value": "admin@example-agent.com",
-            "description": "Administrator contact"
-        }]
+        "jacsAgentType": "ai"
     });
 
     agent.create_agent_and_load(&agent_json.to_string(), true, None)?;

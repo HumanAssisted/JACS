@@ -1100,11 +1100,11 @@ mod tests {
         let doc = JACSDocument {
             id: "rm-doc".to_string(),
             version: "v1".to_string(),
-            jacs_type: "message".to_string(),
+            jacs_type: "document".to_string(),
             value: json!({
                 "jacsId": "rm-doc",
                 "jacsVersion": "v1",
-                "jacsType": "message",
+                "jacsType": "document",
                 "jacsLevel": "raw",
                 "content": {"ok": true}
             }),

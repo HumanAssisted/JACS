@@ -598,13 +598,13 @@ describe('JACSTransportProxy', function () {
   // -------------------------------------------------------------------------
 
   describe('getJacsMcpToolDefinitions()', () => {
-    (available ? it : it.skip)('should return an array of 33 tool definitions', () => {
-      // 28 v0.10 tools + 5 inline-text/media verbs added in v0.11
+    (available ? it : it.skip)('should return an array of 32 tool definitions', () => {
+      // 27 v0.10 tools + 5 inline-text/media verbs added in v0.11
       // (jacs_sign_text, jacs_verify_text, jacs_sign_image, jacs_verify_image,
       //  jacs_extract_media_signature).
       const tools = mcpModule.getJacsMcpToolDefinitions();
       expect(tools).to.be.an('array');
-      expect(tools).to.have.length(33);
+      expect(tools).to.have.length(32);
     });
 
     (available ? it : it.skip)('should include core JACS tools', () => {
@@ -615,7 +615,7 @@ describe('JACSTransportProxy', function () {
       expect(names).to.include('jacs_create_agreement');
       expect(names).to.include('jacs_sign_agreement');
       expect(names).to.include('jacs_check_agreement');
-      expect(names).to.include('jacs_audit');
+      expect(names).to.not.include('jacs_audit');
       expect(names).to.include('jacs_verify_self');
       expect(names).to.include('jacs_export_agent');
       expect(names).to.include('jacs_export_agent_card');
@@ -721,17 +721,6 @@ describe('JACSTransportProxy', function () {
       );
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed).to.have.property('complete', true);
-    });
-
-    (available ? it : it.skip)('jacs_audit should run audit', async () => {
-      const client = createMockJacsClient();
-      const result = await mcpModule.handleJacsMcpToolCall(
-        client, 'jacs_audit', { config_path: './jacs.config.json', recent_n: 10 },
-      );
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed).to.have.property('success', true);
-      expect(parsed).to.have.property('status', 'ok');
-      expect(client.audit.calledOnce).to.be.true;
     });
 
     (available ? it : it.skip)('fetch_agent_key should delegate remote key lookup to the native Rust binding', async () => {

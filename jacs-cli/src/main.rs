@@ -17,7 +17,6 @@ use jacs::cli_utils::document::{
     check_agreement, create_agreement, create_documents, extract_documents, sign_documents,
     update_documents, verify_documents,
 };
-use jacs::create_task; // re-enabled: may be used by a2a later
 use jacs::dns::bootstrap as dns_bootstrap;
 use jacs::shutdown::{ShutdownGuard, install_signal_handler};
 use jacs_cli::password_bootstrap::{
@@ -446,38 +445,6 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => println!("please enter subcommand see jacs agent --help"),
         },
 
-        Some(("task", task_matches)) => match task_matches.subcommand() {
-            Some(("create", create_matches)) => {
-                let _agentfile = create_matches.get_one::<String>("agent-file");
-                let mut agent: Agent = load_agent().expect("failed to load agent for task create");
-                let name = create_matches
-                    .get_one::<String>("name")
-                    .expect("task name is required");
-                let description = create_matches
-                    .get_one::<String>("description")
-                    .expect("task description is required");
-                println!(
-                    "{}",
-                    create_task(&mut agent, name.to_string(), description.to_string()).unwrap()
-                );
-            }
-            Some(("update", update_matches)) => {
-                let mut agent: Agent = load_agent().expect("failed to load agent for task update");
-                let task_key = update_matches
-                    .get_one::<String>("task-key")
-                    .expect("task key is required");
-                let filename = update_matches
-                    .get_one::<String>("filename")
-                    .expect("filename is required");
-                let updated_json = std::fs::read_to_string(filename)
-                    .unwrap_or_else(|e| panic!("Failed to read '{}': {}", filename, e));
-                println!(
-                    "{}",
-                    jacs::update_task(&mut agent, task_key, &updated_json).unwrap()
-                );
-            }
-            _ => println!("please enter subcommand see jacs task --help"),
-        },
         Some(("document", document_matches)) => match document_matches.subcommand() {
             Some(("create", create_matches)) => {
                 let filename = create_matches.get_one::<String>("filename");
@@ -685,17 +652,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             _ => {
                 let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
                 let profile = jacs_mcp::Profile::resolve(profile_str);
-                let (agent, info) = jacs_mcp::load_agent_from_config_env_with_info()?;
-                let state_roots = info["data_directory"]
-                    .as_str()
-                    .map(std::path::PathBuf::from)
-                    .into_iter()
-                    .collect();
-                let server = jacs_mcp::JacsMcpServer::with_profile_and_state_roots(
-                    agent,
-                    profile,
-                    state_roots,
-                );
+                let (agent, _info) = jacs_mcp::load_agent_from_config_env_with_info()?;
+                let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);
                 let rt = tokio::runtime::Runtime::new()?;
                 rt.block_on(jacs_mcp::serve_stdio(server))?;
             }

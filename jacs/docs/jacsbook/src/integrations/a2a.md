@@ -80,7 +80,7 @@ app.listen(3000);
 Python:
 
 ```python
-signed = client.sign_artifact({"taskId": "t-1", "operation": "classify"}, "task")
+signed = client.sign_artifact({"artifactId": "a-1", "operation": "classify"}, "artifact")
 result = client.get_a2a().verify_wrapped_artifact(signed)
 assert result["valid"]
 ```
@@ -89,8 +89,8 @@ Node.js:
 
 ```typescript
 const signed = await client.signArtifact(
-  { taskId: 't-1', operation: 'classify' },
-  'task',
+  { artifactId: 'a-1', operation: 'classify' },
+  'artifact',
 );
 
 const result = await client.verifyArtifact(signed);

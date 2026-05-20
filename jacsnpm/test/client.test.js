@@ -35,6 +35,10 @@ function resolveConfigRelativePath(configPath, candidate) {
     : fs.realpathSync(path.resolve(path.dirname(configPath), candidate));
 }
 
+function mkRealTempDir(prefix) {
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+}
+
 // Check if fixtures are loadable (password may not match)
 let fixturesLoadable = false;
 if (clientModule && fs.existsSync(TEST_CONFIG)) {
@@ -126,7 +130,7 @@ describe('JacsClient', function () {
 
     (available ? it : it.skip)('should honor custom configPath when creating a persistent agent', async function () {
       this.timeout(30000);
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-quickstart-'));
+      const tmpDir = mkRealTempDir('jacs-client-quickstart-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       delete process.env.JACS_PRIVATE_KEY_PASSWORD;
@@ -169,7 +173,7 @@ describe('JacsClient', function () {
 
     (available && simpleModule ? it : it.skip)('should return the same resolved metadata through client and simple load paths', async function () {
       this.timeout(30000);
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-load-parity-'));
+      const tmpDir = mkRealTempDir('jacs-load-parity-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
@@ -210,7 +214,7 @@ describe('JacsClient', function () {
 
     (available ? it : it.skip)('should not reopen config in JS during client load when password is already resolved', async function () {
       this.timeout(30000);
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-native-load-'));
+      const tmpDir = mkRealTempDir('jacs-client-native-load-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
@@ -255,7 +259,7 @@ describe('JacsClient', function () {
   describe('verifyById', () => {
     (available ? it : it.skip)('should use native document lookup for metadata instead of JS filesystem reads', async function () {
       this.timeout(30000);
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-verify-by-id-'));
+      const tmpDir = mkRealTempDir('jacs-client-verify-by-id-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
@@ -268,7 +272,7 @@ describe('JacsClient', function () {
           algorithm: 'ring-Ed25519',
         });
         const storedRaw = await client._agent.createDocument(
-          JSON.stringify({ jacsType: 'message', jacsLevel: 'raw', content: { verifyById: true } }),
+          JSON.stringify({ jacsType: 'document', jacsLevel: 'raw', content: { verifyById: true } }),
           null,
           null,
           false,
@@ -309,7 +313,7 @@ describe('JacsClient', function () {
   describe('exportAgent', () => {
     (available ? it : it.skip)('should use native export instead of JS filesystem reads', async function () {
       this.timeout(30000);
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-export-agent-'));
+      const tmpDir = mkRealTempDir('jacs-client-export-agent-');
       const originalCwd = process.cwd();
       const previousPassword = process.env.JACS_PRIVATE_KEY_PASSWORD;
       process.env.JACS_PRIVATE_KEY_PASSWORD = 'TestP@ss123!#';
@@ -665,7 +669,7 @@ describe('JacsClient', function () {
   describe('inline text + image (ephemeral)', () => {
     (available ? it : it.skip)('signText / verifyText round trip', async () => {
       const client = await clientModule.JacsClient.ephemeral();
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-text-'));
+      const tmp = mkRealTempDir('jacs-client-text-');
       try {
         const target = path.join(tmp, 'r.md');
         fs.writeFileSync(target, 'hello\n');
@@ -679,7 +683,7 @@ describe('JacsClient', function () {
 
     (available ? it : it.skip)('verifyText permissive on unsigned file returns missing_signature', async () => {
       const client = await clientModule.JacsClient.ephemeral();
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-text-'));
+      const tmp = mkRealTempDir('jacs-client-text-');
       try {
         const target = path.join(tmp, 'plain.md');
         fs.writeFileSync(target, 'hi\n');
@@ -692,7 +696,7 @@ describe('JacsClient', function () {
 
     (available ? it : it.skip)('verifyText strict on unsigned file rejects /no JACS signature found/', async () => {
       const client = await clientModule.JacsClient.ephemeral();
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-text-'));
+      const tmp = mkRealTempDir('jacs-client-text-');
       try {
         const target = path.join(tmp, 'strict.md');
         fs.writeFileSync(target, 'hi\n');
@@ -716,7 +720,7 @@ describe('JacsClient', function () {
         return;
       }
       const client = await clientModule.JacsClient.ephemeral();
-      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jacs-client-img-'));
+      const tmp = mkRealTempDir('jacs-client-img-');
       try {
         const src = path.join(tmp, 'in.png');
         const dst = path.join(tmp, 'out.png');

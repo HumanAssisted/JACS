@@ -563,8 +563,11 @@ class JACSA2AIntegration:
             )
         ]
 
-        # Convert JACS services to A2A skills
-        skills = self._convert_services_to_skills(agent_data.get("jacsServices", []))
+        # Use explicit A2A skills when present. Retired JACS service schemas are
+        # intentionally ignored for Agent Card skill generation.
+        skills = self._normalize_a2a_skills(
+            agent_data.get("skills") or agent_data.get("a2aSkills") or []
+        )
 
         # Define security schemes as a keyed map
         security_schemes = {
@@ -610,38 +613,27 @@ class JACSA2AIntegration:
             metadata=metadata,
         )
 
-    def _convert_services_to_skills(self, services: List[Dict[str, Any]]) -> List[A2AAgentSkill]:
-        """Convert JACS services to A2A skills (v0.4.0)"""
+    def _normalize_a2a_skills(self, raw_skills: List[Dict[str, Any]]) -> List[A2AAgentSkill]:
+        """Normalize explicit A2A skills for Agent Card export (v0.4.0)."""
         skills = []
 
-        for service in services:
-            service_name = service.get("name", service.get("serviceDescription", "unnamed_service"))
-            service_desc = service.get("serviceDescription", "No description")
+        for raw_skill in raw_skills:
+            if isinstance(raw_skill, A2AAgentSkill):
+                skills.append(raw_skill)
+                continue
 
-            tools = service.get("tools", [])
-            if tools:
-                for tool in tools:
-                    if function := tool.get("function"):
-                        fn_name = function.get("name", service_name)
-                        fn_desc = function.get("description", service_desc)
+            name = raw_skill.get("name", raw_skill.get("id", "unnamed"))
+            skills.append(A2AAgentSkill(
+                id=raw_skill.get("id", self._slugify(name)),
+                name=name,
+                description=raw_skill.get("description", ""),
+                tags=raw_skill.get("tags", ["jacs"]),
+                examples=raw_skill.get("examples"),
+                input_modes=raw_skill.get("inputModes") or raw_skill.get("input_modes"),
+                output_modes=raw_skill.get("outputModes") or raw_skill.get("output_modes"),
+                security=raw_skill.get("security"),
+            ))
 
-                        skill = A2AAgentSkill(
-                            id=self._slugify(fn_name),
-                            name=fn_name,
-                            description=fn_desc,
-                            tags=self._derive_tags(service_name, fn_name),
-                        )
-                        skills.append(skill)
-            else:
-                skill = A2AAgentSkill(
-                    id=self._slugify(service_name),
-                    name=service_name,
-                    description=service_desc,
-                    tags=self._derive_tags(service_name, service_name),
-                )
-                skills.append(skill)
-
-        # Add default verification skill if none exist
         if not skills:
             skills.append(A2AAgentSkill(
                 id="verify-signature",
@@ -715,7 +707,7 @@ class JACSA2AIntegration:
 
         Args:
             artifact: The A2A artifact to wrap and sign.
-            artifact_type: Type of artifact (e.g., ``"task"``, ``"message"``).
+            artifact_type: Type of artifact (e.g., ``"artifact"``, ``"result"``).
             parent_signatures: Optional parent signatures for chain of custody.
 
         Returns:
@@ -750,7 +742,7 @@ class JACSA2AIntegration:
 
         Args:
             artifact: The A2A artifact to wrap.
-            artifact_type: Type of artifact (e.g., ``"task"``, ``"message"``).
+            artifact_type: Type of artifact (e.g., ``"artifact"``, ``"result"``).
             parent_signatures: Optional parent signatures for chain of custody.
 
         Returns:
@@ -1210,26 +1202,11 @@ def example_basic_usage():
         "jacsName": "Example Python Agent",
         "jacsDescription": "A Python agent with A2A support",
         "jacsAgentType": "ai",
-        "jacsServices": [{
-            "name": "Text Analysis",
-            "serviceDescription": "Analyzes text using NLP",
-            "successDescription": "Text successfully analyzed",
-            "failureDescription": "Analysis failed",
-            "tools": [{
-                "url": "/api/analyze",
-                "function": {
-                    "name": "analyze_text",
-                    "description": "Analyze text and extract insights",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "text": {"type": "string"},
-                            "language": {"type": "string"}
-                        },
-                        "required": ["text"]
-                    }
-                }
-            }]
+        "skills": [{
+            "id": "analyze-text",
+            "name": "analyze_text",
+            "description": "Analyze text and extract insights",
+            "tags": ["jacs", "analysis"],
         }]
     }
 
@@ -1241,28 +1218,28 @@ def example_basic_usage():
     print(f"  Skills: {len(agent_card.skills)}")
     print(f"  Interfaces: {len(agent_card.supported_interfaces)}")
 
-    task = {
-        "taskId": "task-456",
+    artifact = {
+        "artifactId": "artifact-456",
         "operation": "analyze_text",
         "input": {"text": "Hello world", "language": "en"},
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
-    wrapped_task = a2a.sign_artifact(task, "task")
-    print(f"\nWrapped task ID: {wrapped_task['jacsId']}")
+    wrapped_artifact = a2a.sign_artifact(artifact, "artifact")
+    print(f"\nWrapped artifact ID: {wrapped_artifact['jacsId']}")
 
-    verification = a2a.verify_wrapped_artifact(wrapped_task)
+    verification = a2a.verify_wrapped_artifact(wrapped_artifact)
     print(f"Verification: {'PASSED' if verification['valid'] else 'FAILED'}")
 
-    return agent_card, wrapped_task
+    return agent_card, wrapped_artifact
 
 
 if __name__ == "__main__":
-    agent_card, wrapped_task = example_basic_usage()
+    agent_card, wrapped_artifact = example_basic_usage()
 
     print("\n=== Agent Card JSON ===")
     a2a = JACSA2AIntegration.from_config("jacs.config.json")
     print(json.dumps(a2a.agent_card_to_dict(agent_card), indent=2))
 
     print("\n=== Wrapped Task JSON ===")
-    print(json.dumps(wrapped_task, indent=2))
+    print(json.dumps(wrapped_artifact, indent=2))

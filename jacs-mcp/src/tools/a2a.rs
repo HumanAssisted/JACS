@@ -17,9 +17,9 @@ pub struct WrapA2aArtifactParams {
     #[schemars(description = "The A2A artifact JSON content to wrap with JACS provenance")]
     pub artifact_json: String,
 
-    /// The artifact type identifier (e.g., "a2a-artifact", "message", "task-result").
+    /// The artifact type identifier (e.g., "artifact", "agreement", "signature").
     #[schemars(
-        description = "Artifact type identifier (e.g., 'a2a-artifact', 'message', 'task-result')"
+        description = "Artifact type identifier (e.g., 'artifact', 'agreement', 'signature')"
     )]
     pub artifact_type: String,
 

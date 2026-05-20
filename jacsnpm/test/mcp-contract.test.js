@@ -17,7 +17,6 @@ const EXPECTED_CANONICAL_TOOL_NAMES = new Set([
   'jacs_create_agreement',
   'jacs_sign_agreement',
   'jacs_check_agreement',
-  'jacs_audit',
   'jacs_export_agent',
   'jacs_export_agent_card',
   'jacs_wrap_a2a_artifact',

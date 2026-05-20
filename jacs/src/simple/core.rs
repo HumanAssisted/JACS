@@ -1093,7 +1093,7 @@ impl SimpleAgent {
     pub fn sign_message(&self, data: &Value) -> Result<SignedDocument, JacsError> {
         debug!("sign_message() called");
 
-        // Wrap the data in a minimal document structure
+        // Preserve the long-standing sign_message type label for compatibility.
         let doc_content = json!({
             "jacsType": "message",
             "jacsLevel": "raw",

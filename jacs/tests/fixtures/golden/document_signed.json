@@ -1,9 +1,9 @@
 {
   "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
-  "jacsType": "message",
+  "jacsType": "document",
   "jacsLevel": "raw",
   "content": {
-    "type": "test_message",
+    "type": "test_document",
     "text": "Hello, JACS! This is a golden fixture for cross-language testing.",
     "data": {
       "key": "value",
@@ -11,7 +11,7 @@
       "array": [1, 2, 3]
     }
   },
-  "jacsId": "golden-message-001",
+  "jacsId": "golden-document-001",
   "jacsVersion": "v1",
   "jacsOriginalVersion": "v1",
   "jacsVersionDate": "2025-01-01T00:00:00.000000+00:00",

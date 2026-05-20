@@ -31,18 +31,12 @@ SAMPLE_AGENT_DATA = {
     "jacsDescription": "Tests middleware A2A",
     "jacsVersion": "v1",
     "jacsAgentType": "ai",
-    "jacsServices": [
+    "skills": [
         {
-            "name": "Echo",
-            "serviceDescription": "Echoes input",
-            "tools": [
-                {
-                    "function": {
-                        "name": "echo",
-                        "description": "Echo back input",
-                    }
-                }
-            ],
+            "id": "echo",
+            "name": "echo",
+            "description": "Echo back input",
+            "tags": ["jacs", "echo"],
         }
     ],
 }
@@ -142,16 +136,10 @@ class TestMiddlewareA2ARoutes:
     def test_skills_override(self):
         custom_skills = [
             {
-                "name": "Custom",
-                "serviceDescription": "Custom skill",
-                "tools": [
-                    {
-                        "function": {
-                            "name": "custom_op",
-                            "description": "A custom operation",
-                        }
-                    }
-                ],
+                "id": "custom-op",
+                "name": "custom_op",
+                "description": "A custom operation",
+                "tags": ["jacs"],
             }
         ]
         tc = self._make_test_client(a2a=True, a2a_skills=custom_skills)

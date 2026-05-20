@@ -2,7 +2,7 @@
 
 This page walks through common CLI workflows. For a complete command reference, see the [CLI Command Reference](../reference/cli-commands.md). For practical scripting examples, see [CLI Examples](../examples/cli.md).
 
-The JACS CLI provides a command-line interface for managing agents, documents, tasks, and agreements.
+The JACS CLI provides a command-line interface for managing agents, documents, and agreements.
 
 ## Getting Help
 
@@ -13,7 +13,6 @@ jacs --help
 # Command-specific help
 jacs agent --help
 jacs document --help
-jacs task --help
 ```
 
 ## Commands Overview
@@ -25,7 +24,6 @@ jacs task --help
 | `jacs config` | Manage configuration |
 | `jacs agent` | Manage agents |
 | `jacs document` | Manage documents |
-| `jacs task` | Manage tasks |
 | `jacs mcp` | Start the built-in MCP server (stdio transport) |
 
 ## Initialization
@@ -140,27 +138,6 @@ jacs agent lookup agent.example.com --strict
 # Skip DNS lookup
 jacs agent lookup agent.example.com --no-dns
 ```
-
-## Task Commands
-
-### Create Task
-```bash
-jacs task create -n "Task Name" -d "Task description"
-
-# With optional agent file
-jacs task create -n "Task Name" -d "Description" -a ./agent.json
-
-# With input file
-jacs task create -n "Task Name" -d "Description" -f ./task-details.json
-```
-
-**Options:**
-| Option | Short | Required | Description |
-|--------|-------|----------|-------------|
-| `-n` | `--name` | Yes | Name of the task |
-| `-d` | `--description` | Yes | Description of the task |
-| `-a` | `--agent-file` | No | Path to agent file |
-| `-f` | `--filename` | No | Path to JSON file with additional task data |
 
 ## Document Commands
 

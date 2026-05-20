@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 /// used during document creation and signing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateOptions {
-    /// The `jacsType` to assign (e.g., `"artifact"`, `"agentstate"`, `"message"`).
+    /// The `jacsType` to assign (e.g., `"artifact"`, `"document"`).
     /// Defaults to `"artifact"`.
     pub jacs_type: String,
 
@@ -227,13 +227,13 @@ mod tests {
     #[test]
     fn list_filter_supports_jacs_type_agent_id_visibility() {
         let filter = ListFilter {
-            jacs_type: Some("agentstate".to_string()),
+            jacs_type: Some("artifact".to_string()),
             agent_id: Some("agent-123".to_string()),
             visibility: Some(DocumentVisibility::Public),
             limit: Some(50),
             offset: Some(10),
         };
-        assert_eq!(filter.jacs_type.as_deref(), Some("agentstate"));
+        assert_eq!(filter.jacs_type.as_deref(), Some("artifact"));
         assert_eq!(filter.agent_id.as_deref(), Some("agent-123"));
         assert_eq!(filter.visibility, Some(DocumentVisibility::Public));
         assert_eq!(filter.limit, Some(50));

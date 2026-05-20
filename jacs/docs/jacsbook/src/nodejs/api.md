@@ -205,7 +205,7 @@ Sign an A2A artifact with JACS provenance. This is the canonical method name.
 
 **Parameters:**
 - `artifactJson` (string): JSON string of the artifact to sign
-- `artifactType` (string): Type of artifact (e.g., `"task"`, `"message"`)
+- `artifactType` (string): Type of artifact (e.g., `"artifact"`, `"result"`)
 - `parentSignaturesJson` (string, optional): JSON string of parent signatures for chain of custody
 
 **Returns:** `Promise<string>` (async) or `string` (sync) -- The signed, wrapped artifact as a JSON string
@@ -214,7 +214,7 @@ Sign an A2A artifact with JACS provenance. This is the canonical method name.
 ```javascript
 const signed = await agent.signArtifact(
   JSON.stringify({ action: 'classify', input: 'hello' }),
-  'task'
+  'artifact'
 );
 ```
 

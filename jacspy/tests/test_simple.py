@@ -404,10 +404,6 @@ class TestUpdateAgent:
         agent = json.loads(agent_doc)
         original_version = agent.get("jacsVersion")
 
-        # Add required field if missing (schema requires at least 1 contact)
-        if "jacsContacts" not in agent or len(agent.get("jacsContacts", [])) == 0:
-            agent["jacsContacts"] = [{"contactFirstName": "Test", "contactLastName": "Contact"}]
-
         # Modify a field with valid enum value
         agent["jacsAgentType"] = "hybrid"
 
@@ -426,10 +422,6 @@ class TestUpdateAgent:
         # Get the current agent document and modify it
         agent_doc = simple.export_agent()
         agent = json.loads(agent_doc)
-
-        # Add required field if missing (schema requires at least 1 contact)
-        if "jacsContacts" not in agent or len(agent.get("jacsContacts", [])) == 0:
-            agent["jacsContacts"] = [{"contactFirstName": "Test", "contactLastName": "Contact"}]
 
         agent["jacsAgentType"] = "human-org"
 
@@ -512,6 +504,10 @@ class TestSignMessage:
         signed = simple.sign_message(data)
 
         parsed = json.loads(signed.raw)
+        if parsed["jacsType"] == "header":
+            assert parsed["jacsDocument"]["type"] == "message"
+        else:
+            assert parsed["jacsType"] == "message"
         assert "jacsSignature" in parsed
 
 

@@ -419,13 +419,8 @@ export interface AgentData {
   jacsVersion?: string;
   jacsAgentType?: string;
   jacsAgentDomain?: string;
-  jacsServices?: Array<{
-    name?: string;
-    serviceDescription?: string;
-    tools?: Array<{
-      function?: { name?: string; description?: string };
-    }>;
-  }>;
+  skills?: Array<A2AAgentSkill | (Partial<A2AAgentSkillOptions> & { [key: string]: unknown })>;
+  a2aSkills?: Array<A2AAgentSkill | (Partial<A2AAgentSkillOptions> & { [key: string]: unknown })>;
   keyAlgorithm?: string;
   jwks?: { keys: unknown[] };
   jwk?: Record<string, unknown>;
@@ -552,7 +547,7 @@ export class JACSA2AIntegration {
 
     const supportedInterfaces = [new A2AAgentInterface(baseUrl, 'jsonrpc')];
 
-    const skills = this._convertServicesToSkills(agentData.jacsServices || []);
+    const skills = this._normalizeA2ASkills(agentData.skills || agentData.a2aSkills || []);
 
     const securitySchemes: Record<string, unknown> = {
       'bearer-jwt': { type: 'http', scheme: 'Bearer', bearerFormat: 'JWT' },
@@ -1186,50 +1181,29 @@ export class JACSA2AIntegration {
       .replace(/[^a-z0-9-]/g, '');
   }
 
-  private _deriveTags(serviceName: string, fnName: string): string[] {
-    const tags = ['jacs'];
-    const serviceSlug = this._slugify(serviceName);
-    const fnSlug = this._slugify(fnName);
-    if (serviceSlug !== fnSlug) tags.push(serviceSlug);
-    tags.push(fnSlug);
-    return tags;
-  }
-
-  private _convertServicesToSkills(
-    services: NonNullable<AgentData['jacsServices']>,
+  private _normalizeA2ASkills(
+    rawSkills: NonNullable<AgentData['skills']>,
   ): A2AAgentSkill[] {
     const skills: A2AAgentSkill[] = [];
 
-    for (const service of services) {
-      const serviceName = service.name || service.serviceDescription || 'unnamed_service';
-      const serviceDesc = service.serviceDescription || 'No description';
-
-      const tools = service.tools || [];
-      if (tools.length > 0) {
-        for (const tool of tools) {
-          if (tool.function) {
-            const fnName = tool.function.name || serviceName;
-            const fnDesc = tool.function.description || serviceDesc;
-            skills.push(
-              new A2AAgentSkill({
-                id: this._slugify(fnName),
-                name: fnName,
-                description: fnDesc,
-                tags: this._deriveTags(serviceName, fnName),
-              }),
-            );
-          }
-        }
-      } else {
-        skills.push(
-          new A2AAgentSkill({
-            id: this._slugify(serviceName),
-            name: serviceName,
-            description: serviceDesc,
-            tags: this._deriveTags(serviceName, serviceName),
-          }),
-        );
+    for (const rawSkill of rawSkills) {
+      if (rawSkill instanceof A2AAgentSkill) {
+        skills.push(rawSkill);
+        continue;
       }
+      const name = String(rawSkill.name || rawSkill.id || 'unnamed');
+      skills.push(
+        new A2AAgentSkill({
+          id: String(rawSkill.id || this._slugify(name)),
+          name,
+          description: String(rawSkill.description || ''),
+          tags: Array.isArray(rawSkill.tags) ? rawSkill.tags.map(String) : ['jacs'],
+          examples: Array.isArray(rawSkill.examples) ? rawSkill.examples.map(String) : null,
+          inputModes: Array.isArray(rawSkill.inputModes) ? rawSkill.inputModes.map(String) : null,
+          outputModes: Array.isArray(rawSkill.outputModes) ? rawSkill.outputModes.map(String) : null,
+          security: Array.isArray(rawSkill.security) ? rawSkill.security : null,
+        }),
+      );
     }
 
     if (skills.length === 0) {

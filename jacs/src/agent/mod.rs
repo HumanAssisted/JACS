@@ -68,8 +68,6 @@ pub const SHA256_FIELDNAME: &str = "jacsSha256";
 pub const AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const AGENT_REGISTRATION_SIGNATURE_FIELDNAME: &str = "jacsRegistration";
 pub const AGENT_AGREEMENT_FIELDNAME: &str = "jacsAgreement";
-pub const TASK_START_AGREEMENT_FIELDNAME: &str = "jacsStartAgreement";
-pub const TASK_END_AGREEMENT_FIELDNAME: &str = "jacsEndAgreement";
 pub const DOCUMENT_AGENT_SIGNATURE_FIELDNAME: &str = "jacsSignature";
 pub const JACS_VERSION_FIELDNAME: &str = "jacsVersion";
 pub const JACS_VERSION_DATE_FIELDNAME: &str = "jacsVersionDate";
@@ -79,14 +77,12 @@ pub const SIGNATURE_CONTENT_VERSION_V2: &str = "jacs-signature-v2";
 pub const SIGNATURE_CONTENT_DOMAIN_V2: &str = "jacs.signature.v2";
 
 // these fields are ignored when hashing
-pub const JACS_IGNORE_FIELDS: [&str; 7] = [
+pub const JACS_IGNORE_FIELDS: [&str; 5] = [
     SHA256_FIELDNAME,
     AGENT_SIGNATURE_FIELDNAME,
     DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
     AGENT_AGREEMENT_FIELDNAME,
     AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
-    TASK_START_AGREEMENT_FIELDNAME,
-    TASK_END_AGREEMENT_FIELDNAME,
 ];
 
 /// Controls how signature payload content is built from document fields.

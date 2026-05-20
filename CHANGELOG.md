@@ -16,6 +16,12 @@
 - Added `verify_signed_email` and `verify_html_inline_email_content` entrypoints so callers can route attachment and HTML-inline email through one JACS-owned verification surface during migration.
 - Exposed `verify_html_inline_email_document` for HAI API callers that need verified inline document bytes plus parsed MIME parts for field-level forensics.
 
+### Changed
+
+- Consolidated the schema surface around generic signed documents, agreements, signatures, agents, A2A, and config.
+- Removed retired workflow schemas and generated docs for message, task, commitment, todo, agentstate, program, node, eval, and the action/service/tool/unit/contact/embedding/todoitem components.
+- Updated A2A, bindings, CLI/MCP contracts, examples, docs, and generated schema reference output for generic document payloads and explicit A2A skills while preserving the legacy `sign_message` / signed-email `jacsType: "message"` compatibility label.
+
 ### Fixed
 
 - HTML-inline email verification now reports generated-HTML presentation tamper as `html_equivalence_failed`, returning `Failed` in strict mode and `PartiallyVerified` in degraded mode after the signed text body, headers, and user attachments verify.
@@ -716,16 +722,16 @@ proof of concept
 - fixed issue with filepaths for agents and keys
 - added jacsType to to jacs document as required
 - added archive old version, to move older versions of docs to different folder
-- added jacsEmbedding to headers, which allow persistance of vector embeddings iwth jacs docs. 
+- added experimental vector metadata to headers for JACS documents.
 - default to only loading most recent version of document in load_all
 - fixed bug with naming file on update
-- changes to message schema to always include header
+- updated the then-current signed payload schema to always include the header
 - add jacsLevel to track general type of document and its mutability
 
 ## 0.2.13
 - save public key to local fs
 - restricted signingAlgorithm in schema
-- refresh schema for program, program node/consent/action/tool
+- refresh then-current workflow schemas
 
 ## 0.2.12
 

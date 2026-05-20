@@ -62,7 +62,6 @@ class TestRegisterJacsTools:
             "jacs_create_agreement",
             "jacs_sign_agreement",
             "jacs_check_agreement",
-            "jacs_audit",
             "jacs_agent_info",
             "jacs_share_public_key",
             "jacs_export_agent",
@@ -250,30 +249,6 @@ class TestAgreementTools:
         assert status["success"] is True
         assert status["complete"] is True
         assert isinstance(status["signers"], list)
-
-
-# ---------------------------------------------------------------------------
-# jacs_audit tool
-# ---------------------------------------------------------------------------
-
-
-class TestAuditTool:
-    def test_audit_returns_json(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        cl = JacsClient.quickstart(
-            name="mcp-audit-agent",
-            domain="mcp-audit.example",
-            algorithm=TEST_ALGORITHM_INTERNAL,
-            config_path=str(tmp_path / "jacs.config.json"),
-        )
-        mcp = FakeMCP()
-        register_jacs_tools(mcp, client=cl)
-        fn = mcp.tools["jacs_audit"]["fn"]
-
-        result = fn()
-        # audit returns JSON string — should be parseable
-        parsed = json.loads(result)
-        assert isinstance(parsed, dict)
 
 
 # ---------------------------------------------------------------------------

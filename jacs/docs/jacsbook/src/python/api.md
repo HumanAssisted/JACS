@@ -247,7 +247,7 @@ Sign an A2A artifact with JACS provenance. This is the canonical method name.
 
 **Parameters:**
 - `artifact_json` (str): JSON string of the artifact to sign
-- `artifact_type` (str): Type of artifact (e.g., `"task"`, `"message"`)
+- `artifact_type` (str): Type of artifact (e.g., `"artifact"`, `"result"`)
 - `parent_signatures_json` (str, optional): JSON string of parent signatures for chain of custody
 
 **Returns:** str - The signed, wrapped artifact as a JSON string
@@ -256,7 +256,7 @@ Sign an A2A artifact with JACS provenance. This is the canonical method name.
 ```python
 signed = agent.sign_artifact(
     json.dumps({"action": "classify", "input": "hello"}),
-    "task"
+    "artifact"
 )
 ```
 

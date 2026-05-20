@@ -131,7 +131,7 @@ class JacsMiddleware(BaseHTTPMiddleware):
             agent_data: Dict[str, Any] = json.loads(agent_json_str)
 
             if skills:
-                agent_data["jacsServices"] = skills
+                agent_data["skills"] = skills
 
             card = integration.export_agent_card(agent_data)
             card_dict = integration.agent_card_to_dict(card)

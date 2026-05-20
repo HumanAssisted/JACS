@@ -847,7 +847,7 @@ def sign_message(data: Any) -> SignedDocument:
     logger.debug("sign_message() called with data type=%s", type(data).__name__)
 
     try:
-        # Create a document with the data as payload
+        # Preserve the long-standing sign_message type label for compatibility.
         doc_json = json.dumps({
             "jacsDocument": {
                 "type": "message",

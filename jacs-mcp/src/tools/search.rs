@@ -27,10 +27,8 @@ pub struct SearchParams {
     #[schemars(description = "Search query string to match against document content and names")]
     pub query: String,
 
-    /// Optional filter by document type (e.g., "agentstate", "message").
-    #[schemars(
-        description = "Optional filter by JACS document type (e.g., 'agentstate', 'message', 'agreement')"
-    )]
+    /// Optional filter by document type (e.g., "agreement", "agent").
+    #[schemars(description = "Optional filter by JACS document type (e.g., 'agreement', 'agent')")]
     pub jacs_type: Option<String>,
 
     /// Optional filter by signing agent ID.

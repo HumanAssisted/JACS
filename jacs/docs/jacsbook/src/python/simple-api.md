@@ -364,7 +364,7 @@ agent_doc = json.loads(jacs.export_agent())
 
 # Modify fields
 agent_doc["jacsAgentType"] = "hybrid"
-agent_doc["jacsContacts"] = [{"contactFirstName": "Jane", "contactLastName": "Doe"}]
+agent_doc["description"] = "Hybrid signing agent"
 
 # Update (creates new version, re-signs, re-hashes)
 updated = jacs.update_agent(agent_doc)
@@ -575,8 +575,7 @@ print(f"Contract signed: {contract_signed.document_id}")
 # Update agent metadata
 agent_doc = json.loads(jacs.export_agent())
 agent_doc["jacsAgentType"] = "ai"
-if not agent_doc.get("jacsContacts") or len(agent_doc["jacsContacts"]) == 0:
-    agent_doc["jacsContacts"] = [{"contactFirstName": "AI", "contactLastName": "Agent"}]
+agent_doc["description"] = "AI signing agent"
 updated_agent = jacs.update_agent(agent_doc)
 print("Agent metadata updated")
 

@@ -1362,14 +1362,10 @@ mod tests {
         let original_id = info.agent_id.clone();
         let original_version = info.version.clone();
 
-        // Step 3: update metadata (change description via jacsServices)
+        // Step 3: update metadata
         let exported = agent.export_agent().expect("export original agent");
         let mut doc: Value = serde_json::from_str(&exported).expect("parse agent");
-        doc["jacsServices"] = json!([{
-            "serviceDescription": "Updated service description",
-            "successDescription": "Updated success",
-            "failureDescription": "Updated failure"
-        }]);
+        doc["description"] = json!("Updated agent description");
 
         let updated_json = advanced::update_agent(&agent, &doc.to_string())
             .expect("metadata update should succeed");
@@ -1391,10 +1387,8 @@ mod tests {
         );
         // metadata should be updated
         assert_eq!(
-            updated_doc["jacsServices"][0]["serviceDescription"]
-                .as_str()
-                .unwrap(),
-            "Updated service description"
+            updated_doc["description"].as_str().unwrap(),
+            "Updated agent description"
         );
 
         // Verify the updated agent is valid: can sign and verify
@@ -1447,11 +1441,7 @@ mod tests {
         // Step 3: update metadata
         let exported = agent.export_agent().expect("export after rotation");
         let mut doc: Value = serde_json::from_str(&exported).expect("parse");
-        doc["jacsServices"] = json!([{
-            "serviceDescription": "Post-rotation service",
-            "successDescription": "Works",
-            "failureDescription": "Fails"
-        }]);
+        doc["description"] = json!("Post-rotation metadata");
 
         let updated_json = advanced::update_agent(&agent, &doc.to_string())
             .expect("metadata update after rotation should succeed");
@@ -1481,10 +1471,8 @@ mod tests {
 
         // Metadata persisted
         assert_eq!(
-            updated_doc["jacsServices"][0]["serviceDescription"]
-                .as_str()
-                .unwrap(),
-            "Post-rotation service"
+            updated_doc["description"].as_str().unwrap(),
+            "Post-rotation metadata"
         );
     }
 

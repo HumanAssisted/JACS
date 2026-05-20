@@ -433,7 +433,7 @@ pub(crate) fn build_jacs_email_document(
         .map_err(|e| EmailError::InvalidJacsDocument(format!("payload serialization: {e}")))?;
 
     // Use the JacsSigner to create and sign a real JACS document.
-    // sign_message() wraps the data as:
+    // sign_message() preserves the legacy signed-message type label:
     //   { "jacsType": "message", "jacsLevel": "raw", "content": <payload> }
     // then calls create_document_and_load() which handles schema validation,
     // canonical hashing, and cryptographic signing through the agent's identity.

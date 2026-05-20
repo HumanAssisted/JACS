@@ -467,7 +467,7 @@ impl JacsAgent {
     ///
     /// Args:
     ///     artifact_json: JSON string of the artifact to wrap
-    ///     artifact_type: Type label (e.g., "artifact", "message", "task")
+    ///     artifact_type: Type label (e.g., "artifact", "result")
     ///     parent_signatures_json: Optional JSON array of parent signatures
     ///
     /// Returns:

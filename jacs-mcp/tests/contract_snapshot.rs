@@ -1,8 +1,10 @@
 #![cfg(feature = "mcp")]
 
-use jacs_mcp::{JacsMcpContractSnapshot, canonical_contract_snapshot};
+#[cfg(feature = "full-tools")]
+use jacs_mcp::JacsMcpContractSnapshot;
+use jacs_mcp::canonical_contract_snapshot;
 
-/// The full contract snapshot test requires all 43 tools to be compiled in.
+/// The full contract snapshot test requires all current tools to be compiled in.
 /// The checked-in contract artifact contains all tools, so this test only
 /// makes sense with `full-tools`.
 #[cfg(feature = "full-tools")]
@@ -25,12 +27,10 @@ fn canonical_contract_snapshot_matches_checked_in_artifact() {
 fn canonical_contract_snapshot_contains_core_tools() {
     let actual = canonical_contract_snapshot();
 
-    // Core: state(6) + document(3) + trust(5) + audit(4) + memory(5) + search(1) + key(5)
-    //     + inline(2) + media(3) = 34
     assert_eq!(
         actual.tools.len(),
-        34,
-        "default-feature contract should have 34 core tools, got {}",
+        19,
+        "default-feature contract should have 19 core tools, got {}",
         actual.tools.len()
     );
 

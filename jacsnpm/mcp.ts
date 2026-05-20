@@ -456,17 +456,6 @@ export function getJacsMcpToolDefinitions(): JacsMcpToolDef[] {
       },
     },
     {
-      name: 'jacs_audit',
-      description: 'Run a JACS security audit on documents and keys.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          config_path: { type: 'string', description: 'Optional path to jacs.config.json' },
-          recent_n: { type: 'number', description: 'Number of recent documents to audit' },
-        },
-      },
-    },
-    {
       name: 'jacs_sign_file',
       description: 'Sign a file with JACS. Optionally embed the file content.',
       inputSchema: {
@@ -809,18 +798,6 @@ export async function handleJacsMcpToolCall(
         return text(JSON.stringify({ success: true, ...status }));
       }
 
-      case 'jacs_audit': {
-        const result = await client.audit(
-          args.config_path !== undefined || args.recent_n !== undefined
-            ? {
-                configPath: args.config_path,
-                recentN: args.recent_n,
-              }
-            : undefined,
-        );
-        return text(JSON.stringify({ success: true, ...result }));
-      }
-
       case 'jacs_sign_file': {
         const signed = await client.signFile(args.file_path, args.embed || false);
         return text(JSON.stringify({
@@ -1078,7 +1055,7 @@ export async function handleJacsMcpToolCall(
  * Register all JACS tools on an MCP Server instance.
  *
  * Call this once during server setup to add JACS signing, verification,
- * agreements, trust, audit, and registry integration tools.
+ * agreements, trust, and registry integration tools.
  *
  * @example
  * ```typescript

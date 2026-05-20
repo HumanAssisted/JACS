@@ -360,31 +360,30 @@ async function main() {
   const agent = new JacsAgent();
   await agent.load('./jacs.config.json');
 
-  // Create a task document
-  const task = {
-    title: 'Code Review',
-    description: 'Review pull request #123',
-    assignee: 'developer-uuid',
-    deadline: '2024-02-01'
+  // Create a generic proposal document
+  const proposal = {
+    title: 'Project Proposal',
+    description: 'Q1 development plan',
+    budget: 50000
   };
 
-  const signedTask = await agent.createDocument(JSON.stringify(task));
-  console.log('Task created');
+  const signedProposal = await agent.createDocument(JSON.stringify(proposal));
+  console.log('Document created');
 
-  // Verify the task
-  if (await agent.verifyDocument(signedTask)) {
-    console.log('Task signature valid');
+  // Verify the document
+  if (await agent.verifyDocument(signedProposal)) {
+    console.log('Document signature valid');
   }
 
-  // Create agreement for task acceptance
-  const taskWithAgreement = await agent.createAgreement(
-    signedTask,
+  // Create agreement for proposal approval
+  const proposalWithAgreement = await agent.createAgreement(
+    signedProposal,
     ['manager-uuid', 'developer-uuid'],
-    'Do you accept this task assignment?'
+    'Do you approve this proposal?'
   );
 
   // Sign the agreement
-  const signedAgreement = await agent.signAgreement(taskWithAgreement);
+  const signedAgreement = await agent.signAgreement(proposalWithAgreement);
   console.log('Agreement signed');
 
   // Check agreement status
@@ -392,8 +391,8 @@ async function main() {
   console.log('Status:', status);
 
   // Hash some data for reference
-  const taskHash = hashString(signedTask);
-  console.log('Task hash:', taskHash);
+  const proposalHash = hashString(signedProposal);
+  console.log('Document hash:', proposalHash);
 }
 
 main().catch(console.error);

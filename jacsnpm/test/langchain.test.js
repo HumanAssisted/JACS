@@ -478,12 +478,12 @@ describe('LangChain.js Adapter', function () {
   // =========================================================================
 
   describe('createJacsTools()', () => {
-    (available ? it : it.skip)('should return an array of 14 tools', () => {
+    (available ? it : it.skip)('should return an array of 13 tools', () => {
       const client = createMockClient();
       const tools = adapterModule.createJacsTools({ client });
 
       expect(tools).to.be.an('array');
-      expect(tools).to.have.length(14);
+      expect(tools).to.have.length(13);
     });
 
     (available ? it : it.skip)('should include all expected tool names', () => {
@@ -503,7 +503,7 @@ describe('LangChain.js Adapter', function () {
       expect(names).to.include('jacs_is_trusted');
       expect(names).to.include('jacs_share_public_key');
       expect(names).to.include('jacs_share_agent');
-      expect(names).to.include('jacs_audit');
+      expect(names).to.not.include('jacs_audit');
       expect(names).to.include('jacs_agent_info');
     });
 
@@ -672,18 +672,6 @@ describe('LangChain.js Adapter', function () {
       expect(client.shareAgent.calledOnce).to.be.true;
       expect(parsed).to.have.property('success', true);
       expect(parsed).to.have.property('agentJson', '{"jacsId":"agent-a:1"}');
-    });
-
-    (available ? it : it.skip)('jacs_audit tool should call client.audit', async () => {
-      const client = createMockClient();
-      const tools = adapterModule.createJacsTools({ client });
-      const auditTool = tools.find(t => t.name === 'jacs_audit');
-
-      const result = await auditTool.invoke({ recentN: 10 });
-      const parsed = JSON.parse(result);
-
-      expect(client.audit.calledOnce).to.be.true;
-      expect(parsed).to.have.property('status', 'ok');
     });
 
     (available ? it : it.skip)('jacs_agent_info tool should return agent metadata', async () => {

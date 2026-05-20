@@ -157,17 +157,6 @@ jacs agent [SUBCOMMAND]
 
 *Note: Specific subcommands for agent management are not detailed in the current help output.*
 
-## Task Commands
-
-### `jacs task`
-Work with JACS agent tasks - structured workflows between agents.
-
-```bash
-jacs task [SUBCOMMAND]
-```
-
-*Note: Specific subcommands for task management are not detailed in the current help output.*
-
 ## Document Commands
 
 The `jacs document` command provides comprehensive document management capabilities.

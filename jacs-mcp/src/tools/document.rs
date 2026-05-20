@@ -152,7 +152,7 @@ pub fn tools() -> Vec<Tool> {
             "jacs_verify_document",
             "Verify a signed JACS document given its full JSON string. Checks both the \
              content hash and cryptographic signature. Use this when you have a signed \
-             document in memory (e.g. from an approval context or message payload) and \
+             document in memory (e.g. from an approval context or signed payload) and \
              need to confirm its integrity and authenticity.",
             schema_map::<VerifyDocumentParams>(),
         ),

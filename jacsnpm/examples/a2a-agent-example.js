@@ -29,71 +29,16 @@ const exampleAgentData = {
   jacsName: 'Node.js A2A Example Agent',
   jacsDescription: 'A Node.js agent demonstrating JACS + A2A protocol integration',
   jacsAgentType: 'ai',
-  jacsServices: [{
-    name: 'Text Analysis Service',
-    serviceDescription: 'Analyzes text using NLP techniques',
-    successDescription: 'Text successfully analyzed',
-    failureDescription: 'Text analysis failed',
-    tools: [{
-      url: '/api/analyze-text',
-      function: {
-        name: 'analyzeText',
-        description: 'Analyze text and extract insights',
-        parameters: {
-          type: 'object',
-          properties: {
-            text: {
-              type: 'string',
-              description: 'The text to analyze'
-            },
-            language: {
-              type: 'string',
-              description: 'Language code (e.g., en, es, fr)',
-              default: 'en'
-            },
-            operations: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Analysis operations to perform',
-              default: ['sentiment', 'entities', 'keywords']
-            }
-          },
-          required: ['text']
-        }
-      }
-    }]
+  skills: [{
+    id: 'analyze-text',
+    name: 'analyzeText',
+    description: 'Analyze text and extract insights',
+    tags: ['jacs', 'analysis'],
   }, {
-    name: 'Document Processing Service',
-    serviceDescription: 'Processes various document formats',
-    successDescription: 'Document processed successfully',
-    failureDescription: 'Document processing failed',
-    tools: [{
-      url: '/api/process-document',
-      function: {
-        name: 'processDocument',
-        description: 'Process and extract information from documents',
-        parameters: {
-          type: 'object',
-          properties: {
-            documentUrl: {
-              type: 'string',
-              description: 'URL of the document to process'
-            },
-            format: {
-              type: 'string',
-              enum: ['pdf', 'docx', 'txt', 'html'],
-              description: 'Document format'
-            }
-          },
-          required: ['documentUrl', 'format']
-        }
-      }
-    }]
-  }],
-  jacsContacts: [{
-    type: 'email',
-    value: 'admin@nodejs-example-agent.com',
-    description: 'Administrator contact'
+    id: 'process-document',
+    name: 'processDocument',
+    description: 'Process and extract information from documents',
+    tags: ['jacs', 'documents'],
   }]
 };
 

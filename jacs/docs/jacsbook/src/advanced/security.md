@@ -90,7 +90,7 @@ const result = jacs.audit({ recentN: 5 });
 console.log(`Risks: ${result.risks.length}, Status: ${result.overall_status}`);
 ```
 
-Available in all bindings and as an MCP tool (`jacs_audit`) for automation.
+Available in the language bindings for local diagnostics and automation.
 
 ## Threat Model
 
@@ -342,8 +342,7 @@ Add the `jacsVerificationClaim` field to your agent definition:
 {
   "jacsAgentType": "ai",
   "jacsVerificationClaim": "verified",
-  "jacsAgentDomain": "myagent.example.com",
-  "jacsServices": [...]
+  "jacsAgentDomain": "myagent.example.com"
 }
 ```
 

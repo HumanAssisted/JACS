@@ -306,6 +306,102 @@ fn truthy_env_var(name: &str) -> bool {
 const DEFAULT_NETWORK_TIMEOUT_MS: u64 = 10_000;
 const DEFAULT_KEYS_BASE_URL: &str = "https://hai.ai";
 
+#[cfg(feature = "a2a")]
+fn a2a_default_skills() -> Vec<jacs::a2a::AgentSkill> {
+    vec![jacs::a2a::AgentSkill {
+        id: "verify-signature".to_string(),
+        name: "verify_signature".to_string(),
+        description: "Verify JACS document signatures".to_string(),
+        tags: vec![
+            "jacs".to_string(),
+            "verification".to_string(),
+            "cryptography".to_string(),
+        ],
+        examples: Some(vec![
+            "Verify a signed JACS document".to_string(),
+            "Check document signature integrity".to_string(),
+        ]),
+        input_modes: Some(vec!["application/json".to_string()]),
+        output_modes: Some(vec!["application/json".to_string()]),
+        security: None,
+    }]
+}
+
+#[cfg(feature = "a2a")]
+fn slugify_skill_name(name: &str) -> String {
+    name.to_lowercase()
+        .replace([' ', '_'], "-")
+        .chars()
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-')
+        .collect()
+}
+
+#[cfg(feature = "a2a")]
+fn string_array_field(skill: &Value, field: &str) -> Option<Vec<String>> {
+    skill
+        .get(field)
+        .and_then(|v| v.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                .collect::<Vec<_>>()
+        })
+        .filter(|values| !values.is_empty())
+}
+
+#[cfg(feature = "a2a")]
+fn explicit_a2a_skills(agent_value: &Value) -> Vec<jacs::a2a::AgentSkill> {
+    let raw_skills = agent_value
+        .get("skills")
+        .or_else(|| agent_value.get("a2aSkills"))
+        .and_then(|v| v.as_array());
+
+    let Some(raw_skills) = raw_skills else {
+        return a2a_default_skills();
+    };
+
+    let skills = raw_skills
+        .iter()
+        .map(|raw| {
+            let name = raw
+                .get("name")
+                .or_else(|| raw.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed");
+            jacs::a2a::AgentSkill {
+                id: raw
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| slugify_skill_name(name)),
+                name: name.to_string(),
+                description: raw
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                tags: string_array_field(raw, "tags").unwrap_or_else(|| vec!["jacs".to_string()]),
+                examples: string_array_field(raw, "examples"),
+                input_modes: string_array_field(raw, "inputModes")
+                    .or_else(|| string_array_field(raw, "input_modes")),
+                output_modes: string_array_field(raw, "outputModes")
+                    .or_else(|| string_array_field(raw, "output_modes")),
+                security: raw
+                    .get("security")
+                    .and_then(|v| v.as_array())
+                    .map(|values| values.to_vec()),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if skills.is_empty() {
+        a2a_default_skills()
+    } else {
+        skills
+    }
+}
+
 fn build_blocking_json_client(timeout_ms: u64) -> BindingResult<BlockingClient> {
     BlockingClient::builder()
         .timeout(std::time::Duration::from_millis(timeout_ms.max(1)))
@@ -1834,9 +1930,12 @@ impl AgentWrapper {
     /// Returns the Agent Card as a JSON string.
     pub fn export_agent_card(&self) -> BindingResult<String> {
         let agent = self.lock()?;
-        let card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
+        let mut card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
             BindingCoreError::generic(format!("Failed to export agent card: {}", e))
         })?;
+        if let Some(agent_value) = agent.get_value() {
+            card.skills = explicit_a2a_skills(agent_value);
+        }
         serde_json::to_string_pretty(&card).map_err(|e| {
             BindingCoreError::serialization_failed(format!("Failed to serialize agent card: {}", e))
         })
@@ -1850,9 +1949,12 @@ impl AgentWrapper {
         a2a_algorithm: Option<&str>,
     ) -> BindingResult<String> {
         let agent = self.lock()?;
-        let card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
+        let mut card = jacs::a2a::agent_card::export_agent_card(&agent).map_err(|e| {
             BindingCoreError::generic(format!("Failed to export agent card: {}", e))
         })?;
+        if let Some(agent_value) = agent.get_value() {
+            card.skills = explicit_a2a_skills(agent_value);
+        }
 
         let a2a_alg = a2a_algorithm.unwrap_or("ring-Ed25519");
         let dual_keys = jacs::a2a::keys::create_jwk_keys(None, Some(a2a_alg)).map_err(|e| {

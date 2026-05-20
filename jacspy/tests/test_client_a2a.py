@@ -39,19 +39,12 @@ SAMPLE_AGENT_JSON = {
     "jacsName": "Test Bot",
     "jacsDescription": "An agent for testing A2A",
     "jacsAgentType": "ai",
-    "jacsServices": [
+    "skills": [
         {
-            "name": "Greeting",
-            "serviceDescription": "Says hello",
-            "tools": [
-                {
-                    "url": "/greet",
-                    "function": {
-                        "name": "greet",
-                        "description": "Greet a user by name",
-                    },
-                }
-            ],
+            "id": "greet",
+            "name": "greet",
+            "description": "Greet a user by name",
+            "tags": ["jacs", "greeting"],
         }
     ],
 }
@@ -121,24 +114,18 @@ class TestExportAgentCard:
 
     def test_skills_override(self):
         agent_json = dict(SAMPLE_AGENT_JSON)
-        agent_json.pop("jacsServices", None)
+        agent_json.pop("skills", None)
         client = _make_client_with_mock_agent(agent_json)
 
-        custom_services = [
+        custom_skills = [
             {
-                "name": "Custom",
-                "serviceDescription": "Custom service",
-                "tools": [
-                    {
-                        "function": {
-                            "name": "do_stuff",
-                            "description": "Does stuff",
-                        }
-                    }
-                ],
+                "id": "do-stuff",
+                "name": "do_stuff",
+                "description": "Does stuff",
+                "tags": ["jacs"],
             }
         ]
-        card = client.export_agent_card(skills=custom_services)
+        card = client.export_agent_card(skills=custom_skills)
 
         assert len(card.skills) == 1
         assert card.skills[0].name == "do_stuff"

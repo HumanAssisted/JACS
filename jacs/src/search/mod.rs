@@ -49,7 +49,7 @@
 //! // Filter by document type and field
 //! let filtered = provider.search(SearchQuery {
 //!     query: "active".to_string(),
-//!     jacs_type: Some("agentstate".to_string()),
+//!     jacs_type: Some("artifact".to_string()),
 //!     field_filter: Some(FieldFilter {
 //!         field_path: "status".to_string(),
 //!         value: "active".to_string(),
@@ -170,7 +170,7 @@ impl Default for SearchQuery {
 /// or field-level filtering in simpler backends.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldFilter {
-    /// JSON field path (e.g., `"jacsCommitmentStatus"`, `"metadata.category"`).
+    /// JSON field path (e.g., `"metadata.status"`, `"metadata.category"`).
     pub field_path: String,
 
     /// Expected value for the field.
@@ -525,10 +525,10 @@ mod tests {
     #[test]
     fn field_filter_can_be_constructed() {
         let filter = FieldFilter {
-            field_path: "jacsCommitmentStatus".to_string(),
+            field_path: "metadata.status".to_string(),
             value: "active".to_string(),
         };
-        assert_eq!(filter.field_path, "jacsCommitmentStatus");
+        assert_eq!(filter.field_path, "metadata.status");
         assert_eq!(filter.value, "active");
     }
 

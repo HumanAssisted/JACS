@@ -1,68 +1,11 @@
 {
   "$schema": "https://hai.ai/schemas/agent/v1/agent.schema.json",
-  "description": "An agent without keys, id or version, that hasn't been signed yet.",
+  "description": "An updated signed agent fixture.",
   "jacsAgentType": "ai",
-  "jacsContacts": [
-    {
-      "email": "smith@example.com",
-      "isPrimary": true,
-      "mailAddress": "123 Example St.",
-      "mailAddressTwo": "Suite 101",
-      "mailCountry": "ExampleCountry",
-      "mailName": "Smith",
-      "mailState": "ExampleState",
-      "mailZip": "12345",
-      "phone": "123-456-7890"
-    }
-  ],
   "jacsId": "ddf35096-d212-4ca9-a299-feda597d5525",
   "jacsLevel": "config",
   "jacsOriginalDate": "2024-07-31T15:52:17.465433+00:00",
   "jacsOriginalVersion": "b57d480f-b8d4-46e7-9d7c-942f2b132717",
-  "jacsServices": [
-    {
-      "copyright": "Only I make copies",
-      "costDescription": "if you give up knowledge, I give safety and joy",
-      "eula": "Obey.",
-      "failureDescription": "Not everything is under control",
-      "idealCustomerDescription": "Obedient",
-      "isDev": false,
-      "piiDesired": [
-        "email",
-        "phone"
-      ],
-      "privacyPolicy": "No privacy",
-      "serviceDescription": "Keep the matrix safe",
-      "successDescription": "Everything is under control",
-      "termsOfService": "Obey",
-      "tools": [
-        {
-          "function": {
-            "description": "An example function provided by the tool.",
-            "name": "ExampleFunction",
-            "parameters": {
-              "properties": {
-                "param1": {
-                  "description": "A string parameter.",
-                  "type": "string"
-                },
-                "param2": {
-                  "description": "An integer parameter.",
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "param1"
-              ],
-              "type": "object"
-            }
-          },
-          "type": "function",
-          "url": "https://api.example.com/tool"
-        }
-      ]
-    }
-  ],
   "jacsSha256": "481c65fe0b57a6fbfb09afdab26162355d5f4f7ca68f0db4bfd4aa3eda4c8a6b",
   "jacsSignature": {
     "agentID": "ddf35096-d212-4ca9-a299-feda597d5525",
@@ -74,12 +17,10 @@
       "$schema",
       "description",
       "jacsAgentType",
-      "jacsContacts",
       "jacsId",
       "jacsLevel",
       "jacsOriginalDate",
       "jacsOriginalVersion",
-      "jacsServices",
       "jacsType",
       "jacsVersion",
       "jacsVersionDate",

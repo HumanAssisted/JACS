@@ -215,7 +215,7 @@ fn test_document_signing_and_verification() {
 
     // Create a simple document
     let doc_json = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {
             "message": "Hello, World!",
@@ -251,7 +251,7 @@ fn test_document_has_signature_fields() {
     let mut agent = create_fresh_agent();
 
     let doc_json = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": "test"
     });
@@ -347,7 +347,7 @@ fn test_multiple_documents_signing() {
     let mut doc_keys = Vec::new();
     for i in 0..3 {
         let doc_json = json!({
-            "jacsType": "message",
+            "jacsType": "document",
             "jacsLevel": "raw",
             "content": {
                 "document_number": i,
@@ -485,7 +485,7 @@ fn test_document_id_uniqueness() {
     let mut doc_ids = Vec::new();
     for _ in 0..5 {
         let doc_json = json!({
-            "jacsType": "message",
+            "jacsType": "document",
             "jacsLevel": "raw",
             "content": "same content"
         });
@@ -514,7 +514,7 @@ fn test_signature_timestamp_present() {
     let mut agent = create_fresh_agent();
 
     let doc_json = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": "timestamp test"
     });

@@ -15,7 +15,7 @@ use jacs_mcp::tools::common::{Visibility, annotate_response, extract_visibility,
 
 #[test]
 fn visibility_defaults_to_private_when_missing() {
-    let doc = json!({"jacsType": "agentstate", "content": "secret"});
+    let doc = json!({"jacsType": "document", "content": "secret"});
     assert_eq!(extract_visibility(&doc), Visibility::Private);
 }
 

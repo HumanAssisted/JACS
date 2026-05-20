@@ -34,18 +34,12 @@ def _make_mock_client(agent_data: dict | None = None) -> MagicMock:
             "jacsDescription": "A test agent for A2A server",
             "jacsVersion": "v2.0",
             "jacsAgentType": "ai",
-            "jacsServices": [
+            "skills": [
                 {
-                    "name": "Greeting",
-                    "serviceDescription": "Says hello",
-                    "tools": [
-                        {
-                            "function": {
-                                "name": "greet",
-                                "description": "Greet a user",
-                            }
-                        }
-                    ],
+                    "id": "greet",
+                    "name": "greet",
+                    "description": "Greet a user",
+                    "tags": ["jacs", "greeting"],
                 }
             ],
         }
@@ -153,19 +147,13 @@ class TestJacsA2ARoutes:
         assert body["name"] == "Test A2A Bot"
 
     def test_skills_override(self):
-        """Custom skills are used instead of agent's own services."""
+        """Custom skills are used for the exported agent card."""
         custom_skills = [
             {
-                "name": "Custom",
-                "serviceDescription": "Custom service",
-                "tools": [
-                    {
-                        "function": {
-                            "name": "do_custom",
-                            "description": "Does custom stuff",
-                        }
-                    }
-                ],
+                "id": "do-custom",
+                "name": "do_custom",
+                "description": "Does custom stuff",
+                "tags": ["jacs"],
             }
         ]
         tc = self._get_test_client(skills=custom_skills)
@@ -229,16 +217,10 @@ class TestServeA2A:
 
         custom_skills = [
             {
-                "name": "Skill",
-                "serviceDescription": "A skill",
-                "tools": [
-                    {
-                        "function": {
-                            "name": "my_skill",
-                            "description": "My skill",
-                        }
-                    }
-                ],
+                "id": "my-skill",
+                "name": "my_skill",
+                "description": "My skill",
+                "tags": ["jacs"],
             }
         ]
         client = _make_mock_client()

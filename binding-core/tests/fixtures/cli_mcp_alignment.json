@@ -15,28 +15,10 @@
       "notes": "CLI 'create' signs a new document; MCP jacs_sign_document does the same"
     },
     {
-      "cli_command": "document create",
-      "mcp_tool": "jacs_sign_state",
-      "status": "aligned",
-      "notes": "jacs_sign_state is the state-file variant of document signing"
-    },
-    {
-      "cli_command": "document update",
-      "mcp_tool": "jacs_update_state",
-      "status": "aligned",
-      "notes": "Both create a new version of a signed document"
-    },
-    {
       "cli_command": "document verify",
       "mcp_tool": "jacs_verify_document",
       "status": "aligned",
       "notes": "Both verify document hash, signatures, and schema"
-    },
-    {
-      "cli_command": "document verify",
-      "mcp_tool": "jacs_verify_state",
-      "status": "aligned",
-      "notes": "jacs_verify_state is the state-file variant of document verification"
     },
     {
       "cli_command": "document check-agreement",
@@ -108,34 +90,38 @@
       "cli_command": "sign-text",
       "mcp_tool": "jacs_sign_text",
       "status": "aligned",
-      "notes": "Both append an inline JACS signature block to a text/markdown file (PRD §4.1)"
+      "notes": "Both append an inline JACS signature block to a text/markdown file (PRD \u00a74.1)"
     },
     {
       "cli_command": "verify-text",
       "mcp_tool": "jacs_verify_text",
       "status": "aligned",
-      "notes": "Both verify inline JACS signatures; both expose a strict mode (PRD §4.1, C1)"
+      "notes": "Both verify inline JACS signatures; both expose a strict mode (PRD \u00a74.1, C1)"
     },
     {
       "cli_command": "sign-image",
       "mcp_tool": "jacs_sign_image",
       "status": "aligned",
-      "notes": "Both embed JACS signatures into PNG/JPEG/WebP metadata (PRD §4.2)"
+      "notes": "Both embed JACS signatures into PNG/JPEG/WebP metadata (PRD \u00a74.2)"
     },
     {
       "cli_command": "verify-image",
       "mcp_tool": "jacs_verify_image",
       "status": "aligned",
-      "notes": "Both verify embedded image signatures with optional --key-dir / --robust LSB scan (PRD §4.2)"
+      "notes": "Both verify embedded image signatures with optional --key-dir / --robust LSB scan (PRD \u00a74.2)"
     },
     {
       "cli_command": "extract-media-signature",
       "mcp_tool": "jacs_extract_media_signature",
       "status": "aligned",
-      "notes": "Both dump the JACS signed-document payload from a signed image (PRD §3.2)"
+      "notes": "Both dump the JACS signed-document payload from a signed image (PRD \u00a73.2)"
     }
   ],
   "cli_only": [
+    {
+      "cli_command": "document update",
+      "mcp_excluded_reason": "Document update remains CLI-only; no generic MCP update tool exists"
+    },
     {
       "cli_command": "config create",
       "mcp_excluded_reason": "Setup command: creates jacs.config.json interactively, not applicable to MCP runtime"
@@ -171,14 +157,6 @@
     {
       "cli_command": "document extract",
       "mcp_excluded_reason": "Extracts embedded content from JACS documents; could be an MCP tool in the future"
-    },
-    {
-      "cli_command": "task create",
-      "mcp_excluded_reason": "Task creation; could become MCP tool when task workflow matures"
-    },
-    {
-      "cli_command": "task update",
-      "mcp_excluded_reason": "Task update; could become MCP tool when task workflow matures"
     },
     {
       "cli_command": "quickstart",
@@ -233,78 +211,6 @@
   ],
   "mcp_only": [
     {
-      "mcp_tool": "jacs_adopt_state",
-      "category": "state_management",
-      "classification": "intentional",
-      "reason": "MCP-centric: adopts external files as signed state within MCP workflows"
-    },
-    {
-      "mcp_tool": "jacs_list_state",
-      "category": "state_management",
-      "classification": "intentional",
-      "reason": "MCP-centric: lists signed state documents managed by the MCP server"
-    },
-    {
-      "mcp_tool": "jacs_load_state",
-      "category": "state_management",
-      "classification": "intentional",
-      "reason": "MCP-centric: loads a previously signed state document in the MCP server"
-    },
-    {
-      "mcp_tool": "jacs_memory_save",
-      "category": "memory",
-      "classification": "intentional",
-      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
-    },
-    {
-      "mcp_tool": "jacs_memory_recall",
-      "category": "memory",
-      "classification": "intentional",
-      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
-    },
-    {
-      "mcp_tool": "jacs_memory_list",
-      "category": "memory",
-      "classification": "intentional",
-      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
-    },
-    {
-      "mcp_tool": "jacs_memory_forget",
-      "category": "memory",
-      "classification": "intentional",
-      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
-    },
-    {
-      "mcp_tool": "jacs_memory_update",
-      "category": "memory",
-      "classification": "intentional",
-      "reason": "AI agent memory system; designed for MCP AI agent workflows, not human CLI use"
-    },
-    {
-      "mcp_tool": "jacs_message_send",
-      "category": "messaging",
-      "classification": "intentional",
-      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
-    },
-    {
-      "mcp_tool": "jacs_message_receive",
-      "category": "messaging",
-      "classification": "intentional",
-      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
-    },
-    {
-      "mcp_tool": "jacs_message_agree",
-      "category": "messaging",
-      "classification": "intentional",
-      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
-    },
-    {
-      "mcp_tool": "jacs_message_update",
-      "category": "messaging",
-      "classification": "intentional",
-      "reason": "Agent-to-agent messaging; designed for MCP multi-agent workflows"
-    },
-    {
       "mcp_tool": "jacs_untrust_agent",
       "category": "trust_store",
       "classification": "gap",
@@ -327,30 +233,6 @@
       "category": "trust_store",
       "classification": "gap",
       "reason": "Trust store management should be available from CLI; recommend adding 'jacs trust get' command"
-    },
-    {
-      "mcp_tool": "jacs_audit",
-      "category": "audit",
-      "classification": "gap",
-      "reason": "Security audit should be available from CLI; recommend adding 'jacs audit run' command"
-    },
-    {
-      "mcp_tool": "jacs_audit_log",
-      "category": "audit",
-      "classification": "gap",
-      "reason": "Audit trail logging should be available from CLI; recommend adding 'jacs audit log' command"
-    },
-    {
-      "mcp_tool": "jacs_audit_query",
-      "category": "audit",
-      "classification": "gap",
-      "reason": "Audit trail query should be available from CLI; recommend adding 'jacs audit query' command"
-    },
-    {
-      "mcp_tool": "jacs_audit_export",
-      "category": "audit",
-      "classification": "gap",
-      "reason": "Audit trail export should be available from CLI; recommend adding 'jacs audit export' command"
     },
     {
       "mcp_tool": "jacs_search",
@@ -396,14 +278,14 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 38,
+    "total_cli_commands": 36,
     "total_cli_feature_gated": 4,
-    "total_mcp_tools": 48,
-    "aligned_pairs": 22,
-    "cli_only_count": 18,
+    "total_mcp_tools": 29,
+    "aligned_pairs": 19,
+    "cli_only_count": 17,
     "cli_only_feature_gated_count": 4,
-    "mcp_only_count": 27,
-    "mcp_only_intentional": 17,
-    "mcp_only_gap": 10
+    "mcp_only_count": 11,
+    "mcp_only_intentional": 5,
+    "mcp_only_gap": 6
   }
 }

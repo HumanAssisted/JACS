@@ -200,37 +200,37 @@ All aliases behave identically to their canonical replacements. No behavioral ch
 **Python:**
 ```python
 # Before (deprecated)
-wrapped = agent.wrap_a2a_artifact(artifact_json, "task")
+wrapped = agent.wrap_a2a_artifact(artifact_json, "artifact")
 
 # After (canonical)
-signed = agent.sign_artifact(artifact_json, "task")
+signed = agent.sign_artifact(artifact_json, "artifact")
 ```
 
 **Node.js:**
 ```javascript
 // Before (deprecated)
-const wrapped = await agent.wrapA2aArtifact(artifactJson, 'task');
+const wrapped = await agent.wrapA2aArtifact(artifactJson, 'artifact');
 
 // After (canonical)
-const signed = await agent.signArtifact(artifactJson, 'task');
+const signed = await agent.signArtifact(artifactJson, 'artifact');
 ```
 
 **Python A2A integration:**
 ```python
 # Before (deprecated)
-wrapped = a2a.wrap_artifact_with_provenance(artifact, "task")
+wrapped = a2a.wrap_artifact_with_provenance(artifact, "artifact")
 
 # After (canonical)
-signed = a2a.sign_artifact(artifact, "task")
+signed = a2a.sign_artifact(artifact, "artifact")
 ```
 
 **Node.js A2A integration:**
 ```javascript
 // Before (deprecated)
-const wrapped = await a2a.wrapArtifactWithProvenance(artifact, 'task');
+const wrapped = await a2a.wrapArtifactWithProvenance(artifact, 'artifact');
 
 // After (canonical)
-const signed = await a2a.signArtifact(artifact, 'task');
+const signed = await a2a.signArtifact(artifact, 'artifact');
 ```
 
 ### Module-Level Function Deprecation (Reminder)

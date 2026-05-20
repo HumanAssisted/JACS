@@ -31,7 +31,7 @@ fn test_wrapper_sign_and_self_verify() {
     let (wrapper, _) = create_ephemeral_wrapper("ed25519");
 
     let doc_content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"hello": "world"}
     });
@@ -64,7 +64,7 @@ fn test_concurrent_wrappers() {
         let mut docs = Vec::new();
         for i in 0..N {
             let content = json!({
-                "jacsType": "message",
+                "jacsType": "document",
                 "jacsLevel": "raw",
                 "content": {"from": "A", "i": i}
             });
@@ -81,7 +81,7 @@ fn test_concurrent_wrappers() {
         let mut docs = Vec::new();
         for i in 0..N {
             let content = json!({
-                "jacsType": "message",
+                "jacsType": "document",
                 "jacsLevel": "raw",
                 "content": {"from": "B", "i": i}
             });
@@ -114,7 +114,7 @@ fn test_cross_verification_fails() {
     let (wrapper_b, _) = create_ephemeral_wrapper("ed25519");
 
     let content = json!({
-        "jacsType": "message",
+        "jacsType": "document",
         "jacsLevel": "raw",
         "content": {"signed_by": "A"}
     });

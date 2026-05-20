@@ -21,7 +21,7 @@ fn embedders_can_construct_server_in_process() -> anyhow::Result<()> {
     assert!(
         tools
             .iter()
-            .any(|tool| tool.name.as_ref() == "jacs_list_state")
+            .any(|tool| tool.name.as_ref() == "jacs_sign_document")
     );
     // Attestation tools require the attestation-tools feature
     #[cfg(feature = "attestation-tools")]

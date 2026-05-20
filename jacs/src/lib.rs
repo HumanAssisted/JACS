@@ -46,17 +46,9 @@
 //! | `otlp-metrics` | No | OpenTelemetry metrics export |
 //! | `otlp-tracing` | No | OpenTelemetry distributed tracing |
 
-use crate::agent::document::DocumentTraits;
-use crate::shared::save_document;
-use tracing::error;
-
 use crate::agent::Agent;
 use crate::agent::loaders::FileLoader;
-use crate::schema::action_crud::create_minimal_action;
 use crate::schema::agent_crud::create_minimal_agent;
-use crate::schema::service_crud::create_minimal_service;
-use crate::schema::task_crud::create_minimal_task;
-use serde_json::Value;
 use std::path::Path;
 use tracing::debug;
 
@@ -347,108 +339,13 @@ pub fn load_agent_with_dns_strict(
     load_agent_with_dns_policy(Some(agentfile), None, None, Some(dns_strict))
 }
 
-/// Creates a minimal agent JSON string with a default service.
-/// Optionally accepts descriptions for the default service.
+/// Creates a minimal agent JSON string.
 pub fn create_minimal_blank_agent(
     agentype: String,
-    service_desc: Option<String>,
-    success_desc: Option<String>,
-    failure_desc: Option<String>,
+    _service_desc: Option<String>,
+    _success_desc: Option<String>,
+    _failure_desc: Option<String>,
 ) -> Result<String, JacsError> {
-    let mut services: Vec<Value> = Vec::new();
-
-    // Use provided descriptions or fall back to defaults.
-    let service_description =
-        service_desc.unwrap_or_else(|| "Describe a service the agent provides".to_string());
-    let success_description = success_desc
-        .unwrap_or_else(|| "Describe a success of the service the agent provides".to_string());
-    let failure_description = failure_desc.unwrap_or_else(|| {
-        "Describe what failure is of the service the agent provides".to_string()
-    });
-
-    let service = create_minimal_service(
-        &service_description,
-        &success_description,
-        &failure_description,
-        None,
-        None,
-    )
-    .map_err(|e| JacsError::IoError(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
-
-    services.push(service);
-
-    // Add service
-    let agent_value = create_minimal_agent(&agentype, Some(services), None)?;
+    let agent_value = create_minimal_agent(&agentype, None, None)?;
     Ok(agent_value.to_string())
-}
-
-/// Create a signed task document with the given name and description.
-///
-/// The task is signed by the provided agent and persisted to storage.
-/// Returns the validated task JSON string.
-pub fn create_task(
-    agent: &mut Agent,
-    name: String,
-    description: String,
-) -> Result<String, JacsError> {
-    let mut actions: Vec<Value> = Vec::new();
-    let action = create_minimal_action(&name, &description, None, None);
-    actions.push(action);
-    let mut task = create_minimal_task(Some(actions), None, None, None)?;
-    task["jacsTaskCustomer"] = agent.signing_procedure(&task, None, "jacsTaskCustomer")?;
-
-    // create document
-    let embed = None;
-    let docresult = agent.create_document_and_load(&task.to_string(), None, embed);
-
-    save_document(agent, docresult, None, None, None, None)?;
-
-    let task_value = agent.get_document(task["id"].as_str().unwrap())?.value;
-    let validation_result = agent.schema.taskschema.validate(&task_value);
-    match validation_result {
-        Ok(_) => Ok(task_value.to_string()),
-        Err(err) => {
-            let schema_name = task_value
-                .get("$schema")
-                .and_then(|v| v.as_str())
-                .unwrap_or("task.schema.json");
-            let error_message = format!(
-                "Task creation failed: {}",
-                schema::format_schema_validation_error(&err, schema_name, &task_value)
-            );
-            error!("{}", error_message);
-            Err(error_message.into())
-        }
-    }
-}
-
-/// Update an existing task document.
-///
-/// Fetches the task by `task_key` (format: "id:version"), applies the caller's
-/// modifications from `updated_task_json`, re-signs, versions, and persists.
-/// The result is validated against the task schema before returning.
-pub fn update_task(
-    agent: &mut Agent,
-    task_key: &str,
-    updated_task_json: &str,
-) -> Result<String, JacsError> {
-    let jacs_doc = agent.update_document(task_key, updated_task_json, None, None)?;
-
-    let task_value = jacs_doc.value;
-    let validation_result = agent.schema.taskschema.validate(&task_value);
-    match validation_result {
-        Ok(_) => Ok(task_value.to_string()),
-        Err(err) => {
-            let schema_name = task_value
-                .get("$schema")
-                .and_then(|v| v.as_str())
-                .unwrap_or("task.schema.json");
-            let error_message = format!(
-                "Task update failed: {}",
-                schema::format_schema_validation_error(&err, schema_name, &task_value)
-            );
-            error!("{}", error_message);
-            Err(error_message.into())
-        }
-    }
 }

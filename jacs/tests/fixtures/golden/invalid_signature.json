@@ -1,6 +1,6 @@
 {
   "$schema": "https://hai.ai/schemas/header/v1/header.schema.json",
-  "jacsType": "message",
+  "jacsType": "document",
   "jacsLevel": "raw",
   "content": {
     "type": "test_message",
