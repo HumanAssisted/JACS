@@ -87,6 +87,12 @@
           "items": { "type": "string", "format": "uuid" },
           "hai": "meta"
         },
+        "links": {
+          "type": "array",
+          "description": "Relationship links to other JACS documents. A link target is identified by jacsId and jacsVersion; the containing agreement document signature provides provenance for the link.",
+          "items": { "$ref": "#/definitions/agreementLink" },
+          "hai": "base"
+        },
         "controllers": {
           "type": "array",
           "description": "Agent IDs authorized to propose successor versions, append to transcript, change status, or modify parties. Edit authority — distinct from parties (who is bound) and jacsVisibility (who can read).",
@@ -200,6 +206,34 @@
       },
       "additionalProperties": false,
       "required": ["signature", "role"]
+    },
+    "agreementLink": {
+      "type": "object",
+      "description": "Relationship from this agreement to another JACS document version.",
+      "properties": {
+        "rel": {
+          "type": "string",
+          "enum": ["references", "amends", "supersedes", "terminates", "renews"],
+          "hai": "base"
+        },
+        "jacsId": {
+          "type": "string",
+          "format": "uuid",
+          "hai": "base"
+        },
+        "jacsVersion": {
+          "type": "string",
+          "format": "uuid",
+          "hai": "base"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 1024,
+          "hai": "agent"
+        }
+      },
+      "additionalProperties": false,
+      "required": ["rel", "jacsId", "jacsVersion"]
     },
     "jacsDocumentRef": {
       "type": "object",
