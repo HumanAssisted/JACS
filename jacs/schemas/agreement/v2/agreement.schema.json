@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/agreement/v2/agreement.schema.json",
   "title": "Agreement",
-  "description": "A standalone JACS agreement document for verifiable consent to terms. The JACS header owns document identity, versioning, authorship signatures, registration, files, hashes, and visibility. This schema adds agreement-specific terms, parties, policy, consent signatures, signed relationship links, and edit-authority controllers. Transcript is an external append-only log, referenced by id.\n\nSignature binding rules: each agreement signature is a standard JACS signature whose inner preimage is the parent document's jacsAgreementHash. When transcriptLogRef is present, each signature additionally binds signedTranscriptHash. Each agreement link's signature binds its signedLinkHash. The agentId, agentVersion, signing timestamp, and signed-version are recorded inside the JACS signature object itself; the schema does not duplicate them on the outer wrapper.\n\nSDK invariant: transcriptLogRef is set-once at agreement creation and immutable in all successor versions.",
+  "description": "A standalone JACS agreement document for verifiable consent to terms. The JACS header owns document identity, versioning, authorship signatures, registration, files, hashes, and visibility. This schema adds agreement-specific terms, parties, policy, consent signatures, transcript, and edit-authority controllers.\n\nSignature binding: each agreement signature is a standard JACS signature whose inner preimage is the parent document's jacsAgreementHash. When transcript is non-empty, each signature additionally binds signedTranscriptHash. Agent identity and signing timestamp live inside the JACS signature object; the wrapper does not duplicate them.\n\nTranscript: an inline append-only list of JACS document references — messages, statements, evidence, attachments, identity proofs, anything with a JACS header. Each referenced document is itself idempotent (not meant to have more than one version). The list is append-only by SDK convention; signedTranscriptHash on each agreement signature is the tamper-evidence anchor over the list state at signing time.\n\nallPreviousVersions: append-only ledger of every prior jacsVersion of this agreement. Header jacsPreviousVersion gives the immediate parent; this list gives the full chain back to the original version. Append-only by SDK convention.",
   "allOf": [
     { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" },
     {
@@ -21,7 +21,7 @@
         "jacsAgreementHash": {
           "type": "string",
           "minLength": 1,
-          "description": "Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, parties, signaturePolicy, and transcriptLogRef. NOT over: currentTranscriptHash, agreementSignatures, links, controllers, or any header field. Appending agreementSignatures, adding links, or growing the external transcript log must not change this hash; swapping transcriptLogRef MUST change it.",
+          "description": "Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, parties, and signaturePolicy. NOT over: transcript, agreementSignatures, allPreviousVersions, controllers, or any header field. Appending to transcript, appending agreementSignatures, or appending to allPreviousVersions must not change this hash.",
           "hai": "base"
         },
         "title": {
@@ -71,30 +71,25 @@
         "signaturePolicy": { "$ref": "#/definitions/signaturePolicy" },
         "agreementSignatures": {
           "type": "array",
-          "description": "Consent and attestation signatures over the agreement. Each entry is a JACS signature binding jacsAgreementHash (and signedTranscriptHash if transcript is present). The signing agent identity and timestamp are inside the JACS signature object.",
+          "description": "Consent and attestation signatures over the agreement. Each entry is a JACS signature binding jacsAgreementHash (and signedTranscriptHash when transcript is non-empty).",
           "items": { "$ref": "#/definitions/agreementSignature" },
           "hai": "base"
         },
-        "transcriptLogRef": {
-          "type": "string",
-          "format": "uuid",
-          "description": "jacsId of an external append-only JACS document that holds this agreement's transcript. Set once at agreement creation; immutable thereafter. Included in jacsAgreementHash — swapping the log ref invalidates prior signatures.",
-          "hai": "base"
-        },
-        "currentTranscriptHash": {
-          "type": "string",
-          "description": "Optional non-binding checkpoint of the transcript log hash at the time this agreement version was emitted. NOT part of jacsAgreementHash. Verifiers compute the authoritative current hash from the external log.",
-          "hai": "meta"
-        },
-        "links": {
+        "transcript": {
           "type": "array",
-          "description": "Signed relationship links to other agreements. Each link self-signs via signedLinkHash. Links are NOT in jacsAgreementHash — adding a supersedes/amends link does not invalidate prior agreement signatures.",
-          "items": { "$ref": "#/definitions/agreementLink" },
+          "description": "Append-only list of JACS document references — any type of JACS-headed document (messages, statements, evidence, attachments, identity proofs). Each referenced document is itself idempotent (single version). Appending entries does not change jacsAgreementHash and does not invalidate prior agreementSignatures, but DOES change what signedTranscriptHash subsequent signers commit to. Append-only is enforced operationally, not by JSON Schema.",
+          "items": { "$ref": "#/definitions/jacsDocumentRef" },
           "hai": "base"
+        },
+        "allPreviousVersions": {
+          "type": "array",
+          "description": "Append-only list of every prior jacsVersion of this agreement document, in chronological order. Header jacsPreviousVersion is the immediate parent; this list is the full chain back to the original version. Append-only is enforced operationally.",
+          "items": { "type": "string", "format": "uuid" },
+          "hai": "meta"
         },
         "controllers": {
           "type": "array",
-          "description": "Agent IDs authorized to propose successor versions, append to the transcript log, change status, or modify parties. Edit authority — distinct from parties (who is bound) and jacsVisibility (who can read).",
+          "description": "Agent IDs authorized to propose successor versions, append to transcript, change status, or modify parties. Edit authority — distinct from parties (who is bound) and jacsVisibility (who can read).",
           "items": { "type": "string", "format": "uuid" },
           "uniqueItems": true,
           "hai": "meta"
@@ -182,7 +177,7 @@
     },
     "agreementSignature": {
       "type": "object",
-      "description": "A JACS signature over the agreement. The inner signature object binds jacsAgreementHash (and signedTranscriptHash when transcriptLogRef is present) and carries the signer's agent identity and timestamp. The outer wrapper carries only what the JACS signature cannot: the agreement-specific role, the transcript snapshot, and an optional delegation chain.",
+      "description": "A JACS signature over the agreement. The inner signature object binds jacsAgreementHash (and signedTranscriptHash when transcript is non-empty) and carries the signer's agent identity and timestamp. The wrapper carries only what the JACS signature cannot: the agreement role, the transcript snapshot, and an optional delegation chain.",
       "properties": {
         "signature": { "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json" },
         "role": {
@@ -193,7 +188,7 @@
         },
         "signedTranscriptHash": {
           "type": "string",
-          "description": "Transcript log hash visible to the signer at signing time. REQUIRED when transcriptLogRef is present on the agreement (enforced operationally). Provides the tamper-evidence anchor: if transcript entries are later removed or modified, this hash will no longer match the recomputed log state.",
+          "description": "Canonical hash over the transcript[] array at the moment of signing. REQUIRED when transcript is non-empty (enforced operationally). If transcript entries are later removed or reordered, the recomputed hash will no longer match this value — the tamper-evidence anchor.",
           "hai": "base"
         },
         "delegationChain": {
@@ -216,35 +211,6 @@
       },
       "additionalProperties": false,
       "required": ["jacsId", "jacsVersion", "jacsSha256"]
-    },
-    "agreementLink": {
-      "type": "object",
-      "description": "Signed relationship from this agreement to another JACS document. The inner JACS signature binds signedLinkHash and carries the signer's identity and timestamp.",
-      "properties": {
-        "rel": {
-          "type": "string",
-          "enum": ["references", "amends", "supersedes", "supersededBy", "terminates", "renews"],
-          "hai": "base"
-        },
-        "target": { "$ref": "#/definitions/jacsDocumentRef" },
-        "reason": {
-          "type": "string",
-          "maxLength": 1024,
-          "description": "Optional human-readable reason. Included in signedLinkHash.",
-          "hai": "agent"
-        },
-        "signedLinkHash": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Hash that this link's signature binds. Computed over: rel, target (jacsId + jacsVersion + jacsSha256), reason (if present), and the SOURCE agreement's jacsId. Prevents copy-paste of a signed link to a different source agreement.",
-          "hai": "base"
-        },
-        "signature": {
-          "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
-        }
-      },
-      "additionalProperties": false,
-      "required": ["rel", "target", "signedLinkHash", "signature"]
     }
   }
 }
