@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://hai.ai/schemas/agreement/v2/agreement.schema.json",
   "title": "Agreement",
-  "description": "A standalone JACS agreement document for verifiable consent to terms. The JACS header owns document identity, versioning, authorship signatures, registration, files, hashes, and visibility; this schema adds agreement-specific terms, parties, policy, consent signatures, evidence references, signed relationship links, and rights metadata. Transcript is an external append-only log, referenced by id; this schema does not store transcript entries inline.\n\nSDK invariants (enforced operationally, not by JSON Schema): (1) transcriptLogRef is set-once at agreement creation and immutable in all successor versions; (2) every agreementSignature's outer agentId / agentVersion / signedAgreementHash / signedVersion / signedAt fields must match the corresponding values bound by the inner JACS signature, and verifiers must check both; (3) signatures from agents not listed in parties are rejected unless signaturePolicy.allowDelegatedSignatures is true AND a verifiable delegationChain resolves to a signer-role party.",
+  "description": "A standalone JACS agreement document for verifiable consent to terms. The JACS header owns document identity, versioning, authorship signatures, registration, files, hashes, and visibility. This schema adds agreement-specific terms, parties, policy, consent signatures, signed relationship links, and edit-authority controllers. Transcript is an external append-only log, referenced by id.\n\nSignature binding rules: each agreement signature is a standard JACS signature whose inner preimage is the parent document's jacsAgreementHash. When transcriptLogRef is present, each signature additionally binds signedTranscriptHash. Each agreement link's signature binds its signedLinkHash. The agentId, agentVersion, signing timestamp, and signed-version are recorded inside the JACS signature object itself; the schema does not duplicate them on the outer wrapper.\n\nSDK invariant: transcriptLogRef is set-once at agreement creation and immutable in all successor versions.",
   "allOf": [
     { "$ref": "https://hai.ai/schemas/header/v1/header.schema.json" },
     {
@@ -11,46 +11,41 @@
         "jacsType": {
           "type": "string",
           "const": "agreement",
-          "description": "Agreement v2 is a standalone JACS document type, not an embedded agreement sidecar.",
           "hai": "agent"
         },
         "jacsLevel": {
           "type": "string",
           "const": "artifact",
-          "description": "Agreements are versioned artifacts: edits create successor versions while preserving signed provenance.",
           "hai": "meta"
         },
         "jacsAgreementHash": {
           "type": "string",
           "minLength": 1,
-          "description": "Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, parties, signaturePolicy, transcriptLogRef, and links (links contribute their signedLinkHash values, NOT their inner signature objects, to avoid circular preimages). NOT over: currentTranscriptHash, evidenceRefs, agreementSignatures, controllers, rights, or any header field. Appending agreementSignatures or growing the external transcript log must not change this hash; swapping transcriptLogRef MUST change it.",
+          "description": "Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, parties, signaturePolicy, and transcriptLogRef. NOT over: currentTranscriptHash, agreementSignatures, links, controllers, or any header field. Appending agreementSignatures, adding links, or growing the external transcript log must not change this hash; swapping transcriptLogRef MUST change it.",
           "hai": "base"
         },
         "title": {
           "type": "string",
           "minLength": 1,
           "maxLength": 256,
-          "description": "Short human-readable title of the agreement.",
           "hai": "agent"
         },
         "description": {
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "description": "Human-readable summary of the purpose and scope of the agreement.",
           "hai": "agent"
         },
         "terms": {
           "type": "string",
           "minLength": 1,
-          "description": "The agreement text the signer parties consent to. MVP is plain text or Markdown; structured terms (action items, deliverables, dates) can be introduced in a later schema version.",
+          "description": "The agreement text the signer parties consent to. Plain text or Markdown for MVP.",
           "hai": "agent"
         },
         "termsFormat": {
           "type": "string",
           "enum": ["text/plain", "text/markdown"],
           "default": "text/plain",
-          "description": "Media type for terms rendering.",
           "hai": "meta"
         },
         "status": {
@@ -65,12 +60,10 @@
             "superseded",
             "terminated"
           ],
-          "description": "Stored lifecycle status. SDKs must verify this against signatures, signaturePolicy, timeouts, and links rather than trusting it blindly.",
           "hai": "agent"
         },
         "parties": {
           "type": "array",
-          "description": "Agents participating in the agreement. Parties define consent and process roles; they do not replace jacsVisibility read access or controllers edit authority.",
           "minItems": 1,
           "items": { "$ref": "#/definitions/party" },
           "hai": "base"
@@ -78,41 +71,34 @@
         "signaturePolicy": { "$ref": "#/definitions/signaturePolicy" },
         "agreementSignatures": {
           "type": "array",
-          "description": "Consent signatures for this agreement. Header jacsSignature means an agent authored this version; entries here mean a party signed the agreement consent scope (signers) or attested to process (witnesses).",
+          "description": "Consent and attestation signatures over the agreement. Each entry is a JACS signature binding jacsAgreementHash (and signedTranscriptHash if transcript is present). The signing agent identity and timestamp are inside the JACS signature object.",
           "items": { "$ref": "#/definitions/agreementSignature" },
           "hai": "base"
         },
         "transcriptLogRef": {
           "type": "string",
           "format": "uuid",
-          "description": "jacsId of an external append-only JACS document that holds this agreement's transcript (messages, statements, votes, mediation events). The log is referenced by stable id only; its own versioning and hash-chain rules are defined by the transcript-log schema (separate, not in this MVP). Set once at agreement creation; immutable thereafter. INCLUDED in jacsAgreementHash — swapping the log ref invalidates prior signatures.",
+          "description": "jacsId of an external append-only JACS document that holds this agreement's transcript. Set once at agreement creation; immutable thereafter. Included in jacsAgreementHash — swapping the log ref invalidates prior signatures.",
           "hai": "base"
         },
         "currentTranscriptHash": {
           "type": "string",
-          "description": "Optional non-binding checkpoint of the transcript log hash at the time this agreement version was emitted. NOT part of jacsAgreementHash and NOT what signers consent to; each signature records its own signedTranscriptHash for point-in-time evidence visibility. Verifiers compute the authoritative current hash from the external log on demand.",
+          "description": "Optional non-binding checkpoint of the transcript log hash at the time this agreement version was emitted. NOT part of jacsAgreementHash. Verifiers compute the authoritative current hash from the external log.",
           "hai": "meta"
-        },
-        "evidenceRefs": {
-          "type": "array",
-          "description": "References to signed JACS documents used as standing evidence: context, attachments, identity proofs, or other static supporting material. Live transcript entries (messages, votes, mediation chat) belong in the external transcript log, not here. Attachments may also be carried by header jacsFiles when they are first-class document files rather than referenced JACS docs.",
-          "items": { "$ref": "#/definitions/evidenceRef" },
-          "hai": "base"
         },
         "links": {
           "type": "array",
-          "description": "Signed relationship links to other agreements. Each link carries its own signedLinkHash and signature to prevent forged supersession or termination claims, and to prevent copy-paste of a link to a different source agreement.",
+          "description": "Signed relationship links to other agreements. Each link self-signs via signedLinkHash. Links are NOT in jacsAgreementHash — adding a supersedes/amends link does not invalidate prior agreement signatures.",
           "items": { "$ref": "#/definitions/agreementLink" },
           "hai": "base"
         },
         "controllers": {
           "type": "array",
-          "description": "Agent IDs authorized by agreement policy to propose successor versions, append to the transcript log, modify evidenceRefs, change status, or add parties. This is edit authority — distinct from parties (who is bound), jacsVisibility (who can read), and rights.copyrightHolders (who claims IP).",
+          "description": "Agent IDs authorized to propose successor versions, append to the transcript log, change status, or modify parties. Edit authority — distinct from parties (who is bound) and jacsVisibility (who can read).",
           "items": { "type": "string", "format": "uuid" },
           "uniqueItems": true,
           "hai": "meta"
-        },
-        "rights": { "$ref": "#/definitions/rights" }
+        }
       },
       "required": [
         "jacsAgreementHash",
@@ -129,51 +115,34 @@
   "definitions": {
     "party": {
       "type": "object",
-      "description": "A participant in an agreement. Signer-role parties consent to the terms and are bound. Witness-role parties attest to process, time, or identity but are not bound. Observer-role parties are listed for visibility but neither sign nor attest. Delegation is expressed on the signature, not as a party role.",
+      "description": "A participant in an agreement. Signer-role parties consent and are bound. Witness-role parties attest but are not bound. Observer-role parties are listed without consent or attestation.",
       "properties": {
-        "agentId": {
-          "type": "string",
-          "format": "uuid",
-          "description": "JACS agent id for the party.",
-          "hai": "agent"
-        },
-        "agentVersion": {
-          "type": "string",
-          "format": "uuid",
-          "description": "Optional snapshot of the agent identity version expected to sign for this party.",
-          "hai": "meta"
-        },
+        "agentId": { "type": "string", "format": "uuid", "hai": "agent" },
+        "agentVersion": { "type": "string", "format": "uuid", "hai": "meta" },
         "agentType": {
           "type": "string",
           "enum": ["human", "human-org", "hybrid", "ai"],
-          "description": "Party type, matching the JACS agent schema vocabulary.",
           "hai": "agent"
         },
         "role": {
           "type": "string",
           "enum": ["signer", "witness", "observer"],
-          "description": "Agreement role. Only signer-role parties are bound. Witness-role parties attest. Observer-role parties are listed without consent or attestation responsibility.",
           "hai": "base"
         },
         "delegatedBy": {
           "type": "string",
           "format": "uuid",
-          "description": "Optional: agent id of a delegator on whose behalf this party may sign. The actual proof of authority lives in agreementSignature.delegationChain.",
+          "description": "Optional: agent id on whose behalf this party signs. Proof of authority lives in agreementSignature.delegationChain.",
           "hai": "base"
         },
-        "displayName": {
-          "type": "string",
-          "maxLength": 256,
-          "description": "Optional human-readable name.",
-          "hai": "agent"
-        }
+        "displayName": { "type": "string", "maxLength": 256, "hai": "agent" }
       },
       "additionalProperties": false,
       "required": ["agentId", "agentType", "role"]
     },
     "signaturePolicy": {
       "type": "object",
-      "description": "Rules for when the agreement is considered complete. SDKs must reject agreementSignatures from agents not listed in parties unless allowDelegatedSignatures is true and a valid delegation chain resolves to a signer-role party.",
+      "description": "Rules for when the agreement is considered complete.",
       "properties": {
         "partyQuorum": {
           "oneOf": [
@@ -181,38 +150,30 @@
             { "type": "integer", "minimum": 1 }
           ],
           "default": "all",
-          "description": "Required signer-party consent threshold. 'all' requires every signer-role party; 'majority' requires more than half; an integer N requires at least N signer-role party signatures.",
+          "description": "Signer-party consent threshold. 'all' = every signer-role party; 'majority' = more than half; integer N = at least N signer-role party signatures.",
           "hai": "base"
         },
         "witnessRequired": {
           "type": "integer",
           "minimum": 0,
           "default": 0,
-          "description": "Minimum number of witness-role party signatures required in addition to signer-party quorum. Witnesses attest but do not count toward partyQuorum.",
+          "description": "Minimum witness-role party signatures required in addition to signer quorum. Witnesses do not count toward partyQuorum.",
           "hai": "base"
         },
         "timeout": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 deadline after which new agreement signatures are not accepted; status advances to 'expired' if quorum was not reached.",
+          "description": "ISO 8601 deadline after which new signatures are not accepted.",
           "hai": "meta"
         },
         "requiredAlgorithms": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "If specified, only signatures using one of these algorithms are accepted.",
           "hai": "base"
         },
         "minimumStrength": {
           "type": "string",
           "enum": ["classical", "post-quantum"],
-          "description": "Minimum cryptographic strength tier required for agreement signatures.",
-          "hai": "base"
-        },
-        "allowDelegatedSignatures": {
-          "type": "boolean",
-          "default": false,
-          "description": "Whether signatures from a delegate (an agent not listed as a party) are accepted when their delegationChain resolves to a signer-role party. Default-deny: high-trust workflows must opt in.",
           "hai": "base"
         }
       },
@@ -221,73 +182,29 @@
     },
     "agreementSignature": {
       "type": "object",
-      "description": "A scoped agreement consent or attestation signature. The signature object is a standard JACS signature; surrounding fields record what agreement scope this signature was intended to bind and what process evidence the signer had visibility into. SDKs MUST verify that outer fields (agentId, agentVersion, signedAgreementHash, signedVersion, signedAt) match what the inner JACS signature actually binds.",
+      "description": "A JACS signature over the agreement. The inner signature object binds jacsAgreementHash (and signedTranscriptHash when transcriptLogRef is present) and carries the signer's agent identity and timestamp. The outer wrapper carries only what the JACS signature cannot: the agreement-specific role, the transcript snapshot, and an optional delegation chain.",
       "properties": {
         "signature": { "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json" },
-        "agentId": {
-          "type": "string",
-          "format": "uuid",
-          "description": "The agent that produced this signature. For non-delegated signatures, must match a party.agentId. For delegated signatures, must resolve through delegationChain to a signer-role party.",
-          "hai": "base"
-        },
-        "agentVersion": {
-          "type": "string",
-          "format": "uuid",
-          "description": "Agent identity version at the time of signing.",
-          "hai": "base"
-        },
-        "agentType": {
-          "type": "string",
-          "enum": ["human", "human-org", "hybrid", "ai"],
-          "hai": "agent"
-        },
         "role": {
           "type": "string",
           "enum": ["signer", "witness"],
-          "description": "Role this signature represents. Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired. Observers do not sign.",
-          "hai": "base"
-        },
-        "signedAgreementHash": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The jacsAgreementHash value this signature binds. Lets verifiers detect post-signature edits to the consent scope.",
+          "description": "Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired.",
           "hai": "base"
         },
         "signedTranscriptHash": {
           "type": "string",
-          "description": "Optional snapshot of the external transcript log hash visible to the signer at signing time. Not part of consent; records context only.",
-          "hai": "base"
-        },
-        "signedVersion": {
-          "type": "string",
-          "format": "uuid",
-          "description": "Agreement jacsVersion at the time of signing.",
-          "hai": "base"
-        },
-        "signedAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Timestamp of signing.",
+          "description": "Transcript log hash visible to the signer at signing time. REQUIRED when transcriptLogRef is present on the agreement (enforced operationally). Provides the tamper-evidence anchor: if transcript entries are later removed or modified, this hash will no longer match the recomputed log state.",
           "hai": "base"
         },
         "delegationChain": {
           "type": "array",
-          "description": "If signing on behalf of a party, the ordered list of signed JACS delegation document references proving authority. Each entry is a verifiable {jacsId, jacsVersion, jacsSha256}.",
+          "description": "If signing on behalf of a party, ordered list of signed JACS delegation document references proving authority.",
           "items": { "$ref": "#/definitions/jacsDocumentRef" },
           "hai": "base"
         }
       },
       "additionalProperties": false,
-      "required": [
-        "signature",
-        "agentId",
-        "agentVersion",
-        "agentType",
-        "role",
-        "signedAgreementHash",
-        "signedVersion",
-        "signedAt"
-      ]
+      "required": ["signature", "role"]
     },
     "jacsDocumentRef": {
       "type": "object",
@@ -300,106 +217,34 @@
       "additionalProperties": false,
       "required": ["jacsId", "jacsVersion", "jacsSha256"]
     },
-    "evidenceRef": {
-      "type": "object",
-      "description": "Reference to a standing piece of evidence supporting the agreement (context, attachment, identity proof). Live transcript-style entries belong in the external transcript log, not here.",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "enum": ["context", "attachment", "identity", "other"],
-          "description": "How this evidence supports the agreement.",
-          "hai": "agent"
-        },
-        "ref": { "$ref": "#/definitions/jacsDocumentRef" },
-        "description": {
-          "type": "string",
-          "maxLength": 1024,
-          "description": "Optional human-readable note about this evidence.",
-          "hai": "agent"
-        }
-      },
-      "additionalProperties": false,
-      "required": ["kind", "ref"]
-    },
     "agreementLink": {
       "type": "object",
-      "description": "Signed relationship from this agreement to another JACS document (typically another agreement). The signature binds signedLinkHash, which is computed over the link payload (rel + target + reason) PLUS the source agreement's jacsId — this prevents copy-paste of a signed link to a different source agreement, and avoids the circular-preimage problem of trying to hash a link that contains its own signature.",
+      "description": "Signed relationship from this agreement to another JACS document. The inner JACS signature binds signedLinkHash and carries the signer's identity and timestamp.",
       "properties": {
         "rel": {
           "type": "string",
-          "enum": [
-            "references",
-            "amends",
-            "supersedes",
-            "supersededBy",
-            "terminates",
-            "renews"
-          ],
+          "enum": ["references", "amends", "supersedes", "supersededBy", "terminates", "renews"],
           "hai": "base"
         },
         "target": { "$ref": "#/definitions/jacsDocumentRef" },
         "reason": {
           "type": "string",
           "maxLength": 1024,
-          "description": "Optional human-readable reason for the relationship. Included in signedLinkHash.",
+          "description": "Optional human-readable reason. Included in signedLinkHash.",
           "hai": "agent"
         },
         "signedLinkHash": {
           "type": "string",
           "minLength": 1,
-          "description": "Hash that this link's signature binds. SDKs compute this over: rel, target (jacsId + jacsVersion + jacsSha256), reason (if present), and the SOURCE agreement's jacsId. Excludes signature and signedAt. The agreement-level jacsAgreementHash references this signedLinkHash value for each link, not the inner signature object.",
-          "hai": "base"
-        },
-        "signerAgentId": {
-          "type": "string",
-          "format": "uuid",
-          "description": "Agent that signed this link. Must be either a controller of the source agreement or a signer-role party.",
-          "hai": "base"
-        },
-        "signerAgentVersion": {
-          "type": "string",
-          "format": "uuid",
+          "description": "Hash that this link's signature binds. Computed over: rel, target (jacsId + jacsVersion + jacsSha256), reason (if present), and the SOURCE agreement's jacsId. Prevents copy-paste of a signed link to a different source agreement.",
           "hai": "base"
         },
         "signature": {
           "$ref": "https://hai.ai/schemas/components/signature/v1/signature.schema.json"
-        },
-        "signedAt": {
-          "type": "string",
-          "format": "date-time",
-          "hai": "base"
         }
       },
       "additionalProperties": false,
-      "required": [
-        "rel",
-        "target",
-        "signedLinkHash",
-        "signerAgentId",
-        "signerAgentVersion",
-        "signature",
-        "signedAt"
-      ]
-    },
-    "rights": {
-      "type": "object",
-      "description": "Optional copyright and license metadata. Soft claims, not authorization: does not grant read access, edit authority, or consent. Read access comes from header jacsVisibility; edit authority from controllers; consent from agreementSignatures.",
-      "properties": {
-        "copyrightHolders": {
-          "type": "array",
-          "items": { "type": "string", "format": "uuid" },
-          "uniqueItems": true,
-          "description": "Agent IDs claiming copyright in the agreement document.",
-          "hai": "meta"
-        },
-        "license": {
-          "type": "string",
-          "maxLength": 256,
-          "description": "Optional license identifier or short reference (e.g., 'Apache-2.0', 'Common Clause + Apache-2.0').",
-          "hai": "meta"
-        }
-      },
-      "additionalProperties": false
+      "required": ["rel", "target", "signedLinkHash", "signature"]
     }
   }
 }
