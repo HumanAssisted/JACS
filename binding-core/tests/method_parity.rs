@@ -67,6 +67,21 @@ fn known_methods() -> Vec<&'static str> {
     methods
 }
 
+#[cfg(feature = "agreements")]
+fn known_agreement_v2_methods() -> Vec<&'static str> {
+    let mut methods = vec![
+        "create_agreement_v2_json",
+        "apply_agreement_v2_json",
+        "sign_agreement_v2_json",
+        "verify_agreement_v2_json",
+        "detect_agreement_v2_branch_conflict_json",
+        "merge_agreement_v2_transcript_branches_json",
+        "resolve_agreement_v2_branch_conflict_json",
+    ];
+    methods.sort();
+    methods
+}
+
 fn load_method_parity_fixture() -> Value {
     let fixture_bytes = include_bytes!("fixtures/method_parity.json");
     serde_json::from_slice(fixture_bytes).expect("method_parity.json should be valid JSON")
@@ -180,6 +195,112 @@ fn test_method_parity_fixture_count() {
          Found {}. If you added or removed a method, update the fixture.",
         flat_methods.len()
     );
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn test_agreement_v2_feature_gated_methods_match_impl() {
+    let fixture = load_method_parity_fixture();
+    let mut fixture_methods: Vec<String> = fixture["feature_gated_methods"]["agreements"]
+        .as_array()
+        .expect("feature_gated_methods.agreements should be an array")
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .expect("each agreement v2 method should be a string")
+                .to_string()
+        })
+        .collect();
+    fixture_methods.sort();
+
+    let known = known_agreement_v2_methods();
+    let known_strings: Vec<String> = known.iter().map(|s| s.to_string()).collect();
+
+    assert_eq!(
+        fixture_methods, known_strings,
+        "\nAgreement v2 feature-gated methods do not match SimpleAgentWrapper.\n\
+         If you added an agreement v2 binding-core method, update \
+         binding-core/tests/fixtures/method_parity.json feature_gated_methods.agreements."
+    );
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn wrapper_exposes_create_agreement_v2_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::create_agreement_v2_json;
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn wrapper_exposes_apply_agreement_v2_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::apply_agreement_v2_json;
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn wrapper_exposes_sign_agreement_v2_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::sign_agreement_v2_json;
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn wrapper_exposes_verify_agreement_v2_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::verify_agreement_v2_json;
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn wrapper_exposes_detect_agreement_v2_branch_conflict_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::detect_agreement_v2_branch_conflict_json;
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn wrapper_exposes_merge_agreement_v2_transcript_branches_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::merge_agreement_v2_transcript_branches_json;
+}
+
+#[cfg(feature = "agreements")]
+#[test]
+fn wrapper_exposes_resolve_agreement_v2_branch_conflict_json() {
+    let _: fn(
+        &jacs_binding_core::SimpleAgentWrapper,
+        &str,
+        &str,
+        &str,
+        &str,
+    ) -> jacs_binding_core::BindingResult<String> =
+        jacs_binding_core::SimpleAgentWrapper::resolve_agreement_v2_branch_conflict_json;
 }
 
 // =========================================================================

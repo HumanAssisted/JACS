@@ -290,6 +290,48 @@ pub fn verify(
     verify_with_agent(&mut inner, document)
 }
 
+/// Auto-merge two transcript-only branches and emit a successor version.
+#[must_use = "merged agreement document must be used or stored"]
+pub fn merge_transcript_branches(
+    agent: &SimpleAgent,
+    base_document: &str,
+    left_document: &str,
+    right_document: &str,
+) -> Result<SignedDocument, JacsError> {
+    let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+        message: format!("Failed to acquire agent lock: {}", e),
+    })?;
+    let doc = merge_transcript_branches_with_agent(
+        &mut inner,
+        base_document,
+        left_document,
+        right_document,
+    )?;
+    SignedDocument::from_jacs_document(doc, "agreement v2 transcript merge")
+}
+
+/// Resolve a conflicting branch by applying an explicit resolution mutation.
+#[must_use = "resolved agreement document must be used or stored"]
+pub fn resolve_branch_conflict(
+    agent: &SimpleAgent,
+    base_document: &str,
+    previous_document: &str,
+    side_branch_document: &str,
+    resolution: AgreementV2Mutation,
+) -> Result<SignedDocument, JacsError> {
+    let mut inner = agent.agent.lock().map_err(|e| JacsError::Internal {
+        message: format!("Failed to acquire agent lock: {}", e),
+    })?;
+    let doc = resolve_branch_conflict_with_agent(
+        &mut inner,
+        base_document,
+        previous_document,
+        side_branch_document,
+        resolution,
+    )?;
+    SignedDocument::from_jacs_document(doc, "agreement v2 branch resolution")
+}
+
 pub fn create_with_agent(
     agent: &mut Agent,
     input: CreateAgreementV2,

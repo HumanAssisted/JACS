@@ -1379,6 +1379,61 @@ impl AgentWrapper {
         })
     }
 
+    /// Analyze whether two agreement v2 branches are auto-mergeable.
+    #[cfg(feature = "agreements")]
+    pub fn detect_agreement_v2_branch_conflict_json(
+        &self,
+        base_document_json: &str,
+        left_document_json: &str,
+        right_document_json: &str,
+    ) -> BindingResult<String> {
+        agreement_v2::detect_agreement_v2_branch_conflict_json(
+            base_document_json,
+            left_document_json,
+            right_document_json,
+        )
+    }
+
+    /// Auto-merge transcript-only agreement v2 branches.
+    #[cfg(feature = "agreements")]
+    pub fn merge_agreement_v2_transcript_branches_json(
+        &self,
+        base_document_json: &str,
+        left_document_json: &str,
+        right_document_json: &str,
+    ) -> BindingResult<String> {
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agreement_v2::merge_agreement_v2_transcript_branches_json(
+                &mut agent,
+                base_document_json,
+                left_document_json,
+                right_document_json,
+            )
+        })
+    }
+
+    /// Resolve an agreement v2 branch conflict with an explicit mutation.
+    #[cfg(feature = "agreements")]
+    pub fn resolve_agreement_v2_branch_conflict_json(
+        &self,
+        base_document_json: &str,
+        previous_document_json: &str,
+        side_branch_document_json: &str,
+        mutation_json: &str,
+    ) -> BindingResult<String> {
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agreement_v2::resolve_agreement_v2_branch_conflict_json(
+                &mut agent,
+                base_document_json,
+                previous_document_json,
+                side_branch_document_json,
+                mutation_json,
+            )
+        })
+    }
+
     /// Create a new JACS document.
     pub fn create_document(
         &self,

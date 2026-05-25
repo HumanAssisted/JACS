@@ -10,6 +10,17 @@
     "w3c": ["export_w3c_did", "export_w3c_did_document_json", "export_w3c_agent_description_json", "generate_w3c_well_known_json", "sign_w3c_request_json", "verify_w3c_request_json"],
     "inline_and_media": ["sign_text_file_json", "verify_text_file_json", "sign_image_json", "verify_image_json", "extract_media_signature_json"]
   },
+  "feature_gated_methods": {
+    "agreements": [
+      "create_agreement_v2_json",
+      "apply_agreement_v2_json",
+      "sign_agreement_v2_json",
+      "verify_agreement_v2_json",
+      "detect_agreement_v2_branch_conflict_json",
+      "merge_agreement_v2_transcript_branches_json",
+      "resolve_agreement_v2_branch_conflict_json"
+    ]
+  },
   "all_methods_flat": [
     "config_path", "create", "create_with_params", "diagnostics", "ephemeral",
     "export_agent", "export_w3c_agent_description_json", "export_w3c_did",

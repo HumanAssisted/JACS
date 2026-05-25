@@ -379,6 +379,137 @@ impl SimpleAgentWrapper {
     }
 
     // =========================================================================
+    // Agreement v2 (feature-gated protocol surface)
+    // =========================================================================
+
+    /// Create a standalone agreement v2 document from JSON input.
+    #[cfg(feature = "agreements")]
+    pub fn create_agreement_v2_json(&self, input_json: &str) -> BindingResult<String> {
+        let input: jacs::agreements::v2::CreateAgreementV2 = serde_json::from_str(input_json)
+            .map_err(|e| {
+                BindingCoreError::validation(format!("Invalid agreement v2 create input: {}", e))
+            })?;
+        let signed = jacs::agreements::v2::create(&self.inner, input).map_err(|e| {
+            BindingCoreError::agreement_failed(format!("Failed to create agreement v2: {}", e))
+        })?;
+        Ok(signed.raw)
+    }
+
+    /// Apply a JSON mutation to an agreement v2 document.
+    #[cfg(feature = "agreements")]
+    pub fn apply_agreement_v2_json(
+        &self,
+        document_json: &str,
+        mutation_json: &str,
+    ) -> BindingResult<String> {
+        let mutation: jacs::agreements::v2::AgreementV2Mutation =
+            serde_json::from_str(mutation_json).map_err(|e| {
+                BindingCoreError::validation(format!("Invalid agreement v2 mutation input: {}", e))
+            })?;
+        let signed =
+            jacs::agreements::v2::apply(&self.inner, document_json, mutation).map_err(|e| {
+                BindingCoreError::agreement_failed(format!("Failed to update agreement v2: {}", e))
+            })?;
+        Ok(signed.raw)
+    }
+
+    /// Sign an agreement v2 document as signer, witness, or notary.
+    #[cfg(feature = "agreements")]
+    pub fn sign_agreement_v2_json(&self, document_json: &str, role: &str) -> BindingResult<String> {
+        let role = parse_agreement_v2_role(role)?;
+        let signed = jacs::agreements::v2::sign(&self.inner, document_json, role).map_err(|e| {
+            BindingCoreError::agreement_failed(format!("Failed to sign agreement v2: {}", e))
+        })?;
+        Ok(signed.raw)
+    }
+
+    /// Verify agreement v2 hashes, signature policy, role membership, and signatures.
+    #[cfg(feature = "agreements")]
+    pub fn verify_agreement_v2_json(&self, document_json: &str) -> BindingResult<String> {
+        let report = jacs::agreements::v2::verify(&self.inner, document_json).map_err(|e| {
+            BindingCoreError::verification_failed(format!("Failed to verify agreement v2: {}", e))
+        })?;
+        serialize_json(&report, "agreement v2 verification report")
+    }
+
+    /// Analyze whether two agreement v2 branches are auto-mergeable.
+    #[cfg(feature = "agreements")]
+    pub fn detect_agreement_v2_branch_conflict_json(
+        &self,
+        base_document_json: &str,
+        left_document_json: &str,
+        right_document_json: &str,
+    ) -> BindingResult<String> {
+        let analysis = jacs::agreements::v2::detect_branch_conflict(
+            base_document_json,
+            left_document_json,
+            right_document_json,
+        )
+        .map_err(|e| {
+            BindingCoreError::agreement_failed(format!(
+                "Failed to analyze agreement v2 branch conflict: {}",
+                e
+            ))
+        })?;
+        serialize_json(&analysis, "agreement v2 branch analysis")
+    }
+
+    /// Auto-merge transcript-only agreement v2 branches.
+    #[cfg(feature = "agreements")]
+    pub fn merge_agreement_v2_transcript_branches_json(
+        &self,
+        base_document_json: &str,
+        left_document_json: &str,
+        right_document_json: &str,
+    ) -> BindingResult<String> {
+        let signed = jacs::agreements::v2::merge_transcript_branches(
+            &self.inner,
+            base_document_json,
+            left_document_json,
+            right_document_json,
+        )
+        .map_err(|e| {
+            BindingCoreError::agreement_failed(format!(
+                "Failed to merge agreement v2 transcript branches: {}",
+                e
+            ))
+        })?;
+        Ok(signed.raw)
+    }
+
+    /// Resolve an agreement v2 branch conflict with an explicit mutation.
+    #[cfg(feature = "agreements")]
+    pub fn resolve_agreement_v2_branch_conflict_json(
+        &self,
+        base_document_json: &str,
+        previous_document_json: &str,
+        side_branch_document_json: &str,
+        mutation_json: &str,
+    ) -> BindingResult<String> {
+        let mutation: jacs::agreements::v2::AgreementV2Mutation =
+            serde_json::from_str(mutation_json).map_err(|e| {
+                BindingCoreError::validation(format!(
+                    "Invalid agreement v2 branch resolution mutation input: {}",
+                    e
+                ))
+            })?;
+        let signed = jacs::agreements::v2::resolve_branch_conflict(
+            &self.inner,
+            base_document_json,
+            previous_document_json,
+            side_branch_document_json,
+            mutation,
+        )
+        .map_err(|e| {
+            BindingCoreError::agreement_failed(format!(
+                "Failed to resolve agreement v2 branch conflict: {}",
+                e
+            ))
+        })?;
+        Ok(signed.raw)
+    }
+
+    // =========================================================================
     // Format Conversion (stateless -- no agent lock needed)
     // =========================================================================
 
@@ -534,6 +665,19 @@ impl SimpleAgentWrapper {
 // =============================================================================
 // Option parsing helpers
 // =============================================================================
+
+#[cfg(feature = "agreements")]
+fn parse_agreement_v2_role(role: &str) -> BindingResult<jacs::agreements::v2::AgreementV2Role> {
+    match role {
+        "signer" => Ok(jacs::agreements::v2::AgreementV2Role::Signer),
+        "witness" => Ok(jacs::agreements::v2::AgreementV2Role::Witness),
+        "notary" => Ok(jacs::agreements::v2::AgreementV2Role::Notary),
+        _ => Err(BindingCoreError::validation(format!(
+            "Invalid agreement v2 signature role '{}'; expected signer, witness, or notary",
+            role
+        ))),
+    }
+}
 
 fn map_jacs_err(e: jacs::error::JacsError, op: &str) -> BindingCoreError {
     use jacs::error::JacsError;
