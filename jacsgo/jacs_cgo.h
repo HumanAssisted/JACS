@@ -78,6 +78,15 @@ char* jacs_simple_sign_message(SimpleAgentHandle handle, const char* data_json);
 char* jacs_simple_sign_raw_bytes(SimpleAgentHandle handle, const uint8_t* data, size_t data_len);
 char* jacs_simple_sign_file(SimpleAgentHandle handle, const char* file_path, int embed);
 
+// Agreement v2
+char* jacs_simple_create_agreement_v2(SimpleAgentHandle handle, const char* input_json);
+char* jacs_simple_apply_agreement_v2(SimpleAgentHandle handle, const char* document_json, const char* mutation_json);
+char* jacs_simple_sign_agreement_v2(SimpleAgentHandle handle, const char* document_json, const char* role);
+char* jacs_simple_verify_agreement_v2(SimpleAgentHandle handle, const char* document_json);
+char* jacs_simple_detect_agreement_v2_branch_conflict(SimpleAgentHandle handle, const char* base_document_json, const char* left_document_json, const char* right_document_json);
+char* jacs_simple_merge_agreement_v2_transcript_branches(SimpleAgentHandle handle, const char* base_document_json, const char* left_document_json, const char* right_document_json);
+char* jacs_simple_resolve_agreement_v2_branch_conflict(SimpleAgentHandle handle, const char* base_document_json, const char* previous_document_json, const char* side_branch_document_json, const char* mutation_json);
+
 // Inline text + media signing (Task 12 — PRD §3.1, §3.2, §4.1, §4.2)
 //
 // Each export takes an optional `opts_json` parameter (may be null). On

@@ -2966,6 +2966,7 @@ dependencies = [
  "predicates",
  "reqwest 0.13.4",
  "rpassword",
+ "serde",
  "serde_json",
  "serial_test",
  "tempfile",

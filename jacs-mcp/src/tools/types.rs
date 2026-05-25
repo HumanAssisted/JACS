@@ -103,3 +103,89 @@ pub struct CheckAgreementResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+// =============================================================================
+// Agreement v2 Types
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateAgreementV2Params {
+    #[schemars(
+        description = "CreateAgreementV2 object: title, description, terms, parties, signaturePolicy, and optional workflow fields."
+    )]
+    pub input: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ApplyAgreementV2Params {
+    #[schemars(description = "Full agreement v2 document JSON to mutate.")]
+    pub agreement: String,
+    #[schemars(
+        description = "AgreementV2Mutation object, e.g. {\"type\":\"appendTranscript\",\"entry\":{...}}."
+    )]
+    pub mutation: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SignAgreementV2Params {
+    #[schemars(description = "Full agreement v2 document JSON to sign.")]
+    pub agreement: String,
+    #[schemars(description = "Signature role: signer, witness, or notary. Defaults to signer.")]
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyAgreementV2Params {
+    #[schemars(description = "Full agreement v2 document JSON to verify.")]
+    pub agreement: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DetectAgreementV2BranchConflictParams {
+    #[schemars(description = "Base agreement v2 document JSON.")]
+    pub base: String,
+    #[schemars(description = "Left successor agreement v2 document JSON.")]
+    pub left: String,
+    #[schemars(description = "Right successor agreement v2 document JSON.")]
+    pub right: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MergeAgreementV2TranscriptBranchesParams {
+    #[schemars(description = "Base agreement v2 document JSON.")]
+    pub base: String,
+    #[schemars(description = "Left successor agreement v2 document JSON.")]
+    pub left: String,
+    #[schemars(description = "Right successor agreement v2 document JSON.")]
+    pub right: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ResolveAgreementV2BranchConflictParams {
+    #[schemars(description = "Base agreement v2 document JSON.")]
+    pub base: String,
+    #[schemars(description = "Previous/version-to-rebase agreement v2 document JSON.")]
+    pub previous: String,
+    #[schemars(description = "Side-branch agreement v2 document JSON.")]
+    pub side_branch: String,
+    #[schemars(description = "AgreementV2Mutation object that resolves the conflict.")]
+    pub mutation: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AgreementV2DocumentResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agreement: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AgreementV2ValueResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}

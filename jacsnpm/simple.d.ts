@@ -225,6 +225,20 @@ export interface ExtractMediaOpts {
     /** PRD §3.2 wire form. */
     rawPayload?: boolean;
 }
+export declare function createAgreementV2(input: any): Promise<string>;
+export declare function createAgreementV2Sync(input: any): string;
+export declare function applyAgreementV2(document: any, mutation: any): Promise<string>;
+export declare function applyAgreementV2Sync(document: any, mutation: any): string;
+export declare function signAgreementV2(document: any, role?: string): Promise<string>;
+export declare function signAgreementV2Sync(document: any, role?: string): string;
+export declare function verifyAgreementV2(document: any): Promise<any>;
+export declare function verifyAgreementV2Sync(document: any): any;
+export declare function detectAgreementV2BranchConflict(base: any, left: any, right: any): Promise<any>;
+export declare function detectAgreementV2BranchConflictSync(base: any, left: any, right: any): any;
+export declare function mergeAgreementV2TranscriptBranches(base: any, left: any, right: any): Promise<string>;
+export declare function mergeAgreementV2TranscriptBranchesSync(base: any, left: any, right: any): string;
+export declare function resolveAgreementV2BranchConflict(base: any, previous: any, side: any, mutation: any): Promise<string>;
+export declare function resolveAgreementV2BranchConflictSync(base: any, previous: any, side: any, mutation: any): string;
 export declare function signText(filePath: string, opts?: SignTextOpts): Promise<any>;
 export declare function signTextSync(filePath: string, opts?: SignTextOpts): any;
 export declare function verifyText(filePath: string, opts?: VerifyTextOpts): Promise<any>;

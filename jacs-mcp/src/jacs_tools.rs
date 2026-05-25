@@ -848,6 +848,263 @@ impl JacsMcpServer {
         serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
 
+    /// Create a standalone agreement v2 artifact.
+    #[cfg(feature = "agreement-tools")]
+    #[tool(
+        name = "jacs_create_agreement_v2",
+        description = "Create a standalone JACS agreement v2 document for verifiable consent to terms."
+    )]
+    pub async fn jacs_create_agreement_v2(
+        &self,
+        Parameters(params): Parameters<CreateAgreementV2Params>,
+    ) -> String {
+        let input_json = match serde_json::to_string(&params.input) {
+            Ok(json) => json,
+            Err(e) => {
+                let result = AgreementV2DocumentResult {
+                    success: false,
+                    agreement: None,
+                    error: Some(format!("Failed to serialize agreement v2 input: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let result = match self.agent.create_agreement_v2_json(&input_json) {
+            Ok(agreement) => AgreementV2DocumentResult {
+                success: true,
+                agreement: Some(agreement),
+                error: None,
+            },
+            Err(e) => AgreementV2DocumentResult {
+                success: false,
+                agreement: None,
+                error: Some(format!("Failed to create agreement v2: {}", e)),
+            },
+        };
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Apply a typed mutation to a standalone agreement v2 artifact.
+    #[cfg(feature = "agreement-tools")]
+    #[tool(
+        name = "jacs_apply_agreement_v2",
+        description = "Apply an agreement v2 mutation and emit a successor version."
+    )]
+    pub async fn jacs_apply_agreement_v2(
+        &self,
+        Parameters(params): Parameters<ApplyAgreementV2Params>,
+    ) -> String {
+        let mutation_json = match serde_json::to_string(&params.mutation) {
+            Ok(json) => json,
+            Err(e) => {
+                let result = AgreementV2DocumentResult {
+                    success: false,
+                    agreement: None,
+                    error: Some(format!("Failed to serialize agreement v2 mutation: {}", e)),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let result = match self
+            .agent
+            .apply_agreement_v2_json(&params.agreement, &mutation_json)
+        {
+            Ok(agreement) => AgreementV2DocumentResult {
+                success: true,
+                agreement: Some(agreement),
+                error: None,
+            },
+            Err(e) => AgreementV2DocumentResult {
+                success: false,
+                agreement: None,
+                error: Some(format!("Failed to update agreement v2: {}", e)),
+            },
+        };
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Add this agent's signer, witness, or notary agreement signature.
+    #[cfg(feature = "agreement-tools")]
+    #[tool(
+        name = "jacs_sign_agreement_v2",
+        description = "Add this agent's signer, witness, or notary signature to an agreement v2 document."
+    )]
+    pub async fn jacs_sign_agreement_v2(
+        &self,
+        Parameters(params): Parameters<SignAgreementV2Params>,
+    ) -> String {
+        let role = params.role.unwrap_or_else(|| "signer".to_string());
+        let result = match self.agent.sign_agreement_v2_json(&params.agreement, &role) {
+            Ok(agreement) => AgreementV2DocumentResult {
+                success: true,
+                agreement: Some(agreement),
+                error: None,
+            },
+            Err(e) => AgreementV2DocumentResult {
+                success: false,
+                agreement: None,
+                error: Some(format!("Failed to sign agreement v2: {}", e)),
+            },
+        };
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Verify agreement v2 hash, status, transcript, and signature invariants.
+    #[cfg(feature = "agreement-tools")]
+    #[tool(
+        name = "jacs_verify_agreement_v2",
+        description = "Verify a standalone JACS agreement v2 document."
+    )]
+    pub async fn jacs_verify_agreement_v2(
+        &self,
+        Parameters(params): Parameters<VerifyAgreementV2Params>,
+    ) -> String {
+        let result = match self.agent.verify_agreement_v2_json(&params.agreement) {
+            Ok(report_json) => AgreementV2ValueResult {
+                success: true,
+                result: serde_json::from_str(&report_json).ok(),
+                error: None,
+            },
+            Err(e) => AgreementV2ValueResult {
+                success: false,
+                result: None,
+                error: Some(format!("Failed to verify agreement v2: {}", e)),
+            },
+        };
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Detect whether two agreement v2 branches are transcript-only mergeable.
+    #[cfg(feature = "agreement-tools")]
+    #[tool(
+        name = "jacs_detect_agreement_v2_branch_conflict",
+        description = "Analyze two agreement v2 successor versions for branch conflicts."
+    )]
+    pub async fn jacs_detect_agreement_v2_branch_conflict(
+        &self,
+        Parameters(params): Parameters<DetectAgreementV2BranchConflictParams>,
+    ) -> String {
+        let result = match self.agent.detect_agreement_v2_branch_conflict_json(
+            &params.base,
+            &params.left,
+            &params.right,
+        ) {
+            Ok(analysis_json) => AgreementV2ValueResult {
+                success: true,
+                result: serde_json::from_str(&analysis_json).ok(),
+                error: None,
+            },
+            Err(e) => AgreementV2ValueResult {
+                success: false,
+                result: None,
+                error: Some(format!(
+                    "Failed to detect agreement v2 branch conflict: {}",
+                    e
+                )),
+            },
+        };
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Auto-merge two transcript-only agreement v2 branches.
+    #[cfg(feature = "agreement-tools")]
+    #[tool(
+        name = "jacs_merge_agreement_v2_transcript_branches",
+        description = "Auto-merge two transcript-only agreement v2 branches."
+    )]
+    pub async fn jacs_merge_agreement_v2_transcript_branches(
+        &self,
+        Parameters(params): Parameters<MergeAgreementV2TranscriptBranchesParams>,
+    ) -> String {
+        let result = match self.agent.merge_agreement_v2_transcript_branches_json(
+            &params.base,
+            &params.left,
+            &params.right,
+        ) {
+            Ok(agreement) => AgreementV2DocumentResult {
+                success: true,
+                agreement: Some(agreement),
+                error: None,
+            },
+            Err(e) => AgreementV2DocumentResult {
+                success: false,
+                agreement: None,
+                error: Some(format!(
+                    "Failed to merge agreement v2 transcript branches: {}",
+                    e
+                )),
+            },
+        };
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
+    /// Resolve a conflicting agreement v2 branch with an explicit mutation.
+    #[cfg(feature = "agreement-tools")]
+    #[tool(
+        name = "jacs_resolve_agreement_v2_branch_conflict",
+        description = "Resolve an agreement v2 branch conflict by applying an explicit mutation."
+    )]
+    pub async fn jacs_resolve_agreement_v2_branch_conflict(
+        &self,
+        Parameters(params): Parameters<ResolveAgreementV2BranchConflictParams>,
+    ) -> String {
+        let mutation_json = match serde_json::to_string(&params.mutation) {
+            Ok(json) => json,
+            Err(e) => {
+                let result = AgreementV2DocumentResult {
+                    success: false,
+                    agreement: None,
+                    error: Some(format!(
+                        "Failed to serialize agreement v2 resolution mutation: {}",
+                        e
+                    )),
+                };
+                return serde_json::to_string_pretty(&result)
+                    .unwrap_or_else(|e| format!("Error: {}", e));
+            }
+        };
+
+        let result = match self.agent.resolve_agreement_v2_branch_conflict_json(
+            &params.base,
+            &params.previous,
+            &params.side_branch,
+            &mutation_json,
+        ) {
+            Ok(agreement) => AgreementV2DocumentResult {
+                success: true,
+                agreement: Some(agreement),
+                error: None,
+            },
+            Err(e) => AgreementV2DocumentResult {
+                success: false,
+                agreement: None,
+                error: Some(format!(
+                    "Failed to resolve agreement v2 branch conflict: {}",
+                    e
+                )),
+            },
+        };
+        let serialized =
+            serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e));
+        inject_meta(&serialized, None)
+    }
+
     // =========================================================================
     // Document Sign / Verify tools
     // =========================================================================

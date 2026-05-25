@@ -23,7 +23,8 @@ import (
 const methodFixtureRelPath = "../binding-core/tests/fixtures/method_parity.json"
 
 type methodParityFixture struct {
-	AllMethodsFlat []string `json:"all_methods_flat"`
+	AllMethodsFlat      []string            `json:"all_methods_flat"`
+	FeatureGatedMethods map[string][]string `json:"feature_gated_methods"`
 }
 
 func loadMethodParityFixture(t *testing.T) methodParityFixture {
@@ -100,6 +101,14 @@ var goNameMap = map[string]string{
 	"sign_image_json":              "SignImage",
 	"verify_image_json":            "VerifyImage",
 	"extract_media_signature_json": "ExtractMediaSignature",
+	// Agreement v2 (feature-gated in Rust, included in the default Go native lib).
+	"create_agreement_v2_json":                    "CreateAgreementV2",
+	"apply_agreement_v2_json":                     "ApplyAgreementV2",
+	"sign_agreement_v2_json":                      "SignAgreementV2",
+	"verify_agreement_v2_json":                    "VerifyAgreementV2",
+	"detect_agreement_v2_branch_conflict_json":    "DetectAgreementV2BranchConflict",
+	"merge_agreement_v2_transcript_branches_json": "MergeAgreementV2TranscriptBranches",
+	"resolve_agreement_v2_branch_conflict_json":   "ResolveAgreementV2BranchConflict",
 }
 
 // Constructors are package-level functions, not methods on *JacsSimpleAgent.
@@ -120,6 +129,14 @@ var goConstructorFuncs = map[string]interface{}{
 	"CreateSimpleAgentWithParams": CreateSimpleAgentWithParams,
 }
 
+func (f methodParityFixture) parityMethods() []string {
+	methods := append([]string{}, f.AllMethodsFlat...)
+	for _, gated := range f.FeatureGatedMethods {
+		methods = append(methods, gated...)
+	}
+	return methods
+}
+
 // TestMethodParityAgainstFixture validates that all expected methods exist
 // on Go's JacsSimpleAgent.
 func TestMethodParityAgainstFixture(t *testing.T) {
@@ -133,7 +150,7 @@ func TestMethodParityAgainstFixture(t *testing.T) {
 	}
 
 	missing := []string{}
-	for _, rustName := range fixture.AllMethodsFlat {
+	for _, rustName := range fixture.parityMethods() {
 		if _, excluded := excludedFromGo[rustName]; excluded {
 			continue
 		}
@@ -170,7 +187,7 @@ func TestMethodParityAgainstFixture(t *testing.T) {
 func TestMethodParityExclusionsAreValid(t *testing.T) {
 	fixture := loadMethodParityFixture(t)
 	allMethods := make(map[string]bool)
-	for _, m := range fixture.AllMethodsFlat {
+	for _, m := range fixture.parityMethods() {
 		allMethods[m] = true
 	}
 
@@ -191,7 +208,7 @@ func TestMethodParityNameMapCoversAll(t *testing.T) {
 	fixture := loadMethodParityFixture(t)
 
 	unmapped := []string{}
-	for _, rustName := range fixture.AllMethodsFlat {
+	for _, rustName := range fixture.parityMethods() {
 		if _, excluded := excludedFromGo[rustName]; excluded {
 			continue
 		}

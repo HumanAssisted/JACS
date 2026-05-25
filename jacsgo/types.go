@@ -42,6 +42,34 @@ type VerificationResult struct {
 	Errors []string `json:"errors,omitempty"`
 }
 
+// AgreementV2VerificationReport is returned by
+// [JacsSimpleAgent.VerifyAgreementV2].
+type AgreementV2VerificationReport struct {
+	Valid                    bool     `json:"valid"`
+	Status                   string   `json:"status"`
+	ExpectedStatus           string   `json:"expectedStatus"`
+	RecomputedAgreementHash  string   `json:"recomputedAgreementHash"`
+	RecomputedTranscriptHash string   `json:"recomputedTranscriptHash"`
+	SignerCount              int      `json:"signerCount"`
+	WitnessCount             int      `json:"witnessCount"`
+	NotaryCount              int      `json:"notaryCount"`
+	Errors                   []string `json:"errors,omitempty"`
+}
+
+// AgreementV2MergeAnalysis is returned by
+// [JacsSimpleAgent.DetectAgreementV2BranchConflict].
+type AgreementV2MergeAnalysis struct {
+	SameDocument             bool     `json:"sameDocument"`
+	SameParent               bool     `json:"sameParent"`
+	AutoMergeable            bool     `json:"autoMergeable"`
+	ConflictFields           []string `json:"conflictFields,omitempty"`
+	LeftChangedFields        []string `json:"leftChangedFields,omitempty"`
+	RightChangedFields       []string `json:"rightChangedFields,omitempty"`
+	LeftTranscriptAdditions  int      `json:"leftTranscriptAdditions"`
+	RightTranscriptAdditions int      `json:"rightTranscriptAdditions"`
+	Errors                   []string `json:"errors,omitempty"`
+}
+
 // Attachment represents a file attachment in a signed document.
 type Attachment struct {
 	// Filename is the original filename.
@@ -208,10 +236,10 @@ type VerifyImageOpts struct {
 type VerifyImageResult struct {
 	// Status is one of "valid" | "missing_signature" | "malformed" |
 	// "invalid_signature" | "hash_mismatch" | "key_not_found" | "unsupported_algorithm".
-	Status            string `json:"status"`
-	SignerID          string `json:"signer_id,omitempty"`
-	Algorithm         string `json:"algorithm,omitempty"`
-	Format            string `json:"format,omitempty"`
+	Status    string `json:"status"`
+	SignerID  string `json:"signer_id,omitempty"`
+	Algorithm string `json:"algorithm,omitempty"`
+	Format    string `json:"format,omitempty"`
 	// EmbeddingChannels is a free-form description of where in the image the
 	// signature was found (e.g. "metadata"). Optional; serialized as a string
 	// to match the Rust core's `Option<String>`.

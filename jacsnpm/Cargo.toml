@@ -26,9 +26,10 @@ napi = { version = "2.16.17", features = ["async"] }
 napi-derive = "2.16.13"
 
 [features]
-default = ["attestation"]
+default = ["attestation", "agreements"]
 a2a = ["jacs-binding-core/a2a"]
 attestation = ["jacs-binding-core/attestation"]
+agreements = ["jacs-binding-core/agreements"]
 
 [build-dependencies]
 napi-build = "2.1.6"

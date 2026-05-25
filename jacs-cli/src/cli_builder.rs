@@ -521,6 +521,95 @@ pub fn build_cli() -> Command {
                 )
         )
         .subcommand(
+            Command::new("agreement-v2")
+                .about("Work with standalone JACS agreement v2 documents")
+                .subcommand(
+                    Command::new("create")
+                        .about("Create a standalone agreement v2 document")
+                        .arg(
+                            Arg::new("input")
+                                .short('i')
+                                .long("input")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("CreateAgreementV2 JSON, path to JSON, or '-' for stdin"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("apply")
+                        .about("Apply an agreement v2 mutation and emit a successor version")
+                        .arg(
+                            Arg::new("agreement")
+                                .short('a')
+                                .long("agreement")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Agreement JSON, path to JSON, or '-' for stdin"),
+                        )
+                        .arg(
+                            Arg::new("mutation")
+                                .short('m')
+                                .long("mutation")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Mutation JSON or path to mutation JSON"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("sign")
+                        .about("Sign an agreement v2 document as signer, witness, or notary")
+                        .arg(
+                            Arg::new("agreement")
+                                .short('a')
+                                .long("agreement")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Agreement JSON, path to JSON, or '-' for stdin"),
+                        )
+                        .arg(
+                            Arg::new("role")
+                                .long("role")
+                                .value_parser(["signer", "witness", "notary"])
+                                .default_value("signer")
+                                .help("Agreement signature role"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("verify")
+                        .about("Verify an agreement v2 document")
+                        .arg(
+                            Arg::new("agreement")
+                                .short('a')
+                                .long("agreement")
+                                .required(true)
+                                .value_parser(value_parser!(String))
+                                .help("Agreement JSON, path to JSON, or '-' for stdin"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("detect-conflict")
+                        .about("Detect whether two agreement v2 branches can auto-merge")
+                        .arg(Arg::new("base").long("base").required(true).value_parser(value_parser!(String)))
+                        .arg(Arg::new("left").long("left").required(true).value_parser(value_parser!(String)))
+                        .arg(Arg::new("right").long("right").required(true).value_parser(value_parser!(String))),
+                )
+                .subcommand(
+                    Command::new("merge-transcript")
+                        .about("Auto-merge two transcript-only agreement v2 branches")
+                        .arg(Arg::new("base").long("base").required(true).value_parser(value_parser!(String)))
+                        .arg(Arg::new("left").long("left").required(true).value_parser(value_parser!(String)))
+                        .arg(Arg::new("right").long("right").required(true).value_parser(value_parser!(String))),
+                )
+                .subcommand(
+                    Command::new("resolve-conflict")
+                        .about("Resolve an agreement v2 branch conflict with an explicit mutation")
+                        .arg(Arg::new("base").long("base").required(true).value_parser(value_parser!(String)))
+                        .arg(Arg::new("previous").long("previous").required(true).value_parser(value_parser!(String)))
+                        .arg(Arg::new("side").long("side").required(true).value_parser(value_parser!(String)))
+                        .arg(Arg::new("mutation").short('m').long("mutation").required(true).value_parser(value_parser!(String))),
+                )
+        )
+        .subcommand(
             Command::new("key")
                 .about("Work with JACS cryptographic keys")
                 .subcommand(

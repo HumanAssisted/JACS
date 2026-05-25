@@ -76,6 +76,20 @@ exports.updateDocument = updateDocument;
 exports.updateDocumentSync = updateDocumentSync;
 exports.signFile = signFile;
 exports.signFileSync = signFileSync;
+exports.createAgreementV2 = createAgreementV2;
+exports.createAgreementV2Sync = createAgreementV2Sync;
+exports.applyAgreementV2 = applyAgreementV2;
+exports.applyAgreementV2Sync = applyAgreementV2Sync;
+exports.signAgreementV2 = signAgreementV2;
+exports.signAgreementV2Sync = signAgreementV2Sync;
+exports.verifyAgreementV2 = verifyAgreementV2;
+exports.verifyAgreementV2Sync = verifyAgreementV2Sync;
+exports.detectAgreementV2BranchConflict = detectAgreementV2BranchConflict;
+exports.detectAgreementV2BranchConflictSync = detectAgreementV2BranchConflictSync;
+exports.mergeAgreementV2TranscriptBranches = mergeAgreementV2TranscriptBranches;
+exports.mergeAgreementV2TranscriptBranchesSync = mergeAgreementV2TranscriptBranchesSync;
+exports.resolveAgreementV2BranchConflict = resolveAgreementV2BranchConflict;
+exports.resolveAgreementV2BranchConflictSync = resolveAgreementV2BranchConflictSync;
 exports.signText = signText;
 exports.signTextSync = signTextSync;
 exports.verifyText = verifyText;
@@ -597,6 +611,48 @@ function requireSimpleAgent() {
         throw new Error('No agent loaded. Call quickstart({ name, domain }), load(), or create() first.');
     }
     return globalSimpleAgent;
+}
+async function createAgreementV2(input) {
+    return requireSimpleAgent().createAgreementV2(normalizeJsonInput(input));
+}
+function createAgreementV2Sync(input) {
+    return requireSimpleAgent().createAgreementV2Sync(normalizeJsonInput(input));
+}
+async function applyAgreementV2(document, mutation) {
+    return requireSimpleAgent().applyAgreementV2(normalizeDocumentInput(document), normalizeJsonInput(mutation));
+}
+function applyAgreementV2Sync(document, mutation) {
+    return requireSimpleAgent().applyAgreementV2Sync(normalizeDocumentInput(document), normalizeJsonInput(mutation));
+}
+async function signAgreementV2(document, role = 'signer') {
+    return requireSimpleAgent().signAgreementV2(normalizeDocumentInput(document), role);
+}
+function signAgreementV2Sync(document, role = 'signer') {
+    return requireSimpleAgent().signAgreementV2Sync(normalizeDocumentInput(document), role);
+}
+async function verifyAgreementV2(document) {
+    return requireSimpleAgent().verifyAgreementV2(normalizeDocumentInput(document));
+}
+function verifyAgreementV2Sync(document) {
+    return requireSimpleAgent().verifyAgreementV2Sync(normalizeDocumentInput(document));
+}
+async function detectAgreementV2BranchConflict(base, left, right) {
+    return requireSimpleAgent().detectAgreementV2BranchConflict(normalizeDocumentInput(base), normalizeDocumentInput(left), normalizeDocumentInput(right));
+}
+function detectAgreementV2BranchConflictSync(base, left, right) {
+    return requireSimpleAgent().detectAgreementV2BranchConflictSync(normalizeDocumentInput(base), normalizeDocumentInput(left), normalizeDocumentInput(right));
+}
+async function mergeAgreementV2TranscriptBranches(base, left, right) {
+    return requireSimpleAgent().mergeAgreementV2TranscriptBranches(normalizeDocumentInput(base), normalizeDocumentInput(left), normalizeDocumentInput(right));
+}
+function mergeAgreementV2TranscriptBranchesSync(base, left, right) {
+    return requireSimpleAgent().mergeAgreementV2TranscriptBranchesSync(normalizeDocumentInput(base), normalizeDocumentInput(left), normalizeDocumentInput(right));
+}
+async function resolveAgreementV2BranchConflict(base, previous, side, mutation) {
+    return requireSimpleAgent().resolveAgreementV2BranchConflict(normalizeDocumentInput(base), normalizeDocumentInput(previous), normalizeDocumentInput(side), normalizeJsonInput(mutation));
+}
+function resolveAgreementV2BranchConflictSync(base, previous, side, mutation) {
+    return requireSimpleAgent().resolveAgreementV2BranchConflictSync(normalizeDocumentInput(base), normalizeDocumentInput(previous), normalizeDocumentInput(side), normalizeJsonInput(mutation));
 }
 async function signText(filePath, opts) {
     return requireSimpleAgent().signText(filePath, opts?.noBackup ?? false);

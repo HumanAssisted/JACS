@@ -461,6 +461,198 @@ impl CoreAgentHandle {
             )))
         })
     }
+
+    /// Create a standalone agreement v2 document from a CreateAgreementV2 JSON object.
+    #[wasm_bindgen(js_name = createAgreementV2Json)]
+    pub fn create_agreement_v2_json(&self, input_json: &str) -> Result<String, JsError> {
+        let input: Value = serde_json::from_str(input_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agreement v2 input JSON: {}",
+                e
+            )))
+        })?;
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let document = agreements::v2::create(&mut agent, &input).map_err(map_core_err)?;
+        serde_json::to_string(&document).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize agreement v2: {}",
+                e
+            )))
+        })
+    }
+
+    /// Apply an agreement v2 mutation and return the successor document JSON.
+    #[wasm_bindgen(js_name = applyAgreementV2Json)]
+    pub fn apply_agreement_v2_json(
+        &self,
+        agreement_json: &str,
+        mutation_json: &str,
+    ) -> Result<String, JsError> {
+        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agreement v2 JSON: {}",
+                e
+            )))
+        })?;
+        let mutation: Value = serde_json::from_str(mutation_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agreement v2 mutation JSON: {}",
+                e
+            )))
+        })?;
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let next = agreements::v2::apply(&mut agent, &document, &mutation).map_err(map_core_err)?;
+        serde_json::to_string(&next).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize agreement v2 update: {}",
+                e
+            )))
+        })
+    }
+
+    /// Add this agent's signer, witness, or notary signature to agreement v2.
+    #[wasm_bindgen(js_name = signAgreementV2Json)]
+    pub fn sign_agreement_v2_json(
+        &self,
+        agreement_json: &str,
+        role: &str,
+    ) -> Result<String, JsError> {
+        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agreement v2 JSON: {}",
+                e
+            )))
+        })?;
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let next = agreements::v2::sign(&mut agent, &document, role).map_err(map_core_err)?;
+        serde_json::to_string(&next).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize signed agreement v2: {}",
+                e
+            )))
+        })
+    }
+
+    /// Verify agreement v2 hash/status/transcript invariants. Crypto key lookup is native-layer.
+    #[wasm_bindgen(js_name = verifyAgreementV2Json)]
+    pub fn verify_agreement_v2_json(&self, agreement_json: &str) -> Result<String, JsError> {
+        let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid agreement v2 JSON: {}",
+                e
+            )))
+        })?;
+        let report = agreements::v2::verify(&document).map_err(map_core_err)?;
+        serde_json::to_string(&report).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize agreement v2 report: {}",
+                e
+            )))
+        })
+    }
+
+    /// Analyze whether two agreement v2 branches are transcript-only mergeable.
+    #[wasm_bindgen(js_name = detectAgreementV2BranchConflictJson)]
+    pub fn detect_agreement_v2_branch_conflict_json(
+        &self,
+        base_json: &str,
+        left_json: &str,
+        right_json: &str,
+    ) -> Result<String, JsError> {
+        let base: Value = serde_json::from_str(base_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("base JSON: {}", e))))?;
+        let left: Value = serde_json::from_str(left_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("left JSON: {}", e))))?;
+        let right: Value = serde_json::from_str(right_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!("right JSON: {}", e)))
+        })?;
+        let analysis =
+            agreements::v2::detect_branch_conflict(&base, &left, &right).map_err(map_core_err)?;
+        serde_json::to_string(&analysis).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize agreement v2 branch analysis: {}",
+                e
+            )))
+        })
+    }
+
+    /// Auto-merge two transcript-only agreement v2 branches.
+    #[wasm_bindgen(js_name = mergeAgreementV2TranscriptBranchesJson)]
+    pub fn merge_agreement_v2_transcript_branches_json(
+        &self,
+        base_json: &str,
+        left_json: &str,
+        right_json: &str,
+    ) -> Result<String, JsError> {
+        let base: Value = serde_json::from_str(base_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("base JSON: {}", e))))?;
+        let left: Value = serde_json::from_str(left_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("left JSON: {}", e))))?;
+        let right: Value = serde_json::from_str(right_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!("right JSON: {}", e)))
+        })?;
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let merged = agreements::v2::merge_transcript_branches(&mut agent, &base, &left, &right)
+            .map_err(map_core_err)?;
+        serde_json::to_string(&merged).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize merged agreement v2: {}",
+                e
+            )))
+        })
+    }
+
+    /// Resolve an agreement v2 branch conflict with an explicit mutation.
+    #[wasm_bindgen(js_name = resolveAgreementV2BranchConflictJson)]
+    pub fn resolve_agreement_v2_branch_conflict_json(
+        &self,
+        base_json: &str,
+        previous_json: &str,
+        side_json: &str,
+        mutation_json: &str,
+    ) -> Result<String, JsError> {
+        let base: Value = serde_json::from_str(base_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("base JSON: {}", e))))?;
+        let previous: Value = serde_json::from_str(previous_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "previous JSON: {}",
+                e
+            )))
+        })?;
+        let side: Value = serde_json::from_str(side_json)
+            .map_err(|e| map_core_err(CoreError::MalformedDocument(format!("side JSON: {}", e))))?;
+        let mutation: Value = serde_json::from_str(mutation_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "mutation JSON: {}",
+                e
+            )))
+        })?;
+        let mut agent = self
+            .inner
+            .lock()
+            .map_err(|_| map_core_err(CoreError::AgreementFailed("agent lock poisoned".into())))?;
+        let resolved =
+            agreements::v2::resolve_branch_conflict(&mut agent, &base, &previous, &side, &mutation)
+                .map_err(map_core_err)?;
+        serde_json::to_string(&resolved).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "serialize resolved agreement v2: {}",
+                e
+            )))
+        })
+    }
 }
 
 /// JS-facing shape of one entry in `verifyAgreementJson`'s `signers`

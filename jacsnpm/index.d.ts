@@ -389,6 +389,34 @@ export declare class JacsSimpleAgent {
    * Returns the signed JACS document JSON.
    */
   signFile(filePath: string, embed: boolean): string
+  /** Create a standalone JACS agreement v2 document. */
+  createAgreementV2(inputJson: string): Promise<string>
+  /** Sync variant of createAgreementV2. */
+  createAgreementV2Sync(inputJson: string): string
+  /** Apply an agreement v2 mutation and return the successor document JSON. */
+  applyAgreementV2(documentJson: string, mutationJson: string): Promise<string>
+  /** Sync variant of applyAgreementV2. */
+  applyAgreementV2Sync(documentJson: string, mutationJson: string): string
+  /** Add this agent's signer, witness, or notary agreement signature. */
+  signAgreementV2(documentJson: string, role?: string | undefined | null): Promise<string>
+  /** Sync variant of signAgreementV2. */
+  signAgreementV2Sync(documentJson: string, role?: string | undefined | null): string
+  /** Verify agreement v2 hash, role, status, transcript, and signature invariants. */
+  verifyAgreementV2(documentJson: string): Promise<any>
+  /** Sync variant of verifyAgreementV2. */
+  verifyAgreementV2Sync(documentJson: string): unknown
+  /** Detect whether two successor versions are transcript-only mergeable. */
+  detectAgreementV2BranchConflict(baseDocumentJson: string, leftDocumentJson: string, rightDocumentJson: string): Promise<any>
+  /** Sync variant of detectAgreementV2BranchConflict. */
+  detectAgreementV2BranchConflictSync(baseDocumentJson: string, leftDocumentJson: string, rightDocumentJson: string): unknown
+  /** Auto-merge two transcript-only branches. */
+  mergeAgreementV2TranscriptBranches(baseDocumentJson: string, leftDocumentJson: string, rightDocumentJson: string): Promise<string>
+  /** Sync variant of mergeAgreementV2TranscriptBranches. */
+  mergeAgreementV2TranscriptBranchesSync(baseDocumentJson: string, leftDocumentJson: string, rightDocumentJson: string): string
+  /** Resolve a conflicting branch by applying an explicit resolution mutation. */
+  resolveAgreementV2BranchConflict(baseDocumentJson: string, previousDocumentJson: string, sideBranchDocumentJson: string, mutationJson: string): Promise<string>
+  /** Sync variant of resolveAgreementV2BranchConflict. */
+  resolveAgreementV2BranchConflictSync(baseDocumentJson: string, previousDocumentJson: string, sideBranchDocumentJson: string, mutationJson: string): string
   /** Convert a JSON string to YAML. */
   toYaml(jsonStr: string): string
   /** Convert a YAML string to pretty-printed JSON. */

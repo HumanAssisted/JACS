@@ -2033,6 +2033,8 @@ fn c_string_to_option(c_str: *const c_char) -> Option<String> {
 // providing the same FFI contract as Python (PyO3) and Node.js (NAPI).
 // ============================================================================
 
+#[cfg(feature = "agreements")]
+use jacs_binding_core::BindingResult;
 use jacs_binding_core::SimpleAgentWrapper;
 
 // Thread-local storage for the last error message from SimpleAgent FFI calls.
@@ -2053,6 +2055,19 @@ fn clear_last_simple_error() {
     LAST_SIMPLE_ERROR.with(|cell| {
         *cell.borrow_mut() = None;
     });
+}
+
+#[cfg(feature = "agreements")]
+fn simple_string_result(result: BindingResult<String>) -> *mut c_char {
+    match result {
+        Ok(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
 }
 
 /// Get the last error message from a SimpleAgent FFI call.
@@ -2682,6 +2697,286 @@ pub extern "C" fn jacs_simple_sign_file(
             ptr::null_mut()
         }
     }
+}
+
+/// Create a standalone JACS agreement v2 document. Returns agreement JSON.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_create_agreement_v2(
+    handle: *const SimpleAgentHandle,
+    input_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || input_json.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let input = match unsafe { CStr::from_ptr(input_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    simple_string_result(h.wrapper.create_agreement_v2_json(input))
+}
+
+/// Apply an agreement v2 mutation. Returns successor agreement JSON.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_apply_agreement_v2(
+    handle: *const SimpleAgentHandle,
+    document_json: *const c_char,
+    mutation_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || document_json.is_null() || mutation_json.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let mutation = match unsafe { CStr::from_ptr(mutation_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    simple_string_result(h.wrapper.apply_agreement_v2_json(document, mutation))
+}
+
+/// Add this agent's signer, witness, or notary agreement signature.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_sign_agreement_v2(
+    handle: *const SimpleAgentHandle,
+    document_json: *const c_char,
+    role: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || document_json.is_null() || role.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let role = match unsafe { CStr::from_ptr(role) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    simple_string_result(h.wrapper.sign_agreement_v2_json(document, role))
+}
+
+/// Verify agreement v2 invariants. Returns AgreementV2VerificationReport JSON.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_verify_agreement_v2(
+    handle: *const SimpleAgentHandle,
+    document_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || document_json.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    simple_string_result(h.wrapper.verify_agreement_v2_json(document))
+}
+
+/// Detect whether two successor versions are transcript-only mergeable.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_detect_agreement_v2_branch_conflict(
+    handle: *const SimpleAgentHandle,
+    base_document_json: *const c_char,
+    left_document_json: *const c_char,
+    right_document_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null()
+        || base_document_json.is_null()
+        || left_document_json.is_null()
+        || right_document_json.is_null()
+    {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let left = match unsafe { CStr::from_ptr(left_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let right = match unsafe { CStr::from_ptr(right_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    simple_string_result(
+        h.wrapper
+            .detect_agreement_v2_branch_conflict_json(base, left, right),
+    )
+}
+
+/// Auto-merge two transcript-only branches. Returns successor agreement JSON.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_merge_agreement_v2_transcript_branches(
+    handle: *const SimpleAgentHandle,
+    base_document_json: *const c_char,
+    left_document_json: *const c_char,
+    right_document_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null()
+        || base_document_json.is_null()
+        || left_document_json.is_null()
+        || right_document_json.is_null()
+    {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let left = match unsafe { CStr::from_ptr(left_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let right = match unsafe { CStr::from_ptr(right_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    simple_string_result(
+        h.wrapper
+            .merge_agreement_v2_transcript_branches_json(base, left, right),
+    )
+}
+
+/// Resolve a conflicting branch by applying an explicit resolution mutation.
+#[cfg(feature = "agreements")]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_resolve_agreement_v2_branch_conflict(
+    handle: *const SimpleAgentHandle,
+    base_document_json: *const c_char,
+    previous_document_json: *const c_char,
+    side_branch_document_json: *const c_char,
+    mutation_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null()
+        || base_document_json.is_null()
+        || previous_document_json.is_null()
+        || side_branch_document_json.is_null()
+        || mutation_json.is_null()
+    {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let previous = match unsafe { CStr::from_ptr(previous_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let side_branch = match unsafe { CStr::from_ptr(side_branch_document_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let mutation = match unsafe { CStr::from_ptr(mutation_json) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    clear_last_simple_error();
+    simple_string_result(h.wrapper.resolve_agreement_v2_branch_conflict_json(
+        base,
+        previous,
+        side_branch,
+        mutation,
+    ))
+}
+
+#[cfg(not(feature = "agreements"))]
+fn agreement_v2_not_compiled() -> *mut c_char {
+    set_last_simple_error("agreement v2 support not compiled".to_string());
+    ptr::null_mut()
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_create_agreement_v2(
+    _handle: *const SimpleAgentHandle,
+    _input_json: *const c_char,
+) -> *mut c_char {
+    agreement_v2_not_compiled()
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_apply_agreement_v2(
+    _handle: *const SimpleAgentHandle,
+    _document_json: *const c_char,
+    _mutation_json: *const c_char,
+) -> *mut c_char {
+    agreement_v2_not_compiled()
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_sign_agreement_v2(
+    _handle: *const SimpleAgentHandle,
+    _document_json: *const c_char,
+    _role: *const c_char,
+) -> *mut c_char {
+    agreement_v2_not_compiled()
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_verify_agreement_v2(
+    _handle: *const SimpleAgentHandle,
+    _document_json: *const c_char,
+) -> *mut c_char {
+    agreement_v2_not_compiled()
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_detect_agreement_v2_branch_conflict(
+    _handle: *const SimpleAgentHandle,
+    _base_document_json: *const c_char,
+    _left_document_json: *const c_char,
+    _right_document_json: *const c_char,
+) -> *mut c_char {
+    agreement_v2_not_compiled()
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_merge_agreement_v2_transcript_branches(
+    _handle: *const SimpleAgentHandle,
+    _base_document_json: *const c_char,
+    _left_document_json: *const c_char,
+    _right_document_json: *const c_char,
+) -> *mut c_char {
+    agreement_v2_not_compiled()
+}
+
+#[cfg(not(feature = "agreements"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_resolve_agreement_v2_branch_conflict(
+    _handle: *const SimpleAgentHandle,
+    _base_document_json: *const c_char,
+    _previous_document_json: *const c_char,
+    _side_branch_document_json: *const c_char,
+    _mutation_json: *const c_char,
+) -> *mut c_char {
+    agreement_v2_not_compiled()
 }
 
 // ============================================================================

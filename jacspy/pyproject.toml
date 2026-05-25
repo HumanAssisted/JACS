@@ -65,7 +65,7 @@ constraint-dependencies = [
 ]
 
 [tool.maturin]
-features = ["extension-module"] 
+features = ["extension-module", "agreements"]
 module-name = "jacs"  
 python-source = "python" 
 binding = "pyo3"  

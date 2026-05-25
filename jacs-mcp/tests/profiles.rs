@@ -8,7 +8,7 @@ use jacs_mcp::Profile;
 #[cfg(not(feature = "full-tools"))]
 const CORE_TOOL_COUNT: usize = 25;
 #[cfg(feature = "full-tools")]
-const FULL_TOOL_COUNT: usize = 35;
+const FULL_TOOL_COUNT: usize = 42;
 
 #[test]
 fn compile_time_default_features_yield_core_tools() {

@@ -27,10 +27,45 @@ use jacs_cli::password_bootstrap::{
 use rpassword::read_password;
 use std::env;
 use std::error::Error;
+use std::io::Read;
 use std::process;
 
 // install/download functions removed — MCP is now built into the CLI
 // build_cli moved to src/cli_builder.rs (re-exported by lib.rs)
+
+fn read_json_arg(raw: &str) -> Result<String, Box<dyn Error>> {
+    if raw == "-" {
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        return Ok(buf);
+    }
+
+    if std::path::Path::new(raw).exists() {
+        return Ok(std::fs::read_to_string(raw)?);
+    }
+
+    Ok(raw.to_string())
+}
+
+fn print_json_pretty<T: serde::Serialize>(value: &T) -> Result<(), Box<dyn Error>> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+#[cfg(feature = "agreements")]
+fn parse_agreement_v2_role(
+    role: &str,
+) -> Result<jacs::agreements::v2::AgreementV2Role, Box<dyn Error>> {
+    match role {
+        "signer" => Ok(jacs::agreements::v2::AgreementV2Role::Signer),
+        "witness" => Ok(jacs::agreements::v2::AgreementV2Role::Witness),
+        "notary" => Ok(jacs::agreements::v2::AgreementV2Role::Notary),
+        _ => Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "role must be signer, witness, or notary",
+        ))),
+    }
+}
 
 pub fn main() -> Result<(), Box<dyn Error>> {
     // Install signal handler for graceful shutdown (Ctrl+C, SIGTERM)
@@ -573,6 +608,79 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
             _ => println!("please enter subcommand see jacs document --help"),
         },
+        #[cfg(feature = "agreements")]
+        Some(("agreement-v2", agreement_matches)) => match agreement_matches.subcommand() {
+            Some(("create", sub_m)) => {
+                let input_raw = read_json_arg(sub_m.get_one::<String>("input").unwrap())?;
+                let input: jacs::agreements::v2::CreateAgreementV2 =
+                    serde_json::from_str(&input_raw)?;
+                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let doc = jacs::agreements::v2::create_with_agent(&mut agent, input)?;
+                print_json_pretty(&doc.value)?;
+            }
+            Some(("apply", sub_m)) => {
+                let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
+                let mutation_raw = read_json_arg(sub_m.get_one::<String>("mutation").unwrap())?;
+                let mutation: jacs::agreements::v2::AgreementV2Mutation =
+                    serde_json::from_str(&mutation_raw)?;
+                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let doc = jacs::agreements::v2::apply_with_agent(&mut agent, &agreement, mutation)?;
+                print_json_pretty(&doc.value)?;
+            }
+            Some(("sign", sub_m)) => {
+                let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
+                let role = sub_m
+                    .get_one::<String>("role")
+                    .map(|s| s.as_str())
+                    .unwrap_or("signer");
+                let role = parse_agreement_v2_role(role)?;
+                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let doc = jacs::agreements::v2::sign_with_agent(&mut agent, &agreement, role)?;
+                print_json_pretty(&doc.value)?;
+            }
+            Some(("verify", sub_m)) => {
+                let agreement = read_json_arg(sub_m.get_one::<String>("agreement").unwrap())?;
+                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let report = jacs::agreements::v2::verify_with_agent(&mut agent, &agreement)?;
+                print_json_pretty(&report)?;
+            }
+            Some(("detect-conflict", sub_m)) => {
+                let base = read_json_arg(sub_m.get_one::<String>("base").unwrap())?;
+                let left = read_json_arg(sub_m.get_one::<String>("left").unwrap())?;
+                let right = read_json_arg(sub_m.get_one::<String>("right").unwrap())?;
+                let analysis = jacs::agreements::v2::detect_branch_conflict(&base, &left, &right)?;
+                print_json_pretty(&analysis)?;
+            }
+            Some(("merge-transcript", sub_m)) => {
+                let base = read_json_arg(sub_m.get_one::<String>("base").unwrap())?;
+                let left = read_json_arg(sub_m.get_one::<String>("left").unwrap())?;
+                let right = read_json_arg(sub_m.get_one::<String>("right").unwrap())?;
+                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let doc = jacs::agreements::v2::merge_transcript_branches_with_agent(
+                    &mut agent, &base, &left, &right,
+                )?;
+                print_json_pretty(&doc.value)?;
+            }
+            Some(("resolve-conflict", sub_m)) => {
+                let base = read_json_arg(sub_m.get_one::<String>("base").unwrap())?;
+                let previous = read_json_arg(sub_m.get_one::<String>("previous").unwrap())?;
+                let side = read_json_arg(sub_m.get_one::<String>("side").unwrap())?;
+                let mutation_raw = read_json_arg(sub_m.get_one::<String>("mutation").unwrap())?;
+                let mutation: jacs::agreements::v2::AgreementV2Mutation =
+                    serde_json::from_str(&mutation_raw)?;
+                let mut agent: Agent = load_agent().expect("Failed to load agent from config");
+                let doc = jacs::agreements::v2::resolve_branch_conflict_with_agent(
+                    &mut agent, &base, &previous, &side, mutation,
+                )?;
+                print_json_pretty(&doc.value)?;
+            }
+            _ => println!("please enter subcommand see jacs agreement-v2 --help"),
+        },
+        #[cfg(not(feature = "agreements"))]
+        Some(("agreement-v2", _)) => {
+            eprintln!("agreement-v2 support not compiled.");
+            process::exit(1);
+        }
         Some(("key", key_matches)) => match key_matches.subcommand() {
             Some(("reencrypt", _reencrypt_matches)) => {
                 use jacs::crypt::aes_encrypt::password_requirements;

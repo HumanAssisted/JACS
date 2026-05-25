@@ -68,6 +68,14 @@ const NODE_NAME_MAP = {
   'sign_image_json': 'signImage',
   'verify_image_json': 'verifyImage',
   'extract_media_signature_json': 'extractMediaSignature',
+  // Agreement v2 (feature-gated in Rust, exposed by the default Node build).
+  'create_agreement_v2_json': 'createAgreementV2',
+  'apply_agreement_v2_json': 'applyAgreementV2',
+  'sign_agreement_v2_json': 'signAgreementV2',
+  'verify_agreement_v2_json': 'verifyAgreementV2',
+  'detect_agreement_v2_branch_conflict_json': 'detectAgreementV2BranchConflict',
+  'merge_agreement_v2_transcript_branches_json': 'mergeAgreementV2TranscriptBranches',
+  'resolve_agreement_v2_branch_conflict_json': 'resolveAgreementV2BranchConflict',
 };
 
 // Static methods (on the class itself, not on instances)
@@ -100,8 +108,16 @@ describe('Node.js method enumeration parity', function () {
     }
   });
 
+  function parityMethods() {
+    const methods = [...fixture.all_methods_flat];
+    for (const gated of Object.values(fixture.feature_gated_methods || {})) {
+      methods.push(...gated);
+    }
+    return methods;
+  }
+
   it('all non-excluded methods from fixture exist on JacsSimpleAgent', function () {
-    const allMethods = fixture.all_methods_flat;
+    const allMethods = parityMethods();
     const missing = [];
 
     for (const rustName of allMethods) {
@@ -130,7 +146,7 @@ describe('Node.js method enumeration parity', function () {
   });
 
   it('exclusions are all valid fixture methods', function () {
-    const allMethods = new Set(fixture.all_methods_flat);
+    const allMethods = new Set(parityMethods());
     const invalid = [];
     for (const excluded of EXCLUDED_FROM_NODE) {
       if (!allMethods.has(excluded)) {
@@ -141,7 +157,7 @@ describe('Node.js method enumeration parity', function () {
   });
 
   it('NODE_NAME_MAP covers all non-excluded methods', function () {
-    const allMethods = fixture.all_methods_flat;
+    const allMethods = parityMethods();
     const unmapped = [];
     for (const rustName of allMethods) {
       if (EXCLUDED_FROM_NODE.has(rustName)) continue;
@@ -153,7 +169,7 @@ describe('Node.js method enumeration parity', function () {
   });
 
   it('NODE_NAME_MAP has no stale entries', function () {
-    const allMethods = new Set(fixture.all_methods_flat);
+    const allMethods = new Set(parityMethods());
     const stale = [];
     for (const rustName of Object.keys(NODE_NAME_MAP)) {
       if (!allMethods.has(rustName)) {
@@ -164,10 +180,10 @@ describe('Node.js method enumeration parity', function () {
   });
 
   it('method count matches fixture minus exclusions', function () {
-    const expected = fixture.all_methods_flat.length - EXCLUDED_FROM_NODE.size;
+    const expected = parityMethods().length - EXCLUDED_FROM_NODE.size;
     const nodeNameCount = Object.keys(NODE_NAME_MAP).length;
     expect(nodeNameCount).to.equal(expected,
-      `NODE_NAME_MAP has ${nodeNameCount} entries but expected ${expected} (fixture has ${fixture.all_methods_flat.length}, ${EXCLUDED_FROM_NODE.size} excluded)`
+      `NODE_NAME_MAP has ${nodeNameCount} entries but expected ${expected} (${EXCLUDED_FROM_NODE.size} excluded)`
     );
   });
 });

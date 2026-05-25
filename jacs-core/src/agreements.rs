@@ -343,3 +343,687 @@ pub fn verify(
         per_signer,
     })
 }
+
+// =========================================================================
+// Agreement v2 — standalone consent artifacts
+// =========================================================================
+
+pub mod v2 {
+    use crate::CoreError;
+    use crate::agent::CoreAgent;
+    use crate::canonical::canonicalize_json_try;
+    use crate::verify::sha256_hex;
+    use serde_json::{Map, Value, json};
+    use std::collections::HashSet;
+
+    const CONSENT_HASH_FIELDS: &[&str] = &[
+        "title",
+        "description",
+        "terms",
+        "termsFormat",
+        "effectiveFrom",
+        "expiresAt",
+        "parties",
+        "signaturePolicy",
+    ];
+    const AUTO_MERGE_GUARD_FIELDS: &[&str] =
+        &["status", "agreementSignatures", "links", "controllers"];
+
+    pub fn create(agent: &mut CoreAgent, input: &Value) -> Result<Value, CoreError> {
+        let agent_id = agent_id(agent);
+        let version = uuid::Uuid::now_v7().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let controllers = input
+            .get("controllers")
+            .cloned()
+            .filter(|v| v.as_array().is_some_and(|a| !a.is_empty()))
+            .unwrap_or_else(|| json!([agent_id]));
+
+        let mut doc = json!({
+            "$schema": "https://hai.ai/schemas/agreement/v2/agreement.schema.json",
+            "jacsId": uuid::Uuid::new_v4().to_string(),
+            "jacsType": "agreement",
+            "jacsVersion": version,
+            "jacsVersionDate": now,
+            "jacsOriginalVersion": version,
+            "jacsOriginalDate": now,
+            "jacsLevel": "artifact",
+            "jacsVisibility": "private",
+            "title": required_string(input, "title")?,
+            "description": required_string(input, "description")?,
+            "terms": required_string(input, "terms")?,
+            "termsFormat": input.get("termsFormat").cloned().unwrap_or_else(|| json!("text/plain")),
+            "status": input.get("status").cloned().unwrap_or_else(|| json!("draft")),
+            "parties": required_array(input, "parties")?,
+            "signaturePolicy": required_object(input, "signaturePolicy")?,
+            "agreementSignatures": input.get("agreementSignatures").cloned().unwrap_or_else(|| json!([])),
+            "transcript": input.get("transcript").cloned().unwrap_or_else(|| json!([])),
+            "allPreviousVersions": input.get("allPreviousVersions").cloned().unwrap_or_else(|| json!([])),
+            "links": input.get("links").cloned().unwrap_or_else(|| json!([])),
+            "controllers": controllers,
+            "owners": input.get("owners").cloned().unwrap_or_else(|| json!([])),
+        });
+        copy_optional(input, &mut doc, "effectiveFrom");
+        copy_optional(input, &mut doc, "expiresAt");
+        finalize_document(agent, &mut doc)?;
+        Ok(doc)
+    }
+
+    pub fn apply(
+        agent: &mut CoreAgent,
+        document: &Value,
+        mutation: &Value,
+    ) -> Result<Value, CoreError> {
+        assert_agreement(document)?;
+        let mut next = document.clone();
+        apply_mutation(&mut next, mutation)?;
+        emit_successor(agent, document, next)
+    }
+
+    pub fn sign(agent: &mut CoreAgent, document: &Value, role: &str) -> Result<Value, CoreError> {
+        assert_agreement(document)?;
+        if !matches!(role, "signer" | "witness" | "notary") {
+            return Err(CoreError::AgreementFailed(
+                "role must be signer, witness, or notary".into(),
+            ));
+        }
+        let stored_hash = required_string(document, "jacsAgreementHash")?;
+        let recomputed_hash = compute_agreement_hash(document)?;
+        if stored_hash != recomputed_hash {
+            return Err(CoreError::AgreementFailed(format!(
+                "jacsAgreementHash mismatch: stored {}, recomputed {}",
+                stored_hash, recomputed_hash
+            )));
+        }
+
+        let signer_id = agent_id(agent);
+        assert_party_role(document, &signer_id, role)?;
+        assert_not_already_signed(document, &signer_id, role)?;
+
+        let transcript_hash = compute_transcript_hash(document)?;
+        let transcript_non_empty = document
+            .get("transcript")
+            .and_then(Value::as_array)
+            .is_some_and(|items| !items.is_empty());
+        let mut context = json!({
+            "jacsAgreementHash": stored_hash,
+            "agreementSignature": {}
+        });
+        if transcript_non_empty {
+            context["signedTranscriptHash"] = json!(transcript_hash.clone());
+        }
+        agent.sign_document_inplace(&mut context, "agreementSignature")?;
+        let signature = context
+            .get("agreementSignature")
+            .cloned()
+            .ok_or_else(|| CoreError::AgreementFailed("agreement signature missing".into()))?;
+
+        let mut entry = json!({
+            "signature": signature,
+            "role": role,
+        });
+        if transcript_non_empty {
+            entry["signedTranscriptHash"] = json!(transcript_hash);
+        }
+
+        let mut next = document.clone();
+        array_mut(&mut next, "agreementSignatures")?.push(entry);
+        next["status"] = json!(recompute_status(&next));
+        emit_successor(agent, document, next)
+    }
+
+    pub fn verify(document: &Value) -> Result<Value, CoreError> {
+        assert_agreement(document)?;
+        let recomputed_agreement_hash = compute_agreement_hash(document)?;
+        let recomputed_transcript_hash = compute_transcript_hash(document)?;
+        let status = document
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let expected_status = recompute_status(document);
+        let mut errors = Vec::new();
+        if document.get("jacsAgreementHash").and_then(Value::as_str)
+            != Some(recomputed_agreement_hash.as_str())
+        {
+            errors.push("jacsAgreementHash mismatch".to_string());
+        }
+        if status != expected_status {
+            errors.push(format!(
+                "status '{}' is inconsistent with signaturePolicy; expected '{}'",
+                status, expected_status
+            ));
+        }
+
+        let transcript_non_empty = document
+            .get("transcript")
+            .and_then(Value::as_array)
+            .is_some_and(|items| !items.is_empty());
+        let mut signer_count = 0usize;
+        let mut witness_count = 0usize;
+        let mut notary_count = 0usize;
+        for entry in signatures(document) {
+            let role = entry.get("role").and_then(Value::as_str).unwrap_or("");
+            match role {
+                "signer" => signer_count += 1,
+                "witness" => witness_count += 1,
+                "notary" => notary_count += 1,
+                other => errors.push(format!("invalid agreement signature role '{}'", other)),
+            }
+            if transcript_non_empty
+                && entry.get("signedTranscriptHash").and_then(Value::as_str)
+                    != Some(recomputed_transcript_hash.as_str())
+            {
+                errors.push("signedTranscriptHash mismatch".to_string());
+            }
+        }
+
+        Ok(json!({
+            "valid": errors.is_empty(),
+            "status": status,
+            "expectedStatus": expected_status,
+            "recomputedAgreementHash": recomputed_agreement_hash,
+            "recomputedTranscriptHash": recomputed_transcript_hash,
+            "signerCount": signer_count,
+            "witnessCount": witness_count,
+            "notaryCount": notary_count,
+            "errors": errors,
+        }))
+    }
+
+    pub fn detect_branch_conflict(
+        base: &Value,
+        left: &Value,
+        right: &Value,
+    ) -> Result<Value, CoreError> {
+        assert_agreement(base)?;
+        assert_agreement(left)?;
+        assert_agreement(right)?;
+        let same_document =
+            base.get("jacsId") == left.get("jacsId") && base.get("jacsId") == right.get("jacsId");
+        let base_version = base
+            .get("jacsVersion")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let same_parent = left.get("jacsPreviousVersion").and_then(Value::as_str)
+            == Some(base_version)
+            && right.get("jacsPreviousVersion").and_then(Value::as_str) == Some(base_version);
+
+        let mut left_changed = changed_fields(base, left);
+        let mut right_changed = changed_fields(base, right);
+        left_changed.sort();
+        right_changed.sort();
+
+        let left_transcript = transcript_append_additions(base, left)?;
+        let right_transcript = transcript_append_additions(base, right)?;
+        let transcript_only_left = left_changed.iter().all(|f| version_or_transcript_field(f))
+            && left_transcript.is_some();
+        let transcript_only_right = right_changed.iter().all(|f| version_or_transcript_field(f))
+            && right_transcript.is_some();
+
+        let left_set: HashSet<String> = left_changed.iter().cloned().collect();
+        let right_set: HashSet<String> = right_changed.iter().cloned().collect();
+        let mut conflicts = Vec::new();
+        for field in left_set.intersection(&right_set) {
+            if !version_or_transcript_field(field) && left.get(field) != right.get(field) {
+                conflicts.push(field.clone());
+            }
+        }
+        for guard in AUTO_MERGE_GUARD_FIELDS {
+            if left_set.contains(*guard) || right_set.contains(*guard) {
+                conflicts.push((*guard).to_string());
+            }
+        }
+        conflicts.sort();
+        conflicts.dedup();
+
+        let auto_mergeable = same_document
+            && same_parent
+            && transcript_only_left
+            && transcript_only_right
+            && conflicts.is_empty();
+        Ok(json!({
+            "sameDocument": same_document,
+            "sameParent": same_parent,
+            "autoMergeable": auto_mergeable,
+            "conflictFields": conflicts,
+            "leftChangedFields": left_changed,
+            "rightChangedFields": right_changed,
+            "leftTranscriptAdditions": left_transcript.as_ref().map_or(0, Vec::len),
+            "rightTranscriptAdditions": right_transcript.as_ref().map_or(0, Vec::len),
+            "errors": Vec::<String>::new(),
+        }))
+    }
+
+    pub fn merge_transcript_branches(
+        agent: &mut CoreAgent,
+        base: &Value,
+        left: &Value,
+        right: &Value,
+    ) -> Result<Value, CoreError> {
+        let analysis = detect_branch_conflict(base, left, right)?;
+        if analysis.get("autoMergeable").and_then(Value::as_bool) != Some(true) {
+            return Err(CoreError::AgreementFailed(
+                "agreement branches are not transcript-only auto-mergeable".into(),
+            ));
+        }
+        let left_additions = transcript_append_additions(base, left)?.unwrap_or_default();
+        let right_additions = transcript_append_additions(base, right)?.unwrap_or_default();
+        let mut merged = left.clone();
+        let mut transcript = transcript_values(base);
+        for entry in left_additions.iter().chain(right_additions.iter()) {
+            if !transcript.contains(entry) {
+                transcript.push(entry.clone());
+            }
+        }
+        merged["transcript"] = Value::Array(transcript);
+        append_link(&mut merged, right)?;
+        emit_successor(agent, left, merged)
+    }
+
+    pub fn resolve_branch_conflict(
+        agent: &mut CoreAgent,
+        base: &Value,
+        previous: &Value,
+        side: &Value,
+        mutation: &Value,
+    ) -> Result<Value, CoreError> {
+        let analysis = detect_branch_conflict(base, previous, side)?;
+        if analysis.get("sameDocument").and_then(Value::as_bool) != Some(true)
+            || analysis.get("sameParent").and_then(Value::as_bool) != Some(true)
+        {
+            return Err(CoreError::AgreementFailed(
+                "agreement branches cannot be resolved from supplied base".into(),
+            ));
+        }
+        let mut resolved = previous.clone();
+        apply_mutation(&mut resolved, mutation)?;
+        append_link(&mut resolved, side)?;
+        emit_successor(agent, previous, resolved)
+    }
+
+    fn finalize_document(agent: &mut CoreAgent, doc: &mut Value) -> Result<(), CoreError> {
+        update_agreement_hash(doc)?;
+        let obj = doc
+            .as_object_mut()
+            .ok_or_else(|| CoreError::MalformedDocument("agreement must be an object".into()))?;
+        obj.remove("jacsSignature");
+        obj.remove("jacsSha256");
+        agent.sign_document_inplace(doc, "jacsSignature")?;
+        update_document_hash(doc)?;
+        Ok(())
+    }
+
+    fn emit_successor(
+        agent: &mut CoreAgent,
+        current: &Value,
+        mut next: Value,
+    ) -> Result<Value, CoreError> {
+        let current_version = required_string(current, "jacsVersion")?;
+        let new_version = uuid::Uuid::now_v7().to_string();
+        next["jacsId"] = current.get("jacsId").cloned().unwrap_or(Value::Null);
+        next["jacsOriginalVersion"] = current
+            .get("jacsOriginalVersion")
+            .cloned()
+            .unwrap_or_else(|| current.get("jacsVersion").cloned().unwrap_or(Value::Null));
+        next["jacsOriginalDate"] = current.get("jacsOriginalDate").cloned().unwrap_or_else(|| {
+            current
+                .get("jacsVersionDate")
+                .cloned()
+                .unwrap_or(Value::Null)
+        });
+        next["jacsPreviousVersion"] = json!(current_version);
+        next["jacsVersion"] = json!(new_version);
+        next["jacsVersionDate"] = json!(chrono::Utc::now().to_rfc3339());
+        let previous = array_mut(&mut next, "allPreviousVersions")?;
+        if !previous
+            .iter()
+            .any(|v| v.as_str() == Some(current_version.as_str()))
+        {
+            previous.push(json!(current_version));
+        }
+        finalize_document(agent, &mut next)?;
+        Ok(next)
+    }
+
+    fn update_agreement_hash(doc: &mut Value) -> Result<(), CoreError> {
+        let hash = compute_agreement_hash(doc)?;
+        doc["jacsAgreementHash"] = json!(hash);
+        Ok(())
+    }
+
+    fn compute_agreement_hash(doc: &Value) -> Result<String, CoreError> {
+        let mut scoped = Map::new();
+        for field in CONSENT_HASH_FIELDS {
+            if let Some(value) = doc.get(*field) {
+                scoped.insert((*field).to_string(), value.clone());
+            }
+        }
+        let canonical = canonicalize_json_try(&Value::Object(scoped))?;
+        Ok(sha256_hex(canonical.as_bytes()))
+    }
+
+    fn compute_transcript_hash(doc: &Value) -> Result<String, CoreError> {
+        let transcript = doc.get("transcript").cloned().unwrap_or_else(|| json!([]));
+        let canonical = canonicalize_json_try(&transcript)?;
+        Ok(sha256_hex(canonical.as_bytes()))
+    }
+
+    fn update_document_hash(doc: &mut Value) -> Result<(), CoreError> {
+        let mut clone = doc.clone();
+        clone
+            .as_object_mut()
+            .ok_or_else(|| CoreError::MalformedDocument("agreement must be an object".into()))?
+            .remove("jacsSha256");
+        let canonical = canonicalize_json_try(&clone)?;
+        doc["jacsSha256"] = json!(sha256_hex(canonical.as_bytes()));
+        Ok(())
+    }
+
+    fn apply_mutation(doc: &mut Value, mutation: &Value) -> Result<(), CoreError> {
+        let typ = mutation
+            .get("type")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                CoreError::MalformedDocument(
+                    "agreement v2 mutation requires string field 'type'".into(),
+                )
+            })?;
+        match typ {
+            "appendTranscript" => {
+                let entry = mutation.get("entry").cloned().ok_or_else(|| {
+                    CoreError::MalformedDocument("appendTranscript requires entry".into())
+                })?;
+                array_mut(doc, "transcript")?.push(entry);
+            }
+            "updateTerms" => {
+                if let Some(title) = mutation.get("title") {
+                    doc["title"] = title.clone();
+                }
+                if let Some(description) = mutation.get("description") {
+                    doc["description"] = description.clone();
+                }
+                doc["terms"] = mutation.get("terms").cloned().ok_or_else(|| {
+                    CoreError::MalformedDocument("updateTerms requires terms".into())
+                })?;
+                if let Some(format) = mutation.get("termsFormat") {
+                    doc["termsFormat"] = format.clone();
+                }
+                copy_optional(mutation, doc, "effectiveFrom");
+                copy_optional(mutation, doc, "expiresAt");
+            }
+            "setStatus" => {
+                doc["status"] = mutation.get("status").cloned().ok_or_else(|| {
+                    CoreError::MalformedDocument("setStatus requires status".into())
+                })?;
+            }
+            "setParties" => doc["parties"] = required_array(mutation, "parties")?,
+            "setSignaturePolicy" => {
+                doc["signaturePolicy"] = required_object(mutation, "signaturePolicy")?;
+            }
+            "addLink" => array_mut(doc, "links")?.push(
+                mutation
+                    .get("link")
+                    .cloned()
+                    .ok_or_else(|| CoreError::MalformedDocument("addLink requires link".into()))?,
+            ),
+            "setOwners" => doc["owners"] = required_array(mutation, "owners")?,
+            _ => {
+                return Err(CoreError::MalformedDocument(format!(
+                    "unsupported agreement v2 mutation type '{}'",
+                    typ
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn recompute_status(doc: &Value) -> String {
+        let current = doc.get("status").and_then(Value::as_str).unwrap_or("draft");
+        if matches!(
+            current,
+            "expired" | "disputed" | "superseded" | "terminated"
+        ) {
+            return current.to_string();
+        }
+        let signer_needed = required_count(doc, "signer");
+        let witness_needed = policy_usize(doc, "witnessRequired");
+        let notary_needed = policy_usize(doc, "notaryRequired");
+        let signers = unique_signature_agents(doc, "signer").len();
+        let witnesses = unique_signature_agents(doc, "witness").len();
+        let notaries = unique_signature_agents(doc, "notary").len();
+        if signers >= signer_needed && witnesses >= witness_needed && notaries >= notary_needed {
+            "final".to_string()
+        } else if signers + witnesses + notaries > 0 {
+            "partially_signed".to_string()
+        } else if current == "proposed" {
+            "proposed".to_string()
+        } else {
+            "draft".to_string()
+        }
+    }
+
+    fn required_count(doc: &Value, role: &str) -> usize {
+        let parties = parties_by_role(doc, role);
+        let policy = doc.get("signaturePolicy").unwrap_or(&Value::Null);
+        match policy.get("partyQuorum") {
+            Some(Value::String(s)) if s == "majority" => parties.len() / 2 + 1,
+            Some(Value::Number(n)) => n.as_u64().unwrap_or(parties.len() as u64) as usize,
+            _ => parties.len(),
+        }
+    }
+
+    fn policy_usize(doc: &Value, field: &str) -> usize {
+        doc.get("signaturePolicy")
+            .and_then(|p| p.get(field))
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize
+    }
+
+    fn parties_by_role(doc: &Value, role: &str) -> Vec<String> {
+        doc.get("parties")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|p| p.get("role").and_then(Value::as_str) == Some(role))
+            .filter_map(|p| p.get("agentId").and_then(Value::as_str).map(str::to_string))
+            .collect()
+    }
+
+    fn unique_signature_agents(doc: &Value, role: &str) -> HashSet<String> {
+        signatures(doc)
+            .into_iter()
+            .filter(|entry| entry.get("role").and_then(Value::as_str) == Some(role))
+            .filter_map(|entry| {
+                entry
+                    .get("signature")
+                    .and_then(|s| s.get("agentID"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    fn signatures(doc: &Value) -> Vec<&Value> {
+        doc.get("agreementSignatures")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .collect()
+    }
+
+    fn assert_party_role(doc: &Value, agent_id: &str, role: &str) -> Result<(), CoreError> {
+        let allowed = doc
+            .get("parties")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|party| {
+                party.get("agentId").and_then(Value::as_str) == Some(agent_id)
+                    && party.get("role").and_then(Value::as_str) == Some(role)
+            });
+        if allowed {
+            Ok(())
+        } else {
+            Err(CoreError::AgreementFailed(format!(
+                "agent {} is not a listed {} party",
+                agent_id, role
+            )))
+        }
+    }
+
+    fn assert_not_already_signed(doc: &Value, agent_id: &str, role: &str) -> Result<(), CoreError> {
+        let already = signatures(doc).into_iter().any(|entry| {
+            entry.get("role").and_then(Value::as_str) == Some(role)
+                && entry
+                    .get("signature")
+                    .and_then(|s| s.get("agentID"))
+                    .and_then(Value::as_str)
+                    == Some(agent_id)
+        });
+        if already {
+            Err(CoreError::AgreementFailed(format!(
+                "agent {} already signed as {}",
+                agent_id, role
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn changed_fields(base: &Value, side: &Value) -> Vec<String> {
+        let mut keys = HashSet::new();
+        if let Some(obj) = base.as_object() {
+            keys.extend(obj.keys().cloned());
+        }
+        if let Some(obj) = side.as_object() {
+            keys.extend(obj.keys().cloned());
+        }
+        keys.into_iter()
+            .filter(|key| base.get(key) != side.get(key))
+            .collect()
+    }
+
+    fn version_or_transcript_field(field: &str) -> bool {
+        matches!(
+            field,
+            "transcript"
+                | "jacsVersion"
+                | "jacsVersionDate"
+                | "jacsPreviousVersion"
+                | "allPreviousVersions"
+                | "jacsSignature"
+                | "jacsSha256"
+        )
+    }
+
+    fn transcript_append_additions(
+        base: &Value,
+        side: &Value,
+    ) -> Result<Option<Vec<Value>>, CoreError> {
+        let base_items = transcript_values(base);
+        let side_items = transcript_values(side);
+        if side_items.len() < base_items.len() {
+            return Ok(None);
+        }
+        if !base_items
+            .iter()
+            .zip(side_items.iter())
+            .all(|(a, b)| a == b)
+        {
+            return Ok(None);
+        }
+        Ok(Some(side_items[base_items.len()..].to_vec()))
+    }
+
+    fn transcript_values(doc: &Value) -> Vec<Value> {
+        doc.get("transcript")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn append_link(doc: &mut Value, target: &Value) -> Result<(), CoreError> {
+        let link = json!({
+            "jacsId": required_string(target, "jacsId")?,
+            "jacsVersion": required_string(target, "jacsVersion")?,
+        });
+        array_mut(doc, "links")?.push(link);
+        Ok(())
+    }
+
+    fn array_mut<'a>(doc: &'a mut Value, field: &str) -> Result<&'a mut Vec<Value>, CoreError> {
+        if doc.get(field).is_none() {
+            doc[field] = json!([]);
+        }
+        doc.get_mut(field)
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| CoreError::MalformedDocument(format!("'{}' must be an array", field)))
+    }
+
+    fn required_string(doc: &Value, field: &str) -> Result<String, CoreError> {
+        doc.get(field)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| {
+                CoreError::MalformedDocument(format!(
+                    "agreement v2 requires string field '{}'",
+                    field
+                ))
+            })
+    }
+
+    fn required_array(doc: &Value, field: &str) -> Result<Value, CoreError> {
+        let value = doc.get(field).cloned().ok_or_else(|| {
+            CoreError::MalformedDocument(format!("agreement v2 requires array field '{}'", field))
+        })?;
+        if value.as_array().is_some() {
+            Ok(value)
+        } else {
+            Err(CoreError::MalformedDocument(format!(
+                "'{}' must be an array",
+                field
+            )))
+        }
+    }
+
+    fn required_object(doc: &Value, field: &str) -> Result<Value, CoreError> {
+        let value = doc.get(field).cloned().ok_or_else(|| {
+            CoreError::MalformedDocument(format!("agreement v2 requires object field '{}'", field))
+        })?;
+        if value.as_object().is_some() {
+            Ok(value)
+        } else {
+            Err(CoreError::MalformedDocument(format!(
+                "'{}' must be an object",
+                field
+            )))
+        }
+    }
+
+    fn copy_optional(input: &Value, doc: &mut Value, field: &str) {
+        if let Some(value) = input.get(field) {
+            doc[field] = value.clone();
+        }
+    }
+
+    fn assert_agreement(doc: &Value) -> Result<(), CoreError> {
+        if doc.get("jacsType").and_then(Value::as_str) == Some("agreement") {
+            Ok(())
+        } else {
+            Err(CoreError::AgreementFailed(
+                "document is not an agreement v2 artifact".into(),
+            ))
+        }
+    }
+
+    fn agent_id(agent: &CoreAgent) -> String {
+        agent
+            .export_agent()
+            .get("jacsId")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    }
+}

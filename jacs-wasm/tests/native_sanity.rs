@@ -9,7 +9,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use jacs_wasm::{CoreAgentHandle, create_ephemeral, create_verifier};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 #[allow(dead_code)]
 fn extract_code(err: &wasm_bindgen::JsError) -> Option<String> {
@@ -125,6 +125,38 @@ fn export_agent_returns_json_with_jacs_id() {
     let agent_str = handle.export_agent().expect("export");
     let agent: Value = serde_json::from_str(&agent_str).expect("agent json parse");
     assert!(agent["jacsId"].as_str().is_some(), "jacsId present");
+}
+
+#[test]
+fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
+    let handle = create_ephemeral("ed25519").expect("create");
+    let agent: Value = serde_json::from_str(&handle.export_agent().expect("agent")).unwrap();
+    let agent_id = agent["jacsId"].as_str().unwrap();
+    let input = json!({
+        "title": "Browser approval",
+        "description": "A small agreement created through the wasm surface",
+        "terms": "Proceed with the test.",
+        "termsFormat": "text/plain",
+        "status": "proposed",
+        "parties": [
+            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
+        ],
+        "signaturePolicy": {"partyQuorum": "all"}
+    });
+
+    let created = handle
+        .create_agreement_v2_json(&input.to_string())
+        .expect("create agreement v2");
+    let signed = handle
+        .sign_agreement_v2_json(&created, "signer")
+        .expect("sign agreement v2");
+    let report_json = handle
+        .verify_agreement_v2_json(&signed)
+        .expect("verify agreement v2");
+    let report: Value = serde_json::from_str(&report_json).unwrap();
+    assert_eq!(report["valid"], Value::Bool(true));
+    assert_eq!(report["status"], Value::String("final".to_string()));
+    assert_eq!(report["signerCount"], Value::from(1));
 }
 
 #[test]

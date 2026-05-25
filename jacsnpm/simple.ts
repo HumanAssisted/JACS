@@ -778,6 +778,94 @@ function requireSimpleAgent(): JacsSimpleAgent {
   return globalSimpleAgent;
 }
 
+export async function createAgreementV2(input: any): Promise<string> {
+  return requireSimpleAgent().createAgreementV2(normalizeJsonInput(input));
+}
+
+export function createAgreementV2Sync(input: any): string {
+  return requireSimpleAgent().createAgreementV2Sync(normalizeJsonInput(input));
+}
+
+export async function applyAgreementV2(document: any, mutation: any): Promise<string> {
+  return requireSimpleAgent().applyAgreementV2(
+    normalizeDocumentInput(document),
+    normalizeJsonInput(mutation),
+  );
+}
+
+export function applyAgreementV2Sync(document: any, mutation: any): string {
+  return requireSimpleAgent().applyAgreementV2Sync(
+    normalizeDocumentInput(document),
+    normalizeJsonInput(mutation),
+  );
+}
+
+export async function signAgreementV2(document: any, role: string = 'signer'): Promise<string> {
+  return requireSimpleAgent().signAgreementV2(normalizeDocumentInput(document), role);
+}
+
+export function signAgreementV2Sync(document: any, role: string = 'signer'): string {
+  return requireSimpleAgent().signAgreementV2Sync(normalizeDocumentInput(document), role);
+}
+
+export async function verifyAgreementV2(document: any): Promise<any> {
+  return requireSimpleAgent().verifyAgreementV2(normalizeDocumentInput(document));
+}
+
+export function verifyAgreementV2Sync(document: any): any {
+  return requireSimpleAgent().verifyAgreementV2Sync(normalizeDocumentInput(document));
+}
+
+export async function detectAgreementV2BranchConflict(base: any, left: any, right: any): Promise<any> {
+  return requireSimpleAgent().detectAgreementV2BranchConflict(
+    normalizeDocumentInput(base),
+    normalizeDocumentInput(left),
+    normalizeDocumentInput(right),
+  );
+}
+
+export function detectAgreementV2BranchConflictSync(base: any, left: any, right: any): any {
+  return requireSimpleAgent().detectAgreementV2BranchConflictSync(
+    normalizeDocumentInput(base),
+    normalizeDocumentInput(left),
+    normalizeDocumentInput(right),
+  );
+}
+
+export async function mergeAgreementV2TranscriptBranches(base: any, left: any, right: any): Promise<string> {
+  return requireSimpleAgent().mergeAgreementV2TranscriptBranches(
+    normalizeDocumentInput(base),
+    normalizeDocumentInput(left),
+    normalizeDocumentInput(right),
+  );
+}
+
+export function mergeAgreementV2TranscriptBranchesSync(base: any, left: any, right: any): string {
+  return requireSimpleAgent().mergeAgreementV2TranscriptBranchesSync(
+    normalizeDocumentInput(base),
+    normalizeDocumentInput(left),
+    normalizeDocumentInput(right),
+  );
+}
+
+export async function resolveAgreementV2BranchConflict(base: any, previous: any, side: any, mutation: any): Promise<string> {
+  return requireSimpleAgent().resolveAgreementV2BranchConflict(
+    normalizeDocumentInput(base),
+    normalizeDocumentInput(previous),
+    normalizeDocumentInput(side),
+    normalizeJsonInput(mutation),
+  );
+}
+
+export function resolveAgreementV2BranchConflictSync(base: any, previous: any, side: any, mutation: any): string {
+  return requireSimpleAgent().resolveAgreementV2BranchConflictSync(
+    normalizeDocumentInput(base),
+    normalizeDocumentInput(previous),
+    normalizeDocumentInput(side),
+    normalizeJsonInput(mutation),
+  );
+}
+
 export async function signText(filePath: string, opts?: SignTextOpts): Promise<any> {
   return requireSimpleAgent().signText(filePath, opts?.noBackup ?? false);
 }

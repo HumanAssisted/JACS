@@ -9,6 +9,28 @@
   },
   "tools": [
     {
+      "name": "jacs_apply_agreement_v2",
+      "description": "Apply a typed agreement v2 mutation and emit a successor version. Use this to append transcript entries, revise terms, change status, set parties/policy, add links, or set owners.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "agreement": {
+            "description": "Full agreement v2 document JSON to mutate.",
+            "type": "string"
+          },
+          "mutation": {
+            "description": "AgreementV2Mutation object, e.g. {\"type\":\"appendTranscript\",\"entry\":{...}}."
+          }
+        },
+        "required": [
+          "agreement",
+          "mutation"
+        ],
+        "title": "ApplyAgreementV2Params",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_assess_a2a_agent",
       "description": "Assess the trust level of a remote A2A agent given its Agent Card. Applies a trust policy (open, verified, or strict) and returns whether the agent is allowed and at what trust level.",
       "input_schema": {
@@ -280,6 +302,51 @@
       }
     },
     {
+      "name": "jacs_create_agreement_v2",
+      "description": "Create a standalone JACS agreement v2 document. Use this for the new intent/consent workflow: terms, parties, signature policy, transcript, links, controllers, and owners. Returns a signed agreement artifact.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "input": {
+            "description": "CreateAgreementV2 object: title, description, terms, parties, signaturePolicy, and optional workflow fields."
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "title": "CreateAgreementV2Params",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_detect_agreement_v2_branch_conflict",
+      "description": "Analyze two agreement v2 successor versions and report whether they are transcript-only auto-mergeable or conflict on consent-scope fields.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "base": {
+            "description": "Base agreement v2 document JSON.",
+            "type": "string"
+          },
+          "left": {
+            "description": "Left successor agreement v2 document JSON.",
+            "type": "string"
+          },
+          "right": {
+            "description": "Right successor agreement v2 document JSON.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base",
+          "left",
+          "right"
+        ],
+        "title": "DetectAgreementV2BranchConflictParams",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_export_agent",
       "description": "Export the local agent's full JACS JSON document. This includes the agent's identity, public key hash, and signed metadata.",
       "input_schema": {
@@ -400,6 +467,34 @@
       }
     },
     {
+      "name": "jacs_merge_agreement_v2_transcript_branches",
+      "description": "Auto-merge two transcript-only agreement v2 branches and emit a successor version.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "base": {
+            "description": "Base agreement v2 document JSON.",
+            "type": "string"
+          },
+          "left": {
+            "description": "Left successor agreement v2 document JSON.",
+            "type": "string"
+          },
+          "right": {
+            "description": "Right successor agreement v2 document JSON.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base",
+          "left",
+          "right"
+        ],
+        "title": "MergeAgreementV2TranscriptBranchesParams",
+        "type": "object"
+      }
+    },
+    {
       "name": "jacs_reencrypt_key",
       "description": "Re-encrypt the agent's private key with a new password. Use this to rotate the password protecting the private key without changing the key itself.",
       "input_schema": {
@@ -420,6 +515,38 @@
           "new_password"
         ],
         "title": "ReencryptKeyParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_resolve_agreement_v2_branch_conflict",
+      "description": "Resolve an agreement v2 branch conflict by rebasing an explicit mutation over a previous version and side branch.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "base": {
+            "description": "Base agreement v2 document JSON.",
+            "type": "string"
+          },
+          "mutation": {
+            "description": "AgreementV2Mutation object that resolves the conflict."
+          },
+          "previous": {
+            "description": "Previous/version-to-rebase agreement v2 document JSON.",
+            "type": "string"
+          },
+          "side_branch": {
+            "description": "Side-branch agreement v2 document JSON.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base",
+          "previous",
+          "side_branch",
+          "mutation"
+        ],
+        "title": "ResolveAgreementV2BranchConflictParams",
         "type": "object"
       }
     },
@@ -555,6 +682,31 @@
           "signed_agreement"
         ],
         "title": "SignAgreementParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_sign_agreement_v2",
+      "description": "Add this agent's signer, witness, or notary signature to a standalone agreement v2 document.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "agreement": {
+            "description": "Full agreement v2 document JSON to sign.",
+            "type": "string"
+          },
+          "role": {
+            "description": "Signature role: signer, witness, or notary. Defaults to signer.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "agreement"
+        ],
+        "title": "SignAgreementV2Params",
         "type": "object"
       }
     },
@@ -709,6 +861,24 @@
           "wrapped_artifact"
         ],
         "title": "VerifyA2aArtifactParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_verify_agreement_v2",
+      "description": "Verify a standalone agreement v2 document's hashes, status, parties, transcript, and agreement signatures.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "agreement": {
+            "description": "Full agreement v2 document JSON to verify.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agreement"
+        ],
+        "title": "VerifyAgreementV2Params",
         "type": "object"
       }
     },

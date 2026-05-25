@@ -161,6 +161,26 @@ impl Task for SimpleAgentJsonTask {
     }
 }
 
+/// Async task whose result is an owned JSON/document string.
+pub struct SimpleAgentStringTask {
+    agent: SimpleAgentWrapper,
+    func: Option<SimpleAgentFn<String>>,
+}
+
+impl Task for SimpleAgentStringTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let f = self.func.take().expect("task already executed");
+        f(&self.agent).map_err(to_napi_err)
+    }
+
+    fn resolve(&mut self, _env: Env, output: String) -> Result<String> {
+        Ok(output)
+    }
+}
+
 /// Async task whose result is `Option<String>` (used by extractMediaSignature).
 pub struct SimpleAgentOptionStringTask {
     agent: SimpleAgentWrapper,
@@ -1650,6 +1670,261 @@ impl JacsSimpleAgent {
     #[napi(js_name = "signFile")]
     pub fn sign_file(&self, file_path: String, embed: bool) -> Result<String> {
         self.inner.sign_file_json(&file_path, embed).to_napi()
+    }
+
+    // =========================================================================
+    // Agreement v2 (feature-gated in Rust, enabled for the default Node build)
+    // =========================================================================
+
+    /// Create a standalone JACS agreement v2 document.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "createAgreementV2", ts_return_type = "Promise<string>")]
+    pub fn create_agreement_v2_async(
+        &self,
+        input_json: String,
+    ) -> AsyncTask<SimpleAgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(SimpleAgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| a.create_agreement_v2_json(&input_json))),
+        })
+    }
+
+    /// Sync variant of createAgreementV2.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "createAgreementV2Sync")]
+    pub fn create_agreement_v2_sync(&self, input_json: String) -> Result<String> {
+        self.inner.create_agreement_v2_json(&input_json).to_napi()
+    }
+
+    /// Apply an agreement v2 mutation and return the successor document JSON.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "applyAgreementV2", ts_return_type = "Promise<string>")]
+    pub fn apply_agreement_v2_async(
+        &self,
+        document_json: String,
+        mutation_json: String,
+    ) -> AsyncTask<SimpleAgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(SimpleAgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.apply_agreement_v2_json(&document_json, &mutation_json)
+            })),
+        })
+    }
+
+    /// Sync variant of applyAgreementV2.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "applyAgreementV2Sync")]
+    pub fn apply_agreement_v2_sync(
+        &self,
+        document_json: String,
+        mutation_json: String,
+    ) -> Result<String> {
+        self.inner
+            .apply_agreement_v2_json(&document_json, &mutation_json)
+            .to_napi()
+    }
+
+    /// Add this agent's signer, witness, or notary agreement signature.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "signAgreementV2", ts_return_type = "Promise<string>")]
+    pub fn sign_agreement_v2_async(
+        &self,
+        document_json: String,
+        role: Option<String>,
+    ) -> AsyncTask<SimpleAgentStringTask> {
+        let agent = self.inner.clone();
+        let role = role.unwrap_or_else(|| "signer".to_string());
+        AsyncTask::new(SimpleAgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.sign_agreement_v2_json(&document_json, &role)
+            })),
+        })
+    }
+
+    /// Sync variant of signAgreementV2.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "signAgreementV2Sync")]
+    pub fn sign_agreement_v2_sync(
+        &self,
+        document_json: String,
+        role: Option<String>,
+    ) -> Result<String> {
+        let role = role.unwrap_or_else(|| "signer".to_string());
+        self.inner
+            .sign_agreement_v2_json(&document_json, &role)
+            .to_napi()
+    }
+
+    /// Verify agreement v2 hash, role, status, transcript, and signature invariants.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "verifyAgreementV2", ts_return_type = "Promise<any>")]
+    pub fn verify_agreement_v2_async(
+        &self,
+        document_json: String,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(SimpleAgentJsonTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json = a.verify_agreement_v2_json(&document_json)?;
+                parse_json_value(&json, "agreement v2 verification report")
+            })),
+        })
+    }
+
+    /// Sync variant of verifyAgreementV2.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "verifyAgreementV2Sync")]
+    pub fn verify_agreement_v2_sync(&self, env: Env, document_json: String) -> Result<JsUnknown> {
+        let json = self
+            .inner
+            .verify_agreement_v2_json(&document_json)
+            .to_napi()?;
+        let value =
+            parse_json_value(&json, "agreement v2 verification report").map_err(to_napi_err)?;
+        value_to_js_value(env, &value)
+    }
+
+    /// Detect whether two successor versions are transcript-only mergeable.
+    #[cfg(feature = "agreements")]
+    #[napi(
+        js_name = "detectAgreementV2BranchConflict",
+        ts_return_type = "Promise<any>"
+    )]
+    pub fn detect_agreement_v2_branch_conflict_async(
+        &self,
+        base_document_json: String,
+        left_document_json: String,
+        right_document_json: String,
+    ) -> AsyncTask<SimpleAgentJsonTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(SimpleAgentJsonTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                let json = a.detect_agreement_v2_branch_conflict_json(
+                    &base_document_json,
+                    &left_document_json,
+                    &right_document_json,
+                )?;
+                parse_json_value(&json, "agreement v2 branch analysis")
+            })),
+        })
+    }
+
+    /// Sync variant of detectAgreementV2BranchConflict.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "detectAgreementV2BranchConflictSync")]
+    pub fn detect_agreement_v2_branch_conflict_sync(
+        &self,
+        env: Env,
+        base_document_json: String,
+        left_document_json: String,
+        right_document_json: String,
+    ) -> Result<JsUnknown> {
+        let json = self
+            .inner
+            .detect_agreement_v2_branch_conflict_json(
+                &base_document_json,
+                &left_document_json,
+                &right_document_json,
+            )
+            .to_napi()?;
+        let value = parse_json_value(&json, "agreement v2 branch analysis").map_err(to_napi_err)?;
+        value_to_js_value(env, &value)
+    }
+
+    /// Auto-merge two transcript-only branches.
+    #[cfg(feature = "agreements")]
+    #[napi(
+        js_name = "mergeAgreementV2TranscriptBranches",
+        ts_return_type = "Promise<string>"
+    )]
+    pub fn merge_agreement_v2_transcript_branches_async(
+        &self,
+        base_document_json: String,
+        left_document_json: String,
+        right_document_json: String,
+    ) -> AsyncTask<SimpleAgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(SimpleAgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.merge_agreement_v2_transcript_branches_json(
+                    &base_document_json,
+                    &left_document_json,
+                    &right_document_json,
+                )
+            })),
+        })
+    }
+
+    /// Sync variant of mergeAgreementV2TranscriptBranches.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "mergeAgreementV2TranscriptBranchesSync")]
+    pub fn merge_agreement_v2_transcript_branches_sync(
+        &self,
+        base_document_json: String,
+        left_document_json: String,
+        right_document_json: String,
+    ) -> Result<String> {
+        self.inner
+            .merge_agreement_v2_transcript_branches_json(
+                &base_document_json,
+                &left_document_json,
+                &right_document_json,
+            )
+            .to_napi()
+    }
+
+    /// Resolve a conflicting branch by applying an explicit resolution mutation.
+    #[cfg(feature = "agreements")]
+    #[napi(
+        js_name = "resolveAgreementV2BranchConflict",
+        ts_return_type = "Promise<string>"
+    )]
+    pub fn resolve_agreement_v2_branch_conflict_async(
+        &self,
+        base_document_json: String,
+        previous_document_json: String,
+        side_branch_document_json: String,
+        mutation_json: String,
+    ) -> AsyncTask<SimpleAgentStringTask> {
+        let agent = self.inner.clone();
+        AsyncTask::new(SimpleAgentStringTask {
+            agent,
+            func: Some(Box::new(move |a| {
+                a.resolve_agreement_v2_branch_conflict_json(
+                    &base_document_json,
+                    &previous_document_json,
+                    &side_branch_document_json,
+                    &mutation_json,
+                )
+            })),
+        })
+    }
+
+    /// Sync variant of resolveAgreementV2BranchConflict.
+    #[cfg(feature = "agreements")]
+    #[napi(js_name = "resolveAgreementV2BranchConflictSync")]
+    pub fn resolve_agreement_v2_branch_conflict_sync(
+        &self,
+        base_document_json: String,
+        previous_document_json: String,
+        side_branch_document_json: String,
+        mutation_json: String,
+    ) -> Result<String> {
+        self.inner
+            .resolve_agreement_v2_branch_conflict_json(
+                &base_document_json,
+                &previous_document_json,
+                &side_branch_document_json,
+                &mutation_json,
+            )
+            .to_napi()
     }
 
     // =========================================================================

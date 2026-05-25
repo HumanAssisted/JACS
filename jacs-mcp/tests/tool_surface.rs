@@ -6,7 +6,7 @@ use rmcp::ServerHandler;
 #[cfg(not(feature = "full-tools"))]
 const CORE_TOOL_COUNT: usize = 25;
 #[cfg(feature = "full-tools")]
-const FULL_TOOL_COUNT: usize = 35;
+const FULL_TOOL_COUNT: usize = 42;
 
 fn sorted_tool_names() -> Vec<String> {
     let mut names: Vec<String> = jacs_mcp::JacsMcpServer::tools()
@@ -131,6 +131,7 @@ fn full_tools_registers_all_current_tools() {
     );
 
     let expected: Vec<String> = vec![
+        "jacs_apply_agreement_v2",
         "jacs_assess_a2a_agent",
         "jacs_attest_create",
         "jacs_attest_export_dsse",
@@ -139,6 +140,8 @@ fn full_tools_registers_all_current_tools() {
         "jacs_check_agreement",
         "jacs_create_agent",
         "jacs_create_agreement",
+        "jacs_create_agreement_v2",
+        "jacs_detect_agreement_v2_branch_conflict",
         "jacs_export_agent",
         "jacs_export_agent_card",
         "jacs_extract_media_signature",
@@ -146,16 +149,20 @@ fn full_tools_registers_all_current_tools() {
         "jacs_get_trusted_agent",
         "jacs_is_trusted",
         "jacs_list_trusted_agents",
+        "jacs_merge_agreement_v2_transcript_branches",
         "jacs_reencrypt_key",
+        "jacs_resolve_agreement_v2_branch_conflict",
         "jacs_rotate_keys",
         "jacs_search",
         "jacs_sign_agreement",
+        "jacs_sign_agreement_v2",
         "jacs_sign_document",
         "jacs_sign_image",
         "jacs_sign_text",
         "jacs_trust_agent",
         "jacs_untrust_agent",
         "jacs_verify_a2a_artifact",
+        "jacs_verify_agreement_v2",
         "jacs_verify_document",
         "jacs_verify_image",
         "jacs_verify_text",

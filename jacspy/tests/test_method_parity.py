@@ -84,6 +84,15 @@ PYTHON_NAME_MAP = {
     "sign_image_json": "sign_image",
     "verify_image_json": "verify_image",
     "extract_media_signature_json": "extract_media_signature",
+    # Agreement v2 (feature-gated in Rust, exposed by the Python extension
+    # when built with the `agreements` feature).
+    "create_agreement_v2_json": "create_agreement_v2",
+    "apply_agreement_v2_json": "apply_agreement_v2",
+    "sign_agreement_v2_json": "sign_agreement_v2",
+    "verify_agreement_v2_json": "verify_agreement_v2",
+    "detect_agreement_v2_branch_conflict_json": "detect_agreement_v2_branch_conflict",
+    "merge_agreement_v2_transcript_branches_json": "merge_agreement_v2_transcript_branches",
+    "resolve_agreement_v2_branch_conflict_json": "resolve_agreement_v2_branch_conflict",
 }
 
 
@@ -98,9 +107,17 @@ def method_parity() -> dict:
         return json.load(f)
 
 
+def parity_methods(method_parity: dict) -> list[str]:
+    """Return the full language-surface contract, including feature-gated groups."""
+    methods = list(method_parity["all_methods_flat"])
+    for gated in method_parity.get("feature_gated_methods", {}).values():
+        methods.extend(gated)
+    return methods
+
+
 def test_python_method_parity_against_fixture(method_parity: dict):
     """All non-excluded methods from the fixture must exist on SimpleAgent."""
-    all_methods = method_parity["all_methods_flat"]
+    all_methods = parity_methods(method_parity)
 
     missing = []
     for rust_name in all_methods:
@@ -121,7 +138,7 @@ def test_python_method_parity_against_fixture(method_parity: dict):
 
 def test_python_exclusions_are_valid(method_parity: dict):
     """Every excluded method must actually exist in the fixture."""
-    all_methods = set(method_parity["all_methods_flat"])
+    all_methods = set(parity_methods(method_parity))
 
     invalid_exclusions = EXCLUDED_FROM_PYTHON - all_methods
     assert not invalid_exclusions, (
@@ -132,7 +149,7 @@ def test_python_exclusions_are_valid(method_parity: dict):
 
 def test_python_name_map_covers_all_non_excluded(method_parity: dict):
     """Every non-excluded method should have a mapping (even if identity)."""
-    all_methods = method_parity["all_methods_flat"]
+    all_methods = parity_methods(method_parity)
 
     unmapped = []
     for rust_name in all_methods:
@@ -149,7 +166,7 @@ def test_python_name_map_covers_all_non_excluded(method_parity: dict):
 
 def test_python_name_map_has_no_stale_entries(method_parity: dict):
     """PYTHON_NAME_MAP should not contain methods that don't exist in the fixture."""
-    all_methods = set(method_parity["all_methods_flat"])
+    all_methods = set(parity_methods(method_parity))
 
     stale = set(PYTHON_NAME_MAP.keys()) - all_methods
     assert not stale, (

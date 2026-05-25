@@ -39,6 +39,48 @@
       "notes": "Both sign the agreement section of a document"
     },
     {
+      "cli_command": "agreement-v2 create",
+      "mcp_tool": "jacs_create_agreement_v2",
+      "status": "aligned",
+      "notes": "Both create standalone agreement v2 artifacts"
+    },
+    {
+      "cli_command": "agreement-v2 apply",
+      "mcp_tool": "jacs_apply_agreement_v2",
+      "status": "aligned",
+      "notes": "Both apply typed agreement v2 mutations and emit successor versions"
+    },
+    {
+      "cli_command": "agreement-v2 sign",
+      "mcp_tool": "jacs_sign_agreement_v2",
+      "status": "aligned",
+      "notes": "Both add signer, witness, or notary signatures to agreement v2 artifacts"
+    },
+    {
+      "cli_command": "agreement-v2 verify",
+      "mcp_tool": "jacs_verify_agreement_v2",
+      "status": "aligned",
+      "notes": "Both verify agreement v2 hashes, status, transcript, and signatures"
+    },
+    {
+      "cli_command": "agreement-v2 detect-conflict",
+      "mcp_tool": "jacs_detect_agreement_v2_branch_conflict",
+      "status": "aligned",
+      "notes": "Both analyze agreement v2 branch conflicts"
+    },
+    {
+      "cli_command": "agreement-v2 merge-transcript",
+      "mcp_tool": "jacs_merge_agreement_v2_transcript_branches",
+      "status": "aligned",
+      "notes": "Both auto-merge transcript-only agreement v2 branches"
+    },
+    {
+      "cli_command": "agreement-v2 resolve-conflict",
+      "mcp_tool": "jacs_resolve_agreement_v2_branch_conflict",
+      "status": "aligned",
+      "notes": "Both resolve agreement v2 branch conflicts with explicit mutations"
+    },
+    {
       "cli_command": "key reencrypt",
       "mcp_tool": "jacs_reencrypt_key",
       "status": "aligned",
@@ -318,10 +360,10 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 43,
+    "total_cli_commands": 50,
     "total_cli_feature_gated": 4,
-    "total_mcp_tools": 35,
-    "aligned_pairs": 25,
+    "total_mcp_tools": 42,
+    "aligned_pairs": 32,
     "cli_only_count": 18,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 11,

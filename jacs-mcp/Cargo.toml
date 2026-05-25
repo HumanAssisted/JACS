@@ -26,7 +26,7 @@ search-tools = []
 key-tools = []
 
 # Advanced tool families — require explicit opt-in via feature flag or runtime profile.
-agreement-tools = ["jacs/agreements"]
+agreement-tools = ["jacs/agreements", "jacs-binding-core/agreements"]
 a2a-tools = ["jacs/a2a"]
 attestation-tools = ["attestation"]
 
