@@ -22,7 +22,6 @@ A participant in an agreement. Signer-role parties consent and are bound. Witnes
 | [agentVersion](#agentversion) | `string` | Optional | cannot be null | [Agreement](agreement-definitions-party-properties-agentversion.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/agentVersion") |
 | [agentType](#agenttype)       | `string` | Required | cannot be null | [Agreement](agreement-definitions-party-properties-agenttype.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/agentType")       |
 | [role](#role)                 | `string` | Required | cannot be null | [Agreement](agreement-definitions-party-properties-role.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/role")                 |
-| [delegatedBy](#delegatedby)   | `string` | Optional | cannot be null | [Agreement](agreement-definitions-party-properties-delegatedby.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/delegatedBy")   |
 | [displayName](#displayname)   | `string` | Optional | cannot be null | [Agreement](agreement-definitions-party-properties-displayname.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/displayName")   |
 
 ## agentId
@@ -126,28 +125,6 @@ A participant in an agreement. Signer-role parties consent and are bound. Witnes
 | `"witness"`  |             |
 | `"notary"`   |             |
 | `"observer"` |             |
-
-## delegatedBy
-
-Optional: agent id on whose behalf this party signs. Proof of authority lives in agreementSignature.delegationChain.
-
-`delegatedBy`
-
-* is optional
-
-* Type: `string`
-
-* cannot be null
-
-* defined in: [Agreement](agreement-definitions-party-properties-delegatedby.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/delegatedBy")
-
-### delegatedBy Type
-
-`string`
-
-### delegatedBy Constraints
-
-**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
 ## displayName
 

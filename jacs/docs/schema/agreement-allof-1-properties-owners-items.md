@@ -1,15 +1,19 @@
-# Untitled array in Agreement Schema
+# Untitled string in Agreement Schema
 
 ```txt
-https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/links
+https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/owners/items
 ```
 
-Links to other JACS document versions. A link is intentionally only {jacsId, jacsVersion}; relationship semantics such as supersedes or terminates are expressed by the successor agreement's terms/status, not by extra link fields.
+
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [agreement.schema.json\*](../../schemas/agreement/v2/agreement.schema.json "open original schema") |
 
-## links Type
+## items Type
 
-`object[]` ([Details](agreement-definitions-agreementlink.md))
+`string`
+
+## items Constraints
+
+**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")

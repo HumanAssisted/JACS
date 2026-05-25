@@ -48,7 +48,7 @@
 
 * [Untitled object in Agreement](./agreement-definitions-agreementsignature.md "A JACS signature over the agreement") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature`
 
-* [Untitled object in Agreement](./agreement-definitions-agreementlink.md "Relationship from this agreement to another JACS document version") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink`
+* [Untitled object in Agreement](./agreement-definitions-agreementlink.md "Reference from this agreement to another JACS document version") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink`
 
 * [Untitled object in Agreement](./agreement-definitions-jacsdocumentref.md "Verifiable reference to a specific signed JACS document version") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/jacsDocumentRef`
 
@@ -132,15 +132,15 @@
 
 * [Untitled array in Agreement](./agreement-allof-1-properties-agreementsignatures.md "Consent and attestation signatures over the agreement") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/agreementSignatures`
 
-* [Untitled array in Agreement](./agreement-definitions-agreementsignature-properties-delegationchain.md "If signing on behalf of a party, ordered list of signed JACS delegation document references proving authority") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/delegationChain`
-
 * [Untitled array in Agreement](./agreement-allof-1-properties-transcript.md "Append-only list of JACS document references — any type of JACS-headed document (messages, statements, evidence, attachments, identity proofs)") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/transcript`
 
 * [Untitled array in Agreement](./agreement-allof-1-properties-allpreviousversions.md "Append-only list of every prior jacsVersion of this agreement document, in chronological order") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/allPreviousVersions`
 
-* [Untitled array in Agreement](./agreement-allof-1-properties-links.md "Relationship links to other JACS documents") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/links`
+* [Untitled array in Agreement](./agreement-allof-1-properties-links.md "Links to other JACS document versions") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/links`
 
 * [Untitled array in Agreement](./agreement-allof-1-properties-controllers.md "Agent IDs authorized to propose successor versions, append to transcript, change status, or modify parties") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/controllers`
+
+* [Untitled array in Agreement](./agreement-allof-1-properties-owners.md "Agent IDs making soft copyright or ownership claims over this agreement document") – `https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/owners`
 
 * [Untitled array in Attestation](./attestation-properties-attestation-properties-claims.md) – `https://hai.ai/schemas/attestation/v1/attestation.schema.json#/properties/attestation/properties/claims`
 

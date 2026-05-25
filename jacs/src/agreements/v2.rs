@@ -15,16 +15,65 @@ use crate::agent::{
 };
 use crate::crypt::hash::{hash_public_key, hash_string};
 use crate::error::JacsError;
+use crate::schema::utils::EmbeddedSchemaResolver;
 use crate::simple::SimpleAgent;
 use crate::simple::types::SignedDocument;
 use crate::time_utils;
 use crate::validation::normalize_agent_id;
+use jsonschema::{Draft, Validator};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 const AGREEMENT_SIGNATURE_PLACEMENT: &str = "agreementSignature";
+const AGREEMENT_V2_SCHEMA: &str = include_str!("../../schemas/agreement/v2/agreement.schema.json");
+const CONSENT_HASH_FIELDS: &[&str] = &[
+    "title",
+    "description",
+    "terms",
+    "termsFormat",
+    "effectiveFrom",
+    "expiresAt",
+    "parties",
+    "signaturePolicy",
+];
+const TERMS_FORMATS: &[&str] = &["text/plain", "text/markdown"];
+const STATUSES: &[&str] = &[
+    "draft",
+    "proposed",
+    "partially_signed",
+    "final",
+    "expired",
+    "disputed",
+    "superseded",
+    "terminated",
+];
+const AGENT_TYPES: &[&str] = &["human", "human-org", "hybrid", "ai"];
+const PARTY_ROLES: &[&str] = &["signer", "witness", "notary", "observer"];
+const SIGNATURE_ROLES: &[&str] = &["signer", "witness", "notary"];
+const MINIMUM_STRENGTHS: &[&str] = &["classical", "post-quantum"];
+const PARTY_FIELDS: &[&str] = &[
+    "agentId",
+    "agentVersion",
+    "agentType",
+    "role",
+    "displayName",
+];
+const SIGNATURE_POLICY_FIELDS: &[&str] = &[
+    "partyQuorum",
+    "witnessRequired",
+    "notaryRequired",
+    "timeout",
+    "requiredAlgorithms",
+    "minimumStrength",
+];
+const AGREEMENT_SIGNATURE_FIELDS: &[&str] = &["signature", "role", "signedTranscriptHash"];
+const JACS_DOCUMENT_REF_FIELDS: &[&str] = &["jacsId", "jacsVersion", "jacsSha256"];
+const AGREEMENT_LINK_FIELDS: &[&str] = &["jacsId", "jacsVersion"];
+const TERMINAL_NON_SIGNING_STATUSES: &[&str] =
+    &["final", "expired", "disputed", "superseded", "terminated"];
+const AUTO_MERGE_GUARD_FIELDS: &[&str] = &["status", "agreementSignatures", "links", "controllers"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +101,8 @@ pub struct CreateAgreementV2 {
     pub links: Vec<Value>,
     #[serde(default)]
     pub controllers: Vec<String>,
+    #[serde(default)]
+    pub owners: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +136,18 @@ pub enum AgreementV2Mutation {
     AddLink {
         link: Value,
     },
+    SetOwners {
+        owners: Vec<String>,
+    },
+}
+
+impl AgreementV2Mutation {
+    fn touches_consent_scope(&self) -> bool {
+        matches!(
+            self,
+            Self::UpdateTerms { .. } | Self::SetParties { .. } | Self::SetSignaturePolicy { .. }
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,6 +169,20 @@ pub struct AgreementV2VerificationReport {
     pub signer_count: usize,
     pub witness_count: usize,
     pub notary_count: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgreementV2MergeAnalysis {
+    pub same_document: bool,
+    pub same_parent: bool,
+    pub auto_mergeable: bool,
+    pub conflict_fields: Vec<String>,
+    pub left_changed_fields: Vec<String>,
+    pub right_changed_fields: Vec<String>,
+    pub left_transcript_additions: usize,
+    pub right_transcript_additions: usize,
     pub errors: Vec<String>,
 }
 
@@ -239,14 +316,19 @@ pub fn create_with_agent(
         "transcript": input.transcript,
         "allPreviousVersions": input.all_previous_versions,
         "links": input.links,
-        "controllers": controllers
+        "controllers": controllers,
+        "owners": input.owners
     });
 
     insert_optional_string(&mut document, "effectiveFrom", input.effective_from);
     insert_optional_string(&mut document, "expiresAt", input.expires_at);
     update_agreement_hash(&mut document)?;
+    validate_agreement_v2(&document)?;
+    assert_status_consistent(&document)?;
 
-    agent.create_document_and_load(&document.to_string(), None, None)
+    let doc = agent.create_document_and_load(&document.to_string(), None, None)?;
+    validate_agreement_v2_schema(&doc.value)?;
+    Ok(doc)
 }
 
 pub fn apply_with_agent(
@@ -258,52 +340,20 @@ pub fn apply_with_agent(
     assert_agreement_v2(&current.value)?;
     assert_controller(agent, &current.value)?;
 
-    let mut next = current.value.clone();
-    match mutation {
-        AgreementV2Mutation::AppendTranscript { entry } => {
-            array_mut(&mut next, "transcript")?.push(entry);
-        }
-        AgreementV2Mutation::UpdateTerms {
-            title,
-            description,
-            terms,
-            terms_format,
-            effective_from,
-            expires_at,
-        } => {
-            if let Some(title) = title {
-                next["title"] = json!(title);
-            }
-            if let Some(description) = description {
-                next["description"] = json!(description);
-            }
-            next["terms"] = json!(terms);
-            if let Some(terms_format) = terms_format {
-                next["termsFormat"] = json!(terms_format);
-            }
-            set_optional_string(&mut next, "effectiveFrom", effective_from);
-            set_optional_string(&mut next, "expiresAt", expires_at);
-            clear_agreement_signatures(&mut next);
-            update_agreement_hash(&mut next)?;
-        }
-        AgreementV2Mutation::SetStatus { status } => {
-            next["status"] = json!(status);
-        }
-        AgreementV2Mutation::SetParties { parties } => {
-            next["parties"] = Value::Array(parties);
-            clear_agreement_signatures(&mut next);
-            update_agreement_hash(&mut next)?;
-        }
-        AgreementV2Mutation::SetSignaturePolicy { signature_policy } => {
-            next["signaturePolicy"] = signature_policy;
-            clear_agreement_signatures(&mut next);
-            update_agreement_hash(&mut next)?;
-        }
-        AgreementV2Mutation::AddLink { link } => {
-            array_mut(&mut next, "links")?.push(link);
-        }
+    if current.value.get("status").and_then(Value::as_str) == Some("final")
+        && mutation.touches_consent_scope()
+    {
+        return Err(JacsError::DocumentError(
+            "final agreements cannot change consent-scope fields; create a superseding agreement"
+                .to_string(),
+        ));
     }
 
+    let mut next = current.value.clone();
+    apply_mutation_to_document(&mut next, mutation)?;
+
+    validate_agreement_v2(&next)?;
+    assert_status_consistent(&next)?;
     emit_successor(agent, &current.value, next)
 }
 
@@ -314,6 +364,7 @@ pub fn sign_with_agent(
 ) -> Result<JACSDocument, JacsError> {
     let current = agent.load_document(document)?;
     assert_agreement_v2(&current.value)?;
+    assert_accepts_signature(&current.value)?;
 
     let stored_hash = required_str(&current.value, "jacsAgreementHash")?;
     let recomputed_hash = compute_agreement_hash(&current.value)?;
@@ -326,8 +377,14 @@ pub fn sign_with_agent(
 
     let agent_id = agent.get_id()?;
     let normalized_agent_id = normalize_agent_id(&agent_id).to_string();
+    let agent_version = agent.get_version()?;
     let requested_role = Role::from_agreement_role(role);
-    assert_party_role(&current.value, &normalized_agent_id, requested_role)?;
+    assert_party_role_and_version(
+        &current.value,
+        &normalized_agent_id,
+        Some(agent_version.as_str()),
+        requested_role,
+    )?;
     assert_not_already_signed(&current.value, &normalized_agent_id, requested_role)?;
 
     let transcript_hash = compute_transcript_hash(&current.value)?;
@@ -401,10 +458,15 @@ pub fn verify_with_agent(
         ));
     }
 
-    if let Err(err) = verify_previous_versions_hint(&doc.value) {
+    if let Err(err) = verify_header_signature_and_controller(agent, &doc.value) {
+        errors.push(err.to_string());
+    }
+
+    if let Err(err) = verify_previous_versions_chain(agent, &doc.value) {
         errors.push(err);
     }
 
+    let transcript_prefix_hashes = compute_transcript_prefix_hashes(&doc.value)?;
     let mut signed_counts = SignedRoleCounts::default();
     for signature_entry in signature_entries(&doc.value) {
         if let Err(err) = verify_signature_entry(
@@ -412,6 +474,7 @@ pub fn verify_with_agent(
             &doc.value,
             signature_entry,
             &recomputed_transcript_hash,
+            &transcript_prefix_hashes,
             &mut signed_counts,
         ) {
             errors.push(err.to_string());
@@ -431,20 +494,104 @@ pub fn verify_with_agent(
     })
 }
 
+pub fn detect_branch_conflict(
+    base_document: &str,
+    left_document: &str,
+    right_document: &str,
+) -> Result<AgreementV2MergeAnalysis, JacsError> {
+    let base = parse_agreement_value(base_document)?;
+    let left = parse_agreement_value(left_document)?;
+    let right = parse_agreement_value(right_document)?;
+    analyze_branch_values(&base, &left, &right)
+}
+
+pub fn merge_transcript_branches_with_agent(
+    agent: &mut Agent,
+    base_document: &str,
+    left_document: &str,
+    right_document: &str,
+) -> Result<JACSDocument, JacsError> {
+    let base = agent.load_document(base_document)?;
+    let left = agent.load_document(left_document)?;
+    let right = agent.load_document(right_document)?;
+    assert_agreement_v2(&base.value)?;
+    assert_agreement_v2(&left.value)?;
+    assert_agreement_v2(&right.value)?;
+    assert_controller(agent, &left.value)?;
+
+    let analysis = analyze_branch_values(&base.value, &left.value, &right.value)?;
+    if !analysis.auto_mergeable {
+        return Err(JacsError::DocumentError(format!(
+            "agreement branches are not transcript-only auto-mergeable: conflicts {:?}, errors {:?}",
+            analysis.conflict_fields, analysis.errors
+        )));
+    }
+
+    let left_additions = transcript_append_additions(&base.value, &left.value)?
+        .expect("analysis guaranteed append-only left transcript");
+    let right_additions = transcript_append_additions(&base.value, &right.value)?
+        .expect("analysis guaranteed append-only right transcript");
+
+    let mut merged = left.value.clone();
+    let mut merged_transcript = transcript_values(&base.value);
+    for entry in left_additions.iter().chain(right_additions.iter()) {
+        if !contains_canonical_value(&merged_transcript, entry)? {
+            merged_transcript.push(entry.clone());
+        }
+    }
+    merged["transcript"] = Value::Array(merged_transcript);
+    append_merge_link(&mut merged, &right.value)?;
+    validate_agreement_v2(&merged)?;
+    assert_status_consistent(&merged)?;
+
+    emit_successor(agent, &left.value, merged)
+}
+
+pub fn resolve_branch_conflict_with_agent(
+    agent: &mut Agent,
+    base_document: &str,
+    previous_document: &str,
+    side_branch_document: &str,
+    resolution: AgreementV2Mutation,
+) -> Result<JACSDocument, JacsError> {
+    let base = agent.load_document(base_document)?;
+    let previous = agent.load_document(previous_document)?;
+    let side_branch = agent.load_document(side_branch_document)?;
+    assert_agreement_v2(&base.value)?;
+    assert_agreement_v2(&previous.value)?;
+    assert_agreement_v2(&side_branch.value)?;
+    assert_controller(agent, &previous.value)?;
+
+    if previous.value.get("status").and_then(Value::as_str) == Some("final")
+        && resolution.touches_consent_scope()
+    {
+        return Err(JacsError::DocumentError(
+            "final agreements cannot change consent-scope fields; create a superseding agreement"
+                .to_string(),
+        ));
+    }
+
+    let analysis = analyze_branch_values(&base.value, &previous.value, &side_branch.value)?;
+    if !analysis.same_document || !analysis.same_parent {
+        return Err(JacsError::DocumentError(format!(
+            "agreement branches cannot be resolved from the supplied base: same_document={}, same_parent={}, errors={:?}",
+            analysis.same_document, analysis.same_parent, analysis.errors
+        )));
+    }
+
+    let mut resolved = previous.value.clone();
+    apply_mutation_to_document(&mut resolved, resolution)?;
+    append_merge_link(&mut resolved, &side_branch.value)?;
+    validate_agreement_v2(&resolved)?;
+    assert_status_consistent(&resolved)?;
+    emit_successor(agent, &previous.value, resolved)
+}
+
 pub fn compute_agreement_hash(document: &Value) -> Result<String, JacsError> {
     let mut scope = Map::new();
-    for field in [
-        "title",
-        "description",
-        "terms",
-        "termsFormat",
-        "effectiveFrom",
-        "expiresAt",
-        "parties",
-        "signaturePolicy",
-    ] {
+    for field in CONSENT_HASH_FIELDS {
         if let Some(value) = document.get(field) {
-            scope.insert(field.to_string(), value.clone());
+            scope.insert((*field).to_string(), value.clone());
         }
     }
     let canonical = canonicalize_json(&Value::Object(scope))?;
@@ -460,6 +607,178 @@ pub fn compute_transcript_hash(document: &Value) -> Result<String, JacsError> {
     Ok(hash_string(&canonical))
 }
 
+fn parse_agreement_value(document: &str) -> Result<Value, JacsError> {
+    let value: Value = serde_json::from_str(document)?;
+    assert_agreement_v2(&value)?;
+    Ok(value)
+}
+
+fn analyze_branch_values(
+    base: &Value,
+    left: &Value,
+    right: &Value,
+) -> Result<AgreementV2MergeAnalysis, JacsError> {
+    let base_id = required_str(base, "jacsId")?;
+    let base_version = required_str(base, JACS_VERSION_FIELDNAME)?;
+    let left_id = required_str(left, "jacsId")?;
+    let right_id = required_str(right, "jacsId")?;
+    let left_previous = left
+        .get(JACS_PREVIOUS_VERSION_FIELDNAME)
+        .and_then(Value::as_str);
+    let right_previous = right
+        .get(JACS_PREVIOUS_VERSION_FIELDNAME)
+        .and_then(Value::as_str);
+
+    let same_document = base_id == left_id && base_id == right_id;
+    let same_parent = left_previous == Some(base_version) && right_previous == Some(base_version);
+    let mut errors = Vec::new();
+    if !same_document {
+        errors.push("branches do not belong to the same agreement jacsId".to_string());
+    }
+    if !same_parent {
+        errors.push("branches do not share the supplied base as their predecessor".to_string());
+    }
+
+    let left_transcript_additions = match transcript_append_additions(base, left)? {
+        Some(additions) => additions,
+        None => {
+            errors.push("left transcript branch is not append-only".to_string());
+            Vec::new()
+        }
+    };
+    let right_transcript_additions = match transcript_append_additions(base, right)? {
+        Some(additions) => additions,
+        None => {
+            errors.push("right transcript branch is not append-only".to_string());
+            Vec::new()
+        }
+    };
+
+    let left_changed_fields = changed_fields(base, left, CONSENT_HASH_FIELDS)?;
+    let right_changed_fields = changed_fields(base, right, CONSENT_HASH_FIELDS)?;
+    let mut conflict_fields = Vec::new();
+    for field in CONSENT_HASH_FIELDS {
+        let left_changed = left_changed_fields.iter().any(|changed| changed == field);
+        let right_changed = right_changed_fields.iter().any(|changed| changed == field);
+        if left_changed
+            && right_changed
+            && !canonical_values_equal(left.get(*field), right.get(*field))?
+        {
+            conflict_fields.push((*field).to_string());
+        }
+    }
+
+    let left_guard_changes = changed_fields(base, left, AUTO_MERGE_GUARD_FIELDS)?;
+    let right_guard_changes = changed_fields(base, right, AUTO_MERGE_GUARD_FIELDS)?;
+    if !left_guard_changes.is_empty() {
+        errors.push(format!(
+            "left branch changed non-transcript fields that require manual resolution: {:?}",
+            left_guard_changes
+        ));
+    }
+    if !right_guard_changes.is_empty() {
+        errors.push(format!(
+            "right branch changed non-transcript fields that require manual resolution: {:?}",
+            right_guard_changes
+        ));
+    }
+
+    let auto_mergeable = same_document
+        && same_parent
+        && errors.is_empty()
+        && conflict_fields.is_empty()
+        && left_changed_fields.is_empty()
+        && right_changed_fields.is_empty();
+
+    Ok(AgreementV2MergeAnalysis {
+        same_document,
+        same_parent,
+        auto_mergeable,
+        conflict_fields,
+        left_changed_fields,
+        right_changed_fields,
+        left_transcript_additions: left_transcript_additions.len(),
+        right_transcript_additions: right_transcript_additions.len(),
+        errors,
+    })
+}
+
+fn changed_fields(base: &Value, branch: &Value, fields: &[&str]) -> Result<Vec<String>, JacsError> {
+    let mut changed = Vec::new();
+    for field in fields {
+        if !canonical_values_equal(base.get(*field), branch.get(*field))? {
+            changed.push((*field).to_string());
+        }
+    }
+    Ok(changed)
+}
+
+fn transcript_append_additions(
+    base: &Value,
+    branch: &Value,
+) -> Result<Option<Vec<Value>>, JacsError> {
+    let base_transcript = transcript_values(base);
+    let branch_transcript = transcript_values(branch);
+    if branch_transcript.len() < base_transcript.len() {
+        return Ok(None);
+    }
+    for (index, base_entry) in base_transcript.iter().enumerate() {
+        if !canonical_values_equal(Some(base_entry), branch_transcript.get(index))? {
+            return Ok(None);
+        }
+    }
+    Ok(Some(branch_transcript[base_transcript.len()..].to_vec()))
+}
+
+fn transcript_values(document: &Value) -> Vec<Value> {
+    document
+        .get("transcript")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn canonical_values_equal(left: Option<&Value>, right: Option<&Value>) -> Result<bool, JacsError> {
+    let left = left.cloned().unwrap_or(Value::Null);
+    let right = right.cloned().unwrap_or(Value::Null);
+    Ok(canonicalize_json(&left)? == canonicalize_json(&right)?)
+}
+
+fn contains_canonical_value(items: &[Value], candidate: &Value) -> Result<bool, JacsError> {
+    for item in items {
+        if canonical_values_equal(Some(item), Some(candidate))? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn append_merge_link(document: &mut Value, merged_branch: &Value) -> Result<(), JacsError> {
+    let link = json!({
+        "jacsId": required_str(merged_branch, "jacsId")?,
+        "jacsVersion": required_str(merged_branch, JACS_VERSION_FIELDNAME)?
+    });
+    let links = array_mut(document, "links")?;
+    if !contains_canonical_value(links, &link)? {
+        links.push(link);
+    }
+    Ok(())
+}
+
+fn compute_transcript_prefix_hashes(document: &Value) -> Result<HashSet<String>, JacsError> {
+    let transcript = document
+        .get("transcript")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut hashes = HashSet::new();
+    for len in 0..=transcript.len() {
+        let canonical = canonicalize_json(&Value::Array(transcript[..len].to_vec()))?;
+        hashes.insert(hash_string(&canonical));
+    }
+    Ok(hashes)
+}
+
 pub fn recompute_status(document: &Value) -> String {
     let current_status = document
         .get("status")
@@ -467,6 +786,10 @@ pub fn recompute_status(document: &Value) -> String {
         .unwrap_or("draft");
     if matches!(current_status, "disputed" | "superseded" | "terminated") {
         return current_status.to_string();
+    }
+
+    if agreement_expired(document) {
+        return "expired".to_string();
     }
 
     let complete = signature_policy_satisfied(document);
@@ -482,7 +805,11 @@ pub fn recompute_status(document: &Value) -> String {
         return "partially_signed".to_string();
     }
 
-    current_status.to_string()
+    if current_status == "proposed" {
+        "proposed".to_string()
+    } else {
+        "draft".to_string()
+    }
 }
 
 fn insert_optional_string(document: &mut Value, field: &str, value: Option<String>) {
@@ -497,8 +824,71 @@ fn set_optional_string(document: &mut Value, field: &str, value: Option<String>)
     }
 }
 
+fn apply_mutation_to_document(
+    document: &mut Value,
+    mutation: AgreementV2Mutation,
+) -> Result<(), JacsError> {
+    match mutation {
+        AgreementV2Mutation::AppendTranscript { entry } => {
+            array_mut(document, "transcript")?.push(entry);
+        }
+        AgreementV2Mutation::UpdateTerms {
+            title,
+            description,
+            terms,
+            terms_format,
+            effective_from,
+            expires_at,
+        } => {
+            if let Some(title) = title {
+                document["title"] = json!(title);
+            }
+            if let Some(description) = description {
+                document["description"] = json!(description);
+            }
+            document["terms"] = json!(terms);
+            if let Some(terms_format) = terms_format {
+                document["termsFormat"] = json!(terms_format);
+            }
+            set_optional_string(document, "effectiveFrom", effective_from);
+            set_optional_string(document, "expiresAt", expires_at);
+            clear_agreement_signatures(document);
+            reset_status_after_consent_change(document);
+            update_agreement_hash(document)?;
+        }
+        AgreementV2Mutation::SetStatus { status } => {
+            document["status"] = json!(status);
+        }
+        AgreementV2Mutation::SetParties { parties } => {
+            document["parties"] = Value::Array(parties);
+            clear_agreement_signatures(document);
+            reset_status_after_consent_change(document);
+            update_agreement_hash(document)?;
+        }
+        AgreementV2Mutation::SetSignaturePolicy { signature_policy } => {
+            document["signaturePolicy"] = signature_policy;
+            clear_agreement_signatures(document);
+            reset_status_after_consent_change(document);
+            update_agreement_hash(document)?;
+        }
+        AgreementV2Mutation::AddLink { link } => {
+            array_mut(document, "links")?.push(link);
+        }
+        AgreementV2Mutation::SetOwners { owners } => {
+            document["owners"] = Value::Array(owners.into_iter().map(Value::String).collect());
+        }
+    }
+    Ok(())
+}
+
 fn clear_agreement_signatures(document: &mut Value) {
     document["agreementSignatures"] = json!([]);
+}
+
+fn reset_status_after_consent_change(document: &mut Value) {
+    if document.get("status").and_then(Value::as_str) != Some("draft") {
+        document["status"] = json!("proposed");
+    }
 }
 
 fn update_agreement_hash(document: &mut Value) -> Result<(), JacsError> {
@@ -540,7 +930,409 @@ fn assert_agreement_v2(document: &Value) -> Result<(), JacsError> {
             reason: format!("expected agreement, got {}", jacs_type),
         });
     }
+    if let Some(level) = document.get("jacsLevel").and_then(Value::as_str)
+        && level != "artifact"
+    {
+        return Err(JacsError::DocumentMalformed {
+            field: "jacsLevel".to_string(),
+            reason: format!("expected artifact, got {}", level),
+        });
+    }
+    validate_agreement_v2(document)?;
+    validate_agreement_v2_schema(document)?;
     Ok(())
+}
+
+fn validate_agreement_v2_schema(document: &Value) -> Result<(), JacsError> {
+    let schema: Value = serde_json::from_str(AGREEMENT_V2_SCHEMA)?;
+    let validator = Validator::options()
+        .with_draft(Draft::Draft7)
+        .with_retriever(EmbeddedSchemaResolver::new())
+        .build(&schema)
+        .map_err(|err| {
+            JacsError::SchemaError(format!("failed to compile agreement v2 schema: {}", err))
+        })?;
+    validator.validate(document).map_err(|err| {
+        JacsError::SchemaError(format!(
+            "agreement v2 schema validation failed at '{}': {}",
+            err.instance_path, err
+        ))
+    })
+}
+
+fn validate_agreement_v2(document: &Value) -> Result<(), JacsError> {
+    for field in [
+        "jacsAgreementHash",
+        "title",
+        "description",
+        "terms",
+        "status",
+    ] {
+        let value = required_str(document, field)?;
+        if value.is_empty() {
+            return Err(malformed(field, "must not be empty"));
+        }
+    }
+
+    require_enum(document, "termsFormat", TERMS_FORMATS, true)?;
+    require_enum(document, "status", STATUSES, false)?;
+    validate_optional_datetime(document, "effectiveFrom")?;
+    validate_optional_datetime(document, "expiresAt")?;
+    validate_parties(document)?;
+    validate_signature_policy(document)?;
+    validate_transcript(document)?;
+    validate_agreement_signatures_shape(document)?;
+    validate_string_array(document, "allPreviousVersions", true)?;
+    validate_string_array(document, "controllers", true)?;
+    validate_string_array(document, "owners", true)?;
+    validate_links(document)?;
+    Ok(())
+}
+
+fn validate_parties(document: &Value) -> Result<(), JacsError> {
+    let parties = array_ref(document, "parties")?;
+    if parties.is_empty() {
+        return Err(malformed("parties", "must include at least one party"));
+    }
+
+    let mut seen_agent_ids = HashSet::new();
+    let mut signer_count = 0usize;
+    for party in parties {
+        let Some(party_object) = party.as_object() else {
+            return Err(malformed("parties[]", "expected object"));
+        };
+        reject_unknown_fields(party_object, "parties[]", PARTY_FIELDS)?;
+        for field in ["agentId", "agentType", "role"] {
+            if party_object.get(field).and_then(Value::as_str).is_none() {
+                return Err(malformed(&format!("parties[].{}", field), "missing string"));
+            }
+        }
+        let agent_id = party_object
+            .get("agentId")
+            .and_then(Value::as_str)
+            .expect("agentId checked above");
+        let normalized_agent_id = normalize_agent_id(agent_id).to_string();
+        if !seen_agent_ids.insert(normalized_agent_id.clone()) {
+            return Err(malformed(
+                "parties[].agentId",
+                &format!("duplicate party agent id '{}'", normalized_agent_id),
+            ));
+        }
+        enum_value(
+            party_object.get("agentType"),
+            "parties[].agentType",
+            AGENT_TYPES,
+        )?;
+        enum_value(party_object.get("role"), "parties[].role", PARTY_ROLES)?;
+        if party_object.get("role").and_then(Value::as_str) == Some("signer") {
+            signer_count += 1;
+        }
+        if let Some(agent_version) = party_object.get("agentVersion")
+            && !agent_version.is_string()
+        {
+            return Err(malformed("parties[].agentVersion", "expected string"));
+        }
+        if party_object.contains_key("delegatedBy") {
+            return Err(malformed(
+                "parties[].delegatedBy",
+                "delegation is reserved for a future delegated-signing feature",
+            ));
+        }
+        if let Some(display_name) = party_object.get("displayName")
+            && !display_name.is_string()
+        {
+            return Err(malformed("parties[].displayName", "expected string"));
+        }
+    }
+    if signer_count == 0 {
+        return Err(malformed(
+            "parties",
+            "agreement requires at least one signer-role party",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_signature_policy(document: &Value) -> Result<(), JacsError> {
+    let policy = document
+        .get("signaturePolicy")
+        .and_then(Value::as_object)
+        .ok_or_else(|| malformed("signaturePolicy", "expected object"))?;
+    reject_unknown_fields(policy, "signaturePolicy", SIGNATURE_POLICY_FIELDS)?;
+
+    let quorum = policy
+        .get("partyQuorum")
+        .ok_or_else(|| malformed("signaturePolicy.partyQuorum", "missing"))?;
+    if let Some(kind) = quorum.as_str() {
+        if !matches!(kind, "all" | "majority") {
+            return Err(malformed(
+                "signaturePolicy.partyQuorum",
+                "expected all, majority, or positive integer",
+            ));
+        }
+    } else if quorum.as_u64().unwrap_or(0) == 0 {
+        return Err(malformed(
+            "signaturePolicy.partyQuorum",
+            "expected all, majority, or positive integer",
+        ));
+    }
+
+    for field in ["witnessRequired", "notaryRequired"] {
+        if let Some(value) = policy.get(field)
+            && value.as_u64().is_none()
+        {
+            return Err(malformed(
+                &format!("signaturePolicy.{}", field),
+                "expected non-negative integer",
+            ));
+        }
+    }
+
+    if let Some(required_algorithms) = policy.get("requiredAlgorithms") {
+        let Some(algorithms) = required_algorithms.as_array() else {
+            return Err(malformed(
+                "signaturePolicy.requiredAlgorithms",
+                "expected array",
+            ));
+        };
+        if algorithms.iter().any(|algorithm| !algorithm.is_string()) {
+            return Err(malformed(
+                "signaturePolicy.requiredAlgorithms[]",
+                "expected string",
+            ));
+        }
+    }
+
+    if let Some(minimum_strength) = policy.get("minimumStrength") {
+        enum_value(
+            Some(minimum_strength),
+            "signaturePolicy.minimumStrength",
+            MINIMUM_STRENGTHS,
+        )?;
+    }
+    if let Some(timeout) = policy.get("timeout")
+        && !timeout.is_string()
+    {
+        return Err(malformed("signaturePolicy.timeout", "expected string"));
+    }
+    validate_policy_datetime(policy, "timeout")?;
+
+    validate_signature_policy_counts(document)?;
+
+    Ok(())
+}
+
+fn validate_signature_policy_counts(document: &Value) -> Result<(), JacsError> {
+    let (signer_total, witness_total, notary_total) = party_role_totals(document);
+    let party_quorum = party_quorum_required(document, signer_total);
+    if party_quorum > signer_total {
+        return Err(malformed(
+            "signaturePolicy.partyQuorum",
+            "cannot exceed signer-role party count",
+        ));
+    }
+
+    let witness_required = policy_count(document, "witnessRequired");
+    if witness_required > witness_total {
+        return Err(malformed(
+            "signaturePolicy.witnessRequired",
+            "cannot exceed witness-role party count",
+        ));
+    }
+
+    let notary_required = policy_count(document, "notaryRequired");
+    if notary_required > notary_total {
+        return Err(malformed(
+            "signaturePolicy.notaryRequired",
+            "cannot exceed notary-role party count",
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_transcript(document: &Value) -> Result<(), JacsError> {
+    if document.get("transcript").is_none() {
+        return Ok(());
+    }
+    for entry in array_ref(document, "transcript")? {
+        validate_document_ref(entry, "transcript[]")?;
+    }
+    Ok(())
+}
+
+fn validate_agreement_signatures_shape(document: &Value) -> Result<(), JacsError> {
+    for entry in array_ref(document, "agreementSignatures")? {
+        let Some(entry_object) = entry.as_object() else {
+            return Err(malformed("agreementSignatures[]", "expected object"));
+        };
+        reject_unknown_fields(
+            entry_object,
+            "agreementSignatures[]",
+            AGREEMENT_SIGNATURE_FIELDS,
+        )?;
+        if !entry_object.contains_key("signature") {
+            return Err(malformed("agreementSignatures[].signature", "missing"));
+        }
+        enum_value(
+            entry_object.get("role"),
+            "agreementSignatures[].role",
+            SIGNATURE_ROLES,
+        )?;
+        if let Some(signed_transcript_hash) = entry_object.get("signedTranscriptHash")
+            && !signed_transcript_hash.is_string()
+        {
+            return Err(malformed(
+                "agreementSignatures[].signedTranscriptHash",
+                "expected string",
+            ));
+        }
+        if entry_object.contains_key("delegationChain") {
+            return Err(malformed(
+                "agreementSignatures[].delegationChain",
+                "delegation is reserved for a future delegated-signing feature",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_links(document: &Value) -> Result<(), JacsError> {
+    if document.get("links").is_none() {
+        return Ok(());
+    }
+    for link in array_ref(document, "links")? {
+        let Some(link_object) = link.as_object() else {
+            return Err(malformed("links[]", "expected object"));
+        };
+        reject_unknown_fields(link_object, "links[]", AGREEMENT_LINK_FIELDS)?;
+        for field in ["jacsId", "jacsVersion"] {
+            if link_object.get(field).and_then(Value::as_str).is_none() {
+                return Err(malformed(&format!("links[].{}", field), "missing string"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_document_ref(value: &Value, field: &str) -> Result<(), JacsError> {
+    let Some(object) = value.as_object() else {
+        return Err(malformed(field, "expected object"));
+    };
+    reject_unknown_fields(object, field, JACS_DOCUMENT_REF_FIELDS)?;
+    for key in ["jacsId", "jacsVersion", "jacsSha256"] {
+        if object.get(key).and_then(Value::as_str).is_none() {
+            return Err(malformed(&format!("{}.{}", field, key), "missing string"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_string_array(document: &Value, field: &str, optional: bool) -> Result<(), JacsError> {
+    if optional && document.get(field).is_none() {
+        return Ok(());
+    }
+    let items = array_ref(document, field)?;
+    if items.iter().any(|item| !item.is_string()) {
+        return Err(malformed(&format!("{}[]", field), "expected string"));
+    }
+    let mut seen = HashSet::new();
+    for item in items {
+        let value = item.as_str().expect("string checked above");
+        if !seen.insert(value) {
+            return Err(malformed(
+                &format!("{}[]", field),
+                "duplicate values are not allowed",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_optional_datetime(document: &Value, field: &str) -> Result<(), JacsError> {
+    let Some(value) = document.get(field) else {
+        return Ok(());
+    };
+    let Some(value) = value.as_str() else {
+        return Err(malformed(field, "expected string"));
+    };
+    time_utils::parse_rfc3339_to_timestamp(value)
+        .map(|_| ())
+        .map_err(|err| malformed(field, &format!("invalid RFC3339 timestamp: {}", err)))
+}
+
+fn validate_policy_datetime(policy: &Map<String, Value>, field: &str) -> Result<(), JacsError> {
+    let Some(value) = policy.get(field) else {
+        return Ok(());
+    };
+    let Some(value) = value.as_str() else {
+        return Err(malformed(
+            &format!("signaturePolicy.{}", field),
+            "expected string",
+        ));
+    };
+    time_utils::parse_rfc3339_to_timestamp(value)
+        .map(|_| ())
+        .map_err(|err| {
+            malformed(
+                &format!("signaturePolicy.{}", field),
+                &format!("invalid RFC3339 timestamp: {}", err),
+            )
+        })
+}
+
+fn reject_unknown_fields(
+    object: &Map<String, Value>,
+    field: &str,
+    allowed: &[&str],
+) -> Result<(), JacsError> {
+    if let Some(extra) = object.keys().find(|key| !allowed.contains(&key.as_str())) {
+        return Err(malformed(
+            &format!("{}.{}", field, extra),
+            &format!("unknown field; expected only {}", allowed.join(", ")),
+        ));
+    }
+    Ok(())
+}
+
+fn require_enum(
+    document: &Value,
+    field: &str,
+    allowed: &[&str],
+    optional: bool,
+) -> Result<(), JacsError> {
+    if optional && document.get(field).is_none() {
+        return Ok(());
+    }
+    enum_value(document.get(field), field, allowed)
+}
+
+fn enum_value(value: Option<&Value>, field: &str, allowed: &[&str]) -> Result<(), JacsError> {
+    let Some(value) = value.and_then(Value::as_str) else {
+        return Err(malformed(field, "missing string"));
+    };
+    if allowed.contains(&value) {
+        Ok(())
+    } else {
+        Err(malformed(
+            field,
+            &format!("expected one of {}", allowed.join(", ")),
+        ))
+    }
+}
+
+fn array_ref<'a>(document: &'a Value, field: &str) -> Result<&'a Vec<Value>, JacsError> {
+    document
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| malformed(field, "expected array"))
+}
+
+fn malformed(field: &str, reason: &str) -> JacsError {
+    JacsError::DocumentMalformed {
+        field: field.to_string(),
+        reason: reason.to_string(),
+    }
 }
 
 fn assert_controller(agent: &Agent, document: &Value) -> Result<(), JacsError> {
@@ -574,18 +1366,62 @@ fn assert_controller(agent: &Agent, document: &Value) -> Result<(), JacsError> {
     }
 }
 
-fn assert_party_role(document: &Value, agent_id: &str, role: Role) -> Result<(), JacsError> {
-    let found = party_roles(document)
-        .into_iter()
-        .any(|(party_id, party_role)| party_id == agent_id && party_role == role);
-    if found {
+fn assert_status_consistent(document: &Value) -> Result<(), JacsError> {
+    let status = required_str(document, "status")?;
+    let expected_status = recompute_status(document);
+    if status == expected_status {
         Ok(())
     } else {
         Err(JacsError::DocumentError(format!(
+            "status '{}' is inconsistent with agreement policy; expected '{}'",
+            status, expected_status
+        )))
+    }
+}
+
+fn assert_accepts_signature(document: &Value) -> Result<(), JacsError> {
+    assert_status_consistent(document)?;
+    let status = required_str(document, "status")?;
+    if TERMINAL_NON_SIGNING_STATUSES.contains(&status) {
+        Err(JacsError::DocumentError(format!(
+            "agreement status '{}' does not accept new signatures",
+            status
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+fn assert_party_role_and_version(
+    document: &Value,
+    agent_id: &str,
+    agent_version: Option<&str>,
+    role: Role,
+) -> Result<(), JacsError> {
+    let found = party_roles(document)
+        .into_iter()
+        .any(|(party_id, party_role)| party_id == agent_id && party_role == role);
+    if !found {
+        return Err(JacsError::DocumentError(format!(
             "Agent '{}' is not listed as a {} party",
             agent_id,
             role.as_str()
-        )))
+        )));
+    }
+
+    let Some(expected_version) = party_agent_version(document, agent_id) else {
+        return Ok(());
+    };
+    match agent_version {
+        Some(actual_version) if actual_version == expected_version => Ok(()),
+        Some(actual_version) => Err(JacsError::DocumentError(format!(
+            "Agent '{}' signed with agentVersion '{}' but party requires agentVersion '{}'",
+            agent_id, actual_version, expected_version
+        ))),
+        None => Err(JacsError::DocumentError(format!(
+            "Agent '{}' is pinned to agentVersion '{}' but signature has no agentVersion",
+            agent_id, expected_version
+        ))),
     }
 }
 
@@ -647,6 +1483,7 @@ fn emit_successor(
         agent.signing_procedure(&next, None, DOCUMENT_AGENT_SIGNATURE_FIELDNAME)?;
     let document_hash = agent.hash_doc(&next)?;
     next[SHA256_FIELDNAME] = json!(document_hash);
+    validate_agreement_v2_schema(&next)?;
     agent.store_jacs_document(&next)
 }
 
@@ -662,6 +1499,7 @@ fn verify_signature_entry(
     document: &Value,
     entry: &Value,
     transcript_hash: &str,
+    transcript_prefix_hashes: &HashSet<String>,
     counts: &mut SignedRoleCounts,
 ) -> Result<(), JacsError> {
     let role = signature_role(entry).ok_or_else(|| JacsError::DocumentMalformed {
@@ -688,8 +1526,9 @@ fn verify_signature_entry(
             field: "agreementSignatures[].signature.agentID".to_string(),
             reason: "missing signer".to_string(),
         })?;
+    let signature_agent_version = signature.get("agentVersion").and_then(Value::as_str);
     let signer_id = normalize_agent_id(signature_agent).to_string();
-    assert_party_role(document, &signer_id, role)?;
+    assert_party_role_and_version(document, &signer_id, signature_agent_version, role)?;
     verify_signature_policy_for_signature(document, signature)?;
 
     let transcript_non_empty = transcript_array(document).is_some_and(|items| !items.is_empty());
@@ -700,7 +1539,7 @@ fn verify_signature_entry(
     let mut fields = vec!["jacsAgreementHash".to_string()];
     let signed_transcript_hash = entry.get("signedTranscriptHash").and_then(Value::as_str);
     if let Some(signed_transcript_hash) = signed_transcript_hash {
-        if signed_transcript_hash != transcript_hash {
+        if !transcript_prefix_hashes.contains(signed_transcript_hash) {
             return Err(JacsError::HashMismatch {
                 expected: transcript_hash.to_string(),
                 got: signed_transcript_hash.to_string(),
@@ -729,13 +1568,28 @@ fn verify_signature_entry(
 
     match role {
         Role::Signer => {
-            counts.signers.insert(signer_id);
+            if !counts.signers.insert(signer_id.clone()) {
+                return Err(JacsError::DocumentError(format!(
+                    "Agent '{}' has already signed as signer",
+                    signer_id
+                )));
+            }
         }
         Role::Witness => {
-            counts.witnesses.insert(signer_id);
+            if !counts.witnesses.insert(signer_id.clone()) {
+                return Err(JacsError::DocumentError(format!(
+                    "Agent '{}' has already signed as witness",
+                    signer_id
+                )));
+            }
         }
         Role::Notary => {
-            counts.notaries.insert(signer_id);
+            if !counts.notaries.insert(signer_id.clone()) {
+                return Err(JacsError::DocumentError(format!(
+                    "Agent '{}' has already signed as notary",
+                    signer_id
+                )));
+            }
         }
         Role::Observer => {}
     }
@@ -828,26 +1682,154 @@ fn verify_signature_policy_for_signature(
     Ok(())
 }
 
-fn verify_previous_versions_hint(document: &Value) -> Result<(), String> {
+fn verify_header_signature_and_controller(
+    agent: &mut Agent,
+    document: &Value,
+) -> Result<(), JacsError> {
+    let signature = document
+        .get(DOCUMENT_AGENT_SIGNATURE_FIELDNAME)
+        .ok_or_else(|| malformed(DOCUMENT_AGENT_SIGNATURE_FIELDNAME, "missing"))?;
+    let signer = signature
+        .get("agentID")
+        .and_then(Value::as_str)
+        .ok_or_else(|| malformed("jacsSignature.agentID", "missing string"))?;
+    let normalized_signer = normalize_agent_id(signer).to_string();
+    if !controller_allows(document, &normalized_signer)? {
+        return Err(JacsError::DocumentError(format!(
+            "header signer '{}' is not a controller for agreement '{}'",
+            normalized_signer,
+            document
+                .get("jacsId")
+                .and_then(Value::as_str)
+                .unwrap_or("<unknown>")
+        )));
+    }
+
+    let (public_key, public_key_type, public_key_hash) =
+        resolve_signature_public_key(agent, signature)?;
+    agent.signature_verification_procedure(
+        document,
+        None,
+        DOCUMENT_AGENT_SIGNATURE_FIELDNAME,
+        public_key,
+        Some(public_key_type),
+        Some(public_key_hash),
+        None,
+    )
+}
+
+fn verify_previous_versions_chain(agent: &mut Agent, document: &Value) -> Result<(), String> {
+    let all_previous_versions = document
+        .get("allPreviousVersions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            "jacsPreviousVersion chain cannot be verified because allPreviousVersions is missing"
+                .to_string()
+        })?;
+    let listed_versions: Result<Vec<String>, String> = all_previous_versions
+        .iter()
+        .map(|version| {
+            version
+                .as_str()
+                .map(ToString::to_string)
+                .ok_or_else(|| "allPreviousVersions contains a non-string value".to_string())
+        })
+        .collect();
+    let listed_versions = listed_versions?;
+
     let Some(previous_version) = document
         .get(JACS_PREVIOUS_VERSION_FIELDNAME)
         .and_then(Value::as_str)
     else {
-        return Ok(());
-    };
-    let Some(all_previous_versions) = document
-        .get("allPreviousVersions")
-        .and_then(Value::as_array)
-    else {
+        if listed_versions.is_empty() {
+            return Ok(());
+        }
         return Err(
-            "jacsPreviousVersion is present but allPreviousVersions is missing".to_string(),
+            "allPreviousVersions is non-empty but jacsPreviousVersion is missing".to_string(),
         );
     };
-    if all_previous_versions.last().and_then(Value::as_str) == Some(previous_version) {
+
+    if all_previous_versions.last().and_then(Value::as_str) != Some(previous_version) {
+        return Err("allPreviousVersions does not reconcile with jacsPreviousVersion".to_string());
+    }
+
+    let jacs_id = document
+        .get("jacsId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "allPreviousVersions chain cannot be verified without jacsId".to_string())?;
+
+    let mut walked_versions = Vec::new();
+    let mut cursor = Some(previous_version.to_string());
+    let mut guard = 0usize;
+    while let Some(version) = cursor {
+        guard += 1;
+        if guard > listed_versions.len() + 1 {
+            return Err("allPreviousVersions chain appears to contain a cycle".to_string());
+        }
+        walked_versions.push(version.clone());
+        let key = format!("{}:{}", jacs_id, version);
+        let Ok(previous_doc) = agent.get_document(&key) else {
+            walked_versions.reverse();
+            return verify_walked_version_suffix(&listed_versions, &walked_versions);
+        };
+        verify_header_signature_and_controller(agent, &previous_doc.value).map_err(|err| {
+            format!(
+                "prior version '{}' failed header verification: {}",
+                version, err
+            )
+        })?;
+        cursor = previous_doc
+            .value
+            .get(JACS_PREVIOUS_VERSION_FIELDNAME)
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+    }
+
+    walked_versions.reverse();
+    if walked_versions == listed_versions {
+        return Ok(());
+    }
+
+    Err(format!(
+        "allPreviousVersions does not reconcile with stored jacsPreviousVersion chain: listed {:?}, walked {:?}",
+        listed_versions, walked_versions
+    ))
+}
+
+fn verify_walked_version_suffix(
+    listed_versions: &[String],
+    walked_versions: &[String],
+) -> Result<(), String> {
+    if walked_versions.is_empty() {
+        return Ok(());
+    }
+    if walked_versions.len() > listed_versions.len() {
+        return Err(format!(
+            "allPreviousVersions does not reconcile with stored jacsPreviousVersion chain: listed {:?}, walked {:?}",
+            listed_versions, walked_versions
+        ));
+    }
+    let suffix = &listed_versions[listed_versions.len() - walked_versions.len()..];
+    if suffix == walked_versions {
         Ok(())
     } else {
-        Err("allPreviousVersions does not reconcile with jacsPreviousVersion".to_string())
+        Err(format!(
+            "allPreviousVersions does not reconcile with stored jacsPreviousVersion chain: listed {:?}, walked {:?}",
+            listed_versions, walked_versions
+        ))
     }
+}
+
+fn controller_allows(document: &Value, normalized_agent_id: &str) -> Result<bool, JacsError> {
+    let controllers = document
+        .get("controllers")
+        .and_then(Value::as_array)
+        .ok_or_else(|| malformed("controllers", "agreement requires controllers[]"))?;
+    Ok(controllers.iter().any(|id| {
+        id.as_str()
+            .map(|id| normalize_agent_id(id) == normalized_agent_id)
+            .unwrap_or(false)
+    }))
 }
 
 fn party_roles(document: &Value) -> HashMap<String, Role> {
@@ -865,6 +1847,40 @@ fn party_roles(document: &Value) -> HashMap<String, Role> {
             Some((normalize_agent_id(id).to_string(), role))
         })
         .collect()
+}
+
+fn party_role_totals(document: &Value) -> (usize, usize, usize) {
+    let mut signer_total = 0usize;
+    let mut witness_total = 0usize;
+    let mut notary_total = 0usize;
+    for role in party_roles(document).values() {
+        match role {
+            Role::Signer => signer_total += 1,
+            Role::Witness => witness_total += 1,
+            Role::Notary => notary_total += 1,
+            Role::Observer => {}
+        }
+    }
+    (signer_total, witness_total, notary_total)
+}
+
+fn party_agent_version(document: &Value, agent_id: &str) -> Option<String> {
+    document
+        .get("parties")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find_map(|party| {
+            let party_id = party.get("agentId").and_then(Value::as_str)?;
+            if normalize_agent_id(party_id) == agent_id {
+                party
+                    .get("agentVersion")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+            } else {
+                None
+            }
+        })
 }
 
 fn signature_agent_id(entry: &Value) -> Option<String> {
@@ -956,6 +1972,15 @@ fn timeout_expired(document: &Value) -> bool {
         return false;
     };
     time_utils::parse_rfc3339_to_timestamp(timeout)
+        .map(|deadline| deadline < time_utils::now_timestamp())
+        .unwrap_or(false)
+}
+
+fn agreement_expired(document: &Value) -> bool {
+    let Some(expires_at) = document.get("expiresAt").and_then(Value::as_str) else {
+        return false;
+    };
+    time_utils::parse_rfc3339_to_timestamp(expires_at)
         .map(|deadline| deadline < time_utils::now_timestamp())
         .unwrap_or(false)
 }

@@ -35,6 +35,7 @@ https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1
 | [allPreviousVersions](#allpreviousversions) | `array`  | Optional | cannot be null | [Agreement](agreement-allof-1-properties-allpreviousversions.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/allPreviousVersions") |
 | [links](#links)                             | `array`  | Optional | cannot be null | [Agreement](agreement-allof-1-properties-links.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/links")                             |
 | [controllers](#controllers)                 | `array`  | Optional | cannot be null | [Agreement](agreement-allof-1-properties-controllers.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/controllers")                 |
+| [owners](#owners)                           | `array`  | Optional | cannot be null | [Agreement](agreement-allof-1-properties-owners.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/owners")                           |
 
 ## jacsType
 
@@ -388,7 +389,7 @@ Append-only list of every prior jacsVersion of this agreement document, in chron
 
 ## links
 
-Relationship links to other JACS documents. A link target is identified by jacsId and jacsVersion; the containing agreement document signature provides provenance for the link.
+Links to other JACS document versions. A link is intentionally only {jacsId, jacsVersion}; relationship semantics such as supersedes or terminates are expressed by the successor agreement's terms/status, not by extra link fields.
 
 `links`
 
@@ -423,5 +424,27 @@ Agent IDs authorized to propose successor versions, append to transcript, change
 `string[]`
 
 ### controllers Constraints
+
+**unique items**: all items in this array must be unique. Duplicates are not allowed.
+
+## owners
+
+Agent IDs making soft copyright or ownership claims over this agreement document. This does not grant read access, edit authority, or signing authority.
+
+`owners`
+
+* is optional
+
+* Type: `string[]`
+
+* cannot be null
+
+* defined in: [Agreement](agreement-allof-1-properties-owners.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/owners")
+
+### owners Type
+
+`string[]`
+
+### owners Constraints
 
 **unique items**: all items in this array must be unique. Duplicates are not allowed.

@@ -42,7 +42,6 @@ Reference this group by using
 | [agentVersion](#agentversion) | `string` | Optional | cannot be null | [Agreement](agreement-definitions-party-properties-agentversion.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/agentVersion") |
 | [agentType](#agenttype)       | `string` | Required | cannot be null | [Agreement](agreement-definitions-party-properties-agenttype.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/agentType")       |
 | [role](#role)                 | `string` | Required | cannot be null | [Agreement](agreement-definitions-party-properties-role.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/role")                 |
-| [delegatedBy](#delegatedby)   | `string` | Optional | cannot be null | [Agreement](agreement-definitions-party-properties-delegatedby.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/delegatedBy")   |
 | [displayName](#displayname)   | `string` | Optional | cannot be null | [Agreement](agreement-definitions-party-properties-displayname.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/displayName")   |
 
 ### agentId
@@ -146,28 +145,6 @@ Reference this group by using
 | `"witness"`  |             |
 | `"notary"`   |             |
 | `"observer"` |             |
-
-### delegatedBy
-
-Optional: agent id on whose behalf this party signs. Proof of authority lives in agreementSignature.delegationChain.
-
-`delegatedBy`
-
-* is optional
-
-* Type: `string`
-
-* cannot be null
-
-* defined in: [Agreement](agreement-definitions-party-properties-delegatedby.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/properties/delegatedBy")
-
-#### delegatedBy Type
-
-`string`
-
-#### delegatedBy Constraints
-
-**UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
 
 ### displayName
 
@@ -364,7 +341,6 @@ Reference this group by using
 | [signature](#signature)                       | `object` | Required | cannot be null | [Agreement](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/definitions/agreementSignature/properties/signature")                                            |
 | [role](#role-1)                               | `string` | Required | cannot be null | [Agreement](agreement-definitions-agreementsignature-properties-role.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/role")                                 |
 | [signedTranscriptHash](#signedtranscripthash) | `string` | Optional | cannot be null | [Agreement](agreement-definitions-agreementsignature-properties-signedtranscripthash.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/signedTranscriptHash") |
-| [delegationChain](#delegationchain)           | `array`  | Optional | cannot be null | [Agreement](agreement-definitions-agreementsignature-properties-delegationchain.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/delegationChain")           |
 
 ### signature
 
@@ -430,24 +406,6 @@ Canonical hash over the transcript\[] array at the moment of signing. REQUIRED w
 
 `string`
 
-### delegationChain
-
-If signing on behalf of a party, ordered list of signed JACS delegation document references proving authority.
-
-`delegationChain`
-
-* is optional
-
-* Type: `object[]` ([Details](agreement-definitions-jacsdocumentref.md))
-
-* cannot be null
-
-* defined in: [Agreement](agreement-definitions-agreementsignature-properties-delegationchain.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/delegationChain")
-
-#### delegationChain Type
-
-`object[]` ([Details](agreement-definitions-jacsdocumentref.md))
-
 ## Definitions group agreementLink
 
 Reference this group by using
@@ -458,40 +416,8 @@ Reference this group by using
 
 | Property                    | Type     | Required | Nullable       | Defined by                                                                                                                                                                               |
 | :-------------------------- | :------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [rel](#rel)                 | `string` | Required | cannot be null | [Agreement](agreement-definitions-agreementlink-properties-rel.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink/properties/rel")                 |
 | [jacsId](#jacsid)           | `string` | Required | cannot be null | [Agreement](agreement-definitions-agreementlink-properties-jacsid.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink/properties/jacsId")           |
 | [jacsVersion](#jacsversion) | `string` | Required | cannot be null | [Agreement](agreement-definitions-agreementlink-properties-jacsversion.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink/properties/jacsVersion") |
-| [reason](#reason)           | `string` | Optional | cannot be null | [Agreement](agreement-definitions-agreementlink-properties-reason.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink/properties/reason")           |
-
-### rel
-
-
-
-`rel`
-
-* is required
-
-* Type: `string`
-
-* cannot be null
-
-* defined in: [Agreement](agreement-definitions-agreementlink-properties-rel.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink/properties/rel")
-
-#### rel Type
-
-`string`
-
-#### rel Constraints
-
-**enum**: the value of this property must be equal to one of the following values:
-
-| Value          | Explanation |
-| :------------- | :---------- |
-| `"references"` |             |
-| `"amends"`     |             |
-| `"supersedes"` |             |
-| `"terminates"` |             |
-| `"renews"`     |             |
 
 ### jacsId
 
@@ -536,28 +462,6 @@ Reference this group by using
 #### jacsVersion Constraints
 
 **UUID**: the string must be a UUID, according to [RFC 4122](https://tools.ietf.org/html/rfc4122 "check the specification")
-
-### reason
-
-
-
-`reason`
-
-* is optional
-
-* Type: `string`
-
-* cannot be null
-
-* defined in: [Agreement](agreement-definitions-agreementlink-properties-reason.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementLink/properties/reason")
-
-#### reason Type
-
-`string`
-
-#### reason Constraints
-
-**maximum length**: the maximum number of characters for this string is: `1024`
 
 ## Definitions group jacsDocumentRef
 

@@ -22,6 +22,7 @@ include = [
     "schemas/components/files/v1/files.schema.json",
     "schemas/components/signature/v1/signature.schema.json",
     "schemas/components/agreement/v1/agreement.schema.json",
+    "schemas/agreement/v2/agreement.schema.json",
     "schemas/attestation/v1/attestation.schema.json",
     "schemas/a2a-verification-result.schema.json",
     "schemas/jacs.config.schema.json",

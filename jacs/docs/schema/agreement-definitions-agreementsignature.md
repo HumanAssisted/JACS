@@ -4,7 +4,7 @@
 https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature
 ```
 
-A JACS signature over the agreement. The inner signature object binds jacsAgreementHash (and signedTranscriptHash when transcript is non-empty) and carries the signer's agent identity and timestamp. The wrapper carries only what the JACS signature cannot: the agreement role, the transcript snapshot, and an optional delegation chain.
+A JACS signature over the agreement. The inner signature object binds jacsAgreementHash (and signedTranscriptHash when transcript is non-empty) and carries the signer's agent identity and timestamp. Delegated signing is intentionally not part of v2 core: a future version may allow one agent to sign on behalf of a listed party when a signed delegation document proves authority.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
@@ -21,7 +21,6 @@ A JACS signature over the agreement. The inner signature object binds jacsAgreem
 | [signature](#signature)                       | `object` | Required | cannot be null | [Agreement](header-properties-signature-1.md "https://hai.ai/schemas/components/signature/v1/signature.schema.json#/definitions/agreementSignature/properties/signature")                                            |
 | [role](#role)                                 | `string` | Required | cannot be null | [Agreement](agreement-definitions-agreementsignature-properties-role.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/role")                                 |
 | [signedTranscriptHash](#signedtranscripthash) | `string` | Optional | cannot be null | [Agreement](agreement-definitions-agreementsignature-properties-signedtranscripthash.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/signedTranscriptHash") |
-| [delegationChain](#delegationchain)           | `array`  | Optional | cannot be null | [Agreement](agreement-definitions-agreementsignature-properties-delegationchain.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/delegationChain")           |
 
 ## signature
 
@@ -86,21 +85,3 @@ Canonical hash over the transcript\[] array at the moment of signing. REQUIRED w
 ### signedTranscriptHash Type
 
 `string`
-
-## delegationChain
-
-If signing on behalf of a party, ordered list of signed JACS delegation document references proving authority.
-
-`delegationChain`
-
-* is optional
-
-* Type: `object[]` ([Details](agreement-definitions-jacsdocumentref.md))
-
-* cannot be null
-
-* defined in: [Agreement](agreement-definitions-agreementsignature-properties-delegationchain.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/delegationChain")
-
-### delegationChain Type
-
-`object[]` ([Details](agreement-definitions-jacsdocumentref.md))
