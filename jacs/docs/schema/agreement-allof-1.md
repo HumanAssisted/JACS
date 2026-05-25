@@ -26,6 +26,8 @@ https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1
 | [terms](#terms)                             | `string` | Required | cannot be null | [Agreement](agreement-allof-1-properties-terms.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/terms")                             |
 | [termsFormat](#termsformat)                 | `string` | Optional | cannot be null | [Agreement](agreement-allof-1-properties-termsformat.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/termsFormat")                 |
 | [status](#status)                           | `string` | Required | cannot be null | [Agreement](agreement-allof-1-properties-status.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/status")                           |
+| [effectiveFrom](#effectivefrom)             | `string` | Optional | cannot be null | [Agreement](agreement-allof-1-properties-effectivefrom.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/effectiveFrom")             |
+| [expiresAt](#expiresat)                     | `string` | Optional | cannot be null | [Agreement](agreement-allof-1-properties-expiresat.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/expiresAt")                     |
 | [parties](#parties)                         | `array`  | Required | cannot be null | [Agreement](agreement-allof-1-properties-parties.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/parties")                         |
 | [signaturePolicy](#signaturepolicy)         | `object` | Required | cannot be null | [Agreement](agreement-definitions-signaturepolicy.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/signaturePolicy")                |
 | [agreementSignatures](#agreementsignatures) | `array`  | Required | cannot be null | [Agreement](agreement-allof-1-properties-agreementsignatures.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/agreementSignatures") |
@@ -88,7 +90,7 @@ https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1
 
 ## jacsAgreementHash
 
-Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, parties, and signaturePolicy. NOT over: transcript, agreementSignatures, allPreviousVersions, controllers, or any header field. Appending to transcript, appending agreementSignatures, or appending to allPreviousVersions must not change this hash.
+Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, effectiveFrom, expiresAt, parties, and signaturePolicy. NOT over: transcript, agreementSignatures, allPreviousVersions, controllers, links, or any header field. Appending to transcript, appending agreementSignatures, appending to allPreviousVersions, or updating links must not change this hash.
 
 `jacsAgreementHash`
 
@@ -245,6 +247,50 @@ The default value is:
 | `"disputed"`         |             |
 | `"superseded"`       |             |
 | `"terminated"`       |             |
+
+## effectiveFrom
+
+Optional ISO 8601 timestamp when agreement obligations begin. Distinct from agreement signature timestamps and signaturePolicy.timeout.
+
+`effectiveFrom`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Agreement](agreement-allof-1-properties-effectivefrom.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/effectiveFrom")
+
+### effectiveFrom Type
+
+`string`
+
+### effectiveFrom Constraints
+
+**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
+
+## expiresAt
+
+Optional ISO 8601 timestamp when this agreement stops governing. Distinct from signaturePolicy.timeout, which is the deadline for collecting signatures.
+
+`expiresAt`
+
+* is optional
+
+* Type: `string`
+
+* cannot be null
+
+* defined in: [Agreement](agreement-allof-1-properties-expiresat.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/expiresAt")
+
+### expiresAt Type
+
+`string`
+
+### expiresAt Constraints
+
+**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")
 
 ## parties
 

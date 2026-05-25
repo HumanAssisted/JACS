@@ -43,7 +43,7 @@ SACRED CRYPTOGRAPHIC COMMITMENT: A signature is a permanent, irreversible crypto
 
 ## role
 
-Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired.
+Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired; notary signatures provide distinct notarial attestation.
 
 `role`
 
@@ -67,6 +67,7 @@ Signer signatures count toward partyQuorum; witness signatures count toward witn
 | :---------- | :---------- |
 | `"signer"`  |             |
 | `"witness"` |             |
+| `"notary"`  |             |
 
 ## signedTranscriptHash
 

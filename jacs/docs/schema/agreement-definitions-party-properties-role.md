@@ -22,4 +22,5 @@ https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party/pro
 | :----------- | :---------- |
 | `"signer"`   |             |
 | `"witness"`  |             |
+| `"notary"`   |             |
 | `"observer"` |             |

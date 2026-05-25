@@ -23,7 +23,7 @@
         "jacsAgreementHash": {
           "type": "string",
           "minLength": 1,
-          "description": "Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, parties, and signaturePolicy. NOT over: transcript, agreementSignatures, allPreviousVersions, controllers, or any header field. Appending to transcript, appending agreementSignatures, or appending to allPreviousVersions must not change this hash.",
+          "description": "Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, effectiveFrom, expiresAt, parties, and signaturePolicy. NOT over: transcript, agreementSignatures, allPreviousVersions, controllers, links, or any header field. Appending to transcript, appending agreementSignatures, appending to allPreviousVersions, or updating links must not change this hash.",
           "hai": "base"
         },
         "title": {
@@ -66,6 +66,18 @@
             "terminated"
           ],
           "hai": "agent"
+        },
+        "effectiveFrom": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional ISO 8601 timestamp when agreement obligations begin. Distinct from agreement signature timestamps and signaturePolicy.timeout.",
+          "hai": "meta"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional ISO 8601 timestamp when this agreement stops governing. Distinct from signaturePolicy.timeout, which is the deadline for collecting signatures.",
+          "hai": "meta"
         },
         "parties": {
           "type": "array",
@@ -137,7 +149,7 @@
   "definitions": {
     "party": {
       "type": "object",
-      "description": "A participant in an agreement. Signer-role parties consent and are bound. Witness-role parties attest but are not bound. Observer-role parties are listed without consent or attestation.",
+      "description": "A participant in an agreement. Signer-role parties consent and are bound. Witness-role parties attest but are not bound. Notary-role parties provide notarial attestation with distinct legal weight from a witness. Observer-role parties are listed without consent or attestation.",
       "properties": {
         "agentId": {
           "type": "string",
@@ -164,6 +176,7 @@
           "enum": [
             "signer",
             "witness",
+            "notary",
             "observer"
           ],
           "hai": "base"
@@ -216,6 +229,13 @@
           "description": "Minimum witness-role party signatures required in addition to signer quorum. Witnesses do not count toward partyQuorum.",
           "hai": "base"
         },
+        "notaryRequired": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Minimum notary-role party signatures required in addition to signer quorum and witness signatures. HAI-style notaries do not count toward partyQuorum.",
+          "hai": "base"
+        },
         "timeout": {
           "type": "string",
           "format": "date-time",
@@ -254,9 +274,10 @@
           "type": "string",
           "enum": [
             "signer",
-            "witness"
+            "witness",
+            "notary"
           ],
-          "description": "Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired.",
+          "description": "Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired; notary signatures provide distinct notarial attestation.",
           "hai": "base"
         },
         "signedTranscriptHash": {

@@ -4,7 +4,7 @@
 https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/party
 ```
 
-A participant in an agreement. Signer-role parties consent and are bound. Witness-role parties attest but are not bound. Observer-role parties are listed without consent or attestation.
+A participant in an agreement. Signer-role parties consent and are bound. Witness-role parties attest but are not bound. Notary-role parties provide notarial attestation with distinct legal weight from a witness. Observer-role parties are listed without consent or attestation.
 
 | Abstract            | Extensible | Status         | Identifiable | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :----------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
@@ -124,6 +124,7 @@ A participant in an agreement. Signer-role parties consent and are bound. Witnes
 | :----------- | :---------- |
 | `"signer"`   |             |
 | `"witness"`  |             |
+| `"notary"`   |             |
 | `"observer"` |             |
 
 ## delegatedBy

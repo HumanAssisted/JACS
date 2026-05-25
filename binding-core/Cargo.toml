@@ -14,6 +14,7 @@ homepage = "https://humanassisted.github.io/JACS"
 [features]
 default = []
 a2a = ["jacs/a2a"]
+agreements = ["jacs/agreements"]
 attestation = ["jacs/attestation"]
 # Post-quantum algorithm tests (slow keygen). Omit for fast test runs.
 pq-tests = []

@@ -144,6 +144,7 @@ Reference this group by using
 | :----------- | :---------- |
 | `"signer"`   |             |
 | `"witness"`  |             |
+| `"notary"`   |             |
 | `"observer"` |             |
 
 ### delegatedBy
@@ -202,6 +203,7 @@ Reference this group by using
 | :---------------------------------------- | :-------- | :------- | :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [partyQuorum](#partyquorum)               | Merged    | Required | cannot be null | [Agreement](agreement-definitions-signaturepolicy-properties-partyquorum.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/partyQuorum")               |
 | [witnessRequired](#witnessrequired)       | `integer` | Optional | cannot be null | [Agreement](agreement-definitions-signaturepolicy-properties-witnessrequired.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/witnessRequired")       |
+| [notaryRequired](#notaryrequired)         | `integer` | Optional | cannot be null | [Agreement](agreement-definitions-signaturepolicy-properties-notaryrequired.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/notaryRequired")         |
 | [timeout](#timeout)                       | `string`  | Optional | cannot be null | [Agreement](agreement-definitions-signaturepolicy-properties-timeout.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/timeout")                       |
 | [requiredAlgorithms](#requiredalgorithms) | `array`   | Optional | cannot be null | [Agreement](agreement-definitions-signaturepolicy-properties-requiredalgorithms.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/requiredAlgorithms") |
 | [minimumStrength](#minimumstrength)       | `string`  | Optional | cannot be null | [Agreement](agreement-definitions-signaturepolicy-properties-minimumstrength.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/minimumStrength")       |
@@ -257,6 +259,28 @@ Minimum witness-role party signatures required in addition to signer quorum. Wit
 `integer`
 
 #### witnessRequired Constraints
+
+**minimum**: the value of this number must greater than or equal to: `0`
+
+### notaryRequired
+
+Minimum notary-role party signatures required in addition to signer quorum and witness signatures. HAI-style notaries do not count toward partyQuorum.
+
+`notaryRequired`
+
+* is optional
+
+* Type: `integer`
+
+* cannot be null
+
+* defined in: [Agreement](agreement-definitions-signaturepolicy-properties-notaryrequired.md "https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/notaryRequired")
+
+#### notaryRequired Type
+
+`integer`
+
+#### notaryRequired Constraints
 
 **minimum**: the value of this number must greater than or equal to: `0`
 
@@ -362,7 +386,7 @@ SACRED CRYPTOGRAPHIC COMMITMENT: A signature is a permanent, irreversible crypto
 
 ### role
 
-Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired.
+Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired; notary signatures provide distinct notarial attestation.
 
 `role`
 
@@ -386,6 +410,7 @@ Signer signatures count toward partyQuorum; witness signatures count toward witn
 | :---------- | :---------- |
 | `"signer"`  |             |
 | `"witness"` |             |
+| `"notary"`  |             |
 
 ### signedTranscriptHash
 

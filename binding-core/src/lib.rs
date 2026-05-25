@@ -32,6 +32,8 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+#[cfg(feature = "agreements")]
+pub mod agreement_v2;
 pub mod conversion;
 pub mod doc_wrapper;
 pub mod simple_wrapper;
@@ -1334,6 +1336,46 @@ impl AgentWrapper {
                 })?;
 
             Ok(signed_doc.value.to_string())
+        })
+    }
+
+    /// Create a standalone agreement v2 document from JSON input.
+    #[cfg(feature = "agreements")]
+    pub fn create_agreement_v2_json(&self, input_json: &str) -> BindingResult<String> {
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agreement_v2::create_agreement_v2_json(&mut agent, input_json)
+        })
+    }
+
+    /// Apply a JSON mutation to an agreement v2 document.
+    #[cfg(feature = "agreements")]
+    pub fn apply_agreement_v2_json(
+        &self,
+        document_json: &str,
+        mutation_json: &str,
+    ) -> BindingResult<String> {
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agreement_v2::apply_agreement_v2_json(&mut agent, document_json, mutation_json)
+        })
+    }
+
+    /// Sign an agreement v2 document as signer, witness, or notary.
+    #[cfg(feature = "agreements")]
+    pub fn sign_agreement_v2_json(&self, document_json: &str, role: &str) -> BindingResult<String> {
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agreement_v2::sign_agreement_v2_json(&mut agent, document_json, role)
+        })
+    }
+
+    /// Verify agreement v2 hashes, signature policy, role membership, and signatures.
+    #[cfg(feature = "agreements")]
+    pub fn verify_agreement_v2_json(&self, document_json: &str) -> BindingResult<String> {
+        self.with_private_key_password(|| {
+            let mut agent = self.lock()?;
+            agreement_v2::verify_agreement_v2_json(&mut agent, document_json)
         })
     }
 

@@ -1,25 +1,19 @@
-# Untitled string in Agreement Schema
+# Untitled integer in Agreement Schema
 
 ```txt
-https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/role
+https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/signaturePolicy/properties/notaryRequired
 ```
 
-Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired; notary signatures provide distinct notarial attestation.
+Minimum notary-role party signatures required in addition to signer quorum and witness signatures. HAI-style notaries do not count toward partyQuorum.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [agreement.schema.json\*](../../schemas/agreement/v2/agreement.schema.json "open original schema") |
 
-## role Type
+## notaryRequired Type
 
-`string`
+`integer`
 
-## role Constraints
+## notaryRequired Constraints
 
-**enum**: the value of this property must be equal to one of the following values:
-
-| Value       | Explanation |
-| :---------- | :---------- |
-| `"signer"`  |             |
-| `"witness"` |             |
-| `"notary"`  |             |
+**minimum**: the value of this number must greater than or equal to: `0`

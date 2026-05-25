@@ -1,25 +1,19 @@
 # Untitled string in Agreement Schema
 
 ```txt
-https://hai.ai/schemas/agreement/v2/agreement.schema.json#/definitions/agreementSignature/properties/role
+https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/expiresAt
 ```
 
-Signer signatures count toward partyQuorum; witness signatures count toward witnessRequired; notary signatures provide distinct notarial attestation.
+Optional ISO 8601 timestamp when this agreement stops governing. Distinct from signaturePolicy.timeout, which is the deadline for collecting signatures.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
 | Can be instantiated | No         | Unknown status | Unknown identifiability | Forbidden         | Allowed               | none                | [agreement.schema.json\*](../../schemas/agreement/v2/agreement.schema.json "open original schema") |
 
-## role Type
+## expiresAt Type
 
 `string`
 
-## role Constraints
+## expiresAt Constraints
 
-**enum**: the value of this property must be equal to one of the following values:
-
-| Value       | Explanation |
-| :---------- | :---------- |
-| `"signer"`  |             |
-| `"witness"` |             |
-| `"notary"`  |             |
+**date time**: the string must be a date time string, according to [RFC 3339, section 5.6](https://tools.ietf.org/html/rfc3339 "check the specification")

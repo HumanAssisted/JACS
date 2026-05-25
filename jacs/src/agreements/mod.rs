@@ -13,6 +13,8 @@ use crate::simple::SimpleAgent;
 use crate::simple::types::*;
 use tracing::{debug, info};
 
+pub mod v2;
+
 /// Creates a multi-party agreement requiring signatures from specified agents.
 ///
 /// This creates an agreement on a document that must be signed by all specified

@@ -4,7 +4,7 @@
 https://hai.ai/schemas/agreement/v2/agreement.schema.json#/allOf/1/properties/jacsAgreementHash
 ```
 
-Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, parties, and signaturePolicy. NOT over: transcript, agreementSignatures, allPreviousVersions, controllers, or any header field. Appending to transcript, appending agreementSignatures, or appending to allPreviousVersions must not change this hash.
+Stable hash of the agreement consent scope. SDKs compute this over: title, description, terms, termsFormat, effectiveFrom, expiresAt, parties, and signaturePolicy. NOT over: transcript, agreementSignatures, allPreviousVersions, controllers, links, or any header field. Appending to transcript, appending agreementSignatures, appending to allPreviousVersions, or updating links must not change this hash.
 
 | Abstract            | Extensible | Status         | Identifiable            | Custom Properties | Additional Properties | Access Restrictions | Defined In                                                                                         |
 | :------------------ | :--------- | :------------- | :---------------------- | :---------------- | :-------------------- | :------------------ | :------------------------------------------------------------------------------------------------- |
