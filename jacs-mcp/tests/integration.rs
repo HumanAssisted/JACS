@@ -127,6 +127,47 @@ fn parse_json_string_field(
     Ok(serde_json::from_str(raw)?)
 }
 
+fn agreement_v2_agent_id_from_config(base: &std::path::Path) -> anyhow::Result<String> {
+    let config: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(base.join("jacs.config.json"))?)?;
+    Ok(config["jacs_agent_id_and_version"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing jacs_agent_id_and_version"))?
+        .split(':')
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("empty jacs_agent_id_and_version"))?
+        .to_string())
+}
+
+fn agreement_v2_input(agent_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "title": "Agreement v2 MCP parity",
+        "description": "The MCP tool layer must execute the Rust core agreement workflow.",
+        "terms": "MCP tools create, mutate, sign, verify, and reconcile agreements.",
+        "termsFormat": "text/plain",
+        "status": "proposed",
+        "parties": [
+            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
+        ],
+        "signaturePolicy": {
+            "partyQuorum": "all",
+            "witnessRequired": 0,
+            "notaryRequired": 0,
+            "requiredAlgorithms": ["ring-Ed25519"],
+            "minimumStrength": "classical"
+        },
+        "controllers": [agent_id]
+    })
+}
+
+fn agreement_v2_transcript_ref(index: u8) -> serde_json::Value {
+    serde_json::json!({
+        "jacsId": format!("20000000-0000-4000-8000-{:012}", index),
+        "jacsVersion": format!("30000000-0000-4000-8000-{:012}", index),
+        "jacsSha256": format!("mcp-sha256-test-{}", index)
+    })
+}
+
 impl Drop for RmcpSession {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.base);
@@ -383,6 +424,155 @@ async fn mcp_w3c_did_discovery_and_request_proof_round_trip() -> anyhow::Result<
     assert_eq!(verified["success"], true, "verify proof: {}", verified);
     assert_eq!(verified["verification"]["valid"], true);
     assert_eq!(verified["verification"]["expectedRequestChecked"], true);
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
+
+    let created_result = session
+        .call_tool(
+            "jacs_create_agreement_v2",
+            serde_json::json!({ "input": agreement_v2_input(&agent_id) }),
+        )
+        .await?;
+    assert_eq!(created_result["success"], true, "{}", created_result);
+    let created = created_result["agreement"]
+        .as_str()
+        .expect("created agreement")
+        .to_string();
+
+    let signed_result = session
+        .call_tool(
+            "jacs_sign_agreement_v2",
+            serde_json::json!({ "agreement": created.clone(), "role": "signer" }),
+        )
+        .await?;
+    assert_eq!(signed_result["success"], true, "{}", signed_result);
+    let signed = signed_result["agreement"]
+        .as_str()
+        .expect("signed agreement")
+        .to_string();
+
+    let verify_result = session
+        .call_tool(
+            "jacs_verify_agreement_v2",
+            serde_json::json!({ "agreement": signed }),
+        )
+        .await?;
+    assert_eq!(verify_result["success"], true, "{}", verify_result);
+    assert_eq!(verify_result["result"]["valid"], true, "{}", verify_result);
+    assert_eq!(
+        verify_result["result"]["expectedStatus"],
+        serde_json::json!("final")
+    );
+
+    let left_result = session
+        .call_tool(
+            "jacs_apply_agreement_v2",
+            serde_json::json!({
+                "agreement": created.clone(),
+                "mutation": {"type": "appendTranscript", "entry": agreement_v2_transcript_ref(1)}
+            }),
+        )
+        .await?;
+    let right_result = session
+        .call_tool(
+            "jacs_apply_agreement_v2",
+            serde_json::json!({
+                "agreement": created.clone(),
+                "mutation": {"type": "appendTranscript", "entry": agreement_v2_transcript_ref(2)}
+            }),
+        )
+        .await?;
+    assert_eq!(left_result["success"], true, "{}", left_result);
+    assert_eq!(right_result["success"], true, "{}", right_result);
+    let left = left_result["agreement"].as_str().expect("left").to_string();
+    let right = right_result["agreement"]
+        .as_str()
+        .expect("right")
+        .to_string();
+
+    let analysis_result = session
+        .call_tool(
+            "jacs_detect_agreement_v2_branch_conflict",
+            serde_json::json!({ "base": created.clone(), "left": left.clone(), "right": right.clone() }),
+        )
+        .await?;
+    assert_eq!(analysis_result["success"], true, "{}", analysis_result);
+    assert_eq!(analysis_result["result"]["autoMergeable"], true);
+
+    let merged_result = session
+        .call_tool(
+            "jacs_merge_agreement_v2_transcript_branches",
+            serde_json::json!({
+                "base": created.clone(),
+                "left": left_result["agreement"].as_str().expect("left"),
+                "right": right_result["agreement"].as_str().expect("right")
+            }),
+        )
+        .await?;
+    assert_eq!(merged_result["success"], true, "{}", merged_result);
+    let merged: serde_json::Value = serde_json::from_str(
+        merged_result["agreement"]
+            .as_str()
+            .expect("merged agreement"),
+    )?;
+    assert_eq!(merged["transcript"].as_array().unwrap().len(), 2);
+
+    let left_terms_result = session
+        .call_tool(
+            "jacs_apply_agreement_v2",
+            serde_json::json!({
+                "agreement": created.clone(),
+                "mutation": {"type": "updateTerms", "terms": "Left terms."}
+            }),
+        )
+        .await?;
+    let right_terms_result = session
+        .call_tool(
+            "jacs_apply_agreement_v2",
+            serde_json::json!({
+                "agreement": created.clone(),
+                "mutation": {"type": "updateTerms", "terms": "Right terms."}
+            }),
+        )
+        .await?;
+    let resolved_result = session
+        .call_tool(
+            "jacs_resolve_agreement_v2_branch_conflict",
+            serde_json::json!({
+                "base": created.clone(),
+                "previous": left_terms_result["agreement"].as_str().expect("left terms"),
+                "side_branch": right_terms_result["agreement"].as_str().expect("right terms"),
+                "mutation": {"type": "updateTerms", "terms": "Resolved terms."}
+            }),
+        )
+        .await?;
+    assert_eq!(resolved_result["success"], true, "{}", resolved_result);
+    let resolved: serde_json::Value = serde_json::from_str(
+        resolved_result["agreement"]
+            .as_str()
+            .expect("resolved agreement"),
+    )?;
+    let right_terms: serde_json::Value = serde_json::from_str(
+        right_terms_result["agreement"]
+            .as_str()
+            .expect("right terms agreement"),
+    )?;
+    assert_eq!(resolved["terms"], serde_json::json!("Resolved terms."));
+    assert_eq!(
+        resolved["links"][0],
+        serde_json::json!({
+            "jacsId": right_terms["jacsId"],
+            "jacsVersion": right_terms["jacsVersion"]
+        })
+    );
 
     session.client.cancellation_token().cancel();
     Ok(())

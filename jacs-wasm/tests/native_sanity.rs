@@ -10,6 +10,7 @@
 
 use jacs_wasm::{CoreAgentHandle, create_ephemeral, create_verifier};
 use serde_json::{Value, json};
+use std::path::Path;
 
 #[allow(dead_code)]
 fn extract_code(err: &wasm_bindgen::JsError) -> Option<String> {
@@ -157,6 +158,177 @@ fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
     assert_eq!(report["valid"], Value::Bool(true));
     assert_eq!(report["status"], Value::String("final".to_string()));
     assert_eq!(report["signerCount"], Value::from(1));
+}
+
+fn wasm_agent_id(handle: &CoreAgentHandle) -> String {
+    let agent: Value = serde_json::from_str(&handle.export_agent().expect("agent")).unwrap();
+    agent["jacsId"].as_str().unwrap().to_string()
+}
+
+fn wasm_agreement_v2_input(agent_id: &str) -> Value {
+    json!({
+        "title": "Browser approval",
+        "description": "A small agreement created through the wasm surface",
+        "terms": "Proceed with the test.",
+        "termsFormat": "text/plain",
+        "status": "proposed",
+        "parties": [
+            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
+        ],
+        "signaturePolicy": {
+            "partyQuorum": "all",
+            "witnessRequired": 0,
+            "notaryRequired": 0
+        },
+        "controllers": [agent_id]
+    })
+}
+
+fn wasm_doc_ref(index: u8) -> Value {
+    json!({
+        "jacsId": format!("40000000-0000-4000-8000-{:012}", index),
+        "jacsVersion": format!("50000000-0000-4000-8000-{:012}", index),
+        "jacsSha256": format!("wasm-sha256-test-{}", index)
+    })
+}
+
+#[test]
+fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../binding-core/tests/fixtures/method_parity.json");
+    let fixture: Value =
+        serde_json::from_str(&std::fs::read_to_string(fixture_path).unwrap()).unwrap();
+    let declarations =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("jacs_wasm.d.ts"))
+            .unwrap();
+    let mapping = [
+        ("create_agreement_v2_json", "createAgreementV2Json"),
+        ("apply_agreement_v2_json", "applyAgreementV2Json"),
+        ("sign_agreement_v2_json", "signAgreementV2Json"),
+        ("verify_agreement_v2_json", "verifyAgreementV2Json"),
+        (
+            "detect_agreement_v2_branch_conflict_json",
+            "detectAgreementV2BranchConflictJson",
+        ),
+        (
+            "merge_agreement_v2_transcript_branches_json",
+            "mergeAgreementV2TranscriptBranchesJson",
+        ),
+        (
+            "resolve_agreement_v2_branch_conflict_json",
+            "resolveAgreementV2BranchConflictJson",
+        ),
+    ];
+    let agreement_methods = fixture["feature_gated_methods"]["agreements"]
+        .as_array()
+        .expect("agreement methods");
+
+    for method in agreement_methods {
+        let rust_name = method.as_str().expect("method name");
+        let wasm_name = mapping
+            .iter()
+            .find_map(|(rust, wasm)| (*rust == rust_name).then_some(*wasm))
+            .unwrap_or_else(|| panic!("missing wasm mapping for {rust_name}"));
+        assert!(
+            declarations.contains(&format!("{wasm_name}(")),
+            "missing {wasm_name} declaration for {rust_name}"
+        );
+    }
+}
+
+#[test]
+fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
+    let handle = create_ephemeral("ed25519").expect("create");
+    let agent_id = wasm_agent_id(&handle);
+    let base = handle
+        .create_agreement_v2_json(&wasm_agreement_v2_input(&agent_id).to_string())
+        .expect("create agreement v2");
+    let left = handle
+        .apply_agreement_v2_json(
+            &base,
+            &json!({"type": "appendTranscript", "entry": wasm_doc_ref(1)}).to_string(),
+        )
+        .expect("left transcript");
+    let right = handle
+        .apply_agreement_v2_json(
+            &base,
+            &json!({"type": "appendTranscript", "entry": wasm_doc_ref(2)}).to_string(),
+        )
+        .expect("right transcript");
+
+    let analysis: Value = serde_json::from_str(
+        &handle
+            .detect_agreement_v2_branch_conflict_json(&base, &left, &right)
+            .expect("detect branch conflict"),
+    )
+    .unwrap();
+    assert_eq!(analysis["autoMergeable"], Value::Bool(true));
+
+    let merged: Value = serde_json::from_str(
+        &handle
+            .merge_agreement_v2_transcript_branches_json(&base, &left, &right)
+            .expect("merge transcript branches"),
+    )
+    .unwrap();
+    assert_eq!(merged["transcript"].as_array().unwrap().len(), 2);
+
+    let left_terms = handle
+        .apply_agreement_v2_json(
+            &base,
+            &json!({"type": "updateTerms", "terms": "Left terms."}).to_string(),
+        )
+        .expect("left terms");
+    let right_terms = handle
+        .apply_agreement_v2_json(
+            &base,
+            &json!({"type": "updateTerms", "terms": "Right terms."}).to_string(),
+        )
+        .expect("right terms");
+    let resolved: Value = serde_json::from_str(
+        &handle
+            .resolve_agreement_v2_branch_conflict_json(
+                &base,
+                &left_terms,
+                &right_terms,
+                &json!({"type": "updateTerms", "terms": "Resolved terms."}).to_string(),
+            )
+            .expect("resolve branch conflict"),
+    )
+    .unwrap();
+    let right_terms_doc: Value = serde_json::from_str(&right_terms).unwrap();
+    assert_eq!(
+        resolved["terms"],
+        Value::String("Resolved terms.".to_string())
+    );
+    assert_eq!(
+        resolved["links"][0],
+        json!({
+            "jacsId": right_terms_doc["jacsId"],
+            "jacsVersion": right_terms_doc["jacsVersion"]
+        })
+    );
+
+    let notary = create_ephemeral("ed25519").expect("notary");
+    let notary_id = wasm_agent_id(&notary);
+    let mut input = wasm_agreement_v2_input(&agent_id);
+    input["parties"] = json!([
+        {"agentId": agent_id, "agentType": "ai", "role": "signer"},
+        {"agentId": notary_id, "agentType": "ai", "role": "notary"}
+    ]);
+    input["signaturePolicy"]["notaryRequired"] = json!(1);
+    let created = handle
+        .create_agreement_v2_json(&input.to_string())
+        .expect("create notary agreement");
+    let notarized: Value = serde_json::from_str(
+        &notary
+            .sign_agreement_v2_json(&created, "notary")
+            .expect("notary sign"),
+    )
+    .unwrap();
+    assert_eq!(
+        notarized["agreementSignatures"][0]["role"],
+        Value::String("notary".to_string())
+    );
 }
 
 #[test]
