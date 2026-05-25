@@ -22,4 +22,4 @@ These should stay narrow; the Rust core tests already own deep agreement semanti
 `binding-core/tests/fixtures/cli_mcp_alignment.json`
 
 ## Resolution
-Added CLI execution coverage for `agreement-v2 create/apply/sign/verify/detect-conflict/merge-transcript/resolve-conflict` and MCP stdio execution coverage for the same v2 workflow through the registered tools.
+Added CLI execution coverage for `agreement-v2 create/apply/sign/verify/detect-conflict/merge-transcript/resolve-conflict` and MCP stdio execution coverage for the same v2 workflow through the registered tools. Both surfaces now consume the shared agreement v2 scenario fixture.

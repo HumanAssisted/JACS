@@ -1,4 +1,11 @@
 const { expect } = require('chai');
+const fs = require('fs');
+const path = require('path');
+
+const FIXTURE = JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, '../../binding-core/tests/fixtures/agreement_v2_scenarios.json'),
+  'utf8',
+));
 
 describe('Node.js agreement v2 behavioral parity', function () {
   let JacsSimpleAgent;
@@ -18,35 +25,18 @@ describe('Node.js agreement v2 behavioral parity', function () {
   }
 
   function baseInput(agentId) {
-    return {
-      title: 'Agreement v2 parity',
-      description: 'Portable agreement v2 workflow test.',
-      terms: 'The binding must delegate agreement v2 behavior to Rust core.',
-      termsFormat: 'text/plain',
-      status: 'proposed',
-      parties: [{ agentId, agentType: 'ai', role: 'signer' }],
-      signaturePolicy: {
-        partyQuorum: 'all',
-        witnessRequired: 0,
-        notaryRequired: 0,
-        requiredAlgorithms: ['ring-Ed25519'],
-        minimumStrength: 'classical',
-      },
-      controllers: [agentId],
-    };
+    const input = JSON.parse(JSON.stringify(FIXTURE.base_input));
+    input.parties = [{ agentId, agentType: 'ai', role: 'signer' }];
+    input.controllers = [agentId];
+    return input;
   }
 
   function createAgreement(agent, agentId) {
     return agent.createAgreementV2Sync(JSON.stringify(baseInput(agentId)));
   }
 
-  function documentRef(agent, message) {
-    const raw = JSON.parse(agent.signMessage(JSON.stringify({ message })));
-    return {
-      jacsId: raw.jacsId,
-      jacsVersion: raw.jacsVersion,
-      jacsSha256: raw.jacsSha256,
-    };
+  function transcriptRef(name) {
+    return JSON.parse(JSON.stringify(FIXTURE.transcript_refs[name]));
   }
 
   function apply(agent, document, mutation) {
@@ -86,11 +76,11 @@ describe('Node.js agreement v2 behavioral parity', function () {
     const base = createAgreement(agent, agentId);
     const left = apply(agent, base, {
       type: 'appendTranscript',
-      entry: documentRef(agent, 'left transcript'),
+      entry: transcriptRef('left'),
     });
     const right = apply(agent, base, {
       type: 'appendTranscript',
-      entry: documentRef(agent, 'right transcript'),
+      entry: transcriptRef('right'),
     });
 
     const analysis = agent.detectAgreementV2BranchConflictSync(base, left, right);
@@ -105,8 +95,8 @@ describe('Node.js agreement v2 behavioral parity', function () {
   it('resolves terms conflicts with an explicit successor mutation', function () {
     const { agent, agentId } = ephemeral();
     const base = createAgreement(agent, agentId);
-    const left = apply(agent, base, { type: 'updateTerms', terms: 'Left branch terms.' });
-    const right = apply(agent, base, { type: 'updateTerms', terms: 'Right branch terms.' });
+    const left = apply(agent, base, { type: 'updateTerms', terms: FIXTURE.terms_conflict.left });
+    const right = apply(agent, base, { type: 'updateTerms', terms: FIXTURE.terms_conflict.right });
 
     const analysis = agent.detectAgreementV2BranchConflictSync(base, left, right);
     expect(analysis.autoMergeable).to.equal(false);
@@ -117,12 +107,12 @@ describe('Node.js agreement v2 behavioral parity', function () {
         base,
         left,
         right,
-        JSON.stringify({ type: 'updateTerms', terms: 'Resolved terms.' }),
+        JSON.stringify({ type: 'updateTerms', terms: FIXTURE.terms_conflict.resolved }),
       ),
     );
     const rightDoc = JSON.parse(right);
 
-    expect(resolved.terms).to.equal('Resolved terms.');
+    expect(resolved.terms).to.equal(FIXTURE.terms_conflict.resolved);
     expect(resolved.links[0]).to.deep.equal({
       jacsId: rightDoc.jacsId,
       jacsVersion: rightDoc.jacsVersion,

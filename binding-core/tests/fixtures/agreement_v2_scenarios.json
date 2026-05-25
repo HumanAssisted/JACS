@@ -1,0 +1,34 @@
+{
+  "_description": "Shared agreement v2 behavioral parity fixture. Binding, CLI, MCP, and WASM tests inject runtime agent ids into this scenario so every surface exercises the same workflow data.",
+  "base_input": {
+    "title": "Agreement v2 parity",
+    "description": "Portable agreement v2 workflow test.",
+    "terms": "The public surface must delegate agreement v2 behavior to Rust core.",
+    "termsFormat": "text/plain",
+    "status": "proposed",
+    "signaturePolicy": {
+      "partyQuorum": "all",
+      "witnessRequired": 0,
+      "notaryRequired": 0,
+      "requiredAlgorithms": ["ring-Ed25519"],
+      "minimumStrength": "classical"
+    }
+  },
+  "transcript_refs": {
+    "left": {
+      "jacsId": "00000000-0000-4000-8000-000000000001",
+      "jacsVersion": "10000000-0000-4000-8000-000000000001",
+      "jacsSha256": "agreement-v2-left-transcript-ref"
+    },
+    "right": {
+      "jacsId": "00000000-0000-4000-8000-000000000002",
+      "jacsVersion": "10000000-0000-4000-8000-000000000002",
+      "jacsSha256": "agreement-v2-right-transcript-ref"
+    }
+  },
+  "terms_conflict": {
+    "left": "Left branch terms.",
+    "right": "Right branch terms.",
+    "resolved": "Resolved terms."
+  }
+}

@@ -12,6 +12,9 @@ use jacs_wasm::{CoreAgentHandle, create_ephemeral, create_verifier};
 use serde_json::{Value, json};
 use std::path::Path;
 
+const AGREEMENT_V2_SCENARIO: &str =
+    include_str!("../../binding-core/tests/fixtures/agreement_v2_scenarios.json");
+
 #[allow(dead_code)]
 fn extract_code(err: &wasm_bindgen::JsError) -> Option<String> {
     // wasm-bindgen's JsError stores the message; we can't introspect it
@@ -131,22 +134,10 @@ fn export_agent_returns_json_with_jacs_id() {
 #[test]
 fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
     let handle = create_ephemeral("ed25519").expect("create");
-    let agent: Value = serde_json::from_str(&handle.export_agent().expect("agent")).unwrap();
-    let agent_id = agent["jacsId"].as_str().unwrap();
-    let input = json!({
-        "title": "Browser approval",
-        "description": "A small agreement created through the wasm surface",
-        "terms": "Proceed with the test.",
-        "termsFormat": "text/plain",
-        "status": "proposed",
-        "parties": [
-            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
-        ],
-        "signaturePolicy": {"partyQuorum": "all"}
-    });
+    let agent_id = wasm_agent_id(&handle);
 
     let created = handle
-        .create_agreement_v2_json(&input.to_string())
+        .create_agreement_v2_json(&wasm_agreement_v2_input(&agent_id).to_string())
         .expect("create agreement v2");
     let signed = handle
         .sign_agreement_v2_json(&created, "signer")
@@ -165,31 +156,29 @@ fn wasm_agent_id(handle: &CoreAgentHandle) -> String {
     agent["jacsId"].as_str().unwrap().to_string()
 }
 
-fn wasm_agreement_v2_input(agent_id: &str) -> Value {
-    json!({
-        "title": "Browser approval",
-        "description": "A small agreement created through the wasm surface",
-        "terms": "Proceed with the test.",
-        "termsFormat": "text/plain",
-        "status": "proposed",
-        "parties": [
-            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
-        ],
-        "signaturePolicy": {
-            "partyQuorum": "all",
-            "witnessRequired": 0,
-            "notaryRequired": 0
-        },
-        "controllers": [agent_id]
-    })
+fn wasm_agreement_v2_fixture() -> Value {
+    serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
 }
 
-fn wasm_doc_ref(index: u8) -> Value {
-    json!({
-        "jacsId": format!("40000000-0000-4000-8000-{:012}", index),
-        "jacsVersion": format!("50000000-0000-4000-8000-{:012}", index),
-        "jacsSha256": format!("wasm-sha256-test-{}", index)
-    })
+fn wasm_agreement_v2_input(agent_id: &str) -> Value {
+    let scenario = wasm_agreement_v2_fixture();
+    let mut input = scenario["base_input"].clone();
+    input["parties"] = json!([
+        {"agentId": agent_id, "agentType": "ai", "role": "signer"}
+    ]);
+    input["controllers"] = json!([agent_id]);
+    input
+}
+
+fn wasm_transcript_ref(name: &str) -> Value {
+    wasm_agreement_v2_fixture()["transcript_refs"][name].clone()
+}
+
+fn wasm_terms(name: &str) -> String {
+    wasm_agreement_v2_fixture()["terms_conflict"][name]
+        .as_str()
+        .expect("terms conflict value")
+        .to_string()
 }
 
 #[test]
@@ -246,13 +235,13 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
     let left = handle
         .apply_agreement_v2_json(
             &base,
-            &json!({"type": "appendTranscript", "entry": wasm_doc_ref(1)}).to_string(),
+            &json!({"type": "appendTranscript", "entry": wasm_transcript_ref("left")}).to_string(),
         )
         .expect("left transcript");
     let right = handle
         .apply_agreement_v2_json(
             &base,
-            &json!({"type": "appendTranscript", "entry": wasm_doc_ref(2)}).to_string(),
+            &json!({"type": "appendTranscript", "entry": wasm_transcript_ref("right")}).to_string(),
         )
         .expect("right transcript");
 
@@ -275,13 +264,13 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
     let left_terms = handle
         .apply_agreement_v2_json(
             &base,
-            &json!({"type": "updateTerms", "terms": "Left terms."}).to_string(),
+            &json!({"type": "updateTerms", "terms": wasm_terms("left")}).to_string(),
         )
         .expect("left terms");
     let right_terms = handle
         .apply_agreement_v2_json(
             &base,
-            &json!({"type": "updateTerms", "terms": "Right terms."}).to_string(),
+            &json!({"type": "updateTerms", "terms": wasm_terms("right")}).to_string(),
         )
         .expect("right terms");
     let resolved: Value = serde_json::from_str(
@@ -290,16 +279,13 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
                 &base,
                 &left_terms,
                 &right_terms,
-                &json!({"type": "updateTerms", "terms": "Resolved terms."}).to_string(),
+                &json!({"type": "updateTerms", "terms": wasm_terms("resolved")}).to_string(),
             )
             .expect("resolve branch conflict"),
     )
     .unwrap();
     let right_terms_doc: Value = serde_json::from_str(&right_terms).unwrap();
-    assert_eq!(
-        resolved["terms"],
-        Value::String("Resolved terms.".to_string())
-    );
+    assert_eq!(resolved["terms"], Value::String(wasm_terms("resolved")));
     assert_eq!(
         resolved["links"][0],
         json!({

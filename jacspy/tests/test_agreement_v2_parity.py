@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -7,42 +8,39 @@ jacs = pytest.importorskip("jacs")
 from jacs import SimpleAgent
 
 
+FIXTURE = json.loads(
+    (
+        Path(__file__).resolve().parents[2]
+        / "binding-core"
+        / "tests"
+        / "fixtures"
+        / "agreement_v2_scenarios.json"
+    ).read_text(encoding="utf-8")
+)
+
+
 def _ephemeral(algorithm: str = "ed25519"):
     agent, info = SimpleAgent.ephemeral(algorithm=algorithm)
     return agent, info["agent_id"]
 
 
 def _base_input(agent_id: str):
-    return {
-        "title": "Agreement v2 parity",
-        "description": "Portable agreement v2 workflow test.",
-        "terms": "The binding must delegate agreement v2 behavior to Rust core.",
-        "termsFormat": "text/plain",
-        "status": "proposed",
-        "parties": [{"agentId": agent_id, "agentType": "ai", "role": "signer"}],
-        "signaturePolicy": {
-            "partyQuorum": "all",
-            "witnessRequired": 0,
-            "notaryRequired": 0,
-            "requiredAlgorithms": ["ring-Ed25519"],
-            "minimumStrength": "classical",
-        },
-        "controllers": [agent_id],
-    }
+    input_doc = json.loads(json.dumps(FIXTURE["base_input"]))
+    input_doc["parties"] = [{"agentId": agent_id, "agentType": "ai", "role": "signer"}]
+    input_doc["controllers"] = [agent_id]
+    return input_doc
 
 
 def _create_agreement(agent, agent_id: str) -> str:
     return agent.create_agreement_v2(_base_input(agent_id))
 
 
-def _document_ref(agent, message: str):
-    signed = agent.sign_message({"message": message})
-    raw = json.loads(signed["raw"])
-    return {
-        "jacsId": raw["jacsId"],
-        "jacsVersion": raw["jacsVersion"],
-        "jacsSha256": raw["jacsSha256"],
-    }
+def _transcript_ref(name: str):
+    return json.loads(json.dumps(FIXTURE["transcript_refs"][name]))
+
+
+def _terms(name: str) -> str:
+    return FIXTURE["terms_conflict"][name]
 
 
 def _apply(agent, document: str, mutation) -> str:
@@ -85,12 +83,12 @@ def test_agreement_v2_transcript_branches_auto_merge():
     left = _apply(
         agent,
         base,
-        {"type": "appendTranscript", "entry": _document_ref(agent, "left transcript")},
+        {"type": "appendTranscript", "entry": _transcript_ref("left")},
     )
     right = _apply(
         agent,
         base,
-        {"type": "appendTranscript", "entry": _document_ref(agent, "right transcript")},
+        {"type": "appendTranscript", "entry": _transcript_ref("right")},
     )
 
     analysis = agent.detect_agreement_v2_branch_conflict(base, left, right)
@@ -105,8 +103,8 @@ def test_agreement_v2_transcript_branches_auto_merge():
 def test_agreement_v2_terms_conflict_requires_explicit_resolution():
     agent, agent_id = _ephemeral()
     base = _create_agreement(agent, agent_id)
-    left = _apply(agent, base, {"type": "updateTerms", "terms": "Left branch terms."})
-    right = _apply(agent, base, {"type": "updateTerms", "terms": "Right branch terms."})
+    left = _apply(agent, base, {"type": "updateTerms", "terms": _terms("left")})
+    right = _apply(agent, base, {"type": "updateTerms", "terms": _terms("right")})
 
     analysis = agent.detect_agreement_v2_branch_conflict(base, left, right)
     assert analysis["autoMergeable"] is False
@@ -117,12 +115,12 @@ def test_agreement_v2_terms_conflict_requires_explicit_resolution():
             base,
             left,
             right,
-            {"type": "updateTerms", "terms": "Resolved terms."},
+            {"type": "updateTerms", "terms": _terms("resolved")},
         )
     )
     right_doc = json.loads(right)
 
-    assert resolved["terms"] == "Resolved terms."
+    assert resolved["terms"] == _terms("resolved")
     assert resolved["links"][0] == {
         "jacsId": right_doc["jacsId"],
         "jacsVersion": right_doc["jacsVersion"],

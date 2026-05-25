@@ -2,8 +2,35 @@ package jacs
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+type agreementV2ScenarioFixture struct {
+	BaseInput      map[string]interface{}            `json:"base_input"`
+	TranscriptRefs map[string]map[string]interface{} `json:"transcript_refs"`
+	TermsConflict  map[string]string                 `json:"terms_conflict"`
+}
+
+func loadAgreementV2Fixture(t *testing.T) agreementV2ScenarioFixture {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	fixturePath := filepath.Join(filepath.Dir(thisFile), "../binding-core/tests/fixtures/agreement_v2_scenarios.json")
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read agreement v2 fixture failed: %v", err)
+	}
+	var fixture agreementV2ScenarioFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("parse agreement v2 fixture failed: %v", err)
+	}
+	return fixture
+}
 
 func agreementV2AgentID(t *testing.T, agent *JacsSimpleAgent) string {
 	t.Helper()
@@ -32,30 +59,27 @@ func agreementV2Doc(t *testing.T, raw string) map[string]interface{} {
 	return document
 }
 
-func agreementV2BaseInput(agentID string) map[string]interface{} {
-	return map[string]interface{}{
-		"title":       "Agreement v2 parity",
-		"description": "Portable agreement v2 workflow test.",
-		"terms":       "The binding must delegate agreement v2 behavior to Rust core.",
-		"termsFormat": "text/plain",
-		"status":      "proposed",
-		"parties": []map[string]interface{}{
-			{"agentId": agentID, "agentType": "ai", "role": "signer"},
-		},
-		"signaturePolicy": map[string]interface{}{
-			"partyQuorum":        "all",
-			"witnessRequired":    0,
-			"notaryRequired":     0,
-			"requiredAlgorithms": []string{"ring-Ed25519"},
-			"minimumStrength":    "classical",
-		},
-		"controllers": []string{agentID},
+func agreementV2BaseInput(t *testing.T, agentID string) map[string]interface{} {
+	t.Helper()
+	fixture := loadAgreementV2Fixture(t)
+	data, err := json.Marshal(fixture.BaseInput)
+	if err != nil {
+		t.Fatalf("marshal base fixture failed: %v", err)
 	}
+	var input map[string]interface{}
+	if err := json.Unmarshal(data, &input); err != nil {
+		t.Fatalf("copy base fixture failed: %v", err)
+	}
+	input["parties"] = []map[string]interface{}{
+		{"agentId": agentID, "agentType": "ai", "role": "signer"},
+	}
+	input["controllers"] = []string{agentID}
+	return input
 }
 
 func agreementV2Create(t *testing.T, agent *JacsSimpleAgent, agentID string) string {
 	t.Helper()
-	created, err := agent.CreateAgreementV2(agreementV2JSON(t, agreementV2BaseInput(agentID)))
+	created, err := agent.CreateAgreementV2(agreementV2JSON(t, agreementV2BaseInput(t, agentID)))
 	if err != nil {
 		t.Fatalf("CreateAgreementV2 failed: %v", err)
 	}
@@ -71,18 +95,13 @@ func agreementV2Apply(t *testing.T, agent *JacsSimpleAgent, document string, mut
 	return updated
 }
 
-func agreementV2DocumentRef(t *testing.T, agent *JacsSimpleAgent, message string) map[string]interface{} {
+func agreementV2TranscriptRef(t *testing.T, name string) map[string]interface{} {
 	t.Helper()
-	signed, err := agent.SignMessage(map[string]string{"message": message})
-	if err != nil {
-		t.Fatalf("SignMessage failed: %v", err)
+	ref := loadAgreementV2Fixture(t).TranscriptRefs[name]
+	if ref == nil {
+		t.Fatalf("missing transcript ref %q", name)
 	}
-	raw := agreementV2Doc(t, signed.Raw)
-	return map[string]interface{}{
-		"jacsId":      raw["jacsId"],
-		"jacsVersion": raw["jacsVersion"],
-		"jacsSha256":  raw["jacsSha256"],
-	}
+	return ref
 }
 
 func TestAgreementV2CreateSignVerifyParity(t *testing.T) {
@@ -117,7 +136,7 @@ func TestAgreementV2NotaryRoleParity(t *testing.T) {
 	notary := ephemeral(t, "ed25519")
 	signerID := agreementV2AgentID(t, signer)
 	notaryID := agreementV2AgentID(t, notary)
-	input := agreementV2BaseInput(signerID)
+	input := agreementV2BaseInput(t, signerID)
 	input["parties"] = []map[string]interface{}{
 		{"agentId": signerID, "agentType": "ai", "role": "signer"},
 		{"agentId": notaryID, "agentType": "ai", "role": "notary"},
@@ -148,11 +167,11 @@ func TestAgreementV2TranscriptBranchMergeParity(t *testing.T) {
 
 	left := agreementV2Apply(t, agent, base, map[string]interface{}{
 		"type":  "appendTranscript",
-		"entry": agreementV2DocumentRef(t, agent, "left transcript"),
+		"entry": agreementV2TranscriptRef(t, "left"),
 	})
 	right := agreementV2Apply(t, agent, base, map[string]interface{}{
 		"type":  "appendTranscript",
-		"entry": agreementV2DocumentRef(t, agent, "right transcript"),
+		"entry": agreementV2TranscriptRef(t, "right"),
 	})
 	analysis, err := agent.DetectAgreementV2BranchConflict(base, left, right)
 	if err != nil {
@@ -175,14 +194,15 @@ func TestAgreementV2TermsConflictResolutionParity(t *testing.T) {
 	skipIfLibraryMissing(t)
 	agent := ephemeral(t, "ed25519")
 	agentID := agreementV2AgentID(t, agent)
+	fixture := loadAgreementV2Fixture(t)
 	base := agreementV2Create(t, agent, agentID)
 	left := agreementV2Apply(t, agent, base, map[string]interface{}{
 		"type":  "updateTerms",
-		"terms": "Left branch terms.",
+		"terms": fixture.TermsConflict["left"],
 	})
 	right := agreementV2Apply(t, agent, base, map[string]interface{}{
 		"type":  "updateTerms",
-		"terms": "Right branch terms.",
+		"terms": fixture.TermsConflict["right"],
 	})
 
 	analysis, err := agent.DetectAgreementV2BranchConflict(base, left, right)
@@ -201,7 +221,7 @@ func TestAgreementV2TermsConflictResolutionParity(t *testing.T) {
 		right,
 		agreementV2JSON(t, map[string]interface{}{
 			"type":  "updateTerms",
-			"terms": "Resolved terms.",
+			"terms": fixture.TermsConflict["resolved"],
 		}),
 	)
 	if err != nil {
@@ -210,7 +230,7 @@ func TestAgreementV2TermsConflictResolutionParity(t *testing.T) {
 	resolvedDoc := agreementV2Doc(t, resolved)
 	rightDoc := agreementV2Doc(t, right)
 	link := resolvedDoc["links"].([]interface{})[0].(map[string]interface{})
-	if resolvedDoc["terms"] != "Resolved terms." {
+	if resolvedDoc["terms"] != fixture.TermsConflict["resolved"] {
 		t.Fatalf("unexpected resolved terms: %#v", resolvedDoc["terms"])
 	}
 	if link["jacsId"] != rightDoc["jacsId"] || link["jacsVersion"] != rightDoc["jacsVersion"] {

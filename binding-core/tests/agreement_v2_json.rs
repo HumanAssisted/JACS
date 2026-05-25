@@ -3,6 +3,12 @@
 use jacs_binding_core::SimpleAgentWrapper;
 use serde_json::{Value, json};
 
+const AGREEMENT_V2_SCENARIO: &str = include_str!("fixtures/agreement_v2_scenarios.json");
+
+fn fixture() -> Value {
+    serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
+}
+
 fn ephemeral_agent() -> (SimpleAgentWrapper, String) {
     let (wrapper, info_json) =
         SimpleAgentWrapper::ephemeral(Some("ed25519")).expect("ephemeral agent");
@@ -12,24 +18,13 @@ fn ephemeral_agent() -> (SimpleAgentWrapper, String) {
 }
 
 fn base_input(agent_id: &str) -> Value {
-    json!({
-        "title": "Binding agreement",
-        "description": "Scenario test for the binding-core JSON adapter.",
-        "terms": "The binding adapter delegates agreement v2 rules to jacs core.",
-        "termsFormat": "text/plain",
-        "status": "proposed",
-        "parties": [
-            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
-        ],
-        "signaturePolicy": {
-            "partyQuorum": "all",
-            "witnessRequired": 0,
-            "notaryRequired": 0,
-            "requiredAlgorithms": ["ring-Ed25519"],
-            "minimumStrength": "classical"
-        },
-        "controllers": [agent_id]
-    })
+    let scenario = fixture();
+    let mut input = scenario["base_input"].clone();
+    input["parties"] = json!([
+        {"agentId": agent_id, "agentType": "ai", "role": "signer"}
+    ]);
+    input["controllers"] = json!([agent_id]);
+    input
 }
 
 fn create_agreement(wrapper: &SimpleAgentWrapper, agent_id: &str) -> String {
@@ -38,16 +33,15 @@ fn create_agreement(wrapper: &SimpleAgentWrapper, agent_id: &str) -> String {
         .expect("create agreement v2")
 }
 
-fn document_ref(wrapper: &SimpleAgentWrapper, message: &str) -> Value {
-    let signed = wrapper
-        .sign_message_json(&json!({"message": message}).to_string())
-        .expect("sign transcript message");
-    let doc: Value = serde_json::from_str(&signed).expect("signed message json");
-    json!({
-        "jacsId": doc["jacsId"],
-        "jacsVersion": doc["jacsVersion"],
-        "jacsSha256": doc["jacsSha256"]
-    })
+fn transcript_ref(name: &str) -> Value {
+    fixture()["transcript_refs"][name].clone()
+}
+
+fn conflict_terms(name: &str) -> String {
+    fixture()["terms_conflict"][name]
+        .as_str()
+        .expect("terms conflict value")
+        .to_string()
 }
 
 fn apply_mutation(wrapper: &SimpleAgentWrapper, document: &str, mutation: Value) -> String {
@@ -100,8 +94,8 @@ fn simple_wrapper_supports_notary_signature_role() {
 fn simple_wrapper_detects_and_merges_transcript_only_branches() {
     let (wrapper, agent_id) = ephemeral_agent();
     let base = create_agreement(&wrapper, &agent_id);
-    let left_ref = document_ref(&wrapper, "A proposes the first clause.");
-    let right_ref = document_ref(&wrapper, "B accepts with context.");
+    let left_ref = transcript_ref("left");
+    let right_ref = transcript_ref("right");
 
     let left = apply_mutation(
         &wrapper,
@@ -148,12 +142,12 @@ fn simple_wrapper_resolves_terms_branch_conflict_explicitly() {
     let left = apply_mutation(
         &wrapper,
         &base,
-        json!({"type": "updateTerms", "terms": "Left branch terms."}),
+        json!({"type": "updateTerms", "terms": conflict_terms("left")}),
     );
     let right = apply_mutation(
         &wrapper,
         &base,
-        json!({"type": "updateTerms", "terms": "Right branch terms."}),
+        json!({"type": "updateTerms", "terms": conflict_terms("right")}),
     );
 
     let analysis_json = wrapper
@@ -174,12 +168,12 @@ fn simple_wrapper_resolves_terms_branch_conflict_explicitly() {
             &base,
             &left,
             &right,
-            &json!({"type": "updateTerms", "terms": "Resolved terms."}).to_string(),
+            &json!({"type": "updateTerms", "terms": conflict_terms("resolved")}).to_string(),
         )
         .expect("resolve branch conflict");
     let resolved_doc: Value = serde_json::from_str(&resolved).expect("resolved agreement json");
 
-    assert_eq!(resolved_doc["terms"], json!("Resolved terms."));
+    assert_eq!(resolved_doc["terms"], json!(conflict_terms("resolved")));
     assert_eq!(
         resolved_doc["jacsPreviousVersion"],
         json!(doc_version(&left))

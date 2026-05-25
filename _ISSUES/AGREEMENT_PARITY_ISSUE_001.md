@@ -28,4 +28,4 @@ Keep expected JSON assertions small and reusable so Rust remains the source of t
 `binding-core/tests/fixtures/`
 
 ## Resolution
-Added behavioral parity tests for Python, Node, and Go covering create/sign/verify, notary signatures, transcript-only branch merge, and explicit terms-conflict resolution through each public binding API.
+Added behavioral parity tests for Python, Node, and Go covering create/sign/verify, notary signatures, transcript-only branch merge, and explicit terms-conflict resolution through each public binding API. The scenario data now comes from `binding-core/tests/fixtures/agreement_v2_scenarios.json` so the language tests share one source of truth.

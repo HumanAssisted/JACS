@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 const TEST_PASSWORD: &str = "TestAgreementV2!2026";
+const AGREEMENT_V2_SCENARIO: &str =
+    include_str!("../../binding-core/tests/fixtures/agreement_v2_scenarios.json");
 
 fn cmd() -> Command {
     let mut c = Command::cargo_bin("jacs").expect("jacs binary should exist");
@@ -99,33 +101,29 @@ fn output_json_owned(dir: &TempDir, args: &[String]) -> Value {
     })
 }
 
-fn base_input(agent_id: &str) -> Value {
-    json!({
-        "title": "Agreement v2 CLI parity",
-        "description": "The CLI must execute the Rust core agreement workflow.",
-        "terms": "CLI commands create, mutate, sign, verify, and reconcile agreements.",
-        "termsFormat": "text/plain",
-        "status": "proposed",
-        "parties": [
-            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
-        ],
-        "signaturePolicy": {
-            "partyQuorum": "all",
-            "witnessRequired": 0,
-            "notaryRequired": 0,
-            "requiredAlgorithms": ["ring-Ed25519"],
-            "minimumStrength": "classical"
-        },
-        "controllers": [agent_id]
-    })
+fn fixture() -> Value {
+    serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
 }
 
-fn transcript_ref(index: u8) -> Value {
-    json!({
-        "jacsId": format!("00000000-0000-4000-8000-{:012}", index),
-        "jacsVersion": format!("10000000-0000-4000-8000-{:012}", index),
-        "jacsSha256": format!("sha256-test-{}", index)
-    })
+fn base_input(agent_id: &str) -> Value {
+    let scenario = fixture();
+    let mut input = scenario["base_input"].clone();
+    input["parties"] = json!([
+        {"agentId": agent_id, "agentType": "ai", "role": "signer"}
+    ]);
+    input["controllers"] = json!([agent_id]);
+    input
+}
+
+fn transcript_ref(name: &str) -> Value {
+    fixture()["transcript_refs"][name].clone()
+}
+
+fn conflict_terms(name: &str) -> String {
+    fixture()["terms_conflict"][name]
+        .as_str()
+        .expect("terms conflict value")
+        .to_string()
 }
 
 #[test]
@@ -159,12 +157,12 @@ fn agreement_v2_cli_executes_full_public_workflow() {
     let left_mutation = write_json(
         &dir,
         "left-transcript.json",
-        &json!({"type": "appendTranscript", "entry": transcript_ref(1)}),
+        &json!({"type": "appendTranscript", "entry": transcript_ref("left")}),
     );
     let right_mutation = write_json(
         &dir,
         "right-transcript.json",
-        &json!({"type": "appendTranscript", "entry": transcript_ref(2)}),
+        &json!({"type": "appendTranscript", "entry": transcript_ref("right")}),
     );
     let left = output_json_owned(
         &dir,
@@ -224,12 +222,12 @@ fn agreement_v2_cli_executes_full_public_workflow() {
     let left_terms_mutation = write_json(
         &dir,
         "left-terms.json",
-        &json!({"type": "updateTerms", "terms": "Left terms."}),
+        &json!({"type": "updateTerms", "terms": conflict_terms("left")}),
     );
     let right_terms_mutation = write_json(
         &dir,
         "right-terms.json",
-        &json!({"type": "updateTerms", "terms": "Right terms."}),
+        &json!({"type": "updateTerms", "terms": conflict_terms("right")}),
     );
     let left_terms = output_json_owned(
         &dir,
@@ -258,7 +256,7 @@ fn agreement_v2_cli_executes_full_public_workflow() {
     let resolution = write_json(
         &dir,
         "resolution.json",
-        &json!({"type": "updateTerms", "terms": "Resolved terms."}),
+        &json!({"type": "updateTerms", "terms": conflict_terms("resolved")}),
     );
     let resolved = output_json(
         &dir,
@@ -275,7 +273,7 @@ fn agreement_v2_cli_executes_full_public_workflow() {
             resolution.to_str().unwrap(),
         ],
     );
-    assert_eq!(resolved["terms"], json!("Resolved terms."));
+    assert_eq!(resolved["terms"], json!(conflict_terms("resolved")));
     assert_eq!(
         resolved["links"][0],
         json!({

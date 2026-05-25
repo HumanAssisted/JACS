@@ -17,4 +17,4 @@ Add a WASM parity test that maps `method_parity.json.feature_gated_methods.agree
 `binding-core/tests/fixtures/method_parity.json`
 
 ## Resolution
-Added a WASM declaration drift test against `method_parity.json` and expanded native WASM behavior coverage for apply, detect-conflict, merge-transcript, resolve-conflict, and notary signing.
+Added a WASM declaration drift test against `method_parity.json` and expanded native WASM behavior coverage for apply, detect-conflict, merge-transcript, resolve-conflict, and notary signing. WASM behavior tests now reuse the same agreement v2 scenario fixture as the other public surfaces.

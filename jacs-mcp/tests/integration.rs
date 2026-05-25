@@ -28,6 +28,8 @@ static CWD_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 // CI runners after full-tool schemas and storage backends have been loaded.
 const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(90);
 const MCP_CALL_TIMEOUT: Duration = Duration::from_secs(90);
+const AGREEMENT_V2_SCENARIO: &str =
+    include_str!("../../binding-core/tests/fixtures/agreement_v2_scenarios.json");
 
 type McpClient = RunningService<RoleClient, ()>;
 
@@ -139,33 +141,29 @@ fn agreement_v2_agent_id_from_config(base: &std::path::Path) -> anyhow::Result<S
         .to_string())
 }
 
-fn agreement_v2_input(agent_id: &str) -> serde_json::Value {
-    serde_json::json!({
-        "title": "Agreement v2 MCP parity",
-        "description": "The MCP tool layer must execute the Rust core agreement workflow.",
-        "terms": "MCP tools create, mutate, sign, verify, and reconcile agreements.",
-        "termsFormat": "text/plain",
-        "status": "proposed",
-        "parties": [
-            {"agentId": agent_id, "agentType": "ai", "role": "signer"}
-        ],
-        "signaturePolicy": {
-            "partyQuorum": "all",
-            "witnessRequired": 0,
-            "notaryRequired": 0,
-            "requiredAlgorithms": ["ring-Ed25519"],
-            "minimumStrength": "classical"
-        },
-        "controllers": [agent_id]
-    })
+fn agreement_v2_fixture() -> serde_json::Value {
+    serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
 }
 
-fn agreement_v2_transcript_ref(index: u8) -> serde_json::Value {
-    serde_json::json!({
-        "jacsId": format!("20000000-0000-4000-8000-{:012}", index),
-        "jacsVersion": format!("30000000-0000-4000-8000-{:012}", index),
-        "jacsSha256": format!("mcp-sha256-test-{}", index)
-    })
+fn agreement_v2_input(agent_id: &str) -> serde_json::Value {
+    let scenario = agreement_v2_fixture();
+    let mut input = scenario["base_input"].clone();
+    input["parties"] = serde_json::json!([
+        {"agentId": agent_id, "agentType": "ai", "role": "signer"}
+    ]);
+    input["controllers"] = serde_json::json!([agent_id]);
+    input
+}
+
+fn agreement_v2_transcript_ref(name: &str) -> serde_json::Value {
+    agreement_v2_fixture()["transcript_refs"][name].clone()
+}
+
+fn agreement_v2_terms(name: &str) -> String {
+    agreement_v2_fixture()["terms_conflict"][name]
+        .as_str()
+        .expect("terms conflict value")
+        .to_string()
 }
 
 impl Drop for RmcpSession {
@@ -477,7 +475,7 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             "jacs_apply_agreement_v2",
             serde_json::json!({
                 "agreement": created.clone(),
-                "mutation": {"type": "appendTranscript", "entry": agreement_v2_transcript_ref(1)}
+                "mutation": {"type": "appendTranscript", "entry": agreement_v2_transcript_ref("left")}
             }),
         )
         .await?;
@@ -486,7 +484,7 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             "jacs_apply_agreement_v2",
             serde_json::json!({
                 "agreement": created.clone(),
-                "mutation": {"type": "appendTranscript", "entry": agreement_v2_transcript_ref(2)}
+                "mutation": {"type": "appendTranscript", "entry": agreement_v2_transcript_ref("right")}
             }),
         )
         .await?;
@@ -530,7 +528,7 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             "jacs_apply_agreement_v2",
             serde_json::json!({
                 "agreement": created.clone(),
-                "mutation": {"type": "updateTerms", "terms": "Left terms."}
+                "mutation": {"type": "updateTerms", "terms": agreement_v2_terms("left")}
             }),
         )
         .await?;
@@ -539,7 +537,7 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             "jacs_apply_agreement_v2",
             serde_json::json!({
                 "agreement": created.clone(),
-                "mutation": {"type": "updateTerms", "terms": "Right terms."}
+                "mutation": {"type": "updateTerms", "terms": agreement_v2_terms("right")}
             }),
         )
         .await?;
@@ -550,7 +548,7 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
                 "base": created.clone(),
                 "previous": left_terms_result["agreement"].as_str().expect("left terms"),
                 "side_branch": right_terms_result["agreement"].as_str().expect("right terms"),
-                "mutation": {"type": "updateTerms", "terms": "Resolved terms."}
+                "mutation": {"type": "updateTerms", "terms": agreement_v2_terms("resolved")}
             }),
         )
         .await?;
@@ -565,7 +563,10 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             .as_str()
             .expect("right terms agreement"),
     )?;
-    assert_eq!(resolved["terms"], serde_json::json!("Resolved terms."));
+    assert_eq!(
+        resolved["terms"],
+        serde_json::json!(agreement_v2_terms("resolved"))
+    );
     assert_eq!(
         resolved["links"][0],
         serde_json::json!({
