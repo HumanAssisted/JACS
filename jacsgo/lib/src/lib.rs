@@ -2033,8 +2033,6 @@ fn c_string_to_option(c_str: *const c_char) -> Option<String> {
 // providing the same FFI contract as Python (PyO3) and Node.js (NAPI).
 // ============================================================================
 
-#[cfg(feature = "agreements")]
-use jacs_binding_core::BindingResult;
 use jacs_binding_core::SimpleAgentWrapper;
 
 // Thread-local storage for the last error message from SimpleAgent FFI calls.
@@ -2055,19 +2053,6 @@ fn clear_last_simple_error() {
     LAST_SIMPLE_ERROR.with(|cell| {
         *cell.borrow_mut() = None;
     });
-}
-
-#[cfg(feature = "agreements")]
-fn simple_string_result(result: BindingResult<String>) -> *mut c_char {
-    match result {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
 }
 
 /// Get the last error message from a SimpleAgent FFI call.
