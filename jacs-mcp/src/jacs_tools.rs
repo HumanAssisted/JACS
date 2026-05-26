@@ -879,12 +879,9 @@ impl JacsMcpServer {
     }
 
     /// Create a standalone agreement v2 artifact.
-    #[cfg_attr(
-        feature = "agreement-tools",
-        tool(
-            name = "jacs_create_agreement_v2",
-            description = "Create a standalone JACS agreement v2 document for verifiable consent to terms."
-        )
+    #[tool(
+        name = "jacs_create_agreement_v2",
+        description = "Create a standalone JACS agreement v2 document for verifiable consent to terms."
     )]
     pub async fn jacs_create_agreement_v2(
         &self,
@@ -929,12 +926,9 @@ impl JacsMcpServer {
     }
 
     /// Apply a typed mutation to a standalone agreement v2 artifact.
-    #[cfg_attr(
-        feature = "agreement-tools",
-        tool(
-            name = "jacs_apply_agreement_v2",
-            description = "Apply an agreement v2 mutation and emit a successor version."
-        )
+    #[tool(
+        name = "jacs_apply_agreement_v2",
+        description = "Apply an agreement v2 mutation and emit a successor version."
     )]
     pub async fn jacs_apply_agreement_v2(
         &self,
@@ -982,12 +976,9 @@ impl JacsMcpServer {
     }
 
     /// Add this agent's signer, witness, or notary agreement signature.
-    #[cfg_attr(
-        feature = "agreement-tools",
-        tool(
-            name = "jacs_sign_agreement_v2",
-            description = "Add this agent's signer, witness, or notary signature to an agreement v2 document."
-        )
+    #[tool(
+        name = "jacs_sign_agreement_v2",
+        description = "Add this agent's signer, witness, or notary signature to an agreement v2 document."
     )]
     pub async fn jacs_sign_agreement_v2(
         &self,
@@ -1020,12 +1011,9 @@ impl JacsMcpServer {
     }
 
     /// Verify agreement v2 hash, status, transcript, and signature invariants.
-    #[cfg_attr(
-        feature = "agreement-tools",
-        tool(
-            name = "jacs_verify_agreement_v2",
-            description = "Verify a standalone JACS agreement v2 document."
-        )
+    #[tool(
+        name = "jacs_verify_agreement_v2",
+        description = "Verify a standalone JACS agreement v2 document."
     )]
     pub async fn jacs_verify_agreement_v2(
         &self,
@@ -1057,12 +1045,9 @@ impl JacsMcpServer {
     }
 
     /// Detect whether two agreement v2 branches are transcript-only mergeable.
-    #[cfg_attr(
-        feature = "agreement-tools",
-        tool(
-            name = "jacs_detect_agreement_v2_branch_conflict",
-            description = "Analyze two agreement v2 successor versions for branch conflicts."
-        )
+    #[tool(
+        name = "jacs_detect_agreement_v2_branch_conflict",
+        description = "Analyze two agreement v2 successor versions for branch conflicts."
     )]
     pub async fn jacs_detect_agreement_v2_branch_conflict(
         &self,
@@ -1101,12 +1086,9 @@ impl JacsMcpServer {
     }
 
     /// Auto-merge two transcript-only agreement v2 branches.
-    #[cfg_attr(
-        feature = "agreement-tools",
-        tool(
-            name = "jacs_merge_agreement_v2_transcript_branches",
-            description = "Auto-merge two transcript-only agreement v2 branches."
-        )
+    #[tool(
+        name = "jacs_merge_agreement_v2_transcript_branches",
+        description = "Auto-merge two transcript-only agreement v2 branches."
     )]
     pub async fn jacs_merge_agreement_v2_transcript_branches(
         &self,
@@ -1145,12 +1127,9 @@ impl JacsMcpServer {
     }
 
     /// Resolve a conflicting agreement v2 branch with an explicit mutation.
-    #[cfg_attr(
-        feature = "agreement-tools",
-        tool(
-            name = "jacs_resolve_agreement_v2_branch_conflict",
-            description = "Resolve an agreement v2 branch conflict by applying an explicit mutation."
-        )
+    #[tool(
+        name = "jacs_resolve_agreement_v2_branch_conflict",
+        description = "Resolve an agreement v2 branch conflict by applying an explicit mutation."
     )]
     pub async fn jacs_resolve_agreement_v2_branch_conflict(
         &self,
