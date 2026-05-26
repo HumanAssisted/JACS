@@ -670,6 +670,181 @@ pub fn build_cli() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("w3c")
+                .about("W3C AI Agent Protocol interop helpers")
+                .subcommand(
+                    Command::new("did")
+                        .about("Export this agent's did:wba identifier")
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Controlling HTTPS origin for did:wba and discovery URLs"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("did-document")
+                        .about("Export this agent's did:wba DID document")
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Controlling HTTPS origin for did:wba and discovery URLs"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("agent-description")
+                        .about("Export this agent's W3C agent description document")
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Controlling HTTPS origin for did:wba and discovery URLs"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("well-known")
+                        .about("Generate W3C well-known discovery documents")
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Controlling HTTPS origin for did:wba and discovery URLs"),
+                        )
+                        .arg(
+                            Arg::new("out")
+                                .long("out")
+                                .short('o')
+                                .value_parser(value_parser!(String))
+                                .help("Directory to write generated discovery files into"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("serve")
+                        .about("Serve W3C discovery documents for local demo/testing")
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Controlling HTTPS origin for did:wba and discovery URLs"),
+                        )
+                        .arg(
+                            Arg::new("port")
+                                .long("port")
+                                .value_parser(value_parser!(u16))
+                                .default_value("8081")
+                                .help("Port to listen on (default: 8081)"),
+                        )
+                        .arg(
+                            Arg::new("host")
+                                .long("host")
+                                .default_value("127.0.0.1")
+                                .help("Host to bind to (default: 127.0.0.1)"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("sign-request")
+                        .about("Create a request-bound DID authentication proof")
+                        .arg(
+                            Arg::new("method")
+                                .long("method")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("HTTP method to bind into the proof"),
+                        )
+                        .arg(
+                            Arg::new("url")
+                                .long("url")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("HTTP target URI to bind into the proof"),
+                        )
+                        .arg(
+                            Arg::new("body")
+                                .long("body")
+                                .value_parser(value_parser!(String))
+                                .conflicts_with("body-file")
+                                .help("Request body bytes to digest and bind"),
+                        )
+                        .arg(
+                            Arg::new("body-file")
+                                .long("body-file")
+                                .value_parser(value_parser!(String))
+                                .conflicts_with("body")
+                                .help("File containing request body bytes to digest and bind"),
+                        )
+                        .arg(
+                            Arg::new("origin")
+                                .long("origin")
+                                .value_parser(value_parser!(String))
+                                .help("Controlling HTTPS origin for the signing agent DID"),
+                        )
+                        .arg(
+                            Arg::new("nonce")
+                                .long("nonce")
+                                .value_parser(value_parser!(String))
+                                .help("Caller-provided nonce; generated when omitted"),
+                        )
+                        .arg(
+                            Arg::new("created")
+                                .long("created")
+                                .value_parser(value_parser!(String))
+                                .help("RFC3339 created time; current time when omitted"),
+                        ),
+                )
+                .subcommand(
+                    Command::new("verify-request")
+                        .about("Verify a request-bound DID authentication proof")
+                        .arg(
+                            Arg::new("method")
+                                .long("method")
+                                .value_parser(value_parser!(String))
+                                .help("Actual HTTP method to compare against the proof"),
+                        )
+                        .arg(
+                            Arg::new("url")
+                                .long("url")
+                                .value_parser(value_parser!(String))
+                                .help("Actual HTTP target URI to compare against the proof"),
+                        )
+                        .arg(
+                            Arg::new("proof")
+                                .long("proof")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("Path to request proof JSON"),
+                        )
+                        .arg(
+                            Arg::new("did-document")
+                                .long("did-document")
+                                .value_parser(value_parser!(String))
+                                .required(true)
+                                .help("Path to resolved DID document JSON"),
+                        )
+                        .arg(
+                            Arg::new("body")
+                                .long("body")
+                                .value_parser(value_parser!(String))
+                                .conflicts_with("body-file")
+                                .help("Request body bytes to check against the proof digest"),
+                        )
+                        .arg(
+                            Arg::new("body-file")
+                                .long("body-file")
+                                .value_parser(value_parser!(String))
+                                .conflicts_with("body")
+                                .help("File containing request body bytes to check"),
+                        )
+                        .arg(
+                            Arg::new("max-age-seconds")
+                                .long("max-age-seconds")
+                                .value_parser(value_parser!(u64))
+                                .default_value("300")
+                                .help("Maximum accepted proof age in seconds"),
+                        ),
+                ),
+        )
+        .subcommand(
             Command::new("quickstart")
                 .about("Create or load a persistent agent for instant sign/verify (password required)")
                 .after_help(quickstart_password_bootstrap_help())

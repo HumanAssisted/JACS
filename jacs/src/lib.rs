@@ -70,6 +70,7 @@ pub mod mime;
 pub mod observability;
 pub mod paths;
 pub mod protocol;
+pub mod public_agent;
 pub mod rate_limit;
 pub mod replay;
 pub mod schema;
@@ -83,6 +84,7 @@ pub mod testing;
 pub mod time_utils;
 pub mod trust;
 pub mod validation;
+pub mod w3c;
 
 #[cfg(feature = "agreements")]
 pub mod agreements;

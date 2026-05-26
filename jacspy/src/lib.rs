@@ -1130,6 +1130,99 @@ impl SimpleAgent {
         self.inner.diagnostics()
     }
 
+    /// Export this agent's did:wba identifier for W3C interop.
+    #[pyo3(signature = (origin=None))]
+    fn export_w3c_did(&self, origin: Option<&str>) -> PyResult<String> {
+        map_py_runtime_result(
+            self.inner.export_w3c_did(origin),
+            "Failed to export W3C DID",
+        )
+    }
+
+    /// Export this agent's did:wba DID document.
+    #[pyo3(signature = (origin=None))]
+    fn export_w3c_did_document(&self, py: Python, origin: Option<&str>) -> PyResult<PyObject> {
+        let json_str = self.inner.export_w3c_did_document_json(origin).to_py()?;
+        let value = parse_json_value(&json_str, "W3C DID document")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Export this agent's W3C agent description document.
+    #[pyo3(signature = (origin=None))]
+    fn export_w3c_agent_description(&self, py: Python, origin: Option<&str>) -> PyResult<PyObject> {
+        let json_str = self
+            .inner
+            .export_w3c_agent_description_json(origin)
+            .to_py()?;
+        let value = parse_json_value(&json_str, "W3C agent description")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Generate W3C well-known discovery documents keyed by URL path.
+    #[pyo3(signature = (origin=None))]
+    fn generate_w3c_well_known(&self, py: Python, origin: Option<&str>) -> PyResult<PyObject> {
+        let json_str = self.inner.generate_w3c_well_known_json(origin).to_py()?;
+        let value = parse_json_value(&json_str, "W3C well-known documents")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Create a request-bound DID authentication proof.
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (method, url, *, body=None, nonce=None, created=None, origin=None))]
+    fn sign_w3c_request(
+        &self,
+        py: Python,
+        method: &str,
+        url: &str,
+        body: Option<&str>,
+        nonce: Option<&str>,
+        created: Option<&str>,
+        origin: Option<&str>,
+    ) -> PyResult<PyObject> {
+        let params = serde_json::json!({
+            "method": method,
+            "url": url,
+            "body": body,
+            "nonce": nonce,
+            "created": created,
+            "origin": origin
+        });
+        let json_str = self
+            .inner
+            .sign_w3c_request_json(&params.to_string())
+            .to_py()?;
+        let value = parse_json_value(&json_str, "W3C request proof")?;
+        json_value_to_py(py, &value)
+    }
+
+    /// Verify a request-bound DID authentication proof.
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (proof_json, did_document_json, *, body=None, max_age_seconds=300, method=None, url=None))]
+    fn verify_w3c_request(
+        &self,
+        py: Python,
+        proof_json: &str,
+        did_document_json: &str,
+        body: Option<&str>,
+        max_age_seconds: u64,
+        method: Option<&str>,
+        url: Option<&str>,
+    ) -> PyResult<PyObject> {
+        let json_str = self
+            .inner
+            .verify_w3c_request_json(
+                proof_json,
+                did_document_json,
+                body,
+                max_age_seconds,
+                method,
+                url,
+            )
+            .to_py()?;
+        let value = parse_json_value(&json_str, "W3C request proof verification")?;
+        json_value_to_py(py, &value)
+    }
+
     /// Create a new JACS agent with full programmatic control.
     ///
     /// Args:

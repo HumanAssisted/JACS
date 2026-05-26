@@ -67,25 +67,31 @@ var excludedFromGo = map[string]string{
 // Rust snake_case -> Go PascalCase method name mapping.
 // Constructors are package-level functions, not methods on *JacsSimpleAgent.
 var goNameMap = map[string]string{
-	"create":              "NewSimpleAgent",          // constructor (package-level)
-	"load":                "LoadSimpleAgent",         // constructor (package-level)
-	"ephemeral":           "EphemeralSimpleAgent",    // constructor (package-level)
-	"create_with_params":  "CreateSimpleAgentWithParams", // constructor (package-level)
-	"get_agent_id":        "GetAgentID",
-	"key_id":              "KeyID",
-	"is_strict":           "IsStrict",
-	"config_path":         "ConfigPath",
-	"export_agent":        "ExportAgent",
-	"get_public_key_pem":  "GetPublicKeyPEM",
-	"get_public_key_base64": "GetPublicKeyBase64",
-	"diagnostics":         "Diagnostics",
-	"verify_self":         "VerifySelf",
-	"verify_json":         "Verify",
-	"verify_with_key_json": "VerifyWithKey",
-	"verify_by_id_json":   "VerifyByID",
-	"sign_message_json":   "SignMessage",
-	"sign_raw_bytes_base64": "SignRawBytes",
-	"sign_file_json":      "SignFile",
+	"create":                            "NewSimpleAgent",              // constructor (package-level)
+	"load":                              "LoadSimpleAgent",             // constructor (package-level)
+	"ephemeral":                         "EphemeralSimpleAgent",        // constructor (package-level)
+	"create_with_params":                "CreateSimpleAgentWithParams", // constructor (package-level)
+	"get_agent_id":                      "GetAgentID",
+	"key_id":                            "KeyID",
+	"is_strict":                         "IsStrict",
+	"config_path":                       "ConfigPath",
+	"export_agent":                      "ExportAgent",
+	"get_public_key_pem":                "GetPublicKeyPEM",
+	"get_public_key_base64":             "GetPublicKeyBase64",
+	"diagnostics":                       "Diagnostics",
+	"verify_self":                       "VerifySelf",
+	"verify_json":                       "Verify",
+	"verify_with_key_json":              "VerifyWithKey",
+	"verify_by_id_json":                 "VerifyByID",
+	"sign_message_json":                 "SignMessage",
+	"sign_raw_bytes_base64":             "SignRawBytes",
+	"sign_file_json":                    "SignFile",
+	"export_w3c_did":                    "ExportW3cDid",
+	"export_w3c_did_document_json":      "ExportW3cDidDocument",
+	"export_w3c_agent_description_json": "ExportW3cAgentDescription",
+	"generate_w3c_well_known_json":      "GenerateW3cWellKnown",
+	"sign_w3c_request_json":             "SignW3cRequest",
+	"verify_w3c_request_json":           "VerifyW3cRequest",
 	// Inline text + media (Task 12): suffix-stripped names. Short aliases
 	// (SignText / VerifyText) also exist on *JacsSimpleAgent but the parity
 	// name is the suffix-stripped one shown here.
@@ -210,9 +216,9 @@ func TestMethodParityExclusionsAreStillNeeded(t *testing.T) {
 	// internal-only exclusions (inner_ref, from_agent, load_with_info) will
 	// never appear as Go methods.
 	conversionExclusions := map[string]string{
-		"to_yaml":  "ToYaml",
+		"to_yaml":   "ToYaml",
 		"from_yaml": "FromYaml",
-		"to_html":  "ToHtml",
+		"to_html":   "ToHtml",
 		"from_html": "FromHtml",
 	}
 

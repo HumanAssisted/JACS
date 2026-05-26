@@ -72,6 +72,12 @@ PYTHON_NAME_MAP = {
     "to_html": "to_html",
     "from_html": "from_html",
     "rotate_keys": "rotate_keys",
+    "export_w3c_did": "export_w3c_did",
+    "export_w3c_did_document_json": "export_w3c_did_document",
+    "export_w3c_agent_description_json": "export_w3c_agent_description",
+    "generate_w3c_well_known_json": "generate_w3c_well_known",
+    "sign_w3c_request_json": "sign_w3c_request",
+    "verify_w3c_request_json": "verify_w3c_request",
     # Inline text + media (Task 05 + 06; Task 10 ships PyO3 surface).
     "sign_text_file_json": "sign_text_file",
     "verify_text_file_json": "verify_text_file",

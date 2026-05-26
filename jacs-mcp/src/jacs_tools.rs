@@ -253,6 +253,28 @@ impl JacsMcpServer {
     pub fn profile(&self) -> &crate::profile::Profile {
         &self.profile
     }
+
+    fn with_agent<T>(
+        &self,
+        f: impl FnOnce(&jacs::agent::Agent) -> Result<T, jacs::JacsError>,
+    ) -> Result<T, String> {
+        let agent_arc = self.agent.inner_arc();
+        let agent = agent_arc
+            .lock()
+            .map_err(|e| format!("Failed to acquire agent lock: {}", e))?;
+        f(&agent).map_err(|e| e.to_string())
+    }
+
+    fn with_agent_mut<T>(
+        &self,
+        f: impl FnOnce(&mut jacs::agent::Agent) -> Result<T, jacs::JacsError>,
+    ) -> Result<T, String> {
+        let agent_arc = self.agent.inner_arc();
+        let mut agent = agent_arc
+            .lock()
+            .map_err(|e| format!("Failed to acquire agent lock: {}", e))?;
+        f(&mut agent).map_err(|e| e.to_string())
+    }
 }
 
 // Implement the tool router for the server
@@ -1225,6 +1247,220 @@ impl JacsMcpServer {
                 serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
             }
         }
+    }
+
+    /// Export this agent's W3C did:wba identifier.
+    #[tool(
+        name = "jacs_w3c_export_did",
+        description = "Export this agent's did:wba identifier for W3C AI Agent Protocol interop."
+    )]
+    pub async fn jacs_w3c_export_did(
+        &self,
+        Parameters(params): Parameters<W3cOriginParams>,
+    ) -> String {
+        let result = match self.with_agent(|agent| {
+            jacs::w3c::export_did_identifier_with_options(
+                agent,
+                jacs::w3c::W3cDidOptions {
+                    origin: params.origin,
+                },
+            )
+        }) {
+            Ok(did) => W3cDidResult {
+                success: true,
+                did: Some(did),
+                message: "W3C DID exported successfully".to_string(),
+                error: None,
+            },
+            Err(e) => W3cDidResult {
+                success: false,
+                did: None,
+                message: "Failed to export W3C DID".to_string(),
+                error: Some(e),
+            },
+        };
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Export this agent's W3C DID document.
+    #[tool(
+        name = "jacs_w3c_export_did_document",
+        description = "Export this agent's W3C did:wba DID document."
+    )]
+    pub async fn jacs_w3c_export_did_document(
+        &self,
+        Parameters(params): Parameters<W3cOriginParams>,
+    ) -> String {
+        let result = match self.with_agent(|agent| {
+            jacs::w3c::export_did_document(
+                agent,
+                jacs::w3c::W3cDidOptions {
+                    origin: params.origin,
+                },
+            )
+        }) {
+            Ok(document) => W3cJsonDocumentResult {
+                success: true,
+                document: Some(document),
+                message: "W3C DID document exported successfully".to_string(),
+                error: None,
+            },
+            Err(e) => W3cJsonDocumentResult {
+                success: false,
+                document: None,
+                message: "Failed to export W3C DID document".to_string(),
+                error: Some(e),
+            },
+        };
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Export this agent's W3C agent description.
+    #[tool(
+        name = "jacs_w3c_export_agent_description",
+        description = "Export this agent's W3C agent description document."
+    )]
+    pub async fn jacs_w3c_export_agent_description(
+        &self,
+        Parameters(params): Parameters<W3cOriginParams>,
+    ) -> String {
+        let result = match self.with_agent(|agent| {
+            jacs::w3c::export_agent_description(
+                agent,
+                jacs::w3c::W3cDidOptions {
+                    origin: params.origin,
+                },
+            )
+        }) {
+            Ok(document) => W3cJsonDocumentResult {
+                success: true,
+                document: Some(document),
+                message: "W3C agent description exported successfully".to_string(),
+                error: None,
+            },
+            Err(e) => W3cJsonDocumentResult {
+                success: false,
+                document: None,
+                message: "Failed to export W3C agent description".to_string(),
+                error: Some(e),
+            },
+        };
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Generate W3C well-known discovery documents.
+    #[tool(
+        name = "jacs_w3c_generate_well_known",
+        description = "Generate W3C well-known discovery documents keyed by path."
+    )]
+    pub async fn jacs_w3c_generate_well_known(
+        &self,
+        Parameters(params): Parameters<W3cOriginParams>,
+    ) -> String {
+        let result = match self.with_agent(|agent| {
+            jacs::w3c::generate_w3c_well_known_documents(
+                agent,
+                jacs::w3c::W3cDidOptions {
+                    origin: params.origin,
+                },
+            )
+        }) {
+            Ok(documents) => {
+                let count = documents.len();
+                let mut by_path = serde_json::Map::new();
+                for (path, document) in documents {
+                    by_path.insert(path, document);
+                }
+                W3cWellKnownResult {
+                    success: true,
+                    documents: Some(serde_json::Value::Object(by_path)),
+                    count,
+                    message: format!("{} W3C discovery document(s) generated", count),
+                    error: None,
+                }
+            }
+            Err(e) => W3cWellKnownResult {
+                success: false,
+                documents: None,
+                count: 0,
+                message: "Failed to generate W3C discovery documents".to_string(),
+                error: Some(e),
+            },
+        };
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Create a request-bound DID authentication proof.
+    #[tool(
+        name = "jacs_w3c_sign_request",
+        description = "Create a request-bound DID authentication proof for a concrete HTTP request."
+    )]
+    pub async fn jacs_w3c_sign_request(
+        &self,
+        Parameters(params): Parameters<W3cSignRequestParams>,
+    ) -> String {
+        let result = match self.with_agent_mut(|agent| {
+            jacs::w3c::build_request_proof(
+                agent,
+                jacs::w3c::W3cRequestProofParams {
+                    method: params.method,
+                    url: params.url,
+                    body: params.body,
+                    nonce: params.nonce,
+                    created: params.created,
+                    origin: params.origin,
+                },
+            )
+        }) {
+            Ok(proof) => W3cRequestProofResult {
+                success: true,
+                proof: Some(proof),
+                message: "W3C request proof signed successfully".to_string(),
+                error: None,
+            },
+            Err(e) => W3cRequestProofResult {
+                success: false,
+                proof: None,
+                message: "Failed to sign W3C request proof".to_string(),
+                error: Some(e),
+            },
+        };
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
+    }
+
+    /// Verify a request-bound DID authentication proof.
+    #[tool(
+        name = "jacs_w3c_verify_request",
+        description = "Verify a request-bound DID authentication proof against a resolved DID document."
+    )]
+    pub async fn jacs_w3c_verify_request(
+        &self,
+        Parameters(params): Parameters<W3cVerifyRequestParams>,
+    ) -> String {
+        let verifier = jacs::get_empty_agent();
+        let result = match jacs::w3c::verify_request_proof_for_request(
+            &verifier,
+            &params.proof_json,
+            &params.did_document_json,
+            params.body.as_deref(),
+            params.max_age_seconds.unwrap_or(300),
+            params.method.as_deref(),
+            params.url.as_deref(),
+        ) {
+            Ok(verification) => W3cVerifyRequestResult {
+                success: true,
+                verification: Some(verification),
+                message: "W3C request proof verified successfully".to_string(),
+                error: None,
+            },
+            Err(e) => W3cVerifyRequestResult {
+                success: false,
+                verification: None,
+                message: "Failed to verify W3C request proof".to_string(),
+                error: Some(e.to_string()),
+            },
+        };
+        serde_json::to_string_pretty(&result).unwrap_or_else(|e| format!("Error: {}", e))
     }
 
     /// Export the local agent's full JACS JSON document.
@@ -2238,6 +2474,13 @@ impl ServerHandler for JacsMcpServer {
                  jacs_generate_well_known (generate .well-known documents), \
                  jacs_export_agent (export full agent JSON). \
                  \
+                 W3C interop: jacs_w3c_export_did (export did:wba identifier), \
+                 jacs_w3c_export_did_document (export DID document), \
+                 jacs_w3c_export_agent_description (export agent description), \
+                 jacs_w3c_generate_well_known (generate W3C discovery documents), \
+                 jacs_w3c_sign_request (create request-bound DID proof), \
+                 jacs_w3c_verify_request (verify request-bound DID proof). \
+                 \
                  Trust store: jacs_trust_agent (add agent to trust store), \
                  jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), \
                  jacs_list_trusted_agents (list all trusted agent IDs), \
@@ -2333,6 +2576,8 @@ mod tests {
             assert!(names.contains(&"jacs_export_agent_card"));
             assert!(names.contains(&"jacs_generate_well_known"));
             assert!(names.contains(&"jacs_export_agent"));
+            assert!(names.contains(&"jacs_w3c_export_did"));
+            assert!(names.contains(&"jacs_w3c_generate_well_known"));
         }
 
         #[cfg(feature = "search-tools")]

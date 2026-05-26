@@ -201,6 +201,98 @@ impl SimpleAgentWrapper {
     }
 
     // =========================================================================
+    // W3C AI Agent Protocol interop
+    // =========================================================================
+
+    /// Export this agent's did:wba identifier.
+    pub fn export_w3c_did(&self, origin: Option<&str>) -> BindingResult<String> {
+        jacs::simple::w3c::export_w3c_did_identifier_with_origin(&self.inner, origin)
+            .map_err(|e| BindingCoreError::generic(format!("Failed to export W3C DID: {}", e)))
+    }
+
+    /// Export this agent's did:wba DID document as JSON.
+    pub fn export_w3c_did_document_json(&self, origin: Option<&str>) -> BindingResult<String> {
+        let document =
+            jacs::simple::w3c::export_w3c_did_document(&self.inner, origin).map_err(|e| {
+                BindingCoreError::generic(format!("Failed to export W3C DID document: {}", e))
+            })?;
+        serialize_json(&document, "W3C DID document")
+    }
+
+    /// Export this agent's W3C agent description as JSON.
+    pub fn export_w3c_agent_description_json(&self, origin: Option<&str>) -> BindingResult<String> {
+        let description = jacs::simple::w3c::export_w3c_agent_description(&self.inner, origin)
+            .map_err(|e| {
+                BindingCoreError::generic(format!("Failed to export W3C agent description: {}", e))
+            })?;
+        serialize_json(&description, "W3C agent description")
+    }
+
+    /// Generate W3C well-known discovery documents as a JSON object keyed by path.
+    pub fn generate_w3c_well_known_json(&self, origin: Option<&str>) -> BindingResult<String> {
+        let documents =
+            jacs::simple::w3c::generate_w3c_well_known(&self.inner, origin).map_err(|e| {
+                BindingCoreError::generic(format!(
+                    "Failed to generate W3C well-known documents: {}",
+                    e
+                ))
+            })?;
+        let mut by_path = serde_json::Map::new();
+        for (path, value) in documents {
+            by_path.insert(path, value);
+        }
+        serialize_json(
+            &serde_json::Value::Object(by_path),
+            "W3C well-known documents",
+        )
+    }
+
+    /// Sign a request-bound DID authentication proof.
+    ///
+    /// `params_json` is a JSON string of `W3cRequestProofParams`.
+    pub fn sign_w3c_request_json(&self, params_json: &str) -> BindingResult<String> {
+        let params: jacs::w3c::W3cRequestProofParams =
+            serde_json::from_str(params_json).map_err(|e| {
+                BindingCoreError::invalid_argument(format!(
+                    "Invalid W3C request proof params JSON: {}",
+                    e
+                ))
+            })?;
+        let proof = jacs::simple::w3c::sign_w3c_request(&self.inner, params).map_err(|e| {
+            BindingCoreError::signing_failed(format!("Failed to sign W3C request proof: {}", e))
+        })?;
+        serialize_json(&proof, "W3C request proof")
+    }
+
+    /// Verify a request-bound DID authentication proof.
+    pub fn verify_w3c_request_json(
+        &self,
+        proof_json: &str,
+        did_document_json: &str,
+        body: Option<&str>,
+        max_age_seconds: u64,
+        expected_method: Option<&str>,
+        expected_url: Option<&str>,
+    ) -> BindingResult<String> {
+        let result = jacs::simple::w3c::verify_w3c_request(
+            &self.inner,
+            proof_json,
+            did_document_json,
+            body,
+            max_age_seconds,
+            expected_method,
+            expected_url,
+        )
+        .map_err(|e| {
+            BindingCoreError::verification_failed(format!(
+                "Failed to verify W3C request proof: {}",
+                e
+            ))
+        })?;
+        serialize_json(&result, "W3C request proof verification")
+    }
+
+    // =========================================================================
     // Verification
     // =========================================================================
 

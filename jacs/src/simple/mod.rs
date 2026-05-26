@@ -61,6 +61,7 @@ pub mod convert;
 pub mod core;
 pub mod diagnostics;
 pub mod types;
+pub mod w3c;
 pub use core::SimpleAgent;
 pub use core::build_loaded_agent_info;
 pub use diagnostics::diagnostics;

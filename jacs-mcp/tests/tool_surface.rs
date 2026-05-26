@@ -4,9 +4,9 @@ use jacs_binding_core::AgentWrapper;
 use rmcp::ServerHandler;
 
 #[cfg(not(feature = "full-tools"))]
-const CORE_TOOL_COUNT: usize = 19;
+const CORE_TOOL_COUNT: usize = 25;
 #[cfg(feature = "full-tools")]
-const FULL_TOOL_COUNT: usize = 29;
+const FULL_TOOL_COUNT: usize = 35;
 
 fn sorted_tool_names() -> Vec<String> {
     let mut names: Vec<String> = jacs_mcp::JacsMcpServer::tools()
@@ -34,6 +34,7 @@ fn default_features_register_core_tools() {
     assert!(names.contains(&"jacs_trust_agent"));
     assert!(names.contains(&"jacs_search"));
     assert!(names.contains(&"jacs_reencrypt_key"));
+    assert!(names.contains(&"jacs_w3c_export_did"));
     assert!(names.contains(&"jacs_sign_text"));
     assert!(names.contains(&"jacs_sign_image"));
 
@@ -91,6 +92,18 @@ fn per_category_core_tool_counts() {
                 "jacs_export_agent",
             ],
         ),
+        (
+            "W3C interop",
+            6,
+            &[
+                "jacs_w3c_export_did",
+                "jacs_w3c_export_did_document",
+                "jacs_w3c_export_agent_description",
+                "jacs_w3c_generate_well_known",
+                "jacs_w3c_sign_request",
+                "jacs_w3c_verify_request",
+            ],
+        ),
     ];
 
     for (category, expected_count, expected_members) in core_categories {
@@ -146,6 +159,12 @@ fn full_tools_registers_all_current_tools() {
         "jacs_verify_document",
         "jacs_verify_image",
         "jacs_verify_text",
+        "jacs_w3c_export_agent_description",
+        "jacs_w3c_export_did",
+        "jacs_w3c_export_did_document",
+        "jacs_w3c_generate_well_known",
+        "jacs_w3c_sign_request",
+        "jacs_w3c_verify_request",
         "jacs_wrap_a2a_artifact",
     ]
     .into_iter()
@@ -178,6 +197,12 @@ fn tool_names_snapshot_core_sorted() {
         "jacs_verify_document",
         "jacs_verify_image",
         "jacs_verify_text",
+        "jacs_w3c_export_agent_description",
+        "jacs_w3c_export_did",
+        "jacs_w3c_export_did_document",
+        "jacs_w3c_generate_well_known",
+        "jacs_w3c_sign_request",
+        "jacs_w3c_verify_request",
     ]
     .into_iter()
     .map(String::from)

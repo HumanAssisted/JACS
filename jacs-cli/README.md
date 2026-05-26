@@ -72,6 +72,29 @@ jacs extract-media-signature signed.png --raw-payload
 
 JACS proves that an agent signed specific canonical bytes at its claimed time. It does not prove first creation or legal ownership.
 
+### W3C DID interop
+
+```bash
+# Export a did:wba identifier while keeping jacsId as the canonical JACS ID.
+jacs w3c did --origin https://agent.example.com
+
+# Generate the DID document, agent description, and discovery collection.
+jacs w3c did-document --origin https://agent.example.com
+jacs w3c agent-description --origin https://agent.example.com
+jacs w3c well-known --origin https://agent.example.com --out ./public
+
+# Local demo server for the generated discovery documents.
+jacs w3c serve --origin https://agent.example.com --port 8081
+
+# Request-bound DID auth proof demo.
+jacs w3c sign-request --method POST --url https://api.example.com/tasks --body '{"ok":true}'
+jacs w3c verify-request --method POST --url https://api.example.com/tasks --proof proof.json --did-document did.json --body '{"ok":true}'
+```
+
+The W3C view is additive: `jacsId` remains the canonical JACS document identity, and DID documents are generated from the same agent key material.
+
+For an executable end-to-end example that exports discovery artifacts, signs a request-bound DID proof, and verifies both success and failure cases, run `examples/w3c_did_interop.sh` from the repository root.
+
 ## MCP server
 
 ```bash

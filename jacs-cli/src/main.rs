@@ -1084,6 +1084,115 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             }
             _ => println!("please enter subcommand see jacs a2a --help"),
         },
+        Some(("w3c", w3c_matches)) => match w3c_matches.subcommand() {
+            Some(("did", did_matches)) => {
+                let agent = load_agent()?;
+                let did = jacs::w3c::export_did_identifier_with_options(
+                    &agent,
+                    w3c_did_options(did_matches),
+                )?;
+                println!("{}", did);
+            }
+            Some(("did-document", did_matches)) => {
+                let agent = load_agent()?;
+                let document =
+                    jacs::w3c::export_did_document(&agent, w3c_did_options(did_matches))?;
+                print_pretty_json(&document)?;
+            }
+            Some(("agent-description", desc_matches)) => {
+                let agent = load_agent()?;
+                let description =
+                    jacs::w3c::export_agent_description(&agent, w3c_did_options(desc_matches))?;
+                print_pretty_json(&description)?;
+            }
+            Some(("well-known", well_known_matches)) => {
+                let agent = load_agent()?;
+                let documents = jacs::w3c::generate_w3c_well_known_documents(
+                    &agent,
+                    w3c_did_options(well_known_matches),
+                )?;
+                if let Some(out_dir) = well_known_matches.get_one::<String>("out") {
+                    write_w3c_documents(out_dir, &documents)?;
+                    println!(
+                        "Wrote {} W3C discovery documents to {}",
+                        documents.len(),
+                        out_dir
+                    );
+                    for (path, _) in &documents {
+                        println!("  {}", path);
+                    }
+                } else {
+                    let value = serde_json::Value::Object(
+                        documents
+                            .into_iter()
+                            .collect(),
+                    );
+                    print_pretty_json(&value)?;
+                }
+            }
+            Some(("serve", serve_matches)) => {
+                let port = *serve_matches.get_one::<u16>("port").unwrap();
+                let host = serve_matches
+                    .get_one::<String>("host")
+                    .map(|s| s.as_str())
+                    .unwrap_or("127.0.0.1");
+                let agent = load_agent()?;
+                let documents = jacs::w3c::generate_w3c_well_known_documents(
+                    &agent,
+                    w3c_did_options(serve_matches),
+                )?;
+                serve_w3c_documents(host, port, documents)?;
+            }
+            Some(("sign-request", sign_matches)) => {
+                let mut agent = load_agent()?;
+                let method = sign_matches
+                    .get_one::<String>("method")
+                    .expect("method required")
+                    .to_string();
+                let url = sign_matches
+                    .get_one::<String>("url")
+                    .expect("url required")
+                    .to_string();
+                let proof = jacs::w3c::build_request_proof(
+                    &mut agent,
+                    jacs::w3c::W3cRequestProofParams {
+                        method,
+                        url,
+                        body: read_optional_body(sign_matches)?,
+                        nonce: sign_matches.get_one::<String>("nonce").cloned(),
+                        created: sign_matches.get_one::<String>("created").cloned(),
+                        origin: sign_matches.get_one::<String>("origin").cloned(),
+                    },
+                )?;
+                print_pretty_json(&proof)?;
+            }
+            Some(("verify-request", verify_matches)) => {
+                let proof_path = verify_matches
+                    .get_one::<String>("proof")
+                    .expect("proof required");
+                let did_document_path = verify_matches
+                    .get_one::<String>("did-document")
+                    .expect("did-document required");
+                let proof_json = std::fs::read_to_string(proof_path)?;
+                let did_document_json = std::fs::read_to_string(did_document_path)?;
+                let body = read_optional_body(verify_matches)?;
+                let max_age_seconds = *verify_matches.get_one::<u64>("max-age-seconds").unwrap();
+                let verifier = jacs::get_empty_agent();
+                let result = jacs::w3c::verify_request_proof_for_request(
+                    &verifier,
+                    &proof_json,
+                    &did_document_json,
+                    body.as_deref(),
+                    max_age_seconds,
+                    verify_matches
+                        .get_one::<String>("method")
+                        .map(String::as_str),
+                    verify_matches.get_one::<String>("url").map(String::as_str),
+                )?;
+                print_pretty_json(&result)?;
+            }
+            _ => println!("please enter subcommand see jacs w3c --help"),
+        },
         Some(("quickstart", qs_matches)) => {
             let algorithm = qs_matches
                 .get_one::<String>("algorithm")
@@ -1737,6 +1846,88 @@ pub fn main() -> Result<(), Box<dyn Error>> {
             // This branch should ideally be unreachable after adding arg_required_else_help(true)
             eprintln!("Invalid command or no subcommand provided. Use --help for usage.");
             process::exit(1); // Exit with error if this branch is reached
+        }
+    }
+
+    Ok(())
+}
+
+fn w3c_did_options(matches: &clap::ArgMatches) -> jacs::w3c::W3cDidOptions {
+    jacs::w3c::W3cDidOptions {
+        origin: matches.get_one::<String>("origin").cloned(),
+    }
+}
+
+fn read_optional_body(matches: &clap::ArgMatches) -> Result<Option<String>, Box<dyn Error>> {
+    if let Some(body) = matches.get_one::<String>("body") {
+        return Ok(Some(body.clone()));
+    }
+    if let Some(path) = matches.get_one::<String>("body-file") {
+        return Ok(Some(std::fs::read_to_string(path)?));
+    }
+    Ok(None)
+}
+
+fn print_pretty_json(value: &serde_json::Value) -> Result<(), Box<dyn Error>> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+fn write_w3c_documents(
+    out_dir: &str,
+    documents: &[(String, serde_json::Value)],
+) -> Result<(), Box<dyn Error>> {
+    let root = std::path::Path::new(out_dir);
+    std::fs::create_dir_all(root)?;
+    for (route_path, value) in documents {
+        let relative_path = route_path.trim_start_matches('/');
+        let target_path = root.join(relative_path);
+        if let Some(parent) = target_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&target_path, serde_json::to_vec_pretty(value)?)?;
+    }
+    Ok(())
+}
+
+fn serve_w3c_documents(
+    host: &str,
+    port: u16,
+    documents: Vec<(String, serde_json::Value)>,
+) -> Result<(), Box<dyn Error>> {
+    let mut routes: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (path, value) in &documents {
+        routes.insert(path.clone(), serde_json::to_string_pretty(value)?);
+    }
+
+    let addr = format!("{}:{}", host, port);
+    let server = tiny_http::Server::http(&addr)
+        .map_err(|e| format!("Failed to start W3C discovery server on {}: {}", addr, e))?;
+
+    println!("Serving W3C discovery endpoints at http://{}", addr);
+    println!("Endpoints:");
+    for path in routes.keys() {
+        println!("  http://{}{}", addr, path);
+    }
+    println!();
+    println!("Press Ctrl+C to stop.");
+
+    for request in server.incoming_requests() {
+        let url = request.url().split('?').next().unwrap_or(request.url());
+        if let Some(body) = routes.get(url) {
+            let response = tiny_http::Response::from_string(body.clone()).with_header(
+                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                    .unwrap(),
+            );
+            let _ = request.respond(response);
+        } else {
+            let response = tiny_http::Response::from_string("{\"error\": \"not found\"}")
+                .with_status_code(404)
+                .with_header(
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap(),
+                );
+            let _ = request.respond(response);
         }
     }
 

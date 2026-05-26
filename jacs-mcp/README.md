@@ -44,6 +44,17 @@ The server exposes tools in these categories:
 | `jacs_verify_a2a_artifact` | Verify a JACS-wrapped A2A artifact |
 | `jacs_assess_a2a_agent` | Assess the trust level of a remote A2A agent |
 
+### W3C DID Interop
+
+| Tool | Description |
+|------|-------------|
+| `jacs_w3c_export_did` | Export the local agent's `did:wba` identifier |
+| `jacs_w3c_export_did_document` | Export the local agent's W3C DID document |
+| `jacs_w3c_export_agent_description` | Export the local agent's W3C agent description |
+| `jacs_w3c_generate_well_known` | Generate W3C discovery documents keyed by path |
+| `jacs_w3c_sign_request` | Create a request-bound DID authentication proof |
+| `jacs_w3c_verify_request` | Verify a request-bound DID authentication proof, optionally against the actual method and URL |
+
 ### Trust Store
 
 | Tool | Description |

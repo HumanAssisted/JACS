@@ -1,0 +1,41 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1"
+  ],
+  "assertionMethod": [
+    "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129"
+  ],
+  "authentication": [
+    "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129"
+  ],
+  "id": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a",
+  "jacs": {
+    "jacsId": "22dbef6c-b85e-40e5-b82e-f95a4259339a",
+    "jacsLookupId": "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a",
+    "jacsVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+    "keyAlgorithm": "ring-Ed25519",
+    "publicKeyHash": "7872a5e1df5011294953517e04a9f2d068e3ddba0204ec33ad241d7fe378989b"
+  },
+  "service": [
+    {
+      "id": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#agent-desc",
+      "serviceEndpoint": "https://agent.example.com/agent/22dbef6c-b85e-40e5-b82e-f95a4259339a/description.json",
+      "type": "AgentDescription"
+    }
+  ],
+  "verificationMethod": [
+    {
+      "controller": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a",
+      "id": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129",
+      "jacsSigningAlgorithm": "ring-Ed25519",
+      "publicKeyJwk": {
+        "alg": "EdDSA",
+        "crv": "Ed25519",
+        "kid": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129",
+        "kty": "OKP",
+        "x": "GRTtI-QA4HmfJyK_rOVhjdq3tmLR_93_w_xasZwoqyY"
+      },
+      "type": "JsonWebKey2020"
+    }
+  ]
+}

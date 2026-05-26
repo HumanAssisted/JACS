@@ -106,6 +106,12 @@ func expectedMcpTools() []string {
 		"jacs_verify_document",
 		"jacs_verify_image",
 		"jacs_verify_text",
+		"jacs_w3c_export_agent_description",
+		"jacs_w3c_export_did",
+		"jacs_w3c_export_did_document",
+		"jacs_w3c_generate_well_known",
+		"jacs_w3c_sign_request",
+		"jacs_w3c_verify_request",
 		"jacs_wrap_a2a_artifact",
 	}
 	sort.Strings(tools)

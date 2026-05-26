@@ -54,6 +54,12 @@ const NODE_NAME_MAP = {
   'to_html': 'toHtml',
   'from_html': 'fromHtml',
   'rotate_keys': 'rotateKeys',
+  'export_w3c_did': 'exportW3cDid',
+  'export_w3c_did_document_json': 'exportW3cDidDocument',
+  'export_w3c_agent_description_json': 'exportW3cAgentDescription',
+  'generate_w3c_well_known_json': 'generateW3cWellKnown',
+  'sign_w3c_request_json': 'signW3cRequest',
+  'verify_w3c_request_json': 'verifyW3cRequest',
   // Inline text + media (Task 11): NAPI methods on JacsSimpleAgent strip the
   // _json suffix. Short aliases (signText/verifyText) also exist on the class
   // but the parity name is the suffix-stripped name shown here.

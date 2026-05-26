@@ -1,0 +1,36 @@
+{
+  "@context": {
+    "@vocab": "https://schema.org/",
+    "ad": "https://agent-network-protocol.com/ad#",
+    "jacs": "https://jacs.sh/ns#"
+  },
+  "@id": "https://agent.example.com/agent/22dbef6c-b85e-40e5-b82e-f95a4259339a/description.json",
+  "@type": "ad:AgentDescription",
+  "capabilities": [
+    "jacs.document.signing",
+    "jacs.document.verification",
+    "jacs.provenance"
+  ],
+  "description": "JACS agent",
+  "did": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a",
+  "interfaces": [
+    {
+      "@type": "ad:Interface",
+      "protocol": "jsonrpc",
+      "url": "https://agent-22dbef6c-b85e-40e5-b82e-f95a4259339a.jacs.localhost"
+    }
+  ],
+  "jacs": {
+    "jacsId": "22dbef6c-b85e-40e5-b82e-f95a4259339a",
+    "jacsLookupId": "22dbef6c-b85e-40e5-b82e-f95a4259339a:a51ece55-0fa1-4576-b9d6-eea351bb132a",
+    "jacsVersion": "a51ece55-0fa1-4576-b9d6-eea351bb132a",
+    "keyAlgorithm": "ring-Ed25519",
+    "publicKeyHash": "7872a5e1df5011294953517e04a9f2d068e3ddba0204ec33ad241d7fe378989b",
+    "verificationAlgorithms": [
+      "ring-Ed25519",
+      "pq2025"
+    ]
+  },
+  "name": "agent-ed25519",
+  "version": "a51ece55-0fa1-4576-b9d6-eea351bb132a"
+}

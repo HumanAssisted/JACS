@@ -6,9 +6,9 @@ use jacs_binding_core::AgentWrapper;
 use jacs_mcp::Profile;
 
 #[cfg(not(feature = "full-tools"))]
-const CORE_TOOL_COUNT: usize = 19;
+const CORE_TOOL_COUNT: usize = 25;
 #[cfg(feature = "full-tools")]
-const FULL_TOOL_COUNT: usize = 29;
+const FULL_TOOL_COUNT: usize = 35;
 
 #[test]
 fn compile_time_default_features_yield_core_tools() {
@@ -38,6 +38,7 @@ fn compile_time_features_are_additive() {
     assert!(names.contains(&"jacs_verify_document"));
     assert!(names.contains(&"jacs_search"));
     assert!(names.contains(&"jacs_reencrypt_key"));
+    assert!(names.contains(&"jacs_w3c_export_did"));
 
     assert!(!names.iter().any(|name| name.contains("_state")));
     assert!(!names.iter().any(|name| name.starts_with("jacs_message_")));

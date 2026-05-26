@@ -29,8 +29,8 @@ fn canonical_contract_snapshot_contains_core_tools() {
 
     assert_eq!(
         actual.tools.len(),
-        19,
-        "default-feature contract should have 19 core tools, got {}",
+        25,
+        "default-feature contract should have 25 core tools, got {}",
         actual.tools.len()
     );
 
