@@ -1,6 +1,9 @@
 #ifndef JACS_CGO_H
 #define JACS_CGO_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 // Shared opaque handle types
 typedef void* JacsAgentHandle;
 
