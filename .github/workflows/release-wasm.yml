@@ -76,15 +76,18 @@ jobs:
         with:
           version: 'latest'
 
-      # Chrome + chromedriver pair so the `wasm-pack test --headless
-      # --chrome` runner has a matching driver. The browser-actions
-      # setup-chrome action handles both.
-      - uses: browser-actions/setup-chrome@v1
+      # Firefox/geckodriver keeps the wasm-bindgen browser test lane on a
+      # WebDriver endpoint that is stable in GitHub Actions.
+      - uses: browser-actions/setup-firefox@v1
+      - uses: browser-actions/setup-geckodriver@latest
         with:
-          chrome-version: stable
-          install-chromedriver: true
-        id: setup-chrome
-      - run: echo "CHROMEDRIVER=${{ steps.setup-chrome.outputs.chromedriver-path }}" >> "$GITHUB_ENV"
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure wasm-bindgen Firefox WebDriver
+        run: |
+          firefox --version
+          geckodriver --version
+          echo "GECKODRIVER=$(command -v geckodriver)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -107,8 +110,8 @@ jobs:
           cd jacs-wasm
           npx --yes -p typescript@5 tsc --noEmit -p tsconfig.json
 
-      - name: wasm-pack test --headless --chrome
-        run: wasm-pack test --headless --chrome jacs-wasm
+      - name: wasm-pack test --headless --firefox
+        run: wasm-pack test --headless --firefox jacs-wasm
 
       - name: wasm-pack build --target web --release
         run: wasm-pack build --target web --release jacs-wasm
