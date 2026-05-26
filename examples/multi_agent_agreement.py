@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Multi-agent agreement with cryptographic proof -- zero setup.
+"""Legacy sidecar agreement example with cryptographic proof -- zero setup.
 
 Three agents negotiate and co-sign a deployment proposal using JACS.
 Demonstrates quorum (2-of-3), timeout, independent verification,
 and a full crypto proof chain.
+
+For new standalone consent workflows, use Agreement v2 instead:
+    python examples/agreement_v2_three_party.py
 
 Run:
     python examples/multi_agent_agreement.py

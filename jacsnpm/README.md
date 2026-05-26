@@ -38,6 +38,9 @@ All operations are async by default. Sync variants are available with a `Sync` s
 | `signFile(path, embed)` | Sign a file |
 | `verify(doc)` | Verify a signed document |
 | `verifyStandalone(doc, opts)` | Verify without loading an agent |
+| `createAgreementV2(input)` | Create a standalone Agreement v2 document |
+| `signAgreementV2(doc, role)` | Sign as `signer`, `witness`, or `notary` |
+| `verifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
 | `audit()` | Run a security audit |
 
 ## Text and image provenance
@@ -85,6 +88,32 @@ const result = verifyStandalone(signedJson, { keyDirectory: './keys/' });
 ```
 
 Cross-language interop is tested on every commit. Documents signed in Rust or Python verify in Node.js, and Node-signed documents verify in the other bindings.
+
+## Agreement v2
+
+Use Agreement v2 for new multi-agent consent workflows:
+
+```typescript
+import { JacsSimpleAgent } from '@hai.ai/jacs';
+
+const agent = JacsSimpleAgent.ephemeral('ed25519');
+const agentId = agent.getAgentId();
+
+const agreement = await agent.createAgreementV2(JSON.stringify({
+  title: 'Refund approval',
+  description: 'Approval for a bounded refund.',
+  terms: 'Refund up to $25 for order 123.',
+  status: 'proposed',
+  parties: [{ agentId, agentType: 'ai', role: 'signer' }],
+  signaturePolicy: { partyQuorum: 'all', witnessRequired: 0, notaryRequired: 0 },
+  controllers: [agentId],
+}));
+
+const signed = await agent.signAgreementV2(agreement, 'signer');
+const report = await agent.verifyAgreementV2(signed);
+```
+
+The older `createAgreement()` / `signAgreement()` / `checkAgreement()` methods remain for simple `jacsAgreement` sidecars on existing documents.
 
 ## Framework adapters
 

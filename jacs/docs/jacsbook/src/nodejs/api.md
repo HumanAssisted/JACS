@@ -162,6 +162,8 @@ const updatedDoc = await agent.updateDocument(
 
 ### agent.createAgreement(...) / agent.createAgreementSync(...)
 
+Legacy sidecar API. Use Agreement v2 for new standalone consent workflows.
+
 Add an agreement requiring multiple agent signatures to a document.
 
 **Parameters:**

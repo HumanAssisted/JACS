@@ -297,7 +297,7 @@ jacs document extract -d ./documents/
 
 ### Agreement Commands
 
-JACS provides specialized commands for managing multi-agent agreements.
+JACS provides specialized commands for managing multi-agent agreements. Prefer `jacs agreement-v2` for new standalone consent workflows. The `jacs document *-agreement` commands below are legacy sidecar commands for simple approval of an existing signed document.
 
 #### `jacs document check-agreement`
 Given a document, provide a list of agents that should sign the document.

@@ -175,6 +175,8 @@ updated_doc = agent.update_document(
 
 ### agent.create_agreement(document_string, agent_ids, question=None, context=None, agreement_field_name=None)
 
+Legacy sidecar API. Use Agreement v2 for new standalone consent workflows.
+
 Add an agreement requiring multiple agent signatures to a document.
 
 **Parameters:**

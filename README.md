@@ -22,6 +22,7 @@ JACS signs canonical JSON and common artifact formats, then lets Rust, Python, N
 | **Portable signatures** | Sign in one surface and verify in another across Rust, Python, Node.js, Go, CLI, and MCP integrations. |
 | **Schema-backed JSON** | Create verifiable JSON documents with declared schemas, content hashes, signer identity, signing algorithm, and signature metadata. |
 | **Artifact provenance** | Sign files, Markdown/text, images, and Rust email payloads so consumers can detect tampering and identify the signer. |
+| **Agreement v2** | Create standalone signed agreement documents with terms, parties, transcript evidence, notary support, branch handling, and portable verification. |
 | **Local trust** | Verify other agents with local keys, DNS anchors, and explicit trust policies (`open`, `verified`, `strict`). |
 | **Developer integration** | Use the CLI, built-in MCP server, Rust crate, Python package, Node package, or Go bindings. |
 
@@ -93,7 +94,7 @@ The MCP server opens no HTTP port. It runs as a subprocess of the MCP client so 
 
 **Email provenance** — Add a JACS signature attachment to raw email and verify important headers, body parts, and attachments.
 
-**Agent boundaries** — Sign tool outputs, API responses, MCP calls, A2A artifacts, or multi-agent agreements when data crosses a trust boundary.
+**Agent boundaries** — Sign tool outputs, API responses, MCP calls, A2A artifacts, or standalone Agreement v2 documents when data crosses a trust boundary.
 
 **Platform verification** — For verified documents, agent behavior, benchmarks, and hosted workflows around JACS identities, see [HumanAssisted/haiai](https://github.com/HumanAssisted/haiai).
 

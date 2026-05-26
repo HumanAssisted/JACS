@@ -178,6 +178,8 @@ is_valid = agent.verify_string(
 
 ## Working with Agreements
 
+The methods in this section use the legacy `jacsAgreement` sidecar on an existing signed document. For new standalone consent workflows, prefer Agreement v2 through `SimpleAgent.create_agreement_v2()`, `sign_agreement_v2()`, and `verify_agreement_v2()`.
+
 ### Create an Agreement
 
 ```python

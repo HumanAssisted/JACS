@@ -1,33 +1,82 @@
 # Agreements
 
-Agreements are one of the basic reasons JACS exists. An agreement is a collection of signatures from required agents.
-You may want to use it to ensure that agents agree. You can also create human-in-the-loop scenarios, where automated agents sign, but the human using the cli must sign the document for a process to contineu.
+Agreement v2 is the recommended CLI workflow for agreement documents. It creates standalone `jacsType: "agreement"` artifacts with terms, parties, signature policy, transcript references, notary support, and verifiable status.
 
-If all the agreements are signed.
+## Agreement v2
 
-To create an agreement you need an existing jacs document and agent ids (no version):
+Create an agreement from JSON:
 
-    jacs document verify -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:4f041628-5a2d-48d3-aa17-a8bd9b9fc00e.json
+```bash
+jacs agreement-v2 create --input agreement-input.json > agreement.json
+```
 
-Then create add a comma separated list of agents where `-i` are the agent identities.
+Sign as a party, witness, or HAI-style notary:
 
-    jacs document create-agreement -f ./examples/documents/newjsonld.json -i 432e0415-5317-4999-abd4-f2a125dab90a, 5305e3e1-9b14-4cb7-94ff-902f9c101d91
+```bash
+jacs agreement-v2 sign --agreement agreement.json --role signer > signed-by-a.json
+jacs agreement-v2 sign --agreement signed-by-a.json --role signer > signed-by-b.json
+jacs agreement-v2 sign --agreement signed-by-b.json --role notary > final.json
+```
 
-To sign the document, sign the new document that was created by `create-agreement`
+Verify before acting on status:
 
-    jacs document sign-agreement  -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:1c37d69f-243a-45d2-aa99-c298af6b1304.json
+```bash
+jacs agreement-v2 verify --agreement final.json
+```
 
-Now you can check if the agreement was signed. If all agents have signed (or quorum is met), it will succeed. If not enough agents have signed or the agreement has expired, it will error.
+The verifier recomputes the agreement hash, transcript hash, role counts, quorum, witness/notary requirements, and header/controller invariants.
 
-    jacs document check-agreement  -f  examples/documents/a3b935f3-57c4-4562-9d1a-2c06a89380e7\:1c37d69f-243a-45d2-aa99-c298af6b1304.json
+## Mutations
 
-## Agreement Options (v0.6.2+)
+Apply mutations through the CLI instead of editing JSON by hand:
 
-Agreements now support:
+```bash
+jacs agreement-v2 apply --agreement agreement.json --mutation append-transcript.json > next.json
+```
 
-- **Timeout**: ISO 8601 deadline after which the agreement expires
-- **Quorum**: M-of-N signing (e.g., 2 of 3 agents is sufficient)
-- **Algorithm constraints**: Only allow specific signing algorithms (e.g., post-quantum only)
+Common mutation shapes:
 
-These options are available through the Python `JacsClient`, Node.js `JacsClient`, and MCP tools. See [Agreements in Rust](../rust/agreements.md) for full documentation and examples.
+```json
+{ "type": "appendTranscript", "entry": { "jacsId": "...", "jacsVersion": "...", "jacsSha256": "..." } }
+```
 
+```json
+{ "type": "updateTerms", "terms": "Updated agreement text." }
+```
+
+```json
+{ "type": "setStatus", "status": "proposed" }
+```
+
+```json
+{ "type": "addLink", "link": { "jacsId": "...", "jacsVersion": "..." } }
+```
+
+## Branch Handling
+
+Use these commands when two agents emit successor versions from the same prior version:
+
+```bash
+jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
+jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
+jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+```
+
+Transcript-only branches can auto-merge. Terms, party, policy, status, signature, controller, or link conflicts require explicit resolution.
+
+## Legacy Sidecar Commands
+
+The older document-level commands still exist:
+
+```bash
+jacs document create-agreement -f ./document.json -i agent1-uuid,agent2-uuid
+jacs document sign-agreement -f ./document-with-agreement.json
+jacs document check-agreement -f ./document-with-agreement.json
+```
+
+These commands manage a `jacsAgreement` sidecar on an arbitrary document. Use them for simple countersignature metadata. Use `agreement-v2` for new product workflows.
+
+## See Also
+
+- [Agreement v2 Developer Guide](../guides/agreement-v2.md)
+- [Creating and Using Agreements](../rust/agreements.md)

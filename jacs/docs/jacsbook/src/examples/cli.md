@@ -189,6 +189,8 @@ jacs document extract -d ./documents/
 
 ## Agreement Workflows
 
+This section shows the legacy `jacsAgreement` sidecar commands for simple approval of an existing signed document. For new standalone consent workflows, prefer `jacs agreement-v2`; see [Agreement v2 Developer Guide](../guides/agreement-v2.md).
+
 ### Creating an Agreement
 
 An agreement requires multiple agents to sign a document:

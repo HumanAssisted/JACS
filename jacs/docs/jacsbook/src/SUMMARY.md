@@ -20,7 +20,7 @@
 - [CLI Tutorial](rust/cli.md)
 - [Creating an Agent](rust/agent.md)
 - [Working with Documents](rust/documents.md)
-- [Creating and Using Agreements](rust/agreements.md)
+- [Agreement v2 and Legacy Agreements](rust/agreements.md)
 - [DNS-Based Verification](rust/dns.md)
 - [Rust Library API](rust/library.md)
 - [Observability (Rust API)](rust/observability.md)

@@ -376,6 +376,8 @@ if __name__ == "__main__":
 
 ## Agreements
 
+This section shows the legacy `jacsAgreement` sidecar API for simple approval of an existing signed document. For new standalone consent workflows, use Agreement v2: see [Agreement v2 Developer Guide](../guides/agreement-v2.md) and `examples/agreement_v2_three_party.py`.
+
 ### Creating Multi-Party Agreements
 
 ```python

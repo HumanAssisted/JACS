@@ -135,6 +135,16 @@ jacs agreement-v2 merge-transcript --base base.json --left left.json --right rig
 jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
 ```
 
+## Golden Example
+
+The repository includes a three-party Python example that matches the core product scenario:
+
+```bash
+python examples/agreement_v2_three_party.py
+```
+
+It creates Agent A and Agent B as signer parties, HAI as a `notary`, and Agent X as an outsider. The example appends transcript references, rejects outsider mutation/signing, collects two signer signatures plus the HAI notary signature, and verifies the final agreement.
+
 ## MCP and WASM
 
 MCP tools mirror the CLI:
@@ -158,4 +168,25 @@ WASM exposes the same flow as JSON-string methods: `createAgreementV2Json`, `app
 - For post-final terms changes, create a successor agreement or explicit conflict resolution rather than mutating a final agreement in place.
 - Delegated signing is reserved for a future feature. In v2 core, the agent that signs must be listed in `parties` with the matching role.
 
-Parity tests share one fixture at `binding-core/tests/fixtures/agreement_v2_scenarios.json`. Update that fixture when a workflow changes so every language surface stays honest.
+## Verification Matrix
+
+| Scenario | Coverage |
+|----------|----------|
+| Create standalone Agreement v2 | Rust core tests, binding parity fixture, CLI/MCP/WASM tests |
+| Signer quorum | Rust core tests and shared parity fixture |
+| HAI-style `notaryRequired` | Rust core tests and language parity tests |
+| Human `agentType` parties | Rust core tests |
+| Outsider cannot mutate | Rust core authorization tests |
+| Outsider cannot sign | Rust core role-membership tests |
+| Transcript append preserves `jacsAgreementHash` | Rust core tests |
+| Transcript tamper/reorder/substitution detection | Rust core tests |
+| Terms edit changes `jacsAgreementHash` and clears signatures | Rust core tests |
+| `effectiveFrom` and `expiresAt` | Rust core tests |
+| `allPreviousVersions` chain reconciliation | Rust core tests |
+| Links are only `{jacsId, jacsVersion}` | Rust core tests and parity fixture |
+| Transcript-only branch auto-merge | Rust core, binding parity, CLI, MCP, WASM tests |
+| Terms conflict requires explicit resolution | Rust core, binding parity, CLI, MCP, WASM tests |
+| Key rotation / `agentVersion` matching | Rust core tests |
+| Cross-language JSON workflow parity | Python, Node.js, Go, CLI, MCP, and WASM parity tests |
+
+The fixture `binding-core/tests/fixtures/agreement_v2_scenarios.json` is the portable workflow source of truth. Update it when an exposed workflow changes so every binding stays aligned.

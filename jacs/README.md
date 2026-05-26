@@ -24,7 +24,7 @@ cargo install jacs-cli
 | Inline Markdown/text signatures | `jacs::text` |
 | PNG/JPEG/WebP provenance | `jacs::media` |
 | RFC 5322 email signatures | `jacs::email` |
-| Agreements, storage, DNS, and trust | Core crate modules |
+| Standalone Agreement v2, storage, DNS, and trust | Core crate modules |
 
 ## Quick start
 
@@ -81,8 +81,11 @@ assert!(result.valid);
 jacs quickstart --name my-agent --domain example.com
 jacs document create -f mydata.json
 jacs verify signed-document.json
+jacs agreement-v2 verify --agreement agreement.json
 jacs mcp                # start MCP server (stdio only)
 ```
+
+Agreement v2 is the preferred model for new multi-agent consent workflows. It creates standalone `jacsType: "agreement"` documents with terms, parties, transcript references, signer/witness/notary policy, branch handling, and portable verification. The older `jacsAgreement` sidecar remains for simple countersignature metadata on existing documents.
 
 ## Security
 

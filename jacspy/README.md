@@ -33,6 +33,9 @@ print(f"Valid: {result.valid}, Signer: {result.signer_id}")
 | `sign_file()` | Sign a file with optional embedding |
 | `verify()` | Verify a signed document |
 | `verify_standalone()` | Verify without loading an agent |
+| `create_agreement_v2()` | Create a standalone Agreement v2 document |
+| `sign_agreement_v2()` | Sign as `signer`, `witness`, or `notary` |
+| `verify_agreement_v2()` | Verify Agreement v2 hash, policy, transcript, and status |
 | `export_agent()` | Export agent JSON for sharing |
 | `audit()` | Run a security audit |
 
@@ -75,6 +78,32 @@ result = jacs.verify_standalone(signed_json, key_directory="./keys")
 ```
 
 Cross-language interop is tested on every commit. Documents signed in Rust or Node.js verify in Python, and Python-signed documents verify in the other bindings.
+
+## Agreement v2
+
+Use Agreement v2 for new multi-agent consent workflows:
+
+```python
+from jacs import SimpleAgent
+
+agent, info = SimpleAgent.ephemeral(algorithm="ed25519")
+agent_id = info["agent_id"]
+
+agreement = agent.create_agreement_v2({
+    "title": "Refund approval",
+    "description": "Approval for a bounded refund.",
+    "terms": "Refund up to $25 for order 123.",
+    "status": "proposed",
+    "parties": [{"agentId": agent_id, "agentType": "ai", "role": "signer"}],
+    "signaturePolicy": {"partyQuorum": "all", "witnessRequired": 0, "notaryRequired": 0},
+    "controllers": [agent_id],
+})
+
+signed = agent.sign_agreement_v2(agreement, "signer")
+assert agent.verify_agreement_v2(signed)["valid"]
+```
+
+The older `create_agreement()` / `sign_agreement()` / `check_agreement()` methods remain for simple `jacsAgreement` sidecars on existing documents.
 
 ## Framework adapters
 

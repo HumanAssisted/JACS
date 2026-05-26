@@ -411,6 +411,8 @@ main().catch(console.error);
 
 ## Agreements
 
+This section shows the legacy `jacsAgreement` sidecar API for simple approval of an existing signed document. For new standalone consent workflows, use Agreement v2: see [Agreement v2 Developer Guide](../guides/agreement-v2.md).
+
 ### Creating Multi-Party Agreements
 
 ```javascript

@@ -46,10 +46,15 @@ func main() {
 | `SignFile(path, embed)` | Sign a file |
 | `Verify(doc)` | Verify signed document |
 | `VerifyStandalone(doc, opts)` | Verify without loading an agent |
+| `CreateAgreementV2(input)` | Create a standalone Agreement v2 document |
+| `SignAgreementV2(doc, role)` | Sign as `signer`, `witness`, or `notary` |
+| `VerifyAgreementV2(doc)` | Verify Agreement v2 hash, policy, transcript, and status |
 | `ExportAgent()` | Export agent JSON for sharing |
 | `Audit(opts)` | Run a security audit |
 
 Uses CGo to call the JACS Rust library via FFI. Requires a Rust toolchain to build from source.
+
+Agreement v2 is the preferred model for new multi-agent consent workflows. It is shared with Rust, Python, Node.js, CLI, MCP, and WASM through the same JSON workflow. The older sidecar agreement helpers remain for simple countersignature metadata.
 
 ## What's new in 0.10.0
 

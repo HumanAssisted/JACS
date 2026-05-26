@@ -194,6 +194,8 @@ const isValid = await agent.verifyString(
 
 ## Working with Agreements
 
+The methods in this section use the legacy `jacsAgreement` sidecar on an existing signed document. For new standalone consent workflows, prefer Agreement v2 through `createAgreementV2()`, `signAgreementV2()`, and `verifyAgreementV2()`.
+
 ### Create an Agreement
 
 ```javascript

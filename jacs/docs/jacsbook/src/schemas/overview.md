@@ -1,6 +1,6 @@
 # JSON Schemas
 
-JACS schemas now describe a small portable signing surface instead of many narrow workflow document types. The core model is a generic signed JSON document: canonical JSON bytes, a common header, cryptographic signatures, signer identity, hashes, optional files, and optional multi-party agreements.
+JACS schemas now describe a small portable signing surface instead of many narrow workflow document types. The core model is a generic signed JSON document: canonical JSON bytes, a common header, cryptographic signatures, signer identity, hashes, optional files, and optional agreement semantics.
 
 Application-specific payloads belong in the document body or in a custom schema layered on top of the header schema.
 
@@ -12,6 +12,7 @@ Application-specific payloads belong in the document body or in a custom schema 
 |--------|---------|
 | `header/v1/header.schema.json` | Generic signature wrapper for signed JSON documents |
 | `agent/v1/agent.schema.json` | Agent identity and public signing metadata |
+| `agreement/v2/agreement.schema.json` | Standalone agreement document for verifiable consent to terms |
 | `a2a-verification-result.schema.json` | Cross-language A2A artifact verification result |
 
 ### Component Schemas
@@ -19,7 +20,7 @@ Application-specific payloads belong in the document body or in a custom schema 
 | Schema | Purpose |
 |--------|---------|
 | `components/signature/v1/signature.schema.json` | Cryptographic signatures |
-| `components/agreement/v1/agreement.schema.json` | Multi-party agreement metadata and co-signatures |
+| `components/agreement/v1/agreement.schema.json` | Legacy sidecar agreement metadata and co-signatures |
 | `components/files/v1/files.schema.json` | File attachments and content hashes |
 
 ### Configuration Schema
@@ -35,6 +36,7 @@ Schemas are available as HTTPS URLs and local files:
 ```text
 https://hai.ai/schemas/header/v1/header.schema.json
 https://hai.ai/schemas/agent/v1/agent.schema.json
+https://hai.ai/schemas/agreement/v2/agreement.schema.json
 https://hai.ai/schemas/components/signature/v1/signature.schema.json
 https://hai.ai/schemas/components/agreement/v1/agreement.schema.json
 https://hai.ai/schemas/components/files/v1/files.schema.json
@@ -82,7 +84,9 @@ Custom schemas may extend the header when an integration needs stronger payload 
 
 ## Agreements
 
-Use `jacsAgreement` on any generic signed document when multiple agents need to approve the same payload. Agreement metadata records the required signers, quorum, deadline, algorithm requirements, and collected signatures.
+Use `agreement/v2/agreement.schema.json` for new agreement workflows. It is a standalone `jacsType: "agreement"` document with explicit terms, parties, signer/witness/notary policy, transcript references, links, controllers, and portable verification.
+
+Use `components/agreement/v1/agreement.schema.json` only when a generic signed document needs simple legacy `jacsAgreement` countersignature metadata. V1 answers "did these agents approve this payload?" V2 answers "did these agents consent to these terms with this process record?"
 
 ## HAI Extensions
 
