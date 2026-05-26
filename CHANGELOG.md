@@ -1,3 +1,7 @@
+## 0.11.2
+
+(unreleased)
+
 ## 0.11.1
 
 (unreleased)
