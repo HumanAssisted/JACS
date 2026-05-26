@@ -35,6 +35,7 @@ pub mod media;
 pub mod search;
 pub mod trust;
 pub mod types;
+pub mod w3c;
 
 // Re-export visibility metadata helpers for tool response annotation.
 pub use common::{annotate_response, inject_meta};
@@ -58,6 +59,8 @@ pub use search::*;
 pub use trust::*;
 #[allow(ambiguous_glob_reexports)]
 pub use types::*;
+#[allow(ambiguous_glob_reexports)]
+pub use w3c::*;
 
 use rmcp::model::Tool;
 use schemars::JsonSchema;
@@ -86,6 +89,7 @@ pub enum ToolFamily {
     Trust,
     Search,
     Key,
+    W3c,
     // Advanced families
     Agreement,
     A2a,
@@ -97,7 +101,11 @@ impl ToolFamily {
     pub fn is_core(&self) -> bool {
         matches!(
             self,
-            ToolFamily::Document | ToolFamily::Trust | ToolFamily::Search | ToolFamily::Key
+            ToolFamily::Document
+                | ToolFamily::Trust
+                | ToolFamily::Search
+                | ToolFamily::Key
+                | ToolFamily::W3c
         )
     }
 }
@@ -174,6 +182,11 @@ pub fn all_classified_tools() -> Vec<ClassifiedTool> {
     tools.extend(key::tools().into_iter().map(|t| ClassifiedTool {
         tool: t,
         family: ToolFamily::Key,
+    }));
+    #[cfg(feature = "key-tools")]
+    tools.extend(w3c::tools().into_iter().map(|t| ClassifiedTool {
+        tool: t,
+        family: ToolFamily::W3c,
     }));
 
     // Advanced families

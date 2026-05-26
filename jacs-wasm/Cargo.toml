@@ -1,6 +1,6 @@
 [package]
 name = "jacs-wasm"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2024"
 rust-version = "1.93"
 resolver = "3"
@@ -20,7 +20,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Protocol layer — single source of truth. No `jacs` dep here.
-jacs-core = { version = "0.11.0", path = "../jacs-core" }
+jacs-core = { version = "0.11.1", path = "../jacs-core" }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 serde_json = "1"

@@ -354,6 +354,18 @@ export declare class JacsSimpleAgent {
   getPublicKeyBase64(): string
   /** Runtime diagnostic info as a JSON string. */
   diagnostics(): string
+  /** Export this agent's did:wba identifier. */
+  exportW3cDid(origin?: string | undefined | null): string
+  /** Export this agent's did:wba DID document as JSON. */
+  exportW3cDidDocument(origin?: string | undefined | null): string
+  /** Export this agent's W3C agent description as JSON. */
+  exportW3cAgentDescription(origin?: string | undefined | null): string
+  /** Generate W3C well-known discovery documents as JSON keyed by path. */
+  generateW3cWellKnown(origin?: string | undefined | null): string
+  /** Create a request-bound DID authentication proof from JSON params. */
+  signW3cRequest(paramsJson: string): string
+  /** Verify a request-bound DID authentication proof. */
+  verifyW3cRequest(proofJson: string, didDocumentJson: string, body?: string | undefined | null, maxAgeSeconds?: number | undefined | null, method?: string | undefined | null, url?: string | undefined | null): string
   /** Verify the agent's own document signature. Returns JSON VerificationResult. */
   verifySelf(): string
   /** Verify a signed document JSON string. Returns JSON VerificationResult. */

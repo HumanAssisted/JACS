@@ -115,6 +115,42 @@
       "mcp_tool": "jacs_extract_media_signature",
       "status": "aligned",
       "notes": "Both dump the JACS signed-document payload from a signed image (PRD \u00a73.2)"
+    },
+    {
+      "cli_command": "w3c did",
+      "mcp_tool": "jacs_w3c_export_did",
+      "status": "aligned",
+      "notes": "Both export the agent's W3C did:wba identifier while preserving jacsId as canonical JACS document identity"
+    },
+    {
+      "cli_command": "w3c did-document",
+      "mcp_tool": "jacs_w3c_export_did_document",
+      "status": "aligned",
+      "notes": "Both export a W3C DID document view backed by current JACS key material"
+    },
+    {
+      "cli_command": "w3c agent-description",
+      "mcp_tool": "jacs_w3c_export_agent_description",
+      "status": "aligned",
+      "notes": "Both export the W3C agent description document from the shared public agent projection"
+    },
+    {
+      "cli_command": "w3c well-known",
+      "mcp_tool": "jacs_w3c_generate_well_known",
+      "status": "aligned",
+      "notes": "Both generate the W3C well-known discovery documents keyed by publication path"
+    },
+    {
+      "cli_command": "w3c sign-request",
+      "mcp_tool": "jacs_w3c_sign_request",
+      "status": "aligned",
+      "notes": "Both create request-bound DID authentication proofs over method, target URI, timestamp, nonce, verification method, and optional body digest"
+    },
+    {
+      "cli_command": "w3c verify-request",
+      "mcp_tool": "jacs_w3c_verify_request",
+      "status": "aligned",
+      "notes": "Both verify request-bound DID authentication proofs against a resolved DID document"
     }
   ],
   "cli_only": [
@@ -185,6 +221,10 @@
     {
       "cli_command": "agent repair",
       "mcp_excluded_reason": "Crash recovery; requires filesystem access, CLI-only"
+    },
+    {
+      "cli_command": "w3c serve",
+      "mcp_excluded_reason": "Long-running HTTP server process for local W3C discovery demos, not suitable as an MCP tool"
     }
   ],
   "cli_only_feature_gated": [
@@ -278,11 +318,11 @@
     }
   ],
   "summary": {
-    "total_cli_commands": 36,
+    "total_cli_commands": 43,
     "total_cli_feature_gated": 4,
-    "total_mcp_tools": 29,
-    "aligned_pairs": 19,
-    "cli_only_count": 17,
+    "total_mcp_tools": 35,
+    "aligned_pairs": 25,
+    "cli_only_count": 18,
     "cli_only_feature_gated_count": 4,
     "mcp_only_count": 11,
     "mcp_only_intentional": 5,

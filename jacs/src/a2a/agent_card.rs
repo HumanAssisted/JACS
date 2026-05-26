@@ -7,29 +7,16 @@ use crate::a2a::{
 use crate::agent::Agent;
 use crate::crypt::{supported_pq_algorithms, supported_verification_algorithms};
 use crate::error::JacsError;
-use crate::schema::utils::ValueExt;
+use crate::public_agent::PublicAgentProjection;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Export a JACS agent as an A2A Agent Card (v0.4.0)
 pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, JacsError> {
-    let agent_value = agent.get_value().ok_or("Agent value not loaded")?;
-
-    // Extract basic agent information
-    let name = agent_value.get_str_or("jacsName", "Unnamed Agent");
-    let description = agent_value.get_str_or("jacsDescription", "JACS-enabled agent");
-    let agent_id = agent_value.get_str("jacsId").ok_or("Agent ID not found")?;
-    let agent_version = agent_value.get_str_or("jacsVersion", "1");
-
-    // Build supported interfaces from jacsAgentDomain or agent ID
-    let base_url = if let Some(domain) = agent_value.get_str("jacsAgentDomain") {
-        format!("https://{}/agent/{}", domain, agent_id)
-    } else {
-        format!("https://agent-{}.jacs.localhost", agent_id)
-    };
+    let projection = PublicAgentProjection::from_agent(agent)?;
 
     let supported_interfaces = vec![AgentInterface {
-        url: base_url.clone(),
+        url: projection.default_endpoint.clone(),
         protocol_binding: "jsonrpc".to_string(),
         tenant: None,
     }];
@@ -66,15 +53,15 @@ pub fn export_agent_card(agent: &Agent) -> Result<AgentCard, JacsError> {
 
     // Create metadata with agent type and additional info
     let metadata = json!({
-        "jacsAgentType": agent_value.get("jacsAgentType"),
-        "jacsId": agent_id,
-        "jacsVersion": agent_value.get("jacsVersion"),
+        "jacsAgentType": projection.agent_type.clone(),
+        "jacsId": projection.jacs_id.clone(),
+        "jacsVersion": projection.jacs_version.clone(),
     });
 
     Ok(AgentCard {
-        name: name.to_string(),
-        description: description.to_string(),
-        version: agent_version.to_string(),
+        name: projection.name.clone(),
+        description: projection.description.clone(),
+        version: projection.jacs_version.clone(),
         protocol_versions: vec![A2A_PROTOCOL_VERSION.to_string()],
         supported_interfaces,
         default_input_modes: vec!["text/plain".to_string(), "application/json".to_string()],

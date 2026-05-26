@@ -58,6 +58,14 @@ char* jacs_simple_get_public_key_base64(SimpleAgentHandle handle);
 char* jacs_simple_diagnostics(SimpleAgentHandle handle);
 char* jacs_simple_config_path(SimpleAgentHandle handle);
 
+// W3C AI Agent Protocol interop
+char* jacs_simple_export_w3c_did(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_export_w3c_did_document(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_export_w3c_agent_description(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_generate_w3c_well_known(SimpleAgentHandle handle, const char* origin);
+char* jacs_simple_sign_w3c_request(SimpleAgentHandle handle, const char* params_json);
+char* jacs_simple_verify_w3c_request(SimpleAgentHandle handle, const char* proof_json, const char* did_document_json, const char* body, uint64_t max_age_seconds, const char* expected_method, const char* expected_url);
+
 // Verification
 char* jacs_simple_verify_self(SimpleAgentHandle handle);
 char* jacs_simple_verify_json(SimpleAgentHandle handle, const char* signed_document);

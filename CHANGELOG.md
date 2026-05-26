@@ -1,3 +1,11 @@
+## 0.11.1
+
+(unreleased)
+
+### Added
+
+- Added W3C DID interop helpers for additive `did:wba` projection, agent description and `.well-known` discovery artifacts, request-bound DID authentication proofs, and cross-language CLI/MCP/Python/Node/Go smoke coverage.
+
 ## 0.11.0
 
 (unreleased)

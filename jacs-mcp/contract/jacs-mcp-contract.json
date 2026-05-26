@@ -3,9 +3,9 @@
   "server": {
     "name": "jacs-mcp",
     "title": "JACS MCP Server",
-    "version": "0.11.0",
+    "version": "0.11.1",
     "website_url": "https://humanassisted.github.io/JACS/",
-    "instructions": "This MCP server provides data provenance and cryptographic signing for signed documents, agreements, A2A artifacts, agents, and configuration. Document signing: jacs_sign_document (sign JSON content), jacs_verify_document (verify a signed JACS document). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Search: jacs_search (unified search across all signed documents). Inline text and media: jacs_sign_text (sign a markdown/text file in place), jacs_verify_text (verify inline JACS signatures), jacs_sign_image (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
+    "instructions": "This MCP server provides data provenance and cryptographic signing for signed documents, agreements, A2A artifacts, agents, and configuration. Document signing: jacs_sign_document (sign JSON content), jacs_verify_document (verify a signed JACS document). Agent management: jacs_create_agent (create new agent with keys), jacs_reencrypt_key (rotate private key password). A2A artifacts: jacs_wrap_a2a_artifact (sign artifact with provenance), jacs_verify_a2a_artifact (verify wrapped artifact), jacs_assess_a2a_agent (assess remote agent trust level). A2A discovery: jacs_export_agent_card (export Agent Card), jacs_generate_well_known (generate .well-known documents), jacs_export_agent (export full agent JSON). W3C interop: jacs_w3c_export_did (export did:wba identifier), jacs_w3c_export_did_document (export DID document), jacs_w3c_export_agent_description (export agent description), jacs_w3c_generate_well_known (generate W3C discovery documents), jacs_w3c_sign_request (create request-bound DID proof), jacs_w3c_verify_request (verify request-bound DID proof). Trust store: jacs_trust_agent (add agent to trust store), jacs_untrust_agent (remove from trust store, requires JACS_MCP_ALLOW_UNTRUST=true), jacs_list_trusted_agents (list all trusted agent IDs), jacs_is_trusted (check if agent is trusted), jacs_get_trusted_agent (get trusted agent JSON). Attestation: jacs_attest_create (create signed attestation with claims), jacs_attest_verify (verify attestation, optionally with evidence checks), jacs_attest_lift (lift signed document into attestation), jacs_attest_export_dsse (export attestation as DSSE envelope). Search: jacs_search (unified search across all signed documents). Inline text and media: jacs_sign_text (sign a markdown/text file in place), jacs_verify_text (verify inline JACS signatures), jacs_sign_image (sign PNG/JPEG/WebP by embedding metadata), jacs_verify_image (verify image signature), jacs_extract_media_signature (dump embedded JACS payload)."
   },
   "tools": [
     {
@@ -801,6 +801,172 @@
           "file_path"
         ],
         "title": "VerifyTextParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_w3c_export_agent_description",
+      "description": "Export this agent's W3C agent description document.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "origin": {
+            "description": "Controlling HTTPS origin for did:wba and discovery URLs.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "W3cOriginParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_w3c_export_did",
+      "description": "Export this agent's did:wba identifier for W3C AI Agent Protocol interop.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "origin": {
+            "description": "Controlling HTTPS origin for did:wba and discovery URLs.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "W3cOriginParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_w3c_export_did_document",
+      "description": "Export this agent's W3C did:wba DID document.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "origin": {
+            "description": "Controlling HTTPS origin for did:wba and discovery URLs.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "W3cOriginParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_w3c_generate_well_known",
+      "description": "Generate W3C well-known discovery documents keyed by path.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "origin": {
+            "description": "Controlling HTTPS origin for did:wba and discovery URLs.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "W3cOriginParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_w3c_sign_request",
+      "description": "Create a request-bound DID authentication proof for a concrete HTTP request.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "url"
+        ],
+        "title": "W3cSignRequestParams",
+        "type": "object"
+      }
+    },
+    {
+      "name": "jacs_w3c_verify_request",
+      "description": "Verify a request-bound DID authentication proof against a resolved DID document and optional actual request method/URL.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "did_document_json": {
+            "type": "string"
+          },
+          "max_age_seconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "method": {
+            "description": "Actual HTTP method to compare against the proof.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proof_json": {
+            "type": "string"
+          },
+          "url": {
+            "description": "Actual HTTP target URI to compare against the proof.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "proof_json",
+          "did_document_json"
+        ],
+        "title": "W3cVerifyRequestParams",
         "type": "object"
       }
     },

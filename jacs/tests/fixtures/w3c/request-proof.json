@@ -1,0 +1,24 @@
+{
+  "contentDigest": "sha-256=:FLBV31ng7Y1RvuolW9H60AayKXxu+sYBnHfnwAWkEc0=:",
+  "created": "2026-01-01T00:00:00Z",
+  "did": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a",
+  "method": "POST",
+  "nonce": "w3c-fixture-nonce-0001",
+  "scheme": "DIDWba",
+  "signature": "C6KaAqPE6q2Wi+SVIHG2U0bdmHYNklbGnZp39Y4t/yFiUExwrJRL1WTWKt8uI1azvFKopjm3oJRi/amtboOWCA==",
+  "signingAlgorithm": "ring-Ed25519",
+  "signingInput": {
+    "authority": "api.example.com",
+    "contentDigest": "sha-256=:FLBV31ng7Y1RvuolW9H60AayKXxu+sYBnHfnwAWkEc0=:",
+    "created": "2026-01-01T00:00:00Z",
+    "did": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a",
+    "method": "POST",
+    "nonce": "w3c-fixture-nonce-0001",
+    "scheme": "https",
+    "target": "/tasks?priority=high",
+    "verificationMethod": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129"
+  },
+  "type": "JacsW3cRequestProof",
+  "url": "https://api.example.com/tasks?priority=high",
+  "verificationMethod": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129"
+}

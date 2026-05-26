@@ -1,0 +1,11 @@
+{
+  "created": "2026-01-01T00:00:00Z",
+  "did": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a",
+  "expectedRequestChecked": true,
+  "method": "POST",
+  "nonce": "w3c-fixture-nonce-0001",
+  "signingAlgorithm": "ring-Ed25519",
+  "url": "https://api.example.com/tasks?priority=high",
+  "valid": true,
+  "verificationMethod": "did:wba:agent.example.com:agent:22dbef6c-b85e-40e5-b82e-f95a4259339a#jacs-key-7872a5e1df501129"
+}

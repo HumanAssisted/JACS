@@ -2357,6 +2357,153 @@ pub extern "C" fn jacs_simple_config_path(handle: *const SimpleAgentHandle) -> *
     }
 }
 
+fn optional_c_string(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(ptr) }
+            .to_str()
+            .ok()
+            .map(str::to_string)
+    }
+}
+
+fn required_c_string(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        None
+    } else {
+        unsafe { CStr::from_ptr(ptr) }
+            .to_str()
+            .ok()
+            .map(str::to_string)
+    }
+}
+
+fn simple_string_result(result: jacs_binding_core::BindingResult<String>) -> *mut c_char {
+    clear_last_simple_error();
+    match result {
+        Ok(value) => CString::new(value)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut()),
+        Err(e) => {
+            set_last_simple_error(e.to_string());
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Export this agent's W3C did:wba identifier. Caller must free with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_w3c_did(
+    handle: *const SimpleAgentHandle,
+    origin: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let origin = optional_c_string(origin);
+    simple_string_result(h.wrapper.export_w3c_did(origin.as_deref()))
+}
+
+/// Export this agent's W3C DID document JSON. Caller must free with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_w3c_did_document(
+    handle: *const SimpleAgentHandle,
+    origin: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let origin = optional_c_string(origin);
+    simple_string_result(h.wrapper.export_w3c_did_document_json(origin.as_deref()))
+}
+
+/// Export this agent's W3C agent description JSON. Caller must free with jacs_free_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_export_w3c_agent_description(
+    handle: *const SimpleAgentHandle,
+    origin: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let origin = optional_c_string(origin);
+    simple_string_result(
+        h.wrapper
+            .export_w3c_agent_description_json(origin.as_deref()),
+    )
+}
+
+/// Generate W3C well-known discovery documents as JSON keyed by path.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_generate_w3c_well_known(
+    handle: *const SimpleAgentHandle,
+    origin: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let origin = optional_c_string(origin);
+    simple_string_result(h.wrapper.generate_w3c_well_known_json(origin.as_deref()))
+}
+
+/// Sign a W3C request-bound DID authentication proof from params JSON.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_sign_w3c_request(
+    handle: *const SimpleAgentHandle,
+    params_json: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || params_json.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let params = match required_c_string(params_json) {
+        Some(value) => value,
+        None => return ptr::null_mut(),
+    };
+    simple_string_result(h.wrapper.sign_w3c_request_json(&params))
+}
+
+/// Verify a W3C request-bound DID authentication proof.
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_simple_verify_w3c_request(
+    handle: *const SimpleAgentHandle,
+    proof_json: *const c_char,
+    did_document_json: *const c_char,
+    body: *const c_char,
+    max_age_seconds: u64,
+    expected_method: *const c_char,
+    expected_url: *const c_char,
+) -> *mut c_char {
+    if handle.is_null() || proof_json.is_null() || did_document_json.is_null() {
+        return ptr::null_mut();
+    }
+    let h = unsafe { &*handle };
+    let proof = match required_c_string(proof_json) {
+        Some(value) => value,
+        None => return ptr::null_mut(),
+    };
+    let did_document = match required_c_string(did_document_json) {
+        Some(value) => value,
+        None => return ptr::null_mut(),
+    };
+    let body = optional_c_string(body);
+    let expected_method = optional_c_string(expected_method);
+    let expected_url = optional_c_string(expected_url);
+    simple_string_result(h.wrapper.verify_w3c_request_json(
+        &proof,
+        &did_document,
+        body.as_deref(),
+        max_age_seconds,
+        expected_method.as_deref(),
+        expected_url.as_deref(),
+    ))
+}
+
 /// Verify self. Returns VerificationResult JSON. Caller must free with jacs_free_string.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_verify_self(handle: *const SimpleAgentHandle) -> *mut c_char {

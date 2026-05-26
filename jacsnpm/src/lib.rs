@@ -1542,6 +1542,65 @@ impl JacsSimpleAgent {
         self.inner.diagnostics()
     }
 
+    /// Export this agent's did:wba identifier.
+    #[napi(js_name = "exportW3cDid")]
+    pub fn export_w3c_did(&self, origin: Option<String>) -> Result<String> {
+        self.inner.export_w3c_did(origin.as_deref()).to_napi()
+    }
+
+    /// Export this agent's did:wba DID document as JSON.
+    #[napi(js_name = "exportW3cDidDocument")]
+    pub fn export_w3c_did_document(&self, origin: Option<String>) -> Result<String> {
+        self.inner
+            .export_w3c_did_document_json(origin.as_deref())
+            .to_napi()
+    }
+
+    /// Export this agent's W3C agent description as JSON.
+    #[napi(js_name = "exportW3cAgentDescription")]
+    pub fn export_w3c_agent_description(&self, origin: Option<String>) -> Result<String> {
+        self.inner
+            .export_w3c_agent_description_json(origin.as_deref())
+            .to_napi()
+    }
+
+    /// Generate W3C well-known discovery documents as JSON keyed by path.
+    #[napi(js_name = "generateW3cWellKnown")]
+    pub fn generate_w3c_well_known(&self, origin: Option<String>) -> Result<String> {
+        self.inner
+            .generate_w3c_well_known_json(origin.as_deref())
+            .to_napi()
+    }
+
+    /// Create a request-bound DID authentication proof from JSON params.
+    #[napi(js_name = "signW3cRequest")]
+    pub fn sign_w3c_request(&self, params_json: String) -> Result<String> {
+        self.inner.sign_w3c_request_json(&params_json).to_napi()
+    }
+
+    /// Verify a request-bound DID authentication proof.
+    #[napi(js_name = "verifyW3cRequest")]
+    pub fn verify_w3c_request(
+        &self,
+        proof_json: String,
+        did_document_json: String,
+        body: Option<String>,
+        max_age_seconds: Option<u32>,
+        method: Option<String>,
+        url: Option<String>,
+    ) -> Result<String> {
+        self.inner
+            .verify_w3c_request_json(
+                &proof_json,
+                &did_document_json,
+                body.as_deref(),
+                u64::from(max_age_seconds.unwrap_or(300)),
+                method.as_deref(),
+                url.as_deref(),
+            )
+            .to_napi()
+    }
+
     /// Verify the agent's own document signature. Returns JSON VerificationResult.
     #[napi(js_name = "verifySelf")]
     pub fn verify_self(&self) -> Result<String> {

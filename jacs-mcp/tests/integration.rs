@@ -242,6 +242,153 @@ async fn mcp_document_and_attestation_round_trip_over_stdio() -> anyhow::Result<
 }
 
 #[tokio::test]
+async fn mcp_w3c_did_discovery_and_request_proof_round_trip() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let origin = "https://agent.example.com";
+    let request_url = "https://api.example.com/tasks?priority=high";
+    let request_body = "{\"task\":\"review proposal\",\"ok\":true}";
+
+    let did_result = session
+        .call_tool(
+            "jacs_w3c_export_did",
+            serde_json::json!({ "origin": origin }),
+        )
+        .await?;
+    assert_eq!(did_result["success"], true, "export DID: {}", did_result);
+    let did = did_result["did"].as_str().expect("did");
+    assert!(
+        did.starts_with("did:wba:agent.example.com:agent:"),
+        "unexpected DID: {}",
+        did
+    );
+
+    let did_document_result = session
+        .call_tool(
+            "jacs_w3c_export_did_document",
+            serde_json::json!({ "origin": origin }),
+        )
+        .await?;
+    assert_eq!(
+        did_document_result["success"], true,
+        "export DID document: {}",
+        did_document_result
+    );
+    let did_document = did_document_result["document"].clone();
+    assert_eq!(did_document["id"].as_str(), Some(did));
+    assert!(did_document["jacs"]["jacsId"].as_str().is_some());
+
+    let agent_description_result = session
+        .call_tool(
+            "jacs_w3c_export_agent_description",
+            serde_json::json!({ "origin": origin }),
+        )
+        .await?;
+    assert_eq!(
+        agent_description_result["success"], true,
+        "export agent description: {}",
+        agent_description_result
+    );
+    assert_eq!(
+        agent_description_result["document"]["did"].as_str(),
+        Some(did)
+    );
+    assert_eq!(
+        agent_description_result["document"]["jacs"]["jacsId"],
+        did_document["jacs"]["jacsId"]
+    );
+
+    let well_known_result = session
+        .call_tool(
+            "jacs_w3c_generate_well_known",
+            serde_json::json!({ "origin": origin }),
+        )
+        .await?;
+    assert_eq!(
+        well_known_result["success"], true,
+        "generate well-known: {}",
+        well_known_result
+    );
+    assert_eq!(well_known_result["count"], 3);
+    assert!(
+        well_known_result["documents"]
+            .get("/.well-known/agent-descriptions")
+            .is_some(),
+        "missing well-known collection: {}",
+        well_known_result
+    );
+
+    let proof_result = session
+        .call_tool(
+            "jacs_w3c_sign_request",
+            serde_json::json!({
+                "method": "POST",
+                "url": request_url,
+                "body": request_body,
+                "nonce": "mcp-w3c-smoke-nonce",
+                "created": "2026-01-01T00:00:00Z",
+                "origin": origin
+            }),
+        )
+        .await?;
+    assert_eq!(
+        proof_result["success"], true,
+        "sign proof: {}",
+        proof_result
+    );
+    let proof = proof_result["proof"].clone();
+    assert_eq!(proof["did"].as_str(), Some(did));
+    assert!(proof["contentDigest"].as_str().is_some());
+
+    let wrong_url = session
+        .call_tool(
+            "jacs_w3c_verify_request",
+            serde_json::json!({
+                "proof_json": proof.to_string(),
+                "did_document_json": did_document.to_string(),
+                "body": request_body,
+                "max_age_seconds": 4_000_000_000u64,
+                "method": "POST",
+                "url": "https://api.example.com/other"
+            }),
+        )
+        .await?;
+    assert_eq!(
+        wrong_url["success"], false,
+        "mismatched actual URL must fail: {}",
+        wrong_url
+    );
+    assert!(
+        wrong_url["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("target URI"),
+        "unexpected wrong-url error: {}",
+        wrong_url
+    );
+
+    let verified = session
+        .call_tool(
+            "jacs_w3c_verify_request",
+            serde_json::json!({
+                "proof_json": proof.to_string(),
+                "did_document_json": did_document.to_string(),
+                "body": request_body,
+                "max_age_seconds": 4_000_000_000u64,
+                "method": "POST",
+                "url": request_url
+            }),
+        )
+        .await?;
+    assert_eq!(verified["success"], true, "verify proof: {}", verified);
+    assert_eq!(verified["verification"]["valid"], true);
+    assert_eq!(verified["verification"]["expectedRequestChecked"], true);
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
 async fn mcp_check_agreement_rejects_tampered_agreement() -> anyhow::Result<()> {
     let _guard = STDIO_TEST_LOCK.lock().await;
     let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
