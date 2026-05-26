@@ -84,6 +84,7 @@
   - [Discover & Trust Remote Agents](guides/a2a-discover.md)
   - [Exchange Signed Artifacts](guides/a2a-exchange.md)
 - [Sign vs. Attest Decision Guide](guides/sign-vs-attest.md)
+- [Agreement v2 Developer Guide](guides/agreement-v2.md)
 - [Attestation Tutorial](guides/attestation-tutorial.md)
 - [Writing a Custom Evidence Adapter](guides/custom-adapters.md)
 - [Framework Adapter Attestation Guide](guides/framework-attestation.md)
