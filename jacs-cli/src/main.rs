@@ -1122,11 +1122,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                         println!("  {}", path);
                     }
                 } else {
-                    let value = serde_json::Value::Object(
-                        documents
-                            .into_iter()
-                            .collect(),
-                    );
+                    let value = serde_json::Value::Object(documents.into_iter().collect());
                     print_pretty_json(&value)?;
                 }
             }

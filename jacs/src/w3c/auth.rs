@@ -189,11 +189,12 @@ pub fn verify_request_proof_value_for_request(
         });
     }
     if let Some(expected) = proof_digest
-        && request.get("contentDigest").and_then(Value::as_str) != Some(expected) {
-            return Err(JacsError::SignatureVerificationFailed {
-                reason: "Request body digest does not match proof contentDigest".to_string(),
-            });
-        }
+        && request.get("contentDigest").and_then(Value::as_str) != Some(expected)
+    {
+        return Err(JacsError::SignatureVerificationFailed {
+            reason: "Request body digest does not match proof contentDigest".to_string(),
+        });
+    }
     let canonical = canonicalize_json(&request);
     let (public_key, algorithm) = public_key_for_method(did_document, verification_method)?;
     verifier.verify_string(&canonical, signature, public_key, Some(algorithm.clone()))?;
