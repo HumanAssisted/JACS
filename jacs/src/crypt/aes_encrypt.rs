@@ -1,52 +1,18 @@
 use crate::crypt::constants::{
-    AES_256_KEY_SIZE, AES_GCM_NONCE_SIZE, DIGIT_POOL_SIZE, LOWERCASE_POOL_SIZE,
-    MAX_CONSECUTIVE_IDENTICAL_CHARS, MAX_SEQUENTIAL_CHARS, MIN_ENCRYPTED_HEADER_SIZE,
+    DIGIT_POOL_SIZE, LOWERCASE_POOL_SIZE, MAX_CONSECUTIVE_IDENTICAL_CHARS, MAX_SEQUENTIAL_CHARS,
     MIN_ENTROPY_BITS, MIN_PASSWORD_LENGTH, MODERATE_UNIQUENESS_PENALTY,
-    MODERATE_UNIQUENESS_THRESHOLD, PBKDF2_ITERATIONS, PBKDF2_ITERATIONS_LEGACY, PBKDF2_SALT_SIZE,
-    SEVERE_UNIQUENESS_PENALTY, SEVERE_UNIQUENESS_THRESHOLD, SINGLE_CLASS_MIN_ENTROPY_BITS,
-    SPECIAL_CHAR_POOL_SIZE, UPPERCASE_POOL_SIZE,
+    MODERATE_UNIQUENESS_THRESHOLD, SEVERE_UNIQUENESS_PENALTY, SEVERE_UNIQUENESS_THRESHOLD,
+    SINGLE_CLASS_MIN_ENTROPY_BITS, SPECIAL_CHAR_POOL_SIZE, UPPERCASE_POOL_SIZE,
 };
-use crate::crypt::private_key::ZeroizingVec;
 use crate::error::JacsError;
 use crate::storage::jenv::get_env_var;
-use aes_gcm::AeadCore;
-use aes_gcm::{
-    Aes256Gcm, Key, Nonce,
-    aead::{Aead, KeyInit, OsRng},
-};
-use argon2::{Algorithm, Argon2, Params, Version};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use pbkdf2::pbkdf2_hmac;
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-use sha2::Sha256;
-use tracing::warn;
-use zeroize::Zeroize;
+use jacs_core::CoreError;
+use jacs_core::envelope as core_env;
 
-const ENCRYPTED_PRIVATE_KEY_VERSION_V2: u8 = 2;
-const ARGON2ID_MEMORY_COST_KIB: u32 = 19_456;
-const ARGON2ID_TIME_COST: u32 = 2;
-const ARGON2ID_PARALLELISM: u32 = 1;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct KdfEnvelope {
-    name: String,
-    version: u32,
-    m_cost_kib: u32,
-    t_cost: u32,
-    p_cost: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EncryptedPrivateKeyEnvelope {
-    jacs_encrypted_private_key_version: u8,
-    cipher: String,
-    kdf: KdfEnvelope,
-    salt: String,
-    nonce: String,
-    ciphertext: String,
-}
+// Re-export ZeroizingVec so existing callers via `jacs::crypt::aes_encrypt`
+// don't change. The canonical home moved to `jacs-core::envelope` so wasm
+// builds can return secure buffers too. See PRD §4.6.
+pub use jacs_core::envelope::ZeroizingVec;
 
 /// Common weak passwords that should be rejected regardless of calculated entropy.
 const WEAK_PASSWORDS: &[&str] = &[
@@ -317,142 +283,28 @@ pub fn check_password_strength(password: &str) -> Result<(), JacsError> {
     validate_password(password)
 }
 
-/// Derive a 256-bit key from a password using PBKDF2-HMAC-SHA256 with a specific iteration count.
-fn derive_key_with_iterations(
-    password: &str,
-    salt: &[u8],
-    iterations: u32,
-) -> [u8; AES_256_KEY_SIZE] {
-    let mut key = [0u8; AES_256_KEY_SIZE];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, iterations, &mut key);
-    key
-}
+// The KDFs, the V2 JSON envelope, and the legacy PBKDF2 raw-binary
+// reader live in `jacs_core::envelope`. The native facade keeps the
+// password resolution / strength-validation layer, then delegates the
+// crypto core to the portable crate. See PRD §4.6.
+//
+// Existing callers continue to import these names from
+// `jacs::crypt::aes_encrypt`; the bodies are now thin wrappers that
+// translate `CoreError` to `JacsError` (via the `From` impl) and
+// preserve the long-standing error messages that tests assert against.
 
-/// Derive a 256-bit key from a password using PBKDF2-HMAC-SHA256.
-fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; AES_256_KEY_SIZE] {
-    derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS)
-}
-
-fn default_argon2id_kdf() -> KdfEnvelope {
-    KdfEnvelope {
-        name: "Argon2id".to_string(),
-        version: 19,
-        m_cost_kib: ARGON2ID_MEMORY_COST_KIB,
-        t_cost: ARGON2ID_TIME_COST,
-        p_cost: ARGON2ID_PARALLELISM,
+/// Map jacs-core's `CoreError::InvalidPassword` back to the rich legacy
+/// `JacsError::CryptoError` string. The variant-to-variant mapping in
+/// `jacs::error` lands `InvalidPassword` on `KeyDecryptionFailed`, but
+/// the original aes_encrypt path emitted a long actionable message in
+/// `CryptoError` — preserve that here for caller-facing parity.
+fn translate_envelope_error(err: CoreError) -> JacsError {
+    match err {
+        CoreError::InvalidPassword => JacsError::CryptoError(
+            "Private key decryption failed: incorrect password or corrupted key file.".to_string(),
+        ),
+        other => other.into(),
     }
-}
-
-fn derive_argon2id_key(
-    password: &str,
-    salt: &[u8],
-    kdf: &KdfEnvelope,
-) -> Result<[u8; AES_256_KEY_SIZE], JacsError> {
-    if kdf.name != "Argon2id" || kdf.version != 19 {
-        return Err(JacsError::CryptoError(format!(
-            "Unsupported private key KDF '{}'/version {}.",
-            kdf.name, kdf.version
-        )));
-    }
-    let params = Params::new(
-        kdf.m_cost_kib,
-        kdf.t_cost,
-        kdf.p_cost,
-        Some(AES_256_KEY_SIZE),
-    )
-    .map_err(|e| JacsError::CryptoError(format!("Invalid Argon2id parameters: {}", e)))?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    let mut key = [0u8; AES_256_KEY_SIZE];
-    argon2
-        .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| JacsError::CryptoError(format!("Argon2id key derivation failed: {}", e)))?;
-    Ok(key)
-}
-
-fn encrypt_v2_envelope(data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
-    let mut salt = [0u8; PBKDF2_SALT_SIZE];
-    rand::rng().fill(&mut salt[..]);
-    let kdf = default_argon2id_kdf();
-    let mut key = derive_argon2id_key(password, &salt, &kdf)?;
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    key.zeroize();
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let encrypted = cipher
-        .encrypt(&nonce, data)
-        .map_err(|e| format!("AES-GCM encryption failed: {}", e))?;
-    let envelope = EncryptedPrivateKeyEnvelope {
-        jacs_encrypted_private_key_version: ENCRYPTED_PRIVATE_KEY_VERSION_V2,
-        cipher: "AES-256-GCM".to_string(),
-        kdf,
-        salt: URL_SAFE_NO_PAD.encode(salt),
-        nonce: URL_SAFE_NO_PAD.encode(nonce.as_slice()),
-        ciphertext: URL_SAFE_NO_PAD.encode(encrypted),
-    };
-    serde_json::to_vec(&envelope).map_err(|e| {
-        JacsError::CryptoError(format!("Failed to serialize encrypted key envelope: {}", e))
-    })
-}
-
-fn decrypt_v2_envelope(
-    encrypted_data: &[u8],
-    password: &str,
-) -> Result<Option<Vec<u8>>, JacsError> {
-    let first_non_ws = encrypted_data
-        .iter()
-        .copied()
-        .find(|b| !b.is_ascii_whitespace());
-    if first_non_ws != Some(b'{') {
-        return Ok(None);
-    }
-    let envelope: EncryptedPrivateKeyEnvelope =
-        serde_json::from_slice(encrypted_data).map_err(|e| {
-            JacsError::CryptoError(format!(
-                "Invalid encrypted private key envelope JSON: {}",
-                e
-            ))
-        })?;
-    if envelope.jacs_encrypted_private_key_version != ENCRYPTED_PRIVATE_KEY_VERSION_V2 {
-        return Err(JacsError::CryptoError(format!(
-            "Unsupported encrypted private key envelope version {}.",
-            envelope.jacs_encrypted_private_key_version
-        )));
-    }
-    if envelope.cipher != "AES-256-GCM" {
-        return Err(JacsError::CryptoError(format!(
-            "Unsupported encrypted private key cipher '{}'.",
-            envelope.cipher
-        )));
-    }
-    let salt = URL_SAFE_NO_PAD
-        .decode(envelope.salt.as_bytes())
-        .map_err(|e| JacsError::CryptoError(format!("Invalid envelope salt: {}", e)))?;
-    let nonce = URL_SAFE_NO_PAD
-        .decode(envelope.nonce.as_bytes())
-        .map_err(|e| JacsError::CryptoError(format!("Invalid envelope nonce: {}", e)))?;
-    let ciphertext = URL_SAFE_NO_PAD
-        .decode(envelope.ciphertext.as_bytes())
-        .map_err(|e| JacsError::CryptoError(format!("Invalid envelope ciphertext: {}", e)))?;
-    if nonce.len() != AES_GCM_NONCE_SIZE {
-        return Err(JacsError::CryptoError(format!(
-            "Invalid envelope nonce length: expected {}, got {}.",
-            AES_GCM_NONCE_SIZE,
-            nonce.len()
-        )));
-    }
-    let mut key = derive_argon2id_key(password, &salt, &envelope.kdf)?;
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    key.zeroize();
-    let plaintext = cipher
-        .decrypt(Nonce::from_slice(&nonce), ciphertext.as_ref())
-        .map_err(|_| {
-            JacsError::CryptoError(
-                "Private key decryption failed: incorrect password or corrupted key file."
-                    .to_string(),
-            )
-        })?;
-    Ok(Some(plaintext))
 }
 
 /// Resolve the private key password from all available sources.
@@ -583,7 +435,7 @@ pub fn encrypt_private_key_with_password(
 ) -> Result<Vec<u8>, JacsError> {
     // Validate password strength
     validate_password(password)?;
-    encrypt_v2_envelope(private_key, password)
+    core_env::encrypt_private_key(private_key, password).map_err(translate_envelope_error)
 }
 
 /// Decrypt a private key with a password using AES-256-GCM.
@@ -653,63 +505,26 @@ pub fn decrypt_private_key_secure_with_password(
     encrypted_key_with_salt_and_nonce: &[u8],
     password: &str,
 ) -> Result<ZeroizingVec, JacsError> {
-    if let Some(decrypted_data) = decrypt_v2_envelope(encrypted_key_with_salt_and_nonce, password)?
-    {
-        return Ok(ZeroizingVec::new(decrypted_data));
-    }
-
-    if encrypted_key_with_salt_and_nonce.len() < MIN_ENCRYPTED_HEADER_SIZE {
-        return Err(JacsError::CryptoError(format!(
-            "Encrypted private key file is corrupted or truncated: expected at least {} bytes, got {} bytes. \
-            The key file may have been damaged during transfer or storage. \
-            Try regenerating your keys with 'jacs keygen' or restore from a backup.",
-            MIN_ENCRYPTED_HEADER_SIZE,
-            encrypted_key_with_salt_and_nonce.len()
-        )));
-    }
-
-    // Split the data into salt, nonce, and encrypted key
-    let (salt, rest) = encrypted_key_with_salt_and_nonce.split_at(PBKDF2_SALT_SIZE);
-    let (nonce, encrypted_data) = rest.split_at(AES_GCM_NONCE_SIZE);
-
-    // Try decryption with current iteration count first, then fall back to legacy.
-    // This allows seamless migration from pre-0.6.0 keys encrypted with 100k iterations
-    // to the new 600k iteration count.
-    let nonce_slice = Nonce::from_slice(nonce);
-
-    // Attempt with current iterations (600k)
-    let mut key = derive_key_from_password(password, salt);
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    key.zeroize();
-
-    if let Ok(decrypted_data) = cipher.decrypt(nonce_slice, encrypted_data) {
-        return Ok(ZeroizingVec::new(decrypted_data));
-    }
-
-    // Fall back to legacy iterations (100k) for pre-0.6.0 encrypted keys
-    let mut legacy_key = derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS_LEGACY);
-    let legacy_cipher_key = Key::<Aes256Gcm>::from_slice(&legacy_key);
-    let legacy_cipher = Aes256Gcm::new(legacy_cipher_key);
-    legacy_key.zeroize();
-
-    let decrypted_data = legacy_cipher
-        .decrypt(nonce_slice, encrypted_data)
-        .map_err(|_| {
+    // Delegate to jacs_core::envelope::decrypt_private_key which handles
+    // both the V2 JSON envelope and the legacy PBKDF2 raw-binary
+    // envelope (with the 100k iteration fallback) in one call. The
+    // native facade only owns password resolution and error-message
+    // shaping; the crypto is portable.
+    match core_env::decrypt_private_key(encrypted_key_with_salt_and_nonce, password) {
+        Ok(zv) => Ok(zv),
+        Err(CoreError::MalformedEnvelope(reason)) => Err(JacsError::CryptoError(format!(
+            "Encrypted private key file is corrupted or truncated: {reason}. \
+             The key file may have been damaged during transfer or storage. \
+             Try regenerating your keys with 'jacs keygen' or restore from a backup."
+        ))),
+        Err(CoreError::InvalidPassword) => Err(JacsError::CryptoError(
             "Private key decryption failed: incorrect password or corrupted key file. \
-            Check that JACS_PRIVATE_KEY_PASSWORD matches the password used during key generation. \
-            If the key file is corrupted, you may need to regenerate your keys."
-                .to_string()
-        })?;
-
-    warn!(
-        "MIGRATION: Private key was decrypted using legacy PBKDF2 iteration count ({}). \
-        Re-encrypt your private key to upgrade to the current iteration count ({}) \
-        for improved security. Run 'jacs keygen' to regenerate keys.",
-        PBKDF2_ITERATIONS_LEGACY, PBKDF2_ITERATIONS
-    );
-
-    Ok(ZeroizingVec::new(decrypted_data))
+             Check that JACS_PRIVATE_KEY_PASSWORD matches the password used during key generation. \
+             If the key file is corrupted, you may need to regenerate your keys."
+                .to_string(),
+        )),
+        Err(other) => Err(other.into()),
+    }
 }
 
 /// Decrypt data with an explicit password (no env var dependency).
@@ -717,49 +532,26 @@ pub fn decrypt_private_key_secure_with_password(
 /// This is useful for re-encryption workflows where both old and new passwords
 /// are provided as parameters.
 pub fn decrypt_with_password(encrypted_data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
-    if let Some(decrypted) = decrypt_v2_envelope(encrypted_data, password)? {
-        return Ok(decrypted);
+    // Same dispatch as decrypt_private_key_secure_with_password but returns
+    // a plain `Vec<u8>` (no automatic zeroization). The error messages here
+    // are intentionally less verbose — this helper is used by re-encryption
+    // flows, not user-facing key loads.
+    match core_env::decrypt_private_key(encrypted_data, password) {
+        Ok(zv) => Ok(zv.as_slice().to_vec()),
+        Err(CoreError::MalformedEnvelope(reason)) => Err(JacsError::CryptoError(format!(
+            "Encrypted data too short or malformed: {reason}"
+        ))),
+        Err(CoreError::InvalidPassword) => Err(JacsError::CryptoError(
+            "Decryption failed: incorrect password or corrupted data.".to_string(),
+        )),
+        Err(other) => Err(other.into()),
     }
-
-    if encrypted_data.len() < MIN_ENCRYPTED_HEADER_SIZE {
-        return Err(JacsError::CryptoError(format!(
-            "Encrypted data too short: expected at least {} bytes, got {} bytes.",
-            MIN_ENCRYPTED_HEADER_SIZE,
-            encrypted_data.len()
-        )));
-    }
-
-    let (salt, rest) = encrypted_data.split_at(PBKDF2_SALT_SIZE);
-    let (nonce, ciphertext) = rest.split_at(AES_GCM_NONCE_SIZE);
-    let nonce_slice = Nonce::from_slice(nonce);
-
-    // Try current iterations first
-    let mut key = derive_key_from_password(password, salt);
-    let cipher_key = Key::<Aes256Gcm>::from_slice(&key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    key.zeroize();
-
-    if let Ok(decrypted) = cipher.decrypt(nonce_slice, ciphertext) {
-        return Ok(decrypted);
-    }
-
-    // Fall back to legacy iterations
-    let mut legacy_key = derive_key_with_iterations(password, salt, PBKDF2_ITERATIONS_LEGACY);
-    let legacy_cipher_key = Key::<Aes256Gcm>::from_slice(&legacy_key);
-    let legacy_cipher = Aes256Gcm::new(legacy_cipher_key);
-    legacy_key.zeroize();
-
-    legacy_cipher.decrypt(nonce_slice, ciphertext).map_err(|_| {
-        "Decryption failed: incorrect password or corrupted data."
-            .to_string()
-            .into()
-    })
 }
 
 /// Encrypt data with an explicit password (no env var dependency).
 pub fn encrypt_with_password(data: &[u8], password: &str) -> Result<Vec<u8>, JacsError> {
     validate_password(password)?;
-    encrypt_v2_envelope(data, password)
+    core_env::encrypt_private_key(data, password).map_err(translate_envelope_error)
 }
 
 /// Re-encrypt a private key from one password to another.

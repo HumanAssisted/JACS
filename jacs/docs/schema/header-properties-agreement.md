@@ -16,16 +16,16 @@ A set of required signatures signifying an agreement.
 
 # jacsAgreement Properties
 
-| Property                                  | Type      | Required | Nullable       | Defined by                                                                                                                                                    |
-| :---------------------------------------- | :-------- | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [signatures](#signatures)                 | `array`   | Optional | cannot be null | [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")                 |
-| [agentIDs](#agentids)                     | `array`   | Required | cannot be null | [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")                     |
-| [question](#question)                     | `string`  | Optional | cannot be null | [agreement](agreement-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")                     |
-| [context](#context)                       | `string`  | Optional | cannot be null | [agreement](agreement-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")                       |
-| [timeout](#timeout)                       | `string`  | Optional | cannot be null | [agreement](agreement-properties-timeout.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/timeout")                       |
-| [quorum](#quorum)                         | `integer` | Optional | cannot be null | [agreement](agreement-properties-quorum.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/quorum")                         |
-| [requiredAlgorithms](#requiredalgorithms) | `array`   | Optional | cannot be null | [agreement](agreement-properties-requiredalgorithms.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/requiredAlgorithms") |
-| [minimumStrength](#minimumstrength)       | `string`  | Optional | cannot be null | [agreement](agreement-properties-minimumstrength.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/minimumStrength")       |
+| Property                                  | Type      | Required | Nullable       | Defined by                                                                                                                                                      |
+| :---------------------------------------- | :-------- | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [signatures](#signatures)                 | `array`   | Optional | cannot be null | [agreement](agreement-1-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")                 |
+| [agentIDs](#agentids)                     | `array`   | Required | cannot be null | [agreement](agreement-1-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")                     |
+| [question](#question)                     | `string`  | Optional | cannot be null | [agreement](agreement-1-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")                     |
+| [context](#context)                       | `string`  | Optional | cannot be null | [agreement](agreement-1-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")                       |
+| [timeout](#timeout)                       | `string`  | Optional | cannot be null | [agreement](agreement-1-properties-timeout.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/timeout")                       |
+| [quorum](#quorum)                         | `integer` | Optional | cannot be null | [agreement](agreement-1-properties-quorum.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/quorum")                         |
+| [requiredAlgorithms](#requiredalgorithms) | `array`   | Optional | cannot be null | [agreement](agreement-1-properties-requiredalgorithms.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/requiredAlgorithms") |
+| [minimumStrength](#minimumstrength)       | `string`  | Optional | cannot be null | [agreement](agreement-1-properties-minimumstrength.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/minimumStrength")       |
 
 ## signatures
 
@@ -39,7 +39,7 @@ Signatures of agents
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")
+* defined in: [agreement](agreement-1-properties-signatures.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/signatures")
 
 ### signatures Type
 
@@ -57,7 +57,7 @@ The agents which are required in order to sign the document
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")
+* defined in: [agreement](agreement-1-properties-agentids.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/agentIDs")
 
 ### agentIDs Type
 
@@ -75,7 +75,7 @@ When prompting an agent, what are they agreeing to?
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")
+* defined in: [agreement](agreement-1-properties-question.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/question")
 
 ### question Type
 
@@ -93,7 +93,7 @@ Context for the question?
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")
+* defined in: [agreement](agreement-1-properties-context.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/context")
 
 ### context Type
 
@@ -111,7 +111,7 @@ ISO 8601 deadline after which the agreement expires and no more signatures are a
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-timeout.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/timeout")
+* defined in: [agreement](agreement-1-properties-timeout.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/timeout")
 
 ### timeout Type
 
@@ -133,7 +133,7 @@ Minimum number of signatures required for the agreement to be considered complet
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-quorum.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/quorum")
+* defined in: [agreement](agreement-1-properties-quorum.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/quorum")
 
 ### quorum Type
 
@@ -155,7 +155,7 @@ If specified, only signatures using one of these algorithms are accepted.
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-requiredalgorithms.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/requiredAlgorithms")
+* defined in: [agreement](agreement-1-properties-requiredalgorithms.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/requiredAlgorithms")
 
 ### requiredAlgorithms Type
 
@@ -173,7 +173,7 @@ Minimum cryptographic strength tier required for signatures. 'classical' accepts
 
 * cannot be null
 
-* defined in: [agreement](agreement-properties-minimumstrength.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/minimumStrength")
+* defined in: [agreement](agreement-1-properties-minimumstrength.md "https://hai.ai/schemas/components/agreement/v1/agreement.schema.json#/properties/minimumStrength")
 
 ### minimumStrength Type
 

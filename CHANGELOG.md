@@ -1,4 +1,25 @@
+## 0.11.0
+
+(unreleased)
+
 ## Unreleased
+
+### Added
+
+- New crate `jacs-core` (portable JACS protocol layer) that compiles for both native and `wasm32-unknown-unknown`. Holds the canonical-JSON serializer, embedded schema set, AES-256-GCM + Argon2id encrypted-key envelope (V2) plus the legacy PBKDF2 reader, `DetachedSigner` trait + Ed25519 (`ed25519-dalek`) and pq2025 (`fips204`) backends, `CoreAgent` sign/verify, and multi-party agreement payload helpers. No I/O — pure protocol.
+- New crate `jacs-wasm` with the browser bindings (`wasm-bindgen` wrapper around `jacs-core`). Exports `initJacsWasm`, `createEphemeral`, `importEncryptedAgent`, `importEncryptedAgentFiles`, `createVerifier`, plus the `CoreAgentHandle` methods (`signMessageJson`, `verifyJson`, `verifyWithKeyJson`, `exportAgent`, `getPublicKeyBase64`, `algorithm`, `isUnlocked`, `clearSecrets`, `signAgreementJson`, `verifyAgreementJson`), the `createAgreementJson` free function, the `localStore.*` browser-storage helpers (with `RefusedPayload` / `StorageUnavailable` / `QuotaExceeded` / `KeyNotFound` error codes and a defense-in-depth secret-leak tripwire), the `workerHandleMessage` dispatcher used by the `@jacs/wasm/worker` subpath, and a hand-written TypeScript wrapper (`index.ts`) that single-sources `localStore` from the camelCase exports. Published to npm as `@jacs/wasm` via the new `release-wasm.yml` workflow triggered by `wasm-vX.Y.Z` tags.
+- Web Worker bridge (`@jacs/wasm/worker`): `worker/index.ts` (main-thread API: `createEphemeralInWorker`, `importEncryptedAgentInWorker`, `WorkerAgentHandle`, `terminateWorker`) + `worker/jacs-worker.ts` (worker-side bootstrap routing `postMessage` events through Rust). Replies are always structured `{ id, ok, result | error }` — never thrown exceptions — so `id` correlation survives error paths.
+- `jacs-wasm/scripts/finalize-pkg.sh` (idempotent post-`wasm-pack build` step): derives the version from `jacs-wasm/Cargo.toml`, merges `package.template.json` into `pkg/package.json`, sandbox-compiles the TS wrapper + worker glue, copies README. Fixture: `scripts/tests/finalize-pkg.test.sh`.
+- `jacs-wasm/examples/vite-smoke/` (Vite + Playwright smoke that loads the locally built `pkg/`, signs, verifies, asserts `valid === true`) and `jacs-wasm/examples/worker-smoke/` (creates an ephemeral pq2025 agent in a Web Worker and signs + verifies a message).
+- Cross-compat tests in `jacs/tests/wasm_compat_cross.rs` confirming that documents signed by native `jacs::Agent::signing_procedure` verify through `jacs_core::CoreAgent::verify_with_key` and vice versa.
+- `SigningAlgorithm::from_wire_str` recognises both `"ed25519"`/`"pq2025"` and the legacy native `"ring-Ed25519"` form so signed documents from either platform verify on the other.
+- `scripts/forbidden-deps.sh` extended for `jacs-wasm`; new Make targets `build-wasm`, `test-wasm`, `publish-jacs-wasm`, `release-jacs-wasm`, `retry-jacs-wasm`. `make versions` / `check-versions` now cover `jacs-core` and `jacs-wasm`.
+- Documentation: new READMEs for `jacs-core` and `jacs-wasm`; `jacsnpm/README.md` carries a callout pointing browser users to `@jacs/wasm`; `CLAUDE.md` Version Bump Checklist updated for the two new crates.
+
+### Verification status
+
+- **Verified on every CI build (and locally):** `cargo test -p jacs --lib` (836 tests, no regression), `cargo test -p jacs-core` (74 tests across 10 suites), `cargo test -p jacs-wasm` (32 native tests + 7 `#[wasm_bindgen_test]` tests gated as `ignored` for non-browser runs), `jacs/tests/wasm_compat_cross.rs` (native ↔ jacs-core cross-compat), `RUSTFLAGS="-D warnings" cargo check -p jacs -p jacs-core -p jacs-binding-core -p jacs-mcp -p jacs-cli -p jacs-wasm`, `scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown`, `scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown`, `jacs-wasm/scripts/tests/finalize-pkg.test.sh`.
+- **Verified only on CI (`release-wasm.yml` browser lane), not on local developer machines by default:** `wasm-pack test --headless --chrome` (the 7 browser-only `#[wasm_bindgen_test]` cases under `jacs-wasm/tests/web.rs`, `local_store.rs`, `worker.rs`, `agreement.rs`), the `jacs-wasm/examples/vite-smoke/` Vite + Playwright sign/verify smoke, and the `jacs-wasm/examples/worker-smoke/` Web Worker example. CI uses `browser-actions/setup-chrome@v1` which installs a matched Chrome + chromedriver pair; locally these require manually matching chromedriver to the installed Chrome major.
 
 ### Security
 

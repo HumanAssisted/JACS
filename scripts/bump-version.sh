@@ -43,6 +43,8 @@ bump_patch() {
 
 MAIN_CARGO_FILES=(
   jacs/Cargo.toml
+  jacs-core/Cargo.toml
+  jacs-wasm/Cargo.toml
   binding-core/Cargo.toml
   jacs-cli/Cargo.toml
   jacs-mcp/Cargo.toml
@@ -64,6 +66,7 @@ done
 
 DEP_FILES=(
   jacs/Cargo.toml
+  jacs-wasm/Cargo.toml
   binding-core/Cargo.toml
   jacs-cli/Cargo.toml
   jacs-mcp/Cargo.toml
@@ -81,6 +84,14 @@ echo "  jacsnpm/package.json"
 
 sed -i '' "s/^version = \"$CURRENT\"/version = \"$NEW_VERSION\"/" jacspy/pyproject.toml
 echo "  jacspy/pyproject.toml"
+
+# @jacs/wasm npm package — version lives in the finalize-pkg template
+# (Task 020). Only touch it when the file is present so a half-finished
+# tree (e.g. mid-port) does not error out.
+if [ -f jacs-wasm/package.template.json ]; then
+  sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW_VERSION\"/" jacs-wasm/package.template.json
+  echo "  jacs-wasm/package.template.json"
+fi
 
 # --- Contract / metadata ---
 

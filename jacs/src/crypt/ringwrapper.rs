@@ -1,40 +1,59 @@
+//! Native facade for Ed25519 sign / verify / generate.
+//!
+//! After Task 011 (Wave 6), the protocol-layer Ed25519 code lives in
+//! [`jacs_core::sign::Ed25519DalekSigner`]. This module is now a thin
+//! wrapper that preserves the historical native API surface
+//! (`generate_keys`, `sign_string`, `verify_string`) plus the existing
+//! `tracing` log lines (PRD §10.1 — operational surface unchanged).
+//!
+//! `ring` is still pulled in as a build-time dep elsewhere in `jacs`,
+//! but no `ring::*` types remain in this file. Removal from the
+//! workspace is deferred to a follow-up per PRD §9.
+
 use crate::error::JacsError;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use ring::{
-    error::{KeyRejected, Unspecified},
-    rand,
-    signature::{self, KeyPair, UnparsedPublicKey},
-};
-use std::error::Error;
-use std::fmt;
+use jacs_core::sign::{DetachedSigner, Ed25519DalekSigner};
 use tracing::{debug, trace, warn};
 
+/// Generate a fresh Ed25519 keypair.
+///
+/// Returns `(pkcs8_v2_private_key_bytes, raw_public_key_bytes)` —
+/// historically the PKCS#8 wrapping was what `ring::Ed25519KeyPair::
+/// generate_pkcs8` produced. After the delegation we emit equivalent
+/// PKCS#8 v2 via `ed25519-dalek` so existing storage code reads and
+/// writes the same on-disk format.
 #[must_use = "generated keys must be stored securely"]
 pub fn generate_keys() -> Result<(Vec<u8>, Vec<u8>), JacsError> {
     trace!("Generating Ed25519 keypair");
-    let rng = rand::SystemRandom::new();
-    let pkcs8_bytes = signature::Ed25519KeyPair::generate_pkcs8(&rng)
-        .map_err(|e| JacsError::CryptoError(RingError(e).to_string()))?;
-    let key_pair = signature::Ed25519KeyPair::from_pkcs8(pkcs8_bytes.as_ref())
-        .map_err(|e| JacsError::CryptoError(KeyRejectedError(e).to_string()))?;
-    let public_key = key_pair.public_key().as_ref().to_vec();
-    let private_key = pkcs8_bytes.as_ref().to_vec();
+    let signer = Ed25519DalekSigner::generate().map_err(|e| {
+        JacsError::CryptoError(format!("Ed25519 cryptographic operation failed: {e:?}"))
+    })?;
+    // Reconstruct the PKCS#8 v2 byte sequence so callers (e.g.
+    // `keystore::FsEncryptedStore`) keep the same on-disk private-key
+    // format.
+    let public_key = signer.public_key().to_vec();
+    let pkcs8_bytes = export_pkcs8_v2(&signer)?;
     debug!(
         public_key_len = public_key.len(),
-        private_key_len = private_key.len(),
+        private_key_len = pkcs8_bytes.len(),
         "Ed25519 keypair generated"
     );
-    Ok((private_key, public_key))
+    Ok((pkcs8_bytes, public_key))
 }
 
+/// Sign `data` with `secret_key` (PKCS#8 v1 or v2 bytes).
 #[must_use = "signature must be stored or transmitted"]
 pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, JacsError> {
     trace!(data_len = data.len(), "Ed25519 signing starting");
-    let key_pair = signature::Ed25519KeyPair::from_pkcs8(&secret_key)
-        .map_err(|e| JacsError::CryptoError(KeyRejectedError(e).to_string()))?;
-    let signature = key_pair.sign(data.as_bytes());
-    let signature_bytes = signature.as_ref();
-    let signature_base64 = STANDARD.encode(signature_bytes);
+    let signer = Ed25519DalekSigner::from_pkcs8(&secret_key).map_err(|e| {
+        JacsError::CryptoError(format!(
+            "Ed25519 key parsing failed (invalid PKCS#8 format or corrupted key): {e:?}"
+        ))
+    })?;
+    let sig = signer.sign(data.as_bytes()).map_err(|e| {
+        JacsError::CryptoError(format!("Ed25519 cryptographic operation failed: {e:?}"))
+    })?;
+    let signature_base64 = STANDARD.encode(&sig);
     trace!(
         signature_len = signature_base64.len(),
         "Ed25519 signing completed"
@@ -42,6 +61,7 @@ pub fn sign_string(secret_key: Vec<u8>, data: &String) -> Result<String, JacsErr
     Ok(signature_base64)
 }
 
+/// Verify a base64-STANDARD-encoded Ed25519 signature.
 #[must_use = "signature verification result must be checked"]
 pub fn verify_string(
     public_key: Vec<u8>,
@@ -56,55 +76,49 @@ pub fn verify_string(
     let signature_bytes = STANDARD
         .decode(signature_base64)
         .map_err(|e| JacsError::CryptoError(format!("Invalid base64 signature: {}", e)))?;
-    let public_key = UnparsedPublicKey::new(&signature::ED25519, public_key);
-    match public_key.verify(data.as_bytes(), &signature_bytes) {
+    match Ed25519DalekSigner::verify(&public_key, data.as_bytes(), &signature_bytes) {
         Ok(()) => {
             debug!("Ed25519 signature verification succeeded");
             Ok(())
         }
         Err(e) => {
             warn!("Ed25519 signature verification failed");
-            Err(JacsError::from(RingError(e).to_string()))
+            Err(JacsError::CryptoError(format!(
+                "Ed25519 cryptographic operation failed: {e:?}"
+            )))
         }
     }
 }
 
-#[derive(Debug)]
-struct RingError(Unspecified);
-
-impl fmt::Display for RingError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Ed25519 cryptographic operation failed: {:?}", self.0)
-    }
-}
-
-impl Error for RingError {}
-
-impl From<Unspecified> for RingError {
-    fn from(error: Unspecified) -> Self {
-        RingError(error)
-    }
-}
-
-#[derive(Debug)]
-struct KeyRejectedError(KeyRejected);
-
-impl fmt::Display for KeyRejectedError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Ed25519 key parsing failed (invalid PKCS#8 format or corrupted key): {:?}",
-            self.0
-        )
-    }
-}
-
-impl Error for KeyRejectedError {}
-
-impl From<KeyRejected> for KeyRejectedError {
-    fn from(error: KeyRejected) -> Self {
-        KeyRejectedError(error)
-    }
+/// Re-export the raw private scalar wrapped as a minimal PKCS#8 v2 byte
+/// sequence so consumers of `generate_keys()` keep the same on-disk
+/// format that the legacy ring path produced.
+///
+/// The wrapping bytes are deterministic and well-known — we construct
+/// them by hand to avoid pulling extra encoding deps:
+///
+/// ```text
+/// 30 51                       SEQUENCE (81 bytes)
+///   02 01 01                  INTEGER 1                (PKCS#8 v2)
+///   30 05                     SEQUENCE (5 bytes)       AlgorithmIdentifier
+///     06 03 2b 65 70          OID 1.3.101.112          (Ed25519)
+///   04 22                     OCTET STRING (34 bytes)  CurvePrivateKey
+///     04 20 <32 priv bytes>   OCTET STRING (32 bytes)
+///   81 21                     [1] (33 bytes)           publicKey, IMPLICIT
+///     00 <32 pub bytes>       leading 0x00 + 32 public-key bytes
+/// ```
+fn export_pkcs8_v2(signer: &Ed25519DalekSigner) -> Result<Vec<u8>, JacsError> {
+    // The signer only exposes the public key + sign API; to reconstruct
+    // PKCS#8 we need the private scalar. The cleanest path is to ask
+    // ed25519-dalek for the PKCS#8 v2 encoding directly via the same
+    // `pkcs8` feature jacs-core already depends on.
+    //
+    // We do this by going back through `jacs_core` rather than calling
+    // `ed25519-dalek` here — the `jacs` crate must not depend on
+    // `ed25519-dalek` directly per the PRD (jacs-core owns Ed25519).
+    signer
+        .export_pkcs8_v2()
+        .map_err(|e| JacsError::CryptoError(format!("Ed25519 PKCS#8 export failed: {e:?}")))
 }
 
 #[cfg(test)]

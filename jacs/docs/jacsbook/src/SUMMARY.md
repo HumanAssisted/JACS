@@ -37,6 +37,9 @@
 - [HTTP Server](nodejs/http.md)
 - [API Reference](nodejs/api.md)
 
+## Browser WASM (@jacs/wasm)
+- [Browser WASM Package](wasm/building.md)
+
 ## Python (jacs)
 - [Installation](python/installation.md)
 - [Simplified API](python/simple-api.md)

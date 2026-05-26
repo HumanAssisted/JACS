@@ -199,61 +199,12 @@ impl std::fmt::Debug for LockedVec {
 /// // Use decrypted key...
 /// // When decrypted goes out of scope, memory is automatically zeroized
 /// ```
-#[derive(Clone)]
-pub struct ZeroizingVec(Vec<u8>);
-
-impl ZeroizingVec {
-    /// Create a new ZeroizingVec from a `Vec<u8>`.
-    ///
-    /// The input Vec's contents are moved into the ZeroizingVec.
-    pub fn new(data: Vec<u8>) -> Self {
-        ZeroizingVec(data)
-    }
-
-    /// Get a reference to the underlying bytes.
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Get the length of the key material.
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Check if the key material is empty.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-impl AsRef<[u8]> for ZeroizingVec {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl Zeroize for ZeroizingVec {
-    fn zeroize(&mut self) {
-        self.0.zeroize();
-    }
-}
-
-// Automatically zeroize when dropped
-impl Drop for ZeroizingVec {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
-}
-
-// Mark as ZeroizeOnDrop for compile-time verification
-impl ZeroizeOnDrop for ZeroizingVec {}
-
-// Hide contents in debug output
-impl std::fmt::Debug for ZeroizingVec {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ZeroizingVec([REDACTED, {} bytes])", self.0.len())
-    }
-}
+///
+/// Canonical home moved to `jacs_core::envelope::ZeroizingVec` so wasm
+/// builds can return secure buffers from the portable envelope reader
+/// (PRD §4.6). This re-export keeps every existing `use
+/// crate::crypt::private_key::ZeroizingVec` import path working.
+pub use jacs_core::envelope::ZeroizingVec;
 
 #[cfg(test)]
 mod tests {

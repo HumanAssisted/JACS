@@ -1,0 +1,172 @@
+name: WASM PR validation
+
+# PR-blocking validation for `jacs-core` + `jacs-wasm` + the
+# `@jacs/wasm` npm package (Issue 003 / Task 028).
+#
+# Mirrors the publish-time checks in `release-wasm.yml` so a PR cannot
+# merge unless the browser-side surface and packaging path are green.
+
+on:
+  pull_request:
+    branches: ["main", "WASM", "v0.10.2"]
+    paths:
+      - "jacs-core/**"
+      - "jacs-wasm/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - ".github/workflows/wasm-pr.yml"
+  push:
+    branches: ["main", "WASM", "v0.10.2"]
+    paths:
+      - "jacs-core/**"
+      - "jacs-wasm/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/forbidden-deps.sh"
+      - "scripts/forbidden-deps.test.sh"
+      - ".github/workflows/wasm-pr.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: wasm-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: jacs-wasm browser + packaging
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned toolchain matches `release-wasm.yml`. `rust-version =
+      # 1.93` in `jacs-wasm/Cargo.toml` requires this.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93"
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+
+      # Firefox/geckodriver keeps the wasm-bindgen browser test lane on a
+      # WebDriver endpoint that is stable in GitHub Actions.
+      - uses: browser-actions/setup-firefox@v1
+      - uses: browser-actions/setup-geckodriver@latest
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure wasm-bindgen Firefox WebDriver
+        run: |
+          firefox --version
+          geckodriver --version
+          echo "GECKODRIVER=$(command -v geckodriver)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ------------------------------------------------------------------
+      # 1. Forbidden-deps for both wasm-portable crates.
+      # ------------------------------------------------------------------
+      - name: Forbidden-deps — jacs-core (wasm32)
+        run: bash scripts/forbidden-deps.sh jacs-core wasm32-unknown-unknown
+
+      - name: Forbidden-deps — jacs-wasm (wasm32)
+        run: bash scripts/forbidden-deps.sh jacs-wasm wasm32-unknown-unknown
+
+      # ------------------------------------------------------------------
+      # 2. cargo check (warnings = errors) for the wasm-portable crates.
+      # Native check is limited to `jacs-core` (the shared portable
+      # crate); the rest of the workspace (jacs / jacs-binding-core /
+      # jacs-mcp / jacs-cli) pulls in keyring → libdbus-sys on Linux and
+      # is already covered by the main Rust PR workflow which installs
+      # the required system deps. wasm32 checks run on both portable
+      # crates so wasm-pack doesn't have to be the first failure signal.
+      # ------------------------------------------------------------------
+      - name: cargo check (warnings = errors)
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          cargo check -p jacs-core
+          cargo check -p jacs-core --target wasm32-unknown-unknown
+          cargo check -p jacs-wasm --target wasm32-unknown-unknown
+
+      # ------------------------------------------------------------------
+      # 3. wasm-pack test --headless --firefox
+      # ------------------------------------------------------------------
+      - name: wasm-pack test --headless --firefox (jacs-wasm)
+        run: wasm-pack test --headless --firefox jacs-wasm
+
+      # ------------------------------------------------------------------
+      # 4. wasm-pack build + finalize-pkg.sh
+      # ------------------------------------------------------------------
+      - name: wasm-pack build --target web --release
+        run: wasm-pack build --target web --release jacs-wasm
+
+      - name: finalize-pkg fixture (Issue 008)
+        # Runs the sandboxed package-finalization test against the current
+        # source-tree stub so it cannot drift behind `index.ts` /
+        # `worker/jacs-worker.ts` imports without failing the PR.
+        run: bash jacs-wasm/scripts/tests/finalize-pkg.test.sh
+
+      - name: Finalize pkg metadata (template merge + tsc compile)
+        run: bash jacs-wasm/scripts/finalize-pkg.sh
+
+      # ------------------------------------------------------------------
+      # 5. Source-tree TypeScript validation (release-blocking; Issue
+      # 007 / Task 032). This catches drift in `index.ts` or
+      # `jacs_wasm.d.ts` stub before the published `.d.ts` is generated.
+      # ------------------------------------------------------------------
+      - name: tsc --noEmit (source-tree)
+        run: |
+          cd jacs-wasm
+          npx --yes -p typescript@5 tsc --noEmit -p tsconfig.json
+
+      # ------------------------------------------------------------------
+      # 6. npm pack validation + package-consumption test (Issue 009)
+      # ------------------------------------------------------------------
+      - name: npm pack --dry-run
+        working-directory: jacs-wasm/pkg
+        run: npm pack --dry-run
+
+      - name: package-consumption test (Issue 009)
+        # Packs the finalized pkg into a tarball, installs it in a
+        # fresh sandbox with no Vite alias, and asserts that `@jacs/wasm`
+        # resolves through the metadata (main / module / types /
+        # exports) to the hand-written wrapper rather than the raw
+        # wasm-bindgen module.
+        run: bash jacs-wasm/scripts/tests/package-consumption.test.sh
+
+      - name: worker-bridge test (Issue 011)
+        # Drives the finalized pkg/worker/index.js bridge against a
+        # stub Worker to prove unmatched ok:false replies + worker
+        # 'error' events fan out to every pending call instead of
+        # leaving callers pending forever.
+        run: node jacs-wasm/scripts/tests/worker-bridge.test.mjs
+
+      # ------------------------------------------------------------------
+      # 7. Vite + Playwright smoke (PRD §5.5).
+      # ------------------------------------------------------------------
+      - name: Install vite smoke dependencies
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Vite build
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: npm run build
+
+      - name: Playwright smoke
+        working-directory: jacs-wasm/examples/vite-smoke
+        run: npx playwright test
