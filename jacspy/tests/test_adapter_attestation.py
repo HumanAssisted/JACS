@@ -336,9 +336,7 @@ class TestAnthropicAdapterAttest:
         hook = JacsToolHook(client=ephemeral_client, attest=True)
         assert hook._adapter.attest is True
 
-        result = asyncio.get_event_loop().run_until_complete(
-            hook({"tool_response": "weather is sunny"})
-        )
+        result = asyncio.run(hook({"tool_response": "weather is sunny"}))
         assert "hookSpecificOutput" in result
         tool_result = result["hookSpecificOutput"]["toolResult"]
         parsed = json.loads(tool_result)

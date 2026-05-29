@@ -84,7 +84,7 @@ class TestSignedToolAsync:
         async def async_weather(location: str) -> str:
             return f"Weather in {location}: rainy"
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             async_weather("London")
         )
         assert isinstance(result, str)
@@ -161,7 +161,7 @@ class TestJacsToolHook:
         hook = JacsToolHook(client=ephemeral_client)
         input_data = {"tool_response": "The answer is 42"}
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             hook(input_data)
         )
 
@@ -175,7 +175,7 @@ class TestJacsToolHook:
     def test_returns_hook_output_format(self, ephemeral_client):
         """Hook returns the expected envelope structure."""
         hook = JacsToolHook(client=ephemeral_client)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             hook({"tool_response": "test"})
         )
 
@@ -188,7 +188,7 @@ class TestJacsToolHook:
     def test_handles_empty_tool_response(self, ephemeral_client):
         """Hook handles empty tool_response gracefully."""
         hook = JacsToolHook(client=ephemeral_client)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             hook({"tool_response": ""})
         )
 
@@ -199,7 +199,7 @@ class TestJacsToolHook:
     def test_handles_missing_tool_response(self, ephemeral_client):
         """Hook handles missing tool_response key."""
         hook = JacsToolHook(client=ephemeral_client)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             hook({})
         )
 
@@ -209,7 +209,7 @@ class TestJacsToolHook:
     def test_optional_params_accepted(self, ephemeral_client):
         """Hook __call__ accepts tool_use_id and context."""
         hook = JacsToolHook(client=ephemeral_client)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             hook(
                 {"tool_response": "data"},
                 tool_use_id="tu_123",
@@ -231,7 +231,7 @@ class TestJacsToolHook:
         client.reset()
 
         with pytest.raises(Exception):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 hook({"tool_response": "data"})
             )
 
@@ -241,7 +241,7 @@ class TestJacsToolHook:
         hook = JacsToolHook(client=client, strict=False)
         client.reset()
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             hook({"tool_response": "raw output"})
         )
 

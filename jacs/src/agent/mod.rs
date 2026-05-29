@@ -1872,6 +1872,36 @@ impl Agent {
                         ),
                     });
                 }
+                // SECURITY (SV-5): a v2 signature authenticates only the fields named
+                // in `<placement>.fields`. `jacsSha256` is not itself signed, so an
+                // attacker can append an unsigned top-level field, recompute the hash,
+                // and slip unauthenticated data past both the signature and hash
+                // checks. The document signature (`jacsSignature`) is the one that must
+                // attest the *whole* document: `signing_procedure` enumerates every
+                // non-reserved top-level field for it, so a genuine document never
+                // carries extra unsigned keys. Agreement placements (`jacsAgreement`,
+                // `agreementSignature`) intentionally sign a trimmed subset and are
+                // exempt. Reject any top-level key under a document signature that is
+                // not a signed field, a reserved JACS field, or the placement itself.
+                if signature_key_from == DOCUMENT_AGENT_SIGNATURE_FIELDNAME
+                    && let Some(obj) = json_value.as_object()
+                {
+                    for key in obj.keys() {
+                        if key == signature_key_from
+                            || JACS_IGNORE_FIELDS.contains(&key.as_str())
+                            || metadata_fields.iter().any(|field| field == key)
+                        {
+                            continue;
+                        }
+                        return Err(JacsError::SignatureVerificationFailed {
+                            reason: format!(
+                                "Unsigned top-level field '{}' is present but not covered by \
+                                 '{}.fields'; the v2 signature does not authenticate it.",
+                                key, signature_key_from
+                            ),
+                        });
+                    }
+                }
                 build_signature_content_v2(
                     json_value,
                     metadata_fields,
