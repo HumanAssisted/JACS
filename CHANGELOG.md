@@ -2,6 +2,10 @@
 
 (unreleased)
 
+### Security
+
+- Fixed `jacs document verify` so it verifies the document signature, not just schema and `jacsSha256`; forged documents with recomputed hashes now fail verification.
+
 ## 0.11.1
 
 (unreleased)

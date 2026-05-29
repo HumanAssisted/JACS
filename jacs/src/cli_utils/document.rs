@@ -3,6 +3,7 @@ use crate::agent::Agent;
 use crate::agent::document::DocumentTraits;
 use crate::cli_utils::get_storage_default_for_cli;
 use crate::cli_utils::set_file_list;
+use crate::document::verify_document_with_agent;
 use crate::error::JacsError;
 use crate::shared::document_add_agreement;
 use crate::shared::document_check_agreement;
@@ -254,7 +255,6 @@ pub fn verify_documents(
     let files: Vec<String> = set_file_list(storage.as_ref().unwrap(), filename, directory, None)
         .expect("Failed to determine file list");
     for file in &files {
-        let load_only = true;
         // Use storage to read the input document file
         let content_bytes = storage
             .as_ref()
@@ -263,17 +263,13 @@ pub fn verify_documents(
             .unwrap_or_else(|_| panic!("Failed to load document file: {}", file));
         let document_string = String::from_utf8(content_bytes)
             .unwrap_or_else(|_| panic!("Document file {} is not valid UTF-8", file));
-        let result = document_load_and_save(
-            agent,
-            &document_string,
-            schema.cloned(),
-            None,
-            None,
-            None,
-            load_only,
-        )
-        .expect("reason");
-        println!("{}", result);
+        if let Some(schema_file) = schema {
+            let schemas = [schema_file.clone()];
+            agent.load_custom_schemas(&schemas)?;
+        }
+        let document = agent.load_document(&document_string)?;
+        verify_document_with_agent(agent, &document)?;
+        println!("{}", document);
     }
     Ok(())
 }
