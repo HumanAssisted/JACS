@@ -758,7 +758,21 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 process::exit(0);
             }
             _ => {
+                // Observability (CLAUDE.md norm): install a tracing subscriber
+                // before serving so verification/trust/auth events are not
+                // dropped to a no-op dispatcher. init_logging() writes to STDERR
+                // (never STDOUT — that is the JSON-RPC transport) and honors
+                // RUST_LOG. Scoped to the serve path so one-shot CLI commands
+                // that emit machine-readable envelopes to stderr are unaffected.
+                jacs::observability::init_logging();
                 let profile_str = mcp_matches.get_one::<String>("profile").map(|s| s.as_str());
+                // Emitted to STDERR by the subscriber above; the operator gets a
+                // startup line and stdout stays clean for the JSON-RPC transport.
+                tracing::info!(
+                    event = "mcp_server_starting",
+                    profile = profile_str.unwrap_or("default"),
+                    "Starting JACS MCP server (stdio transport)"
+                );
                 let profile = jacs_mcp::Profile::resolve(profile_str);
                 let (agent, _info) = jacs_mcp::load_agent_from_config_env_with_info()?;
                 let server = jacs_mcp::JacsMcpServer::with_profile(agent, profile);

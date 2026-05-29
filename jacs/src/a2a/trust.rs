@@ -118,7 +118,21 @@ pub struct TrustAssessment {
     pub agent_id: Option<String>,
     /// The policy that was applied.
     pub policy: A2ATrustPolicy,
+    /// Whether this is the FIRST contact with the agent's `id:version` (the
+    /// verifying A2A key was just pinned trust-on-first-use). When `true`, a
+    /// `JacsVerified` result proves only control of the card origin — NOT that
+    /// the signer is the claimed `jacsId`. Machine consumers should refuse to
+    /// treat a first-contact assessment as proof of identity (A2A-1).
+    #[serde(default)]
+    pub first_contact: bool,
 }
+
+/// Caveat appended to a `JacsVerified` reason when the verifying key was pinned
+/// on first contact (A2A-1). Signals that the result proves card-origin control,
+/// not the claimed identity, on this contact.
+const FIRST_CONTACT_CAVEAT: &str = " (first contact: verifying key pinned trust-on-first-use — proves control of the \
+     card origin, NOT the claimed identity; treat identity as unconfirmed until a \
+     subsequent contact re-presents the same pinned key)";
 
 /// Check whether a remote Agent Card declares the JACS provenance extension.
 ///
@@ -394,6 +408,10 @@ pub fn assess_a2a_agent(
     // failures degrade gracefully: the agent stays JacsVerified rather than
     // being blocked by an unwritable trust dir.
     let mut key_binding_failure: Option<String> = None;
+    // A2A-1: whether the verifying key was pinned on THIS assessment (first
+    // contact). A first-contact JacsVerified proves origin control, not the
+    // claimed identity, so callers must be able to distinguish it.
+    let mut first_contact = false;
     let trust_level = if in_trust_store {
         TrustLevel::ExplicitlyTrusted
     } else if card_signature_verified {
@@ -410,7 +428,11 @@ pub fn assess_a2a_agent(
                     ));
                     TrustLevel::Untrusted
                 }
-                Ok(_) => TrustLevel::JacsVerified,
+                Ok(trust::A2aPinOutcome::FirstUse) => {
+                    first_contact = true;
+                    TrustLevel::JacsVerified
+                }
+                Ok(trust::A2aPinOutcome::Match) => TrustLevel::JacsVerified,
                 Err(e) => {
                     tracing::warn!(
                         agent_id = agent_id.as_deref().unwrap_or("unknown"),
@@ -425,6 +447,20 @@ pub fn assess_a2a_agent(
     } else {
         TrustLevel::Untrusted
     };
+
+    // A2A-1: when the assessment is JacsVerified purely on first contact, the
+    // verifying key was just pinned — this binds future contacts to the same
+    // key but does NOT prove the signer is the claimed jacsId on this contact.
+    // Append a caveat so a human/LLM reading the reason is not misled, and
+    // emit a structured WARN for the operator's audit trail.
+    if first_contact {
+        tracing::warn!(
+            event = "a2a_first_contact_pinned",
+            agent_id = agent_id.as_deref().unwrap_or("unknown"),
+            "A2A agent verified on FIRST CONTACT (key pinned trust-on-first-use); \
+             this proves card-origin control, not the claimed identity"
+        );
+    }
 
     let unverified_reason = if let Some(failure) = key_binding_failure {
         failure
@@ -454,7 +490,12 @@ pub fn assess_a2a_agent(
                     "Open policy: agent accepted and explicitly trusted".to_string()
                 }
                 TrustLevel::JacsVerified => {
-                    "Open policy: agent accepted and Agent Card signature verified".to_string()
+                    let mut reason =
+                        "Open policy: agent accepted and Agent Card signature verified".to_string();
+                    if first_contact {
+                        reason.push_str(FIRST_CONTACT_CAVEAT);
+                    }
+                    reason
                 }
                 TrustLevel::Untrusted => {
                     format!("Open policy: agent accepted, but {}", unverified_reason)
@@ -467,11 +508,15 @@ pub fn assess_a2a_agent(
                 true,
                 "Verified policy: agent is explicitly trusted".to_string(),
             ),
-            TrustLevel::JacsVerified => (
-                true,
-                "Verified policy: Agent Card signature verified against advertised JWKS"
-                    .to_string(),
-            ),
+            TrustLevel::JacsVerified => {
+                let mut reason =
+                    "Verified policy: Agent Card signature verified against advertised JWKS"
+                        .to_string();
+                if first_contact {
+                    reason.push_str(FIRST_CONTACT_CAVEAT);
+                }
+                (true, reason)
+            }
             TrustLevel::Untrusted => (false, format!("Verified policy: {}", unverified_reason)),
         },
         A2ATrustPolicy::Strict => match trust_level {
@@ -497,6 +542,7 @@ pub fn assess_a2a_agent(
         jacs_registered,
         agent_id,
         policy,
+        first_contact,
     }
 }
 
@@ -820,6 +866,7 @@ mod tests {
             jacs_registered: true,
             agent_id: Some("agent-789".to_string()),
             policy: A2ATrustPolicy::Verified,
+            first_contact: false,
         };
 
         let json = serde_json::to_string_pretty(&assessment).unwrap();
@@ -946,6 +993,18 @@ mod tests {
         let r1 = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
         assert!(r1.allowed, "first contact should be allowed: {:?}", r1);
         assert_eq!(r1.trust_level, TrustLevel::JacsVerified);
+        // A2A-1: first contact must be flagged so callers don't mistake
+        // origin-control for identity, and the reason must carry the caveat.
+        assert!(
+            r1.first_contact,
+            "first contact must set first_contact=true: {:?}",
+            r1
+        );
+        assert!(
+            r1.reason.contains("first contact"),
+            "first-contact reason must carry the caveat: {}",
+            r1.reason
+        );
 
         // Second contact with the SAME key (same card, JWKS env unchanged).
         let r2 = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
@@ -959,6 +1018,12 @@ mod tests {
             r2
         );
         assert_eq!(r2.trust_level, TrustLevel::JacsVerified);
+        // A matched pin is an established identity, NOT a first contact.
+        assert!(
+            !r2.first_contact,
+            "matched pin must set first_contact=false: {:?}",
+            r2
+        );
     }
 
     // A2A-1: a later card for the same id:version that presents a DIFFERENT key
@@ -1044,6 +1109,7 @@ mod tests {
             jacs_registered: true,
             agent_id: Some("agent-golden-trust".to_string()),
             policy: A2ATrustPolicy::Verified,
+            first_contact: false,
         };
 
         let actual: serde_json::Value = serde_json::to_value(&assessment).unwrap();
@@ -1053,7 +1119,8 @@ mod tests {
             "reason": "Verified policy: Agent Card signature verified against advertised JWKS",
             "jacsRegistered": true,
             "agentId": "agent-golden-trust",
-            "policy": "Verified"
+            "policy": "Verified",
+            "firstContact": false
         });
 
         assert_eq!(actual, expected, "Golden JSON mismatch for TrustAssessment");
@@ -1066,6 +1133,7 @@ mod tests {
             jacs_registered: false,
             agent_id: None,
             policy: A2ATrustPolicy::Open,
+            first_contact: false,
         };
 
         let actual_none: serde_json::Value = serde_json::to_value(&assessment_none).unwrap();
@@ -1075,7 +1143,8 @@ mod tests {
             "reason": "Open policy: agent accepted (trust level: Untrusted)",
             "jacsRegistered": false,
             "agentId": null,
-            "policy": "Open"
+            "policy": "Open",
+            "firstContact": false
         });
 
         assert_eq!(
@@ -1091,6 +1160,7 @@ mod tests {
             jacs_registered: true,
             agent_id: Some("trusted-agent-xyz".to_string()),
             policy: A2ATrustPolicy::Strict,
+            first_contact: false,
         };
 
         let actual_strict: serde_json::Value = serde_json::to_value(&assessment_strict).unwrap();
@@ -1100,7 +1170,8 @@ mod tests {
             "reason": "Strict policy: agent is in local trust store",
             "jacsRegistered": true,
             "agentId": "trusted-agent-xyz",
-            "policy": "Strict"
+            "policy": "Strict",
+            "firstContact": false
         });
 
         assert_eq!(

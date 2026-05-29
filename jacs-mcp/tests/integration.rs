@@ -422,6 +422,22 @@ async fn mcp_w3c_did_discovery_and_request_proof_round_trip() -> anyhow::Result<
     assert_eq!(verified["success"], true, "verify proof: {}", verified);
     assert_eq!(verified["verification"]["valid"], true);
     assert_eq!(verified["verification"]["expectedRequestChecked"], true);
+    // SECURITY (#5): the DID document is a caller-supplied, unresolved argument.
+    // A successful verification is proof-of-possession, NOT proof of identity —
+    // the result must say so and flag the DID document as untrusted.
+    assert_eq!(
+        verified["did_document_trusted"], false,
+        "verify must flag the caller-supplied DID document as untrusted: {}",
+        verified
+    );
+    assert!(
+        verified["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("independently resolved"),
+        "verify message must caveat that the DID doc was not resolved/trusted: {}",
+        verified
+    );
 
     session.client.cancellation_token().cancel();
     Ok(())

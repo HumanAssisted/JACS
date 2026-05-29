@@ -2972,6 +2972,7 @@ dependencies = [
  "tempfile",
  "tiny_http",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

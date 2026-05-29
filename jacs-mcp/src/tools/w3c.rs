@@ -81,6 +81,13 @@ pub struct W3cVerifyRequestResult {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification: Option<Value>,
+    /// SECURITY: whether the DID document used to verify was independently
+    /// resolved/trust-pinned by the server. Always `false` here because the
+    /// DID document is supplied as an untrusted tool argument — a successful
+    /// result proves the proof was signed by the key IN that document
+    /// (proof-of-possession), NOT that the signer owns the claimed DID.
+    #[serde(default)]
+    pub did_document_trusted: bool,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,

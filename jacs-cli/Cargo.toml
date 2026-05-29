@@ -38,6 +38,7 @@ dirs = "5.0"
 serde_json = "1.0"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
 
 [dev-dependencies]
 assert_cmd = "2"

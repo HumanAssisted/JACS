@@ -6,6 +6,14 @@
 
 - Fixed `jacs document verify` so it verifies the document signature, not just schema and `jacsSha256`; forged documents with recomputed hashes now fail verification.
 
+MCP/CLI hardening from a focused security review of the `jacs-mcp` and `jacs-cli` layers (each fix is test-covered):
+
+- **MCP verify-trust bypass via `key_dir` closed.** `jacs_verify_text` / `jacs_verify_image` accepted a caller-supplied `key_dir` that bypassed the path policy and was consulted ahead of the trust store, letting a malicious client shadow a trusted signer's public key and forge provenance. The override is now disabled by default (returns a clear error); set `JACS_MCP_ALLOW_KEY_DIR=true` to opt in, and even then the directory is confined to the MCP base dir by the path policy.
+- **Destructive MCP key rotation is now opt-in.** `jacs_rotate_keys` was dispatchable in the default profile with no gate; a prompt-injected client could force-rotate (and thus re-key) the agent's identity, invalidating every remote that pinned the old key. It now default-denies and requires `JACS_MCP_ALLOW_KEY_ROTATION=true`, mirroring the existing registration/untrust/inline-secrets gates, and logs a structured warning when blocked.
+- **A2A first-contact is no longer presented as proven identity.** A `Verified`-policy first contact pins the key trust-on-first-use but only proves control of the card origin, not the claimed `jacsId`. `TrustAssessment` now carries a `first_contact` flag (surfaced through the `jacs_assess_a2a_agent` MCP result), the human-readable reason gains an explicit caveat, and a structured `a2a_first_contact_pinned` warning is emitted, so callers can refuse to treat origin-control as identity. (Also fixed the MCP assess result reading the trust level from the camelCase `trustLevel` field.)
+- **W3C request-proof verification no longer overstates its guarantee.** `jacs_w3c_verify_request` verifies the proof against a caller-supplied DID document that is never independently resolved or trust-pinned, so a success is proof-of-possession, not proof of identity. The result now includes `did_document_trusted: false` and a reworded message making that explicit.
+- **Observability on the serve path (CLAUDE.md norm).** The `jacs mcp` server now installs a STDERR tracing subscriber before serving, so verification/trust/auth warnings are no longer dropped to a no-op dispatcher. STDERR (never STDOUT) is used so the JSON-RPC transport stays byte-clean, and `jacs mcp` emits a structured startup line. (Scoped to the serve path so one-shot CLI commands that emit machine-readable envelopes to stderr are unaffected.)
+
 ## 0.11.1
 
 (unreleased)

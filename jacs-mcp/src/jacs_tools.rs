@@ -57,6 +57,57 @@ fn inline_secrets_allowed() -> bool {
         .unwrap_or(false)
 }
 
+/// Check if key rotation is allowed via environment variable.
+///
+/// Rotation is destructive: it re-keys the agent's cryptographic identity,
+/// re-signs the agent document and config, and invalidates every remote that
+/// pinned the old key (A2A pins, trust stores, DNS). A prompt-injected client
+/// must not be able to force it. Requires explicit opt-in.
+fn is_key_rotation_allowed() -> bool {
+    std::env::var("JACS_MCP_ALLOW_KEY_ROTATION")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+/// Whether a caller-supplied `key_dir` override is allowed for the inline
+/// verify tools.
+///
+/// Disabled by default: an untrusted `key_dir` lets a caller load an arbitrary
+/// public key from a directory of their choosing, which the resolver consults
+/// ahead of the trust store — shadowing a trusted signer and forging
+/// provenance (verify-trust bypass). Requires explicit opt-in, and even then
+/// the directory is confined to the MCP base dir via the path policy.
+fn is_key_dir_override_allowed() -> bool {
+    std::env::var("JACS_MCP_ALLOW_KEY_DIR")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+/// Resolve a caller-supplied verify `key_dir` argument under the MCP threat
+/// model:
+/// - `None` → `Ok(None)`: use the server's configured key resolution.
+/// - `Some` while disabled (default) → `Err`: reject so an untrusted directory
+///   cannot shadow the trust store.
+/// - `Some` while enabled → confine to the MCP base dir via the path policy,
+///   so even an opted-in override cannot escape to an attacker-planted dir.
+fn resolve_key_dir_override(key_dir: Option<&str>) -> Result<Option<std::path::PathBuf>, String> {
+    match key_dir {
+        None => Ok(None),
+        Some(dir) => {
+            if !is_key_dir_override_allowed() {
+                return Err(
+                    "key_dir override is disabled. An untrusted key directory can shadow the \
+                     trust store and forge provenance. Set JACS_MCP_ALLOW_KEY_DIR=true to opt in."
+                        .to_string(),
+                );
+            }
+            crate::path_policy::resolve_input_path(dir)
+                .map(Some)
+                .map_err(|e| format!("PATH_POLICY_BLOCKED: {}", e))
+        }
+    }
+}
+
 fn validate_optional_relative_path(label: &str, path: Option<&String>) -> Result<(), String> {
     if let Some(path) = path {
         require_relative_path_safe(path)
@@ -473,6 +524,31 @@ impl JacsMcpServer {
         &self,
         Parameters(params): Parameters<key::RotateKeysParams>,
     ) -> String {
+        // SECURITY: rotation re-keys the agent identity and invalidates every
+        // remote that pinned the old key. Default-deny so a prompt-injected
+        // client cannot force it; require explicit operator opt-in.
+        if !is_key_rotation_allowed() {
+            tracing::warn!(
+                event = "key_rotation_blocked",
+                "jacs_rotate_keys called while disabled; set JACS_MCP_ALLOW_KEY_ROTATION=true to enable"
+            );
+            let result = key::RotateKeysResult {
+                success: false,
+                jacs_id: None,
+                old_version: None,
+                new_version: None,
+                new_public_key_hash: None,
+                has_transition_proof: false,
+                message: "Key rotation is disabled. Set JACS_MCP_ALLOW_KEY_ROTATION=true to \
+                          enable (rotation re-keys the agent identity and invalidates remotes \
+                          that pinned the old key)."
+                    .to_string(),
+                error: Some("KEY_ROTATION_DISABLED".to_string()),
+            };
+            return serde_json::to_string_pretty(&result)
+                .unwrap_or_else(|e| format!("Error: {}", e));
+        }
+
         let result = match self.agent.rotate_keys(params.algorithm.as_deref()) {
             Ok(json_str) => {
                 let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
@@ -1448,6 +1524,7 @@ impl JacsMcpServer {
                 success: false,
                 allowed: false,
                 trust_level: None,
+                first_contact: false,
                 policy: None,
                 reason: None,
                 message: "Agent Card JSON is empty".to_string(),
@@ -1471,8 +1548,11 @@ impl JacsMcpServer {
                     .get("allowed")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                // TrustAssessment serializes camelCase; accept snake_case too
+                // for robustness against older payloads.
                 let trust_level = assessment
-                    .get("trust_level")
+                    .get("trustLevel")
+                    .or_else(|| assessment.get("trust_level"))
                     .and_then(|v| v.as_str())
                     .map(String::from);
                 let policy = assessment
@@ -1483,11 +1563,19 @@ impl JacsMcpServer {
                     .get("reason")
                     .and_then(|v| v.as_str())
                     .map(String::from);
+                // SECURITY (A2A-1): surface first-contact so the client can
+                // refuse to treat origin-control as proof of identity.
+                let first_contact = assessment
+                    .get("firstContact")
+                    .or_else(|| assessment.get("first_contact"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
 
                 let result = AssessA2aAgentResult {
                     success: true,
                     allowed,
                     trust_level,
+                    first_contact,
                     policy,
                     reason: reason.clone(),
                     message: reason.unwrap_or_else(|| "Assessment complete".to_string()),
@@ -1500,6 +1588,7 @@ impl JacsMcpServer {
                     success: false,
                     allowed: false,
                     trust_level: None,
+                    first_contact: false,
                     policy: Some(policy_str.to_string()),
                     reason: None,
                     message: "Trust assessment failed".to_string(),
@@ -1786,12 +1875,22 @@ impl JacsMcpServer {
             Ok(verification) => W3cVerifyRequestResult {
                 success: true,
                 verification: Some(verification),
-                message: "W3C request proof verified successfully".to_string(),
+                // SECURITY: the DID document was supplied by the caller and was
+                // NOT independently resolved or trust-pinned, so this is
+                // proof-of-possession only — it does not establish that the
+                // signer owns the claimed DID.
+                did_document_trusted: false,
+                message: "W3C request proof cryptographically verified against the \
+                          CALLER-SUPPLIED DID document (proof-of-possession). The DID document \
+                          was NOT independently resolved or trust-pinned, so this does not by \
+                          itself prove the signer's identity."
+                    .to_string(),
                 error: None,
             },
             Err(e) => W3cVerifyRequestResult {
                 success: false,
                 verification: None,
+                did_document_trusted: false,
                 message: "Failed to verify W3C request proof".to_string(),
                 error: Some(e.to_string()),
             },
@@ -2340,10 +2439,20 @@ impl JacsMcpServer {
         };
 
         let strict = params.strict.unwrap_or(false);
-        let opts = jacs::inline::VerifyOptions {
-            strict,
-            key_dir: params.key_dir.as_deref().map(std::path::PathBuf::from),
+        // SECURITY (verify-trust bypass): a caller-supplied key_dir is consulted
+        // ahead of the trust store and would let an attacker shadow a trusted
+        // signer's key. Default-deny; confine to the base dir when opted in.
+        let key_dir = match resolve_key_dir_override(params.key_dir.as_deref()) {
+            Ok(k) => k,
+            Err(e) => {
+                return verify_text_error_envelope(
+                    &params.file_path,
+                    "key_dir override rejected",
+                    e,
+                );
+            }
         };
+        let opts = jacs::inline::VerifyOptions { strict, key_dir };
 
         let file_path = resolved_input;
         let result = tokio::task::spawn_blocking(move || {
@@ -2538,11 +2647,20 @@ impl JacsMcpServer {
         };
 
         let strict = params.strict.unwrap_or(false);
+        // SECURITY (verify-trust bypass): see jacs_verify_text. Default-deny a
+        // caller-supplied key_dir; confine to the base dir when opted in.
+        let key_dir = match resolve_key_dir_override(params.key_dir.as_deref()) {
+            Ok(k) => k,
+            Err(e) => {
+                return verify_image_error_envelope(
+                    &params.file_path,
+                    "key_dir override rejected",
+                    e,
+                );
+            }
+        };
         let opts = jacs::simple::VerifyImageOptions {
-            base: jacs::inline::VerifyOptions {
-                strict,
-                key_dir: params.key_dir.as_deref().map(std::path::PathBuf::from),
-            },
+            base: jacs::inline::VerifyOptions { strict, key_dir },
             scan_robust: params.robust.unwrap_or(false),
         };
 
@@ -2991,6 +3109,78 @@ mod tests {
             std::env::remove_var("JACS_MCP_ALLOW_REGISTRATION");
         }
         assert!(!is_registration_allowed());
+    }
+
+    // SECURITY (#3): destructive key rotation must be opt-in, default-deny.
+    #[test]
+    #[serial_test::serial(mcp_env_gates)]
+    fn test_is_key_rotation_disabled_by_default() {
+        // SAFETY: serial-guarded env mutation.
+        unsafe {
+            std::env::remove_var("JACS_MCP_ALLOW_KEY_ROTATION");
+        }
+        assert!(!is_key_rotation_allowed());
+    }
+
+    #[test]
+    #[serial_test::serial(mcp_env_gates)]
+    fn test_is_key_rotation_allowed_opt_in() {
+        // SAFETY: serial-guarded env mutation.
+        unsafe {
+            std::env::set_var("JACS_MCP_ALLOW_KEY_ROTATION", "true");
+        }
+        assert!(is_key_rotation_allowed());
+        unsafe {
+            std::env::remove_var("JACS_MCP_ALLOW_KEY_ROTATION");
+        }
+    }
+
+    // SECURITY (#2): a caller-supplied key_dir is rejected by default (it would
+    // shadow the trust store); None passes through; an opted-in value is still
+    // confined to the base dir by the path policy.
+    #[test]
+    #[serial_test::serial(mcp_env_gates)]
+    fn test_resolve_key_dir_override_none_passes_through() {
+        // SAFETY: serial-guarded env mutation.
+        unsafe {
+            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
+        }
+        assert!(matches!(resolve_key_dir_override(None), Ok(None)));
+    }
+
+    #[test]
+    #[serial_test::serial(mcp_env_gates)]
+    fn test_resolve_key_dir_override_disabled_by_default() {
+        // SAFETY: serial-guarded env mutation.
+        unsafe {
+            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
+        }
+        let err = resolve_key_dir_override(Some("attacker_keys")).unwrap_err();
+        assert!(
+            err.contains("disabled"),
+            "expected disabled message, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(mcp_env_gates)]
+    fn test_resolve_key_dir_override_rejects_absolute_when_enabled() {
+        // SAFETY: serial-guarded env mutation.
+        unsafe {
+            std::env::set_var("JACS_MCP_ALLOW_KEY_DIR", "true");
+        }
+        // Even when opted in, an absolute path escaping the base dir is blocked
+        // by the path policy (structural absolute-path rejection).
+        let err = resolve_key_dir_override(Some("/tmp/evil_keys")).unwrap_err();
+        unsafe {
+            std::env::remove_var("JACS_MCP_ALLOW_KEY_DIR");
+        }
+        assert!(
+            err.contains("PATH_POLICY_BLOCKED") || err.to_lowercase().contains("rejected"),
+            "expected path-policy rejection, got: {}",
+            err
+        );
     }
 
     #[test]

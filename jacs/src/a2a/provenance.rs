@@ -940,6 +940,7 @@ mod tests {
                 jacs_registered: true,
                 agent_id: Some("trusted-agent".to_string()),
                 policy: A2ATrustPolicy::Verified,
+                first_contact: false,
             }),
         };
 
@@ -1003,6 +1004,7 @@ mod tests {
                 jacs_registered: true,
                 agent_id: Some("agent-contract-test".to_string()),
                 policy: A2ATrustPolicy::Verified,
+                first_contact: false,
             }),
         };
 
@@ -1368,6 +1370,7 @@ mod tests {
                 jacs_registered: true,
                 agent_id: Some("trusted-agent-abc".to_string()),
                 policy: A2ATrustPolicy::Verified,
+                first_contact: false,
             }),
         };
 
@@ -1389,7 +1392,8 @@ mod tests {
                 "reason": "Verified policy: agent has JACS provenance extension",
                 "jacsRegistered": true,
                 "agentId": "trusted-agent-abc",
-                "policy": "Verified"
+                "policy": "Verified",
+                "firstContact": false
             }
         });
 

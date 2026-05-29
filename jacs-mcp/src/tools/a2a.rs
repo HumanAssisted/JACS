@@ -104,6 +104,13 @@ pub struct AssessA2aAgentResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trust_level: Option<String>,
 
+    /// SECURITY (A2A-1): `true` when this is the FIRST contact with the agent's
+    /// id:version (verifying key just pinned). A `JacsVerified` first contact
+    /// proves card-origin control, NOT the claimed identity — callers must not
+    /// treat it as proof of identity.
+    #[serde(default)]
+    pub first_contact: bool,
+
     /// The policy that was applied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub policy: Option<String>,
