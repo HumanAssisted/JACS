@@ -241,6 +241,51 @@ mod signature_v2_binding {
     }
 
     #[test]
+    fn refute_native_verify_body_tamper_keeping_identity_fields() {
+        // Reproduces the EXACT attack from the disputed finding:
+        // tamper the business payload while leaving jacsId/jacsVersion/jacsVersionDate/
+        // jacsOriginalVersion/jacsOriginalDate untouched, recompute jacsSha256, and verify.
+        let (agent, mut value) = signed_doc();
+
+        eprintln!(
+            "SIGNED DOC:\n{}",
+            serde_json::to_string_pretty(&value).unwrap()
+        );
+
+        // Mutate a signed body field.
+        value["amount"] = json!(9000);
+        value["recipient"] = json!("mallory");
+
+        recompute_jacs_sha256(&mut value);
+
+        let tampered = serde_json::to_string(&value).expect("serialize tampered doc");
+        let result = agent.verify(&tampered).expect("verification result");
+        assert!(
+            !result.valid,
+            "tampering the document body MUST invalidate the signature"
+        );
+    }
+
+    #[test]
+    fn refute_native_verify_added_unsigned_field_is_caught() {
+        // Attacker appends a brand-new field not present at signing time.
+        // build_signature_content_v2 reconstructs the preimage ONLY from the signed
+        // fields list, so the new field would be invisible to the signature check.
+        // The jacsSha256 hash (over the whole doc) is what catches this -- verify the
+        // full pipeline rejects it.
+        let (agent, mut value) = signed_doc();
+        value["injected"] = json!("attacker controlled");
+        recompute_jacs_sha256(&mut value);
+
+        let tampered = serde_json::to_string(&value).expect("serialize");
+        let result = agent.verify(&tampered).expect("verification result");
+        assert!(
+            !result.valid,
+            "adding an unsigned field MUST invalidate the document"
+        );
+    }
+
+    #[test]
     fn rejects_field_rebinding_even_when_hash_is_recomputed() {
         let (agent, mut value) = signed_doc();
         let original_content = value["content"].clone();

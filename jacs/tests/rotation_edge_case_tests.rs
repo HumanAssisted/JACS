@@ -517,3 +517,67 @@ fn test_rotation_stress_repeated_sign_verify() {
         );
     }
 }
+
+// =============================================================================
+// Key obsolescence: old key is retained (feature) but marked obsolete + warned
+// =============================================================================
+
+/// After rotation the old encrypted private key is intentionally RETAINED on
+/// disk (audit/recovery), but it must be marked OBSOLETE so tooling can detect
+/// a stale key — the agent's newer version holds the authoritative key.
+#[test]
+#[serial(jacs_env, cwd_env)]
+fn test_rotation_retains_old_key_and_marks_it_obsolete() {
+    let _lock = EDGE_CASE_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent, info, _tmp, _guard) = create_test_agent("obsolete-marker", "ring-Ed25519");
+    let old_version = info.version.clone();
+
+    advanced::rotate(&agent, None).expect("rotation should succeed");
+
+    // Retention: the old encrypted private key must still exist (archived).
+    let archived_priv = format!("./jacs_keys/jacs.private.{}.pem.enc", old_version);
+    assert!(
+        std::path::Path::new(&archived_priv).exists(),
+        "archived old private key must be retained at {archived_priv}"
+    );
+
+    // Obsolescence: a marker must be written next to the archived key.
+    let marker = format!("{}.obsolete.json", archived_priv);
+    assert!(
+        std::path::Path::new(&marker).exists(),
+        "obsolescence marker must be written at {marker}"
+    );
+    let record: Value = serde_json::from_slice(&std::fs::read(&marker).expect("read marker"))
+        .expect("parse marker");
+    assert_eq!(
+        record["obsoletedAtVersion"].as_str(),
+        Some(old_version.as_str()),
+        "marker must record the obsoleted (old) version"
+    );
+    assert_eq!(
+        record["reason"].as_str(),
+        Some("superseded-by-rotation"),
+        "marker must record the obsolescence reason"
+    );
+    assert!(
+        record["warning"]
+            .as_str()
+            .is_some_and(|w| w.contains("OBSOLETE")),
+        "marker must carry the retention/decryptable-with-old-password warning"
+    );
+
+    // The marker must be owner-only.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&marker)
+            .expect("stat marker")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "obsolescence marker must be 0o600, got {mode:o}"
+        );
+    }
+}

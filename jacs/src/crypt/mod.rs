@@ -1,5 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use secrecy::ExposeSecret;
+use zeroize::Zeroizing;
 pub mod aes_encrypt;
 pub mod constants;
 pub mod hash;
@@ -253,7 +254,7 @@ impl Agent {
         let is_ephemeral = self.is_ephemeral();
         let has_key_store = self.get_key_store().is_some();
         let stored_algo = self.get_key_algorithm().cloned();
-        let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+        let (key_bytes, ks_box): (Zeroizing<Vec<u8>>, Box<dyn KeyStore>) = if is_ephemeral {
             let raw = binding.expose_secret().clone();
             let ks: Box<dyn KeyStore> = if has_key_store {
                 let algo = stored_algo.as_deref().unwrap_or("pq2025");
@@ -261,7 +262,7 @@ impl Agent {
             } else {
                 Box::new(self.build_fs_store()?)
             };
-            (raw, ks)
+            (Zeroizing::new(raw), ks)
         } else {
             let decrypted = crate::agent::decrypt_with_agent_password(
                 binding.expose_secret(),
@@ -270,13 +271,13 @@ impl Agent {
             )
             .map_err(|e| format!("Byte signing failed: could not decrypt private key: {}", e))?;
             (
-                decrypted.as_slice().to_vec(),
+                Zeroizing::new(decrypted.as_slice().to_vec()),
                 Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
             )
         };
 
         let sig_bytes = ks_box
-            .sign_detached(&key_bytes, data, &key_algorithm)
+            .sign_detached(key_bytes.as_slice(), data, &key_algorithm)
             .map_err(|e| {
                 format!(
                     "Byte signing failed: cryptographic signing operation failed: {}",
@@ -357,7 +358,7 @@ impl KeyManager for Agent {
             let is_ephemeral = self.is_ephemeral();
             let has_key_store = self.get_key_store().is_some();
             let stored_algo = self.get_key_algorithm().cloned();
-            let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+            let (key_bytes, ks_box): (Zeroizing<Vec<u8>>, Box<dyn KeyStore>) = if is_ephemeral {
                 let raw = binding.expose_secret().clone();
                 let ks: Box<dyn KeyStore> = if has_key_store {
                     let algo = stored_algo.as_deref().unwrap_or("pq2025");
@@ -365,7 +366,7 @@ impl KeyManager for Agent {
                 } else {
                     Box::new(self.build_fs_store()?)
                 };
-                (raw, ks)
+                (Zeroizing::new(raw), ks)
             } else {
                 let decrypted = crate::agent::decrypt_with_agent_password(
                     binding.expose_secret(),
@@ -380,13 +381,13 @@ impl KeyManager for Agent {
                     )
                 })?;
                 (
-                    decrypted.as_slice().to_vec(),
+                    Zeroizing::new(decrypted.as_slice().to_vec()),
                     Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
                 )
             };
 
             let sig_bytes = ks_box
-                .sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)
+                .sign_detached(key_bytes.as_slice(), data.as_bytes(), &key_algorithm)
                 .map_err(|e| {
                     format!(
                         "Document signing failed: cryptographic signing operation failed. \
@@ -456,7 +457,7 @@ impl KeyManager for Agent {
         let is_ephemeral = self.is_ephemeral();
         let has_key_store = self.get_key_store().is_some();
         let stored_algo = self.get_key_algorithm().cloned();
-        let (key_bytes, ks_box): (Vec<u8>, Box<dyn KeyStore>) = if is_ephemeral {
+        let (key_bytes, ks_box): (Zeroizing<Vec<u8>>, Box<dyn KeyStore>) = if is_ephemeral {
             let raw = binding.expose_secret().clone();
             let ks: Box<dyn KeyStore> = if has_key_store {
                 let algo = stored_algo.as_deref().unwrap_or("pq2025");
@@ -464,7 +465,7 @@ impl KeyManager for Agent {
             } else {
                 Box::new(self.build_fs_store()?)
             };
-            (raw, ks)
+            (Zeroizing::new(raw), ks)
         } else {
             let decrypted = crate::agent::decrypt_with_agent_password(
                 binding.expose_secret(),
@@ -479,7 +480,7 @@ impl KeyManager for Agent {
                 )
             })?;
             (
-                decrypted.as_slice().to_vec(),
+                Zeroizing::new(decrypted.as_slice().to_vec()),
                 Box::new(self.build_fs_store()?) as Box<dyn KeyStore>,
             )
         };
@@ -493,7 +494,8 @@ impl KeyManager for Agent {
                 data_len = data.len(),
                 "Signing batch item"
             );
-            let sig_bytes = ks_box.sign_detached(&key_bytes, data.as_bytes(), &key_algorithm)?;
+            let sig_bytes =
+                ks_box.sign_detached(key_bytes.as_slice(), data.as_bytes(), &key_algorithm)?;
             signatures.push(STANDARD.encode(sig_bytes));
         }
 

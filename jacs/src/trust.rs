@@ -481,6 +481,82 @@ pub fn get_trusted_public_key_hash(agent_id: &str) -> Result<String, JacsError> 
     agent_value.get_path_str_required(&["jacsSignature", "publicKeyHash"])
 }
 
+/// Outcome of pinning (trust-on-first-use) an A2A verifying-key hash.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum A2aPinOutcome {
+    /// No prior pin existed; the key hash was recorded.
+    FirstUse,
+    /// The presented key hash matches the pinned value.
+    Match,
+    /// The presented key hash differs from the pinned value (possible key
+    /// substitution). The existing pin is left unchanged.
+    Mismatch {
+        /// The previously pinned key hash.
+        pinned: String,
+    },
+}
+
+/// Directory holding A2A trust-on-first-use key pins (a subdirectory of the
+/// trust store).
+fn a2a_pin_dir() -> std::path::PathBuf {
+    trust_store_dir().join("a2a_pins")
+}
+
+/// Record or check an A2A verifying-key hash for `agent_key` on a
+/// trust-on-first-use (TOFU) basis.
+///
+/// `agent_key` is the trust-store key (`"jacsId:jacsVersion"`) of the remote
+/// agent whose Agent Card just verified; `public_key_hash` is the hash of the
+/// JWKS key that verified it.
+///
+/// - First contact: the hash is pinned (`0o600`) and [`A2aPinOutcome::FirstUse`]
+///   is returned.
+/// - Later contact, same key: [`A2aPinOutcome::Match`].
+/// - Later contact, different key: [`A2aPinOutcome::Mismatch`] — the pin is
+///   **not** overwritten, so a substituted key cannot silently replace it.
+///
+/// Pins are keyed by the full `id:version`, so a legitimate key rotation
+/// (which produces a new agent version) creates a fresh pin rather than a
+/// false-positive mismatch.
+pub fn pin_a2a_key(agent_key: &str, public_key_hash: &str) -> Result<A2aPinOutcome, JacsError> {
+    validate_agent_id_for_path(agent_key)?;
+
+    let dir = a2a_pin_dir();
+    let pin_file = dir.join(format!("{}.pin", agent_key));
+
+    if pin_file.exists() {
+        let existing = crate::secure_io::read_to_string_no_follow(&pin_file).map_err(|e| {
+            JacsError::Internal {
+                message: format!("Failed to read A2A key pin '{}': {}", pin_file.display(), e),
+            }
+        })?;
+        let existing = existing.trim();
+        if existing == public_key_hash {
+            Ok(A2aPinOutcome::Match)
+        } else {
+            Ok(A2aPinOutcome::Mismatch {
+                pinned: existing.to_string(),
+            })
+        }
+    } else {
+        fs::create_dir_all(&dir).map_err(|e| JacsError::DirectoryCreateFailed {
+            path: dir.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+        crate::secure_io::write_atomic_replace_no_symlink(
+            &pin_file,
+            public_key_hash.as_bytes(),
+            0o600,
+            false,
+        )
+        .map_err(|e| JacsError::FileWriteFailed {
+            path: pin_file.to_string_lossy().to_string(),
+            reason: e.to_string(),
+        })?;
+        Ok(A2aPinOutcome::FirstUse)
+    }
+}
+
 /// Checks if an agent is in the trust store.
 ///
 /// # Arguments

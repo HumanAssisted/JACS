@@ -581,6 +581,38 @@ pub fn reencrypt_private_key(
     Ok(re_encrypted)
 }
 
+/// Re-encrypt an on-disk encrypted private key file under a new password,
+/// reading and writing it securely.
+///
+/// This is the single shared primitive for key re-encryption (KM-1). It reads
+/// the ciphertext without following symlinks, re-encrypts it, and writes the
+/// result back with an atomic replace that enforces owner-only `0o600`
+/// permissions and refuses to follow symlinks. Both the CLI/core path
+/// (`crate::simple::advanced::reencrypt_key`) and the language-binding / MCP
+/// path (`jacs_binding_core::AgentWrapper::reencrypt_key`) MUST route through
+/// this function so the re-encrypted private key is never written with the
+/// process umask (typically world/group-readable) or through a symlink.
+pub fn reencrypt_private_key_file(
+    key_path: &str,
+    old_password: &str,
+    new_password: &str,
+) -> Result<(), JacsError> {
+    let encrypted_data =
+        crate::secure_io::read_no_follow(key_path).map_err(|e| JacsError::FileReadFailed {
+            path: key_path.to_string(),
+            reason: e.to_string(),
+        })?;
+
+    let re_encrypted = reencrypt_private_key(&encrypted_data, old_password, new_password)?;
+
+    crate::secure_io::write_atomic_replace_no_symlink(key_path, &re_encrypted, 0o600, true)
+        .map_err(|e| JacsError::Internal {
+            message: format!("Failed to write re-encrypted key to '{}': {}", key_path, e),
+        })?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
@@ -1426,5 +1458,58 @@ mod tests {
             result.is_err(),
             "whitespace-only explicit password should fail"
         );
+    }
+
+    // KM-1: reencrypt_private_key_file must write the re-encrypted key with
+    // owner-only (0o600) permissions, even if the prior file was world-readable,
+    // and the result must decrypt with the new password.
+    #[test]
+    fn reencrypt_private_key_file_writes_owner_only_and_roundtrips_km1() {
+        use std::io::Write;
+
+        let old_pw = "OldStr0ng!Pass#2025";
+        let new_pw = "NewStr0ng!Pass#2026";
+        let secret = b"super-secret-private-key-bytes-0123456789";
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Canonicalize so the path has no symlink components (e.g. macOS
+        // /tmp -> /private/tmp); the secure reader rejects symlinked parents.
+        let real_dir = dir.path().canonicalize().expect("canonical tempdir");
+        let key_path = real_dir.join("jacs.private.pem.enc");
+        let key_path_str = key_path.to_str().expect("utf8 path");
+
+        // Seed an encrypted key with deliberately loose, world-readable perms.
+        let encrypted = encrypt_private_key_with_password(secret, old_pw).expect("encrypt");
+        {
+            let mut f = std::fs::File::create(&key_path).expect("create key file");
+            f.write_all(&encrypted).expect("write key file");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o644))
+                .expect("chmod 0644");
+        }
+
+        // Re-encrypt via the shared secure primitive.
+        reencrypt_private_key_file(key_path_str, old_pw, new_pw).expect("reencrypt file");
+
+        // The file must now be owner-only (0o600), not the prior 0o644.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&key_path)
+                .expect("stat")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600, "re-encrypted key must be 0o600, got {mode:o}");
+        }
+
+        // And it must decrypt with the NEW password back to the original bytes.
+        let reread = std::fs::read(&key_path).expect("re-read key");
+        let plaintext =
+            decrypt_private_key_secure_with_password(&reread, new_pw).expect("decrypt with new pw");
+        assert_eq!(plaintext.as_slice(), secret, "round-trip must preserve key");
     }
 }

@@ -281,7 +281,7 @@ let config = load_config_12factor(None)?;
 
 */
 
-#[derive(Serialize, Deserialize, Debug, Clone, Getters)]
+#[derive(Serialize, Deserialize, Clone, Getters)]
 pub struct Config {
     #[serde(rename = "$schema")]
     #[serde(default = "default_schema")]
@@ -351,6 +351,51 @@ pub struct Config {
     /// Raw JSON value from disk, retained for signature verification.
     #[serde(skip)]
     pub raw_json: Option<Value>,
+}
+
+/// Manual `Debug` for `Config` (SEC-1).
+///
+/// The derived `Debug` would render the deprecated `jacs_private_key_password`
+/// field — and `raw_json`, which can embed that same password for legacy
+/// configs — in plaintext anywhere the config is logged via `{:?}`. This impl
+/// redacts the at-rest key password and the database URL (which may carry
+/// credentials), shows `raw_json` only as a presence marker, and omits the
+/// remaining non-secret runtime fields via `finish_non_exhaustive`.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("schema", &self.schema)
+            .field("jacs_use_security", &self.jacs_use_security)
+            .field("jacs_data_directory", &self.jacs_data_directory)
+            .field("jacs_key_directory", &self.jacs_key_directory)
+            .field(
+                "jacs_agent_private_key_filename",
+                &self.jacs_agent_private_key_filename,
+            )
+            .field(
+                "jacs_agent_public_key_filename",
+                &self.jacs_agent_public_key_filename,
+            )
+            .field("jacs_agent_key_algorithm", &self.jacs_agent_key_algorithm)
+            .field(
+                "jacs_private_key_password",
+                &self
+                    .jacs_private_key_password
+                    .as_ref()
+                    .map(|_| "[REDACTED]"),
+            )
+            .field("jacs_agent_id_and_version", &self.jacs_agent_id_and_version)
+            .field("jacs_default_storage", &self.jacs_default_storage)
+            .field("jacs_agent_domain", &self.jacs_agent_domain)
+            .field("agent_email", &self.agent_email)
+            .field(
+                "jacs_database_url",
+                &self.jacs_database_url.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("is_signed", &self.is_signed)
+            .field("raw_json", &self.raw_json.as_ref().map(|_| "[omitted]"))
+            .finish_non_exhaustive()
+    }
 }
 
 fn default_schema() -> String {
@@ -2429,6 +2474,38 @@ mod tests {
         let val = validate_config(json).expect("valid config");
         let config: Config = serde_json::from_value(val).expect("deserialize");
         assert_eq!(config.agent_email, Some("bot@hai.ai".to_string()));
+    }
+
+    // SEC-1: the deprecated jacs_private_key_password (and raw_json, which can
+    // embed it, and jacs_database_url, which can carry credentials) must never
+    // be rendered by Config's Debug impl.
+    #[test]
+    fn config_debug_redacts_private_key_password_sec1() {
+        let json = serde_json::json!({
+            "jacs_data_directory": "/data",
+            "jacs_key_directory": "/keys",
+            "jacs_agent_key_algorithm": "ring-Ed25519",
+            "jacs_default_storage": "fs",
+            "jacs_private_key_password": "SuperSecretPw123!@#",
+            "jacs_database_url": "postgres://user:dbsecret@host/db"
+        });
+        let mut config: Config = serde_json::from_value(json.clone()).expect("deserialize");
+        // raw_json retains the on-disk JSON, including the legacy password.
+        config.raw_json = Some(json);
+
+        let dbg = format!("{config:?}");
+        assert!(
+            !dbg.contains("SuperSecretPw123!@#"),
+            "Config Debug leaked the private-key password: {dbg}"
+        );
+        assert!(
+            !dbg.contains("dbsecret"),
+            "Config Debug leaked database credentials: {dbg}"
+        );
+        assert!(
+            dbg.contains("REDACTED"),
+            "Config Debug should show a redaction marker: {dbg}"
+        );
     }
 
     #[test]

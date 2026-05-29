@@ -187,7 +187,24 @@ fn agent_card_origin(card: &AgentCard) -> Result<String, String> {
         .host_str()
         .ok_or_else(|| "Agent Card interface URL does not include a host".to_string())?;
 
-    let mut origin = format!("{}://{}", parsed.scheme(), host);
+    // SECURITY (A2A-2): the JWKS fetched from this origin supplies the public
+    // key that decides whether the Agent Card signature verifies. Fetching it
+    // over plaintext http lets a network MITM substitute their own key and
+    // forge any agent identity. Require https for trust decisions; permit http
+    // only for loopback hosts (local development), which are not MITM-exposed.
+    let scheme = parsed.scheme();
+    let is_loopback = matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]");
+    if scheme != "https" && !(scheme == "http" && is_loopback) {
+        return Err(format!(
+            "Refusing to fetch JWKS for A2A trust over insecure scheme '{}' (host '{}'). \
+             JWKS used for trust decisions must be served over https; http is permitted only \
+             for loopback hosts. A plaintext origin lets a network attacker substitute the \
+             verifying key and forge agent identities.",
+            scheme, host
+        ));
+    }
+
+    let mut origin = format!("{}://{}", scheme, host);
     if let Some(port) = parsed.port() {
         origin.push(':');
         origin.push_str(&port.to_string());
@@ -288,8 +305,14 @@ fn jwk_to_verifier(jwk: &Jwk) -> Result<(Vec<u8>, &'static str), String> {
     }
 }
 
+/// Verify a remote Agent Card's embedded JWS against its advertised JWKS.
+///
+/// Returns `(verified, public_key)` where `public_key` is the JWKS key the
+/// signature was checked against. The key is surfaced (A2A-1) so the caller
+/// can bind the card to a pinned identity key — a verified JWKS only proves
+/// control of the card's origin, not the claimed `jacsId`.
 #[cfg(not(target_arch = "wasm32"))]
-fn verify_agent_card_signature(card: &AgentCard) -> Result<bool, String> {
+fn verify_agent_card_signature(card: &AgentCard) -> Result<(bool, Vec<u8>), String> {
     if card
         .signatures
         .as_ref()
@@ -302,12 +325,13 @@ fn verify_agent_card_signature(card: &AgentCard) -> Result<bool, String> {
     let jwk = select_jwk(card, &jwks)?;
     let (public_key, algorithm) = jwk_to_verifier(jwk)?;
 
-    verify_agent_card_jws(card, &public_key, algorithm)
-        .map_err(|e| format!("Agent Card signature verification failed: {}", e))
+    let verified = verify_agent_card_jws(card, &public_key, algorithm)
+        .map_err(|e| format!("Agent Card signature verification failed: {}", e))?;
+    Ok((verified, public_key))
 }
 
 #[cfg(target_arch = "wasm32")]
-fn verify_agent_card_signature(_card: &AgentCard) -> Result<bool, String> {
+fn verify_agent_card_signature(_card: &AgentCard) -> Result<(bool, Vec<u8>), String> {
     Err("Agent Card JWKS verification is not supported on wasm32".to_string())
 }
 
@@ -337,9 +361,20 @@ pub fn assess_a2a_agent(
     let signature_verification = if jacs_registered {
         verify_agent_card_signature(remote_card)
     } else {
-        Ok(false)
+        Ok((false, Vec::new()))
     };
-    let card_signature_verified = signature_verification.as_ref().copied().unwrap_or(false);
+    let card_signature_verified = signature_verification
+        .as_ref()
+        .map(|(verified, _)| *verified)
+        .unwrap_or(false);
+    // Hash of the JWKS key that actually verified the card (A2A-1). Used to
+    // pin the agent's A2A key trust-on-first-use.
+    let verifying_key_hash = match &signature_verification {
+        Ok((verified, key)) if *verified && !key.is_empty() => {
+            Some(crate::crypt::hash::hash_public_key(key))
+        }
+        _ => None,
+    };
 
     // Determine if the agent is in the local trust store
     let in_trust_store = trust_store_key
@@ -347,23 +382,60 @@ pub fn assess_a2a_agent(
         .map(|key| trust::is_verified_trusted(key))
         .unwrap_or(false);
 
-    // Determine trust level
+    // Determine trust level.
+    //
+    // A2A-1: a verified self-published JWKS proves only that whoever controls
+    // the card's origin signed it — NOT that they are the claimed jacsId. To
+    // bind identity to key material, the verifying (A2A) key is pinned
+    // trust-on-first-use, keyed by `id:version`. A later card for the same
+    // id:version that presents a DIFFERENT key is a key-substitution signal and
+    // is downgraded to Untrusted. (Legitimate key rotation bumps the version,
+    // producing a fresh pin rather than a false-positive mismatch.) Pin-store
+    // failures degrade gracefully: the agent stays JacsVerified rather than
+    // being blocked by an unwritable trust dir.
+    let mut key_binding_failure: Option<String> = None;
     let trust_level = if in_trust_store {
         TrustLevel::ExplicitlyTrusted
     } else if card_signature_verified {
-        TrustLevel::JacsVerified
+        match (trust_store_key.as_deref(), &verifying_key_hash) {
+            (Some(key), Some(seen)) => match trust::pin_a2a_key(key, seen) {
+                Ok(trust::A2aPinOutcome::Mismatch { pinned }) => {
+                    key_binding_failure = Some(format!(
+                        "agent '{}' presents an Agent Card key (hash {}) that differs from \
+                         the key pinned on first contact (hash {}); refusing trust \
+                         (possible key substitution)",
+                        agent_id.as_deref().unwrap_or("unknown"),
+                        seen,
+                        pinned
+                    ));
+                    TrustLevel::Untrusted
+                }
+                Ok(_) => TrustLevel::JacsVerified,
+                Err(e) => {
+                    tracing::warn!(
+                        agent_id = agent_id.as_deref().unwrap_or("unknown"),
+                        "A2A key pinning unavailable ({}); proceeding without pin enforcement",
+                        e
+                    );
+                    TrustLevel::JacsVerified
+                }
+            },
+            _ => TrustLevel::JacsVerified,
+        }
     } else {
         TrustLevel::Untrusted
     };
 
-    let unverified_reason = if jacs_registered {
+    let unverified_reason = if let Some(failure) = key_binding_failure {
+        failure
+    } else if jacs_registered {
         let mut reason = format!(
             "agent '{}' declares JACS provenance but its Agent Card could not be cryptographically verified",
             agent_id.as_deref().unwrap_or("unknown")
         );
-        if let Err(err) = signature_verification {
+        if let Err(err) = &signature_verification {
             reason.push_str(": ");
-            reason.push_str(&err);
+            reason.push_str(err);
         }
         reason
     } else {
@@ -587,6 +659,38 @@ mod tests {
     }
 
     // =========================================================================
+    // agent_card_origin: scheme enforcement (A2A-2)
+    // =========================================================================
+
+    #[test]
+    fn agent_card_origin_rejects_plaintext_http() {
+        let mut card = make_card("http-agent", true, Some("id-http"), Some("v1"));
+        card.supported_interfaces[0].url = "http://evil.example.com/agent".to_string();
+        let err = agent_card_origin(&card).expect_err("plaintext http origin must be rejected");
+        assert!(
+            err.contains("https") && err.contains("insecure"),
+            "error should explain the https requirement: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn agent_card_origin_allows_https() {
+        let card = make_card("https-agent", true, Some("id-https"), Some("v1"));
+        // make_card defaults to https://test.example.com
+        let origin = agent_card_origin(&card).expect("https origin must be allowed");
+        assert_eq!(origin, "https://test.example.com");
+    }
+
+    #[test]
+    fn agent_card_origin_allows_http_loopback_for_dev() {
+        let mut card = make_card("local-agent", true, Some("id-local"), Some("v1"));
+        card.supported_interfaces[0].url = "http://localhost:8080/agent".to_string();
+        let origin = agent_card_origin(&card).expect("loopback http must be allowed for dev");
+        assert_eq!(origin, "http://localhost:8080");
+    }
+
+    // =========================================================================
     // assess_a2a_agent: Open policy
     // =========================================================================
 
@@ -792,13 +896,22 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(jacs_env)]
+    #[serial_test::serial(jacs_env, home_env)]
     fn test_verified_policy_accepts_signed_jacs_agent() {
+        // Isolate the trust store so first-contact A2A key pinning (A2A-1)
+        // starts from a clean slate on every run.
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", &trust_store_dir);
+        }
+
         let agent = test_agent();
         let card = make_signed_card_with_test_jwks();
         let result = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
         unsafe {
             std::env::remove_var("JACS_TEST_JWKS_JSON");
+            std::env::remove_var("JACS_TRUST_STORE_DIR");
         }
 
         assert!(
@@ -812,6 +925,81 @@ mod tests {
             result.reason.contains("Agent Card signature verified"),
             "unexpected reason: {}",
             result.reason
+        );
+    }
+
+    // A2A-1: the verifying (A2A) key is pinned trust-on-first-use. Re-presenting
+    // the same key for the same id:version stays JacsVerified.
+    #[test]
+    #[serial_test::serial(jacs_env, home_env)]
+    fn test_a2a_first_use_then_same_key_stays_verified() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", &trust_store_dir);
+        }
+
+        let agent = test_agent();
+        let card = make_signed_card_with_test_jwks();
+
+        // First contact pins the key.
+        let r1 = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
+        assert!(r1.allowed, "first contact should be allowed: {:?}", r1);
+        assert_eq!(r1.trust_level, TrustLevel::JacsVerified);
+
+        // Second contact with the SAME key (same card, JWKS env unchanged).
+        let r2 = assess_a2a_agent(&agent, &card, A2ATrustPolicy::Verified);
+        unsafe {
+            std::env::remove_var("JACS_TEST_JWKS_JSON");
+            std::env::remove_var("JACS_TRUST_STORE_DIR");
+        }
+        assert!(
+            r2.allowed,
+            "matching pinned key should stay allowed: {:?}",
+            r2
+        );
+        assert_eq!(r2.trust_level, TrustLevel::JacsVerified);
+    }
+
+    // A2A-1: a later card for the same id:version that presents a DIFFERENT key
+    // (key substitution) is downgraded to Untrusted and refused under Verified.
+    #[test]
+    #[serial_test::serial(jacs_env, home_env)]
+    fn test_a2a_key_substitution_is_downgraded() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let trust_store_dir = temp_dir.path().canonicalize().expect("canonical tempdir");
+        unsafe {
+            std::env::set_var("JACS_TRUST_STORE_DIR", &trust_store_dir);
+        }
+
+        let agent = test_agent();
+
+        // First contact pins key #1 for this id:version.
+        let card1 = make_signed_card_with_test_jwks();
+        let r1 = assess_a2a_agent(&agent, &card1, A2ATrustPolicy::Verified);
+        assert!(r1.allowed, "first contact should be allowed: {:?}", r1);
+        assert_eq!(r1.trust_level, TrustLevel::JacsVerified);
+
+        // Second contact: SAME id:version but a freshly generated key #2 and a
+        // matching JWKS (a substitution attempt). make_signed_card_with_test_jwks
+        // regenerates the key and overwrites JACS_TEST_JWKS_JSON.
+        let card2 = make_signed_card_with_test_jwks();
+        let r2 = assess_a2a_agent(&agent, &card2, A2ATrustPolicy::Verified);
+        unsafe {
+            std::env::remove_var("JACS_TEST_JWKS_JSON");
+            std::env::remove_var("JACS_TRUST_STORE_DIR");
+        }
+
+        assert!(
+            !r2.allowed,
+            "substituted key must NOT be allowed under Verified policy: {:?}",
+            r2
+        );
+        assert_eq!(r2.trust_level, TrustLevel::Untrusted);
+        assert!(
+            r2.reason.contains("substitution"),
+            "reason should flag key substitution: {}",
+            r2.reason
         );
     }
 

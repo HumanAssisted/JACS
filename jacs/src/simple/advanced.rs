@@ -44,8 +44,6 @@ pub fn reencrypt_key(
     old_password: &str,
     new_password: &str,
 ) -> Result<(), JacsError> {
-    use crate::crypt::aes_encrypt::reencrypt_private_key;
-
     // Find the private key file
     let key_path = if let Some(ref config_path) = agent.config_path {
         // Try to read config to find key directory
@@ -73,22 +71,9 @@ pub fn reencrypt_key(
 
     info!("Re-encrypting private key at: {}", key_path);
 
-    // Read encrypted key
-    let encrypted_data =
-        crate::secure_io::read_no_follow(&key_path).map_err(|e| JacsError::FileReadFailed {
-            path: key_path.clone(),
-            reason: e.to_string(),
-        })?;
-
-    // Re-encrypt
-    let re_encrypted = reencrypt_private_key(&encrypted_data, old_password, new_password)
-        .map_err(|e| JacsError::CryptoError(format!("Re-encryption failed: {}", e)))?;
-
-    // Write back
-    crate::secure_io::write_atomic_replace_no_symlink(&key_path, &re_encrypted, 0o600, true)
-        .map_err(|e| JacsError::Internal {
-            message: format!("Failed to write re-encrypted key to '{}': {}", key_path, e),
-        })?;
+    // Route through the shared secure primitive (KM-1): reads without following
+    // symlinks and writes back atomically with owner-only 0o600 permissions.
+    crate::crypt::aes_encrypt::reencrypt_private_key_file(&key_path, old_password, new_password)?;
 
     info!("Private key re-encrypted successfully");
     Ok(())
@@ -621,7 +606,7 @@ pub fn migrate_agent(config_path: Option<&str>) -> Result<MigrateResult, JacsErr
         info!("Migration: no fields needed patching, agent already has iat and jti");
     }
 
-    // Step 6: Load the agent normally (should now pass schema validation)
+    // Step 6: Load the agent normally (should now pass schema validation).
     let simple_agent = SimpleAgent::load(Some(path), None)?;
 
     // Step 7: Export current agent doc, then call update_agent to re-sign

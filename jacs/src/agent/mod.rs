@@ -295,7 +295,6 @@ pub(crate) fn decrypt_with_agent_password(
     crate::crypt::aes_encrypt::decrypt_private_key_secure_with_password(key, &resolved)
 }
 
-#[derive(Debug)]
 /// # Thread Safety
 ///
 /// `Agent` is **not internally synchronized** by design. All mutable fields
@@ -354,6 +353,25 @@ pub struct Agent {
     /// Evidence adapters for attestation (gated behind `attestation` feature).
     #[cfg(feature = "attestation")]
     pub adapters: Vec<Box<dyn crate::attestation::adapters::EvidenceAdapter>>,
+}
+
+/// Manual `Debug` for `Agent` (SEC-3).
+///
+/// The derived `Debug` would render the agent-scoped `password` field (the
+/// at-rest private-key password) in plaintext anywhere an `Agent` is formatted
+/// via `{:?}` — including panic backtraces and downstream logging. This impl
+/// redacts the password and shows only non-secret identity/state fields.
+impl std::fmt::Debug for Agent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Agent")
+            .field("id", &self.id)
+            .field("version", &self.version)
+            .field("key_algorithm", &self.key_algorithm)
+            .field("ephemeral", &self.ephemeral)
+            .field("has_private_key", &self.private_key.is_some())
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .finish_non_exhaustive()
+    }
 }
 
 impl fmt::Display for Agent {
@@ -1867,10 +1885,44 @@ impl Agent {
                 });
             }
             None => {
+                // SECURITY (SV-4): a legacy v1 signature does NOT authenticate the
+                // signature metadata (agentID, date, jti, signingAlgorithm), so a
+                // tamperer could rewrite those mutable fields without invalidating
+                // the signature. JACS still verifies legacy v1 by default for
+                // backward compatibility (many pre-v2 documents exist and the
+                // migration path upgrades them), but acceptance is no longer
+                // silent: it logs a loud, structured SECURITY event with the agent
+                // ID. Deployments that must refuse legacy documents set
+                // JACS_REJECT_LEGACY_SIGNATURE_CONTENT=true.
+                let reject_legacy = crate::storage::jenv::get_env_var(
+                    "JACS_REJECT_LEGACY_SIGNATURE_CONTENT",
+                    false,
+                )
+                .ok()
+                .flatten()
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false);
+                if reject_legacy {
+                    return Err(JacsError::SignatureVerificationFailed {
+                        reason: format!(
+                            "Refusing to verify legacy v1 signature content for '{}' \
+                             (missing '{}') because JACS_REJECT_LEGACY_SIGNATURE_CONTENT \
+                             is set. Legacy v1 does not authenticate signature metadata \
+                             (agentID, date, jti, signingAlgorithm). Re-sign the document \
+                             with the current version, or run agent migration.",
+                            signature_key_from, SIGNATURE_CONTENT_VERSION_FIELDNAME
+                        ),
+                    });
+                }
                 warn!(
                     event = "legacy_signature_content_verified",
+                    agent_id = self.id.as_deref().unwrap_or("<unknown>"),
                     signature_key_from,
-                    "Verifying legacy v1 signature content without authenticated metadata"
+                    "SECURITY: verifying LEGACY v1 signature content; its metadata \
+                     (agentID, date, jti, signingAlgorithm) is NOT authenticated and must \
+                     not be trusted as proof of signer/time. Migrate the document to v2 \
+                     (re-sign), or set JACS_REJECT_LEGACY_SIGNATURE_CONTENT=true to refuse \
+                     legacy documents."
                 );
                 let (payload, _) = build_signature_content(
                     json_value,
@@ -3515,5 +3567,118 @@ mod ephemeral_tests {
         agent
             .verify_config(&signed_v2)
             .expect("updated config must verify");
+    }
+
+    #[test]
+    fn audit_previous_version_is_signed_and_tamperproof() {
+        let mut agent = ready_ephemeral_agent();
+        let signed_v1 = agent.sign_config(&make_config_json()).unwrap();
+        let mut modified = signed_v1.clone();
+        modified["agent_email"] = json!("new@hai.ai");
+        let signed_v2 = agent.update_config(&modified).expect("update_config");
+
+        // 1. Is jacsPreviousVersion in the signed fields list?
+        let fields = signed_v2[AGENT_SIGNATURE_FIELDNAME]["fields"]
+            .as_array()
+            .unwrap();
+        let field_names: Vec<&str> = fields.iter().filter_map(|f| f.as_str()).collect();
+        println!("SIGNED FIELDS: {:?}", field_names);
+        assert!(
+            field_names.contains(&"jacsPreviousVersion"),
+            "AUDIT: jacsPreviousVersion must be in the signed fields list"
+        );
+
+        // 2. Tamper with jacsPreviousVersion -> verification must fail.
+        let mut tampered = signed_v2.clone();
+        tampered["jacsPreviousVersion"] = json!("forged-previous-version-uuid");
+        let result = agent.verify_config(&tampered);
+        println!("TAMPER VERIFY RESULT: {:?}", result.is_err());
+        assert!(
+            result.is_err(),
+            "AUDIT: tampering with jacsPreviousVersion must break verification"
+        );
+    }
+
+    // SV-4: legacy v1 signature content (no signatureContentVersion) carries
+    // unauthenticated metadata. It is verified by default for backward compat
+    // (loudly, via a structured SECURITY event), but a deployment can refuse it
+    // by setting JACS_REJECT_LEGACY_SIGNATURE_CONTENT=true.
+    #[test]
+    fn legacy_v1_signature_content_strict_reject_sv4() {
+        let mut agent = ready_ephemeral_agent();
+        let signed = agent.sign_config(&make_config_json()).unwrap();
+
+        // Simulate a legacy v1 document by stripping the signatureContentVersion
+        // marker from the signature object.
+        let mut legacy = signed.clone();
+        legacy[AGENT_SIGNATURE_FIELDNAME]
+            .as_object_mut()
+            .expect("signature object")
+            .remove(SIGNATURE_CONTENT_VERSION_FIELDNAME);
+
+        let public_key = agent.get_public_key().expect("public key");
+
+        // Strict mode: legacy v1 verification is refused with a clear message.
+        let _ = crate::storage::jenv::set_env_var_override(
+            "JACS_REJECT_LEGACY_SIGNATURE_CONTENT",
+            "true",
+            true,
+        );
+        let strict = agent.signature_verification_procedure(
+            &legacy,
+            None,
+            AGENT_SIGNATURE_FIELDNAME,
+            public_key.clone(),
+            None,
+            None,
+            None,
+        );
+        let _ = crate::storage::jenv::set_env_var_override(
+            "JACS_REJECT_LEGACY_SIGNATURE_CONTENT",
+            "",
+            true,
+        );
+        let err = strict.expect_err("strict mode must refuse legacy v1 signature content");
+        let msg = format!("{:?}", err);
+        assert!(
+            msg.contains("legacy v1") || msg.contains("Refusing to verify legacy"),
+            "strict-mode rejection must explain the v1 gate, got: {msg}"
+        );
+
+        // Default mode: the SV-4 gate does NOT fire. (This stripped doc then
+        // fails the cryptographic check instead — but NOT with the gate's
+        // refusal message, proving the gate did not block it.)
+        let default_result = agent.signature_verification_procedure(
+            &legacy,
+            None,
+            AGENT_SIGNATURE_FIELDNAME,
+            public_key,
+            None,
+            None,
+            None,
+        );
+        if let Err(e) = default_result {
+            assert!(
+                !format!("{:?}", e).contains("Refusing to verify legacy"),
+                "default mode must not refuse legacy v1 (backward compat)"
+            );
+        }
+    }
+
+    // SEC-3: the agent-scoped private-key password must never appear in Debug
+    // output (panic backtraces, downstream {:?} logging).
+    #[test]
+    fn agent_debug_redacts_password_sec3() {
+        let mut agent = Agent::ephemeral("ring-Ed25519").unwrap();
+        agent.set_password(Some("AgentSecretPw123!".to_string()));
+        let dbg = format!("{:?}", agent);
+        assert!(
+            !dbg.contains("AgentSecretPw123!"),
+            "Agent Debug leaked the private-key password: {dbg}"
+        );
+        assert!(
+            dbg.contains("REDACTED"),
+            "Agent Debug should show a redaction marker: {dbg}"
+        );
     }
 }

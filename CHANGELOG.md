@@ -6,6 +6,18 @@
 
 - Added W3C DID interop helpers for additive `did:wba` projection, agent description and `.well-known` discovery artifacts, request-bound DID authentication proofs, and cross-language CLI/MCP/Python/Node/Go smoke coverage.
 
+### Security
+
+Key-management hardening from a focused security review (each fix is test-covered):
+
+- **A2A key-substitution defense (TOFU pinning).** A verified self-published JWKS only proves control of the Agent Card's origin, not the claimed `jacsId`. `assess_a2a_agent` now pins the verifying A2A key trust-on-first-use, keyed by `jacsId:jacsVersion`; a later card for the same id/version that presents a different key is downgraded to `Untrusted` (refused under the `Verified`/`Strict` policies). Legitimate key rotation bumps the version and produces a fresh pin, so it is not flagged. Pin-store failures degrade gracefully (the agent stays `JacsVerified`).
+- **A2A JWKS transport hardening.** JWKS used for trust decisions must now be served over `https`; plaintext `http` is rejected for non-loopback origins (`agent_card_origin`), closing a network-MITM key-substitution vector. `http` is still permitted for loopback hosts (local development).
+- **Legacy v1 signature content is no longer silently trusted.** A legacy v1 signature (no `signatureContentVersion`) does not authenticate its signature metadata (`agentID`, `date`, `jti`, `signingAlgorithm`). It is still verified by default for backward compatibility, but acceptance now emits a loud, structured `SECURITY` event carrying the agent ID, and deployments can refuse legacy documents entirely by setting `JACS_REJECT_LEGACY_SIGNATURE_CONTENT=true`.
+- **Hardened key re-encryption across the binding/MCP surface.** `binding-core`'s `reencrypt_key` (reachable from Python, Node, and the `jacs_reencrypt_key` MCP tool) previously wrote the re-encrypted private key with a bare `std::fs::write` (process-umask permissions, symlink-following, non-atomic). It now routes through the shared `reencrypt_private_key_file` primitive that writes atomically with owner-only `0o600` and refuses to follow symlinks, and validates the config-derived key filename against path traversal.
+- **Private-key password no longer leaks via `Debug`.** `Config` and `Agent` now carry hand-written `Debug` impls that redact the at-rest key password (and, for `Config`, the database URL and raw config JSON), so the password can no longer reach logs or panic output through `{:?}`.
+- **Decrypted signing key is zeroized.** The plaintext private key copied into the signing path (`sign_string` / `sign_bytes` / `sign_batch`) is now held in a `zeroize::Zeroizing` buffer and wiped after each operation, closing a memory-scraping window.
+- **Key rotation marks the retired key obsolete and warns.** The old encrypted private key is still retained on disk after rotation (audit/recovery), but `FsEncryptedStore::rotate` now writes an owner-only obsolescence marker (`*.obsolete.json`) recording the superseded version, exposes `archived_key_obsolescence` / `is_archived_key_obsolete` for tooling, and logs a warning that the retained key is obsolete and still decryptable with the old password.
+
 ## 0.11.0
 
 (unreleased)

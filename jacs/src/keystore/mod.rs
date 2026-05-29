@@ -264,6 +264,63 @@ impl FsEncryptedStore {
         (archive_priv, archive_pub)
     }
 
+    /// Write the obsolescence marker that records a rotated-out (archived) key
+    /// as superseded. The marker lives alongside the archived private key as
+    /// `<archive>.obsolete.json` and is written owner-only (0o600).
+    fn write_obsolescence_marker(archive_priv: &str, old_version: &str) -> Result<(), JacsError> {
+        let marker_path = Self::marker_path_for_archive(archive_priv);
+        let record = serde_json::json!({
+            "jacsKeyObsolescence": "v1",
+            "obsoletedAtVersion": old_version,
+            "rotatedAt": crate::time_utils::now_rfc3339(),
+            "reason": "superseded-by-rotation",
+            "archivedPrivateKey": archive_priv,
+            "warning": "This archived private key is OBSOLETE: it was superseded by a \
+                        newer agent version's key during rotation. It is retained for \
+                        audit/recovery but is still decryptable with the OLD password. \
+                        Do not sign new documents with it; securely delete it if this \
+                        rotation was prompted by a suspected compromise."
+        });
+        let bytes = serde_json::to_vec_pretty(&record).map_err(|e| JacsError::Internal {
+            message: format!("Failed to serialize key obsolescence marker: {}", e),
+        })?;
+        crate::secure_io::write_atomic_replace_no_symlink(&marker_path, &bytes, 0o600, false)
+            .map_err(|e| JacsError::Internal {
+                message: format!(
+                    "Failed to write key obsolescence marker '{}': {}",
+                    marker_path, e
+                ),
+            })
+    }
+
+    fn marker_path_for_archive(archive_priv: &str) -> String {
+        format!("{}.obsolete.json", archive_priv)
+    }
+
+    /// Filesystem path of the obsolescence marker for a rotated-out key version.
+    pub fn obsolescence_marker_path(&self, old_version: &str) -> String {
+        let priv_path = self.paths.private_key_enc_path();
+        let archive_priv = Self::insert_version_in_path(&priv_path, old_version);
+        Self::marker_path_for_archive(&archive_priv)
+    }
+
+    /// Read the obsolescence record for a rotated-out key version, if present.
+    ///
+    /// Returns the parsed marker JSON when the key for `old_version` has been
+    /// superseded by a rotation, or `None` if no marker exists. This lets
+    /// tooling and verifiers detect that an old key is stale — the agent's
+    /// current (newer) version holds the authoritative key.
+    pub fn archived_key_obsolescence(&self, old_version: &str) -> Option<serde_json::Value> {
+        let path = self.obsolescence_marker_path(old_version);
+        let bytes = crate::secure_io::read_no_follow(&path).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    /// Whether the archived key for `old_version` has been marked obsolete.
+    pub fn is_archived_key_obsolete(&self, old_version: &str) -> bool {
+        self.archived_key_obsolescence(old_version).is_some()
+    }
+
     fn validate_archive_version_component(version: &str) -> Result<(), JacsError> {
         if version.is_empty()
             || version == "."
@@ -523,6 +580,29 @@ impl KeyStore for FsEncryptedStore {
         match self.generate(spec) {
             Ok(keys) => {
                 debug!("FsEncryptedStore::rotate new keys generated successfully");
+                // The old encrypted key is intentionally RETAINED on disk (the
+                // archive) for audit/recovery — deletion is not automatic. But it
+                // is now OBSOLETE: superseded by the new key of the agent's newer
+                // version, and still decryptable with the OLD password. Record an
+                // obsolescence marker so tooling can detect a stale key, and warn
+                // the operator loudly (best-effort: marker failure must not fail
+                // the rotation, which has already succeeded on disk).
+                if let Err(e) = Self::write_obsolescence_marker(&archive_priv, old_version) {
+                    warn!(
+                        "Failed to write key obsolescence marker for archived key '{}': {}",
+                        archive_priv, e
+                    );
+                }
+                warn!(
+                    event = "key_rotation_old_key_retained",
+                    archived_private_key = %archive_priv,
+                    obsoleted_version = %old_version,
+                    "Old private key retained at archive path after rotation. It is \
+                     OBSOLETE (superseded by the new key for this agent's newer version) \
+                     but is still decryptable with the OLD password. If this rotation was \
+                     prompted by a suspected key or password compromise, securely delete \
+                     the archived key file."
+                );
                 Ok(keys)
             }
             Err(e) => {

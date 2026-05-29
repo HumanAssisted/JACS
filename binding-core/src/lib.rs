@@ -1627,41 +1627,46 @@ impl AgentWrapper {
     /// Reads the encrypted private key file, decrypts with old_password,
     /// validates new_password, re-encrypts, and writes the updated file.
     pub fn reencrypt_key(&self, old_password: &str, new_password: &str) -> BindingResult<()> {
-        use jacs::crypt::aes_encrypt::reencrypt_private_key;
-
-        // Find key path from config
+        // Find key directory + filename from config
         let agent = self.lock()?;
-        let key_path = if let Some(config) = &agent.config {
-            let key_dir = config
-                .jacs_key_directory()
-                .as_deref()
-                .unwrap_or("./jacs_keys");
-            let key_file = config
-                .jacs_agent_private_key_filename()
-                .as_deref()
-                .unwrap_or("jacs.private.pem.enc");
-            format!("{}/{}", key_dir, key_file)
+        let (key_dir, key_file) = if let Some(config) = &agent.config {
+            (
+                config
+                    .jacs_key_directory()
+                    .as_deref()
+                    .unwrap_or("./jacs_keys")
+                    .to_string(),
+                config
+                    .jacs_agent_private_key_filename()
+                    .as_deref()
+                    .unwrap_or("jacs.private.pem.enc")
+                    .to_string(),
+            )
         } else {
-            "./jacs_keys/jacs.private.pem.enc".to_string()
+            (
+                "./jacs_keys".to_string(),
+                "jacs.private.pem.enc".to_string(),
+            )
         };
         drop(agent);
 
-        let encrypted_data = std::fs::read(&key_path).map_err(|e| {
+        // SECURITY (KM-1): reject path traversal in the config-derived filename,
+        // then route the read / re-encrypt / write through the shared secure
+        // primitive. The previous bare `std::fs::write` inherited the process
+        // umask (typically 0644, world/group-readable) and followed symlinks;
+        // `reencrypt_private_key_file` writes atomically with owner-only 0o600
+        // and refuses to follow symlinks. This path is reachable from the
+        // Python, Node, and MCP `reencrypt_key` surfaces.
+        jacs::validation::require_relative_path_safe(&key_file).map_err(|e| {
             BindingCoreError::generic(format!(
-                "Failed to read private key file '{}': {}",
-                key_path, e
+                "Invalid private key filename '{}': {}",
+                key_file, e
             ))
         })?;
+        let key_path = format!("{}/{}", key_dir, key_file);
 
-        let re_encrypted = reencrypt_private_key(&encrypted_data, old_password, new_password)
+        jacs::crypt::aes_encrypt::reencrypt_private_key_file(&key_path, old_password, new_password)
             .map_err(|e| BindingCoreError::generic(format!("Re-encryption failed: {}", e)))?;
-
-        std::fs::write(&key_path, &re_encrypted).map_err(|e| {
-            BindingCoreError::generic(format!(
-                "Failed to write re-encrypted key to '{}': {}",
-                key_path, e
-            ))
-        })?;
 
         Ok(())
     }
