@@ -263,18 +263,7 @@ func (a *JacsSimpleAgent) VerifySelf() (*VerificationResult, error) {
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	result := C.jacs_simple_verify_self(a.handle)
-	if result == nil {
-		return nil, simpleLastError("failed to verify self")
-	}
-	defer C.jacs_free_string(result)
-
-	resultStr := C.GoString(result)
-	var vr VerificationResult
-	if err := json.Unmarshal([]byte(resultStr), &vr); err != nil {
-		return nil, err
-	}
-	return &vr, nil
+	return callJSON[VerificationResult](C.jacs_simple_verify_self(a.handle), "failed to verify self")
 }
 
 // Verify verifies a signed document JSON string.
@@ -286,18 +275,7 @@ func (a *JacsSimpleAgent) Verify(signedDocument string) (*VerificationResult, er
 	cDoc, freeDoc := cString(signedDocument)
 	defer freeDoc()
 
-	result := C.jacs_simple_verify_json(a.handle, cDoc)
-	if result == nil {
-		return nil, simpleLastError("failed to verify document")
-	}
-	defer C.jacs_free_string(result)
-
-	resultStr := C.GoString(result)
-	var vr VerificationResult
-	if err := json.Unmarshal([]byte(resultStr), &vr); err != nil {
-		return nil, err
-	}
-	return &vr, nil
+	return callJSON[VerificationResult](C.jacs_simple_verify_json(a.handle, cDoc), "failed to verify document")
 }
 
 // VerifyByID verifies a stored document by its ID (e.g., "uuid:version").
@@ -309,18 +287,7 @@ func (a *JacsSimpleAgent) VerifyByID(documentID string) (*VerificationResult, er
 	cID, freeID := cString(documentID)
 	defer freeID()
 
-	result := C.jacs_simple_verify_by_id(a.handle, cID)
-	if result == nil {
-		return nil, simpleLastError("failed to verify document by ID")
-	}
-	defer C.jacs_free_string(result)
-
-	resultStr := C.GoString(result)
-	var vr VerificationResult
-	if err := json.Unmarshal([]byte(resultStr), &vr); err != nil {
-		return nil, err
-	}
-	return &vr, nil
+	return callJSON[VerificationResult](C.jacs_simple_verify_by_id(a.handle, cID), "failed to verify document by ID")
 }
 
 // VerifyWithKey verifies a signed document with an explicit public key (base64-encoded).
@@ -334,18 +301,7 @@ func (a *JacsSimpleAgent) VerifyWithKey(signedDocument, publicKeyBase64 string) 
 	cKey, freeKey := cString(publicKeyBase64)
 	defer freeKey()
 
-	result := C.jacs_simple_verify_with_key(a.handle, cDoc, cKey)
-	if result == nil {
-		return nil, simpleLastError("failed to verify with key")
-	}
-	defer C.jacs_free_string(result)
-
-	resultStr := C.GoString(result)
-	var vr VerificationResult
-	if err := json.Unmarshal([]byte(resultStr), &vr); err != nil {
-		return nil, err
-	}
-	return &vr, nil
+	return callJSON[VerificationResult](C.jacs_simple_verify_with_key(a.handle, cDoc, cKey), "failed to verify with key")
 }
 
 // =========================================================================

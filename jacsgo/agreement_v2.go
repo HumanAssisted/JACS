@@ -23,6 +23,22 @@ func simpleStringResult(result *C.char, fallback string) (string, error) {
 	return C.GoString(result), nil
 }
 
+// callJSON runs a *C.char-returning FFI result through simpleStringResult
+// (nil -> simpleLastError(fallback); otherwise GoString + free) and unmarshals
+// the JSON payload into T. Returns the raw json.Unmarshal error on malformed
+// JSON, matching the prior inline behavior of the verification accessors.
+func callJSON[T any](result *C.char, fallback string) (*T, error) {
+	s, err := simpleStringResult(result, fallback)
+	if err != nil {
+		return nil, err
+	}
+	var out T
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // CreateAgreementV2 creates a standalone JACS agreement v2 document.
 // inputJSON must match the Rust CreateAgreementV2 wire shape.
 func (a *JacsSimpleAgent) CreateAgreementV2(inputJSON string) (string, error) {
