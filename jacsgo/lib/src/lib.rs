@@ -2221,43 +2221,36 @@ pub extern "C" fn jacs_simple_free(handle: *mut SimpleAgentHandle) {
     }
 }
 
-/// Get the agent ID. Caller must free result with jacs_free_string.
-#[unsafe(no_mangle)]
-pub extern "C" fn jacs_simple_get_agent_id(handle: *const SimpleAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    clear_last_simple_error();
-    match h.wrapper.get_agent_id() {
-        Ok(id) => CString::new(id)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+/// Generates a handle-only `*const SimpleAgentHandle -> *mut c_char` FFI export
+/// that calls a `BindingResult<String>`-returning wrapper method and funnels the
+/// result through `simple_string_result` (null-guard, clear/set the thread-local
+/// error, `CString::into_raw`). Collapses the otherwise byte-identical getter
+/// bodies; `simple_string_result` itself calls `clear_last_simple_error()`.
+macro_rules! ffi_simple_getter {
+    ($name:ident, $method:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $name(handle: *const SimpleAgentHandle) -> *mut c_char {
+            if handle.is_null() {
+                return ptr::null_mut();
+            }
+            let h = unsafe { &*handle };
+            simple_string_result(h.wrapper.$method())
         }
-    }
+    };
 }
 
-/// Get the JACS key ID. Caller must free result with jacs_free_string.
-#[unsafe(no_mangle)]
-pub extern "C" fn jacs_simple_key_id(handle: *const SimpleAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    clear_last_simple_error();
-    match h.wrapper.key_id() {
-        Ok(id) => CString::new(id)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
-}
+ffi_simple_getter!(
+    jacs_simple_get_agent_id,
+    get_agent_id,
+    "Get the agent ID. Caller must free result with jacs_free_string."
+);
+
+ffi_simple_getter!(
+    jacs_simple_key_id,
+    key_id,
+    "Get the JACS key ID. Caller must free result with jacs_free_string."
+);
 
 /// Whether the agent is in strict mode.
 #[unsafe(no_mangle)]
@@ -2269,64 +2262,23 @@ pub extern "C" fn jacs_simple_is_strict(handle: *const SimpleAgentHandle) -> c_i
     if h.wrapper.is_strict() { 1 } else { 0 }
 }
 
-/// Export the agent identity JSON. Caller must free result with jacs_free_string.
-#[unsafe(no_mangle)]
-pub extern "C" fn jacs_simple_export_agent(handle: *const SimpleAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    clear_last_simple_error();
-    match h.wrapper.export_agent() {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
-}
+ffi_simple_getter!(
+    jacs_simple_export_agent,
+    export_agent,
+    "Export the agent identity JSON. Caller must free result with jacs_free_string."
+);
 
-/// Get the public key PEM. Caller must free result with jacs_free_string.
-#[unsafe(no_mangle)]
-pub extern "C" fn jacs_simple_get_public_key_pem(handle: *const SimpleAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    clear_last_simple_error();
-    match h.wrapper.get_public_key_pem() {
-        Ok(pem) => CString::new(pem)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
-}
+ffi_simple_getter!(
+    jacs_simple_get_public_key_pem,
+    get_public_key_pem,
+    "Get the public key PEM. Caller must free result with jacs_free_string."
+);
 
-/// Get the public key as base64. Caller must free result with jacs_free_string.
-#[unsafe(no_mangle)]
-pub extern "C" fn jacs_simple_get_public_key_base64(
-    handle: *const SimpleAgentHandle,
-) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    clear_last_simple_error();
-    match h.wrapper.get_public_key_base64() {
-        Ok(b64) => CString::new(b64)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
-}
+ffi_simple_getter!(
+    jacs_simple_get_public_key_base64,
+    get_public_key_base64,
+    "Get the public key as base64. Caller must free result with jacs_free_string."
+);
 
 /// Diagnostics JSON. Caller must free result with jacs_free_string.
 #[unsafe(no_mangle)]
