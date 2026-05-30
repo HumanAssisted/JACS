@@ -45,18 +45,13 @@ func simpleLastError(fallback string) error {
 // NewSimpleAgent creates a new agent with persistent identity.
 // Returns the agent and AgentInfo metadata.
 func NewSimpleAgent(name string, purpose, keyAlgorithm *string) (*JacsSimpleAgent, *AgentInfo, error) {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
+	cName, freeName := cString(name)
+	defer freeName()
 
-	var cPurpose, cAlgo *C.char
-	if purpose != nil {
-		cPurpose = C.CString(*purpose)
-		defer C.free(unsafe.Pointer(cPurpose))
-	}
-	if keyAlgorithm != nil {
-		cAlgo = C.CString(*keyAlgorithm)
-		defer C.free(unsafe.Pointer(cAlgo))
-	}
+	cPurpose, freePurpose := cStringOpt(purpose)
+	defer freePurpose()
+	cAlgo, freeAlgo := cStringOpt(keyAlgorithm)
+	defer freeAlgo()
 
 	var cInfoOut *C.char
 	handle := C.jacs_simple_create(cName, cPurpose, cAlgo, &cInfoOut)
@@ -81,11 +76,8 @@ func NewSimpleAgent(name string, purpose, keyAlgorithm *string) (*JacsSimpleAgen
 // LoadSimpleAgent loads an existing agent from a config file.
 // configPath is optional (nil for default). strict: nil for default, non-nil to set.
 func LoadSimpleAgent(configPath *string, strict *bool) (*JacsSimpleAgent, error) {
-	var cPath *C.char
-	if configPath != nil {
-		cPath = C.CString(*configPath)
-		defer C.free(unsafe.Pointer(cPath))
-	}
+	cPath, freePath := cStringOpt(configPath)
+	defer freePath()
 
 	// -1 = None, 0 = false, 1 = true
 	strictVal := C.int(-1)
@@ -108,11 +100,8 @@ func LoadSimpleAgent(configPath *string, strict *bool) (*JacsSimpleAgent, error)
 // EphemeralSimpleAgent creates an ephemeral (in-memory) agent.
 // algorithm is optional (nil for default).
 func EphemeralSimpleAgent(algorithm *string) (*JacsSimpleAgent, *AgentInfo, error) {
-	var cAlgo *C.char
-	if algorithm != nil {
-		cAlgo = C.CString(*algorithm)
-		defer C.free(unsafe.Pointer(cAlgo))
-	}
+	cAlgo, freeAlgo := cStringOpt(algorithm)
+	defer freeAlgo()
 
 	var cInfoOut *C.char
 	handle := C.jacs_simple_ephemeral(cAlgo, &cInfoOut)
@@ -133,8 +122,8 @@ func EphemeralSimpleAgent(algorithm *string) (*JacsSimpleAgent, *AgentInfo, erro
 // CreateSimpleAgentWithParams creates an agent with full programmatic control via JSON parameters.
 // paramsJSON is a JSON string of CreateAgentParams fields.
 func CreateSimpleAgentWithParams(paramsJSON string) (*JacsSimpleAgent, *AgentInfo, error) {
-	cParams := C.CString(paramsJSON)
-	defer C.free(unsafe.Pointer(cParams))
+	cParams, freeParams := cString(paramsJSON)
+	defer freeParams()
 
 	var cInfoOut *C.char
 	handle := C.jacs_simple_create_with_params(cParams, &cInfoOut)
@@ -294,8 +283,8 @@ func (a *JacsSimpleAgent) Verify(signedDocument string) (*VerificationResult, er
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	cDoc := C.CString(signedDocument)
-	defer C.free(unsafe.Pointer(cDoc))
+	cDoc, freeDoc := cString(signedDocument)
+	defer freeDoc()
 
 	result := C.jacs_simple_verify_json(a.handle, cDoc)
 	if result == nil {
@@ -317,8 +306,8 @@ func (a *JacsSimpleAgent) VerifyByID(documentID string) (*VerificationResult, er
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	cID := C.CString(documentID)
-	defer C.free(unsafe.Pointer(cID))
+	cID, freeID := cString(documentID)
+	defer freeID()
 
 	result := C.jacs_simple_verify_by_id(a.handle, cID)
 	if result == nil {
@@ -340,10 +329,10 @@ func (a *JacsSimpleAgent) VerifyWithKey(signedDocument, publicKeyBase64 string) 
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	cDoc := C.CString(signedDocument)
-	defer C.free(unsafe.Pointer(cDoc))
-	cKey := C.CString(publicKeyBase64)
-	defer C.free(unsafe.Pointer(cKey))
+	cDoc, freeDoc := cString(signedDocument)
+	defer freeDoc()
+	cKey, freeKey := cString(publicKeyBase64)
+	defer freeKey()
 
 	result := C.jacs_simple_verify_with_key(a.handle, cDoc, cKey)
 	if result == nil {
@@ -375,8 +364,8 @@ func (a *JacsSimpleAgent) SignMessage(data interface{}) (*SignedDocument, error)
 		return nil, NewSimpleError("sign_message", err)
 	}
 
-	cData := C.CString(string(jsonBytes))
-	defer C.free(unsafe.Pointer(cData))
+	cData, freeData := cString(string(jsonBytes))
+	defer freeData()
 
 	result := C.jacs_simple_sign_message(a.handle, cData)
 	if result == nil {
@@ -424,8 +413,8 @@ func (a *JacsSimpleAgent) SignFile(filePath string, embed bool) (*SignedDocument
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
 
-	cPath := C.CString(filePath)
-	defer C.free(unsafe.Pointer(cPath))
+	cPath, freePath := cString(filePath)
+	defer freePath()
 
 	embedVal := C.int(0)
 	if embed {

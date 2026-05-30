@@ -13,7 +13,6 @@ import "C"
 import (
 	"encoding/json"
 	"errors"
-	"unsafe"
 )
 
 // W3cRequestProofParams describes the request-bound DID authentication proof
@@ -25,13 +24,6 @@ type W3cRequestProofParams struct {
 	Nonce   *string `json:"nonce,omitempty"`
 	Created *string `json:"created,omitempty"`
 	Origin  *string `json:"origin,omitempty"`
-}
-
-func optionalStringPtr(value *string) *C.char {
-	if value == nil {
-		return nil
-	}
-	return C.CString(*value)
 }
 
 func parseJSONObject(payload string, op string) (map[string]interface{}, error) {
@@ -47,10 +39,8 @@ func (a *JacsSimpleAgent) ExportW3cDid(origin *string) (string, error) {
 	if a.handle == nil {
 		return "", errors.New("JacsSimpleAgent is closed")
 	}
-	cOrigin := optionalStringPtr(origin)
-	if cOrigin != nil {
-		defer C.free(unsafe.Pointer(cOrigin))
-	}
+	cOrigin, freeOrigin := cStringOpt(origin)
+	defer freeOrigin()
 	result := C.jacs_simple_export_w3c_did(a.handle, cOrigin)
 	if result == nil {
 		return "", simpleLastError("failed to export W3C DID")
@@ -64,10 +54,8 @@ func (a *JacsSimpleAgent) ExportW3cDidDocument(origin *string) (map[string]inter
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	cOrigin := optionalStringPtr(origin)
-	if cOrigin != nil {
-		defer C.free(unsafe.Pointer(cOrigin))
-	}
+	cOrigin, freeOrigin := cStringOpt(origin)
+	defer freeOrigin()
 	result := C.jacs_simple_export_w3c_did_document(a.handle, cOrigin)
 	if result == nil {
 		return nil, simpleLastError("failed to export W3C DID document")
@@ -81,10 +69,8 @@ func (a *JacsSimpleAgent) ExportW3cAgentDescription(origin *string) (map[string]
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	cOrigin := optionalStringPtr(origin)
-	if cOrigin != nil {
-		defer C.free(unsafe.Pointer(cOrigin))
-	}
+	cOrigin, freeOrigin := cStringOpt(origin)
+	defer freeOrigin()
 	result := C.jacs_simple_export_w3c_agent_description(a.handle, cOrigin)
 	if result == nil {
 		return nil, simpleLastError("failed to export W3C agent description")
@@ -98,10 +84,8 @@ func (a *JacsSimpleAgent) GenerateW3cWellKnown(origin *string) (map[string]inter
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	cOrigin := optionalStringPtr(origin)
-	if cOrigin != nil {
-		defer C.free(unsafe.Pointer(cOrigin))
-	}
+	cOrigin, freeOrigin := cStringOpt(origin)
+	defer freeOrigin()
 	result := C.jacs_simple_generate_w3c_well_known(a.handle, cOrigin)
 	if result == nil {
 		return nil, simpleLastError("failed to generate W3C well-known documents")
@@ -119,8 +103,8 @@ func (a *JacsSimpleAgent) SignW3cRequest(params W3cRequestProofParams) (map[stri
 	if err != nil {
 		return nil, NewSimpleError("sign_w3c_request", err)
 	}
-	cParams := C.CString(string(paramsJSON))
-	defer C.free(unsafe.Pointer(cParams))
+	cParams, freeParams := cString(string(paramsJSON))
+	defer freeParams()
 	result := C.jacs_simple_sign_w3c_request(a.handle, cParams)
 	if result == nil {
 		return nil, simpleLastError("failed to sign W3C request proof")
@@ -134,22 +118,16 @@ func (a *JacsSimpleAgent) VerifyW3cRequest(proofJSON, didDocumentJSON string, bo
 	if a.handle == nil {
 		return nil, errors.New("JacsSimpleAgent is closed")
 	}
-	cProof := C.CString(proofJSON)
-	defer C.free(unsafe.Pointer(cProof))
-	cDidDocument := C.CString(didDocumentJSON)
-	defer C.free(unsafe.Pointer(cDidDocument))
-	cBody := optionalStringPtr(body)
-	if cBody != nil {
-		defer C.free(unsafe.Pointer(cBody))
-	}
-	cExpectedMethod := optionalStringPtr(expectedMethod)
-	if cExpectedMethod != nil {
-		defer C.free(unsafe.Pointer(cExpectedMethod))
-	}
-	cExpectedURL := optionalStringPtr(expectedURL)
-	if cExpectedURL != nil {
-		defer C.free(unsafe.Pointer(cExpectedURL))
-	}
+	cProof, freeProof := cString(proofJSON)
+	defer freeProof()
+	cDidDocument, freeDidDocument := cString(didDocumentJSON)
+	defer freeDidDocument()
+	cBody, freeBody := cStringOpt(body)
+	defer freeBody()
+	cExpectedMethod, freeExpectedMethod := cStringOpt(expectedMethod)
+	defer freeExpectedMethod()
+	cExpectedURL, freeExpectedURL := cStringOpt(expectedURL)
+	defer freeExpectedURL()
 	result := C.jacs_simple_verify_w3c_request(a.handle, cProof, cDidDocument, cBody, C.uint64_t(maxAgeSeconds), cExpectedMethod, cExpectedURL)
 	if result == nil {
 		return nil, simpleLastError("failed to verify W3C request proof")
