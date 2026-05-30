@@ -2357,28 +2357,6 @@ pub extern "C" fn jacs_simple_config_path(handle: *const SimpleAgentHandle) -> *
     }
 }
 
-fn optional_c_string(ptr: *const c_char) -> Option<String> {
-    if ptr.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_str()
-            .ok()
-            .map(str::to_string)
-    }
-}
-
-fn required_c_string(ptr: *const c_char) -> Option<String> {
-    if ptr.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(ptr) }
-            .to_str()
-            .ok()
-            .map(str::to_string)
-    }
-}
-
 fn simple_string_result(result: jacs_binding_core::BindingResult<String>) -> *mut c_char {
     clear_last_simple_error();
     match result {
@@ -2402,7 +2380,7 @@ pub extern "C" fn jacs_simple_export_w3c_did(
         return ptr::null_mut();
     }
     let h = unsafe { &*handle };
-    let origin = optional_c_string(origin);
+    let origin = c_string_to_option(origin);
     simple_string_result(h.wrapper.export_w3c_did(origin.as_deref()))
 }
 
@@ -2416,7 +2394,7 @@ pub extern "C" fn jacs_simple_export_w3c_did_document(
         return ptr::null_mut();
     }
     let h = unsafe { &*handle };
-    let origin = optional_c_string(origin);
+    let origin = c_string_to_option(origin);
     simple_string_result(h.wrapper.export_w3c_did_document_json(origin.as_deref()))
 }
 
@@ -2430,7 +2408,7 @@ pub extern "C" fn jacs_simple_export_w3c_agent_description(
         return ptr::null_mut();
     }
     let h = unsafe { &*handle };
-    let origin = optional_c_string(origin);
+    let origin = c_string_to_option(origin);
     simple_string_result(
         h.wrapper
             .export_w3c_agent_description_json(origin.as_deref()),
@@ -2447,7 +2425,7 @@ pub extern "C" fn jacs_simple_generate_w3c_well_known(
         return ptr::null_mut();
     }
     let h = unsafe { &*handle };
-    let origin = optional_c_string(origin);
+    let origin = c_string_to_option(origin);
     simple_string_result(h.wrapper.generate_w3c_well_known_json(origin.as_deref()))
 }
 
@@ -2461,7 +2439,7 @@ pub extern "C" fn jacs_simple_sign_w3c_request(
         return ptr::null_mut();
     }
     let h = unsafe { &*handle };
-    let params = match required_c_string(params_json) {
+    let params = match c_string_to_option(params_json) {
         Some(value) => value,
         None => return ptr::null_mut(),
     };
@@ -2483,17 +2461,17 @@ pub extern "C" fn jacs_simple_verify_w3c_request(
         return ptr::null_mut();
     }
     let h = unsafe { &*handle };
-    let proof = match required_c_string(proof_json) {
+    let proof = match c_string_to_option(proof_json) {
         Some(value) => value,
         None => return ptr::null_mut(),
     };
-    let did_document = match required_c_string(did_document_json) {
+    let did_document = match c_string_to_option(did_document_json) {
         Some(value) => value,
         None => return ptr::null_mut(),
     };
-    let body = optional_c_string(body);
-    let expected_method = optional_c_string(expected_method);
-    let expected_url = optional_c_string(expected_url);
+    let body = c_string_to_option(body);
+    let expected_method = c_string_to_option(expected_method);
+    let expected_url = c_string_to_option(expected_url);
     simple_string_result(h.wrapper.verify_w3c_request_json(
         &proof,
         &did_document,
