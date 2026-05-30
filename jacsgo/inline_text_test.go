@@ -25,11 +25,7 @@ func TestSignTextRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if err := agent.SignText(target, nil); err != nil {
 		t.Fatalf("SignText: %v", err)
@@ -56,11 +52,7 @@ func TestSignTextContentPreserved(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if err := agent.SignText(target, nil); err != nil {
 		t.Fatalf("SignText: %v", err)
@@ -91,11 +83,7 @@ func TestVerifyTextPermissiveMissingSignatureIsNotError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	result, err := agent.VerifyText(target, nil)
 	if err != nil {
@@ -114,13 +102,9 @@ func TestVerifyTextStrictMissingSignatureIsError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
-	_, err = agent.VerifyText(target, &VerifyTextOpts{Strict: true})
+	_, err := agent.VerifyText(target, &VerifyTextOpts{Strict: true})
 	if err == nil {
 		t.Fatal("expected an error for strict-missing-signature, got nil")
 	}
@@ -137,11 +121,7 @@ func TestVerifyTextStrictValidIsOk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if err := agent.SignText(target, nil); err != nil {
 		t.Fatal(err)
@@ -164,11 +144,7 @@ func TestSignVerifyTextPq2025(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("pq2025"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "pq2025")
 
 	if err := agent.SignText(target, nil); err != nil {
 		t.Fatal(err)
@@ -194,11 +170,7 @@ func TestSignTextDuplicateIsNoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if err := agent.SignText(target, nil); err != nil {
 		t.Fatal(err)
@@ -227,11 +199,7 @@ func TestSignTextFileParityName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if err := agent.SignTextFile(target, nil); err != nil {
 		t.Fatalf("SignTextFile: %v", err)

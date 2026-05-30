@@ -126,11 +126,7 @@ func runSignImageRoundTrip(t *testing.T, fc struct {
 	dst := filepath.Join(dir, "out"+fc.ext)
 	fc.writer(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	out, err := agent.SignImage(src, dst, nil)
 	if err != nil {
@@ -167,11 +163,7 @@ func runPermissiveMissing(t *testing.T, fc struct {
 	src := filepath.Join(dir, "plain"+fc.ext)
 	fc.writer(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	result, err := agent.VerifyImage(src, nil)
 	if err != nil {
@@ -196,13 +188,9 @@ func runStrictMissing(t *testing.T, fc struct {
 	src := filepath.Join(dir, "plain"+fc.ext)
 	fc.writer(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
-	_, err = agent.VerifyImage(src, &VerifyImageOpts{Strict: true})
+	_, err := agent.VerifyImage(src, &VerifyImageOpts{Strict: true})
 	if err == nil {
 		t.Fatalf("strict VerifyImage(%s) should return an error", fc.name)
 	}
@@ -221,11 +209,7 @@ func TestExtractMediaSignaturePng(t *testing.T) {
 	dst := filepath.Join(dir, "out.png")
 	writeUnsignedPNG(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if _, err := agent.SignImage(src, dst, nil); err != nil {
 		t.Fatal(err)
@@ -249,11 +233,7 @@ func TestExtractMediaSignatureUnsignedReturnsEmpty(t *testing.T) {
 			src := filepath.Join(dir, "plain"+fc.ext)
 			fc.writer(t, src)
 
-			agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer agent.Close()
+			agent := newEphemeralAgent(t, "ed25519")
 
 			payload, present, err := agent.ExtractMediaSignature(src, nil)
 			if err != nil {
@@ -275,11 +255,7 @@ func TestExtractMediaSignatureRawPayloadReturnsBase64Url(t *testing.T) {
 	dst := filepath.Join(dir, "out.png")
 	writeUnsignedPNG(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if _, err := agent.SignImage(src, dst, nil); err != nil {
 		t.Fatal(err)
@@ -321,11 +297,7 @@ func TestRobustModeOffByDefault(t *testing.T) {
 	dst := filepath.Join(dir, "out.png")
 	writeUnsignedPNG(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	out, err := agent.SignImage(src, dst, nil)
 	if err != nil {
@@ -360,13 +332,9 @@ func TestSignImageRobustWebpDeferred(t *testing.T) {
 	dst := filepath.Join(dir, "out.webp")
 	writeUnsignedWebP(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
-	_, err = agent.SignImage(src, dst, &SignImageOpts{Robust: true})
+	_, err := agent.SignImage(src, dst, &SignImageOpts{Robust: true})
 	if err == nil {
 		t.Fatal("expected error when signing WebP with robust=true")
 	}
@@ -384,11 +352,7 @@ func TestSignImageRefuseOverwriteRejectsAlreadySigned(t *testing.T) {
 	dst := filepath.Join(dir, "signed.png")
 	writeUnsignedPNG(t, src)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if _, err := agent.SignImage(src, dst, nil); err != nil {
 		t.Fatal(err)

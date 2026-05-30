@@ -15,11 +15,7 @@ const (
 )
 
 func TestW3cDidDiscoveryAndRequestProofRoundTrip(t *testing.T) {
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatalf("EphemeralSimpleAgent: %v", err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	did, err := agent.ExportW3cDid(strPtr(w3cOrigin))
 	if err != nil {

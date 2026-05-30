@@ -95,11 +95,7 @@ func TestProvenanceVerifyRustSignedEd25519Markdown(t *testing.T) {
 	skipIfFixturesMissing(t)
 	meta := loadProvenanceMetadata(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "rust_signed_ed25519.md")
 	result, err := agent.VerifyText(target, &VerifyTextOpts{KeyDir: provenanceKeysDir(t)})
@@ -128,11 +124,7 @@ func TestProvenanceVerifyRustSignedPq2025Markdown(t *testing.T) {
 	skipIfFixturesMissing(t)
 	meta := loadProvenanceMetadata(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "rust_signed_pq2025.md")
 	result, err := agent.VerifyText(target, &VerifyTextOpts{KeyDir: provenanceKeysDir(t)})
@@ -160,11 +152,7 @@ func TestProvenanceVerifyRustSignedPq2025Markdown(t *testing.T) {
 func TestProvenanceVerifyRustSignedMultiAlgo(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "rust_signed_multi_algo.md")
 	result, err := agent.VerifyText(target, &VerifyTextOpts{KeyDir: provenanceKeysDir(t)})
@@ -193,11 +181,7 @@ func TestProvenanceVerifyRustSignedMultiAlgo(t *testing.T) {
 func TestProvenanceVerifyRustSignedPng(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "rust_signed_ed25519.png")
 	result, err := agent.VerifyImage(target, &VerifyImageOpts{KeyDir: provenanceKeysDir(t)})
@@ -215,11 +199,7 @@ func TestProvenanceVerifyRustSignedPng(t *testing.T) {
 func TestProvenanceVerifyRustSignedJpeg(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "rust_signed_ed25519.jpg")
 	result, err := agent.VerifyImage(target, &VerifyImageOpts{KeyDir: provenanceKeysDir(t)})
@@ -237,11 +217,7 @@ func TestProvenanceVerifyRustSignedJpeg(t *testing.T) {
 func TestProvenanceVerifyRustSignedWebp(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "rust_signed_ed25519.webp")
 	result, err := agent.VerifyImage(target, &VerifyImageOpts{KeyDir: provenanceKeysDir(t)})
@@ -320,11 +296,7 @@ func TestProvenanceYamlParsesRustSignedBlockBody(t *testing.T) {
 func TestProvenancePermissiveUnsignedMarkdown(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "unsigned.md")
 	result, err := agent.VerifyText(target, nil)
@@ -339,14 +311,10 @@ func TestProvenancePermissiveUnsignedMarkdown(t *testing.T) {
 func TestProvenanceStrictUnsignedMarkdown(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "unsigned.md")
-	_, err = agent.VerifyText(target, &VerifyTextOpts{Strict: true})
+	_, err := agent.VerifyText(target, &VerifyTextOpts{Strict: true})
 	if err == nil {
 		t.Fatal("expected strict verify to error")
 	}
@@ -358,11 +326,7 @@ func TestProvenanceStrictUnsignedMarkdown(t *testing.T) {
 func TestProvenancePermissiveUnsignedImages(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	for _, fixture := range []struct {
 		name string
@@ -391,11 +355,7 @@ func TestProvenancePermissiveUnsignedImages(t *testing.T) {
 func TestProvenanceStrictUnsignedImages(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	for _, fixture := range []string{"unsigned.png", "unsigned.jpg", "unsigned.webp"} {
 		t.Run(fixture, func(t *testing.T) {
@@ -414,11 +374,7 @@ func TestProvenanceStrictUnsignedImages(t *testing.T) {
 func TestProvenanceStrictRustSignedMarkdownDoesNotError(t *testing.T) {
 	skipIfFixturesMissing(t)
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	target := filepath.Join(provenanceFixturesDir(t), "rust_signed_ed25519.md")
 	result, err := agent.VerifyText(target, &VerifyTextOpts{
@@ -448,11 +404,7 @@ func TestProvenanceGoSignsRustVerifies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agent, _, err := EphemeralSimpleAgent(strPtr("ed25519"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer agent.Close()
+	agent := newEphemeralAgent(t, "ed25519")
 
 	if err := agent.SignText(target, &SignTextOpts{NoBackup: true}); err != nil {
 		t.Fatalf("SignText: %v", err)
