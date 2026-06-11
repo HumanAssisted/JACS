@@ -44,7 +44,7 @@ export class CoreAgentHandle {
   createAgreementV2Json(input_json: string): string;
   applyAgreementV2Json(agreement_json: string, mutation_json: string): string;
   signAgreementV2Json(agreement_json: string, role: string): string;
-  verifyAgreementV2Json(agreement_json: string): string;
+  verifyAgreementV2Json(agreement_json: string, signers_json: string): string;
   detectAgreementV2BranchConflictJson(
     base_json: string,
     left_json: string,

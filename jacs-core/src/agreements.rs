@@ -352,7 +352,8 @@ pub mod v2 {
     use crate::CoreError;
     use crate::agent::CoreAgent;
     use crate::canonical::canonicalize_json_try;
-    use crate::verify::sha256_hex;
+    use crate::sign::SigningAlgorithm;
+    use crate::verify::{sha256_hex, verify_document};
     use serde_json::{Map, Value, json};
     use std::collections::HashSet;
 
@@ -445,7 +446,9 @@ pub mod v2 {
             .get("transcript")
             .and_then(Value::as_array)
             .is_some_and(|items| !items.is_empty());
+        let agreement_jacs_id = required_string(document, "jacsId")?;
         let mut context = json!({
+            "jacsId": agreement_jacs_id,
             "jacsAgreementHash": stored_hash,
             "agreementSignature": {}
         });
@@ -472,7 +475,10 @@ pub mod v2 {
         emit_successor(agent, document, next)
     }
 
-    pub fn verify(document: &Value) -> Result<Value, CoreError> {
+    pub fn verify(
+        document: &Value,
+        signers: &[(&str, &[u8], SigningAlgorithm)],
+    ) -> Result<Value, CoreError> {
         assert_agreement(document)?;
         let recomputed_agreement_hash = compute_agreement_hash(document)?;
         let recomputed_transcript_hash = compute_transcript_hash(document)?;
@@ -499,22 +505,144 @@ pub mod v2 {
             .get("transcript")
             .and_then(Value::as_array)
             .is_some_and(|items| !items.is_empty());
-        let mut signer_count = 0usize;
-        let mut witness_count = 0usize;
-        let mut notary_count = 0usize;
+        let mut signer_agents = HashSet::new();
+        let mut witness_agents = HashSet::new();
+        let mut notary_agents = HashSet::new();
+        let mut signature_results = Vec::new();
         for entry in signatures(document) {
             let role = entry.get("role").and_then(Value::as_str).unwrap_or("");
-            match role {
-                "signer" => signer_count += 1,
-                "witness" => witness_count += 1,
-                "notary" => notary_count += 1,
-                other => errors.push(format!("invalid agreement signature role '{}'", other)),
+            let signature = entry.get("signature");
+            let agent_id = signature
+                .and_then(|s| s.get("agentID"))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let mut entry_errors = Vec::new();
+
+            if !matches!(role, "signer" | "witness" | "notary") {
+                entry_errors.push(format!("invalid agreement signature role '{}'", role));
             }
+
+            let Some(signature) = signature else {
+                entry_errors.push("agreement signature object missing".to_string());
+                let error = entry_errors.join("; ");
+                errors.push(error.clone());
+                signature_results.push(json!({
+                    "agentID": agent_id,
+                    "role": role,
+                    "valid": false,
+                    "error": error,
+                }));
+                continue;
+            };
+
+            if agent_id.is_empty() {
+                entry_errors.push("agreement signature agentID missing".to_string());
+            } else if !is_listed_party(document, &agent_id, role) {
+                entry_errors.push(format!(
+                    "agreement signature agentID '{}' is not a listed {} party",
+                    agent_id, role
+                ));
+            }
+
             if transcript_non_empty
                 && entry.get("signedTranscriptHash").and_then(Value::as_str)
                     != Some(recomputed_transcript_hash.as_str())
             {
-                errors.push("signedTranscriptHash mismatch".to_string());
+                entry_errors.push("signedTranscriptHash mismatch".to_string());
+            }
+
+            let normalized_agent_id = normalize_agent_id(&agent_id);
+            let signer = signers
+                .iter()
+                .find(|(id, _, _)| normalize_agent_id(id) == normalized_agent_id);
+            let Some(&(_, public_key, algorithm)) = signer else {
+                entry_errors.push(format!(
+                    "no key supplied for agreement signer '{}'",
+                    agent_id
+                ));
+                let error = entry_errors.join("; ");
+                errors.push(error.clone());
+                signature_results.push(json!({
+                    "agentID": agent_id,
+                    "role": role,
+                    "valid": false,
+                    "error": error,
+                }));
+                continue;
+            };
+
+            let mut context = json!({
+                "jacsId": document
+                    .get("jacsId")
+                    .and_then(Value::as_str)
+                    .unwrap_or(""),
+                "jacsAgreementHash": document
+                    .get("jacsAgreementHash")
+                    .and_then(Value::as_str)
+                    .unwrap_or(""),
+                "agreementSignature": signature.clone(),
+            });
+            let mut required_fields = vec!["jacsId", "jacsAgreementHash"];
+            if let Some(signed_transcript_hash) =
+                entry.get("signedTranscriptHash").and_then(Value::as_str)
+            {
+                context["signedTranscriptHash"] = json!(signed_transcript_hash);
+                required_fields.push("signedTranscriptHash");
+            }
+            let signed_fields: Vec<&str> = signature
+                .get("fields")
+                .and_then(Value::as_array)
+                .map(|fields| fields.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            for required_field in required_fields {
+                if !signed_fields.contains(&required_field) {
+                    entry_errors.push(format!(
+                        "agreement signature fields missing '{}'",
+                        required_field
+                    ));
+                }
+            }
+
+            match verify_document(&context, public_key, algorithm, "agreementSignature") {
+                Ok(outcome) if outcome.valid => {}
+                Ok(outcome) => {
+                    entry_errors.push(if outcome.errors.is_empty() {
+                        "agreement signature verification failed".to_string()
+                    } else {
+                        outcome.errors.join("; ")
+                    });
+                }
+                Err(err) => entry_errors.push(err.to_string()),
+            }
+
+            if entry_errors.is_empty() {
+                match role {
+                    "signer" => {
+                        signer_agents.insert(normalized_agent_id.to_string());
+                    }
+                    "witness" => {
+                        witness_agents.insert(normalized_agent_id.to_string());
+                    }
+                    "notary" => {
+                        notary_agents.insert(normalized_agent_id.to_string());
+                    }
+                    _ => {}
+                }
+                signature_results.push(json!({
+                    "agentID": agent_id,
+                    "role": role,
+                    "valid": true,
+                }));
+            } else {
+                let error = entry_errors.join("; ");
+                errors.push(error.clone());
+                signature_results.push(json!({
+                    "agentID": agent_id,
+                    "role": role,
+                    "valid": false,
+                    "error": error,
+                }));
             }
         }
 
@@ -524,9 +652,11 @@ pub mod v2 {
             "expectedStatus": expected_status,
             "recomputedAgreementHash": recomputed_agreement_hash,
             "recomputedTranscriptHash": recomputed_transcript_hash,
-            "signerCount": signer_count,
-            "witnessCount": witness_count,
-            "notaryCount": notary_count,
+            "signerCount": signer_agents.len(),
+            "witnessCount": witness_agents.len(),
+            "notaryCount": notary_agents.len(),
+            "verificationDepth": "cryptographic",
+            "signatures": signature_results,
             "errors": errors,
         }))
     }
@@ -839,7 +969,8 @@ pub mod v2 {
                     .get("signature")
                     .and_then(|s| s.get("agentID"))
                     .and_then(Value::as_str)
-                    .map(str::to_string)
+                    .filter(|agent_id| is_listed_party(doc, agent_id, role))
+                    .map(|agent_id| normalize_agent_id(agent_id).to_string())
             })
             .collect()
     }
@@ -852,17 +983,28 @@ pub mod v2 {
             .collect()
     }
 
-    fn assert_party_role(doc: &Value, agent_id: &str, role: &str) -> Result<(), CoreError> {
-        let allowed = doc
-            .get("parties")
+    fn normalize_agent_id(agent_id: &str) -> &str {
+        agent_id.split(':').next().unwrap_or(agent_id)
+    }
+
+    fn is_listed_party(doc: &Value, agent_id: &str, role: &str) -> bool {
+        let normalized = normalize_agent_id(agent_id);
+        doc.get("parties")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .any(|party| {
-                party.get("agentId").and_then(Value::as_str) == Some(agent_id)
+                party
+                    .get("agentId")
+                    .and_then(Value::as_str)
+                    .map(normalize_agent_id)
+                    == Some(normalized)
                     && party.get("role").and_then(Value::as_str) == Some(role)
-            });
-        if allowed {
+            })
+    }
+
+    fn assert_party_role(doc: &Value, agent_id: &str, role: &str) -> Result<(), CoreError> {
+        if is_listed_party(doc, agent_id, role) {
             Ok(())
         } else {
             Err(CoreError::AgreementFailed(format!(

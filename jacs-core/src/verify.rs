@@ -243,6 +243,31 @@ pub fn verify_document(
         .filter_map(|v| v.as_str().map(str::to_string))
         .collect::<Vec<_>>();
 
+    // SECURITY (SV-5): a v2 signature authenticates only the fields named in
+    // `<placement>.fields`. `jacsSha256` is not itself signed, so an attacker can
+    // append an unsigned top-level field, recompute the hash, and slip
+    // unauthenticated data past both the signature and hash checks. The document
+    // signature (`jacsSignature`) must attest the *whole* document, so reject any
+    // top-level key under a document signature that is not a signed field, a
+    // reserved JACS field, or the placement itself. Agreement placements sign a
+    // trimmed subset and are exempt (this guard only fires for "jacsSignature").
+    if placement_key == "jacsSignature"
+        && let Some(obj) = signed.as_object()
+    {
+        for key in obj.keys() {
+            if key == placement_key
+                || JACS_IGNORE_FIELDS.contains(&key.as_str())
+                || fields.iter().any(|f| f == key)
+            {
+                continue;
+            }
+            return Err(CoreError::MalformedDocument(format!(
+                "Unsigned top-level field '{}' is present but not covered by '{}.fields'; the v2 signature does not authenticate it.",
+                key, placement_key
+            )));
+        }
+    }
+
     // Reconstruct canonical bytes using the embedded metadata as-is so the
     // bytes are identical to what the signer produced (PRD §4.5).
     let canonical = build_signature_content_v2(signed, &fields, placement_key, sig_obj)?;
@@ -330,4 +355,36 @@ pub fn build_signature_metadata(
         json!(SIGNATURE_CONTENT_VERSION_V2),
     );
     Value::Object(obj)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::CoreAgent;
+    use serde_json::json;
+
+    #[test]
+    fn verify_document_rejects_unsigned_top_level_field_under_document_signature() {
+        let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+        let public_key = agent.public_key().to_vec();
+        let mut signed = agent
+            .sign_message(&json!({ "safe": "x" }))
+            .expect("sign message");
+
+        signed["evil"] = json!("x");
+
+        let err = verify_document(
+            &signed,
+            &public_key,
+            SigningAlgorithm::Ed25519,
+            "jacsSignature",
+        )
+        .expect_err("unsigned top-level field must be rejected");
+        match err {
+            CoreError::MalformedDocument(message) => {
+                assert!(message.contains("Unsigned top-level field 'evil'"));
+            }
+            other => panic!("expected MalformedDocument, got {:?}", other),
+        }
+    }
 }

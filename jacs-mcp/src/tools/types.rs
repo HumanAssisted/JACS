@@ -189,3 +189,20 @@ pub struct AgreementV2ValueResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+/// Result envelope for `jacs_verify_agreement_v2`.
+///
+/// `success` means the verify operation EXECUTED (input parsed, verification ran).
+/// `valid` is the cryptographic/structural verdict and is the authoritative
+/// answer to "should this agreement be trusted". A caller must never read
+/// `success: true` and assume the agreement is good — `valid` carries that.
+/// On an execution/parse failure, `success` is false and `valid` is false.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct VerifyAgreementV2Result {
+    pub success: bool,
+    pub valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}

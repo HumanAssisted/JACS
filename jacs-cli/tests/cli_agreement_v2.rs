@@ -282,3 +282,94 @@ fn agreement_v2_cli_executes_full_public_workflow() {
         })
     );
 }
+
+#[test]
+fn agreement_v2_cli_verify_exits_nonzero_on_tampered() {
+    let dir = TempDir::new().expect("tmpdir");
+    bootstrap_agent(&dir);
+    let agent_id = configured_agent_id(&dir);
+
+    let input_path = write_json(&dir, "agreement-input.json", &base_input(&agent_id));
+    let created =
+        output_json_with_paths(&dir, &["agreement-v2", "create", "--input"], &[&input_path]);
+    let created_path = write_json(&dir, "created.json", &created);
+    let signed = output_json_with_paths(
+        &dir,
+        &["agreement-v2", "sign", "--agreement"],
+        &[&created_path],
+    );
+    let signed_path = write_json(&dir, "signed.json", &signed);
+
+    // VALID agreement -> exit 0.
+    cmd()
+        .current_dir(dir.path())
+        .args(["agreement-v2", "verify", "--agreement"])
+        .arg(&signed_path)
+        .assert()
+        .success();
+
+    // TAMPERED agreement (breaks the JACS content hash) -> non-zero exit.
+    let mut tampered = signed.clone();
+    assert!(
+        tampered.get("terms").is_some(),
+        "signed agreement must include top-level terms: {}",
+        tampered
+    );
+    tampered["terms"] = json!("tampered terms that break the hash");
+    let tampered_path = write_json(&dir, "tampered.json", &tampered);
+    cmd()
+        .current_dir(dir.path())
+        .args(["agreement-v2", "verify", "--agreement"])
+        .arg(&tampered_path)
+        .assert()
+        .failure();
+}
+
+/// The fail-open regression: an agreement signed by ANOTHER agent whose key the
+/// verifier cannot resolve verifies to `Ok(report { valid: false })` (not Err).
+/// Before the fix the CLI printed the invalid report and exited 0; the handler
+/// must now inspect `report.valid` and exit non-zero so `verify ... && next`
+/// idioms cannot proceed on an unverifiable agreement.
+#[test]
+fn agreement_v2_cli_verify_exits_nonzero_on_unverifiable_signer() {
+    // Signer agent A produces a fully signed agreement.
+    let signer_dir = TempDir::new().expect("signer tmpdir");
+    bootstrap_agent(&signer_dir);
+    let signer_id = configured_agent_id(&signer_dir);
+
+    let input_path = write_json(&signer_dir, "agreement-input.json", &base_input(&signer_id));
+    let created = output_json_with_paths(
+        &signer_dir,
+        &["agreement-v2", "create", "--input"],
+        &[&input_path],
+    );
+    let created_path = write_json(&signer_dir, "created.json", &created);
+    let signed = output_json_with_paths(
+        &signer_dir,
+        &["agreement-v2", "sign", "--agreement"],
+        &[&created_path],
+    );
+    // Sanity: signer's own verification is valid (Ok report, valid=true, exit 0).
+    let signed_path = write_json(&signer_dir, "signed.json", &signed);
+    cmd()
+        .current_dir(signer_dir.path())
+        .args(["agreement-v2", "verify", "--agreement"])
+        .arg(&signed_path)
+        .assert()
+        .success();
+
+    // Fresh verifier agent B cannot resolve A's key -> Ok(report{ valid:false }).
+    let verifier_dir = TempDir::new().expect("verifier tmpdir");
+    bootstrap_agent(&verifier_dir);
+    let verifier_signed_path = write_json(&verifier_dir, "signed.json", &signed);
+    cmd()
+        .current_dir(verifier_dir.path())
+        // Keep remote key fetch disabled (the default) so the signer key is
+        // unresolvable and the report is valid:false rather than Err.
+        .env_remove("JACS_ALLOW_REMOTE_KEY_FETCH")
+        .env_remove("JACS_ALLOW_NETWORK")
+        .args(["agreement-v2", "verify", "--agreement"])
+        .arg(&verifier_signed_path)
+        .assert()
+        .failure();
+}

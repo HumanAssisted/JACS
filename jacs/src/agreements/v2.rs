@@ -106,7 +106,11 @@ pub struct CreateAgreementV2 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum AgreementV2Mutation {
     AppendTranscript {
         entry: Value,
@@ -343,6 +347,13 @@ pub fn create_with_agent(
         input.controllers
     };
 
+    if !input.agreement_signatures.is_empty() {
+        return Err(JacsError::DocumentError(
+            "agreementSignatures must be empty at creation; signatures are added through the sign operation after the agreement is hashed and stored"
+                .to_string(),
+        ));
+    }
+
     let mut document = json!({
         "$schema": "https://hai.ai/schemas/agreement/v2/agreement.schema.json",
         "jacsType": "agreement",
@@ -382,6 +393,16 @@ pub fn apply_with_agent(
     assert_agreement_v2(&current.value)?;
     assert_controller(agent, &current.value)?;
 
+    if let AgreementV2Mutation::SetSignaturePolicy { signature_policy } = &mutation
+        && signature_policy_past_point_of_reliance(&current.value)
+        && signature_policy_is_weaker(&current.value, signature_policy, &current.value)
+    {
+        return Err(JacsError::DocumentError(
+            "signaturePolicy cannot be loosened after proposal or signatures (consent-scope quorum); create a superseding agreement instead"
+                .to_string(),
+        ));
+    }
+
     if current.value.get("status").and_then(Value::as_str) == Some("final")
         && mutation.touches_consent_scope()
     {
@@ -409,6 +430,7 @@ pub fn sign_with_agent(
     assert_accepts_signature(&current.value)?;
 
     let stored_hash = required_str(&current.value, "jacsAgreementHash")?;
+    let agreement_jacs_id = required_str(&current.value, "jacsId")?;
     let recomputed_hash = compute_agreement_hash(&current.value)?;
     if stored_hash != recomputed_hash {
         return Err(JacsError::HashMismatch {
@@ -434,10 +456,11 @@ pub fn sign_with_agent(
         transcript_array(&current.value).is_some_and(|items| !items.is_empty());
 
     let mut signature_context = json!({
+        "jacsId": agreement_jacs_id,
         "jacsAgreementHash": stored_hash,
         AGREEMENT_SIGNATURE_PLACEMENT: {}
     });
-    let mut fields = vec!["jacsAgreementHash".to_string()];
+    let mut fields = vec!["jacsId".to_string(), "jacsAgreementHash".to_string()];
 
     if transcript_non_empty {
         signature_context["signedTranscriptHash"] = json!(transcript_hash.clone());
@@ -470,21 +493,26 @@ pub fn verify_with_agent(
     agent: &mut Agent,
     document: &str,
 ) -> Result<AgreementV2VerificationReport, JacsError> {
-    let doc = agent.load_document(document)?;
+    let doc = load_agreement_no_store(agent, document)?;
     assert_agreement_v2(&doc.value)?;
+    build_verification_report(agent, &doc.value)
+}
 
-    let recomputed_agreement_hash = compute_agreement_hash(&doc.value)?;
-    let recomputed_transcript_hash = compute_transcript_hash(&doc.value)?;
-    let status = doc
-        .value
+fn build_verification_report(
+    agent: &mut Agent,
+    value: &Value,
+) -> Result<AgreementV2VerificationReport, JacsError> {
+    let recomputed_agreement_hash = compute_agreement_hash(value)?;
+    let recomputed_transcript_hash = compute_transcript_hash(value)?;
+    let status = value
         .get("status")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let expected_status = recompute_status(&doc.value);
+    let expected_status = recompute_status(value);
     let mut errors = Vec::new();
 
-    match doc.value.get("jacsAgreementHash").and_then(Value::as_str) {
+    match value.get("jacsAgreementHash").and_then(Value::as_str) {
         Some(stored) if stored == recomputed_agreement_hash => {}
         Some(stored) => errors.push(format!(
             "jacsAgreementHash mismatch: stored {}, recomputed {}",
@@ -500,20 +528,20 @@ pub fn verify_with_agent(
         ));
     }
 
-    if let Err(err) = verify_header_signature_and_controller(agent, &doc.value) {
+    if let Err(err) = verify_header_signature_and_controller(agent, value) {
         errors.push(err.to_string());
     }
 
-    if let Err(err) = verify_previous_versions_chain(agent, &doc.value) {
+    if let Err(err) = verify_previous_versions_chain(agent, value) {
         errors.push(err);
     }
 
-    let transcript_prefix_hashes = compute_transcript_prefix_hashes(&doc.value)?;
+    let transcript_prefix_hashes = compute_transcript_prefix_hashes(value)?;
     let mut signed_counts = SignedRoleCounts::default();
-    for signature_entry in signature_entries(&doc.value) {
+    for signature_entry in signature_entries(value) {
         if let Err(err) = verify_signature_entry(
             agent,
-            &doc.value,
+            value,
             signature_entry,
             &recomputed_transcript_hash,
             &transcript_prefix_hashes,
@@ -553,13 +581,28 @@ pub fn merge_transcript_branches_with_agent(
     left_document: &str,
     right_document: &str,
 ) -> Result<JACSDocument, JacsError> {
-    let base = agent.load_document(base_document)?;
-    let left = agent.load_document(left_document)?;
-    let right = agent.load_document(right_document)?;
+    let base = load_agreement_no_store(agent, base_document)?;
+    let left = load_agreement_no_store(agent, left_document)?;
+    let right = load_agreement_no_store(agent, right_document)?;
     assert_agreement_v2(&base.value)?;
     assert_agreement_v2(&left.value)?;
     assert_agreement_v2(&right.value)?;
     assert_controller(agent, &left.value)?;
+
+    let left_report = build_verification_report(agent, &left.value)?;
+    if !left_report.valid {
+        return Err(JacsError::DocumentError(format!(
+            "left branch failed verification; refusing to merge unverified agreement: {:?}",
+            left_report.errors
+        )));
+    }
+    let right_report = build_verification_report(agent, &right.value)?;
+    if !right_report.valid {
+        return Err(JacsError::DocumentError(format!(
+            "right branch failed verification; refusing to merge unverified agreement: {:?}",
+            right_report.errors
+        )));
+    }
 
     let analysis = analyze_branch_values(&base.value, &left.value, &right.value)?;
     if !analysis.auto_mergeable {
@@ -596,13 +639,28 @@ pub fn resolve_branch_conflict_with_agent(
     side_branch_document: &str,
     resolution: AgreementV2Mutation,
 ) -> Result<JACSDocument, JacsError> {
-    let base = agent.load_document(base_document)?;
-    let previous = agent.load_document(previous_document)?;
-    let side_branch = agent.load_document(side_branch_document)?;
+    let base = load_agreement_no_store(agent, base_document)?;
+    let previous = load_agreement_no_store(agent, previous_document)?;
+    let side_branch = load_agreement_no_store(agent, side_branch_document)?;
     assert_agreement_v2(&base.value)?;
     assert_agreement_v2(&previous.value)?;
     assert_agreement_v2(&side_branch.value)?;
     assert_controller(agent, &previous.value)?;
+
+    let previous_report = build_verification_report(agent, &previous.value)?;
+    if !previous_report.valid {
+        return Err(JacsError::DocumentError(format!(
+            "previous branch failed verification; refusing to resolve unverified agreement: {:?}",
+            previous_report.errors
+        )));
+    }
+    let side_branch_report = build_verification_report(agent, &side_branch.value)?;
+    if !side_branch_report.valid {
+        return Err(JacsError::DocumentError(format!(
+            "side branch failed verification; refusing to resolve unverified agreement: {:?}",
+            side_branch_report.errors
+        )));
+    }
 
     if previous.value.get("status").and_then(Value::as_str) == Some("final")
         && resolution.touches_consent_scope()
@@ -1499,6 +1557,25 @@ fn required_str<'a>(document: &'a Value, field: &str) -> Result<&'a str, JacsErr
         })
 }
 
+/// Parse + validate (JSON schema + hash) an agreement document WITHOUT persisting it.
+///
+/// `Agent::load_document` performs the same `validate_header` checks but then
+/// calls `store_jacs_document`, persisting attacker-controlled input before any
+/// verdict is known. Read-only operations (verify, merge/resolve input parsing)
+/// must use this instead so they never write unverified documents to storage.
+fn load_agreement_no_store(agent: &mut Agent, document: &str) -> Result<JACSDocument, JacsError> {
+    let value = agent.validate_header(document)?;
+    let id = required_str(&value, "jacsId")?.to_string();
+    let version = required_str(&value, JACS_VERSION_FIELDNAME)?.to_string();
+    let jacs_type = required_str(&value, "jacsType")?.to_string();
+    Ok(JACSDocument {
+        id,
+        version,
+        value,
+        jacs_type,
+    })
+}
+
 fn emit_successor(
     agent: &mut Agent,
     previous: &Value,
@@ -1575,10 +1652,11 @@ fn verify_signature_entry(
 
     let transcript_non_empty = transcript_array(document).is_some_and(|items| !items.is_empty());
     let mut signature_context = json!({
+        "jacsId": required_str(document, "jacsId")?,
         "jacsAgreementHash": required_str(document, "jacsAgreementHash")?,
         AGREEMENT_SIGNATURE_PLACEMENT: signature.clone()
     });
-    let mut fields = vec!["jacsAgreementHash".to_string()];
+    let mut fields = vec!["jacsId".to_string(), "jacsAgreementHash".to_string()];
     let signed_transcript_hash = entry.get("signedTranscriptHash").and_then(Value::as_str);
     if let Some(signed_transcript_hash) = signed_transcript_hash {
         if !transcript_prefix_hashes.contains(signed_transcript_hash) {
@@ -1595,6 +1673,25 @@ fn verify_signature_entry(
             reason: "required when transcript is non-empty".to_string(),
         });
     }
+    let metadata_fields: Vec<String> = signature
+        .get("fields")
+        .and_then(Value::as_array)
+        .ok_or_else(|| JacsError::DocumentMalformed {
+            field: "agreementSignatures[].signature.fields".to_string(),
+            reason: "missing or invalid fields".to_string(),
+        })?
+        .iter()
+        .filter_map(|field| field.as_str().map(str::to_string))
+        .collect();
+    for required_field in &fields {
+        if !metadata_fields.iter().any(|field| field == required_field) {
+            return Err(JacsError::DocumentMalformed {
+                field: "agreementSignatures[].signature.fields".to_string(),
+                reason: format!("missing signed field '{}'", required_field),
+            });
+        }
+    }
+    fields = metadata_fields;
 
     let (public_key, public_key_type, public_key_hash) =
         resolve_signature_public_key(agent, signature)?;
@@ -1982,6 +2079,91 @@ fn policy_count(document: &Value, field: &str) -> usize {
         .and_then(|policy| policy.get(field))
         .and_then(Value::as_u64)
         .unwrap_or(0) as usize
+}
+
+fn signature_policy_past_point_of_reliance(document: &Value) -> bool {
+    if matches!(
+        document.get("status").and_then(Value::as_str),
+        Some("proposed" | "partially_signed")
+    ) {
+        return true;
+    }
+
+    let has_signatures = document
+        .get("agreementSignatures")
+        .and_then(Value::as_array)
+        .map(|signatures| !signatures.is_empty())
+        .unwrap_or(false);
+    let has_previous_versions = document
+        .get("allPreviousVersions")
+        .and_then(Value::as_array)
+        .map(|versions| !versions.is_empty())
+        .unwrap_or(false);
+
+    has_signatures || has_previous_versions
+}
+
+fn signature_policy_is_weaker(
+    old_doc: &Value,
+    new_policy: &Value,
+    current_doc_for_signer_total: &Value,
+) -> bool {
+    let (signer_total, _, _) = party_role_totals(current_doc_for_signer_total);
+    let mut new_doc = current_doc_for_signer_total.clone();
+    new_doc["signaturePolicy"] = new_policy.clone();
+
+    let old_party_quorum = party_quorum_required(old_doc, signer_total);
+    let new_party_quorum = party_quorum_required(&new_doc, signer_total);
+    if new_party_quorum < old_party_quorum {
+        return true;
+    }
+    if policy_count(&new_doc, "witnessRequired") < policy_count(old_doc, "witnessRequired") {
+        return true;
+    }
+    if policy_count(&new_doc, "notaryRequired") < policy_count(old_doc, "notaryRequired") {
+        return true;
+    }
+
+    let strength_rank = |document: &Value| {
+        document
+            .get("signaturePolicy")
+            .and_then(|policy| policy.get("minimumStrength"))
+            .and_then(Value::as_str)
+            .and_then(|strength| {
+                MINIMUM_STRENGTHS
+                    .iter()
+                    .position(|allowed| *allowed == strength)
+                    .map(|index| index as isize)
+            })
+            .unwrap_or(-1)
+    };
+    if strength_rank(&new_doc) < strength_rank(old_doc) {
+        return true;
+    }
+
+    let algorithm_set = |document: &Value| {
+        document
+            .get("signaturePolicy")
+            .and_then(|policy| policy.get("requiredAlgorithms"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(ToString::to_string)
+            .collect::<HashSet<_>>()
+    };
+    let old_algorithms = algorithm_set(old_doc);
+    if !old_algorithms.is_empty() {
+        let new_algorithms = algorithm_set(&new_doc);
+        if new_algorithms.is_empty()
+            || (old_algorithms.is_subset(&new_algorithms)
+                && new_algorithms.len() > old_algorithms.len())
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn party_quorum_required(document: &Value, signer_total: usize) -> usize {

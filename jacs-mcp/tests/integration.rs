@@ -482,6 +482,11 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
     assert_eq!(verify_result["success"], true, "{}", verify_result);
     assert_eq!(verify_result["result"]["valid"], true, "{}", verify_result);
     assert_eq!(
+        verify_result["valid"], true,
+        "valid agreement must report top-level valid=true: {}",
+        verify_result
+    );
+    assert_eq!(
         verify_result["result"]["expectedStatus"],
         serde_json::json!("final")
     );
@@ -589,6 +594,88 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
             "jacsId": right_terms["jacsId"],
             "jacsVersion": right_terms["jacsVersion"]
         })
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
+}
+
+#[tokio::test]
+async fn mcp_verify_agreement_v2_surfaces_invalid_verdict() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
+
+    let created_result = session
+        .call_tool(
+            "jacs_create_agreement_v2",
+            serde_json::json!({ "input": agreement_v2_input(&agent_id) }),
+        )
+        .await?;
+    assert_eq!(created_result["success"], true, "{}", created_result);
+    let created = created_result["agreement"]
+        .as_str()
+        .expect("created agreement")
+        .to_string();
+
+    let signed_result = session
+        .call_tool(
+            "jacs_sign_agreement_v2",
+            serde_json::json!({ "agreement": created, "role": "signer" }),
+        )
+        .await?;
+    assert_eq!(signed_result["success"], true, "{}", signed_result);
+    let signed = signed_result["agreement"]
+        .as_str()
+        .expect("signed agreement")
+        .to_string();
+
+    // Tamper with the signed agreement so the recomputed hash no longer matches.
+    let mut tampered: serde_json::Value =
+        serde_json::from_str(&signed).expect("parse signed agreement");
+    assert!(
+        tampered.get("terms").is_some(),
+        "signed agreement must include top-level terms: {}",
+        tampered
+    );
+    tampered["terms"] = serde_json::json!("tampered terms that break the hash");
+
+    let verify_result = session
+        .call_tool(
+            "jacs_verify_agreement_v2",
+            serde_json::json!({ "agreement": tampered.to_string() }),
+        )
+        .await?;
+
+    // The verdict MUST be surfaced UNAMBIGUOUSLY at the top level: a caller can
+    // read `valid` directly and cannot be fooled by a bare `success:true`.
+    // A tampered (post-signing) agreement fails the JACS content-hash check at
+    // load time, so verification reports the failure as success:false AND
+    // valid:false (fail closed) with an explicit error and no nested report.
+    assert_eq!(
+        verify_result["valid"], false,
+        "tampered agreement must report top-level valid=false: {}",
+        verify_result
+    );
+    assert_eq!(
+        verify_result["success"], false,
+        "tampered agreement that fails the hash check must report success=false: {}",
+        verify_result
+    );
+    assert!(
+        verify_result["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("verify"),
+        "tampered agreement must carry an explicit error message: {}",
+        verify_result
+    );
+    // The old fail-open shape (success:true with no/ignored verdict) must be impossible.
+    assert_ne!(
+        verify_result["valid"],
+        serde_json::Value::Null,
+        "top-level valid must never be absent/null: {}",
+        verify_result
     );
 
     session.client.cancellation_token().cancel();

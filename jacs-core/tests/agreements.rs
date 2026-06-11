@@ -215,3 +215,52 @@ fn agreements_single_party_sign_and_verify_ok() {
     let outcome = agreements::verify(&doc, &signers).expect("verify");
     assert!(outcome.all_valid);
 }
+
+#[test]
+fn v2_transplanted_signature_from_other_agreement_is_rejected() {
+    let mut a = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let id_a = a
+        .export_agent()
+        .get("jacsId")
+        .and_then(|v| v.as_str())
+        .unwrap()
+        .to_string();
+    let pk_a = a.public_key().to_vec();
+
+    let input = json!({
+        "title": "Replay test",
+        "description": "Identical consent fields across two agreements.",
+        "terms": "Terms.",
+        "termsFormat": "text/plain",
+        "parties": [{"agentId": id_a, "agentType": "ai", "role": "signer"}],
+        "signaturePolicy": {"partyQuorum": "all"},
+        "controllers": [id_a]
+    });
+
+    let agreement_a = agreements::v2::create(&mut a, &input).expect("create A");
+    let agreement_b = agreements::v2::create(&mut a, &input).expect("create B");
+
+    assert_ne!(agreement_a["jacsId"], agreement_b["jacsId"]);
+    assert_eq!(
+        agreement_a["jacsAgreementHash"],
+        agreement_b["jacsAgreementHash"]
+    );
+
+    let signed_a = agreements::v2::sign(&mut a, &agreement_a, "signer").expect("sign A");
+    let transplanted = signed_a["agreementSignatures"][0].clone();
+
+    let mut tampered_b = agreement_b.clone();
+    tampered_b["agreementSignatures"]
+        .as_array_mut()
+        .expect("agreementSignatures array")
+        .push(transplanted);
+    tampered_b["status"] = json!("final");
+
+    let signers: Vec<(&str, &[u8], SigningAlgorithm)> =
+        vec![(id_a.as_str(), pk_a.as_slice(), SigningAlgorithm::Ed25519)];
+    let report = agreements::v2::verify(&tampered_b, &signers).expect("verify B");
+
+    assert_eq!(report["valid"], json!(false));
+    assert_eq!(report["signerCount"], json!(0));
+    assert_eq!(report["signatures"][0]["valid"], json!(false));
+}

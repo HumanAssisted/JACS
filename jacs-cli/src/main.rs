@@ -643,6 +643,19 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 let mut agent: Agent = load_agent().expect("Failed to load agent from config");
                 let report = jacs::agreements::v2::verify_with_agent(&mut agent, &agreement)?;
                 print_json_pretty(&report)?;
+                if !report.valid {
+                    let agreement_id = serde_json::from_str::<serde_json::Value>(&agreement)
+                        .ok()
+                        .and_then(|v| v.get("jacsId").and_then(|id| id.as_str()).map(String::from))
+                        .unwrap_or_else(|| "unknown".to_string());
+                    tracing::warn!(
+                        event = "agreement_v2_verify_invalid",
+                        agreement_id = %agreement_id,
+                        errors = ?report.errors,
+                        "agreement v2 verification failed"
+                    );
+                    process::exit(1);
+                }
             }
             Some(("detect-conflict", sub_m)) => {
                 let base = read_json_arg(sub_m.get_one::<String>("base").unwrap())?;

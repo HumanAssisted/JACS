@@ -135,6 +135,8 @@ fn export_agent_returns_json_with_jacs_id() {
 fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
     let handle = create_ephemeral("ed25519").expect("create");
     let agent_id = wasm_agent_id(&handle);
+    let pk_b64 = handle.get_public_key_base64().expect("pk b64");
+    let signers_json = wasm_agreement_v2_signers_json(&agent_id, &pk_b64);
 
     let created = handle
         .create_agreement_v2_json(&wasm_agreement_v2_input(&agent_id).to_string())
@@ -143,12 +145,52 @@ fn agreement_v2_create_sign_verify_round_trips_on_wasm_handle() {
         .sign_agreement_v2_json(&created, "signer")
         .expect("sign agreement v2");
     let report_json = handle
-        .verify_agreement_v2_json(&signed)
+        .verify_agreement_v2_json(&signed, &signers_json)
         .expect("verify agreement v2");
     let report: Value = serde_json::from_str(&report_json).unwrap();
     assert_eq!(report["valid"], Value::Bool(true));
     assert_eq!(report["status"], Value::String("final".to_string()));
     assert_eq!(report["signerCount"], Value::from(1));
+    assert_eq!(
+        report["verificationDepth"],
+        Value::String("cryptographic".to_string())
+    );
+}
+
+#[test]
+fn agreement_v2_forged_signature_is_rejected_and_not_counted() {
+    use base64::Engine as _;
+
+    let handle = create_ephemeral("ed25519").expect("create");
+    let agent_id = wasm_agent_id(&handle);
+    let pk_b64 = handle.get_public_key_base64().expect("pk b64");
+    let signers_json = wasm_agreement_v2_signers_json(&agent_id, &pk_b64);
+
+    let created = handle
+        .create_agreement_v2_json(&wasm_agreement_v2_input(&agent_id).to_string())
+        .expect("create agreement v2");
+    let signed = handle
+        .sign_agreement_v2_json(&created, "signer")
+        .expect("sign agreement v2");
+    let mut forged: Value = serde_json::from_str(&signed).expect("signed agreement json");
+    let mut forged_entry = forged["agreementSignatures"][0].clone();
+    forged_entry["signature"]["signature"] =
+        json!(base64::engine::general_purpose::STANDARD.encode([0u8; 64]));
+    forged["agreementSignatures"] = json!([forged_entry]);
+    forged["status"] = json!("final");
+
+    let report_json = handle
+        .verify_agreement_v2_json(&forged.to_string(), &signers_json)
+        .expect("verify forged agreement v2");
+    let report: Value = serde_json::from_str(&report_json).unwrap();
+    assert_eq!(report["valid"], Value::Bool(false));
+    assert_eq!(report["signerCount"], Value::from(0));
+    assert_eq!(report["signatures"][0]["agentID"], Value::String(agent_id));
+    assert_eq!(
+        report["signatures"][0]["role"],
+        Value::String("signer".to_string())
+    );
+    assert_eq!(report["signatures"][0]["valid"], Value::Bool(false));
 }
 
 fn wasm_agent_id(handle: &CoreAgentHandle) -> String {
@@ -168,6 +210,15 @@ fn wasm_agreement_v2_input(agent_id: &str) -> Value {
     ]);
     input["controllers"] = json!([agent_id]);
     input
+}
+
+fn wasm_agreement_v2_signers_json(agent_id: &str, public_key_base64: &str) -> String {
+    json!([{
+        "agentId": agent_id,
+        "publicKeyBase64": public_key_base64,
+        "algorithm": "ed25519"
+    }])
+    .to_string()
 }
 
 fn wasm_transcript_ref(name: &str) -> Value {

@@ -542,16 +542,47 @@ impl CoreAgentHandle {
         })
     }
 
-    /// Verify agreement v2 hash/status/transcript invariants. Crypto key lookup is native-layer.
+    /// Verify agreement v2 hash/status/transcript invariants and every
+    /// agreement signature against the supplied signer keys.
     #[wasm_bindgen(js_name = verifyAgreementV2Json)]
-    pub fn verify_agreement_v2_json(&self, agreement_json: &str) -> Result<String, JsError> {
+    pub fn verify_agreement_v2_json(
+        &self,
+        agreement_json: &str,
+        signers_json: &str,
+    ) -> Result<String, JsError> {
         let document: Value = serde_json::from_str(agreement_json).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "invalid agreement v2 JSON: {}",
                 e
             )))
         })?;
-        let report = agreements::v2::verify(&document).map_err(map_core_err)?;
+        let signer_specs: Vec<SignerSpec> = serde_json::from_str(signers_json).map_err(|e| {
+            map_core_err(CoreError::MalformedDocument(format!(
+                "invalid signers JSON (expected `[{{agentId, publicKeyBase64, algorithm}}]`): {}",
+                e
+            )))
+        })?;
+
+        let mut decoded: Vec<(String, Vec<u8>, SigningAlgorithm)> =
+            Vec::with_capacity(signer_specs.len());
+        for spec in signer_specs {
+            let algo = parse_algorithm(&spec.algorithm)?;
+            let pk = base64::engine::general_purpose::STANDARD
+                .decode(spec.public_key_base64.as_bytes())
+                .map_err(|e| {
+                    map_core_err(CoreError::MalformedKey(format!(
+                        "invalid base64 public key for signer '{}': {}",
+                        spec.agent_id, e
+                    )))
+                })?;
+            decoded.push((spec.agent_id, pk, algo));
+        }
+        let signers_ref: Vec<(&str, &[u8], SigningAlgorithm)> = decoded
+            .iter()
+            .map(|(id, pk, algo)| (id.as_str(), pk.as_slice(), *algo))
+            .collect();
+
+        let report = agreements::v2::verify(&document, &signers_ref).map_err(map_core_err)?;
         serde_json::to_string(&report).map_err(|e| {
             map_core_err(CoreError::MalformedDocument(format!(
                 "serialize agreement v2 report: {}",
