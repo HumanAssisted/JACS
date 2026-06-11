@@ -938,10 +938,18 @@ fn resolve_keys_base_url() -> String {
 /// Used both for the initial base URL and for every redirect hop so a
 /// redirect cannot move the request to an off-policy host/scheme.
 #[cfg(not(target_arch = "wasm32"))]
-fn is_key_url_in_policy(url: &str) -> bool {
-    url.starts_with("https://")
-        || url.starts_with("http://localhost")
-        || url.starts_with("http://127.0.0.1")
+fn is_key_url_in_policy(url_str: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(url_str) else {
+        return false;
+    };
+    match u.scheme() {
+        "https" => true,
+        "http" => matches!(
+            u.host_str(),
+            Some("localhost") | Some("127.0.0.1") | Some("[::1]")
+        ),
+        _ => false,
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1411,12 +1419,24 @@ CDEF
         fn test_is_key_url_in_policy_allows_loopback_http() {
             assert!(is_key_url_in_policy("http://localhost:8080/jacs/v1/agents"));
             assert!(is_key_url_in_policy("http://127.0.0.1/jacs/v1/agents"));
+            assert!(is_key_url_in_policy("http://127.0.0.1/k"));
+            assert!(is_key_url_in_policy("http://[::1]/k"));
+        }
+
+        #[test]
+        fn test_is_key_url_in_policy_rejects_loopback_prefix_bypass() {
+            assert!(!is_key_url_in_policy("http://localhost.evil.com"));
+            assert!(!is_key_url_in_policy("http://127.0.0.1.evil.com"));
+            assert!(!is_key_url_in_policy("http://localhost.attacker.com:80/x"));
         }
 
         #[test]
         fn test_off_policy_redirect_target_rejected() {
             assert!(!is_key_url_in_policy("http://evil.example/jacs/v1/agents"));
             assert!(!is_key_url_in_policy("ftp://evil.example/jacs/v1/agents"));
+            assert!(!is_key_url_in_policy("ftp://localhost/x"));
+            assert!(!is_key_url_in_policy("file:///etc/passwd"));
+            assert!(!is_key_url_in_policy("not a url"));
         }
 
         #[test]
