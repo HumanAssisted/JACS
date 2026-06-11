@@ -225,36 +225,50 @@ export interface ExtractMediaOpts {
     /** PRD §3.2 wire form. */
     rawPayload?: boolean;
 }
+/**
+ * Named roles accepted by {@link signAgreementV2}. The methods still accept the
+ * raw lowercase strings; these symbols document the allowed values.
+ */
 export type AgreementV2Role = 'signer' | 'witness' | 'notary';
+/** Constant accessor for the {@link AgreementV2Role} values. */
 export declare const AgreementV2Role: {
-  readonly SIGNER: 'signer';
-  readonly WITNESS: 'witness';
-  readonly NOTARY: 'notary';
+    readonly SIGNER: "signer";
+    readonly WITNESS: "witness";
+    readonly NOTARY: "notary";
 };
+/**
+ * Shape of the JSON object returned (as a string, or parsed for the `verify*`
+ * variants) by {@link verifyAgreementV2}. Field names are camelCase to match
+ * the wire format emitted by the Rust verifier.
+ */
 export interface AgreementV2VerificationReport {
-  valid: boolean;
-  status: string;
-  expectedStatus: string;
-  recomputedAgreementHash: string;
-  recomputedTranscriptHash: string;
-  signerCount: number;
-  witnessCount: number;
-  notaryCount: number;
-  verifiedChainDepth?: number;
-  chainFullyVerified?: boolean;
-  errors?: string[];
-  notes?: string[];
+    valid: boolean;
+    status: string;
+    expectedStatus: string;
+    recomputedAgreementHash: string;
+    recomputedTranscriptHash: string;
+    signerCount: number;
+    witnessCount: number;
+    notaryCount: number;
+    verifiedChainDepth?: number;
+    chainFullyVerified?: boolean;
+    errors?: string[];
+    notes?: string[];
 }
+/**
+ * Shape of the branch/merge analysis returned by
+ * {@link detectAgreementV2BranchConflict}.
+ */
 export interface AgreementV2MergeAnalysis {
-  sameDocument: boolean;
-  sameParent: boolean;
-  autoMergeable: boolean;
-  conflictFields?: string[];
-  leftChangedFields?: string[];
-  rightChangedFields?: string[];
-  leftTranscriptAdditions: number;
-  rightTranscriptAdditions: number;
-  errors?: string[];
+    sameDocument: boolean;
+    sameParent: boolean;
+    autoMergeable: boolean;
+    conflictFields?: string[];
+    leftChangedFields?: string[];
+    rightChangedFields?: string[];
+    leftTranscriptAdditions: number;
+    rightTranscriptAdditions: number;
+    errors?: string[];
 }
 export declare function createAgreementV2(input: any): Promise<string>;
 export declare function createAgreementV2Sync(input: any): string;
@@ -264,11 +278,21 @@ export declare function signAgreementV2(document: any, role?: string): Promise<s
 export declare function signAgreementV2Sync(document: any, role?: string): string;
 export declare function verifyAgreementV2(document: any): Promise<any>;
 export declare function verifyAgreementV2Sync(document: any): any;
+/**
+ * Convenience wrapper over {@link verifyAgreementV2} that types the parsed
+ * report. Identical runtime behaviour; only the static type is narrowed.
+ */
 export declare function verifyAgreementV2Typed(document: any): Promise<AgreementV2VerificationReport>;
+/** Sync variant of {@link verifyAgreementV2Typed}. */
 export declare function verifyAgreementV2TypedSync(document: any): AgreementV2VerificationReport;
 export declare function detectAgreementV2BranchConflict(base: any, left: any, right: any): Promise<any>;
 export declare function detectAgreementV2BranchConflictSync(base: any, left: any, right: any): any;
+/**
+ * Convenience wrapper over {@link detectAgreementV2BranchConflict} that types
+ * the parsed analysis. Identical runtime behaviour.
+ */
 export declare function detectAgreementV2BranchConflictTyped(base: any, left: any, right: any): Promise<AgreementV2MergeAnalysis>;
+/** Sync variant of {@link detectAgreementV2BranchConflictTyped}. */
 export declare function detectAgreementV2BranchConflictTypedSync(base: any, left: any, right: any): AgreementV2MergeAnalysis;
 export declare function mergeAgreementV2TranscriptBranches(base: any, left: any, right: any): Promise<string>;
 export declare function mergeAgreementV2TranscriptBranchesSync(base: any, left: any, right: any): string;
