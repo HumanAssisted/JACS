@@ -59,8 +59,10 @@ Use these commands when two agents emit successor versions from the same prior v
 ```bash
 jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
 jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
-jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side-branch right.json --mutation resolution.json
 ```
+
+> `--side-branch` is the current flag for the divergent branch; the older `--side` still works as a hidden alias.
 
 Transcript-only branches can auto-merge. Terms, party, policy, status, signature, controller, or link conflicts require explicit resolution.
 

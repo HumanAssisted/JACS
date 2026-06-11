@@ -687,7 +687,10 @@ pub fn main() -> Result<(), Box<dyn Error>> {
                 )?;
                 print_json_pretty(&doc.value)?;
             }
-            _ => println!("please enter subcommand see jacs agreement-v2 --help"),
+            _ => {
+                eprintln!("No agreement-v2 subcommand given. Run `jacs agreement-v2 --help`.");
+                process::exit(2);
+            }
         },
         #[cfg(not(feature = "agreements"))]
         Some(("agreement-v2", _)) => {

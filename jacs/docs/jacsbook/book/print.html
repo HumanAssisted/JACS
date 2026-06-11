@@ -15628,6 +15628,43 @@ jacs document extract -d ./documents/
 <p><strong>Usage:</strong></p>
 <pre><code class="language-bash">jacs document sign-agreement [OPTIONS]
 </code></pre>
+<h3 id="jacs-agreement-v2"><a class="header" href="#jacs-agreement-v2"><code>jacs agreement-v2</code></a></h3>
+<p>Standalone agreement v2 documents are the recommended consent workflow. Each is a self-contained, cryptographically signed <code>jacsType: "agreement"</code> artifact — terms, parties, signature policy (quorum, required roles), an optional transcript, links, controllers, and owners — with its own content hash and version chain. Running <code>jacs agreement-v2</code> with no subcommand prints help and exits non-zero.</p>
+<p>Typical order: <strong>create → sign → verify</strong>. Use <code>apply</code> to evolve an agreement via a typed mutation; use the branch commands when two agents diverge from the same prior version.</p>
+<h4 id="jacs-agreement-v2-create"><a class="header" href="#jacs-agreement-v2-create"><code>jacs agreement-v2 create</code></a></h4>
+<p>Create a standalone agreement v2 document from a <code>CreateAgreementV2</code> JSON input.</p>
+<pre><code class="language-bash">jacs agreement-v2 create --input &lt;CreateAgreementV2 JSON | path | -&gt;
+</code></pre>
+<h4 id="jacs-agreement-v2-sign"><a class="header" href="#jacs-agreement-v2-sign"><code>jacs agreement-v2 sign</code></a></h4>
+<p>Add this agent's signature as a <code>signer</code>, <code>witness</code>, or <code>notary</code>.</p>
+<pre><code class="language-bash">jacs agreement-v2 sign --agreement &lt;JSON | path | -&gt; [--role signer|witness|notary]
+</code></pre>
+<p><code>--role</code> defaults to <code>signer</code>.</p>
+<h4 id="jacs-agreement-v2-verify"><a class="header" href="#jacs-agreement-v2-verify"><code>jacs agreement-v2 verify</code></a></h4>
+<p>Recompute the agreement and transcript hashes and re-check quorum, roles, status, and every signature. Exits non-zero when the agreement is invalid.</p>
+<pre><code class="language-bash">jacs agreement-v2 verify --agreement &lt;JSON | path | -&gt;
+</code></pre>
+<h4 id="jacs-agreement-v2-apply"><a class="header" href="#jacs-agreement-v2-apply"><code>jacs agreement-v2 apply</code></a></h4>
+<p>Apply a typed mutation (<code>appendTranscript</code>, <code>updateTerms</code>, <code>setStatus</code>, <code>addLink</code>, <code>setParties</code>, <code>setPolicy</code>, <code>setOwners</code>) and emit a successor version. Mutation fields are camelCase.</p>
+<pre><code class="language-bash">jacs agreement-v2 apply --agreement &lt;JSON | path | -&gt; --mutation &lt;mutation JSON | path&gt;
+</code></pre>
+<h4 id="jacs-agreement-v2-detect-conflict"><a class="header" href="#jacs-agreement-v2-detect-conflict"><code>jacs agreement-v2 detect-conflict</code></a></h4>
+<p>Report whether two successor versions of <code>--base</code> are transcript-only (auto-mergeable) or conflict on consent-scope fields.</p>
+<pre><code class="language-bash">jacs agreement-v2 detect-conflict --base &lt;common ancestor&gt; --left &lt;branch&gt; --right &lt;branch&gt;
+</code></pre>
+<h4 id="jacs-agreement-v2-merge-transcript"><a class="header" href="#jacs-agreement-v2-merge-transcript"><code>jacs agreement-v2 merge-transcript</code></a></h4>
+<p>Auto-merge two transcript-only branches of <code>--base</code> into one successor version.</p>
+<pre><code class="language-bash">jacs agreement-v2 merge-transcript --base &lt;common ancestor&gt; --left &lt;branch&gt; --right &lt;branch&gt;
+</code></pre>
+<h4 id="jacs-agreement-v2-resolve-conflict"><a class="header" href="#jacs-agreement-v2-resolve-conflict"><code>jacs agreement-v2 resolve-conflict</code></a></h4>
+<p>Resolve a consent-scope conflict by rebasing an explicit mutation onto <code>--previous</code>; the divergent <code>--side-branch</code> is recorded as a link on the result.</p>
+<pre><code class="language-bash">jacs agreement-v2 resolve-conflict \
+  --base &lt;common ancestor&gt; \
+  --previous &lt;branch you keep&gt; \
+  --side-branch &lt;divergent branch&gt; \
+  --mutation &lt;resolving mutation JSON | path&gt;
+</code></pre>
+<p><code>--side-branch</code> replaces the older <code>--side</code> flag; <code>--side</code> still works as a hidden alias for backward compatibility.</p>
 <h2 id="provenance-commands"><a class="header" href="#provenance-commands">Provenance Commands</a></h2>
 <p>The provenance commands sign and verify content <strong>in place</strong> — text files keep a YAML-bodied signature block at the end of the file, images carry the signature in a metadata chunk. See the <a href="reference/../guides/inline-text-signing.html">Inline Text Signatures</a> and <a href="reference/../guides/media-signing.html">Image and Media Signatures</a> guides for the full feature set.</p>
 <h3 id="jacs-sign-text"><a class="header" href="#jacs-sign-text"><code>jacs sign-text</code></a></h3>

@@ -10,16 +10,16 @@
   "tools": [
     {
       "name": "jacs_apply_agreement_v2",
-      "description": "Apply a typed agreement v2 mutation and emit a successor version. Use this to append transcript entries, revise terms, change status, set parties/policy, add links, or set owners.",
+      "description": "Apply a typed agreement v2 mutation to an existing agreement and emit a successor version (the agreement keeps a version chain). The mutation is a camelCase object whose `type` selects the operation: appendTranscript, updateTerms, setStatus, setParties, setPolicy, addLink, or setOwners. Use this to evolve an agreement instead of editing its JSON by hand. Does not add a signature -- use jacs_sign_agreement_v2 for that.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "agreement": {
-            "description": "Full agreement v2 document JSON to mutate.",
+            "description": "The full agreement v2 document JSON (the artifact returned by create or a prior apply) that this mutation is applied to. Pass the document as a JSON string.",
             "type": "string"
           },
           "mutation": {
-            "description": "AgreementV2Mutation object, e.g. {\"type\":\"appendTranscript\",\"entry\":{...}}."
+            "description": "A typed AgreementV2Mutation object (camelCase keys). The `type` selects the mutation and other fields are camelCase. Supported: {\"type\":\"appendTranscript\",\"entry\":{\"jacsId\":\"...\",\"jacsVersion\":\"...\", \"jacsSha256\":\"...\"}}, {\"type\":\"updateTerms\",\"terms\":\"...\"}, {\"type\":\"setStatus\",\"status\":\"proposed\"}, {\"type\":\"addLink\",\"link\": {\"jacsId\":\"...\",\"jacsVersion\":\"...\"}}, plus setParties/setPolicy/setOwners. Emits a successor version."
           }
         },
         "required": [
@@ -144,7 +144,7 @@
     },
     {
       "name": "jacs_check_agreement",
-      "description": "Check the status of an agreement: how many agents have signed, whether quorum is met, whether it has expired, and which agents still need to sign. Use this to decide whether an agreement is complete and ready to act on.",
+      "description": "(Legacy v1; prefer jacs_verify_agreement_v2.) Check the status of a jacsAgreement sidecar: how many agents have signed, whether quorum is met, whether it has expired, and which agents still need to sign. Use this to decide whether an agreement is complete and ready to act on.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "Parameters for checking agreement status.",
@@ -229,7 +229,7 @@
     },
     {
       "name": "jacs_create_agreement",
-      "description": "Create a multi-party cryptographic agreement. Use this when multiple agents need to formally agree on something -- like approving a deployment, authorizing a data transfer, or ratifying a decision. You specify which agents must sign, an optional quorum (e.g., 2-of-3), a timeout deadline, and algorithm constraints. Returns a signed agreement document to pass to other agents for co-signing.",
+      "description": "(Legacy v1; prefer the jacs_*_agreement_v2 tools for new workflows.) Create a multi-party cryptographic agreement attached as a jacsAgreement sidecar. Use this when multiple agents need to formally agree on something -- like approving a deployment, authorizing a data transfer, or ratifying a decision. You specify which agents must sign, an optional quorum (e.g., 2-of-3), a timeout deadline, and algorithm constraints. Returns a signed agreement document to pass to other agents for co-signing.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "Parameters for creating a multi-party agreement.",
@@ -303,12 +303,12 @@
     },
     {
       "name": "jacs_create_agreement_v2",
-      "description": "Create a standalone JACS agreement v2 document. Use this for the new intent/consent workflow: terms, parties, signature policy, transcript, links, controllers, and owners. Returns a signed agreement artifact.",
+      "description": "Create a standalone JACS agreement v2 document -- a self-contained, cryptographically signed `jacsType: \"agreement\"` artifact (terms, parties, signature policy, optional transcript, links, controllers, owners) with its own content hash and version chain. This is the recommended intent/consent workflow (preferred over the legacy jacs_create_agreement sidecar). Workflow: create -> each party signs (jacs_sign_agreement_v2) -> verify (jacs_verify_agreement_v2) before acting. Provide a CreateAgreementV2 input object with camelCase keys (title, description, terms, parties[{agentId, agentType, role}], signaturePolicy). Returns the signed artifact.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "input": {
-            "description": "CreateAgreementV2 object: title, description, terms, parties, signaturePolicy, and optional workflow fields."
+            "description": "CreateAgreementV2 input object (camelCase keys). Fields: `title` (string), `description` (string), `terms` (the agreement text the parties consent to), `parties` (array of {agentId, agentType, role} where role is one of \"signer\", \"witness\", \"notary\"), `signaturePolicy` (e.g. {\"quorum\": 2, \"requiredRoles\": [\"signer\"]}), and optional `controllers`/`owners` (arrays of agent IDs). Returns a signed `jacsType: \"agreement\"` document. Example: {\"title\":\"Deploy approval\", \"terms\":\"Approve deploying model v2\",\"parties\":[{\"agentId\":\"<uuid>\", \"agentType\":\"ai\",\"role\":\"signer\"}],\"signaturePolicy\":{\"quorum\":1}}."
           }
         },
         "required": [
@@ -320,20 +320,20 @@
     },
     {
       "name": "jacs_detect_agreement_v2_branch_conflict",
-      "description": "Analyze two agreement v2 successor versions and report whether they are transcript-only auto-mergeable or conflict on consent-scope fields.",
+      "description": "Compare two agreement v2 successor versions that branched from the same `base` and report whether they are transcript-only (auto-mergeable via jacs_merge_agreement_v2_transcript_branches) or conflict on consent-scope fields (terms, parties, policy, status, signatures), which require jacs_resolve_agreement_v2_branch_conflict.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "base": {
-            "description": "Base agreement v2 document JSON.",
+            "description": "The common-ancestor agreement v2 document JSON that both branches derive from.",
             "type": "string"
           },
           "left": {
-            "description": "Left successor agreement v2 document JSON.",
+            "description": "One successor agreement v2 document JSON branched from `base`.",
             "type": "string"
           },
           "right": {
-            "description": "Right successor agreement v2 document JSON.",
+            "description": "The other successor agreement v2 document JSON branched from `base`. The result reports whether the two branches are transcript-only (auto-mergeable) or conflict on consent-scope fields (terms, parties, policy, status, signatures).",
             "type": "string"
           }
         },
@@ -468,20 +468,20 @@
     },
     {
       "name": "jacs_merge_agreement_v2_transcript_branches",
-      "description": "Auto-merge two transcript-only agreement v2 branches and emit a successor version.",
+      "description": "Auto-merge two agreement v2 branches that differ from their common `base` only in appended transcript entries, emitting a single merged successor version. If the branches differ on consent-scope fields, this fails -- run jacs_detect_agreement_v2_branch_conflict first, then resolve explicitly.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "base": {
-            "description": "Base agreement v2 document JSON.",
+            "description": "The common-ancestor agreement v2 document JSON both branches derive from.",
             "type": "string"
           },
           "left": {
-            "description": "Left successor agreement v2 document JSON.",
+            "description": "One transcript-only successor agreement v2 document JSON branched from `base`.",
             "type": "string"
           },
           "right": {
-            "description": "Right successor agreement v2 document JSON.",
+            "description": "The other transcript-only successor agreement v2 document JSON branched from `base`. Both branches must differ from base only in appended transcript entries; otherwise use detect-conflict then resolve-conflict. Emits a merged successor version.",
             "type": "string"
           }
         },
@@ -520,23 +520,23 @@
     },
     {
       "name": "jacs_resolve_agreement_v2_branch_conflict",
-      "description": "Resolve an agreement v2 branch conflict by rebasing an explicit mutation over a previous version and side branch.",
+      "description": "Resolve a conflicting agreement v2 branch by rebasing an explicit resolving mutation onto the `previous` branch you are keeping; the divergent `side_branch` is recorded as a link on the new successor version. Use this when jacs_detect_agreement_v2_branch_conflict reports a consent-scope conflict that cannot auto-merge.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "base": {
-            "description": "Base agreement v2 document JSON.",
+            "description": "The common-ancestor agreement v2 document JSON both branches derive from.",
             "type": "string"
           },
           "mutation": {
-            "description": "AgreementV2Mutation object that resolves the conflict."
+            "description": "A typed AgreementV2Mutation object (camelCase keys, same shape as jacs_apply_agreement_v2) that produces the agreed resolution, e.g. {\"type\":\"updateTerms\",\"terms\":\"reconciled terms\"}."
           },
           "previous": {
-            "description": "Previous/version-to-rebase agreement v2 document JSON.",
+            "description": "The branch you are keeping and rebasing the resolution onto (agreement v2 document JSON).",
             "type": "string"
           },
           "side_branch": {
-            "description": "Side-branch agreement v2 document JSON.",
+            "description": "The divergent branch whose changes are being reconciled (agreement v2 document JSON). It is recorded as a link on the resolved successor version.",
             "type": "string"
           }
         },
@@ -661,7 +661,7 @@
     },
     {
       "name": "jacs_sign_agreement",
-      "description": "Co-sign an existing agreement. Use this after receiving an agreement document from another agent. Your cryptographic signature is added to the agreement. The updated document can then be passed to the next signer or checked for completion.",
+      "description": "(Legacy v1; prefer jacs_sign_agreement_v2.) Co-sign an existing jacsAgreement sidecar. Use this after receiving an agreement document from another agent. Your cryptographic signature is added to the agreement. The updated document can then be passed to the next signer or checked for completion.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "Parameters for signing an existing agreement.",
@@ -687,16 +687,16 @@
     },
     {
       "name": "jacs_sign_agreement_v2",
-      "description": "Add this agent's signer, witness, or notary signature to a standalone agreement v2 document.",
+      "description": "Add this agent's cryptographic signature to a standalone agreement v2 document. The `role` is one of \"signer\" (a consenting party), \"witness\" (attests it observed the signing), or \"notary\" (an authority certifying the agreement); it defaults to \"signer\". Call this once per party until the signature policy's quorum and required roles are met, then verify with jacs_verify_agreement_v2.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "agreement": {
-            "description": "Full agreement v2 document JSON to sign.",
+            "description": "The full agreement v2 document JSON to add this agent's signature to. Pass the document as a JSON string.",
             "type": "string"
           },
           "role": {
-            "description": "Signature role: signer, witness, or notary. Defaults to signer.",
+            "description": "Signature role this agent signs as. One of: \"signer\" (a consenting party), \"witness\" (attests it observed the signing), or \"notary\" (an authority that certifies the agreement). Defaults to \"signer\".",
             "type": [
               "string",
               "null"
@@ -866,12 +866,12 @@
     },
     {
       "name": "jacs_verify_agreement_v2",
-      "description": "Verify a standalone agreement v2 document's hashes, status, parties, transcript, and agreement signatures.",
+      "description": "Verify a standalone agreement v2 document: recompute the agreement and transcript hashes, re-check quorum, required roles, witness/notary requirements, status, and every agreement signature. ALWAYS read the result's top-level `valid` field (not `success`, which only means the verify ran) to decide whether to trust the agreement.",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
           "agreement": {
-            "description": "Full agreement v2 document JSON to verify.",
+            "description": "The full agreement v2 document JSON to verify. The verifier recomputes the agreement and transcript hashes, checks quorum/role/witness/notary requirements, and validates each agreement signature. Read the top-level `valid` field of the result (NOT `success`) to decide whether to trust the agreement.",
             "type": "string"
           }
         },

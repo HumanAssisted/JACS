@@ -267,19 +267,21 @@ fn agreement_v2_cli_executes_full_public_workflow() {
             created_path.to_str().unwrap(),
             "--previous",
             left_terms_path.to_str().unwrap(),
-            "--side",
+            "--side-branch",
             right_terms_path.to_str().unwrap(),
             "--mutation",
             resolution.to_str().unwrap(),
         ],
     );
     assert_eq!(resolved["terms"], json!(conflict_terms("resolved")));
+    let resolution_link = &resolved["links"][0];
     assert_eq!(
-        resolved["links"][0],
-        json!({
-            "jacsId": right_terms["jacsId"],
-            "jacsVersion": right_terms["jacsVersion"]
-        })
+        resolution_link["jacsId"], right_terms["jacsId"],
+        "resolution link must reference the side branch's jacsId"
+    );
+    assert_eq!(
+        resolution_link["jacsVersion"], right_terms["jacsVersion"],
+        "resolution link must reference the side branch's jacsVersion"
     );
 }
 
@@ -372,4 +374,104 @@ fn agreement_v2_cli_verify_exits_nonzero_on_unverifiable_signer() {
         .arg(&verifier_signed_path)
         .assert()
         .failure();
+}
+
+/// Discoverability + back-compat: bare `agreement-v2` must print help and exit
+/// non-zero (no silent stdout nudge), and `--side` must still resolve as a
+/// hidden alias for the renamed `--side-branch` flag.
+#[test]
+fn agreement_v2_bare_prints_help_and_side_alias_still_works() {
+    // Bare `jacs agreement-v2` -> non-zero exit, help on stderr.
+    let assert = cmd().args(["agreement-v2"]).assert().failure();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).to_string();
+    assert!(
+        stderr.contains("Usage") || stderr.contains("SUBCOMMAND") || stderr.contains("subcommand"),
+        "bare agreement-v2 should print help/usage to stderr, got: {stderr}"
+    );
+
+    // `--help` for resolve-conflict should advertise the renamed flag.
+    let help = cmd()
+        .args(["agreement-v2", "resolve-conflict", "--help"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let help = String::from_utf8_lossy(&help).to_string();
+    assert!(
+        help.contains("--side-branch"),
+        "resolve-conflict --help should advertise --side-branch, got: {help}"
+    );
+
+    // `--side` alias drives the same resolve-conflict workflow as `--side-branch`.
+    let dir = TempDir::new().expect("tmpdir");
+    bootstrap_agent(&dir);
+    let agent_id = configured_agent_id(&dir);
+
+    let input_path = write_json(&dir, "agreement-input.json", &base_input(&agent_id));
+    let created =
+        output_json_with_paths(&dir, &["agreement-v2", "create", "--input"], &[&input_path]);
+    let created_path = write_json(&dir, "created.json", &created);
+
+    let left_terms_mutation = write_json(
+        &dir,
+        "left-terms.json",
+        &json!({"type": "updateTerms", "terms": conflict_terms("left")}),
+    );
+    let right_terms_mutation = write_json(
+        &dir,
+        "right-terms.json",
+        &json!({"type": "updateTerms", "terms": conflict_terms("right")}),
+    );
+    let left_terms = output_json_owned(
+        &dir,
+        &[
+            "agreement-v2".to_string(),
+            "apply".to_string(),
+            "--agreement".to_string(),
+            created_path.to_string_lossy().into_owned(),
+            "--mutation".to_string(),
+            left_terms_mutation.to_string_lossy().into_owned(),
+        ],
+    );
+    let right_terms = output_json_owned(
+        &dir,
+        &[
+            "agreement-v2".to_string(),
+            "apply".to_string(),
+            "--agreement".to_string(),
+            created_path.to_string_lossy().into_owned(),
+            "--mutation".to_string(),
+            right_terms_mutation.to_string_lossy().into_owned(),
+        ],
+    );
+    let left_terms_path = write_json(&dir, "left-terms-doc.json", &left_terms);
+    let right_terms_path = write_json(&dir, "right-terms-doc.json", &right_terms);
+    let resolution = write_json(
+        &dir,
+        "resolution.json",
+        &json!({"type": "updateTerms", "terms": conflict_terms("resolved")}),
+    );
+
+    // Use the LEGACY `--side` alias here on purpose.
+    let resolved = output_json(
+        &dir,
+        &[
+            "agreement-v2",
+            "resolve-conflict",
+            "--base",
+            created_path.to_str().unwrap(),
+            "--previous",
+            left_terms_path.to_str().unwrap(),
+            "--side",
+            right_terms_path.to_str().unwrap(),
+            "--mutation",
+            resolution.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(resolved["terms"], json!(conflict_terms("resolved")));
+    assert_eq!(
+        resolved["links"][0]["jacsId"], right_terms["jacsId"],
+        "--side alias must drive resolve-conflict identically to --side-branch"
+    );
 }
