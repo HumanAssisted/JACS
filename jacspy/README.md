@@ -103,6 +103,30 @@ signed = agent.sign_agreement_v2(agreement, "signer")
 assert agent.verify_agreement_v2(signed)["valid"]
 ```
 
+The same operations are available as module-level functions once an agent is loaded (`quickstart()` / `create()` / `load()`), matching Node's `@hai.ai/jacs/simple` surface:
+
+```python
+import jacs.simple as jacs
+
+jacs.quickstart(name="my-agent", domain="agent.example.com")
+agent_id = jacs.get_agent_info().agent_id
+
+agreement = jacs.create_agreement_v2({
+    "title": "Refund approval",
+    "description": "Approval for a bounded refund.",
+    "terms": "Refund up to $25 for order 123.",
+    "status": "proposed",
+    "parties": [{"agentId": agent_id, "agentType": "ai", "role": "signer"}],
+    "signaturePolicy": {"partyQuorum": "all", "witnessRequired": 0, "notaryRequired": 0},
+    "controllers": [agent_id],
+})
+
+signed = jacs.sign_agreement_v2(agreement, "signer")
+assert jacs.verify_agreement_v2(signed)["valid"]
+```
+
+Verifying another agent's agreement signature requires that agent's public key, so distinct agents must share a `data_directory` or exchange public keys; ephemeral agents verify only their own signatures.
+
 The older `create_agreement()` / `sign_agreement()` / `check_agreement()` methods remain for simple `jacsAgreement` sidecars on existing documents.
 
 ## Framework adapters

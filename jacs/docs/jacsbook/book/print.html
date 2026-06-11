@@ -603,11 +603,33 @@ export JACS_PASSWORD_FILE=/secure/path/jacs-password.txt
 <pre><code class="language-text">Create agreement -&gt; append transcript refs -&gt; signers consent -&gt; HAI notarizes -&gt; verify final status
 </code></pre>
 <h2 id="python-2"><a class="header" href="#python-2">Python</a></h2>
-<pre><code class="language-python">from jacs import SimpleAgent
+<p>The three agents are persistent and share one <code>data_directory</code> so each can resolve the others' public keys when verifying. Independent <code>ephemeral()</code> agents keep keys in memory only and cannot verify each other's signatures.</p>
+<pre><code class="language-python">import tempfile
+from pathlib import Path
 
-agent_a, a = SimpleAgent.ephemeral(algorithm="ed25519")
-agent_b, b = SimpleAgent.ephemeral(algorithm="ed25519")
-hai, h = SimpleAgent.ephemeral(algorithm="ed25519")
+from jacs import SimpleAgent
+
+PASSWORD = "MultiAgentDemo!2026"
+workspace = Path(tempfile.mkdtemp(prefix="jacs_multi_agent_"))
+shared_data = workspace / "shared_data"  # all agents share this so keys resolve
+
+
+def make_agent(name, agent_type="ai"):
+    agent, info = SimpleAgent.create_agent(
+        name=name,
+        password=PASSWORD,
+        algorithm="ring-Ed25519",
+        data_directory=str(shared_data),
+        key_directory=str(workspace / f"{name}_keys"),
+        config_path=str(workspace / f"{name}.config.json"),
+        agent_type=agent_type,
+    )
+    return agent, info
+
+
+agent_a, a = make_agent("agent-a")
+agent_b, b = make_agent("agent-b", agent_type="human")
+hai, h = make_agent("hai-notary")
 
 agreement = agent_a.create_agreement_v2({
     "title": "Bounded refund authorization",
@@ -633,6 +655,7 @@ agreement = agent_a.sign_agreement_v2(agreement, "signer")
 agreement = agent_b.sign_agreement_v2(agreement, "signer")
 agreement = hai.sign_agreement_v2(agreement, "notary")
 
+# hai resolves agent_a's and agent_b's public keys from the shared data directory.
 report = hai.verify_agreement_v2(agreement)
 assert report["valid"]
 assert report["expectedStatus"] == "final"
@@ -11662,6 +11685,19 @@ external systems (SLSA verifiers, Sigstore) can validate independently.</p>
 <li>Verify before acting on <code>status</code>. The verifier recomputes hashes, role counts, quorum, notary/witness requirements, and transcript tamper evidence.</li>
 <li>Resolve concurrent branches in Rust core: transcript-only branches auto-merge; terms conflicts require an explicit successor mutation.</li>
 </ol>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>Before the first agreement-v2 call you need a loaded agent with keys on disk and a config:</p>
+<ul>
+<li>CLI: run <code>jacs quickstart --name my-agent --domain example.com</code> once. It creates <code>./jacs.config.json</code>, a key pair, and (if missing) a generated password under <code>./jacs_keys</code>. Set <code>JACS_PRIVATE_KEY_PASSWORD</code> or let quickstart manage it.</li>
+<li>Python / Node.js: load or create a <code>SimpleAgent</code> (<code>SimpleAgent.create_agent(...)</code> / <code>JacsSimpleAgent.create(...)</code>), or use <code>ephemeral()</code> for throwaway single-agent demos.</li>
+</ul>
+<p>Multiple distinct agents must share a <code>data_directory</code> (or exchange public keys out of band) so a verifier can resolve every signer's key. Ephemeral agents keep keys in memory only and cannot verify each other's signatures.</p>
+<h2 id="roles-quorum-and-notaries"><a class="header" href="#roles-quorum-and-notaries">Roles, Quorum, and Notaries</a></h2>
+<ul>
+<li><code>signaturePolicy.partyQuorum</code> is <code>all</code> or an integer M (M-of-N signer parties).</li>
+<li><code>witnessRequired</code> and <code>notaryRequired</code> are separate counts; a <code>notary</code> (the role HAI uses) attests the final state and is counted independently of signer quorum.</li>
+<li><code>controllers</code> lists agents allowed to emit new versions; <code>owners</code> are soft copyright claims. Keep them distinct from <code>parties</code>.</li>
+</ul>
 <h2 id="mutations"><a class="header" href="#mutations">Mutations</a></h2>
 <p>All public surfaces accept the same mutation JSON:</p>
 <pre><code class="language-json">{ "type": "appendTranscript", "entry": { "jacsId": "...", "jacsVersion": "...", "jacsSha256": "..." } }
@@ -11694,31 +11730,47 @@ report = agent.verify_agreement_v2(signed)
 assert report["valid"] is True
 </code></pre>
 <h2 id="nodejs-6"><a class="header" href="#nodejs-6">Node.js</a></h2>
-<pre><code class="language-js">const { JacsSimpleAgent } = require("jacs");
+<p>This single-agent example self-signs and self-verifies, so the agent resolves its own key. For multiple distinct agents, see the multi-agent walkthrough, which shares key storage so each agent can resolve the others' public keys.</p>
+<pre><code class="language-js">import { JacsSimpleAgent } from "@hai.ai/jacs";
 
-const agent = JacsSimpleAgent.ephemeral("ed25519");
-const agentId = agent.getAgentId();
+async function main() {
+  const agent = JacsSimpleAgent.ephemeral("ed25519");
+  const agentId = agent.getAgentId();
 
-const agreement = await agent.createAgreementV2(JSON.stringify({
-  title: "Refund approval",
-  description: "Approval for a bounded refund.",
-  terms: "Refund up to $25 for order 123.",
-  status: "proposed",
-  parties: [{ agentId, agentType: "ai", role: "signer" }],
-  signaturePolicy: { partyQuorum: "all", witnessRequired: 0, notaryRequired: 0 },
-  controllers: [agentId]
-}));
+  const agreement = await agent.createAgreementV2(JSON.stringify({
+    title: "Refund approval",
+    description: "Approval for a bounded refund.",
+    terms: "Refund up to $25 for order 123.",
+    status: "proposed",
+    parties: [{ agentId, agentType: "ai", role: "signer" }],
+    signaturePolicy: { partyQuorum: "all", witnessRequired: 0, notaryRequired: 0 },
+    controllers: [agentId],
+  }));
 
-const signed = await agent.signAgreementV2(agreement, "signer");
-const report = await agent.verifyAgreementV2(signed);
+  const signed = await agent.signAgreementV2(agreement, "signer");
+  const report = await agent.verifyAgreementV2(signed);
+  console.log("valid:", report.valid);
+}
+
+main();
 </code></pre>
 <h2 id="cli-2"><a class="header" href="#cli-2">CLI</a></h2>
-<pre><code class="language-bash">jacs agent --new
+<pre><code class="language-bash">jacs quickstart --name agent-a --domain example.com
 jacs agreement-v2 create --input agreement-input.json &gt; agreement.json
 jacs agreement-v2 sign --agreement agreement.json --role signer &gt; signed.json
 jacs agreement-v2 verify --agreement signed.json
 </code></pre>
 <p>For branch handling:</p>
+<pre><code class="language-bash">jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
+jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
+jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
+</code></pre>
+<h2 id="branch-merge-and-conflicts"><a class="header" href="#branch-merge-and-conflicts">Branch Merge and Conflicts</a></h2>
+<p>Two agents can emit successor versions from the same prior version. Resolve them in core, never by editing JSON by hand:</p>
+<ul>
+<li>Transcript-only branches (each side only appended transcript entries) auto-merge. Detect with <code>detect-conflict</code>, then <code>merge-transcript</code>.</li>
+<li>Any terms, party, policy, status, signature, controller, or link divergence is a real conflict and requires an explicit successor via <code>resolve-conflict</code> (CLI) or <code>resolveAgreementV2BranchConflict</code> / <code>resolve_agreement_v2_branch_conflict</code> (Node/Python).</li>
+</ul>
 <pre><code class="language-bash">jacs agreement-v2 detect-conflict --base base.json --left left.json --right right.json
 jacs agreement-v2 merge-transcript --base base.json --left left.json --right right.json
 jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side right.json --mutation resolution.json
@@ -11770,11 +11822,17 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 </tbody></table>
 </div>
 <p>The fixture <code>binding-core/tests/fixtures/agreement_v2_scenarios.json</code> is the portable workflow source of truth. Update it when an exposed workflow changes so every binding stays aligned.</p>
+<h2 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h2>
+<ul>
+<li><code>report.valid</code> is false with a signature error: the verifier could not resolve a signer's key. Confirm all agents share a <code>data_directory</code>, or that the signer published a reachable public key.</li>
+<li>"outsider" rejection on sign/apply: the acting agent is not listed in <code>parties</code> with the matching role. Add it to <code>parties</code> (and to <code>controllers</code> for mutations).</li>
+<li>Status looks wrong: treat stored <code>status</code> as a cache and always call verify; the report carries the recomputed <code>expectedStatus</code>.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="tutorial-add-attestations-to-your-workflow"><a class="header" href="#tutorial-add-attestations-to-your-workflow">Tutorial: Add Attestations to Your Workflow</a></h1>
 <p>This step-by-step tutorial walks you through adding attestation support to an
 existing JACS workflow. You'll go from basic signing to full attestation
 creation and verification in under 5 minutes.</p>
-<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<h2 id="prerequisites-1"><a class="header" href="#prerequisites-1">Prerequisites</a></h2>
 <ul>
 <li>JACS installed (Python, Node.js, or CLI)</li>
 <li>Attestation feature enabled (built with <code>--features attestation</code>)</li>
@@ -16504,7 +16562,7 @@ returned by <code>verify_attestation()</code> and <code>verify_attestation_full(
 <li>Network: Optional (for remote evidence resolution)</li>
 <li>Use for: Audit trails, compliance, trust decisions</li>
 </ul>
-<h2 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h2>
+<h2 id="troubleshooting-5"><a class="header" href="#troubleshooting-5">Troubleshooting</a></h2>
 <h3 id="valid-is-false-but-crypto-shows-all-true"><a class="header" href="#valid-is-false-but-crypto-shows-all-true">"valid is false but crypto shows all true"</a></h3>
 <p>The <code>valid</code> field aggregates all sub-checks. If <code>crypto</code> passes but evidence
 or chain checks fail, <code>valid</code> will be <code>false</code>. Check the <code>evidence</code> and

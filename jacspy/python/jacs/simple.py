@@ -816,6 +816,111 @@ def check_agreement(
         raise JacsError(f"Failed to check agreement: {e}")
 
 
+def _v2_doc_to_str(document):
+    """Normalize a document arg (JSON string, dict, or SignedDocument) to a JSON string."""
+    if isinstance(document, SignedDocument):
+        return document.raw_json
+    if isinstance(document, dict):
+        return json.dumps(document)
+    return document
+
+
+def create_agreement_v2(agreement_input: Union[str, dict]) -> str:
+    """Create a standalone Agreement v2 document and return its signed JSON.
+
+    Mirrors Node's module-level ``createAgreementV2``. The agent must be loaded
+    (``quickstart`` / ``create`` / ``load``) before calling.
+
+    Args:
+        agreement_input: A ``CreateAgreementV2`` payload as a dict or JSON string.
+
+    Returns:
+        The signed agreement document as a JSON string.
+    """
+    agent = _get_simple_agent()
+    try:
+        return agent.create_agreement_v2(agreement_input)
+    except Exception as e:
+        raise JacsError(f"Failed to create agreement v2: {e}")
+
+
+def apply_agreement_v2(document: Union[str, dict, SignedDocument], mutation: Union[str, dict]) -> str:
+    """Apply an Agreement v2 mutation and return the successor document JSON."""
+    agent = _get_simple_agent()
+    try:
+        return agent.apply_agreement_v2(_v2_doc_to_str(document), mutation)
+    except Exception as e:
+        raise JacsError(f"Failed to apply agreement v2 mutation: {e}")
+
+
+def sign_agreement_v2(document: Union[str, dict, SignedDocument], role: str = "signer") -> str:
+    """Add this agent's ``signer``, ``witness``, or ``notary`` agreement signature."""
+    agent = _get_simple_agent()
+    try:
+        return agent.sign_agreement_v2(_v2_doc_to_str(document), role)
+    except Exception as e:
+        raise JacsError(f"Failed to sign agreement v2: {e}")
+
+
+def verify_agreement_v2(document: Union[str, dict, SignedDocument]) -> dict:
+    """Verify Agreement v2 hash, policy, transcript, roles, status, and signatures.
+
+    Returns the verification report as a dict (keys include ``valid``,
+    ``expectedStatus``, ``signerCount``, ``notaryCount``).
+    """
+    agent = _get_simple_agent()
+    try:
+        return agent.verify_agreement_v2(_v2_doc_to_str(document))
+    except Exception as e:
+        raise JacsError(f"Failed to verify agreement v2: {e}")
+
+
+def detect_agreement_v2_branch_conflict(
+    base: Union[str, dict, SignedDocument],
+    left: Union[str, dict, SignedDocument],
+    right: Union[str, dict, SignedDocument],
+) -> dict:
+    """Analyze whether two successor versions are transcript-only mergeable."""
+    agent = _get_simple_agent()
+    try:
+        return agent.detect_agreement_v2_branch_conflict(
+            _v2_doc_to_str(base), _v2_doc_to_str(left), _v2_doc_to_str(right)
+        )
+    except Exception as e:
+        raise JacsError(f"Failed to analyze agreement v2 branches: {e}")
+
+
+def merge_agreement_v2_transcript_branches(
+    base: Union[str, dict, SignedDocument],
+    left: Union[str, dict, SignedDocument],
+    right: Union[str, dict, SignedDocument],
+) -> str:
+    """Auto-merge two transcript-only branches and return the merged document JSON."""
+    agent = _get_simple_agent()
+    try:
+        return agent.merge_agreement_v2_transcript_branches(
+            _v2_doc_to_str(base), _v2_doc_to_str(left), _v2_doc_to_str(right)
+        )
+    except Exception as e:
+        raise JacsError(f"Failed to merge agreement v2 transcript branches: {e}")
+
+
+def resolve_agreement_v2_branch_conflict(
+    base: Union[str, dict, SignedDocument],
+    previous: Union[str, dict, SignedDocument],
+    side: Union[str, dict, SignedDocument],
+    mutation: Union[str, dict],
+) -> str:
+    """Resolve a conflicting branch by applying an explicit resolution mutation."""
+    agent = _get_simple_agent()
+    try:
+        return agent.resolve_agreement_v2_branch_conflict(
+            _v2_doc_to_str(base), _v2_doc_to_str(previous), _v2_doc_to_str(side), mutation
+        )
+    except Exception as e:
+        raise JacsError(f"Failed to resolve agreement v2 branch conflict: {e}")
+
+
 def sign_message(data: Any) -> SignedDocument:
     """Sign arbitrary data as a JACS message.
 
@@ -1691,6 +1796,14 @@ __all__ = [
     "create_agreement",
     "sign_agreement",
     "check_agreement",
+    # Agreement v2 functions
+    "create_agreement_v2",
+    "apply_agreement_v2",
+    "sign_agreement_v2",
+    "verify_agreement_v2",
+    "detect_agreement_v2_branch_conflict",
+    "merge_agreement_v2_transcript_branches",
+    "resolve_agreement_v2_branch_conflict",
     # Standalone verification
     "verify_standalone",
     "verify_dns",
