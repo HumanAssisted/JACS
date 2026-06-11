@@ -5,8 +5,10 @@ use jacs::observability::convenience::{
 use jacs::observability::metrics::{increment_counter, record_histogram, set_gauge};
 use jacs::observability::{
     LogConfig, LogDestination, MetricsConfig, MetricsDestination, ObservabilityConfig,
-    ResourceConfig, SamplingConfig, TracingConfig, init_observability,
+    init_observability,
 };
+#[cfg(feature = "otlp-tracing")]
+use jacs::observability::{ResourceConfig, SamplingConfig, TracingConfig};
 use serial_test::serial;
 use std::collections::HashMap;
 use std::fs;

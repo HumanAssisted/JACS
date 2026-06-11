@@ -11,6 +11,7 @@ use crate::shared::document_create;
 use crate::shared::document_load_and_save;
 use crate::shared::document_sign_agreement;
 use std::process;
+use tracing::debug;
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_documents(
@@ -47,23 +48,29 @@ pub fn create_documents(
     // Handle attachment-only case: if files is empty but attachments provided,
     // we need to run the loop once with an empty file to create a document
     let files_to_process = if files.is_empty() && attachments.is_some() {
-        println!("DEBUG: Attachment-only mode detected, creating empty document");
+        debug!("create_documents: attachment-only mode, creating empty document");
         vec![String::new()] // Empty string will trigger "{}" document creation
     } else {
-        println!("DEBUG: Using files list: {:?}", files);
+        debug!(
+            file_count = files.len(),
+            "create_documents: using files list"
+        );
         files
     };
 
-    println!("DEBUG: Processing {} files", files_to_process.len());
+    debug!(
+        count = files_to_process.len(),
+        "create_documents: processing files"
+    );
     // iterate over filenames
     for file in &files_to_process {
-        println!("DEBUG: Processing file: '{}'", file);
+        debug!(file = %file, "create_documents: processing file");
         let document_string: String =
             if filename.is_none() && directory.is_none() && attachments.is_some() {
-                println!("DEBUG: Creating empty document string");
+                debug!("create_documents: creating empty document string");
                 "{}".to_string()
             } else if !file.is_empty() {
-                println!("DEBUG: Reading document file: {}", file);
+                debug!(file = %file, "create_documents: reading document file");
                 // Use storage to read the input document file
                 let content_bytes = storage
                     .as_ref()
@@ -76,10 +83,13 @@ pub fn create_documents(
                 eprintln!("Warning: Empty file path encountered in loop.");
                 "{}".to_string()
             };
-        println!("DEBUG: Document string: {}", document_string);
-        println!(
-            "DEBUG: Calling document_create with attachments: {:?}",
-            attachments
+        debug!(
+            bytes = document_string.len(),
+            "create_documents: prepared document string"
+        );
+        debug!(
+            has_attachments = attachments.is_some(),
+            "create_documents: calling document_create"
         );
         let result = document_create(
             agent,
@@ -91,14 +101,14 @@ pub fn create_documents(
             embed,
         )
         .expect("document_create");
-        println!(
-            "DEBUG: document_create succeeded, result length: {}",
-            result.len()
+        debug!(
+            result_len = result.len(),
+            "create_documents: document_create succeeded"
         );
         if no_save {
             println!("{}", result);
         } else {
-            println!("DEBUG: Document saved (no_save=false)");
+            debug!("create_documents: document saved");
         }
     } // end iteration
 

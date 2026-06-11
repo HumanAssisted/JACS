@@ -22,6 +22,7 @@ use crate::validation::normalize_agent_id;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 const AGREEMENT_SIGNATURE_PLACEMENT: &str = "agreementSignature";
@@ -411,6 +412,25 @@ pub fn create_with_agent(
 
     let doc = agent.create_document_and_load(&document.to_string(), None, None)?;
     validate_agreement_v2_schema(&doc.value)?;
+    let created_status = doc
+        .value
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let created_party_count = doc
+        .value
+        .get("parties")
+        .and_then(Value::as_array)
+        .map(|a| a.len())
+        .unwrap_or(0);
+    info!(
+        event = "agreement_v2_created",
+        document_id = %doc.id,
+        status = %created_status,
+        party_count = created_party_count,
+        "Agreement v2 created"
+    );
     Ok(doc)
 }
 
@@ -447,7 +467,20 @@ pub fn apply_with_agent(
 
     validate_agreement_v2(&next)?;
     assert_status_consistent(&next)?;
-    emit_successor(agent, &current.value, next)
+    let updated = emit_successor(agent, &current.value, next)?;
+    let updated_status = updated
+        .value
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    info!(
+        event = "agreement_v2_applied",
+        document_id = %updated.id,
+        status = %updated_status,
+        "Agreement v2 mutation applied"
+    );
+    Ok(updated)
 }
 
 pub fn sign_with_agent(
@@ -516,7 +549,21 @@ pub fn sign_with_agent(
     let expected_status = recompute_status(&next);
     next["status"] = json!(expected_status);
 
-    emit_successor(agent, &current.value, next)
+    let signed = emit_successor(agent, &current.value, next)?;
+    let signed_status = signed
+        .value
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    info!(
+        event = "agreement_v2_signed",
+        document_id = %signed.id,
+        role = %role.as_str(),
+        status = %signed_status,
+        "Agreement v2 signature added"
+    );
+    Ok(signed)
 }
 
 pub fn verify_with_agent(
@@ -599,8 +646,35 @@ fn build_verification_report(
         }
     }
 
+    let agreement_id = value
+        .get("jacsId")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let valid = errors.is_empty();
+    if valid {
+        info!(
+            event = "agreement_v2_verified",
+            document_id = %agreement_id,
+            status = %status,
+            valid = true,
+            signer_count = signed_counts.signers.len(),
+            witness_count = signed_counts.witnesses.len(),
+            notary_count = signed_counts.notaries.len(),
+            "Agreement v2 verification successful"
+        );
+    } else {
+        warn!(
+            event = "agreement_v2_verified",
+            document_id = %agreement_id,
+            valid = false,
+            error_count = errors.len(),
+            errors = ?errors,
+            "Agreement v2 verification failed"
+        );
+    }
+
     Ok(AgreementV2VerificationReport {
-        valid: errors.is_empty(),
+        valid,
         status,
         expected_status,
         recomputed_agreement_hash,
@@ -680,7 +754,20 @@ pub fn merge_transcript_branches_with_agent(
     validate_agreement_v2(&merged)?;
     assert_status_consistent(&merged)?;
 
-    emit_successor(agent, &left.value, merged)
+    let merged_doc = emit_successor(agent, &left.value, merged)?;
+    let merged_status = merged_doc
+        .value
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    info!(
+        event = "agreement_v2_merged",
+        document_id = %merged_doc.id,
+        status = %merged_status,
+        "Agreement v2 transcript branches merged"
+    );
+    Ok(merged_doc)
 }
 
 pub fn resolve_branch_conflict_with_agent(
@@ -735,7 +822,20 @@ pub fn resolve_branch_conflict_with_agent(
     append_merge_link(agent, &mut resolved, &side_branch.value)?;
     validate_agreement_v2(&resolved)?;
     assert_status_consistent(&resolved)?;
-    emit_successor(agent, &previous.value, resolved)
+    let resolved_doc = emit_successor(agent, &previous.value, resolved)?;
+    let resolved_status = resolved_doc
+        .value
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    info!(
+        event = "agreement_v2_resolved",
+        document_id = %resolved_doc.id,
+        status = %resolved_status,
+        "Agreement v2 branch conflict resolved"
+    );
+    Ok(resolved_doc)
 }
 
 pub fn compute_agreement_hash(document: &Value) -> Result<String, JacsError> {

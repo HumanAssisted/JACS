@@ -3079,3 +3079,197 @@ fn camelcase_update_terms_mutation_json_applies_all_fields() {
     assert_eq!(ctx.current["effectiveFrom"], json!("2030-01-01T00:00:00Z"));
     assert_eq!(ctx.current["expiresAt"], json!("2031-01-01T00:00:00Z"));
 }
+
+// ---------------------------------------------------------------------------
+// Structured observability: agreement v2 lifecycle events (Task B8)
+// ---------------------------------------------------------------------------
+
+use std::sync::{Arc as StdArc, Mutex as StdMutex};
+use tracing::Level;
+use tracing_subscriber::Layer;
+use tracing_subscriber::layer::SubscriberExt;
+
+#[derive(Debug, Clone)]
+struct B8CapturedEvent {
+    level: Level,
+    fields: Vec<(String, String)>,
+}
+
+struct B8CaptureLayer {
+    events: StdArc<StdMutex<Vec<B8CapturedEvent>>>,
+}
+
+impl<S: tracing::Subscriber> Layer<S> for B8CaptureLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let mut fields = Vec::new();
+        let mut visitor = B8FieldVisitor(&mut fields);
+        event.record(&mut visitor);
+        if let Ok(mut events) = self.events.lock() {
+            events.push(B8CapturedEvent {
+                level: *event.metadata().level(),
+                fields,
+            });
+        }
+    }
+}
+
+struct B8FieldVisitor<'a>(&'a mut Vec<(String, String)>);
+
+impl tracing::field::Visit for B8FieldVisitor<'_> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0
+            .push((field.name().to_string(), format!("{:?}", value)));
+    }
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        self.0.push((field.name().to_string(), value.to_string()));
+    }
+}
+
+fn b8_capture_logs<F: FnOnce()>(f: F) -> Vec<B8CapturedEvent> {
+    let events = StdArc::new(StdMutex::new(Vec::new()));
+    let layer = B8CaptureLayer {
+        events: events.clone(),
+    };
+    let subscriber = tracing_subscriber::registry().with(layer);
+    tracing::subscriber::with_default(subscriber, f);
+    StdArc::try_unwrap(events)
+        .expect("events arc unique")
+        .into_inner()
+        .expect("events mutex not poisoned")
+}
+
+fn b8_events_named<'a>(events: &'a [B8CapturedEvent], name: &str) -> Vec<&'a B8CapturedEvent> {
+    events
+        .iter()
+        .filter(|e| e.fields.iter().any(|(k, v)| k == "event" && v == name))
+        .collect()
+}
+
+fn b8_field<'a>(event: &'a B8CapturedEvent, field: &str) -> Option<&'a str> {
+    event
+        .fields
+        .iter()
+        .find(|(k, _)| k == field)
+        .map(|(_, v)| v.as_str())
+}
+
+#[test]
+#[serial(jacs_env)]
+fn agreement_v2_lifecycle_emits_structured_events() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+
+    // create + sign (single-party, all quorum -> self-finalizes) under capture.
+    let events = b8_capture_logs(|| {
+        let created = create_with_agent(
+            &mut ctx.agent_a,
+            base_agreement_input(
+                vec![party(&a_id, "signer")],
+                json!({"partyQuorum": "all"}),
+                vec![a_id.clone()],
+            ),
+        )
+        .expect("create agreement v2")
+        .value;
+
+        let _signed = sign_with_agent(
+            &mut ctx.agent_a,
+            &created.to_string(),
+            AgreementV2Role::Signer,
+        )
+        .expect("sign agreement v2")
+        .value;
+    });
+
+    let created_events = b8_events_named(&events, "agreement_v2_created");
+    assert!(
+        !created_events.is_empty(),
+        "expected agreement_v2_created event; got {:?}",
+        events.iter().map(|e| &e.fields).collect::<Vec<_>>()
+    );
+    assert!(b8_field(created_events[0], "document_id").is_some());
+    assert!(b8_field(created_events[0], "status").is_some());
+
+    let signed_events = b8_events_named(&events, "agreement_v2_signed");
+    assert!(
+        !signed_events.is_empty(),
+        "expected agreement_v2_signed event"
+    );
+    assert_eq!(b8_field(signed_events[0], "role"), Some("signer"));
+    assert!(b8_field(signed_events[0], "document_id").is_some());
+}
+
+#[test]
+#[serial(jacs_env)]
+fn agreement_v2_invalid_verification_emits_warn() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+
+    let created = create_with_agent(
+        &mut ctx.agent_a,
+        base_agreement_input(
+            vec![party(&a_id, "signer")],
+            json!({"partyQuorum": "all"}),
+            vec![a_id.clone()],
+        ),
+    )
+    .expect("create agreement v2")
+    .value;
+
+    // Tamper the stored agreement hash so verification fails, then emit a
+    // structurally valid successor so it loads but verifies invalid.
+    let mut tampered = created.clone();
+    tampered["jacsAgreementHash"] =
+        json!("0000000000000000000000000000000000000000000000000000000000000000");
+    let tampered_key = format!(
+        "{}:{}",
+        created["jacsId"].as_str().unwrap(),
+        created["jacsVersion"].as_str().unwrap()
+    );
+    let tampered = ctx
+        .agent_a
+        .update_document(&tampered_key, &tampered.to_string(), None, None)
+        .expect("emit tampered successor")
+        .value;
+
+    let agreement_id = tampered["jacsId"].as_str().unwrap().to_string();
+
+    let events = b8_capture_logs(|| {
+        let report = verify_with_agent(&mut ctx.agent_a, &tampered.to_string())
+            .expect("verify returns a report");
+        assert!(!report.valid, "tampered agreement must verify invalid");
+    });
+
+    let verified_events = b8_events_named(&events, "agreement_v2_verified");
+    let warn_event = verified_events
+        .iter()
+        .find(|e| e.level == Level::WARN)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a WARN agreement_v2_verified event; got {:?}",
+                events
+                    .iter()
+                    .map(|e| (e.level, &e.fields))
+                    .collect::<Vec<_>>()
+            )
+        });
+    assert_eq!(b8_field(warn_event, "valid"), Some("false"));
+    assert_eq!(
+        b8_field(warn_event, "document_id"),
+        Some(agreement_id.as_str())
+    );
+    assert!(b8_field(warn_event, "error_count").is_some());
+}
