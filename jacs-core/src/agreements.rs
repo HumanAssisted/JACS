@@ -440,6 +440,21 @@ pub mod v2 {
         let signer_id = agent_id(agent);
         assert_party_role(document, &signer_id, role)?;
         assert_not_already_signed(document, &signer_id, role)?;
+        if let Some(effective_from) = document.get("effectiveFrom").and_then(Value::as_str)
+            && let Some(effective_ts) = parse_rfc3339_timestamp(effective_from)
+            && effective_ts > now_timestamp()
+        {
+            return Err(CoreError::AgreementFailed(format!(
+                "agreement is not yet effective (effectiveFrom '{}'); signing is not permitted until then",
+                effective_from
+            )));
+        }
+        if agreement_expired(document) || timeout_expired(document) {
+            return Err(CoreError::AgreementFailed(
+                "agreement signing window has closed (past expiresAt/timeout); no new signatures are accepted"
+                    .into(),
+            ));
+        }
 
         let transcript_hash = compute_transcript_hash(document)?;
         let transcript_non_empty = document
@@ -910,10 +925,7 @@ pub mod v2 {
 
     fn recompute_status(doc: &Value) -> String {
         let current = doc.get("status").and_then(Value::as_str).unwrap_or("draft");
-        if matches!(
-            current,
-            "expired" | "disputed" | "superseded" | "terminated"
-        ) {
+        if matches!(current, "disputed" | "superseded" | "terminated") {
             return current.to_string();
         }
         let signer_needed = required_count(doc, "signer");
@@ -922,9 +934,16 @@ pub mod v2 {
         let signers = unique_signature_agents(doc, "signer").len();
         let witnesses = unique_signature_agents(doc, "witness").len();
         let notaries = unique_signature_agents(doc, "notary").len();
+        // Quorum satisfaction concludes the agreement and wins over expiry, so a
+        // concluded agreement is never retroactively downgraded to "expired".
         if signers >= signer_needed && witnesses >= witness_needed && notaries >= notary_needed {
-            "final".to_string()
-        } else if signers + witnesses + notaries > 0 {
+            return "final".to_string();
+        }
+        // Not concluded: expiry / timeout move the agreement to "expired".
+        if agreement_expired(doc) || timeout_expired(doc) {
+            return "expired".to_string();
+        }
+        if signers + witnesses + notaries > 0 {
             "partially_signed".to_string()
         } else if current == "proposed" {
             "proposed".to_string()
@@ -948,6 +967,33 @@ pub mod v2 {
             .and_then(|p| p.get(field))
             .and_then(Value::as_u64)
             .unwrap_or(0) as usize
+    }
+
+    fn now_timestamp() -> i64 {
+        chrono::Utc::now().timestamp()
+    }
+
+    fn parse_rfc3339_timestamp(value: &str) -> Option<i64> {
+        chrono::DateTime::parse_from_rfc3339(value)
+            .ok()
+            .map(|dt| dt.timestamp())
+    }
+
+    fn agreement_expired(doc: &Value) -> bool {
+        doc.get("expiresAt")
+            .and_then(Value::as_str)
+            .and_then(parse_rfc3339_timestamp)
+            .map(|deadline| deadline < now_timestamp())
+            .unwrap_or(false)
+    }
+
+    fn timeout_expired(doc: &Value) -> bool {
+        doc.get("signaturePolicy")
+            .and_then(|p| p.get("timeout"))
+            .and_then(Value::as_str)
+            .and_then(parse_rfc3339_timestamp)
+            .map(|deadline| deadline < now_timestamp())
+            .unwrap_or(false)
     }
 
     fn parties_by_role(doc: &Value, role: &str) -> Vec<String> {

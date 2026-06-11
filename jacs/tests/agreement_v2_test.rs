@@ -469,6 +469,99 @@ fn timeout_and_expires_at_stop_new_signatures() {
 
 #[test]
 #[serial(jacs_env)]
+fn final_agreement_remains_valid_after_expires_at() {
+    use jacs::agreements::v2::recompute_status;
+
+    // A fully-signed agreement that satisfies quorum must recompute to "final"
+    // even when expiresAt is in the past (no retroactive invalidation).
+    let final_doc = json!({
+        "status": "final",
+        "expiresAt": "2000-01-01T00:00:00Z",
+        "parties": [{"agentId": "agent-a", "agentType": "ai", "role": "signer"}],
+        "signaturePolicy": {"partyQuorum": "all"},
+        "agreementSignatures": [{
+            "role": "signer",
+            "signature": {"agentID": "agent-a"}
+        }]
+    });
+    assert_eq!(recompute_status(&final_doc), "final");
+
+    // End-to-end: a real final agreement (future expiry) verifies valid.
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let mut input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id.clone()],
+    );
+    input.status = "proposed".to_string();
+    input.expires_at = Some("2999-01-01T00:00:00Z".to_string());
+    ctx.current = create_with_agent(&mut ctx.agent_a, input)
+        .expect("create proposed agreement")
+        .value;
+    ctx.current = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    )
+    .expect("A signs to final")
+    .value;
+    assert_eq!(ctx.current["status"], json!("final"));
+    let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
+        .expect("verify final agreement");
+    assert!(report.valid, "{:?}", report.errors);
+    assert_eq!(report.expected_status, "final");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn cannot_sign_after_expires_at() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let mut input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id.clone()],
+    );
+    // No signatures yet; expiresAt in the past => recomputes to "expired".
+    input.status = "expired".to_string();
+    input.expires_at = Some("2000-01-01T00:00:00Z".to_string());
+    ctx.current = create_with_agent(&mut ctx.agent_a, input)
+        .expect("create expired agreement")
+        .value;
+    let err = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    );
+    assert!(err.is_err(), "signing past expiresAt must fail");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn cannot_sign_before_effective_from() {
+    let mut ctx = empty_golden_cast();
+    let a_id = normalized_id(&ctx.agent_a);
+    let mut input = base_agreement_input(
+        vec![party(&a_id, "signer")],
+        json!({"partyQuorum": "all"}),
+        vec![a_id.clone()],
+    );
+    input.status = "proposed".to_string();
+    input.effective_from = Some("2999-01-01T00:00:00Z".to_string());
+    ctx.current = create_with_agent(&mut ctx.agent_a, input)
+        .expect("create not-yet-effective agreement")
+        .value;
+    let err = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    );
+    assert!(err.is_err(), "signing before effectiveFrom must fail");
+}
+
+#[test]
+#[serial(jacs_env)]
 fn invalid_policy_counts_and_duplicate_parties_are_rejected() {
     let mut ctx = empty_golden_cast();
     let a_id = normalized_id(&ctx.agent_a);

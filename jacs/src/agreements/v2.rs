@@ -888,16 +888,18 @@ pub fn recompute_status(document: &Value) -> String {
         return current_status.to_string();
     }
 
-    if agreement_expired(document) {
-        return "expired".to_string();
-    }
-
-    let complete = signature_policy_satisfied(document);
-    if complete {
+    // Quorum satisfaction concludes the agreement. A concluded ("final")
+    // agreement is a valid historical terminal state and must NOT be
+    // retroactively downgraded to "expired" once `now > expiresAt`: expiry
+    // bounds NEW signing, it does not nullify an agreement that already met
+    // its signaturePolicy.
+    if signature_policy_satisfied(document) {
         return "final".to_string();
     }
 
-    if timeout_expired(document) {
+    // Not concluded: expiry / timeout move the agreement to a terminal
+    // "expired" state that rejects further signatures.
+    if agreement_expired(document) || timeout_expired(document) {
         return "expired".to_string();
     }
 
@@ -1479,8 +1481,30 @@ fn assert_status_consistent(document: &Value) -> Result<(), JacsError> {
     }
 }
 
+fn assert_within_signing_window(document: &Value) -> Result<(), JacsError> {
+    // effectiveFrom: a party may not sign before the agreement is effective.
+    if let Some(effective_from) = document.get("effectiveFrom").and_then(Value::as_str)
+        && let Ok(effective_ts) = time_utils::parse_rfc3339_to_timestamp(effective_from)
+        && effective_ts > time_utils::now_timestamp()
+    {
+        return Err(JacsError::DocumentError(format!(
+            "agreement is not yet effective (effectiveFrom '{}'); signing is not permitted until then",
+            effective_from
+        )));
+    }
+    // expiresAt / timeout: a party may not sign an expired agreement.
+    if agreement_expired(document) || timeout_expired(document) {
+        return Err(JacsError::DocumentError(
+            "agreement signing window has closed (past expiresAt/timeout); no new signatures are accepted"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn assert_accepts_signature(document: &Value) -> Result<(), JacsError> {
     assert_status_consistent(document)?;
+    assert_within_signing_window(document)?;
     let status = required_str(document, "status")?;
     if TERMINAL_NON_SIGNING_STATUSES.contains(&status) {
         Err(JacsError::DocumentError(format!(

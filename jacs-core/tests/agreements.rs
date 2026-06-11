@@ -264,3 +264,92 @@ fn v2_transplanted_signature_from_other_agreement_is_rejected() {
     assert_eq!(report["signerCount"], json!(0));
     assert_eq!(report["signatures"][0]["valid"], json!(false));
 }
+
+#[test]
+fn v2_cannot_sign_after_expires_at() {
+    let mut a = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let id_a = a
+        .export_agent()
+        .get("jacsId")
+        .and_then(|v| v.as_str())
+        .unwrap()
+        .to_string();
+    let input = json!({
+        "title": "Expiry test",
+        "description": "Signing must fail past expiresAt.",
+        "terms": "Terms.",
+        "termsFormat": "text/plain",
+        "expiresAt": "2000-01-01T00:00:00Z",
+        "parties": [{"agentId": id_a, "agentType": "ai", "role": "signer"}],
+        "signaturePolicy": {"partyQuorum": "all"},
+        "controllers": [id_a]
+    });
+    let agreement = agreements::v2::create(&mut a, &input).expect("create");
+    assert!(
+        agreements::v2::sign(&mut a, &agreement, "signer").is_err(),
+        "signing past expiresAt must fail in jacs-core"
+    );
+}
+
+#[test]
+fn v2_cannot_sign_before_effective_from() {
+    let mut a = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let id_a = a
+        .export_agent()
+        .get("jacsId")
+        .and_then(|v| v.as_str())
+        .unwrap()
+        .to_string();
+    let input = json!({
+        "title": "Effective test",
+        "description": "Signing must fail before effectiveFrom.",
+        "terms": "Terms.",
+        "termsFormat": "text/plain",
+        "effectiveFrom": "2999-01-01T00:00:00Z",
+        "parties": [{"agentId": id_a, "agentType": "ai", "role": "signer"}],
+        "signaturePolicy": {"partyQuorum": "all"},
+        "controllers": [id_a]
+    });
+    let agreement = agreements::v2::create(&mut a, &input).expect("create");
+    assert!(
+        agreements::v2::sign(&mut a, &agreement, "signer").is_err(),
+        "signing before effectiveFrom must fail in jacs-core"
+    );
+}
+
+#[test]
+fn v2_final_agreement_remains_final_after_expires_at() {
+    let mut a = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let id_a = a
+        .export_agent()
+        .get("jacsId")
+        .and_then(|v| v.as_str())
+        .unwrap()
+        .to_string();
+    let pk_a = a.public_key().to_vec();
+    // Future expiry so we can sign to final.
+    let input = json!({
+        "title": "Final-after-expiry",
+        "description": "Final stays final even past expiresAt.",
+        "terms": "Terms.",
+        "termsFormat": "text/plain",
+        "expiresAt": "2999-01-01T00:00:00Z",
+        "parties": [{"agentId": id_a, "agentType": "ai", "role": "signer"}],
+        "signaturePolicy": {"partyQuorum": "all"},
+        "controllers": [id_a]
+    });
+    let agreement = agreements::v2::create(&mut a, &input).expect("create");
+    let signed = agreements::v2::sign(&mut a, &agreement, "signer").expect("sign to final");
+    assert_eq!(signed["status"], json!("final"));
+
+    // Rewrite expiresAt into the past and re-derive the expected status via
+    // verify's expectedStatus (which calls recompute_status). The header
+    // signature will now be invalid (we mutated a signed field), but
+    // expectedStatus is computed independently and must remain "final".
+    let mut past = signed.clone();
+    past["expiresAt"] = json!("2000-01-01T00:00:00Z");
+    let signers: Vec<(&str, &[u8], SigningAlgorithm)> =
+        vec![(id_a.as_str(), pk_a.as_slice(), SigningAlgorithm::Ed25519)];
+    let report = agreements::v2::verify(&past, &signers).expect("verify");
+    assert_eq!(report["expectedStatus"], json!("final"));
+}
