@@ -13,7 +13,7 @@ use jacs::agreements::v2::{
     merge_transcript_branches_with_agent, resolve_branch_conflict_with_agent, sign_with_agent,
     verify_with_agent,
 };
-use jacs::crypt::hash::hash_public_key;
+use jacs::crypt::hash::{hash_public_key, hash_string};
 use jacs::validation::normalize_agent_id;
 use serde_json::{Value, json};
 use serial_test::serial;
@@ -131,6 +131,106 @@ fn post_final_transcript_append_preserves_prior_signature_validity() {
         "post-final transcript append must preserve prior signature validity: {:?}",
         report.errors
     );
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_deeply_nested_agreement_input() {
+    let mut ctx = finalized_golden_agreement();
+    let result = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::AppendTranscript {
+            entry: deeply_nested_value(70),
+        },
+    );
+
+    assert_err_contains(result, "nesting depth");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn rejects_oversized_agreement_input() {
+    let mut ctx = finalized_golden_agreement();
+    let document = ctx.current.to_string();
+    assert!(
+        document.len() > 256,
+        "test agreement must exceed the temporary byte cap"
+    );
+
+    let previous_max = std::env::var_os("JACS_MAX_DOCUMENT_SIZE");
+    // SAFETY: serial_test ensures this env mutation is isolated for the test.
+    unsafe {
+        std::env::set_var("JACS_MAX_DOCUMENT_SIZE", "256");
+    }
+    let result = verify_with_agent(&mut ctx.agent_a, &document);
+    // SAFETY: paired cleanup for the isolated env mutation above.
+    unsafe {
+        if let Some(value) = previous_max {
+            std::env::set_var("JACS_MAX_DOCUMENT_SIZE", value);
+        } else {
+            std::env::remove_var("JACS_MAX_DOCUMENT_SIZE");
+        }
+    }
+
+    assert_err_contains(result, "too large");
+}
+
+#[test]
+#[serial(jacs_env)]
+fn accepts_agreement_within_resource_limits() {
+    let mut ctx = finalized_golden_agreement();
+    let report =
+        verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string()).expect("verify agreement");
+
+    assert!(report.valid, "{:?}", report.errors);
+}
+
+#[test]
+#[serial(jacs_env)]
+fn moderate_transcript_prefix_hashes_match_full_hash() {
+    let mut ctx = draft_golden_agreement();
+
+    for index in 0..50 {
+        let entry = signed_message_ref(&mut ctx.agent_a, &format!("Transcript entry {index}"));
+        ctx.current = apply_with_agent(
+            &mut ctx.agent_a,
+            &ctx.current.to_string(),
+            AgreementV2Mutation::AppendTranscript { entry },
+        )
+        .expect("append transcript entry")
+        .value;
+    }
+    ctx.current = apply_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Mutation::SetStatus {
+            status: "proposed".to_string(),
+        },
+    )
+    .expect("propose transcript-bearing agreement")
+    .value;
+
+    let expected_transcript_hash = hash_string(&jacs::protocol::canonicalize_json(
+        &ctx.current["transcript"],
+    ));
+    assert_eq!(
+        compute_transcript_hash(&ctx.current).expect("transcript hash"),
+        expected_transcript_hash
+    );
+
+    ctx.current = sign_with_agent(
+        &mut ctx.agent_a,
+        &ctx.current.to_string(),
+        AgreementV2Role::Signer,
+    )
+    .expect("sign full transcript")
+    .value;
+
+    let report = verify_with_agent(&mut ctx.agent_a, &ctx.current.to_string())
+        .expect("verify signed full transcript");
+    assert!(report.valid, "{:?}", report.errors);
+    assert_eq!(report.recomputed_transcript_hash, expected_transcript_hash);
 }
 
 #[test]
@@ -2925,6 +3025,14 @@ fn required_str<'a>(value: &'a Value, field: &str) -> &'a str {
         .get(field)
         .and_then(Value::as_str)
         .unwrap_or_else(|| panic!("missing string field {}", field))
+}
+
+fn deeply_nested_value(depth: usize) -> Value {
+    let mut value = json!("leaf");
+    for _ in 0..depth {
+        value = json!({ "a": value });
+    }
+    value
 }
 
 fn assert_err_contains<T, E: std::fmt::Display>(result: Result<T, E>, needle: &str) {

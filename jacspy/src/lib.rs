@@ -1092,10 +1092,9 @@ impl SimpleAgent {
     #[cfg(feature = "agreements")]
     fn create_agreement_v2(&self, py: Python, input: PyObject) -> PyResult<String> {
         let input_json = py_json_arg_to_string(py, input, "agreement v2 create input")?;
-        map_py_runtime_result(
-            self.inner.create_agreement_v2_json(&input_json),
-            "Failed to create agreement v2",
-        )
+        let inner = &self.inner;
+        let result = py.allow_threads(|| inner.create_agreement_v2_json(&input_json));
+        map_py_runtime_result(result, "Failed to create agreement v2")
     }
 
     /// Apply an agreement v2 mutation and return the successor document JSON.
@@ -1107,31 +1106,31 @@ impl SimpleAgent {
         mutation: PyObject,
     ) -> PyResult<String> {
         let mutation_json = py_json_arg_to_string(py, mutation, "agreement v2 mutation")?;
-        map_py_runtime_result(
-            self.inner
-                .apply_agreement_v2_json(document_json, &mutation_json),
-            "Failed to update agreement v2",
-        )
+        let document_json = document_json.to_string();
+        let inner = &self.inner;
+        let result =
+            py.allow_threads(|| inner.apply_agreement_v2_json(&document_json, &mutation_json));
+        map_py_runtime_result(result, "Failed to update agreement v2")
     }
 
     /// Add this agent's signer, witness, or notary agreement signature.
     #[cfg(feature = "agreements")]
     #[pyo3(signature = (document_json, role="signer"))]
-    fn sign_agreement_v2(&self, document_json: &str, role: &str) -> PyResult<String> {
-        map_py_runtime_result(
-            self.inner.sign_agreement_v2_json(document_json, role),
-            "Failed to sign agreement v2",
-        )
+    fn sign_agreement_v2(&self, py: Python, document_json: &str, role: &str) -> PyResult<String> {
+        let document_json = document_json.to_string();
+        let role = role.to_string();
+        let inner = &self.inner;
+        let result = py.allow_threads(|| inner.sign_agreement_v2_json(&document_json, &role));
+        map_py_runtime_result(result, "Failed to sign agreement v2")
     }
 
     /// Verify agreement v2 hash, role, status, transcript, and signature invariants.
     #[cfg(feature = "agreements")]
     fn verify_agreement_v2(&self, py: Python, document_json: &str) -> PyResult<PyObject> {
-        parsed_wrapper_json_to_py(
-            py,
-            self.inner.verify_agreement_v2_json(document_json),
-            "agreement v2 verification report",
-        )
+        let document_json = document_json.to_string();
+        let inner = &self.inner;
+        let result = py.allow_threads(|| inner.verify_agreement_v2_json(&document_json));
+        parsed_wrapper_json_to_py(py, result, "agreement v2 verification report")
     }
 
     /// Detect whether two successor versions are transcript-only mergeable.
@@ -1143,33 +1142,41 @@ impl SimpleAgent {
         left_document_json: &str,
         right_document_json: &str,
     ) -> PyResult<PyObject> {
-        parsed_wrapper_json_to_py(
-            py,
-            self.inner.detect_agreement_v2_branch_conflict_json(
-                base_document_json,
-                left_document_json,
-                right_document_json,
-            ),
-            "agreement v2 branch analysis",
-        )
+        let base_document_json = base_document_json.to_string();
+        let left_document_json = left_document_json.to_string();
+        let right_document_json = right_document_json.to_string();
+        let inner = &self.inner;
+        let result = py.allow_threads(|| {
+            inner.detect_agreement_v2_branch_conflict_json(
+                &base_document_json,
+                &left_document_json,
+                &right_document_json,
+            )
+        });
+        parsed_wrapper_json_to_py(py, result, "agreement v2 branch analysis")
     }
 
     /// Auto-merge two transcript-only branches.
     #[cfg(feature = "agreements")]
     fn merge_agreement_v2_transcript_branches(
         &self,
+        py: Python,
         base_document_json: &str,
         left_document_json: &str,
         right_document_json: &str,
     ) -> PyResult<String> {
-        map_py_runtime_result(
-            self.inner.merge_agreement_v2_transcript_branches_json(
-                base_document_json,
-                left_document_json,
-                right_document_json,
-            ),
-            "Failed to merge agreement v2 transcript branches",
-        )
+        let base_document_json = base_document_json.to_string();
+        let left_document_json = left_document_json.to_string();
+        let right_document_json = right_document_json.to_string();
+        let inner = &self.inner;
+        let result = py.allow_threads(|| {
+            inner.merge_agreement_v2_transcript_branches_json(
+                &base_document_json,
+                &left_document_json,
+                &right_document_json,
+            )
+        });
+        map_py_runtime_result(result, "Failed to merge agreement v2 transcript branches")
     }
 
     /// Resolve a conflicting branch by applying an explicit resolution mutation.
@@ -1184,15 +1191,19 @@ impl SimpleAgent {
     ) -> PyResult<String> {
         let mutation_json =
             py_json_arg_to_string(py, mutation, "agreement v2 branch resolution mutation")?;
-        map_py_runtime_result(
-            self.inner.resolve_agreement_v2_branch_conflict_json(
-                base_document_json,
-                previous_document_json,
-                side_branch_document_json,
+        let base_document_json = base_document_json.to_string();
+        let previous_document_json = previous_document_json.to_string();
+        let side_branch_document_json = side_branch_document_json.to_string();
+        let inner = &self.inner;
+        let result = py.allow_threads(|| {
+            inner.resolve_agreement_v2_branch_conflict_json(
+                &base_document_json,
+                &previous_document_json,
+                &side_branch_document_json,
                 &mutation_json,
-            ),
-            "Failed to resolve agreement v2 branch conflict",
-        )
+            )
+        });
+        map_py_runtime_result(result, "Failed to resolve agreement v2 branch conflict")
     }
 
     /// Verify a signed JACS document.

@@ -50,6 +50,14 @@ fn apply_mutation(wrapper: &SimpleAgentWrapper, document: &str, mutation: Value)
         .expect("apply agreement v2 mutation")
 }
 
+fn deeply_nested_value(depth: usize) -> Value {
+    let mut value = json!("leaf");
+    for _ in 0..depth {
+        value = json!({ "a": value });
+    }
+    value
+}
+
 #[test]
 fn simple_wrapper_round_trips_create_sign_verify() {
     let (wrapper, agent_id) = ephemeral_agent();
@@ -66,6 +74,30 @@ fn simple_wrapper_round_trips_create_sign_verify() {
     assert_eq!(report["valid"], json!(true));
     assert_eq!(report["expectedStatus"], json!("final"));
     assert_eq!(report["signerCount"], json!(1));
+}
+
+#[test]
+fn rejects_deeply_nested_agreement_at_binding_boundary() {
+    let (wrapper, agent_id) = ephemeral_agent();
+    let created = create_agreement(&wrapper, &agent_id);
+
+    let result = wrapper.apply_agreement_v2_json(
+        &created,
+        &json!({
+            "type": "appendTranscript",
+            "entry": deeply_nested_value(70)
+        })
+        .to_string(),
+    );
+
+    let Err(err) = result else {
+        panic!("expected deeply nested agreement input to be rejected");
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("nesting depth"),
+        "expected nesting depth error, got: {msg}"
+    );
 }
 
 #[test]

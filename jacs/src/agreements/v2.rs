@@ -72,6 +72,28 @@ const TERMINAL_NON_SIGNING_STATUSES: &[&str] =
     &["final", "expired", "disputed", "superseded", "terminated"];
 const AUTO_MERGE_GUARD_FIELDS: &[&str] = &["status", "agreementSignatures", "links", "controllers"];
 
+// Resource limits applied to untrusted agreement v2 input at the binding/FFI
+// boundary, closing the legacy M1/M2 recursion/size DoS. These caps are
+// deliberately generous (orders of magnitude above realistic agreements); they
+// exist to reject hostile inputs that would otherwise drive unbounded
+// allocation or stack-overflowing recursive descent over a parsed `Value`.
+//
+// The raw-byte cap reuses the existing `JACS_MAX_DOCUMENT_SIZE` document-size
+// limit (default 10MB) via `crate::schema::utils::check_document_size`.
+
+/// Maximum JSON nesting depth for an agreement v2 document `Value`.
+const MAX_AGREEMENT_NESTING_DEPTH: usize = 64;
+/// Maximum number of transcript entries.
+const MAX_TRANSCRIPT_ENTRIES: usize = 10_000;
+/// Maximum number of agreement signatures.
+const MAX_AGREEMENT_SIGNATURES: usize = 1_000;
+/// Maximum number of parties.
+const MAX_PARTIES: usize = 1_000;
+/// Maximum number of merge/cross links.
+const MAX_LINKS: usize = 1_000;
+/// Maximum number of entries in `allPreviousVersions`.
+const MAX_PREVIOUS_VERSIONS: usize = 10_000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAgreementV2 {
@@ -736,7 +758,16 @@ pub fn compute_transcript_hash(document: &Value) -> Result<String, JacsError> {
     Ok(hash_string(&canonical))
 }
 
+/// Reject oversized raw agreement JSON before it is parsed/processed, reusing
+/// the shared `JACS_MAX_DOCUMENT_SIZE` document-size limit (DRY). This bounds
+/// parse-time and allocation work for untrusted input crossing the binding/FFI
+/// boundary.
+fn guard_agreement_input_size(raw: &str) -> Result<(), JacsError> {
+    crate::schema::utils::check_document_size(raw)
+}
+
 fn parse_agreement_value(document: &str) -> Result<Value, JacsError> {
+    guard_agreement_input_size(document)?;
     let value: Value = serde_json::from_str(document)?;
     assert_agreement_v2(&value)?;
     Ok(value)
@@ -907,9 +938,21 @@ fn compute_transcript_prefix_hashes(document: &Value) -> Result<HashSet<String>,
         .cloned()
         .unwrap_or_default();
     let mut hashes = HashSet::new();
-    for len in 0..=transcript.len() {
-        let canonical = canonicalize_json(&Value::Array(transcript[..len].to_vec()))?;
-        hashes.insert(hash_string(&canonical));
+    // Prefix of length 0 is the canonical empty array.
+    let mut prefix = String::from("[");
+    hashes.insert(hash_string("[]"));
+    for (index, entry) in transcript.iter().enumerate() {
+        if index > 0 {
+            prefix.push(',');
+        }
+        // Canonicalize each entry exactly once; the canonical form of an array
+        // is "[" + comma-joined element canonicalizations + "]" (RFC 8785), so
+        // appending one entry's canonical bytes yields the next prefix without
+        // re-canonicalizing the whole slice.
+        prefix.push_str(&canonicalize_json(entry)?);
+        let mut closed = prefix.clone();
+        closed.push(']');
+        hashes.insert(hash_string(&closed));
     }
     Ok(hashes)
 }
@@ -1084,7 +1127,61 @@ fn validate_agreement_v2_schema(document: &Value) -> Result<(), JacsError> {
     jacs_core::schema::validate_agreement_v2_document(document).map_err(JacsError::from)
 }
 
+/// Enforce nesting-depth and per-collection count caps on a parsed agreement
+/// document. Iterative (explicit stack) so checking a hostile deeply-nested
+/// input cannot itself overflow the stack. Returns `DocumentMalformed` on any
+/// breach so callers get a clear typed error instead of a panic/hang.
+fn enforce_agreement_resource_limits(document: &Value) -> Result<(), JacsError> {
+    // Per-collection count caps (top-level arrays only; nested counts are
+    // bounded by the depth + total-byte caps).
+    let count_cap = |field: &str, cap: usize| -> Result<(), JacsError> {
+        if let Some(items) = document.get(field).and_then(Value::as_array)
+            && items.len() > cap
+        {
+            return Err(malformed(
+                field,
+                &format!("exceeds maximum of {} entries", cap),
+            ));
+        }
+        Ok(())
+    };
+    count_cap("transcript", MAX_TRANSCRIPT_ENTRIES)?;
+    count_cap("agreementSignatures", MAX_AGREEMENT_SIGNATURES)?;
+    count_cap("parties", MAX_PARTIES)?;
+    count_cap("links", MAX_LINKS)?;
+    count_cap("allPreviousVersions", MAX_PREVIOUS_VERSIONS)?;
+
+    // Iterative nesting-depth bound. The root object is depth 1.
+    let mut stack: Vec<(&Value, usize)> = vec![(document, 1)];
+    while let Some((value, depth)) = stack.pop() {
+        if depth > MAX_AGREEMENT_NESTING_DEPTH {
+            return Err(malformed(
+                "agreement",
+                &format!(
+                    "JSON nesting depth exceeds maximum of {}",
+                    MAX_AGREEMENT_NESTING_DEPTH
+                ),
+            ));
+        }
+        match value {
+            Value::Object(map) => {
+                for child in map.values() {
+                    stack.push((child, depth + 1));
+                }
+            }
+            Value::Array(items) => {
+                for child in items {
+                    stack.push((child, depth + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn validate_agreement_v2(document: &Value) -> Result<(), JacsError> {
+    enforce_agreement_resource_limits(document)?;
     for field in [
         "jacsAgreementHash",
         "title",
@@ -1616,6 +1713,7 @@ fn required_str<'a>(document: &'a Value, field: &str) -> Result<&'a str, JacsErr
 /// verdict is known. Read-only operations (verify, merge/resolve input parsing)
 /// must use this instead so they never write unverified documents to storage.
 fn load_agreement_no_store(agent: &mut Agent, document: &str) -> Result<JACSDocument, JacsError> {
+    guard_agreement_input_size(document)?;
     let value = agent.validate_header(document)?;
     let id = required_str(&value, "jacsId")?.to_string();
     let version = required_str(&value, JACS_VERSION_FIELDNAME)?.to_string();
