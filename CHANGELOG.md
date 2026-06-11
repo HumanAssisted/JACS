@@ -36,6 +36,23 @@ Agreement v2 hardening from a multi-agent security review of the agreement verti
 - **Agreement mutation fields are no longer silently dropped.** The documented camelCase mutation fields (`termsFormat`, `effectiveFrom`, `expiresAt`, `signaturePolicy`) were ignored on the native/CLI/MCP wire, which accepted only snake_case — diverging from the portable engine and the docs. The mutation wire format now accepts the documented camelCase fields uniformly across surfaces.
 - **Agreement verification fails closed at the CLI and MCP boundaries.** `jacs agreement-v2 verify` exited 0 even on an invalid verdict (unlike `jacs verify`); it now exits non-zero. The `jacs_verify_agreement_v2` MCP tool surfaces an unambiguous top-level `valid`, no longer swallows report-parse failures, and logs a structured warning on invalid verifications.
 
+Further Agreement v2, key, and storage hardening (each fix is test-covered):
+
+- **Lifecycle time semantics.** `expiresAt` now gates new signing instead of retroactively invalidating an already-`final` agreement; `effectiveFrom` is enforced before signing; the native and portable engines agree.
+- **Authoritative schema validation.** Both engines validate agreements against the embedded v2 JSON Schema, pin the exact v2 schema identity (defeating schema downgrade to a weaker/v1 schema), reject unknown top-level fields, and enforce date-time/uuid formats.
+- **Version-chain and merge-link integrity.** Verification now reports how much of the version chain it actually validated (omitted/pruned history is surfaced, not silently accepted), and merge links bind and revalidate the merged branch's content hash (`jacsSha256`).
+- **Binding-boundary resource guards (closes prior recursion-DoS findings).** Untrusted agreement JSON is bounded by iterative nesting-depth and byte-size caps before recursive processing, with caps on transcript/signature/party/link counts; transcript verification is now linear rather than quadratic. The Python bindings release the GIL around agreement crypto.
+- **Remote public-key fetch.** Redirects are constrained to the same host/scheme allowlist with exact-host loopback matching (no `localhost.evil.com`-style prefix bypass), and the response body is size-capped.
+- **Go FFI safety.** Every `extern "C"` export is wrapped in a panic boundary (a Rust panic can no longer abort the embedding host process), the Go re-encrypt path now uses the hardened atomic/0600 key write (no symlink follow, no traversal), and `Close()` no longer races in-flight calls.
+- **Storage.** Document ids/versions are validated before forming storage keys, and object-store backends no longer silently overwrite an existing immutable document version (matching the SQLite insert-ignore semantics).
+
+Agreement v2 developer experience:
+
+- The core emits structured lifecycle tracing and logs verification failures at WARN; `jacs document create` no longer prints debug output (including the document body) to stdout.
+- CLI/MCP agreement-v2 commands and tools are now discoverable (help on bare invocation, `--side-branch` with a `--side` alias, LLM-usable tool descriptions, legacy-v1 labels) and documented in the CLI reference.
+- The getting-started multi-agent walkthrough is runnable, and `jacs.simple` exposes module-level Agreement v2 helpers for parity with the Node bindings.
+- The Agreement v2 test suites (binding-core, jacs-wasm) now run in CI, with added stdin, notary-role, and WASM declaration-drift coverage.
+
 ### Dependencies
 
 Resolved the open Dependabot alerts across the Python and Node binding manifests. The published `jacs` wheel declares no runtime dependencies (`dependencies = []`); every advisory was in a transitive dev/optional-extra dependency or an example lockfile, not in the shipped library.
