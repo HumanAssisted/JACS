@@ -116,7 +116,7 @@
   },
   "dependencies": {
     "@napi-rs/cli": "^2.16.3",
-    "uuid": "^13.0.1"
+    "uuid": "^14.0.0"
   },
   "peerDependencies": {
     "@ai-sdk/provider": ">=1.0.0",
