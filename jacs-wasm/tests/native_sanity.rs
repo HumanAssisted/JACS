@@ -234,14 +234,22 @@ fn wasm_terms(name: &str) -> String {
 
 #[test]
 fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
-    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../binding-core/tests/fixtures/method_parity.json");
-    let fixture: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixture_path).unwrap()).unwrap();
-    let declarations =
-        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("jacs_wasm.d.ts"))
-            .unwrap();
-    let mapping = [
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            manifest_dir.join("../binding-core/tests/fixtures/method_parity.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let declarations = std::fs::read_to_string(manifest_dir.join("jacs_wasm.d.ts")).unwrap();
+    let agent_handle_src =
+        std::fs::read_to_string(manifest_dir.join("src/agent_handle.rs")).unwrap();
+
+    // SOURCE OF TRUTH for the expected camelCase js_name of each agreement v2
+    // method. If the Rust source declares a *different* js_name (drift), the
+    // test fails at the parsed-vs-expected check below.
+    let expected_js_names = [
         ("create_agreement_v2_json", "createAgreementV2Json"),
         ("apply_agreement_v2_json", "applyAgreementV2Json"),
         ("sign_agreement_v2_json", "signAgreementV2Json"),
@@ -259,21 +267,77 @@ fn agreement_v2_declared_wasm_surface_tracks_canonical_fixture() {
             "resolveAgreementV2BranchConflictJson",
         ),
     ];
+
+    // Parse src/agent_handle.rs into rust_fn_name -> js_name by scanning for
+    // `#[wasm_bindgen(js_name = <JsName>)]` followed by the next `fn <name>(`.
+    let declared_js_names = parse_wasm_bindgen_js_names(&agent_handle_src);
+
     let agreement_methods = fixture["feature_gated_methods"]["agreements"]
         .as_array()
         .expect("agreement methods");
 
     for method in agreement_methods {
         let rust_name = method.as_str().expect("method name");
-        let wasm_name = mapping
+        let expected = expected_js_names
             .iter()
-            .find_map(|(rust, wasm)| (*rust == rust_name).then_some(*wasm))
-            .unwrap_or_else(|| panic!("missing wasm mapping for {rust_name}"));
+            .find_map(|(rust, js)| (*rust == rust_name).then_some(*js))
+            .unwrap_or_else(|| {
+                panic!("test mapping missing expected js_name for {rust_name}; update the test")
+            });
+
+        let actual = declared_js_names.get(rust_name).unwrap_or_else(|| {
+            panic!("src/agent_handle.rs has no #[wasm_bindgen(js_name = ...)] for {rust_name}")
+        });
+
+        assert_eq!(
+            actual, expected,
+            "js_name drift for {rust_name}: source declares {actual}, expected {expected}"
+        );
+
         assert!(
-            declarations.contains(&format!("{wasm_name}(")),
-            "missing {wasm_name} declaration for {rust_name}"
+            declarations.contains(&format!("{expected}(")),
+            "missing {expected} declaration in jacs_wasm.d.ts for {rust_name}"
         );
     }
+}
+
+/// Deterministic, dependency-free parser: scans Rust source for
+/// `#[wasm_bindgen(js_name = <JsName>)]` attributes and binds each to the
+/// next `fn <rust_name>(` declaration that follows. Returns a map of
+/// rust_fn_name -> js_name.
+fn parse_wasm_bindgen_js_names(src: &str) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    let mut pending: Option<String> = None;
+    for line in src.lines() {
+        if let Some(idx) = line.find("#[wasm_bindgen(js_name =") {
+            let after = &line[idx + "#[wasm_bindgen(js_name =".len()..];
+            let token: String = after
+                .trim_start()
+                .chars()
+                .take_while(|c| !c.is_whitespace() && *c != ')' && *c != ']')
+                .collect();
+            let token = token.trim().to_string();
+            if !token.is_empty() {
+                pending = Some(token);
+            }
+            continue;
+        }
+        if let Some(js_name) = pending.clone()
+            && let Some(fidx) = line.find("fn ")
+        {
+            let after = &line[fidx + "fn ".len()..];
+            let fn_name: String = after
+                .chars()
+                .take_while(|c| !c.is_whitespace() && *c != '(' && *c != '<')
+                .collect();
+            let fn_name = fn_name.trim().to_string();
+            if !fn_name.is_empty() {
+                map.insert(fn_name, js_name);
+                pending = None;
+            }
+        }
+    }
+    map
 }
 
 #[test]

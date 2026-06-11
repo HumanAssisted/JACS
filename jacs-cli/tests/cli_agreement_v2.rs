@@ -475,3 +475,87 @@ fn agreement_v2_bare_prints_help_and_side_alias_still_works() {
         "--side alias must drive resolve-conflict identically to --side-branch"
     );
 }
+
+#[test]
+fn agreement_v2_cli_create_reads_input_from_stdin() {
+    let dir = TempDir::new().expect("tmpdir");
+    bootstrap_agent(&dir);
+    let agent_id = configured_agent_id(&dir);
+
+    let input = base_input(&agent_id);
+    let input_string = serde_json::to_string(&input).expect("input json");
+    let output = cmd()
+        .current_dir(dir.path())
+        .args(["agreement-v2", "create", "--input", "-"])
+        .write_stdin(input_string)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let created: Value = serde_json::from_slice(&output).expect("created agreement json");
+
+    assert_eq!(created["jacsType"], json!("agreement"));
+    if let Some(agent_id_value) = created.pointer("/parties/0/agentId") {
+        assert_eq!(agent_id_value, &json!(agent_id));
+    }
+}
+
+#[test]
+fn agreement_v2_cli_notary_role_signs_and_verifies() {
+    let signer_dir = TempDir::new().expect("tmpdir");
+    bootstrap_agent(&signer_dir);
+    let signer_id = configured_agent_id(&signer_dir);
+
+    let notary_dir = TempDir::new().expect("tmpdir");
+    bootstrap_agent(&notary_dir);
+    let notary_id = configured_agent_id(&notary_dir);
+
+    let mut input = base_input(&signer_id);
+    input["parties"] = json!([
+        {"agentId": signer_id, "agentType": "ai", "role": "signer"},
+        {"agentId": notary_id, "agentType": "ai", "role": "notary"}
+    ]);
+    input["signaturePolicy"]["notaryRequired"] = json!(1);
+    input["controllers"] = json!([signer_id, notary_id]);
+
+    let input_path = write_json(&signer_dir, "agreement-input.json", &input);
+    let created = output_json_with_paths(
+        &signer_dir,
+        &["agreement-v2", "create", "--input"],
+        &[&input_path],
+    );
+    assert_eq!(created["jacsType"], json!("agreement"));
+
+    let created_path = write_json(&notary_dir, "created.json", &created);
+    let notarized = output_json_with_paths(
+        &notary_dir,
+        &["agreement-v2", "sign", "--role", "notary", "--agreement"],
+        &[&created_path],
+    );
+    assert_eq!(notarized["agreementSignatures"][0]["role"], json!("notary"));
+
+    let signer_public_keys = signer_dir.path().join("jacs_data/public_keys");
+    let notary_public_keys = notary_dir.path().join("jacs_data/public_keys");
+    for entry in std::fs::read_dir(&notary_public_keys).expect("notary public keys") {
+        let entry = entry.expect("notary public key entry");
+        std::fs::copy(entry.path(), signer_public_keys.join(entry.file_name()))
+            .expect("copy notary public key");
+    }
+
+    let notarized_path = write_json(&signer_dir, "notarized.json", &notarized);
+    let signed = output_json_with_paths(
+        &signer_dir,
+        &["agreement-v2", "sign", "--agreement"],
+        &[&notarized_path],
+    );
+    assert_eq!(signed["agreementSignatures"][0]["role"], json!("notary"));
+
+    let signed_path = write_json(&signer_dir, "signed.json", &signed);
+    let report = output_json_with_paths(
+        &signer_dir,
+        &["agreement-v2", "verify", "--agreement"],
+        &[&signed_path],
+    );
+    assert_eq!(report["valid"], json!(true));
+}

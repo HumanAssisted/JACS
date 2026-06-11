@@ -1,6 +1,6 @@
 .PHONY: build-jacs build-jacsbook build-jacsbook-pdf build-wasm test-wasm publish-jacs-wasm release-jacs-wasm retry-jacs-wasm \
         test test-all test-all-pq test-rust-pr test-bindings-fast test-rust-slow test-jacs test-jacs-fast test-jacs-fast-lib test-jacs-fast-bin-shard-a test-jacs-fast-bin-shard-b test-jacs-features test-jacs-pq test-jacs-cli test-jacs-cross-language test-jacs-observability \
-        test-jacs-mcp test-jacs-binding-core test-jacs-binding-core-pq \
+        test-jacs-mcp test-jacs-binding-core test-jacs-binding-core-pq test-jacs-wasm \
         test-jacs-duckdb test-jacs-redb test-jacs-surrealdb test-jacs-postgresql test-jacs-storage \
         test-jacspy test-jacspy-parallel test-jacsnpm test-jacsnpm-parallel \
         audit-jacs \
@@ -176,10 +176,14 @@ test-jacs-mcp:
 	RUST_BACKTRACE=1 cargo test -p jacs-mcp --lib --tests --verbose
 
 test-jacs-binding-core:
-	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --lib --tests --verbose
+	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --features agreements --lib --tests --verbose
 
 test-jacs-binding-core-pq:
-	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --features pq-tests --lib --tests --verbose
+	RUST_BACKTRACE=1 cargo test -p jacs-binding-core --features agreements,pq-tests --lib --tests --verbose
+
+# jacs-wasm native sanity suite (agreement v2 + forged-signature + declaration drift).
+test-jacs-wasm:
+	RUST_BACKTRACE=1 cargo test -p jacs-wasm --test native_sanity --verbose
 
 # Storage backend crates (extracted from jacs core)
 test-jacs-duckdb:
@@ -215,7 +219,7 @@ test-jacsnpm-parallel:
 test: test-jacs
 
 # Default PR suite: fast Rust lanes plus parallel binding runners.
-test-rust-pr: test-jacs-fast test-jacs-cli test-jacs-binding-core test-jacs-mcp
+test-rust-pr: test-jacs-fast test-jacs-cli test-jacs-binding-core test-jacs-wasm test-jacs-mcp
 
 test-bindings-fast: test-jacspy-parallel test-jacsnpm-parallel
 
@@ -710,6 +714,7 @@ help:
 	@echo "  make test-jacs-mcp       Run MCP server tests"
 	@echo "  make test-jacs-binding-core     Run binding-core tests (ed25519)"
 	@echo "  make test-jacs-binding-core-pq  Run binding-core tests (+ post-quantum)"
+	@echo "  make test-jacs-wasm      Run jacs-wasm native sanity tests (agreement v2 + drift)"
 	@echo "  make test-jacs-storage   Run all storage backend tests (duckdb, redb, surrealdb, postgresql)"
 	@echo "  make test-jacs-duckdb    Run DuckDB storage tests"
 	@echo "  make test-jacs-redb      Run Redb storage tests"

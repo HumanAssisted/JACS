@@ -588,12 +588,19 @@ async fn mcp_agreement_v2_tools_execute_public_workflow() -> anyhow::Result<()> 
         resolved["terms"],
         serde_json::json!(agreement_v2_terms("resolved"))
     );
+    let resolution_link = &resolved["links"][0];
+    assert!(
+        resolution_link.is_object(),
+        "resolution link must be an object: {}",
+        resolution_link
+    );
     assert_eq!(
-        resolved["links"][0],
-        serde_json::json!({
-            "jacsId": right_terms["jacsId"],
-            "jacsVersion": right_terms["jacsVersion"]
-        })
+        resolution_link["jacsId"], right_terms["jacsId"],
+        "resolution link must reference the side branch's jacsId"
+    );
+    assert_eq!(
+        resolution_link["jacsVersion"], right_terms["jacsVersion"],
+        "resolution link must reference the side branch's jacsVersion"
     );
 
     session.client.cancellation_token().cancel();
@@ -1456,4 +1463,67 @@ fn a2a_assess_agent_rejects_invalid_card() {
         result.is_err(),
         "assess_a2a_agent should reject invalid JSON"
     );
+}
+
+#[tokio::test]
+async fn mcp_agreement_v2_notary_role_signs_and_verifies() -> anyhow::Result<()> {
+    let _guard = STDIO_TEST_LOCK.lock().await;
+    let session = RmcpSession::spawn(&[("JACS_MCP_PROFILE", "full")]).await?;
+    let agent_id = agreement_v2_agent_id_from_config(&session.base)?;
+
+    let mut input = agreement_v2_input(&agent_id);
+    let signer_agent_id = "00000000-0000-4000-8000-000000000099";
+    input["parties"] = serde_json::json!([
+        {"agentId": signer_agent_id, "agentType": "ai", "role": "signer"},
+        {"agentId": agent_id, "agentType": "ai", "role": "notary"}
+    ]);
+    input["signaturePolicy"]["notaryRequired"] = serde_json::json!(1);
+
+    let created_result = session
+        .call_tool(
+            "jacs_create_agreement_v2",
+            serde_json::json!({ "input": input }),
+        )
+        .await?;
+    assert_eq!(created_result["success"], true, "{}", created_result);
+    let created = created_result["agreement"]
+        .as_str()
+        .expect("created agreement")
+        .to_string();
+
+    let signed_result = session
+        .call_tool(
+            "jacs_sign_agreement_v2",
+            serde_json::json!({ "agreement": created, "role": "notary" }),
+        )
+        .await?;
+    assert_eq!(signed_result["success"], true, "{}", signed_result);
+    let signed = signed_result["agreement"]
+        .as_str()
+        .expect("signed agreement")
+        .to_string();
+
+    let signed_doc: serde_json::Value = serde_json::from_str(&signed)?;
+    assert_eq!(
+        signed_doc["agreementSignatures"][0]["role"],
+        serde_json::json!("notary"),
+        "notary signature role must be recorded: {}",
+        signed_doc
+    );
+
+    let verify_result = session
+        .call_tool(
+            "jacs_verify_agreement_v2",
+            serde_json::json!({ "agreement": signed }),
+        )
+        .await?;
+    assert_eq!(verify_result["success"], true, "{}", verify_result);
+    assert_eq!(
+        verify_result["valid"], true,
+        "notary-signed agreement must verify valid=true: {}",
+        verify_result
+    );
+
+    session.client.cancellation_token().cancel();
+    Ok(())
 }
