@@ -690,6 +690,36 @@ impl MultiStorage {
 use crate::agent::document::JACSDocument;
 use crate::error::JacsError;
 use std::collections::HashMap;
+
+/// Validate a single component (id or version) of a document storage key.
+///
+/// Document object paths/keys are derived from `jacsId`/`jacsVersion`. Raw,
+/// attacker-controlled values containing path separators, traversal sequences,
+/// control characters, or an extra `:` could traverse the storage key space or
+/// collide/confuse the `id:version` key. We reject them before a path is built.
+/// We intentionally do NOT require UUID shape — friendly ids/versions
+/// (e.g. `v1`) are valid in conformance backends.
+fn validate_document_key_component(label: &str, component: &str) -> Result<(), JacsError> {
+    if component.is_empty() {
+        return Err(JacsError::ValidationError(format!(
+            "document {label} must not be empty"
+        )));
+    }
+    // Reject path separators, traversal, the key separator ':', NUL, and any
+    // other ASCII control character.
+    if component.contains('/')
+        || component.contains('\\')
+        || component.contains("..")
+        || component.contains(':')
+        || component.chars().any(|c| c.is_control())
+    {
+        return Err(JacsError::ValidationError(format!(
+            "document {label} '{component}' contains unsafe characters (path separators, '..', ':', or control chars)"
+        )));
+    }
+    Ok(())
+}
+
 /// Base trait for document storage operations (Level 1 in the trait hierarchy).
 ///
 /// Provides CRUD, listing, versioning, and bulk operations for JACS documents.
@@ -791,7 +821,15 @@ impl CachedMultiStorage {
 
 impl StorageDocumentTraits for MultiStorage {
     fn store_document(&self, doc: &JACSDocument) -> Result<(), JacsError> {
+        validate_document_key_component("id", &doc.id)?;
+        validate_document_key_component("version", &doc.version)?;
         let key = doc.getkey();
+        // Document versions are immutable: do not clobber an existing
+        // documents/{id}:{version}.json. Mirror the SQLite backends'
+        // INSERT OR IGNORE / ON CONFLICT DO NOTHING no-op-on-duplicate behavior.
+        if self.document_exists(&key)? {
+            return Ok(());
+        }
         let path = format!("documents/{}.json", key);
         let json_string = serde_json::to_string_pretty(&doc.value)?;
         self.save_file(&path, json_string.as_bytes())
@@ -1154,6 +1192,167 @@ mod tests {
             StorageType::from_str("hai").is_err(),
             "\"hai\" should not be accepted as a storage type"
         );
+    }
+
+    #[test]
+    fn store_rejects_traversal_in_id() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let traversal_id = JACSDocument {
+            id: "../evil".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "../evil",
+                "jacsVersion": "v1",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": {"ok": false}
+            }),
+        };
+
+        let result = storage.store_document(&traversal_id);
+        assert!(result.is_err());
+        assert!(
+            !storage
+                .file_exists("documents/../evil:v1.json", None)
+                .unwrap_or(false)
+        );
+
+        let traversal_version = JACSDocument {
+            id: "clean-id".to_string(),
+            version: "v1/../x".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "clean-id",
+                "jacsVersion": "v1/../x",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": {"ok": false}
+            }),
+        };
+
+        let result = storage.store_document(&traversal_version);
+        assert!(result.is_err());
+
+        let clean = JACSDocument {
+            id: "clean-id".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "clean-id",
+                "jacsVersion": "v1",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": {"ok": true}
+            }),
+        };
+
+        storage
+            .store_document(&clean)
+            .expect("clean document should store");
+    }
+
+    #[test]
+    fn store_rejects_colon_in_component() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let colon_id = JACSDocument {
+            id: "a:b".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "a:b",
+                "jacsVersion": "v1",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": {"ok": false}
+            }),
+        };
+
+        assert!(storage.store_document(&colon_id).is_err());
+
+        let colon_version = JACSDocument {
+            id: "clean-id".to_string(),
+            version: "1:2".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "clean-id",
+                "jacsVersion": "1:2",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": {"ok": false}
+            }),
+        };
+
+        assert!(storage.store_document(&colon_version).is_err());
+    }
+
+    #[test]
+    fn object_store_does_not_overwrite_existing_version() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let original = JACSDocument {
+            id: "imm-1".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "imm-1",
+                "jacsVersion": "v1",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": "A"
+            }),
+        };
+        let replacement = JACSDocument {
+            id: "imm-1".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "imm-1",
+                "jacsVersion": "v1",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": "B"
+            }),
+        };
+
+        storage
+            .store_document(&original)
+            .expect("store original document");
+        storage
+            .store_document(&replacement)
+            .expect("duplicate version should be a no-op");
+
+        let stored = storage
+            .get_document("imm-1:v1")
+            .expect("stored document should load");
+        assert_eq!(
+            stored.value.get("content").and_then(|v| v.as_str()),
+            Some("A")
+        );
+    }
+
+    #[test]
+    fn idempotent_store_same_content_is_ok() {
+        let storage = MultiStorage::new("memory".to_string()).expect("memory storage");
+        let doc = JACSDocument {
+            id: "idem-1".to_string(),
+            version: "v1".to_string(),
+            jacs_type: "document".to_string(),
+            value: json!({
+                "jacsId": "idem-1",
+                "jacsVersion": "v1",
+                "jacsType": "document",
+                "jacsLevel": "raw",
+                "content": "same"
+            }),
+        };
+
+        storage.store_document(&doc).expect("first store");
+        storage.store_document(&doc).expect("second store is ok");
+
+        let versions = storage
+            .get_document_versions("idem-1")
+            .expect("versions should list");
+        assert_eq!(versions.len(), 1);
     }
 
     #[test]
