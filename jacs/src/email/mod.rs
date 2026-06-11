@@ -58,8 +58,8 @@ pub use types::{
 // Signing: the primary sender-side function.
 pub use sign::{
     build_html_inline_email_signature_payload, canonicalize_json_rfc8785, sign_email,
-    sign_email_html, sign_email_html_named, sign_email_named, sign_email_yaml,
-    sign_email_yaml_named,
+    sign_email_html, sign_email_html_named, sign_email_named, sign_email_named_with_extras,
+    sign_email_yaml, sign_email_yaml_named,
 };
 
 // Verification: one-call API + two-step API + content-only API.
