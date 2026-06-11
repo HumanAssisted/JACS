@@ -1,9 +1,11 @@
 #![cfg(feature = "agreements")]
 
-use jacs_binding_core::SimpleAgentWrapper;
+use jacs_binding_core::{AgentWrapper, SimpleAgentWrapper};
 use serde_json::{Value, json};
 
 const AGREEMENT_V2_SCENARIO: &str = include_str!("fixtures/agreement_v2_scenarios.json");
+const AGREEMENT_V2_SRC: &str = include_str!("../src/agreement_v2.rs");
+const SIMPLE_WRAPPER_SRC: &str = include_str!("../src/simple_wrapper.rs");
 
 fn fixture() -> Value {
     serde_json::from_str(AGREEMENT_V2_SCENARIO).expect("agreement v2 scenario fixture")
@@ -15,6 +17,14 @@ fn ephemeral_agent() -> (SimpleAgentWrapper, String) {
     let info: Value = serde_json::from_str(&info_json).expect("agent info json");
     let agent_id = info["agent_id"].as_str().expect("agent_id").to_string();
     (wrapper, agent_id)
+}
+
+fn ephemeral_agent_wrapper() -> AgentWrapper {
+    let wrapper = AgentWrapper::new();
+    wrapper
+        .ephemeral(Some("ed25519"))
+        .expect("ephemeral agent wrapper");
+    wrapper
 }
 
 fn base_input(agent_id: &str) -> Value {
@@ -120,6 +130,74 @@ fn simple_wrapper_supports_notary_signature_role() {
     let document: Value = serde_json::from_str(&notarized).expect("notarized agreement json");
 
     assert_eq!(document["agreementSignatures"][0]["role"], json!("notary"));
+}
+
+#[test]
+fn role_parser_is_single_canonical_impl() {
+    let (wrapper, agent_id) = ephemeral_agent();
+    let created = create_agreement(&wrapper, &agent_id);
+    let err = wrapper
+        .sign_agreement_v2_json(&created, "bogus-role")
+        .expect_err("invalid role must be rejected");
+    let msg = err.to_string();
+
+    let agent_wrapper = ephemeral_agent_wrapper();
+    let agent_err = agent_wrapper
+        .sign_agreement_v2_json(&created, "bogus-role")
+        .expect_err("invalid role must be rejected through AgentWrapper");
+
+    assert_eq!(
+        msg,
+        agent_err.to_string(),
+        "AgentWrapper and SimpleAgentWrapper must share the canonical role parser"
+    );
+    assert!(
+        msg.contains("Invalid agreement v2 signature role 'bogus-role'"),
+        "canonical role-parser message expected, got: {msg}"
+    );
+    assert_eq!(
+        AGREEMENT_V2_SRC
+            .matches("fn parse_agreement_v2_role")
+            .count(),
+        1,
+        "agreement_v2.rs must own the canonical role parser"
+    );
+    assert_eq!(
+        SIMPLE_WRAPPER_SRC
+            .matches("fn parse_agreement_v2_role")
+            .count(),
+        0,
+        "simple_wrapper.rs must not define a duplicate role parser"
+    );
+}
+
+#[test]
+fn v2_error_message_is_not_double_prefixed() {
+    let (wrapper, _agent_id) = ephemeral_agent();
+    let err = wrapper
+        .create_agreement_v2_json("{not valid json")
+        .expect_err("invalid create input must error");
+    let msg = err.to_string();
+    let count = msg.matches("Invalid agreement v2 create input").count();
+    assert_eq!(
+        count, 1,
+        "context prefix must appear exactly once, got: {msg}"
+    );
+    assert!(
+        AGREEMENT_V2_SRC.contains("pub(crate) const CTX_INVALID_CREATE_INPUT"),
+        "agreement_v2.rs must own the invalid-create context constant"
+    );
+    assert!(
+        SIMPLE_WRAPPER_SRC.contains("crate::agreement_v2::CTX_INVALID_CREATE_INPUT"),
+        "simple_wrapper.rs must reference the canonical invalid-create context"
+    );
+    assert_eq!(
+        SIMPLE_WRAPPER_SRC
+            .matches("\"Invalid agreement v2 create input\"")
+            .count(),
+        0,
+        "simple_wrapper.rs must not duplicate the invalid-create context literal"
+    );
 }
 
 #[test]

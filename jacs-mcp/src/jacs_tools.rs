@@ -992,7 +992,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!("Failed to create agreement v2: {}", e)),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1042,7 +1042,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!("Failed to update agreement v2: {}", e)),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1077,7 +1077,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!("Failed to sign agreement v2: {}", e)),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1161,7 +1161,7 @@ impl JacsMcpServer {
                         success: false,
                         valid: false,
                         result: None,
-                        error: Some(format!("Failed to verify agreement v2: {}", e)),
+                        error: Some(e.to_string()),
                     }
                 }
             };
@@ -1200,10 +1200,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2ValueResult {
                     success: false,
                     result: None,
-                    error: Some(format!(
-                        "Failed to detect agreement v2 branch conflict: {}",
-                        e
-                    )),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1241,10 +1238,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!(
-                        "Failed to merge agreement v2 transcript branches: {}",
-                        e
-                    )),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =
@@ -1299,10 +1293,7 @@ impl JacsMcpServer {
                 Err(e) => AgreementV2DocumentResult {
                     success: false,
                     agreement: None,
-                    error: Some(format!(
-                        "Failed to resolve agreement v2 branch conflict: {}",
-                        e
-                    )),
+                    error: Some(e.to_string()),
                 },
             };
             let serialized =

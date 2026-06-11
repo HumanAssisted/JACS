@@ -823,12 +823,13 @@ fn py_json_arg_to_string(py: Python, value: PyObject, label: &str) -> PyResult<S
     })
 }
 
-fn parsed_wrapper_json_to_py<E: std::fmt::Display>(
+#[cfg(feature = "agreements")]
+fn wrapper_json_to_py_preserve_kind(
     py: Python,
-    result: Result<String, E>,
+    result: BindingResult<String>,
     context: &str,
 ) -> PyResult<PyObject> {
-    let raw = map_py_runtime_result(result, context)?;
+    let raw = result.to_py()?;
     let value = parse_json_value(&raw, context)?;
     json_value_to_py(py, &value)
 }
@@ -1094,7 +1095,7 @@ impl SimpleAgent {
         let input_json = py_json_arg_to_string(py, input, "agreement v2 create input")?;
         let inner = &self.inner;
         let result = py.allow_threads(|| inner.create_agreement_v2_json(&input_json));
-        map_py_runtime_result(result, "Failed to create agreement v2")
+        result.to_py()
     }
 
     /// Apply an agreement v2 mutation and return the successor document JSON.
@@ -1110,7 +1111,7 @@ impl SimpleAgent {
         let inner = &self.inner;
         let result =
             py.allow_threads(|| inner.apply_agreement_v2_json(&document_json, &mutation_json));
-        map_py_runtime_result(result, "Failed to update agreement v2")
+        result.to_py()
     }
 
     /// Add this agent's signer, witness, or notary agreement signature.
@@ -1121,7 +1122,7 @@ impl SimpleAgent {
         let role = role.to_string();
         let inner = &self.inner;
         let result = py.allow_threads(|| inner.sign_agreement_v2_json(&document_json, &role));
-        map_py_runtime_result(result, "Failed to sign agreement v2")
+        result.to_py()
     }
 
     /// Verify agreement v2 hash, role, status, transcript, and signature invariants.
@@ -1130,7 +1131,7 @@ impl SimpleAgent {
         let document_json = document_json.to_string();
         let inner = &self.inner;
         let result = py.allow_threads(|| inner.verify_agreement_v2_json(&document_json));
-        parsed_wrapper_json_to_py(py, result, "agreement v2 verification report")
+        wrapper_json_to_py_preserve_kind(py, result, "agreement v2 verification report")
     }
 
     /// Detect whether two successor versions are transcript-only mergeable.
@@ -1153,7 +1154,7 @@ impl SimpleAgent {
                 &right_document_json,
             )
         });
-        parsed_wrapper_json_to_py(py, result, "agreement v2 branch analysis")
+        wrapper_json_to_py_preserve_kind(py, result, "agreement v2 branch analysis")
     }
 
     /// Auto-merge two transcript-only branches.
@@ -1176,7 +1177,7 @@ impl SimpleAgent {
                 &right_document_json,
             )
         });
-        map_py_runtime_result(result, "Failed to merge agreement v2 transcript branches")
+        result.to_py()
     }
 
     /// Resolve a conflicting branch by applying an explicit resolution mutation.
@@ -1203,7 +1204,7 @@ impl SimpleAgent {
                 &mutation_json,
             )
         });
-        map_py_runtime_result(result, "Failed to resolve agreement v2 branch conflict")
+        result.to_py()
     }
 
     /// Verify a signed JACS document.
