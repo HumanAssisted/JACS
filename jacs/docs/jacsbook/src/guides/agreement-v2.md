@@ -203,6 +203,47 @@ WASM exposes the same flow as JSON-string methods: `createAgreementV2Json`, `app
 - For post-final terms changes, create a successor agreement or explicit conflict resolution rather than mutating a final agreement in place.
 - Delegated signing is reserved for a future feature. In v2 core, the agent that signs must be listed in `parties` with the matching role.
 
+## Migrating from v1 agreements
+
+JACS still ships the original v1 "sidecar" agreement: a `jacsAgreement` field attached to an *existing* signed document, with separate `create_agreement` / `sign_agreement` / `check_agreement` calls and an `AgreementOptions` struct. v1 answers "did these agents approve this existing payload?" Agreement v2 answers "did these agents consent to *these terms*, under *this policy*, with *this process record*?" - it is a self-contained `jacsType: "agreement"` document with its own content hash, version chain, parties, roles, signature policy, notary, and transcript.
+
+v1 is still supported but legacy; new work should use v2.
+
+### Conceptual difference
+
+- **v1 sidecar**: signatures over a referenced document. The agreement is a field bolted onto some other JSON. No standalone identity, no roles beyond "must sign", no transcript, no notary, no branch handling.
+- **v2 document**: a first-class agreement document. Parties carry `role` (`signer` / `witness` / `notary` / `observer`), the `signaturePolicy` expresses quorum and witness/notary requirements, a `transcript` records process evidence, and successor versions / branches are reconciled by core helpers.
+
+### Operation mapping
+
+| v1 operation | v2 equivalent |
+|--------------|---------------|
+| `create_agreement` (binding) / `jacs document create-agreement` (CLI) | `create_agreement_v2` / `jacs agreement-v2 create` |
+| `sign_agreement` (binding) / `jacs document sign-agreement` (CLI) | `sign_agreement_v2` / `jacs agreement-v2 sign --role signer` |
+| `check_agreement` (binding) / `jacs document check-agreement` (CLI) | `verify_agreement_v2` / `jacs agreement-v2 verify` |
+| `AgreementOptions.quorum` (M-of-N) | `signaturePolicy.partyQuorum` (`all`, `majority`, or integer M) |
+| `AgreementOptions.timeout` | `signaturePolicy.timeout` |
+| `AgreementOptions.required_algorithms` | `signaturePolicy.requiredAlgorithms` |
+| `AgreementOptions.minimum_strength` | `signaturePolicy.minimumStrength` |
+
+There is no v1 equivalent for v2 mutations (`apply_agreement_v2` / `jacs agreement-v2 apply`) or branch handling (`jacs agreement-v2 detect-conflict` / `merge-transcript` / `resolve-conflict`) - these are new in v2.
+
+### What stays the same
+
+- The cryptographic signing model: the same agent identity and keys sign in both versions, and signatures are JACS signatures over canonical content.
+- You still load an agent with keys on disk (or `ephemeral()` for single-agent demos) before any agreement call.
+
+### What is new in v2
+
+- Roles: `signer`, `witness`, `notary`, `observer` (v1 has only "agents that must sign").
+- Notary and witness requirements (`signaturePolicy.notaryRequired`, `signaturePolicy.witnessRequired`), counted independently of signer quorum.
+- A `transcript` of process evidence whose tampering is detectable.
+- Branch merge / conflict resolution for concurrent successor versions.
+- A top-level `valid` verdict from `verify_agreement_v2` (the report also carries `expectedStatus`).
+- Fail-closed CLI: `jacs agreement-v2 verify` exits non-zero when the agreement is not valid.
+
+For the full v2 walkthrough, see the [Workflow](#workflow), [Python](#python), [Node.js](#nodejs), and [CLI](#cli) sections above and the [Rust core / legacy comparison](../rust/agreements.md).
+
 ## Verification Matrix
 
 | Scenario | Coverage |

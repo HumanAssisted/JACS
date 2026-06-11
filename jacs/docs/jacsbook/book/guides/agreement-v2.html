@@ -336,6 +336,41 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 <li>For post-final terms changes, create a successor agreement or explicit conflict resolution rather than mutating a final agreement in place.</li>
 <li>Delegated signing is reserved for a future feature. In v2 core, the agent that signs must be listed in <code>parties</code> with the matching role.</li>
 </ul>
+<h2 id="migrating-from-v1-agreements"><a class="header" href="#migrating-from-v1-agreements">Migrating from v1 agreements</a></h2>
+<p>JACS still ships the original v1 "sidecar" agreement: a <code>jacsAgreement</code> field attached to an <em>existing</em> signed document, with separate <code>create_agreement</code> / <code>sign_agreement</code> / <code>check_agreement</code> calls and an <code>AgreementOptions</code> struct. v1 answers "did these agents approve this existing payload?" Agreement v2 answers "did these agents consent to <em>these terms</em>, under <em>this policy</em>, with <em>this process record</em>?" - it is a self-contained <code>jacsType: "agreement"</code> document with its own content hash, version chain, parties, roles, signature policy, notary, and transcript.</p>
+<p>v1 is still supported but legacy; new work should use v2.</p>
+<h3 id="conceptual-difference"><a class="header" href="#conceptual-difference">Conceptual difference</a></h3>
+<ul>
+<li><strong>v1 sidecar</strong>: signatures over a referenced document. The agreement is a field bolted onto some other JSON. No standalone identity, no roles beyond "must sign", no transcript, no notary, no branch handling.</li>
+<li><strong>v2 document</strong>: a first-class agreement document. Parties carry <code>role</code> (<code>signer</code> / <code>witness</code> / <code>notary</code> / <code>observer</code>), the <code>signaturePolicy</code> expresses quorum and witness/notary requirements, a <code>transcript</code> records process evidence, and successor versions / branches are reconciled by core helpers.</li>
+</ul>
+<h3 id="operation-mapping"><a class="header" href="#operation-mapping">Operation mapping</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>v1 operation</th><th>v2 equivalent</th></tr></thead><tbody>
+<tr><td><code>create_agreement</code> (binding) / <code>jacs document create-agreement</code> (CLI)</td><td><code>create_agreement_v2</code> / <code>jacs agreement-v2 create</code></td></tr>
+<tr><td><code>sign_agreement</code> (binding) / <code>jacs document sign-agreement</code> (CLI)</td><td><code>sign_agreement_v2</code> / <code>jacs agreement-v2 sign --role signer</code></td></tr>
+<tr><td><code>check_agreement</code> (binding) / <code>jacs document check-agreement</code> (CLI)</td><td><code>verify_agreement_v2</code> / <code>jacs agreement-v2 verify</code></td></tr>
+<tr><td><code>AgreementOptions.quorum</code> (M-of-N)</td><td><code>signaturePolicy.partyQuorum</code> (<code>all</code>, <code>majority</code>, or integer M)</td></tr>
+<tr><td><code>AgreementOptions.timeout</code></td><td><code>signaturePolicy.timeout</code></td></tr>
+<tr><td><code>AgreementOptions.required_algorithms</code></td><td><code>signaturePolicy.requiredAlgorithms</code></td></tr>
+<tr><td><code>AgreementOptions.minimum_strength</code></td><td><code>signaturePolicy.minimumStrength</code></td></tr>
+</tbody></table>
+</div>
+<p>There is no v1 equivalent for v2 mutations (<code>apply_agreement_v2</code> / <code>jacs agreement-v2 apply</code>) or branch handling (<code>jacs agreement-v2 detect-conflict</code> / <code>merge-transcript</code> / <code>resolve-conflict</code>) - these are new in v2.</p>
+<h3 id="what-stays-the-same"><a class="header" href="#what-stays-the-same">What stays the same</a></h3>
+<ul>
+<li>The cryptographic signing model: the same agent identity and keys sign in both versions, and signatures are JACS signatures over canonical content.</li>
+<li>You still load an agent with keys on disk (or <code>ephemeral()</code> for single-agent demos) before any agreement call.</li>
+</ul>
+<h3 id="what-is-new-in-v2"><a class="header" href="#what-is-new-in-v2">What is new in v2</a></h3>
+<ul>
+<li>Roles: <code>signer</code>, <code>witness</code>, <code>notary</code>, <code>observer</code> (v1 has only "agents that must sign").</li>
+<li>Notary and witness requirements (<code>signaturePolicy.notaryRequired</code>, <code>signaturePolicy.witnessRequired</code>), counted independently of signer quorum.</li>
+<li>A <code>transcript</code> of process evidence whose tampering is detectable.</li>
+<li>Branch merge / conflict resolution for concurrent successor versions.</li>
+<li>A top-level <code>valid</code> verdict from <code>verify_agreement_v2</code> (the report also carries <code>expectedStatus</code>).</li>
+<li>Fail-closed CLI: <code>jacs agreement-v2 verify</code> exits non-zero when the agreement is not valid.</li>
+</ul>
+<p>For the full v2 walkthrough, see the <a href="#workflow">Workflow</a>, <a href="#python">Python</a>, <a href="#nodejs">Node.js</a>, and <a href="#cli">CLI</a> sections above and the <a href="../rust/agreements.html">Rust core / legacy comparison</a>.</p>
 <h2 id="verification-matrix"><a class="header" href="#verification-matrix">Verification Matrix</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Coverage</th></tr></thead><tbody>
 <tr><td>Create standalone Agreement v2</td><td>Rust core tests, binding parity fixture, CLI/MCP/WASM tests</td></tr>

@@ -255,6 +255,9 @@ jacs agreement-v2 resolve-conflict --base base.json --previous left.json --side 
 </code></pre>
 <p>Transcript-only branches can auto-merge. Terms conflicts require an explicit successor mutation.</p>
 <h2 id="legacy-sidecar-agreements"><a class="header" href="#legacy-sidecar-agreements">Legacy Sidecar Agreements</a></h2>
+<blockquote>
+<p>Legacy v1; new work should use Agreement v2. See <a href="../guides/agreement-v2.html#migrating-from-v1-agreements">Migrating from v1 agreements</a>.</p>
+</blockquote>
 <p>The older <code>jacsAgreement</code> field on arbitrary signed documents remains available for simple countersignature workflows:</p>
 <pre><code class="language-bash">jacs document create-agreement -f ./document.json -i agent1-uuid,agent2-uuid
 jacs document sign-agreement -f ./document-with-agreement.json
