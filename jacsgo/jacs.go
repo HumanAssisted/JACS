@@ -56,6 +56,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
@@ -91,6 +92,7 @@ type Config struct {
 // JacsAgent represents a JACS agent instance with independent state.
 // Multiple JacsAgent instances can be used concurrently.
 type JacsAgent struct {
+	mu     sync.RWMutex
 	handle C.JacsAgentHandle
 }
 
@@ -107,6 +109,8 @@ func NewJacsAgent() (*JacsAgent, error) {
 // Close releases the resources associated with this JacsAgent.
 // After Close, the JacsAgent must not be used.
 func (a *JacsAgent) Close() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.handle != nil {
 		C.jacs_agent_free(a.handle)
 		a.handle = nil
@@ -115,6 +119,8 @@ func (a *JacsAgent) Close() {
 
 // Load initializes this agent with the given configuration file.
 func (a *JacsAgent) Load(configPath string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return errors.New("JacsAgent is closed")
 	}
@@ -131,6 +137,8 @@ func (a *JacsAgent) Load(configPath string) error {
 
 // SignString signs a string using this agent's private key.
 func (a *JacsAgent) SignString(data string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -149,6 +157,8 @@ func (a *JacsAgent) SignString(data string) (string, error) {
 
 // VerifyString verifies a string signature using this agent.
 func (a *JacsAgent) VerifyString(data, signatureBase64 string, publicKey []byte, publicKeyEncType string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return errors.New("JacsAgent is closed")
 	}
@@ -176,6 +186,8 @@ func (a *JacsAgent) VerifyString(data, signatureBase64 string, publicKey []byte,
 
 // SignRequest signs a request payload (wraps in a JACS document).
 func (a *JacsAgent) SignRequest(payload interface{}) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -199,6 +211,8 @@ func (a *JacsAgent) SignRequest(payload interface{}) (string, error) {
 
 // VerifyResponse verifies a response payload.
 func (a *JacsAgent) VerifyResponse(documentString string) (map[string]interface{}, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return nil, errors.New("JacsAgent is closed")
 	}
@@ -224,6 +238,8 @@ func (a *JacsAgent) VerifyResponse(documentString string) (map[string]interface{
 
 // CreateAgreement creates an agreement for a document.
 func (a *JacsAgent) CreateAgreement(documentString string, agentIDs []string, question, context, agreementFieldname *string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -263,6 +279,8 @@ func (a *JacsAgent) CreateAgreement(documentString string, agentIDs []string, qu
 
 // SignAgreement signs an agreement.
 func (a *JacsAgent) SignAgreement(documentString string, agreementFieldname *string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -287,6 +305,8 @@ func (a *JacsAgent) SignAgreement(documentString string, agreementFieldname *str
 
 // CheckAgreement checks an agreement.
 func (a *JacsAgent) CheckAgreement(documentString string, agreementFieldname *string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -311,6 +331,8 @@ func (a *JacsAgent) CheckAgreement(documentString string, agreementFieldname *st
 
 // VerifyAgent verifies an agent's signature and hash.
 func (a *JacsAgent) VerifyAgent(agentFile *string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return errors.New("JacsAgent is closed")
 	}
@@ -330,6 +352,8 @@ func (a *JacsAgent) VerifyAgent(agentFile *string) error {
 
 // CreateDocument creates a new JACS document.
 func (a *JacsAgent) CreateDocument(documentString string, customSchema, outputFilename *string, noSave bool, attachments *string, embed *bool) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -376,6 +400,8 @@ func (a *JacsAgent) CreateDocument(documentString string, customSchema, outputFi
 
 // VerifyDocument verifies a document's hash and signature.
 func (a *JacsAgent) VerifyDocument(documentString string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return errors.New("JacsAgent is closed")
 	}
@@ -392,6 +418,8 @@ func (a *JacsAgent) VerifyDocument(documentString string) error {
 
 // VerifyDocumentById verifies a document by its storage ID ("uuid:version" format).
 func (a *JacsAgent) VerifyDocumentById(documentID string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return errors.New("JacsAgent is closed")
 	}
@@ -408,6 +436,8 @@ func (a *JacsAgent) VerifyDocumentById(documentID string) error {
 
 // ReencryptKey re-encrypts the agent's private key with a new password.
 func (a *JacsAgent) ReencryptKey(oldPassword, newPassword string) error {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return errors.New("JacsAgent is closed")
 	}
@@ -427,6 +457,8 @@ func (a *JacsAgent) ReencryptKey(oldPassword, newPassword string) error {
 
 // GetJSON returns the agent's JSON representation.
 func (a *JacsAgent) GetJSON() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -442,6 +474,8 @@ func (a *JacsAgent) GetJSON() (string, error) {
 
 // GetPublicKeyPEM returns the agent's public key in PEM format.
 func (a *JacsAgent) GetPublicKeyPEM() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -460,6 +494,8 @@ func (a *JacsAgent) GetPublicKeyPEM() (string, error) {
 // Returns the signed attestation document as a JSON string.
 // Requires the library to be built with the attestation feature.
 func (a *JacsAgent) CreateAttestation(paramsJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -482,6 +518,8 @@ func (a *JacsAgent) CreateAttestation(paramsJSON string) (string, error) {
 // If full is false, performs local-tier verification (signature + hash only).
 // Returns the verification result as a JSON string.
 func (a *JacsAgent) VerifyAttestation(documentKey string, full bool) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -508,6 +546,8 @@ func (a *JacsAgent) VerifyAttestation(documentKey string, full bool) (string, er
 // claimsJSON is a JSON array of claim objects.
 // Returns the new attestation document as a JSON string.
 func (a *JacsAgent) LiftToAttestation(signedDocJSON, claimsJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -532,6 +572,8 @@ func (a *JacsAgent) LiftToAttestation(signedDocJSON, claimsJSON string) (string,
 // attestationJSON is the attestation document JSON string.
 // Returns the DSSE envelope as a JSON string.
 func (a *JacsAgent) ExportAttestationDSSE(attestationJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -554,6 +596,8 @@ func (a *JacsAgent) ExportAttestationDSSE(attestationJSON string) (string, error
 
 // ExportAgentCard exports an A2A Agent Card for this agent.
 func (a *JacsAgent) ExportAgentCard() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -569,6 +613,8 @@ func (a *JacsAgent) ExportAgentCard() (string, error) {
 
 // SignA2AArtifact wraps an artifact with a JACS signature for A2A exchange.
 func (a *JacsAgent) SignA2AArtifact(artifactJSON string, artifactType string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -590,6 +636,8 @@ func (a *JacsAgent) SignA2AArtifact(artifactJSON string, artifactType string) (s
 
 // VerifyA2AArtifact verifies a JACS-wrapped A2A artifact (crypto-only).
 func (a *JacsAgent) VerifyA2AArtifact(wrappedJSON string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -608,6 +656,8 @@ func (a *JacsAgent) VerifyA2AArtifact(wrappedJSON string) (string, error) {
 
 // VerifyA2AArtifactWithPolicy verifies a JACS-wrapped artifact with trust policy.
 func (a *JacsAgent) VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, policy string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -632,6 +682,8 @@ func (a *JacsAgent) VerifyA2AArtifactWithPolicy(wrappedJSON, agentCardJSON, poli
 
 // AssessA2AAgent assesses an agent's trustworthiness against a trust policy.
 func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -658,6 +710,8 @@ func (a *JacsAgent) AssessA2AAgent(agentCardJSON, policy string) (string, error)
 // BuildAuthHeader builds an Authorization header value for this agent.
 // Returns the header value string (e.g. for use in HTTP Authorization headers).
 func (a *JacsAgent) BuildAuthHeader() (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -674,6 +728,8 @@ func (a *JacsAgent) BuildAuthHeader() (string, error) {
 // CanonicalizeJson canonicalizes a JSON string using RFC 8785 (JCS).
 // Returns the canonicalized JSON string.
 func (a *JacsAgent) CanonicalizeJson(jsonStr string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -694,6 +750,8 @@ func (a *JacsAgent) CanonicalizeJson(jsonStr string) (string, error) {
 // payloadJson is the JSON string of the payload to sign.
 // Returns the signed response as a JSON string.
 func (a *JacsAgent) SignResponse(payloadJson string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -713,6 +771,8 @@ func (a *JacsAgent) SignResponse(payloadJson string) (string, error) {
 // GenerateVerifyLink generates a verification link for a signed document.
 // EncodeVerifyPayload encodes a document as URL-safe base64 (no padding) for verification.
 func (a *JacsAgent) EncodeVerifyPayload(document string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -731,6 +791,8 @@ func (a *JacsAgent) EncodeVerifyPayload(document string) (string, error) {
 
 // DecodeVerifyPayload decodes a URL-safe base64 verification payload back to the original document.
 func (a *JacsAgent) DecodeVerifyPayload(encoded string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -750,6 +812,8 @@ func (a *JacsAgent) DecodeVerifyPayload(encoded string) (string, error) {
 // ExtractDocumentId extracts the document ID from a JACS-signed document.
 // Checks jacsDocumentId, document_id, id in priority order.
 func (a *JacsAgent) ExtractDocumentId(document string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}
@@ -771,6 +835,8 @@ func (a *JacsAgent) ExtractDocumentId(document string) (string, error) {
 // serverKeysJson is the server public keys JSON string.
 // Returns the unwrapped event payload as a JSON string.
 func (a *JacsAgent) UnwrapSignedEvent(eventJson, serverKeysJson string) (string, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	if a.handle == nil {
 		return "", errors.New("JacsAgent is closed")
 	}

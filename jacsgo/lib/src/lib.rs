@@ -22,6 +22,39 @@ use std::sync::Mutex;
 pub mod conversion_utils;
 use conversion_utils::json_to_c_string;
 
+/// Error code returned by an integer-returning FFI export when its body panics.
+const FFI_PANIC_CODE: c_int = -100;
+
+/// Run an FFI export body under a panic boundary.
+///
+/// A panic unwinding across an `extern "C"` boundary aborts the whole process
+/// on Rust >= 1.81. Every export funnels its body through `ffi_guard` so that a
+/// panic in jacs core (verify/parse of untrusted input, agreement v2, a2a,
+/// storage bridge, etc.) is caught, recorded in the thread-local last-error
+/// (retrievable from Go via `jacs_simple_last_error`), and converted to the
+/// export's documented error sentinel instead of aborting the host.
+fn ffi_guard<T>(sentinel: T, body: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(value) => value,
+        Err(payload) => {
+            let msg = panic_message(&payload);
+            set_last_simple_error(format!("panic in jacs FFI: {msg}"));
+            sentinel
+        }
+    }
+}
+
+/// Extract a human-readable message from a caught panic payload.
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
+    }
+}
+
 // ============================================================================
 // JacsAgent Handle API - Recommended for concurrent usage
 // ============================================================================
@@ -39,21 +72,25 @@ pub struct JacsAgentHandle {
 /// The handle must be freed with jacs_agent_free() when no longer needed.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_new() -> *mut JacsAgentHandle {
-    let handle = Box::new(JacsAgentHandle {
-        agent: Arc::new(Mutex::new(jacs_core::get_empty_agent())),
-    });
-    Box::into_raw(handle)
+    ffi_guard(ptr::null_mut(), || {
+        let handle = Box::new(JacsAgentHandle {
+            agent: Arc::new(Mutex::new(jacs_core::get_empty_agent())),
+        });
+        Box::into_raw(handle)
+    })
 }
 
 /// Free a JacsAgent handle.
 /// After this call, the handle pointer is invalid and must not be used.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_free(handle: *mut JacsAgentHandle) {
-    if !handle.is_null() {
-        unsafe {
-            let _ = Box::from_raw(handle);
+    ffi_guard((), || {
+        if !handle.is_null() {
+            unsafe {
+                let _ = Box::from_raw(handle);
+            }
         }
-    }
+    })
 }
 
 /// Load JACS configuration into an agent handle.
@@ -62,25 +99,27 @@ pub extern "C" fn jacs_agent_load(
     handle: *mut JacsAgentHandle,
     config_path: *const c_char,
 ) -> c_int {
-    if handle.is_null() || config_path.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if handle.is_null() || config_path.is_null() {
+            return -1;
+        }
 
-    let config_path_str = match unsafe { CStr::from_ptr(config_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let config_path_str = match unsafe { CStr::from_ptr(config_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent_ref = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -3,
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent_ref = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -3,
+        };
 
-    match agent_ref.load_by_config(config_path_str.to_string()) {
-        Ok(_) => 0,
-        Err(_) => -4,
-    }
+        match agent_ref.load_by_config(config_path_str.to_string()) {
+            Ok(_) => 0,
+            Err(_) => -4,
+        }
+    })
 }
 
 /// Sign a string using an agent handle.
@@ -89,28 +128,30 @@ pub extern "C" fn jacs_agent_sign_string(
     handle: *mut JacsAgentHandle,
     data: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || data.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || data.is_null() {
+            return ptr::null_mut();
+        }
 
-    let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.sign_string(data_str) {
-        Ok(signature) => match CString::new(signature) {
-            Ok(c_string) => c_string.into_raw(),
+        match agent.sign_string(data_str) {
+            Ok(signature) => match CString::new(signature) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify a string signature using an agent handle.
@@ -123,47 +164,49 @@ pub extern "C" fn jacs_agent_verify_string(
     public_key_len: size_t,
     public_key_enc_type: *const c_char,
 ) -> c_int {
-    if handle.is_null()
-        || data.is_null()
-        || signature_base64.is_null()
-        || public_key.is_null()
-        || public_key_enc_type.is_null()
-    {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if handle.is_null()
+            || data.is_null()
+            || signature_base64.is_null()
+            || public_key.is_null()
+            || public_key_enc_type.is_null()
+        {
+            return -1;
+        }
 
-    let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let signature_str = match unsafe { CStr::from_ptr(signature_base64) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -3,
-    };
+        let signature_str = match unsafe { CStr::from_ptr(signature_base64) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -3,
+        };
 
-    let enc_type_str = match unsafe { CStr::from_ptr(public_key_enc_type) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -4,
-    };
+        let enc_type_str = match unsafe { CStr::from_ptr(public_key_enc_type) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -4,
+        };
 
-    let public_key_vec = unsafe { slice::from_raw_parts(public_key, public_key_len) }.to_vec();
+        let public_key_vec = unsafe { slice::from_raw_parts(public_key, public_key_len) }.to_vec();
 
-    let handle_ref = unsafe { &*handle };
-    let agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -5,
-    };
+        let handle_ref = unsafe { &*handle };
+        let agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -5,
+        };
 
-    match agent.verify_string(
-        data_str,
-        signature_str,
-        public_key_vec,
-        Some(enc_type_str.to_string()),
-    ) {
-        Ok(_) => 0,
-        Err(_) => -6,
-    }
+        match agent.verify_string(
+            data_str,
+            signature_str,
+            public_key_vec,
+            Some(enc_type_str.to_string()),
+        ) {
+            Ok(_) => 0,
+            Err(_) => -6,
+        }
+    })
 }
 
 /// Sign a request payload using an agent handle.
@@ -172,33 +215,35 @@ pub extern "C" fn jacs_agent_sign_request(
     handle: *mut JacsAgentHandle,
     payload_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || payload_json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || payload_json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let payload_str = match unsafe { CStr::from_ptr(payload_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let payload_str = match unsafe { CStr::from_ptr(payload_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let payload_value: Value = match serde_json::from_str(payload_str) {
-        Ok(val) => val,
-        Err(_) => return ptr::null_mut(),
-    };
+        let payload_value: Value = match serde_json::from_str(payload_str) {
+            Ok(val) => val,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.sign_payload(payload_value) {
-        Ok(signed) => match CString::new(signed) {
-            Ok(c_string) => c_string.into_raw(),
+        match agent.sign_payload(payload_value) {
+            Ok(signed) => match CString::new(signed) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify a response payload using an agent handle.
@@ -207,25 +252,27 @@ pub extern "C" fn jacs_agent_verify_response(
     handle: *mut JacsAgentHandle,
     document_string: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.verify_payload(doc_str.to_string(), None) {
-        Ok(payload) => json_to_c_string(&payload),
-        Err(_) => ptr::null_mut(),
-    }
+        match agent.verify_payload(doc_str.to_string(), None) {
+            Ok(payload) => json_to_c_string(&payload),
+            Err(_) => ptr::null_mut(),
+        }
+    })
 }
 
 /// Create an agreement using an agent handle.
@@ -238,50 +285,52 @@ pub extern "C" fn jacs_agent_create_agreement(
     context: *const c_char,
     agreement_fieldname: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_string.is_null() || agentids_json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_string.is_null() || agentids_json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let agentids_str = match unsafe { CStr::from_ptr(agentids_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let agentids_str = match unsafe { CStr::from_ptr(agentids_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let agentids: Vec<String> = match serde_json::from_str(agentids_str) {
-        Ok(ids) => ids,
-        Err(_) => return ptr::null_mut(),
-    };
+        let agentids: Vec<String> = match serde_json::from_str(agentids_str) {
+            Ok(ids) => ids,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match jacs_core::shared::document_add_agreement(
-        &mut agent,
-        doc_str,
-        agentids,
-        None,
-        None,
-        c_string_to_option(question),
-        c_string_to_option(context),
-        None,
-        None,
-        false,
-        c_string_to_option(agreement_fieldname),
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_add_agreement(
+            &mut agent,
+            doc_str,
+            agentids,
+            None,
+            None,
+            c_string_to_option(question),
+            c_string_to_option(context),
+            None,
+            None,
+            false,
+            c_string_to_option(agreement_fieldname),
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Sign an agreement using an agent handle.
@@ -291,37 +340,39 @@ pub extern "C" fn jacs_agent_sign_agreement(
     document_string: *const c_char,
     agreement_fieldname: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match jacs_core::shared::document_sign_agreement(
-        &mut agent,
-        doc_str,
-        None,
-        None,
-        None,
-        None,
-        false,
-        c_string_to_option(agreement_fieldname),
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_sign_agreement(
+            &mut agent,
+            doc_str,
+            None,
+            None,
+            None,
+            None,
+            false,
+            c_string_to_option(agreement_fieldname),
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Check an agreement using an agent handle.
@@ -331,33 +382,35 @@ pub extern "C" fn jacs_agent_check_agreement(
     document_string: *const c_char,
     agreement_fieldname: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match jacs_core::shared::document_check_agreement(
-        &mut agent,
-        doc_str,
-        None,
-        c_string_to_option(agreement_fieldname),
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_check_agreement(
+            &mut agent,
+            doc_str,
+            None,
+            c_string_to_option(agreement_fieldname),
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify an agent using a handle.
@@ -366,39 +419,41 @@ pub extern "C" fn jacs_agent_verify_agent(
     handle: *mut JacsAgentHandle,
     agentfile: *const c_char,
 ) -> c_int {
-    if handle.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if handle.is_null() {
+            return -1;
+        }
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -2,
-    };
-
-    if !agentfile.is_null() {
-        let file_str = match unsafe { CStr::from_ptr(agentfile) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return -3,
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -2,
         };
 
-        let agent_result = jacs_core::load_agent(Some(file_str.to_string()));
-        match agent_result {
-            Ok(loaded_agent) => {
-                *agent = loaded_agent;
+        if !agentfile.is_null() {
+            let file_str = match unsafe { CStr::from_ptr(agentfile) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return -3,
+            };
+
+            let agent_result = jacs_core::load_agent(Some(file_str.to_string()));
+            match agent_result {
+                Ok(loaded_agent) => {
+                    *agent = loaded_agent;
+                }
+                Err(_) => return -4,
             }
-            Err(_) => return -4,
         }
-    }
 
-    if agent.verify_self_signature().is_err() {
-        return -5;
-    }
+        if agent.verify_self_signature().is_err() {
+            return -5;
+        }
 
-    match agent.verify_self_hash() {
-        Ok(_) => 0,
-        Err(_) => -6,
-    }
+        match agent.verify_self_hash() {
+            Ok(_) => 0,
+            Err(_) => -6,
+        }
+    })
 }
 
 /// Create a document using an agent handle.
@@ -412,44 +467,46 @@ pub extern "C" fn jacs_agent_create_document(
     attachments: *const c_char,
     embed: c_int,
 ) -> *mut c_char {
-    if handle.is_null() || document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let embed_opt = if embed > 0 {
-        Some(true)
-    } else if embed < 0 {
-        Some(false)
-    } else {
-        None
-    };
+        let embed_opt = if embed > 0 {
+            Some(true)
+        } else if embed < 0 {
+            Some(false)
+        } else {
+            None
+        };
 
-    match jacs_core::shared::document_create(
-        &mut agent,
-        doc_str,
-        c_string_to_option(custom_schema),
-        c_string_to_option(outputfilename),
-        no_save != 0,
-        c_string_to_option(attachments).as_deref(),
-        embed_opt,
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_create(
+            &mut agent,
+            doc_str,
+            c_string_to_option(custom_schema),
+            c_string_to_option(outputfilename),
+            no_save != 0,
+            c_string_to_option(attachments).as_deref(),
+            embed_opt,
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify a document using an agent handle.
@@ -458,37 +515,39 @@ pub extern "C" fn jacs_agent_verify_document(
     handle: *mut JacsAgentHandle,
     document_string: *const c_char,
 ) -> c_int {
-    if handle.is_null() || document_string.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if handle.is_null() || document_string.is_null() {
+            return -1;
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -3,
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -3,
+        };
 
-    let doc = match agent.load_document(doc_str) {
-        Ok(doc) => doc,
-        Err(_) => return -4,
-    };
+        let doc = match agent.load_document(doc_str) {
+            Ok(doc) => doc,
+            Err(_) => return -4,
+        };
 
-    let document_key = doc.getkey();
-    let value = doc.getvalue();
+        let document_key = doc.getkey();
+        let value = doc.getvalue();
 
-    if agent.verify_hash(value).is_err() {
-        return -5;
-    }
+        if agent.verify_hash(value).is_err() {
+            return -5;
+        }
 
-    match agent.verify_external_document_signature(&document_key) {
-        Ok(_) => 0,
-        Err(_) => -6,
-    }
+        match agent.verify_external_document_signature(&document_key) {
+            Ok(_) => 0,
+            Err(_) => -6,
+        }
+    })
 }
 
 /// Verify a document by its ID from storage using an agent handle.
@@ -499,59 +558,61 @@ pub extern "C" fn jacs_agent_verify_document_by_id(
     handle: *mut JacsAgentHandle,
     document_id: *const c_char,
 ) -> c_int {
-    if handle.is_null() || document_id.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if handle.is_null() || document_id.is_null() {
+            return -1;
+        }
 
-    let doc_id_str = match unsafe { CStr::from_ptr(document_id) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let doc_id_str = match unsafe { CStr::from_ptr(document_id) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    // Validate format
-    if !doc_id_str.contains(':') {
-        return -3;
-    }
+        // Validate format
+        if !doc_id_str.contains(':') {
+            return -3;
+        }
 
-    use jacs_core::storage::StorageDocumentTraits;
+        use jacs_core::storage::StorageDocumentTraits;
 
-    let storage = match jacs_core::storage::MultiStorage::default_new() {
-        Ok(s) => s,
-        Err(_) => return -4,
-    };
+        let storage = match jacs_core::storage::MultiStorage::default_new() {
+            Ok(s) => s,
+            Err(_) => return -4,
+        };
 
-    let doc = match storage.get_document(doc_id_str) {
-        Ok(d) => d,
-        Err(_) => return -5,
-    };
+        let doc = match storage.get_document(doc_id_str) {
+            Ok(d) => d,
+            Err(_) => return -5,
+        };
 
-    let doc_str = match serde_json::to_string(&doc.value) {
-        Ok(s) => s,
-        Err(_) => return -6,
-    };
+        let doc_str = match serde_json::to_string(&doc.value) {
+            Ok(s) => s,
+            Err(_) => return -6,
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let mut agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -7,
-    };
+        let handle_ref = unsafe { &*handle };
+        let mut agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -7,
+        };
 
-    let loaded_doc = match agent.load_document(&doc_str) {
-        Ok(d) => d,
-        Err(_) => return -8,
-    };
+        let loaded_doc = match agent.load_document(&doc_str) {
+            Ok(d) => d,
+            Err(_) => return -8,
+        };
 
-    let document_key = loaded_doc.getkey();
-    let value = loaded_doc.getvalue();
+        let document_key = loaded_doc.getkey();
+        let value = loaded_doc.getvalue();
 
-    if agent.verify_hash(value).is_err() {
-        return -9;
-    }
+        if agent.verify_hash(value).is_err() {
+            return -9;
+        }
 
-    match agent.verify_external_document_signature(&document_key) {
-        Ok(_) => 0,
-        Err(_) => -10,
-    }
+        match agent.verify_external_document_signature(&document_key) {
+            Ok(_) => 0,
+            Err(_) => -10,
+        }
+    })
 }
 
 /// Re-encrypt the agent's private key via the hardened binding-core path
@@ -563,70 +624,76 @@ pub extern "C" fn jacs_agent_reencrypt_key(
     old_password: *const c_char,
     new_password: *const c_char,
 ) -> c_int {
-    if handle.is_null() || old_password.is_null() || new_password.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if handle.is_null() || old_password.is_null() || new_password.is_null() {
+            return -1;
+        }
 
-    let old_pw = match unsafe { CStr::from_ptr(old_password) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let old_pw = match unsafe { CStr::from_ptr(old_password) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let new_pw = match unsafe { CStr::from_ptr(new_password) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -3,
-    };
+        let new_pw = match unsafe { CStr::from_ptr(new_password) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -3,
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.reencrypt_key(old_pw, new_pw) {
-        Ok(_) => 0,
-        Err(_) => -4,
-    }
+        match wrapper.reencrypt_key(old_pw, new_pw) {
+            Ok(_) => 0,
+            Err(_) => -4,
+        }
+    })
 }
 
 /// Get the agent's JSON representation as a string.
 /// Returns a C string that must be freed with jacs_free_string(), or null on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_get_json(handle: *mut JacsAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
 
-    let handle_ref = unsafe { &*handle };
-    let agent = match handle_ref.agent.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let handle_ref = unsafe { &*handle };
+        let agent = match handle_ref.agent.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.get_value() {
-        Some(value) => match CString::new(value.to_string()) {
-            Ok(c_string) => c_string.into_raw(),
-            Err(_) => ptr::null_mut(),
-        },
-        None => ptr::null_mut(),
-    }
+        match agent.get_value() {
+            Some(value) => match CString::new(value.to_string()) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
+            None => ptr::null_mut(),
+        }
+    })
 }
 
 /// Get the agent's public key as PEM text.
 /// Returns a C string that must be freed with jacs_free_string(), or null on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_get_public_key_pem(handle: *mut JacsAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.get_public_key_pem() {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.get_public_key_pem() {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 // ============================================================================
@@ -642,33 +709,36 @@ pub extern "C" fn jacs_agent_create_attestation(
     handle: *mut JacsAgentHandle,
     params_json: *const c_char,
 ) -> *mut c_char {
-    #[cfg(feature = "attestation")]
-    {
-        if handle.is_null() || params_json.is_null() {
-            return ptr::null_mut();
-        }
+    ffi_guard(ptr::null_mut(), || {
+        #[cfg(feature = "attestation")]
+        {
+            if handle.is_null() || params_json.is_null() {
+                return ptr::null_mut();
+            }
 
-        let params_str = match unsafe { CStr::from_ptr(params_json) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
+            let params_str = match unsafe { CStr::from_ptr(params_json) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return ptr::null_mut(),
+            };
 
-        let handle_ref = unsafe { &*handle };
-        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+            let handle_ref = unsafe { &*handle };
+            let wrapper =
+                jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-        match wrapper.create_attestation(params_str) {
-            Ok(result) => match CString::new(result) {
-                Ok(c_string) => c_string.into_raw(),
+            match wrapper.create_attestation(params_str) {
+                Ok(result) => match CString::new(result) {
+                    Ok(c_string) => c_string.into_raw(),
+                    Err(_) => ptr::null_mut(),
+                },
                 Err(_) => ptr::null_mut(),
-            },
-            Err(_) => ptr::null_mut(),
+            }
         }
-    }
-    #[cfg(not(feature = "attestation"))]
-    {
-        let _ = (handle, params_json);
-        ptr::null_mut()
-    }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = (handle, params_json);
+            ptr::null_mut()
+        }
+    })
 }
 
 /// Verify an attestation document.
@@ -682,39 +752,42 @@ pub extern "C" fn jacs_agent_verify_attestation(
     document_key: *const c_char,
     full: c_int,
 ) -> *mut c_char {
-    #[cfg(feature = "attestation")]
-    {
-        if handle.is_null() || document_key.is_null() {
-            return ptr::null_mut();
-        }
+    ffi_guard(ptr::null_mut(), || {
+        #[cfg(feature = "attestation")]
+        {
+            if handle.is_null() || document_key.is_null() {
+                return ptr::null_mut();
+            }
 
-        let key_str = match unsafe { CStr::from_ptr(document_key) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
+            let key_str = match unsafe { CStr::from_ptr(document_key) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return ptr::null_mut(),
+            };
 
-        let handle_ref = unsafe { &*handle };
-        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+            let handle_ref = unsafe { &*handle };
+            let wrapper =
+                jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-        let result = if full != 0 {
-            wrapper.verify_attestation_full(key_str)
-        } else {
-            wrapper.verify_attestation(key_str)
-        };
+            let result = if full != 0 {
+                wrapper.verify_attestation_full(key_str)
+            } else {
+                wrapper.verify_attestation(key_str)
+            };
 
-        match result {
-            Ok(json) => match CString::new(json) {
-                Ok(c_string) => c_string.into_raw(),
+            match result {
+                Ok(json) => match CString::new(json) {
+                    Ok(c_string) => c_string.into_raw(),
+                    Err(_) => ptr::null_mut(),
+                },
                 Err(_) => ptr::null_mut(),
-            },
-            Err(_) => ptr::null_mut(),
+            }
         }
-    }
-    #[cfg(not(feature = "attestation"))]
-    {
-        let _ = (handle, document_key, full);
-        ptr::null_mut()
-    }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = (handle, document_key, full);
+            ptr::null_mut()
+        }
+    })
 }
 
 /// Lift an existing signed document into an attestation with additional claims.
@@ -728,38 +801,41 @@ pub extern "C" fn jacs_agent_lift_to_attestation(
     signed_doc_json: *const c_char,
     claims_json: *const c_char,
 ) -> *mut c_char {
-    #[cfg(feature = "attestation")]
-    {
-        if handle.is_null() || signed_doc_json.is_null() || claims_json.is_null() {
-            return ptr::null_mut();
-        }
+    ffi_guard(ptr::null_mut(), || {
+        #[cfg(feature = "attestation")]
+        {
+            if handle.is_null() || signed_doc_json.is_null() || claims_json.is_null() {
+                return ptr::null_mut();
+            }
 
-        let doc_str = match unsafe { CStr::from_ptr(signed_doc_json) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
+            let doc_str = match unsafe { CStr::from_ptr(signed_doc_json) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return ptr::null_mut(),
+            };
 
-        let claims_str = match unsafe { CStr::from_ptr(claims_json) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
+            let claims_str = match unsafe { CStr::from_ptr(claims_json) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return ptr::null_mut(),
+            };
 
-        let handle_ref = unsafe { &*handle };
-        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+            let handle_ref = unsafe { &*handle };
+            let wrapper =
+                jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-        match wrapper.lift_to_attestation(doc_str, claims_str) {
-            Ok(result) => match CString::new(result) {
-                Ok(c_string) => c_string.into_raw(),
+            match wrapper.lift_to_attestation(doc_str, claims_str) {
+                Ok(result) => match CString::new(result) {
+                    Ok(c_string) => c_string.into_raw(),
+                    Err(_) => ptr::null_mut(),
+                },
                 Err(_) => ptr::null_mut(),
-            },
-            Err(_) => ptr::null_mut(),
+            }
         }
-    }
-    #[cfg(not(feature = "attestation"))]
-    {
-        let _ = (handle, signed_doc_json, claims_json);
-        ptr::null_mut()
-    }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = (handle, signed_doc_json, claims_json);
+            ptr::null_mut()
+        }
+    })
 }
 
 /// Export an attestation as a DSSE (Dead Simple Signing Envelope) for in-toto/SLSA compatibility.
@@ -771,33 +847,36 @@ pub extern "C" fn jacs_agent_export_attestation_dsse(
     handle: *mut JacsAgentHandle,
     attestation_json: *const c_char,
 ) -> *mut c_char {
-    #[cfg(feature = "attestation")]
-    {
-        if handle.is_null() || attestation_json.is_null() {
-            return ptr::null_mut();
-        }
+    ffi_guard(ptr::null_mut(), || {
+        #[cfg(feature = "attestation")]
+        {
+            if handle.is_null() || attestation_json.is_null() {
+                return ptr::null_mut();
+            }
 
-        let att_str = match unsafe { CStr::from_ptr(attestation_json) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
+            let att_str = match unsafe { CStr::from_ptr(attestation_json) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return ptr::null_mut(),
+            };
 
-        let handle_ref = unsafe { &*handle };
-        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+            let handle_ref = unsafe { &*handle };
+            let wrapper =
+                jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-        match wrapper.export_attestation_dsse(att_str) {
-            Ok(result) => match CString::new(result) {
-                Ok(c_string) => c_string.into_raw(),
+            match wrapper.export_attestation_dsse(att_str) {
+                Ok(result) => match CString::new(result) {
+                    Ok(c_string) => c_string.into_raw(),
+                    Err(_) => ptr::null_mut(),
+                },
                 Err(_) => ptr::null_mut(),
-            },
-            Err(_) => ptr::null_mut(),
+            }
         }
-    }
-    #[cfg(not(feature = "attestation"))]
-    {
-        let _ = (handle, attestation_json);
-        ptr::null_mut()
-    }
+        #[cfg(not(feature = "attestation"))]
+        {
+            let _ = (handle, attestation_json);
+            ptr::null_mut()
+        }
+    })
 }
 
 // ============================================================================
@@ -810,20 +889,22 @@ pub extern "C" fn jacs_agent_export_attestation_dsse(
 #[cfg(feature = "a2a")]
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_export_agent_card(handle: *mut JacsAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.export_agent_card() {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.export_agent_card() {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Sign (wrap) an A2A artifact with the agent's key.
@@ -837,31 +918,33 @@ pub extern "C" fn jacs_agent_sign_a2a_artifact(
     artifact_json: *const c_char,
     artifact_type: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || artifact_json.is_null() || artifact_type.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || artifact_json.is_null() || artifact_type.is_null() {
+            return ptr::null_mut();
+        }
 
-    let art_str = match unsafe { CStr::from_ptr(artifact_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let art_str = match unsafe { CStr::from_ptr(artifact_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let type_str = match unsafe { CStr::from_ptr(artifact_type) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let type_str = match unsafe { CStr::from_ptr(artifact_type) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    #[allow(deprecated)]
-    match wrapper.wrap_a2a_artifact(art_str, type_str, None) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        #[allow(deprecated)]
+        match wrapper.wrap_a2a_artifact(art_str, type_str, None) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify a JACS-wrapped A2A artifact (crypto-only, no trust policy).
@@ -873,25 +956,27 @@ pub extern "C" fn jacs_agent_verify_a2a_artifact(
     handle: *mut JacsAgentHandle,
     wrapped_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || wrapped_json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || wrapped_json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.verify_a2a_artifact(wrapped_str) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.verify_a2a_artifact(wrapped_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify a JACS-wrapped A2A artifact with trust policy enforcement.
@@ -906,35 +991,41 @@ pub extern "C" fn jacs_agent_verify_a2a_artifact_with_policy(
     agent_card_json: *const c_char,
     policy: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || wrapped_json.is_null() || agent_card_json.is_null() || policy.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null()
+            || wrapped_json.is_null()
+            || agent_card_json.is_null()
+            || policy.is_null()
+        {
+            return ptr::null_mut();
+        }
 
-    let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let wrapped_str = match unsafe { CStr::from_ptr(wrapped_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.verify_a2a_artifact_with_policy(wrapped_str, card_str, policy_str) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.verify_a2a_artifact_with_policy(wrapped_str, card_str, policy_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Assess an A2A agent's trustworthiness against a trust policy.
@@ -947,30 +1038,32 @@ pub extern "C" fn jacs_agent_assess_a2a_agent(
     agent_card_json: *const c_char,
     policy: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || agent_card_json.is_null() || policy.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || agent_card_json.is_null() || policy.is_null() {
+            return ptr::null_mut();
+        }
 
-    let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let card_str = match unsafe { CStr::from_ptr(agent_card_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let policy_str = match unsafe { CStr::from_ptr(policy) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.assess_a2a_agent(card_str, policy_str) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.assess_a2a_agent(card_str, policy_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 // ============================================================================
@@ -982,20 +1075,22 @@ pub extern "C" fn jacs_agent_assess_a2a_agent(
 /// Returns a C string that must be freed with jacs_free_string(), or null on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_agent_build_auth_header(handle: *mut JacsAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.build_auth_header() {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.build_auth_header() {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Canonicalize a JSON string using RFC 8785 (JCS).
@@ -1005,25 +1100,27 @@ pub extern "C" fn jacs_agent_canonicalize_json(
     handle: *mut JacsAgentHandle,
     json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let json_str = match unsafe { CStr::from_ptr(json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let json_str = match unsafe { CStr::from_ptr(json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.canonicalize_json(json_str) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.canonicalize_json(json_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Sign a response payload (wraps in a JACS document via the protocol layer).
@@ -1033,25 +1130,27 @@ pub extern "C" fn jacs_agent_sign_response(
     handle: *mut JacsAgentHandle,
     payload_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || payload_json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || payload_json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let payload_str = match unsafe { CStr::from_ptr(payload_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let payload_str = match unsafe { CStr::from_ptr(payload_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.sign_response(payload_str) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.sign_response(payload_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Encode a document as URL-safe base64 (no padding) for verification.
@@ -1061,25 +1160,27 @@ pub extern "C" fn jacs_agent_encode_verify_payload(
     handle: *mut JacsAgentHandle,
     document: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.encode_verify_payload(doc_str) {
-        Ok(encoded) => match CString::new(encoded) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.encode_verify_payload(doc_str) {
+            Ok(encoded) => match CString::new(encoded) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Decode a URL-safe base64 verification payload back to the original document.
@@ -1089,25 +1190,27 @@ pub extern "C" fn jacs_agent_decode_verify_payload(
     handle: *mut JacsAgentHandle,
     encoded: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || encoded.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || encoded.is_null() {
+            return ptr::null_mut();
+        }
 
-    let encoded_str = match unsafe { CStr::from_ptr(encoded) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let encoded_str = match unsafe { CStr::from_ptr(encoded) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.decode_verify_payload(encoded_str) {
-        Ok(decoded) => match CString::new(decoded) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.decode_verify_payload(encoded_str) {
+            Ok(decoded) => match CString::new(decoded) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Extract the document ID from a JACS-signed document.
@@ -1118,25 +1221,27 @@ pub extern "C" fn jacs_agent_extract_document_id(
     handle: *mut JacsAgentHandle,
     document: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.extract_document_id(doc_str) {
-        Ok(id) => match CString::new(id) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.extract_document_id(doc_str) {
+            Ok(id) => match CString::new(id) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Unwrap and verify a signed event using the agent and server keys.
@@ -1149,30 +1254,32 @@ pub extern "C" fn jacs_agent_unwrap_signed_event(
     event_json: *const c_char,
     server_keys_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || event_json.is_null() || server_keys_json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || event_json.is_null() || server_keys_json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let event_str = match unsafe { CStr::from_ptr(event_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let event_str = match unsafe { CStr::from_ptr(event_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let keys_str = match unsafe { CStr::from_ptr(server_keys_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let keys_str = match unsafe { CStr::from_ptr(server_keys_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let handle_ref = unsafe { &*handle };
-    let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
+        let handle_ref = unsafe { &*handle };
+        let wrapper = jacs_binding_core::AgentWrapper::from_inner(Arc::clone(&handle_ref.agent));
 
-    match wrapper.unwrap_signed_event(event_str, keys_str) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match wrapper.unwrap_signed_event(event_str, keys_str) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 // ============================================================================
@@ -1192,82 +1299,90 @@ lazy_static! {
 /// Load JACS configuration from the specified path
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_load(config_path: *const c_char) -> c_int {
-    if config_path.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if config_path.is_null() {
+            return -1;
+        }
 
-    let config_path_str = match unsafe { CStr::from_ptr(config_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let config_path_str = match unsafe { CStr::from_ptr(config_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let mut agent_ref = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -3,
-    };
+        let mut agent_ref = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -3,
+        };
 
-    match agent_ref.load_by_config(config_path_str.to_string()) {
-        Ok(_) => 0,
-        Err(_) => -4,
-    }
+        match agent_ref.load_by_config(config_path_str.to_string()) {
+            Ok(_) => 0,
+            Err(_) => -4,
+        }
+    })
 }
 
 /// Free a string allocated by Rust
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_free_string(s: *mut c_char) {
-    if s.is_null() {
-        return;
-    }
-    unsafe {
-        // Reconstruct the CString to properly deallocate
-        let _ = CString::from_raw(s);
-    }
+    ffi_guard((), || {
+        if s.is_null() {
+            return;
+        }
+        unsafe {
+            // Reconstruct the CString to properly deallocate
+            let _ = CString::from_raw(s);
+        }
+    })
 }
 
 /// Sign a string and return the signature
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_sign_string(data: *const c_char) -> *mut c_char {
-    if data.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if data.is_null() {
+            return ptr::null_mut();
+        }
 
-    let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.sign_string(data_str) {
-        Ok(signature) => match CString::new(signature) {
-            Ok(c_string) => c_string.into_raw(),
+        match agent.sign_string(data_str) {
+            Ok(signature) => match CString::new(signature) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Hash a string using JACS hashing
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_hash_string(data: *const c_char) -> *mut c_char {
-    if data.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if data.is_null() {
+            return ptr::null_mut();
+        }
 
-    let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let hash = core_hash_string(data_str);
+        let hash = core_hash_string(data_str);
 
-    match CString::new(hash) {
-        Ok(c_string) => c_string.into_raw(),
-        Err(_) => ptr::null_mut(),
-    }
+        match CString::new(hash) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        }
+    })
 }
 
 /// Verify a string signature
@@ -1279,45 +1394,47 @@ pub extern "C" fn jacs_verify_string(
     public_key_len: size_t,
     public_key_enc_type: *const c_char,
 ) -> c_int {
-    if data.is_null()
-        || signature_base64.is_null()
-        || public_key.is_null()
-        || public_key_enc_type.is_null()
-    {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if data.is_null()
+            || signature_base64.is_null()
+            || public_key.is_null()
+            || public_key_enc_type.is_null()
+        {
+            return -1;
+        }
 
-    let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let data_str = match unsafe { CStr::from_ptr(data) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let signature_str = match unsafe { CStr::from_ptr(signature_base64) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -3,
-    };
+        let signature_str = match unsafe { CStr::from_ptr(signature_base64) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -3,
+        };
 
-    let enc_type_str = match unsafe { CStr::from_ptr(public_key_enc_type) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -4,
-    };
+        let enc_type_str = match unsafe { CStr::from_ptr(public_key_enc_type) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -4,
+        };
 
-    let public_key_vec = unsafe { slice::from_raw_parts(public_key, public_key_len) }.to_vec();
+        let public_key_vec = unsafe { slice::from_raw_parts(public_key, public_key_len) }.to_vec();
 
-    let agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -5,
-    };
+        let agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -5,
+        };
 
-    match agent.verify_string(
-        data_str,
-        signature_str,
-        public_key_vec,
-        Some(enc_type_str.to_string()),
-    ) {
-        Ok(_) => 0,
-        Err(_) => -6,
-    }
+        match agent.verify_string(
+            data_str,
+            signature_str,
+            public_key_vec,
+            Some(enc_type_str.to_string()),
+        ) {
+            Ok(_) => 0,
+            Err(_) => -6,
+        }
+    })
 }
 
 /// Sign an agent
@@ -1328,64 +1445,66 @@ pub extern "C" fn jacs_sign_agent(
     public_key_len: size_t,
     public_key_enc_type: *const c_char,
 ) -> *mut c_char {
-    if agent_string.is_null() || public_key.is_null() || public_key_enc_type.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if agent_string.is_null() || public_key.is_null() || public_key_enc_type.is_null() {
+            return ptr::null_mut();
+        }
 
-    let agent_str = match unsafe { CStr::from_ptr(agent_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let agent_str = match unsafe { CStr::from_ptr(agent_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let enc_type_str = match unsafe { CStr::from_ptr(public_key_enc_type) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let enc_type_str = match unsafe { CStr::from_ptr(public_key_enc_type) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let public_key_vec = unsafe { slice::from_raw_parts(public_key, public_key_len) }.to_vec();
+        let public_key_vec = unsafe { slice::from_raw_parts(public_key, public_key_len) }.to_vec();
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut external_agent: Value = match agent.validate_agent(agent_str) {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut external_agent: Value = match agent.validate_agent(agent_str) {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    // Proceed with signature verification
-    if agent
-        .signature_verification_procedure(
+        // Proceed with signature verification
+        if agent
+            .signature_verification_procedure(
+                &external_agent,
+                None,
+                AGENT_SIGNATURE_FIELDNAME,
+                public_key_vec,
+                Some(enc_type_str.to_string()),
+                None,
+                None,
+            )
+            .is_err()
+        {
+            return ptr::null_mut();
+        }
+
+        // If all previous steps pass, proceed with signing
+        let registration_signature = match agent.signing_procedure(
             &external_agent,
             None,
-            AGENT_SIGNATURE_FIELDNAME,
-            public_key_vec,
-            Some(enc_type_str.to_string()),
-            None,
-            None,
-        )
-        .is_err()
-    {
-        return ptr::null_mut();
-    }
+            AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
+        ) {
+            Ok(sig) => sig,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    // If all previous steps pass, proceed with signing
-    let registration_signature = match agent.signing_procedure(
-        &external_agent,
-        None,
-        AGENT_REGISTRATION_SIGNATURE_FIELDNAME,
-    ) {
-        Ok(sig) => sig,
-        Err(_) => return ptr::null_mut(),
-    };
+        external_agent[AGENT_REGISTRATION_SIGNATURE_FIELDNAME] = registration_signature;
 
-    external_agent[AGENT_REGISTRATION_SIGNATURE_FIELDNAME] = registration_signature;
-
-    match CString::new(external_agent.to_string()) {
-        Ok(c_string) => c_string.into_raw(),
-        Err(_) => ptr::null_mut(),
-    }
+        match CString::new(external_agent.to_string()) {
+            Ok(c_string) => c_string.into_raw(),
+            Err(_) => ptr::null_mut(),
+        }
+    })
 }
 
 /// Create a JACS configuration
@@ -1401,25 +1520,27 @@ pub extern "C" fn jacs_create_config(
     jacs_agent_id_and_version: *const c_char,
     jacs_default_storage: *const c_char,
 ) -> *mut c_char {
-    let config = jacs_core::config::Config::new(
-        c_string_to_option(jacs_use_security),
-        c_string_to_option(jacs_data_directory),
-        c_string_to_option(jacs_key_directory),
-        c_string_to_option(jacs_agent_private_key_filename),
-        c_string_to_option(jacs_agent_public_key_filename),
-        c_string_to_option(jacs_agent_key_algorithm),
-        c_string_to_option(jacs_private_key_password),
-        c_string_to_option(jacs_agent_id_and_version),
-        c_string_to_option(jacs_default_storage),
-    );
+    ffi_guard(ptr::null_mut(), || {
+        let config = jacs_core::config::Config::new(
+            c_string_to_option(jacs_use_security),
+            c_string_to_option(jacs_data_directory),
+            c_string_to_option(jacs_key_directory),
+            c_string_to_option(jacs_agent_private_key_filename),
+            c_string_to_option(jacs_agent_public_key_filename),
+            c_string_to_option(jacs_agent_key_algorithm),
+            c_string_to_option(jacs_private_key_password),
+            c_string_to_option(jacs_agent_id_and_version),
+            c_string_to_option(jacs_default_storage),
+        );
 
-    match serde_json::to_string_pretty(&config) {
-        Ok(serialized) => match CString::new(serialized) {
-            Ok(c_string) => c_string.into_raw(),
+        match serde_json::to_string_pretty(&config) {
+            Ok(serialized) => match CString::new(serialized) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Create a JACS agent programmatically.
@@ -1436,132 +1557,140 @@ pub extern "C" fn jacs_create_agent(
     domain: *const c_char,
     default_storage: *const c_char,
 ) -> *mut c_char {
-    if name.is_null() || password.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if name.is_null() || password.is_null() {
+            return ptr::null_mut();
+        }
 
-    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let password_str = match unsafe { CStr::from_ptr(password) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let password_str = match unsafe { CStr::from_ptr(password) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match jacs_binding_core::create_agent_programmatic(
-        name_str,
-        password_str,
-        c_string_to_option(algorithm).as_deref(),
-        c_string_to_option(data_directory).as_deref(),
-        c_string_to_option(key_directory).as_deref(),
-        c_string_to_option(config_path).as_deref(),
-        c_string_to_option(agent_type).as_deref(),
-        c_string_to_option(description).as_deref(),
-        c_string_to_option(domain).as_deref(),
-        c_string_to_option(default_storage).as_deref(),
-    ) {
-        Ok(serialized) => match CString::new(serialized) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_binding_core::create_agent_programmatic(
+            name_str,
+            password_str,
+            c_string_to_option(algorithm).as_deref(),
+            c_string_to_option(data_directory).as_deref(),
+            c_string_to_option(key_directory).as_deref(),
+            c_string_to_option(config_path).as_deref(),
+            c_string_to_option(agent_type).as_deref(),
+            c_string_to_option(description).as_deref(),
+            c_string_to_option(domain).as_deref(),
+            c_string_to_option(default_storage).as_deref(),
+        ) {
+            Ok(serialized) => match CString::new(serialized) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify an agent
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_agent(agentfile: *const c_char) -> c_int {
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -1,
-    };
-
-    if !agentfile.is_null() {
-        let file_str = match unsafe { CStr::from_ptr(agentfile) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return -2,
+    ffi_guard(FFI_PANIC_CODE, || {
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -1,
         };
 
-        // Load agent from file
-        let agent_result = jacs_core::load_agent(Some(file_str.to_string()));
-        match agent_result {
-            Ok(loaded_agent) => {
-                *agent = loaded_agent;
+        if !agentfile.is_null() {
+            let file_str = match unsafe { CStr::from_ptr(agentfile) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return -2,
+            };
+
+            // Load agent from file
+            let agent_result = jacs_core::load_agent(Some(file_str.to_string()));
+            match agent_result {
+                Ok(loaded_agent) => {
+                    *agent = loaded_agent;
+                }
+                Err(_) => return -3,
             }
-            Err(_) => return -3,
         }
-    }
 
-    if agent.verify_self_signature().is_err() {
-        return -4;
-    }
+        if agent.verify_self_signature().is_err() {
+            return -4;
+        }
 
-    match agent.verify_self_hash() {
-        Ok(_) => 0,
-        Err(_) => -5,
-    }
+        match agent.verify_self_hash() {
+            Ok(_) => 0,
+            Err(_) => -5,
+        }
+    })
 }
 
 /// Update an agent
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_update_agent(new_agent_string: *const c_char) -> *mut c_char {
-    if new_agent_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if new_agent_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let agent_str = match unsafe { CStr::from_ptr(new_agent_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let agent_str = match unsafe { CStr::from_ptr(new_agent_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.update_self(agent_str) {
-        Ok(updated) => match CString::new(updated) {
-            Ok(c_string) => c_string.into_raw(),
+        match agent.update_self(agent_str) {
+            Ok(updated) => match CString::new(updated) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify a document
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_document(document_string: *const c_char) -> c_int {
-    if document_string.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if document_string.is_null() {
+            return -1;
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -3,
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -3,
+        };
 
-    let doc = match agent.load_document(doc_str) {
-        Ok(doc) => doc,
-        Err(_) => return -4,
-    };
+        let doc = match agent.load_document(doc_str) {
+            Ok(doc) => doc,
+            Err(_) => return -4,
+        };
 
-    let document_key = doc.getkey();
-    let value = doc.getvalue();
+        let document_key = doc.getkey();
+        let value = doc.getvalue();
 
-    if agent.verify_hash(value).is_err() {
-        return -5;
-    }
+        if agent.verify_hash(value).is_err() {
+            return -5;
+        }
 
-    match agent.verify_external_document_signature(&document_key) {
-        Ok(_) => 0,
-        Err(_) => -6,
-    }
+        match agent.verify_external_document_signature(&document_key) {
+            Ok(_) => 0,
+            Err(_) => -6,
+        }
+    })
 }
 
 /// Verify a signed document without loading an agent (standalone).
@@ -1573,38 +1702,40 @@ pub extern "C" fn jacs_verify_document_standalone(
     data_directory: *const c_char,
     key_directory: *const c_char,
 ) -> *mut c_char {
-    if signed_document.is_null() {
-        return ptr::null_mut();
-    }
-    let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let kr = if key_resolution.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(key_resolution) }.to_str().ok()
-    };
-    let dd = if data_directory.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(data_directory) }.to_str().ok()
-    };
-    let kd = if key_directory.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(key_directory) }.to_str().ok()
-    };
-    match jacs_binding_core::verify_document_standalone(doc_str, kr, dd, kd) {
-        Ok(r) => {
-            let json = serde_json::json!({ "valid": r.valid, "signer_id": r.signer_id });
-            match CString::new(json.to_string()) {
-                Ok(cs) => cs.into_raw(),
-                Err(_) => ptr::null_mut(),
-            }
+    ffi_guard(ptr::null_mut(), || {
+        if signed_document.is_null() {
+            return ptr::null_mut();
         }
-        Err(_) => ptr::null_mut(),
-    }
+        let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let kr = if key_resolution.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(key_resolution) }.to_str().ok()
+        };
+        let dd = if data_directory.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(data_directory) }.to_str().ok()
+        };
+        let kd = if key_directory.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(key_directory) }.to_str().ok()
+        };
+        match jacs_binding_core::verify_document_standalone(doc_str, kr, dd, kd) {
+            Ok(r) => {
+                let json = serde_json::json!({ "valid": r.valid, "signer_id": r.signer_id });
+                match CString::new(json.to_string()) {
+                    Ok(cs) => cs.into_raw(),
+                    Err(_) => ptr::null_mut(),
+                }
+            }
+            Err(_) => ptr::null_mut(),
+        }
+    })
 }
 
 /// Update a document
@@ -1615,43 +1746,45 @@ pub extern "C" fn jacs_update_document(
     attachments_json: *const c_char,
     embed: c_int,
 ) -> *mut c_char {
-    if document_key.is_null() || new_document_string.is_null() {
-        return ptr::null_mut();
-    }
-
-    let key_str = match unsafe { CStr::from_ptr(document_key) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-
-    let doc_str = match unsafe { CStr::from_ptr(new_document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-
-    let attachments = if !attachments_json.is_null() {
-        match unsafe { CStr::from_ptr(attachments_json) }.to_str() {
-            Ok(s) => serde_json::from_str::<Vec<String>>(s).ok(),
-            Err(_) => None,
+    ffi_guard(ptr::null_mut(), || {
+        if document_key.is_null() || new_document_string.is_null() {
+            return ptr::null_mut();
         }
-    } else {
-        None
-    };
 
-    let embed_opt = if embed != 0 { Some(true) } else { None };
+        let key_str = match unsafe { CStr::from_ptr(document_key) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(new_document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.update_document(key_str, doc_str, attachments, embed_opt) {
-        Ok(doc) => match CString::new(doc.to_string()) {
-            Ok(c_string) => c_string.into_raw(),
+        let attachments = if !attachments_json.is_null() {
+            match unsafe { CStr::from_ptr(attachments_json) }.to_str() {
+                Ok(s) => serde_json::from_str::<Vec<String>>(s).ok(),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        let embed_opt = if embed != 0 { Some(true) } else { None };
+
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        match agent.update_document(key_str, doc_str, attachments, embed_opt) {
+            Ok(doc) => match CString::new(doc.to_string()) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Create a document
@@ -1664,43 +1797,45 @@ pub extern "C" fn jacs_create_document(
     attachments: *const c_char,
     embed: c_int,
 ) -> *mut c_char {
-    if document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let embed_opt = if embed > 0 {
-        Some(true)
-    } else if embed < 0 {
-        Some(false)
-    } else {
-        None
-    };
+        let embed_opt = if embed > 0 {
+            Some(true)
+        } else if embed < 0 {
+            Some(false)
+        } else {
+            None
+        };
 
-    match jacs_core::shared::document_create(
-        &mut agent,
-        doc_str,
-        c_string_to_option(custom_schema),
-        c_string_to_option(outputfilename),
-        no_save != 0,
-        c_string_to_option(attachments).as_deref(),
-        embed_opt,
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_create(
+            &mut agent,
+            doc_str,
+            c_string_to_option(custom_schema),
+            c_string_to_option(outputfilename),
+            no_save != 0,
+            c_string_to_option(attachments).as_deref(),
+            embed_opt,
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Create an agreement
@@ -1712,49 +1847,51 @@ pub extern "C" fn jacs_create_agreement(
     context: *const c_char,
     agreement_fieldname: *const c_char,
 ) -> *mut c_char {
-    if document_string.is_null() || agentids_json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if document_string.is_null() || agentids_json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let agentids_str = match unsafe { CStr::from_ptr(agentids_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let agentids_str = match unsafe { CStr::from_ptr(agentids_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let agentids: Vec<String> = match serde_json::from_str(agentids_str) {
-        Ok(ids) => ids,
-        Err(_) => return ptr::null_mut(),
-    };
+        let agentids: Vec<String> = match serde_json::from_str(agentids_str) {
+            Ok(ids) => ids,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match jacs_core::shared::document_add_agreement(
-        &mut agent,
-        doc_str,
-        agentids,
-        None,
-        None,
-        c_string_to_option(question),
-        c_string_to_option(context),
-        None,
-        None,
-        false,
-        c_string_to_option(agreement_fieldname),
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_add_agreement(
+            &mut agent,
+            doc_str,
+            agentids,
+            None,
+            None,
+            c_string_to_option(question),
+            c_string_to_option(context),
+            None,
+            None,
+            false,
+            c_string_to_option(agreement_fieldname),
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Sign an agreement
@@ -1763,36 +1900,38 @@ pub extern "C" fn jacs_sign_agreement(
     document_string: *const c_char,
     agreement_fieldname: *const c_char,
 ) -> *mut c_char {
-    if document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match jacs_core::shared::document_sign_agreement(
-        &mut agent,
-        doc_str,
-        None,
-        None,
-        None,
-        None,
-        false,
-        c_string_to_option(agreement_fieldname),
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_sign_agreement(
+            &mut agent,
+            doc_str,
+            None,
+            None,
+            None,
+            None,
+            false,
+            c_string_to_option(agreement_fieldname),
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Check an agreement
@@ -1801,86 +1940,92 @@ pub extern "C" fn jacs_check_agreement(
     document_string: *const c_char,
     agreement_fieldname: *const c_char,
 ) -> *mut c_char {
-    if document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match jacs_core::shared::document_check_agreement(
-        &mut agent,
-        doc_str,
-        None,
-        c_string_to_option(agreement_fieldname),
-    ) {
-        Ok(result) => match CString::new(result) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_core::shared::document_check_agreement(
+            &mut agent,
+            doc_str,
+            None,
+            c_string_to_option(agreement_fieldname),
+        ) {
+            Ok(result) => match CString::new(result) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Sign a request (for MCP)
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_sign_request(payload_json: *const c_char) -> *mut c_char {
-    if payload_json.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if payload_json.is_null() {
+            return ptr::null_mut();
+        }
 
-    let payload_str = match unsafe { CStr::from_ptr(payload_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let payload_str = match unsafe { CStr::from_ptr(payload_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let payload_value: Value = match serde_json::from_str(payload_str) {
-        Ok(val) => val,
-        Err(_) => return ptr::null_mut(),
-    };
+        let payload_value: Value = match serde_json::from_str(payload_str) {
+            Ok(val) => val,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.sign_payload(payload_value) {
-        Ok(signed) => match CString::new(signed) {
-            Ok(c_string) => c_string.into_raw(),
+        match agent.sign_payload(payload_value) {
+            Ok(signed) => match CString::new(signed) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 /// Verify a response (for MCP)
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_verify_response(document_string: *const c_char) -> *mut c_char {
-    if document_string.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if document_string.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.verify_payload(doc_str.to_string(), None) {
-        Ok(payload) => json_to_c_string(&payload),
-        Err(_) => ptr::null_mut(),
-    }
+        match agent.verify_payload(doc_str.to_string(), None) {
+            Ok(payload) => json_to_c_string(&payload),
+            Err(_) => ptr::null_mut(),
+        }
+    })
 }
 
 /// Verify a response with agent ID (for MCP)
@@ -1889,36 +2034,38 @@ pub extern "C" fn jacs_verify_response_with_agent_id(
     document_string: *const c_char,
     agent_id_out: *mut *mut c_char,
 ) -> *mut c_char {
-    if document_string.is_null() || agent_id_out.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if document_string.is_null() || agent_id_out.is_null() {
+            return ptr::null_mut();
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return ptr::null_mut(),
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    match agent.verify_payload_with_agent_id(doc_str.to_string(), None) {
-        Ok((payload, agent_id)) => {
-            // Set the agent_id output parameter
-            match CString::new(agent_id) {
-                Ok(c_string) => unsafe { *agent_id_out = c_string.into_raw() },
-                Err(_) => unsafe { *agent_id_out = ptr::null_mut() },
+        match agent.verify_payload_with_agent_id(doc_str.to_string(), None) {
+            Ok((payload, agent_id)) => {
+                // Set the agent_id output parameter
+                match CString::new(agent_id) {
+                    Ok(c_string) => unsafe { *agent_id_out = c_string.into_raw() },
+                    Err(_) => unsafe { *agent_id_out = ptr::null_mut() },
+                }
+
+                // Return the payload
+                json_to_c_string(&payload)
             }
-
-            // Return the payload
-            json_to_c_string(&payload)
+            Err(_) => {
+                unsafe { *agent_id_out = ptr::null_mut() }
+                ptr::null_mut()
+            }
         }
-        Err(_) => {
-            unsafe { *agent_id_out = ptr::null_mut() }
-            ptr::null_mut()
-        }
-    }
+    })
 }
 
 /// Verify a signature on a document
@@ -1927,33 +2074,40 @@ pub extern "C" fn jacs_verify_signature(
     document_string: *const c_char,
     signature_field: *const c_char,
 ) -> c_int {
-    if document_string.is_null() {
-        return -1;
-    }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if document_string.is_null() {
+            return -1;
+        }
 
-    let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
-    };
+        let doc_str = match unsafe { CStr::from_ptr(document_string) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return -2,
+        };
 
-    let mut agent = match JACS_AGENT.lock() {
-        Ok(agent) => agent,
-        Err(_) => return -3,
-    };
+        let mut agent = match JACS_AGENT.lock() {
+            Ok(agent) => agent,
+            Err(_) => return -3,
+        };
 
-    let doc = match agent.load_document(doc_str) {
-        Ok(doc) => doc,
-        Err(_) => return -4,
-    };
+        let doc = match agent.load_document(doc_str) {
+            Ok(doc) => doc,
+            Err(_) => return -4,
+        };
 
-    let document_key = doc.getkey();
-    let sig_field_opt = c_string_to_option(signature_field);
+        let document_key = doc.getkey();
+        let sig_field_opt = c_string_to_option(signature_field);
 
-    match agent.verify_document_signature(&document_key, sig_field_opt.as_deref(), None, None, None)
-    {
-        Ok(_) => 0,
-        Err(_) => -5,
-    }
+        match agent.verify_document_signature(
+            &document_key,
+            sig_field_opt.as_deref(),
+            None,
+            None,
+            None,
+        ) {
+            Ok(_) => 0,
+            Err(_) => -5,
+        }
+    })
 }
 
 /// Run a read-only security audit and health checks.
@@ -1961,28 +2115,30 @@ pub extern "C" fn jacs_verify_signature(
 /// Returns a JSON string that must be freed with jacs_free_string(), or null on error.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_audit(config_path: *const c_char, recent_n: c_int) -> *mut c_char {
-    let config = if config_path.is_null() {
-        None
-    } else {
-        match unsafe { CStr::from_ptr(config_path) }.to_str() {
-            Ok(s) => Some(s),
-            Err(_) => return ptr::null_mut(),
-        }
-    };
+    ffi_guard(ptr::null_mut(), || {
+        let config = if config_path.is_null() {
+            None
+        } else {
+            match unsafe { CStr::from_ptr(config_path) }.to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return ptr::null_mut(),
+            }
+        };
 
-    let recent = if recent_n > 0 {
-        Some(recent_n as u32)
-    } else {
-        None
-    };
+        let recent = if recent_n > 0 {
+            Some(recent_n as u32)
+        } else {
+            None
+        };
 
-    match jacs_binding_core::audit(config, recent) {
-        Ok(json_string) => match CString::new(json_string) {
-            Ok(c_string) => c_string.into_raw(),
+        match jacs_binding_core::audit(config, recent) {
+            Ok(json_string) => match CString::new(json_string) {
+                Ok(c_string) => c_string.into_raw(),
+                Err(_) => ptr::null_mut(),
+            },
             Err(_) => ptr::null_mut(),
-        },
-        Err(_) => ptr::null_mut(),
-    }
+        }
+    })
 }
 
 // Helper function to convert C string pointer to Option<String>
@@ -2030,11 +2186,13 @@ fn clear_last_simple_error() {
 /// Returns null if no error has occurred. Caller must free with jacs_free_string.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_last_error() -> *mut c_char {
-    LAST_SIMPLE_ERROR.with(|cell| match cell.borrow().as_ref() {
-        Some(msg) => CString::new(msg.as_str())
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        None => ptr::null_mut(),
+    ffi_guard(ptr::null_mut(), || {
+        LAST_SIMPLE_ERROR.with(|cell| match cell.borrow().as_ref() {
+            Some(msg) => CString::new(msg.as_str())
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            None => ptr::null_mut(),
+        })
     })
 }
 
@@ -2053,42 +2211,44 @@ pub extern "C" fn jacs_simple_create(
     key_algorithm: *const c_char,
     info_json_out: *mut *mut c_char,
 ) -> *mut SimpleAgentHandle {
-    if name.is_null() || info_json_out.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if name.is_null() || info_json_out.is_null() {
+            return ptr::null_mut();
+        }
 
-    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    let purpose_opt = if purpose.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(purpose) }.to_str().ok()
-    };
+        let purpose_opt = if purpose.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(purpose) }.to_str().ok()
+        };
 
-    let algo_opt = if key_algorithm.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(key_algorithm) }.to_str().ok()
-    };
+        let algo_opt = if key_algorithm.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(key_algorithm) }.to_str().ok()
+        };
 
-    clear_last_simple_error();
-    match SimpleAgentWrapper::create(name_str, purpose_opt, algo_opt) {
-        Ok((wrapper, info_json)) => {
-            if let Ok(c_info) = CString::new(info_json) {
-                unsafe { *info_json_out = c_info.into_raw() };
-            } else {
-                unsafe { *info_json_out = ptr::null_mut() };
+        clear_last_simple_error();
+        match SimpleAgentWrapper::create(name_str, purpose_opt, algo_opt) {
+            Ok((wrapper, info_json)) => {
+                if let Ok(c_info) = CString::new(info_json) {
+                    unsafe { *info_json_out = c_info.into_raw() };
+                } else {
+                    unsafe { *info_json_out = ptr::null_mut() };
+                }
+                Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
             }
-            Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
         }
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
+    })
 }
 
 /// Load an existing SimpleAgent from a config file.
@@ -2097,22 +2257,24 @@ pub extern "C" fn jacs_simple_load(
     config_path: *const c_char,
     strict: c_int,
 ) -> *mut SimpleAgentHandle {
-    let config = if config_path.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(config_path) }.to_str().ok()
-    };
+    ffi_guard(ptr::null_mut(), || {
+        let config = if config_path.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(config_path) }.to_str().ok()
+        };
 
-    let strict_opt = if strict < 0 { None } else { Some(strict != 0) };
+        let strict_opt = if strict < 0 { None } else { Some(strict != 0) };
 
-    clear_last_simple_error();
-    match SimpleAgentWrapper::load(config, strict_opt) {
-        Ok(wrapper) => Box::into_raw(Box::new(SimpleAgentHandle { wrapper })),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+        clear_last_simple_error();
+        match SimpleAgentWrapper::load(config, strict_opt) {
+            Ok(wrapper) => Box::into_raw(Box::new(SimpleAgentHandle { wrapper })),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 /// Create an ephemeral (in-memory) SimpleAgent.
@@ -2122,31 +2284,33 @@ pub extern "C" fn jacs_simple_ephemeral(
     algorithm: *const c_char,
     info_json_out: *mut *mut c_char,
 ) -> *mut SimpleAgentHandle {
-    if info_json_out.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if info_json_out.is_null() {
+            return ptr::null_mut();
+        }
 
-    let algo_opt = if algorithm.is_null() {
-        None
-    } else {
-        unsafe { CStr::from_ptr(algorithm) }.to_str().ok()
-    };
+        let algo_opt = if algorithm.is_null() {
+            None
+        } else {
+            unsafe { CStr::from_ptr(algorithm) }.to_str().ok()
+        };
 
-    clear_last_simple_error();
-    match SimpleAgentWrapper::ephemeral(algo_opt) {
-        Ok((wrapper, info_json)) => {
-            if let Ok(c_info) = CString::new(info_json) {
-                unsafe { *info_json_out = c_info.into_raw() };
-            } else {
-                unsafe { *info_json_out = ptr::null_mut() };
+        clear_last_simple_error();
+        match SimpleAgentWrapper::ephemeral(algo_opt) {
+            Ok((wrapper, info_json)) => {
+                if let Ok(c_info) = CString::new(info_json) {
+                    unsafe { *info_json_out = c_info.into_raw() };
+                } else {
+                    unsafe { *info_json_out = ptr::null_mut() };
+                }
+                Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
             }
-            Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
         }
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
+    })
 }
 
 /// Create a SimpleAgent with full programmatic control via JSON parameters.
@@ -2156,40 +2320,44 @@ pub extern "C" fn jacs_simple_create_with_params(
     params_json: *const c_char,
     info_json_out: *mut *mut c_char,
 ) -> *mut SimpleAgentHandle {
-    if params_json.is_null() || info_json_out.is_null() {
-        return ptr::null_mut();
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if params_json.is_null() || info_json_out.is_null() {
+            return ptr::null_mut();
+        }
 
-    let params_str = match unsafe { CStr::from_ptr(params_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
+        let params_str = match unsafe { CStr::from_ptr(params_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
 
-    clear_last_simple_error();
-    match SimpleAgentWrapper::create_with_params(params_str) {
-        Ok((wrapper, info_json)) => {
-            if let Ok(c_info) = CString::new(info_json) {
-                unsafe { *info_json_out = c_info.into_raw() };
-            } else {
-                unsafe { *info_json_out = ptr::null_mut() };
+        clear_last_simple_error();
+        match SimpleAgentWrapper::create_with_params(params_str) {
+            Ok((wrapper, info_json)) => {
+                if let Ok(c_info) = CString::new(info_json) {
+                    unsafe { *info_json_out = c_info.into_raw() };
+                } else {
+                    unsafe { *info_json_out = ptr::null_mut() };
+                }
+                Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
             }
-            Box::into_raw(Box::new(SimpleAgentHandle { wrapper }))
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
         }
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
-        }
-    }
+    })
 }
 
 /// Free a SimpleAgent handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_free(handle: *mut SimpleAgentHandle) {
-    if !handle.is_null() {
-        unsafe {
-            let _ = Box::from_raw(handle);
+    ffi_guard((), || {
+        if !handle.is_null() {
+            unsafe {
+                let _ = Box::from_raw(handle);
+            }
         }
-    }
+    })
 }
 
 /// Generates a handle-only `*const SimpleAgentHandle -> *mut c_char` FFI export
@@ -2202,11 +2370,13 @@ macro_rules! ffi_simple_getter {
         #[doc = $doc]
         #[unsafe(no_mangle)]
         pub extern "C" fn $name(handle: *const SimpleAgentHandle) -> *mut c_char {
-            if handle.is_null() {
-                return ptr::null_mut();
-            }
-            let h = unsafe { &*handle };
-            simple_string_result(h.wrapper.$method())
+            ffi_guard(ptr::null_mut(), || {
+                if handle.is_null() {
+                    return ptr::null_mut();
+                }
+                let h = unsafe { &*handle };
+                simple_string_result(h.wrapper.$method())
+            })
         }
     };
 }
@@ -2226,11 +2396,13 @@ ffi_simple_getter!(
 /// Whether the agent is in strict mode.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_is_strict(handle: *const SimpleAgentHandle) -> c_int {
-    if handle.is_null() {
-        return 0;
-    }
-    let h = unsafe { &*handle };
-    if h.wrapper.is_strict() { 1 } else { 0 }
+    ffi_guard(FFI_PANIC_CODE, || {
+        if handle.is_null() {
+            return 0;
+        }
+        let h = unsafe { &*handle };
+        if h.wrapper.is_strict() { 1 } else { 0 }
+    })
 }
 
 ffi_simple_getter!(
@@ -2254,30 +2426,34 @@ ffi_simple_getter!(
 /// Diagnostics JSON. Caller must free result with jacs_free_string.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_diagnostics(handle: *const SimpleAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let diag = h.wrapper.diagnostics();
-    CString::new(diag)
-        .map(|c| c.into_raw())
-        .unwrap_or(ptr::null_mut())
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let diag = h.wrapper.diagnostics();
+        CString::new(diag)
+            .map(|c| c.into_raw())
+            .unwrap_or(ptr::null_mut())
+    })
 }
 
 /// Config file path, if loaded from disk. Caller must free with jacs_free_string.
 /// Returns null if the agent has no config path (e.g., ephemeral).
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_config_path(handle: *const SimpleAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    match h.wrapper.config_path() {
-        Some(path) => CString::new(path)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        None => ptr::null_mut(),
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        match h.wrapper.config_path() {
+            Some(path) => CString::new(path)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            None => ptr::null_mut(),
+        }
+    })
 }
 
 fn simple_string_result(result: jacs_binding_core::BindingResult<String>) -> *mut c_char {
@@ -2299,12 +2475,14 @@ pub extern "C" fn jacs_simple_export_w3c_did(
     handle: *const SimpleAgentHandle,
     origin: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let origin = c_string_to_option(origin);
-    simple_string_result(h.wrapper.export_w3c_did(origin.as_deref()))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let origin = c_string_to_option(origin);
+        simple_string_result(h.wrapper.export_w3c_did(origin.as_deref()))
+    })
 }
 
 /// Export this agent's W3C DID document JSON. Caller must free with jacs_free_string.
@@ -2313,12 +2491,14 @@ pub extern "C" fn jacs_simple_export_w3c_did_document(
     handle: *const SimpleAgentHandle,
     origin: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let origin = c_string_to_option(origin);
-    simple_string_result(h.wrapper.export_w3c_did_document_json(origin.as_deref()))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let origin = c_string_to_option(origin);
+        simple_string_result(h.wrapper.export_w3c_did_document_json(origin.as_deref()))
+    })
 }
 
 /// Export this agent's W3C agent description JSON. Caller must free with jacs_free_string.
@@ -2327,15 +2507,17 @@ pub extern "C" fn jacs_simple_export_w3c_agent_description(
     handle: *const SimpleAgentHandle,
     origin: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let origin = c_string_to_option(origin);
-    simple_string_result(
-        h.wrapper
-            .export_w3c_agent_description_json(origin.as_deref()),
-    )
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let origin = c_string_to_option(origin);
+        simple_string_result(
+            h.wrapper
+                .export_w3c_agent_description_json(origin.as_deref()),
+        )
+    })
 }
 
 /// Generate W3C well-known discovery documents as JSON keyed by path.
@@ -2344,12 +2526,14 @@ pub extern "C" fn jacs_simple_generate_w3c_well_known(
     handle: *const SimpleAgentHandle,
     origin: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let origin = c_string_to_option(origin);
-    simple_string_result(h.wrapper.generate_w3c_well_known_json(origin.as_deref()))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let origin = c_string_to_option(origin);
+        simple_string_result(h.wrapper.generate_w3c_well_known_json(origin.as_deref()))
+    })
 }
 
 /// Sign a W3C request-bound DID authentication proof from params JSON.
@@ -2358,15 +2542,17 @@ pub extern "C" fn jacs_simple_sign_w3c_request(
     handle: *const SimpleAgentHandle,
     params_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || params_json.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let params = match c_string_to_option(params_json) {
-        Some(value) => value,
-        None => return ptr::null_mut(),
-    };
-    simple_string_result(h.wrapper.sign_w3c_request_json(&params))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || params_json.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let params = match c_string_to_option(params_json) {
+            Some(value) => value,
+            None => return ptr::null_mut(),
+        };
+        simple_string_result(h.wrapper.sign_w3c_request_json(&params))
+    })
 }
 
 /// Verify a W3C request-bound DID authentication proof.
@@ -2380,48 +2566,52 @@ pub extern "C" fn jacs_simple_verify_w3c_request(
     expected_method: *const c_char,
     expected_url: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || proof_json.is_null() || did_document_json.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let proof = match c_string_to_option(proof_json) {
-        Some(value) => value,
-        None => return ptr::null_mut(),
-    };
-    let did_document = match c_string_to_option(did_document_json) {
-        Some(value) => value,
-        None => return ptr::null_mut(),
-    };
-    let body = c_string_to_option(body);
-    let expected_method = c_string_to_option(expected_method);
-    let expected_url = c_string_to_option(expected_url);
-    simple_string_result(h.wrapper.verify_w3c_request_json(
-        &proof,
-        &did_document,
-        body.as_deref(),
-        max_age_seconds,
-        expected_method.as_deref(),
-        expected_url.as_deref(),
-    ))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || proof_json.is_null() || did_document_json.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let proof = match c_string_to_option(proof_json) {
+            Some(value) => value,
+            None => return ptr::null_mut(),
+        };
+        let did_document = match c_string_to_option(did_document_json) {
+            Some(value) => value,
+            None => return ptr::null_mut(),
+        };
+        let body = c_string_to_option(body);
+        let expected_method = c_string_to_option(expected_method);
+        let expected_url = c_string_to_option(expected_url);
+        simple_string_result(h.wrapper.verify_w3c_request_json(
+            &proof,
+            &did_document,
+            body.as_deref(),
+            max_age_seconds,
+            expected_method.as_deref(),
+            expected_url.as_deref(),
+        ))
+    })
 }
 
 /// Verify self. Returns VerificationResult JSON. Caller must free with jacs_free_string.
 #[unsafe(no_mangle)]
 pub extern "C" fn jacs_simple_verify_self(handle: *const SimpleAgentHandle) -> *mut c_char {
-    if handle.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    clear_last_simple_error();
-    match h.wrapper.verify_self() {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() {
+            return ptr::null_mut();
         }
-    }
+        let h = unsafe { &*handle };
+        clear_last_simple_error();
+        match h.wrapper.verify_self() {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
+        }
+    })
 }
 
 /// Verify a signed document. Returns VerificationResult JSON.
@@ -2430,24 +2620,26 @@ pub extern "C" fn jacs_simple_verify_json(
     handle: *const SimpleAgentHandle,
     signed_document: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || signed_document.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    match h.wrapper.verify_json(doc_str) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || signed_document.is_null() {
+            return ptr::null_mut();
         }
-    }
+        let h = unsafe { &*handle };
+        let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        match h.wrapper.verify_json(doc_str) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
+        }
+    })
 }
 
 /// Verify a document by ID. Returns VerificationResult JSON.
@@ -2456,24 +2648,26 @@ pub extern "C" fn jacs_simple_verify_by_id(
     handle: *const SimpleAgentHandle,
     document_id: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_id.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let id_str = match unsafe { CStr::from_ptr(document_id) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    match h.wrapper.verify_by_id_json(id_str) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_id.is_null() {
+            return ptr::null_mut();
         }
-    }
+        let h = unsafe { &*handle };
+        let id_str = match unsafe { CStr::from_ptr(document_id) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        match h.wrapper.verify_by_id_json(id_str) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
+        }
+    })
 }
 
 /// Verify a signed document with an explicit public key (base64-encoded).
@@ -2484,28 +2678,30 @@ pub extern "C" fn jacs_simple_verify_with_key(
     signed_document: *const c_char,
     public_key_base64: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || signed_document.is_null() || public_key_base64.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let key_str = match unsafe { CStr::from_ptr(public_key_base64) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    match h.wrapper.verify_with_key_json(doc_str, key_str) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || signed_document.is_null() || public_key_base64.is_null() {
+            return ptr::null_mut();
         }
-    }
+        let h = unsafe { &*handle };
+        let doc_str = match unsafe { CStr::from_ptr(signed_document) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let key_str = match unsafe { CStr::from_ptr(public_key_base64) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        match h.wrapper.verify_with_key_json(doc_str, key_str) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
+        }
+    })
 }
 
 /// Sign a JSON message. Returns signed document JSON.
@@ -2514,24 +2710,26 @@ pub extern "C" fn jacs_simple_sign_message(
     handle: *const SimpleAgentHandle,
     data_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || data_json.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let data_str = match unsafe { CStr::from_ptr(data_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    match h.wrapper.sign_message_json(data_str) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || data_json.is_null() {
+            return ptr::null_mut();
         }
-    }
+        let h = unsafe { &*handle };
+        let data_str = match unsafe { CStr::from_ptr(data_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        match h.wrapper.sign_message_json(data_str) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
+        }
+    })
 }
 
 /// Sign raw bytes. Returns base64 signature.
@@ -2541,21 +2739,23 @@ pub extern "C" fn jacs_simple_sign_raw_bytes(
     data: *const u8,
     data_len: size_t,
 ) -> *mut c_char {
-    if handle.is_null() || data.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let data_slice = unsafe { slice::from_raw_parts(data, data_len) };
-    clear_last_simple_error();
-    match h.wrapper.sign_raw_bytes_base64(data_slice) {
-        Ok(b64) => CString::new(b64)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || data.is_null() {
+            return ptr::null_mut();
         }
-    }
+        let h = unsafe { &*handle };
+        let data_slice = unsafe { slice::from_raw_parts(data, data_len) };
+        clear_last_simple_error();
+        match h.wrapper.sign_raw_bytes_base64(data_slice) {
+            Ok(b64) => CString::new(b64)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
+        }
+    })
 }
 
 /// Sign a file. Returns signed document JSON.
@@ -2565,24 +2765,26 @@ pub extern "C" fn jacs_simple_sign_file(
     file_path: *const c_char,
     embed: c_int,
 ) -> *mut c_char {
-    if handle.is_null() || file_path.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    match h.wrapper.sign_file_json(path_str, embed != 0) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => {
-            set_last_simple_error(e.to_string());
-            ptr::null_mut()
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || file_path.is_null() {
+            return ptr::null_mut();
         }
-    }
+        let h = unsafe { &*handle };
+        let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        match h.wrapper.sign_file_json(path_str, embed != 0) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => {
+                set_last_simple_error(e.to_string());
+                ptr::null_mut()
+            }
+        }
+    })
 }
 
 /// Create a standalone JACS agreement v2 document. Returns agreement JSON.
@@ -2592,16 +2794,18 @@ pub extern "C" fn jacs_simple_create_agreement_v2(
     handle: *const SimpleAgentHandle,
     input_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || input_json.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let input = match unsafe { CStr::from_ptr(input_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    simple_string_result(h.wrapper.create_agreement_v2_json(input))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || input_json.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let input = match unsafe { CStr::from_ptr(input_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        simple_string_result(h.wrapper.create_agreement_v2_json(input))
+    })
 }
 
 /// Apply an agreement v2 mutation. Returns successor agreement JSON.
@@ -2612,20 +2816,22 @@ pub extern "C" fn jacs_simple_apply_agreement_v2(
     document_json: *const c_char,
     mutation_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_json.is_null() || mutation_json.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let mutation = match unsafe { CStr::from_ptr(mutation_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    simple_string_result(h.wrapper.apply_agreement_v2_json(document, mutation))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_json.is_null() || mutation_json.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let mutation = match unsafe { CStr::from_ptr(mutation_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        simple_string_result(h.wrapper.apply_agreement_v2_json(document, mutation))
+    })
 }
 
 /// Add this agent's signer, witness, or notary agreement signature.
@@ -2636,20 +2842,22 @@ pub extern "C" fn jacs_simple_sign_agreement_v2(
     document_json: *const c_char,
     role: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_json.is_null() || role.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let role = match unsafe { CStr::from_ptr(role) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    simple_string_result(h.wrapper.sign_agreement_v2_json(document, role))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_json.is_null() || role.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let role = match unsafe { CStr::from_ptr(role) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        simple_string_result(h.wrapper.sign_agreement_v2_json(document, role))
+    })
 }
 
 /// Verify agreement v2 invariants. Returns AgreementV2VerificationReport JSON.
@@ -2659,16 +2867,18 @@ pub extern "C" fn jacs_simple_verify_agreement_v2(
     handle: *const SimpleAgentHandle,
     document_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || document_json.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    simple_string_result(h.wrapper.verify_agreement_v2_json(document))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || document_json.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let document = match unsafe { CStr::from_ptr(document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        simple_string_result(h.wrapper.verify_agreement_v2_json(document))
+    })
 }
 
 /// Detect whether two successor versions are transcript-only mergeable.
@@ -2680,31 +2890,33 @@ pub extern "C" fn jacs_simple_detect_agreement_v2_branch_conflict(
     left_document_json: *const c_char,
     right_document_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null()
-        || base_document_json.is_null()
-        || left_document_json.is_null()
-        || right_document_json.is_null()
-    {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let left = match unsafe { CStr::from_ptr(left_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let right = match unsafe { CStr::from_ptr(right_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    simple_string_result(
-        h.wrapper
-            .detect_agreement_v2_branch_conflict_json(base, left, right),
-    )
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null()
+            || base_document_json.is_null()
+            || left_document_json.is_null()
+            || right_document_json.is_null()
+        {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let left = match unsafe { CStr::from_ptr(left_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let right = match unsafe { CStr::from_ptr(right_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        simple_string_result(
+            h.wrapper
+                .detect_agreement_v2_branch_conflict_json(base, left, right),
+        )
+    })
 }
 
 /// Auto-merge two transcript-only branches. Returns successor agreement JSON.
@@ -2716,31 +2928,33 @@ pub extern "C" fn jacs_simple_merge_agreement_v2_transcript_branches(
     left_document_json: *const c_char,
     right_document_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null()
-        || base_document_json.is_null()
-        || left_document_json.is_null()
-        || right_document_json.is_null()
-    {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let left = match unsafe { CStr::from_ptr(left_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let right = match unsafe { CStr::from_ptr(right_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    simple_string_result(
-        h.wrapper
-            .merge_agreement_v2_transcript_branches_json(base, left, right),
-    )
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null()
+            || base_document_json.is_null()
+            || left_document_json.is_null()
+            || right_document_json.is_null()
+        {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let left = match unsafe { CStr::from_ptr(left_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let right = match unsafe { CStr::from_ptr(right_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        simple_string_result(
+            h.wrapper
+                .merge_agreement_v2_transcript_branches_json(base, left, right),
+        )
+    })
 }
 
 /// Resolve a conflicting branch by applying an explicit resolution mutation.
@@ -2753,38 +2967,40 @@ pub extern "C" fn jacs_simple_resolve_agreement_v2_branch_conflict(
     side_branch_document_json: *const c_char,
     mutation_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null()
-        || base_document_json.is_null()
-        || previous_document_json.is_null()
-        || side_branch_document_json.is_null()
-        || mutation_json.is_null()
-    {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let previous = match unsafe { CStr::from_ptr(previous_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let side_branch = match unsafe { CStr::from_ptr(side_branch_document_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let mutation = match unsafe { CStr::from_ptr(mutation_json) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    clear_last_simple_error();
-    simple_string_result(h.wrapper.resolve_agreement_v2_branch_conflict_json(
-        base,
-        previous,
-        side_branch,
-        mutation,
-    ))
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null()
+            || base_document_json.is_null()
+            || previous_document_json.is_null()
+            || side_branch_document_json.is_null()
+            || mutation_json.is_null()
+        {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let base = match unsafe { CStr::from_ptr(base_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let previous = match unsafe { CStr::from_ptr(previous_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let side_branch = match unsafe { CStr::from_ptr(side_branch_document_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let mutation = match unsafe { CStr::from_ptr(mutation_json) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        clear_last_simple_error();
+        simple_string_result(h.wrapper.resolve_agreement_v2_branch_conflict_json(
+            base,
+            previous,
+            side_branch,
+            mutation,
+        ))
+    })
 }
 
 #[cfg(not(feature = "agreements"))]
@@ -2799,7 +3015,7 @@ pub extern "C" fn jacs_simple_create_agreement_v2(
     _handle: *const SimpleAgentHandle,
     _input_json: *const c_char,
 ) -> *mut c_char {
-    agreement_v2_not_compiled()
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
 }
 
 #[cfg(not(feature = "agreements"))]
@@ -2809,7 +3025,7 @@ pub extern "C" fn jacs_simple_apply_agreement_v2(
     _document_json: *const c_char,
     _mutation_json: *const c_char,
 ) -> *mut c_char {
-    agreement_v2_not_compiled()
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
 }
 
 #[cfg(not(feature = "agreements"))]
@@ -2819,7 +3035,7 @@ pub extern "C" fn jacs_simple_sign_agreement_v2(
     _document_json: *const c_char,
     _role: *const c_char,
 ) -> *mut c_char {
-    agreement_v2_not_compiled()
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
 }
 
 #[cfg(not(feature = "agreements"))]
@@ -2828,7 +3044,7 @@ pub extern "C" fn jacs_simple_verify_agreement_v2(
     _handle: *const SimpleAgentHandle,
     _document_json: *const c_char,
 ) -> *mut c_char {
-    agreement_v2_not_compiled()
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
 }
 
 #[cfg(not(feature = "agreements"))]
@@ -2839,7 +3055,7 @@ pub extern "C" fn jacs_simple_detect_agreement_v2_branch_conflict(
     _left_document_json: *const c_char,
     _right_document_json: *const c_char,
 ) -> *mut c_char {
-    agreement_v2_not_compiled()
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
 }
 
 #[cfg(not(feature = "agreements"))]
@@ -2850,7 +3066,7 @@ pub extern "C" fn jacs_simple_merge_agreement_v2_transcript_branches(
     _left_document_json: *const c_char,
     _right_document_json: *const c_char,
 ) -> *mut c_char {
-    agreement_v2_not_compiled()
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
 }
 
 #[cfg(not(feature = "agreements"))]
@@ -2862,7 +3078,7 @@ pub extern "C" fn jacs_simple_resolve_agreement_v2_branch_conflict(
     _side_branch_document_json: *const c_char,
     _mutation_json: *const c_char,
 ) -> *mut c_char {
-    agreement_v2_not_compiled()
+    ffi_guard(ptr::null_mut(), || agreement_v2_not_compiled())
 }
 
 // ============================================================================
@@ -2918,22 +3134,24 @@ pub extern "C" fn jacs_agent_sign_text(
     file_path: *const c_char,
     opts_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || file_path.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let opts = opts_str(opts_json);
-    clear_last_simple_error();
-    match h.wrapper.sign_text_file_json(path_str, opts) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => simple_error_envelope(&e),
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || file_path.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let opts = opts_str(opts_json);
+        clear_last_simple_error();
+        match h.wrapper.sign_text_file_json(path_str, opts) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => simple_error_envelope(&e),
+        }
+    })
 }
 
 /// Verify an inline JACS signature in a text/markdown file. `opts_json` may
@@ -2946,22 +3164,24 @@ pub extern "C" fn jacs_agent_verify_text(
     file_path: *const c_char,
     opts_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || file_path.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let opts = opts_str(opts_json);
-    clear_last_simple_error();
-    match h.wrapper.verify_text_file_json(path_str, opts) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => simple_error_envelope(&e),
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || file_path.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let opts = opts_str(opts_json);
+        clear_last_simple_error();
+        match h.wrapper.verify_text_file_json(path_str, opts) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => simple_error_envelope(&e),
+        }
+    })
 }
 
 /// Sign a PNG / JPEG / WebP image, embedding a JACS signature.
@@ -2972,26 +3192,28 @@ pub extern "C" fn jacs_agent_sign_image(
     output_path: *const c_char,
     opts_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || input_path.is_null() || output_path.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let in_path = match unsafe { CStr::from_ptr(input_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let out_path = match unsafe { CStr::from_ptr(output_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let opts = opts_str(opts_json);
-    clear_last_simple_error();
-    match h.wrapper.sign_image_json(in_path, out_path, opts) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => simple_error_envelope(&e),
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || input_path.is_null() || output_path.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let in_path = match unsafe { CStr::from_ptr(input_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let out_path = match unsafe { CStr::from_ptr(output_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let opts = opts_str(opts_json);
+        clear_last_simple_error();
+        match h.wrapper.sign_image_json(in_path, out_path, opts) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => simple_error_envelope(&e),
+        }
+    })
 }
 
 /// Verify a JACS signature embedded in an image. Strict missing-signature
@@ -3002,22 +3224,24 @@ pub extern "C" fn jacs_agent_verify_image(
     file_path: *const c_char,
     opts_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || file_path.is_null() {
-        return ptr::null_mut();
-    }
-    let h = unsafe { &*handle };
-    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let opts = opts_str(opts_json);
-    clear_last_simple_error();
-    match h.wrapper.verify_image_json(path_str, opts) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => simple_error_envelope(&e),
-    }
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || file_path.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let opts = opts_str(opts_json);
+        clear_last_simple_error();
+        match h.wrapper.verify_image_json(path_str, opts) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => simple_error_envelope(&e),
+        }
+    })
 }
 
 /// Extract the JACS signature payload embedded in a signed image. `opts_json`
@@ -3029,20 +3253,75 @@ pub extern "C" fn jacs_agent_extract_media_signature(
     file_path: *const c_char,
     opts_json: *const c_char,
 ) -> *mut c_char {
-    if handle.is_null() || file_path.is_null() {
-        return ptr::null_mut();
+    ffi_guard(ptr::null_mut(), || {
+        if handle.is_null() || file_path.is_null() {
+            return ptr::null_mut();
+        }
+        let h = unsafe { &*handle };
+        let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+        let opts = opts_str(opts_json);
+        clear_last_simple_error();
+        match h.wrapper.extract_media_signature_json(path_str, opts) {
+            Ok(json) => CString::new(json)
+                .map(|c| c.into_raw())
+                .unwrap_or(ptr::null_mut()),
+            Err(e) => simple_error_envelope(&e),
+        }
+    })
+}
+
+#[cfg(test)]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_test_panic_cint() -> c_int {
+    ffi_guard(FFI_PANIC_CODE, || {
+        panic!("intentional test panic (cint)");
+    })
+}
+
+#[cfg(test)]
+#[unsafe(no_mangle)]
+pub extern "C" fn jacs_test_panic_cchar() -> *mut c_char {
+    ffi_guard(ptr::null_mut(), || {
+        panic!("intentional test panic (cchar)");
+    })
+}
+
+#[cfg(test)]
+mod ffi_panic_tests {
+    use super::*;
+    use std::ffi::CStr;
+
+    #[test]
+    fn guard_converts_int_panic_to_sentinel_and_sets_last_error() {
+        clear_last_simple_error();
+        let rc = jacs_test_panic_cint();
+        assert_eq!(
+            rc, FFI_PANIC_CODE,
+            "panic must map to FFI_PANIC_CODE, not abort"
+        );
+        let err = jacs_simple_last_error();
+        assert!(!err.is_null(), "panic must record a last-error message");
+        let msg = unsafe { CStr::from_ptr(err) }
+            .to_string_lossy()
+            .into_owned();
+        jacs_free_string(err);
+        assert!(
+            msg.contains("panic"),
+            "last-error should mention panic, got: {msg}"
+        );
+        assert!(msg.contains("intentional test panic"), "got: {msg}");
     }
-    let h = unsafe { &*handle };
-    let path_str = match unsafe { CStr::from_ptr(file_path) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-    let opts = opts_str(opts_json);
-    clear_last_simple_error();
-    match h.wrapper.extract_media_signature_json(path_str, opts) {
-        Ok(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(ptr::null_mut()),
-        Err(e) => simple_error_envelope(&e),
+
+    #[test]
+    fn guard_converts_char_panic_to_null() {
+        clear_last_simple_error();
+        let p = jacs_test_panic_cchar();
+        assert!(p.is_null(), "panic must map to null pointer, not abort");
+        let err = jacs_simple_last_error();
+        assert!(!err.is_null());
+        jacs_free_string(err);
     }
 }
