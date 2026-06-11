@@ -369,6 +369,7 @@ pub mod v2 {
     ];
     const AUTO_MERGE_GUARD_FIELDS: &[&str] =
         &["status", "agreementSignatures", "links", "controllers"];
+    const MINIMUM_STRENGTHS: &[&str] = &["classical", "post-quantum"];
 
     pub fn create(agent: &mut CoreAgent, input: &Value) -> Result<Value, CoreError> {
         let agent_id = agent_id(agent);
@@ -416,6 +417,24 @@ pub mod v2 {
         mutation: &Value,
     ) -> Result<Value, CoreError> {
         assert_agreement(document)?;
+        if document.get("status").and_then(Value::as_str) == Some("final")
+            && mutation_touches_consent_scope(mutation)
+        {
+            return Err(CoreError::AgreementFailed(
+                "final agreements cannot change consent-scope fields; create a superseding agreement"
+                    .into(),
+            ));
+        }
+        if mutation.get("type").and_then(Value::as_str) == Some("setSignaturePolicy")
+            && signature_policy_past_point_of_reliance(document)
+            && let Some(new_policy) = mutation.get("signaturePolicy")
+            && signature_policy_is_weaker(document, new_policy)
+        {
+            return Err(CoreError::AgreementFailed(
+                "signaturePolicy cannot be loosened after proposal or signatures (consent-scope quorum); create a superseding agreement instead"
+                    .into(),
+            ));
+        }
         let mut next = document.clone();
         apply_mutation(&mut next, mutation)?;
         emit_successor(agent, document, next)
@@ -781,6 +800,14 @@ pub mod v2 {
                 "agreement branches cannot be resolved from supplied base".into(),
             ));
         }
+        if previous.get("status").and_then(Value::as_str) == Some("final")
+            && mutation_touches_consent_scope(mutation)
+        {
+            return Err(CoreError::AgreementFailed(
+                "final agreements cannot change consent-scope fields; create a superseding agreement"
+                    .into(),
+            ));
+        }
         let mut resolved = previous.clone();
         apply_mutation(&mut resolved, mutation)?;
         append_link(&mut resolved, side)?;
@@ -855,15 +882,107 @@ pub mod v2 {
         Ok(sha256_hex(canonical.as_bytes()))
     }
 
-    fn update_document_hash(doc: &mut Value) -> Result<(), CoreError> {
+    /// Content hash of an agreement document: canonical JSON with `jacsSha256`
+    /// stripped, sha256 hex. Mirrors native `hash_doc`; this is the value stored
+    /// in `jacsSha256` and bound into merge links.
+    fn content_hash(doc: &Value) -> Result<String, CoreError> {
         let mut clone = doc.clone();
-        clone
-            .as_object_mut()
-            .ok_or_else(|| CoreError::MalformedDocument("agreement must be an object".into()))?
-            .remove("jacsSha256");
+        if let Some(obj) = clone.as_object_mut() {
+            obj.remove("jacsSha256");
+        }
         let canonical = canonicalize_json_try(&clone)?;
-        doc["jacsSha256"] = json!(sha256_hex(canonical.as_bytes()));
+        Ok(sha256_hex(canonical.as_bytes()))
+    }
+
+    fn update_document_hash(doc: &mut Value) -> Result<(), CoreError> {
+        doc["jacsSha256"] = json!(content_hash(doc)?);
         Ok(())
+    }
+
+    /// Mirrors native `AgreementV2Mutation::touches_consent_scope`: the mutation
+    /// types that change the consent surface (terms / parties / signature policy).
+    fn mutation_touches_consent_scope(mutation: &Value) -> bool {
+        matches!(
+            mutation.get("type").and_then(Value::as_str),
+            Some("updateTerms" | "setParties" | "setSignaturePolicy")
+        )
+    }
+
+    /// Mirrors native `signature_policy_past_point_of_reliance`: once an agreement
+    /// is proposed/partially-signed, carries signatures, or has prior versions, its
+    /// signature policy may no longer be loosened.
+    fn signature_policy_past_point_of_reliance(doc: &Value) -> bool {
+        if matches!(
+            doc.get("status").and_then(Value::as_str),
+            Some("proposed" | "partially_signed")
+        ) {
+            return true;
+        }
+        let has_signatures = doc
+            .get("agreementSignatures")
+            .and_then(Value::as_array)
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        let has_previous_versions = doc
+            .get("allPreviousVersions")
+            .and_then(Value::as_array)
+            .map(|v| !v.is_empty())
+            .unwrap_or(false);
+        has_signatures || has_previous_versions
+    }
+
+    /// Mirrors native `signature_policy_is_weaker`: returns true if `new_policy`
+    /// would weaken the consent quorum relative to the current document's policy
+    /// (lower party quorum, fewer required witnesses/notaries, weaker minimum
+    /// strength, or a broadened requiredAlgorithms allow-list).
+    fn signature_policy_is_weaker(current_doc: &Value, new_policy: &Value) -> bool {
+        let mut new_doc = current_doc.clone();
+        new_doc["signaturePolicy"] = new_policy.clone();
+
+        if required_count(&new_doc, "signer") < required_count(current_doc, "signer") {
+            return true;
+        }
+        if policy_usize(&new_doc, "witnessRequired") < policy_usize(current_doc, "witnessRequired")
+        {
+            return true;
+        }
+        if policy_usize(&new_doc, "notaryRequired") < policy_usize(current_doc, "notaryRequired") {
+            return true;
+        }
+
+        let strength_rank = |doc: &Value| {
+            doc.get("signaturePolicy")
+                .and_then(|p| p.get("minimumStrength"))
+                .and_then(Value::as_str)
+                .and_then(|s| MINIMUM_STRENGTHS.iter().position(|allowed| *allowed == s))
+                .map(|i| i as isize)
+                .unwrap_or(-1)
+        };
+        if strength_rank(&new_doc) < strength_rank(current_doc) {
+            return true;
+        }
+
+        let algorithm_set = |doc: &Value| {
+            doc.get("signaturePolicy")
+                .and_then(|p| p.get("requiredAlgorithms"))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<HashSet<String>>()
+        };
+        let old_algorithms = algorithm_set(current_doc);
+        if !old_algorithms.is_empty() {
+            let new_algorithms = algorithm_set(&new_doc);
+            if new_algorithms.is_empty()
+                || (old_algorithms.is_subset(&new_algorithms)
+                    && new_algorithms.len() > old_algorithms.len())
+            {
+                return true;
+            }
+        }
+        false
     }
 
     fn apply_mutation(doc: &mut Value, mutation: &Value) -> Result<(), CoreError> {
@@ -1136,6 +1255,7 @@ pub mod v2 {
         let link = json!({
             "jacsId": required_string(target, "jacsId")?,
             "jacsVersion": required_string(target, "jacsVersion")?,
+            "jacsSha256": content_hash(target)?,
         });
         array_mut(doc, "links")?.push(link);
         Ok(())

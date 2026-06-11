@@ -472,3 +472,158 @@ fn v2_final_agreement_remains_final_after_expires_at() {
     let report = agreements::v2::verify(&past, &signers).expect("verify");
     assert_eq!(report["expectedStatus"], json!("final"));
 }
+
+#[test]
+fn v2_portable_rejects_consent_mutation_on_final() {
+    let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let agent_id = core_v2_agent_id(&agent);
+    let agreement = agreements::v2::create(&mut agent, &core_v2_input(&agent_id)).expect("create");
+    let signed = agreements::v2::sign(&mut agent, &agreement, "signer").expect("sign to final");
+    assert_eq!(
+        signed["status"],
+        json!("final"),
+        "single signer + quorum all => final"
+    );
+
+    let result = agreements::v2::apply(
+        &mut agent,
+        &signed,
+        &json!({"type": "updateTerms", "terms": "Rewritten terms after final."}),
+    );
+    assert!(
+        result.is_err(),
+        "consent-scope mutation on a final agreement must be rejected"
+    );
+}
+
+#[test]
+fn v2_portable_rejects_quorum_downgrade_after_proposal() {
+    let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let agent_id = core_v2_agent_id(&agent);
+    let mut input = core_v2_input(&agent_id);
+    // Two signer parties so partyQuorum "all" => quorum 2.
+    input["parties"] = json!([
+        {"agentId": agent_id, "agentType": "ai", "role": "signer"},
+        {"agentId": "00000000-0000-4000-8000-000000000002", "agentType": "ai", "role": "signer"}
+    ]);
+    let agreement = agreements::v2::create(&mut agent, &input).expect("create");
+
+    // Move to proposed => past point of reliance.
+    let proposed = agreements::v2::apply(
+        &mut agent,
+        &agreement,
+        &json!({"type": "setStatus", "status": "proposed"}),
+    )
+    .expect("set proposed");
+
+    // Downgrade quorum from "all" (=2) to 1 => weaker => rejected.
+    let result = agreements::v2::apply(
+        &mut agent,
+        &proposed,
+        &json!({"type": "setSignaturePolicy", "signaturePolicy": {"partyQuorum": 1}}),
+    );
+    assert!(
+        result.is_err(),
+        "loosening partyQuorum after proposal must be rejected"
+    );
+}
+
+#[test]
+fn v2_portable_merge_binds_content_hash() {
+    use jacs_core::canonical::canonicalize_json_try;
+    use jacs_core::verify::sha256_hex;
+
+    let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let agent_id = core_v2_agent_id(&agent);
+    let base = agreements::v2::create(&mut agent, &core_v2_input(&agent_id)).expect("create base");
+
+    // Two transcript-only branches off the same parent.
+    let left = agreements::v2::apply(
+        &mut agent,
+        &base,
+        &json!({"type": "appendTranscript", "entry": {
+            "jacsId": "00000000-0000-4000-8000-000000000011",
+            "jacsVersion": "10000000-0000-4000-8000-000000000011",
+            "jacsSha256": "left-branch-transcript-ref"
+        }}),
+    )
+    .expect("left branch");
+    let right = agreements::v2::apply(
+        &mut agent,
+        &base,
+        &json!({"type": "appendTranscript", "entry": {
+            "jacsId": "00000000-0000-4000-8000-000000000012",
+            "jacsVersion": "10000000-0000-4000-8000-000000000012",
+            "jacsSha256": "right-branch-transcript-ref"
+        }}),
+    )
+    .expect("right branch");
+
+    let merged =
+        agreements::v2::merge_transcript_branches(&mut agent, &base, &left, &right).expect("merge");
+
+    // Recompute the content hash of the merged-in (right) branch the same way the
+    // engine does: strip jacsSha256, canonicalize, sha256 hex.
+    let mut right_for_hash = right.clone();
+    right_for_hash.as_object_mut().unwrap().remove("jacsSha256");
+    let expected_hash = sha256_hex(
+        canonicalize_json_try(&right_for_hash)
+            .expect("canonicalize")
+            .as_bytes(),
+    );
+
+    let right_id = right["jacsId"].as_str().unwrap();
+    let right_version = right["jacsVersion"].as_str().unwrap();
+    let links = merged["links"].as_array().expect("links array");
+    let bound = links.iter().find(|link| {
+        link["jacsId"].as_str() == Some(right_id)
+            && link["jacsVersion"].as_str() == Some(right_version)
+    });
+    let bound = bound.expect("merge link to right branch present");
+    assert_eq!(
+        bound["jacsSha256"].as_str(),
+        Some(expected_hash.as_str()),
+        "merge link must bind the merged branch content hash"
+    );
+}
+
+#[test]
+fn v2_portable_valid_apply_and_merge_still_succeed() {
+    let mut agent = CoreAgent::ephemeral(SigningAlgorithm::Ed25519).expect("ephemeral");
+    let agent_id = core_v2_agent_id(&agent);
+    let agreement = agreements::v2::create(&mut agent, &core_v2_input(&agent_id)).expect("create");
+
+    // Valid policy set on a fresh draft (not past point of reliance) succeeds.
+    let updated = agreements::v2::apply(
+        &mut agent,
+        &agreement,
+        &json!({"type": "setSignaturePolicy", "signaturePolicy": {"partyQuorum": "all", "witnessRequired": 0}}),
+    )
+    .expect("valid setSignaturePolicy on draft must still succeed");
+    assert_eq!(updated["jacsType"], json!("agreement"));
+
+    // Valid transcript merge on non-final branches still succeeds.
+    let left = agreements::v2::apply(
+        &mut agent,
+        &agreement,
+        &json!({"type": "appendTranscript", "entry": {
+            "jacsId": "00000000-0000-4000-8000-000000000021",
+            "jacsVersion": "10000000-0000-4000-8000-000000000021",
+            "jacsSha256": "left-ref"
+        }}),
+    )
+    .expect("left");
+    let right = agreements::v2::apply(
+        &mut agent,
+        &agreement,
+        &json!({"type": "appendTranscript", "entry": {
+            "jacsId": "00000000-0000-4000-8000-000000000022",
+            "jacsVersion": "10000000-0000-4000-8000-000000000022",
+            "jacsSha256": "right-ref"
+        }}),
+    )
+    .expect("right");
+    let merged = agreements::v2::merge_transcript_branches(&mut agent, &agreement, &left, &right)
+        .expect("valid transcript merge must still succeed");
+    assert_eq!(merged["jacsType"], json!("agreement"));
+}

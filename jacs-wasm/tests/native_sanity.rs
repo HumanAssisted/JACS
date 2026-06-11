@@ -401,12 +401,26 @@ fn agreement_v2_notary_and_branch_methods_round_trip_on_wasm_handle() {
     .unwrap();
     let right_terms_doc: Value = serde_json::from_str(&right_terms).unwrap();
     assert_eq!(resolved["terms"], Value::String(wasm_terms("resolved")));
+
+    // The resolution link binds the merged-in (right) branch by content hash:
+    // canonical JSON with `jacsSha256` stripped, then sha256 hex (matches the
+    // engine's own content hashing and native `hash_doc`).
+    let mut right_for_hash = right_terms_doc.clone();
+    right_for_hash.as_object_mut().unwrap().remove("jacsSha256");
+    let expected_link_hash = jacs_core::verify::sha256_hex(
+        jacs_core::canonical::canonicalize_json_try(&right_for_hash)
+            .expect("canonicalize right branch")
+            .as_bytes(),
+    );
+    assert_eq!(resolved["links"][0]["jacsId"], right_terms_doc["jacsId"]);
     assert_eq!(
-        resolved["links"][0],
-        json!({
-            "jacsId": right_terms_doc["jacsId"],
-            "jacsVersion": right_terms_doc["jacsVersion"]
-        })
+        resolved["links"][0]["jacsVersion"],
+        right_terms_doc["jacsVersion"]
+    );
+    assert_eq!(
+        resolved["links"][0]["jacsSha256"].as_str(),
+        Some(expected_link_hash.as_str()),
+        "branch-resolution link must bind the merged branch content hash"
     );
 
     let notary = create_ephemeral("ed25519").expect("notary");
